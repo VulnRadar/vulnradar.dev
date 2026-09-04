@@ -12,7 +12,10 @@ import {
 import { requestCancel, finalizeScanFailure } from "@/lib/scanner/scan-jobs";
 import { publicScanErrorMessage } from "@/lib/api/scan-error-message";
 import type { ScanJobStatus, Vulnerability } from "@/lib/scanner/types";
-import { attachRemediation } from "@/lib/scanner/remediation-store";
+import {
+  attachRemediation,
+  attachFalsePositiveVerdicts,
+} from "@/lib/scanner/remediation-store";
 
 interface ScanHistoryRow {
   id: number;
@@ -219,10 +222,19 @@ export async function GET(
     // owner, so attach their current per-finding status by stable
     // finding_id -- a finding marked "fixed" on an earlier scan of this
     // target shows as "fixed" on this freshly completed one too.
-    const findingsWithRemediation = await attachRemediation(
+    //
+    // attachFalsePositiveVerdicts is the same call app/api/v3/history/[id]
+    // makes and this route did not, which is why a finding the owner had
+    // already dismissed came back unflagged on a fresh scan and only picked
+    // up its badge once the page was reloaded out of History. Same data,
+    // same owner, two views that disagreed for no reason.
+    const findingsWithRemediation = await attachFalsePositiveVerdicts(
       row.user_id,
-      row.url,
-      (row.findings ?? []) as Vulnerability[],
+      await attachRemediation(
+        row.user_id,
+        row.url,
+        (row.findings ?? []) as Vulnerability[],
+      ),
     );
     responseBody.result = {
       url: row.url,

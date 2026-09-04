@@ -22,6 +22,7 @@ import { findTrustedDevice } from "@/lib/auth/device-trust";
 import { signPendingToken } from "@/lib/auth/pending-2fa";
 import { encryptApiKey } from "@/lib/auth/crypto";
 import { getClientIp } from "@/lib/api/request-utils";
+import { loginsPausedReasonFor } from "@/lib/admin/service-state";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
@@ -298,6 +299,18 @@ export async function GET(request: Request) {
 
       // Check if user has 2FA enabled
       const user2FA = await getUserTwoFAConfig(userId);
+
+      // PAUSE_LOGINS (and MAINTENANCE_MODE, which implies it). Staff exempt.
+      // Redirect rather than a 503 for the same reason as the OAuth callback:
+      // this is a browser finishing a full-page round trip. Discord never
+      // auto-creates accounts (an unlinked Discord id was already turned away
+      // above), so this path needs no signup gate.
+      const pausedReason = await loginsPausedReasonFor(user2FA?.role);
+      if (pausedReason) {
+        return NextResponse.redirect(
+          `${baseUrl}/login?error=logins_paused&message=${encodeURIComponent(pausedReason)}`,
+        );
+      }
 
       if (user2FA?.totp_enabled) {
         // Check if device is trusted (skip 2FA for trusted devices)

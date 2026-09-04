@@ -6,6 +6,11 @@ import {
   getSafetyRating,
   type SafetyRating,
 } from "@/lib/scanner/safety-rating";
+import {
+  toDisplayExcerpts,
+  formatExcerptLine,
+} from "@/lib/scanner/evidence-excerpts";
+import { REMEDIATION_LABELS } from "@/lib/scanner/remediation";
 
 /**
  * Markdown export.
@@ -61,8 +66,39 @@ function findingSection(finding: Vulnerability): string[] {
     }
   }
 
+  // Verbatim proof: the exact header/script/markup the check matched, which
+  // is what makes the finding checkable without re-running the scan by hand.
+  // Inside a fence rather than as prose: these are third-party response
+  // fragments, and a fenced block is inert in a viewer that renders HTML.
+  const excerpts = toDisplayExcerpts(finding.evidenceExcerpts);
+  if (excerpts.length > 0) {
+    lines.push("Verbatim proof:", "", "```");
+    for (const ex of excerpts) lines.push(mdFenced(formatExcerptLine(ex)));
+    lines.push("```", "");
+  }
+
   if (finding.riskImpact) {
     lines.push(`Risk and impact: ${mdText(finding.riskImpact)}`, "");
+  }
+
+  // The owner's own triage. attachRemediation has always run on the export
+  // route and no generator read it, so a finding the user closed as
+  // "accepted risk" exported looking identical to an untouched one.
+  if (finding.suppressed) {
+    lines.push("Status: Marked a false positive", "");
+  } else if (finding.remediation) {
+    const { status, assignee, dueAt, note } = finding.remediation;
+    const detail = [
+      assignee ? `assigned to ${mdText(assignee)}` : null,
+      dueAt ? `due ${mdText(dueAt)}` : null,
+    ].filter(Boolean);
+    lines.push(
+      `Status: ${REMEDIATION_LABELS[status]}${
+        detail.length > 0 ? ` (${detail.join(", ")})` : ""
+      }`,
+      "",
+    );
+    if (note) lines.push(`Triage note: ${mdText(note)}`, "");
   }
 
   if (finding.aiVerdict) {

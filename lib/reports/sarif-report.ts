@@ -1,5 +1,10 @@
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
 import { APP_NAME, APP_URL, APP_VERSION } from "@/lib/config/constants";
+import { toDisplayExcerpts } from "@/lib/scanner/evidence-excerpts";
+import {
+  REMEDIATION_LABELS,
+  type RemediationStatus,
+} from "@/lib/scanner/remediation";
 
 /**
  * SARIF (Static Analysis Results Interchange Format) 2.1.0 export.
@@ -62,6 +67,21 @@ interface SarifReportingDescriptor {
   };
 }
 
+/**
+ * SARIF 2.1.0 §3.35. A result carrying a non-empty `suppressions` array is a
+ * result the tool is reporting but NOT asserting: GitHub Code Scanning files
+ * it as a dismissed alert rather than an open one, and most CI gates stop
+ * counting it. That is precisely the behaviour a user asks for when they mark
+ * a finding "accepted risk", and precisely the behaviour that must never
+ * appear by surprise in a pipeline someone already tuned, which is why
+ * generateSarifReport only emits it when asked.
+ */
+interface SarifSuppression {
+  kind: "external";
+  status: "accepted";
+  justification: string;
+}
+
 interface SarifResult {
   ruleId: string;
   ruleIndex: number;
@@ -69,6 +89,7 @@ interface SarifResult {
   message: SarifMessage;
   locations: SarifLocation[];
   partialFingerprints: { vulnradarFindingId: string };
+  suppressions?: SarifSuppression[];
   properties: {
     severity: Severity;
     category: string;
@@ -198,12 +219,57 @@ function toLocation(finding: Vulnerability, scanUrl: string): SarifLocation {
 }
 
 /**
+ * Statuses that mean "the owner has decided about this and is not going to
+ * fix it". `fixed` is deliberately absent: a finding still being reported
+ * after it was marked fixed is the one case where the tool disagrees with the
+ * user, and silencing it would hide a regression.
+ */
+const TRIAGE_SUPPRESSED: RemediationStatus[] = ["accepted_risk", "wont_fix"];
+
+function suppressionFor(finding: Vulnerability): SarifSuppression | null {
+  if (finding.suppressed) {
+    return {
+      kind: "external",
+      status: "accepted",
+      justification: `Marked a false positive in ${APP_NAME}.`,
+    };
+  }
+  const status = finding.remediation?.status;
+  if (!status || !TRIAGE_SUPPRESSED.includes(status)) return null;
+  const note = finding.remediation?.note?.trim();
+  const label = REMEDIATION_LABELS[status];
+  return {
+    kind: "external",
+    status: "accepted",
+    justification: note
+      ? `${label} in ${APP_NAME}: ${note}`
+      : `Marked "${label}" in ${APP_NAME}.`,
+  };
+}
+
+export interface SarifReportOptions {
+  /**
+   * Emit SARIF `suppressions` for findings the owner triaged away
+   * (accepted risk / won't fix / false positive).
+   *
+   * Off by default, and that default is load-bearing: turning it on changes
+   * what a CI gate counts, so a pipeline that fails on criticals could start
+   * passing without anyone touching the pipeline. The export route exposes it
+   * as an explicit `?applyTriage=true`.
+   */
+  applySuppressions?: boolean;
+}
+
+/**
  * Convert a completed scan's findings into a SARIF 2.1.0 log.
  *
  * Pure and synchronous, like generatePdfReport. `runs` is always a single
  * entry -- one VulnRadar scan is one tool run over one target.
  */
-export function generateSarifReport(result: ScanResult): SarifLog {
+export function generateSarifReport(
+  result: ScanResult,
+  options: SarifReportOptions = {},
+): SarifLog {
   const rules: SarifReportingDescriptor[] = [];
   const ruleIndexById = new Map<string, number>();
   const results: SarifResult[] = [];
@@ -216,6 +282,16 @@ export function generateSarifReport(result: ScanResult): SarifLog {
       ruleIndexById.set(finding.id, ruleIndex);
     }
 
+    // Verbatim proof travels as a structured property rather than being
+    // flattened into the message: a SARIF viewer shows properties, and a
+    // consumer that wants to re-check the finding needs the exact bytes, not
+    // a prose paraphrase of them. Sanitized first -- these are fragments of
+    // the scanned site's own response.
+    const excerpts = toDisplayExcerpts(finding.evidenceExcerpts);
+    const suppression = options.applySuppressions
+      ? suppressionFor(finding)
+      : null;
+
     results.push({
       ruleId: finding.id,
       ruleIndex,
@@ -223,12 +299,20 @@ export function generateSarifReport(result: ScanResult): SarifLog {
       message: { text: toMessage(finding) },
       locations: [toLocation(finding, result.url)],
       partialFingerprints: { vulnradarFindingId: finding.id },
+      ...(suppression ? { suppressions: [suppression] } : {}),
       properties: {
         severity: finding.severity,
         category: finding.category,
         ...(finding.confidence !== undefined
           ? { confidence: finding.confidence }
           : {}),
+        ...(excerpts.length > 0 ? { evidenceExcerpts: excerpts } : {}),
+        // Always reported, even when suppressions are off, so a consumer can
+        // see the owner's triage without it changing the gate.
+        ...(finding.remediation
+          ? { remediationStatus: finding.remediation.status }
+          : {}),
+        ...(finding.suppressed ? { falsePositive: true } : {}),
       },
     });
   }

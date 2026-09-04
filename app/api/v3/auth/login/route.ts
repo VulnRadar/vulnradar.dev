@@ -40,6 +40,7 @@ import {
 } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
+import { loginsPausedResponseFor } from "@/lib/admin/service-state";
 
 // auth: module-scoped cache for the dummy scrypt hash used to equalize
 // timing between user-exists and user-doesn't-exist login paths.
@@ -197,8 +198,10 @@ export const POST = withErrorHandling(async (request: Request) => {
   await resetRateLimit(`login-fail:${user.id}`);
 
   // Check if account is disabled or email not verified
+  // `role` rides along for the PAUSE_LOGINS check below rather than costing a
+  // second round trip.
   const userInfoResult = await pool.query(
-    "SELECT totp_enabled, two_factor_method, disabled_at, email_verified_at FROM users WHERE id = $1",
+    "SELECT totp_enabled, two_factor_method, disabled_at, email_verified_at, role FROM users WHERE id = $1",
     [user.id],
   );
   const userInfo = userInfoResult.rows[0];
@@ -217,6 +220,22 @@ export const POST = withErrorHandling(async (request: Request) => {
       },
     );
   }
+
+  // PAUSE_LOGINS (and MAINTENANCE_MODE, which implies it). Staff are exempt,
+  // which is the property that keeps this switch from locking out the person
+  // who has to turn it off.
+  //
+  // Placed here, after the password has already been verified, rather than at
+  // the top of the handler. Gating on the way in would answer "logins are
+  // paused" for an unknown address and fall through to the normal flow for a
+  // staff address, which turns the pause into a way to enumerate staff
+  // accounts. Here, only someone who has already proved they own the account
+  // learns anything at all.
+  //
+  // This refuses a NEW session. It does not revoke existing ones: see the
+  // registry help for PAUSE_LOGINS.
+  const loginsPaused = await loginsPausedResponseFor(userInfo?.role);
+  if (loginsPaused) return loginsPaused;
 
   // Check if 2FA is enabled
   const has2FA = userInfo?.totp_enabled === true;

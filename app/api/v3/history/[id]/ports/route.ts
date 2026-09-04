@@ -13,6 +13,7 @@ import {
   mergeResultMeta,
   scanHostname,
 } from "@/lib/history/refresh-scan";
+import { scanningPausedResponse } from "@/lib/admin/service-state";
 
 export const runtime = "nodejs";
 // scanPorts is internally bounded (PORT_SCAN_OVERALL_DEADLINE_MS, an
@@ -51,6 +52,13 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). A refresh here
+  // opens real TCP connections to someone else's host, so it is a scan for
+  // the purposes of the pause even though it writes into an existing row
+  // rather than creating a new one.
+  const paused = await scanningPausedResponse();
+  if (paused) return paused;
+
   const { id } = await params;
 
   const owned = await resolveOwnedScan(id);

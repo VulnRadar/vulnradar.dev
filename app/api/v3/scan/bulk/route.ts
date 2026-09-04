@@ -47,6 +47,7 @@ import {
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
+import { scanningPausedResponse } from "@/lib/admin/service-state";
 
 const SUPPORTED_PROTOCOLS = ["http:", "https:", "ws:", "wss:", "ftp:", "ftps:"];
 
@@ -114,6 +115,12 @@ async function validateBulkTarget(
 }
 
 export async function POST(request: NextRequest) {
+  // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it) before the
+  // feature flag: "scanning is paused" is the more accurate answer when both
+  // apply, and a bulk submission is N scans, not one.
+  const paused = await scanningPausedResponse();
+  if (paused) return paused;
+
   if (!(await getSetting("FEATURE_BULK_SCANS"))) {
     return NextResponse.json(
       { error: "Bulk scanning is disabled on this deployment." },

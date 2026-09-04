@@ -15,6 +15,8 @@ import { CookieNotice } from "@/components/shared/cookie-notice";
 import { Ipv4Capture } from "@/components/shared/ipv4-capture";
 import { OfflineBanner } from "@/components/shared/offline-banner";
 import { CommandPalette } from "@/components/shared/command-palette";
+import { MaintenanceScreen } from "@/components/shared/maintenance-screen";
+import { maintenanceGate } from "@/lib/admin/service-state";
 import {
   APP_NAME,
   APP_DESCRIPTION,
@@ -155,7 +157,45 @@ export default async function RootLayout({
   // bake in a nonce from whenever it was first rendered/cached, which then
   // mismatches nearly every subsequent request's CSP header and gets every
   // script on the page blocked -- inline scripts and Next's own chunks alike.
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const requestHeaders = await headers();
+  const nonce = requestHeaders.get("x-nonce") ?? undefined;
+
+  // MAINTENANCE_MODE. Enforced here rather than in middleware.ts because the
+  // switch is a database-backed registry setting and middleware compiles to
+  // the Edge bundle, which cannot import node-postgres. This layout wraps
+  // every page in the app, so one check here covers the whole UI surface;
+  // middleware.ts keeps the environment-variable break-glass, which is the
+  // form that still works when the database is the thing that is down.
+  //
+  // x-pathname is set by middleware.ts. maintenanceGate() lets /login through
+  // for everyone and every path through for staff, so turning this on cannot
+  // lock out the person who has to turn it off.
+  const maintenance = await maintenanceGate(requestHeaders.get("x-pathname"));
+  if (maintenance.active) {
+    return (
+      <html
+        lang={SEO_LANGUAGE}
+        className="dark"
+        suppressHydrationWarning
+        data-scroll-behavior="smooth"
+      >
+        <body className="font-sans antialiased" suppressHydrationWarning>
+          {/* No AuthProvider, no TosGate, no widgets: every one of those
+              fetches on mount, and this page has to render on a deployment
+              whose database is unreachable. ThemeProvider is kept so the
+              screen is not a flash of the wrong palette. */}
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <MaintenanceScreen message={maintenance.message} />
+          </ThemeProvider>
+        </body>
+      </html>
+    );
+  }
 
   return (
     <html

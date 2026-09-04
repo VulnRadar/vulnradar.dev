@@ -129,11 +129,10 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     githubLoginUpdateCalls.push({ sql: s, params });
     return { rows: [] };
   }
-  if (
-    s.startsWith(
-      "SELECT totp_enabled, two_factor_method, email FROM users WHERE id",
-    )
-  ) {
+  // The column list grew a `role` (the PAUSE_LOGINS gate needs it and
+  // signInOAuthUser already had to read the row), so match on the stable
+  // prefix rather than the whole projection.
+  if (s.startsWith("SELECT totp_enabled, two_factor_method, email")) {
     return { rows: twoFARow ? [twoFARow] : [] };
   }
   if (s.startsWith("SELECT 1 FROM device_trust")) {

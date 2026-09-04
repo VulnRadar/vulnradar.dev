@@ -336,18 +336,42 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             required: false,
             schema: {
               type: "string",
-              enum: ["json", "sarif", "pdf", "md", "markdown", "compliance"],
+              enum: [
+                "json",
+                "sarif",
+                "pdf",
+                "md",
+                "markdown",
+                "compliance",
+                "csv",
+              ],
               default: "json",
             },
             description:
               "The report format to render. Defaults to json when omitted. `markdown` is an alias for `md`.",
+          },
+          {
+            name: "includeSuppressed",
+            in: "query",
+            required: false,
+            schema: { type: "boolean", default: false },
+            description:
+              "Include findings you have marked a false positive. Off by default, matching what the dashboard shows. `summary` is always the tally of the findings actually returned, so the header and the list agree either way.",
+          },
+          {
+            name: "applyTriage",
+            in: "query",
+            required: false,
+            schema: { type: "boolean", default: false },
+            description:
+              "Mark findings you closed as accepted risk or won't fix as SARIF `suppressions`, which GitHub Code Scanning reads as dismissed. Off by default: turning it on changes what a CI gate counts.",
           },
         ],
         get: {
           tags: ["History"],
           summary: "Export a scan report",
           description:
-            "Render one scan as SARIF, PDF, Markdown, a compliance summary, or raw JSON. Owner or team-read access.",
+            "Render one scan as SARIF, PDF, Markdown, CSV, a compliance summary, or raw JSON. Owner or team-read access.",
           security: [{ apiKey: ["scan:read"] }],
           responses: {
             "200": {

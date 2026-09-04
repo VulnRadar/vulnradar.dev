@@ -77,6 +77,103 @@ function generateNonce(): string {
  */
 const ALLOW_INSECURE_HTTP = process.env.ALLOW_INSECURE_HTTP === "1";
 
+/**
+ * The path the request arrived on, forwarded to Server Components. Same
+ * arrangement as NONCE_HEADER: app/layout.tsx needs it to decide whether the
+ * maintenance gate applies to this page, and a Server Component has no other
+ * way to read its own URL. Overwritten with .set on every request, never
+ * appended, so a handler can trust it.
+ */
+const PATHNAME_HEADER = "x-pathname";
+
+/**
+ * Break-glass maintenance mode.
+ *
+ * The real switch is the MAINTENANCE_MODE registry setting, enforced in
+ * app/layout.tsx and lib/admin/service-state.ts. This file cannot read it:
+ * middleware compiles to the Edge bundle and the settings resolver imports
+ * node-postgres.
+ *
+ * So this is the other half, and it is the half that matters in the
+ * situation that motivated the switch. When the database is down, the admin
+ * panel is unreachable, no setting can be written, and every page render
+ * fails: the app cannot serve a maintenance page from Node because it cannot
+ * boot far enough to know it should. An environment variable read at the
+ * edge has none of those dependencies.
+ *
+ * `=== "true"` and nothing else, because the registry's bool schema accepts
+ * exactly "true"/"false". Spelling it MAINTENANCE_MODE=1 here while
+ * getSetting("MAINTENANCE_MODE") ignored the same value would be a switch
+ * that half works, which is worse than one that does not.
+ */
+function maintenanceEnvEnabled(): boolean {
+  return process.env.MAINTENANCE_MODE === "true";
+}
+
+/**
+ * Paths that stay reachable while the environment break-glass is on.
+ *
+ * The health endpoint is the load-bearing one: a container orchestrator that
+ * gets a 503 from its readiness probe restarts the container, so a
+ * maintenance page that covered /api/v3/health would put the deployment into
+ * a restart loop for as long as maintenance lasted.
+ *
+ * The rest is the route back in. /login and the auth API let a staff member
+ * sign in, /admin and the admin API let them turn this off (or, since this
+ * form is an environment variable, confirm the database is back before
+ * removing it). /_next serves the chunks those two pages are made of, so
+ * without it they render blank.
+ */
+const MAINTENANCE_ALWAYS_ALLOWED = [
+  "/api/v3/health",
+  "/api/v3/version",
+  "/api/security-txt",
+  "/.well-known/security.txt",
+  "/security.txt",
+  "/api/v3/auth",
+  "/api/v3/admin",
+  "/login",
+  "/admin",
+  "/_next",
+  "/manifest.webmanifest",
+  "/robots.txt",
+] as const;
+
+function isMaintenanceExempt(pathname: string): boolean {
+  return MAINTENANCE_ALWAYS_ALLOWED.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
+}
+
+/**
+ * The break-glass response. Hand-written HTML rather than a rewrite to a
+ * page, because a rewrite renders through app/layout.tsx, and this path
+ * exists precisely for the case where rendering is what is broken. Styled
+ * inline for the same reason: it must not depend on a stylesheet chunk being
+ * served.
+ */
+function maintenanceBreakGlassResponse(pathname: string): NextResponse {
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json(
+      {
+        error:
+          "This service is down for maintenance. Nothing has been lost, and it will be back shortly.",
+        paused: true,
+      },
+      { status: 503, headers: { "Retry-After": "300" } },
+    );
+  }
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Down for maintenance</title></head><body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fafafa;font-family:ui-sans-serif,system-ui,sans-serif"><main style="max-width:28rem;padding:1rem;text-align:center"><p style="font-family:ui-monospace,monospace;font-size:3.75rem;font-weight:600;margin:0">503</p><h1 style="font-size:1.125rem;font-weight:600;margin:0.75rem 0">Down for maintenance</h1><p style="font-size:0.875rem;line-height:1.6;color:#a1a1aa;margin:0">This service is down for maintenance. Nothing has been lost, and it will be back shortly.</p></main></body></html>`;
+  return new NextResponse(html, {
+    status: 503,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Retry-After": "300",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 function buildSecurityHeaders(nonce: string): Record<string, string> {
   // next dev's webpack runtime (hot reload / fast refresh module loading)
   // calls eval() to evaluate updated modules -- a next-dev-only mechanism,
@@ -331,6 +428,21 @@ export function middleware(request: NextRequest) {
     rawPathname.endsWith("/") && rawPathname !== "/"
       ? rawPathname.slice(0, -1)
       : rawPathname;
+  // app/layout.tsx reads this back to decide whether the database-backed
+  // maintenance gate applies to the page being rendered.
+  requestHeaders.set(PATHNAME_HEADER, pathname);
+
+  // Break-glass maintenance, before anything that could touch the app.
+  // Deliberately ahead of the body-size and CSRF checks: a deployment in this
+  // state should be answering exactly one thing on every non-exempt path.
+  if (maintenanceEnvEnabled() && !isMaintenanceExempt(pathname)) {
+    return applySecurityHeaders(
+      maintenanceBreakGlassResponse(pathname),
+      nonce,
+      requestId,
+    );
+  }
+
   const sessionCookie = request.cookies.get(AUTH_SESSION_COOKIE_NAME);
 
   // Request-body ceiling for the whole API surface. The 1 MiB cap was written

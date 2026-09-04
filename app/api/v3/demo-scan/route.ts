@@ -16,6 +16,7 @@ import {
   autoDiscoverSubdomains,
   readSubdomains,
 } from "@/lib/scanner/subdomain-auto";
+import { scanningPausedResponse } from "@/lib/admin/service-state";
 
 function _isValidUrl(input: string): boolean {
   try {
@@ -63,6 +64,12 @@ async function safeReadBody(
 
 export async function POST(request: NextRequest) {
   try {
+    // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). This route is
+    // unauthenticated and IP-limited only, so it is the highest-volume way
+    // into the scanner and the one a pause most needs to close.
+    const paused = await scanningPausedResponse();
+    if (paused) return paused;
+
     // getSettings' return type widens to a union across every key requested
     // (not narrowed per-key), so pin these to their known registry types
     // (bool, int, int) explicitly rather than fighting the generic -- same

@@ -61,6 +61,7 @@ import {
   toEphemeralAuth,
 } from "@/lib/scanner/auth/request-schema";
 import type { ScanAuthReport } from "@/lib/scanner/auth/types";
+import { scanningPausedResponse } from "@/lib/admin/service-state";
 
 /**
  * POST /api/v3/scan/authenticated
@@ -151,6 +152,12 @@ function buildRequestSchema(opts: {
 }
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
+  // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). This route runs
+  // its whole pipeline inline and never calls into lib/scanner/execute-scan.ts,
+  // so a gate placed in the executor would miss it entirely: it needs its own.
+  const paused = await scanningPausedResponse();
+  if (paused) return paused;
+
   const scanAuthEnabled = await getSetting("SCAN_AUTH_ENABLED");
   if (!scanAuthEnabled) {
     return ApiResponse.forbidden(

@@ -55,6 +55,10 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
 import { exchangeGithubCode, fetchGithubUser } from "@/lib/github/github-oauth";
 import { saveGithubConnection } from "@/lib/github/github-connections";
+import {
+  loginsPausedReasonFor,
+  signupsPausedReason,
+} from "@/lib/admin/service-state";
 
 // Separate cookie from the password-login AUTH_2FA_PENDING_COOKIE (see
 // lib/config/constants.ts) and distinct from Discord's own
@@ -223,6 +227,18 @@ export async function GET(
         );
       }
 
+      // PAUSE_SIGNUPS (and MAINTENANCE_MODE, which implies it). This branch is
+      // the other way a new account gets created, and it is the quieter one:
+      // POST /api/v3/auth/signup is obvious, whereas first-time OAuth
+      // sign-in provisions an account as a side effect of a redirect. A
+      // signup pause that only covered the form would leave this wide open.
+      const signupsPaused = await signupsPausedReason();
+      if (signupsPaused) {
+        return NextResponse.redirect(
+          `${baseUrl}/signup?error=signups_paused&message=${encodeURIComponent(signupsPaused)}`,
+        );
+      }
+
       const created = await createOAuthUser(
         normalizedEmail,
         userInfo.name,
@@ -361,11 +377,29 @@ async function signInOAuthUser(
   userAgent: string,
   baseUrl: string,
 ): Promise<NextResponse> {
+  // `role` rides along for the PAUSE_LOGINS check below.
   const twoFAResult = await pool.query(
-    "SELECT totp_enabled, two_factor_method, email FROM users WHERE id = $1",
+    "SELECT totp_enabled, two_factor_method, email, role FROM users WHERE id = $1",
     [userId],
   );
   const twoFA = twoFAResult.rows[0];
+
+  // PAUSE_LOGINS (and MAINTENANCE_MODE, which implies it). This helper is the
+  // single funnel for every OAuth sign-in, so one check here covers both the
+  // provider-id match and the email match. Staff are exempt.
+  //
+  // A redirect rather than a 503: the caller here is a browser mid-way
+  // through a full-page OAuth round trip, and a JSON body would render as
+  // raw text in the address bar instead of telling anyone anything. By this
+  // point the provider has already vouched for the identity, so the same
+  // "only an authenticated caller learns anything" property as the password
+  // route holds.
+  const pausedReason = await loginsPausedReasonFor(twoFA?.role);
+  if (pausedReason) {
+    return NextResponse.redirect(
+      `${baseUrl}/login?error=logins_paused&message=${encodeURIComponent(pausedReason)}`,
+    );
+  }
 
   if (twoFA?.totp_enabled) {
     const cookieStore = await cookies();

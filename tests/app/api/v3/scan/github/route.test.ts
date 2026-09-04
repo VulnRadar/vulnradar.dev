@@ -64,9 +64,24 @@ const SETTINGS: Record<string, number> = {
   GITHUB_REVIEW_MAX_FILE_BYTES: 300_000,
   GITHUB_REVIEW_MAX_TOKENS_PER_RUN: 300_000,
 };
-vi.mock("@/lib/config/runtime-config", () => ({
-  getSetting: (key: string) => Promise.resolve(SETTINGS[key]),
-}));
+vi.mock("@/lib/config/runtime-config", async () => {
+  const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+  const resolve = (key: string) =>
+    key in SETTINGS
+      ? SETTINGS[key]
+      : (SETTINGS_REGISTRY as Record<string, { default: unknown }>)[key]
+          ?.default;
+  return {
+    getSetting: (key: string) => Promise.resolve(resolve(key)),
+    // getSettings, and the registry-default fallback above, are for the
+    // PAUSE_SCANNING gate this route now runs first
+    // (lib/admin/service-state.ts), which resolves the four operational
+    // switches in one go. Falling back to the shipped defaults keeps them
+    // all off, which is what every case in this file assumes.
+    getSettings: (keys: readonly string[]) =>
+      Promise.resolve(Object.fromEntries(keys.map((k) => [k, resolve(k)]))),
+  };
+});
 
 const { POST } = await import("@/app/api/v3/scan/github/route");
 

@@ -20,6 +20,7 @@ import {
   getCachedSubdomains,
   discoverSubdomainsForRoot,
 } from "@/lib/scanner/subdomain-discovery-engine";
+import { scanningPausedResponse } from "@/lib/admin/service-state";
 
 // Subdomain discovery is a scan-adjacent recon pass (passive CT-log /
 // passive-DNS sources + a common-prefix DNS brute-force + reachability
@@ -31,6 +32,13 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
+    // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). Discovery is
+    // recon rather than a stored scan, but it is live outbound traffic
+    // against a third party's DNS and hosts, which is the thing a pause is
+    // meant to stop.
+    const paused = await scanningPausedResponse();
+    if (paused) return paused;
+
     let userId: number | null = null;
     let _isApiKeyAuth = false;
 

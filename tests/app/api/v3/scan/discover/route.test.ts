@@ -172,7 +172,14 @@ describe("POST /api/v3/scan/discover - auth", () => {
     expect(res.status).toBe(401);
     const json = await res.json();
     expect(json.error).toBe("Unauthorized");
-    expect(mockQuery).not.toHaveBeenCalled();
+    // The settings snapshot is excluded: the PAUSE_SCANNING gate now runs
+    // before auth and reads it, but the resolver caches it for 30 seconds
+    // and shares it across every setting the request resolves, so it is not
+    // per-request database work. Everything else must still be untouched.
+    const nonSettingsQueries = mockQuery.mock.calls.filter(
+      ([sql]) => !String(sql).includes("FROM system_settings"),
+    );
+    expect(nonSettingsQueries).toHaveLength(0);
   });
 
   it("rejects an invalid or revoked API key", async () => {

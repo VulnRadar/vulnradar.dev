@@ -52,8 +52,15 @@ import type {
   ScanAuthReport,
   ScanSessionBinding,
 } from "@/lib/scanner/auth/types";
+import { scanningPausedResponse } from "@/lib/admin/service-state";
 
 export async function POST(request: NextRequest) {
+  // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). A crawl is the
+  // most expensive thing this app can be asked to start, so it is the last
+  // path that should be left uncovered by the pause.
+  const paused = await scanningPausedResponse();
+  if (paused) return paused;
+
   // Auth: check API key first (Bearer token), then fall back to session cookie
   const authHeader = request.headers.get("authorization");
   let apiKeyId: number | null = null;

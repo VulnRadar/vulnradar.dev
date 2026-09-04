@@ -22,6 +22,7 @@ import {
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { upsertTrustedDevice } from "@/lib/auth/device-trust";
+import { loginsPausedResponseFor } from "@/lib/admin/service-state";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
@@ -125,9 +126,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     }
   }
 
-  // Get user's TOTP secret, backup codes, and 2FA method
+  // Get user's TOTP secret, backup codes, and 2FA method. `role` rides along
+  // for the PAUSE_LOGINS check further down.
   const result = await pool.query(
-    "SELECT totp_secret, totp_enabled, backup_codes, two_factor_method FROM users WHERE id = $1",
+    "SELECT totp_secret, totp_enabled, backup_codes, two_factor_method, role FROM users WHERE id = $1",
     [effectiveUserId],
   );
   const user = result.rows[0];
@@ -329,6 +331,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!verified) {
     return ApiResponse.badRequest("Invalid code. Please try again.");
   }
+
+  // PAUSE_LOGINS (and MAINTENANCE_MODE, which implies it). The second factor
+  // is a second door into the same room: the password route refuses a paused
+  // non-staff login before it ever issues a pending token, but the Discord
+  // and OAuth callbacks issue theirs on a different path, so this step needs
+  // its own gate rather than trusting that nobody arrived here.
+  //
+  // After verification, for the same non-enumeration reason as the password
+  // route: only a caller who has already produced a valid code is told.
+  const loginsPaused = await loginsPausedResponseFor(user.role);
+  if (loginsPaused) return loginsPaused;
 
   // Create session with IP and user agent
   await createSession(effectiveUserId, ip, userAgent);

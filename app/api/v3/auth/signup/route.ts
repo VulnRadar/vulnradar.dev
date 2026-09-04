@@ -31,8 +31,16 @@ import {
   SUCCESS_MESSAGES,
   TURNSTILE_ENABLED,
 } from "@/lib/config/constants";
+import { signupsPausedResponse } from "@/lib/admin/service-state";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
+  // PAUSE_SIGNUPS (and MAINTENANCE_MODE, which implies it). At the top of the
+  // handler, before the body is even parsed: the signup form hides itself
+  // when this is on, but hiding a form is not a pause, and this endpoint is
+  // reachable with curl either way.
+  const signupsPaused = await signupsPausedResponse();
+  if (signupsPaused) return signupsPaused;
+
   const parsed = await parseBody<{
     email: string;
     password: string;

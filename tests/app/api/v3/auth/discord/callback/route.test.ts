@@ -72,11 +72,10 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     tokenUpdateCalls.push(params);
     return { rows: [] };
   }
-  if (
-    s.startsWith(
-      "SELECT totp_enabled, two_factor_method, email FROM users WHERE id = $1",
-    )
-  ) {
+  // The column list grew a `role` (the PAUSE_LOGINS gate needs it and this
+  // path already had to read the row), so match on the stable prefix rather
+  // than the whole projection.
+  if (s.startsWith("SELECT totp_enabled, two_factor_method, email")) {
     return { rows: twoFAConfigRow ? [twoFAConfigRow] : [] };
   }
   if (s.startsWith("SELECT 1 FROM device_trust")) {

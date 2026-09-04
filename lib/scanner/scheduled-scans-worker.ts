@@ -77,6 +77,7 @@ import {
 } from "@/lib/email/email";
 import { APP_NAME, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
+import { scanningPausedReason } from "@/lib/admin/service-state";
 
 /** Rows claimed per polling tick, admin-configurable (SCHEDULE_WORKER_CLAIM_LIMIT
  *  setting). A backlog larger than this just spreads across additional ticks
@@ -470,6 +471,18 @@ export async function runDueSchedules(): Promise<RunDueSchedulesStats> {
   // not a failing worker. The resolver caches settings for 30s, so this read
   // costs nothing per tick. ref: AUDIT-012#logic-07
   if (!(await getSetting("FEATURE_SCHEDULED_SCANS"))) {
+    return { processed: 0, scanned: 0, blocked: 0, planGated: 0, errors: 0 };
+  }
+
+  // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). Same shape and
+  // same reasoning as the flag above, and it has to be here rather than in
+  // processSchedule: claiming a due schedule and then declining to scan it
+  // would burn the claim and move next_run_at forward, so the pause would
+  // quietly eat every schedule that fell inside the window instead of
+  // deferring it. Nothing is claimed, so everything due simply runs on the
+  // next tick after the pause is lifted.
+  const pausedReason = await scanningPausedReason();
+  if (pausedReason) {
     return { processed: 0, scanned: 0, blocked: 0, planGated: 0, errors: 0 };
   }
 

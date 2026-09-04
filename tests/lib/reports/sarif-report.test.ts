@@ -290,4 +290,124 @@ describe("generateSarifReport", () => {
     );
     expect(hstsRule.properties.tags).toContain("external/cwe/cwe-319");
   });
+
+  // ── Evidence excerpts ────────────────────────────────────────────────
+  //
+  // The verbatim proof every page check produces was attached to the finding,
+  // shipped in the API response, fed to the AI verifier, and exported by
+  // nothing at all.
+
+  it("carries the verbatim excerpts as a structured result property", () => {
+    const log = generateSarifReport(
+      makeResult([
+        makeFinding({
+          evidenceExcerpts: [
+            { label: "Set-Cookie", value: "sid=abc; Path=/", line: 4 },
+          ],
+        }),
+      ]),
+    );
+    expect(log.runs[0].results[0].properties.evidenceExcerpts).toEqual([
+      { label: "Set-Cookie", value: "sid=abc; Path=/", line: 4 },
+    ]);
+  });
+
+  it("sanitizes an excerpt before exporting it", () => {
+    const log = generateSarifReport(
+      makeResult([
+        makeFinding({
+          evidenceExcerpts: [
+            { label: "body", value: "safe\u202eevil\nsecond line" },
+          ],
+        }),
+      ]),
+    );
+    const excerpts = log.runs[0].results[0].properties.evidenceExcerpts as {
+      value: string;
+    }[];
+    expect(excerpts[0].value).toBe("safe�evil second line");
+  });
+
+  it("omits the property entirely when a finding has no excerpts", () => {
+    const log = generateSarifReport(makeResult([makeFinding()]));
+    expect(log.runs[0].results[0].properties.evidenceExcerpts).toBeUndefined();
+  });
+
+  // ── Triage suppressions ──────────────────────────────────────────────
+  //
+  // A SARIF result carrying `suppressions` is one GitHub Code Scanning files
+  // as a dismissed alert, so this is the switch that can stop somebody's
+  // build failing. It is opt-in for exactly that reason.
+
+  it("emits no suppressions by default, even for an accepted-risk finding", () => {
+    const log = generateSarifReport(
+      makeResult([
+        makeFinding({
+          severity: "critical",
+          remediation: { status: "accepted_risk" },
+        }),
+      ]),
+    );
+    expect(log.runs[0].results[0].suppressions).toBeUndefined();
+    // The status still travels, so a consumer can read the owner's triage
+    // without it silently changing what the gate counts.
+    expect(log.runs[0].results[0].properties.remediationStatus).toBe(
+      "accepted_risk",
+    );
+  });
+
+  it("suppresses accepted-risk and won't-fix findings when asked", () => {
+    const log = generateSarifReport(
+      makeResult([
+        makeFinding({ id: "a--1", remediation: { status: "accepted_risk" } }),
+        makeFinding({ id: "b--1", remediation: { status: "wont_fix" } }),
+      ]),
+      { applySuppressions: true },
+    );
+    for (const result of log.runs[0].results) {
+      expect(result.suppressions).toHaveLength(1);
+      expect(result.suppressions![0].kind).toBe("external");
+      expect(result.suppressions![0].status).toBe("accepted");
+    }
+  });
+
+  it("quotes the user's own triage note as the justification", () => {
+    const log = generateSarifReport(
+      makeResult([
+        makeFinding({
+          remediation: { status: "accepted_risk", note: "Retiring in Q3" },
+        }),
+      ]),
+      { applySuppressions: true },
+    );
+    expect(log.runs[0].results[0].suppressions![0].justification).toContain(
+      "Retiring in Q3",
+    );
+  });
+
+  it("suppresses a false positive when asked", () => {
+    const log = generateSarifReport(
+      makeResult([makeFinding({ suppressed: true })]),
+      { applySuppressions: true },
+    );
+    expect(log.runs[0].results[0].suppressions).toHaveLength(1);
+    expect(log.runs[0].results[0].properties.falsePositive).toBe(true);
+  });
+
+  it("never suppresses a finding the user marked fixed", () => {
+    // The scanner is still detecting it, so the tool and the user disagree.
+    // That is a regression worth reporting, not something to file as handled.
+    const log = generateSarifReport(
+      makeResult([makeFinding({ remediation: { status: "fixed" } })]),
+      { applySuppressions: true },
+    );
+    expect(log.runs[0].results[0].suppressions).toBeUndefined();
+  });
+
+  it("never suppresses an untriaged finding", () => {
+    const log = generateSarifReport(makeResult([makeFinding()]), {
+      applySuppressions: true,
+    });
+    expect(log.runs[0].results[0].suppressions).toBeUndefined();
+  });
 });

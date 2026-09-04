@@ -109,6 +109,11 @@ describe("GET /api/v3/scan/status/:id", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ tag: "XSS Risk", source: "auto" }],
     }); // tags lookup
+    // The owner's triage lookups (remediation map, then false-positive
+    // verdicts). Both are best-effort and log on failure, so leaving them
+    // unmocked passed the assertions while printing two errors per run.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await GET(req(), ctx("1"));
     const json = await res.json();

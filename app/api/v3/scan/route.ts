@@ -50,9 +50,17 @@ import {
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { rateLimitedEmail } from "@/lib/email/email";
+import { scanningPausedResponse } from "@/lib/admin/service-state";
 
 export async function POST(request: NextRequest) {
   try {
+    // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). First thing in
+    // the handler, ahead of auth, rate limiting and quota: a scan that is
+    // going to be refused must not spend the caller's daily allowance on its
+    // way to being refused.
+    const paused = await scanningPausedResponse();
+    if (paused) return paused;
+
     // Auth: check API key first (Bearer token), then fall back to session cookie
     const authHeader = request.headers.get("authorization");
     let apiKeyId: number | null = null;

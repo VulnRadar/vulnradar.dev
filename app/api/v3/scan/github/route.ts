@@ -38,6 +38,7 @@ import {
   checkRateLimit as checkGlobalRateLimit,
   RATE_LIMITS,
 } from "@/lib/rate-limiting/rate-limit";
+import { scanningPausedResponse } from "@/lib/admin/service-state";
 
 const REPO_FULL_NAME_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
@@ -46,6 +47,13 @@ const REPO_FULL_NAME_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 // path yet — this is a new, separate scanning mode from the URL scanner).
 export async function POST(request: Request) {
   try {
+    // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). This pipeline
+    // never touches lib/scanner/execute-scan.ts, so it needs its own gate:
+    // pausing only the URL scanner would leave repository scans running while
+    // the admin panel reported scanning as paused.
+    const paused = await scanningPausedResponse();
+    if (paused) return paused;
+
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

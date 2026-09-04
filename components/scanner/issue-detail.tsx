@@ -28,6 +28,11 @@ import {
   type RemediationStatus,
   type FindingRemediation,
 } from "@/lib/scanner/remediation";
+import {
+  toDisplayExcerpts,
+  truncateExcerpt,
+  EXCERPT_PREVIEW_COUNT,
+} from "@/lib/scanner/evidence-excerpts";
 import { useTeammates } from "./use-teammates";
 import {
   getQueryParam,
@@ -635,7 +640,122 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   );
 }
 
-function Evidence({ evidence }: { evidence: string }) {
+/**
+ * The verbatim proof behind the free-text evidence above it: the actual
+ * Set-Cookie, the actual script src, the actual line of markup, with the
+ * response line number where the check knows it.
+ *
+ * Every check has produced these since the engine rewrite and nothing
+ * rendered them, so README's promise of "the header, the certificate field,
+ * or the response body fragment that triggered it, not just a rule name" was
+ * shipped to the AI verifier and to nobody else.
+ *
+ * The values are fragments of a scanned third party's page, so:
+ * toDisplayExcerpts strips the characters that can hide or reorder
+ * themselves, every value reaches the DOM as a React text child (never as
+ * markup), the long ones are cut to a preview with an explicit control to see
+ * the rest, and each sits in its own overflow-x container so one 400-character
+ * line scrolls instead of widening the page.
+ */
+function EvidenceExcerpts({ excerpts }: { excerpts: unknown }) {
+  const items = useMemo(() => toDisplayExcerpts(excerpts), [excerpts]);
+  const [openValues, setOpenValues] = useState<Set<number>>(new Set());
+  const [showAll, setShowAll] = useState(false);
+
+  if (items.length === 0) return null;
+
+  const overflows = items.length > EXCERPT_PREVIEW_COUNT;
+  const visible =
+    showAll || !overflows ? items : items.slice(0, EXCERPT_PREVIEW_COUNT);
+
+  function toggleValue(index: number) {
+    setOpenValues((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  return (
+    <div className="border-t border-border">
+      <div className="flex items-center justify-between gap-2 bg-muted/40 px-4 py-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Verbatim proof
+        </h4>
+        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+          {items.length} {items.length === 1 ? "excerpt" : "excerpts"}
+        </span>
+      </div>
+      <ul className="flex flex-col gap-3 px-4 py-3">
+        {visible.map((ex, i) => {
+          const { preview, truncated } = truncateExcerpt(ex.value);
+          const open = openValues.has(i);
+          return (
+            <li key={i} className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className="font-mono text-[11px] font-medium text-foreground">
+                  {ex.label}
+                </span>
+                {ex.line !== undefined && (
+                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                    line {ex.line}
+                  </span>
+                )}
+              </div>
+              <pre className="mt-1 overflow-x-auto rounded-md border border-border bg-muted/40 px-2.5 py-1.5 font-mono text-[12px] leading-relaxed text-foreground">
+                {open || !truncated ? ex.value : `${preview}...`}
+              </pre>
+              {truncated && (
+                <button
+                  type="button"
+                  onClick={() => toggleValue(i)}
+                  aria-expanded={open}
+                  className={cn(
+                    "mt-1 rounded-sm text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground",
+                    FOCUS_RING,
+                  )}
+                >
+                  {open
+                    ? "Show less"
+                    : `Show the full ${ex.value.length} characters`}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {overflows && (
+        <button
+          type="button"
+          onClick={() => setShowAll(!showAll)}
+          aria-expanded={showAll}
+          className={cn(
+            "flex w-full items-center justify-center gap-1.5 border-t border-border px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground",
+            FOCUS_RING,
+          )}
+        >
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              "h-3.5 w-3.5 transition-transform",
+              showAll && "rotate-180",
+            )}
+          />
+          {showAll ? "Collapse excerpts" : `Show all ${items.length} excerpts`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Evidence({
+  evidence,
+  excerpts,
+}: {
+  evidence: string;
+  excerpts?: unknown;
+}) {
   const panelId = useId();
   const lines = useMemo(
     () => evidence.split("\n").filter((l) => l.length > 0),
@@ -692,6 +812,7 @@ function Evidence({ evidence }: { evidence: string }) {
           {expanded ? "Collapse evidence" : `Show all ${lines.length} lines`}
         </button>
       )}
+      <EvidenceExcerpts excerpts={excerpts} />
     </div>
   );
 }
@@ -898,7 +1019,15 @@ export function IssueDetail({
         </div>
       )}
 
-      <Evidence evidence={issue.evidence} />
+      {/* Keyed on the finding, like RemediationControl below: without it the
+          panel's expand state (which lines are shown, which excerpt values
+          are open) survives a move to the next finding and applies itself to
+          content it was never about. */}
+      <Evidence
+        key={issue.id}
+        evidence={issue.evidence}
+        excerpts={issue.evidenceExcerpts}
+      />
 
       {/* Triage sits here, directly under the evidence, rather than at the
           very bottom of the page where it used to live. Both cards are

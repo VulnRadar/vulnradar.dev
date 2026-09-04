@@ -41,13 +41,14 @@ import {
   type PageActionItem,
 } from "@/components/shared";
 import { useToast } from "@/components/ui/use-toast";
-import { downloadBlob, escapeCsv } from "@/lib/ui/download";
+import { downloadBlob } from "@/lib/ui/download";
 import { ShareModal } from "./share-modal";
 import { AiVerifyResultModal } from "./ai-verify-result-modal";
 import { AiSummaryModal } from "./ai-summary-modal";
 import { generatePdfReport } from "@/lib/reports/pdf-report";
 import { generateSarifReport } from "@/lib/reports/sarif-report";
 import { generateMarkdownReport } from "@/lib/reports/markdown-report";
+import { generateCsvReport } from "@/lib/reports/csv-report";
 import { generateComplianceReport } from "@/lib/reports/compliance-report";
 import {
   API,
@@ -520,32 +521,7 @@ export function ScanActionsMenu({
   }
 
   function exportCsv() {
-    const headers = [
-      "Title",
-      "Severity",
-      "Category",
-      "Description",
-      "Evidence",
-      "Risk Impact",
-      "Fix Steps",
-      "AI Verdict",
-      "AI Confidence",
-      "AI Notes",
-    ];
-    const rows = result.findings.map((f) => [
-      escapeCsv(f.title),
-      escapeCsv(f.severity.toUpperCase()),
-      escapeCsv(f.category),
-      escapeCsv(f.description),
-      escapeCsv(f.evidence),
-      escapeCsv(f.riskImpact),
-      escapeCsv(f.fixSteps.join(" | ")),
-      escapeCsv(f.aiVerdict ?? ""),
-      escapeCsv(f.aiConfidence != null ? String(f.aiConfidence) : ""),
-      escapeCsv(f.aiReason ?? ""),
-    ]);
-    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([UTF8_BOM, csv], {
+    const blob = new Blob([UTF8_BOM, generateCsvReport(result)], {
       type: "text/csv;charset=utf-8;",
     });
     const filename = `${APP_SLUG}-${hostname}-${date}.csv`;

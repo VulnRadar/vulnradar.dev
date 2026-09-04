@@ -667,8 +667,22 @@ const endpoints: Endpoint[] = [
         name: "format",
         type: "string",
         description:
-          "json | sarif | pdf | md (alias: markdown) | compliance. Anything else is a 400 naming the valid set.",
+          "json | sarif | pdf | md (alias: markdown) | compliance | csv. Anything else is a 400 naming the valid set.",
         default: "json",
+      },
+      {
+        name: "includeSuppressed",
+        type: "boolean",
+        description:
+          "Include findings you marked a false positive. Off by default, matching the dashboard.",
+        default: "false",
+      },
+      {
+        name: "applyTriage",
+        type: "boolean",
+        description:
+          "Mark accepted-risk and won't-fix findings as SARIF suppressions, which Code Scanning reads as dismissed. Off by default: it changes what a CI gate counts.",
+        default: "false",
       },
     ],
     responseExample: `# Response is the report file itself, not a JSON envelope.
@@ -678,11 +692,13 @@ format=sarif      -> application/sarif+json      vulnradar-example.com.sarif
 format=md         -> text/markdown; charset=utf-8 vulnradar-example.com.md
 format=compliance -> text/markdown; charset=utf-8 vulnradar-example.com-compliance.md
 format=pdf        -> application/pdf             vulnradar-example.com.pdf
+format=csv        -> text/csv; charset=utf-8     vulnradar-example.com.csv
 format=json       -> application/json            vulnradar-example.com.json`,
     notes: [
       "Same auth and access model as GET /history/{id}: a Bearer key with scan:read, or a session cookie. Owner, or a team member with read access to the scan.",
       "Every response carries Content-Disposition: attachment with a filename derived from the scanned host, so a browser or curl -O writes a sensibly named file.",
       "The owner's export has cross-rescan remediation status attached to each finding. A team-read viewer gets the stored findings as-is, because remediation state is private to the owner.",
+      "summary is recomputed from the findings actually in the response, not read from storage, so an export can never print a different count than the list under it.",
       "compliance is the PCI DSS / SOC 2 / ISO 27001 / OWASP ASVS / HIPAA / GDPR crosswalk, as Markdown.",
       "A scan the caller cannot read returns 404, not 403, so this endpoint cannot be used to probe which scan ids exist.",
       "Both auth paths are throttled. A Bearer call spends one of the key's daily requests; a session call spends from a separate per-user report-export bucket, because every format is generated synchronously over the whole findings array. Either can answer 429.",

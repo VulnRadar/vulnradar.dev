@@ -39,8 +39,22 @@ const reportEndpoint: Endpoint = {
       name: "format",
       type: "string",
       description:
-        "json (default) | sarif | pdf | md (alias markdown) | compliance",
+        "json (default) | sarif | pdf | md (alias markdown) | compliance | csv",
       default: "json",
+    },
+    {
+      name: "includeSuppressed",
+      type: "boolean",
+      description:
+        "Include findings you marked a false positive. Off by default, so the export matches the dashboard.",
+      default: "false",
+    },
+    {
+      name: "applyTriage",
+      type: "boolean",
+      description:
+        "Emit SARIF suppressions for accepted-risk and won't-fix findings. Off by default, so a CI gate never changes without you asking.",
+      default: "false",
     },
   ],
   responseExample: `// format=sarif  ->  Content-Type: application/sarif+json
@@ -69,12 +83,13 @@ const reportEndpoint: Endpoint = {
   ]
 }`,
   notes: [
-    "format is case-insensitive and defaults to json. Anything outside json | sarif | pdf | md | markdown | compliance returns 400.",
-    'Content-Type and download name track the format: application/sarif+json (.sarif), application/pdf (.pdf), text/markdown (.md, and -compliance.md for the crosswalk), application/json (.json). Every response sets Content-Disposition: attachment; filename="vulnradar-<host>.<ext>", where <host> is the scanned URL\'s hostname.',
+    "format is case-insensitive and defaults to json. Anything outside json | sarif | pdf | md | markdown | compliance | csv returns 400.",
+    'Content-Type and download name track the format: application/sarif+json (.sarif), application/pdf (.pdf), text/markdown (.md, and -compliance.md for the crosswalk), text/csv (.csv), application/json (.json). Every response sets Content-Disposition: attachment; filename="vulnradar-<host>.<ext>", where <host> is the scanned URL\'s hostname.',
     "Same auth and visibility as GET /history/{id}: a Bearer key with the scan:read scope, or a session cookie; the scan's owner or a team member with read access.",
     "The owner's report carries cross-rescan remediation status on each finding; a team-read viewer gets the stored findings as-is, because remediation state is private to the owner.",
+    "Your triage travels with the export. Findings you marked a false positive are left out unless you pass includeSuppressed=true, and summary is tallied from whatever is actually in the response, so the counts and the list always agree. Accepted-risk and won't-fix findings still count everywhere by default; applyTriage=true is what turns them into SARIF suppressions, and it is opt-in precisely because that is the switch that can stop a build failing.",
     "Both auth paths are throttled, just by different limiters. A Bearer request spends one of that key's daily requests and is recorded as usage. A session request spends from a per-user report-export bucket on the general API budget, because every format is built synchronously over the whole findings array and a signed-in user looping their largest export could otherwise stall the single Node process for everyone.",
-    "format=pdf can be switched off per deployment (FEATURE_PDF_REPORTS). When it is off the route answers 403 before it looks the scan up; the other four formats are unaffected.",
+    "format=pdf can be switched off per deployment (FEATURE_PDF_REPORTS). When it is off the route answers 403 before it looks the scan up; the other five formats are unaffected.",
   ],
   errors: [
     { code: 400, description: "Unsupported format value" },
@@ -190,7 +205,7 @@ export default function ReportsDocsPage() {
 
       <DocsSection id="formats" title="Report formats">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
-          Five outputs off the one endpoint. <InlineCode>md</InlineCode> and{" "}
+          Six outputs off the one endpoint. <InlineCode>md</InlineCode> and{" "}
           <InlineCode>markdown</InlineCode> are the same generator under two
           names; everything else is distinct.
         </p>
@@ -230,6 +245,12 @@ export default function ReportsDocsPage() {
               contentType: "text/markdown",
               whenToUse:
                 "The control crosswalk below, as a Markdown summary for an auditor or GRC reviewer to prioritise remediation.",
+            },
+            {
+              format: "csv",
+              contentType: "text/csv",
+              whenToUse:
+                "One row per finding for a spreadsheet: finding id, severity, affected target, triage status, CWE, OWASP, CVE, CVSS, KEV, EPSS, plus the prose fields. The finding id is what makes two weeks' exports diffable.",
             },
             {
               format: "json",

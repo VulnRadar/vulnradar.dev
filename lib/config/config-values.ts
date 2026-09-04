@@ -1138,6 +1138,15 @@ export const CONFIG_GITHUB_REVIEW_MAX_FILE_BYTES = 300_000;
 export const CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 360;
 export const CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS = 360;
 
+// The resolution the remote browser is created at: POST /api/v3/browser/sessions
+// sends it as browserSettings.viewport, and app/browser/[id]/page.tsx sizes its
+// embed frame to the same ratio. Those two have to agree. Browserbase's live
+// viewer fits the remote screen inside whatever box we give it, so a frame with
+// a different aspect ratio gets black bands down two of its sides, which is
+// what the viewer looked like while this number lived only in the API route.
+export const CONFIG_BROWSERBASE_VIEWPORT_WIDTH = 1920;
+export const CONFIG_BROWSERBASE_VIEWPORT_HEIGHT = 1080;
+
 // How often the browser session viewer page (app/browser/[id]/page.tsx)
 // polls GET /api/v3/browser/sessions/logs for new network/console log lines.
 // The logs come from an in-memory CDP capture buffer (network-capture.ts), so
@@ -1347,6 +1356,31 @@ export const CONFIG_NOTIFICATION_DEFAULT_DISMISS_DAYS = 365;
 // days, the bell 365) and unifying them would be a behavior change, not a
 // refactor.
 export const CONFIG_SITE_NOTIFICATION_DEFAULT_DISMISS_DAYS = 30;
+
+// OPERATIONAL CONTROLS - the four switches an operator reaches for during an
+// incident. Distinct from the FEATURE_* flags below: those decide which
+// product features a deployment ships, these decide whether the service is
+// currently open for business. All four default to false, so a fresh install
+// and every existing deployment behave exactly as before.
+//
+// Each switch has a companion message shown to the people it affects.
+// Empty means "use the built-in wording"; a value replaces it, so an
+// operator can say "back at 09:00 UTC" instead of leaving users guessing.
+//
+// MAINTENANCE_MODE is also readable from the environment as
+// MAINTENANCE_MODE=true (the resolver's env fallback, see
+// lib/config/runtime-config.ts). That is the break-glass form: it is the only
+// one that still works when the database is down, which is exactly the
+// situation where a maintenance page is needed and no admin panel is
+// reachable to set one. middleware.ts reads the same variable directly.
+export const CONFIG_MAINTENANCE_MODE = false;
+export const CONFIG_MAINTENANCE_MESSAGE = "";
+export const CONFIG_PAUSE_SIGNUPS = false;
+export const CONFIG_PAUSE_SIGNUPS_MESSAGE = "";
+export const CONFIG_PAUSE_LOGINS = false;
+export const CONFIG_PAUSE_LOGINS_MESSAGE = "";
+export const CONFIG_PAUSE_SCANNING = false;
+export const CONFIG_PAUSE_SCANNING_MESSAGE = "";
 
 // FEATURE FLAGS - UPDATE IF NEEDED FOR YOUR DEPLOYMENT
 

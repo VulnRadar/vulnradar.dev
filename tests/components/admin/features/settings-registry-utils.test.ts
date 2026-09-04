@@ -120,6 +120,23 @@ describe("isDestructiveToggle", () => {
   it("does not flag a non-boolean value", () => {
     expect(isDestructiveToggle("BILLING_FREE_LIMIT", 0)).toBe(false);
   });
+
+  // The operational switches run the other way round: turning one ON is the
+  // consequential direction, and MAINTENANCE_MODE takes the product away from
+  // every non-staff user within the resolver's 30 second TTL.
+  it.each([
+    "MAINTENANCE_MODE",
+    "PAUSE_SIGNUPS",
+    "PAUSE_LOGINS",
+    "PAUSE_SCANNING",
+  ])("flags turning %s on", (key) => {
+    expect(isDestructiveToggle(key, true)).toBe(true);
+  });
+
+  it("does not flag turning an operational switch back off", () => {
+    expect(isDestructiveToggle("MAINTENANCE_MODE", false)).toBe(false);
+    expect(isDestructiveToggle("PAUSE_SCANNING", false)).toBe(false);
+  });
 });
 
 describe("looksLikeEmail", () => {

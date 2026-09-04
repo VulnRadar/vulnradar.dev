@@ -20,8 +20,16 @@ import type {
   EphemeralAuthInput,
   ScanSessionBinding,
 } from "@/lib/scanner/auth/types";
+import { scanningPausedResponse } from "@/lib/admin/service-state";
 
 export async function POST(request: NextRequest) {
+  // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). This is the
+  // page-discovery half of a crawl: it fetches and parses the target's pages,
+  // so pausing the crawl scan while leaving this open would still send the
+  // crawler out.
+  const paused = await scanningPausedResponse();
+  if (paused) return paused;
+
   // Allow either session-based auth or API key (Bearer)
   let userId: number | null = null;
   let _isApiKeyAuth = false;

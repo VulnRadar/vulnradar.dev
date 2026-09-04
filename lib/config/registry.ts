@@ -225,6 +225,14 @@ import {
   CONFIG_CLEANUP_KEV_CACHE_RETENTION_DAYS,
   CONFIG_UPDATER_NPM_CI_TIMEOUT_MS,
   CONFIG_UPDATER_ASSET_DOWNLOAD_TIMEOUT_MS,
+  CONFIG_MAINTENANCE_MODE,
+  CONFIG_MAINTENANCE_MESSAGE,
+  CONFIG_PAUSE_SIGNUPS,
+  CONFIG_PAUSE_SIGNUPS_MESSAGE,
+  CONFIG_PAUSE_LOGINS,
+  CONFIG_PAUSE_LOGINS_MESSAGE,
+  CONFIG_PAUSE_SCANNING,
+  CONFIG_PAUSE_SCANNING_MESSAGE,
   CONFIG_FEATURE_DEMO_MODE,
   CONFIG_FEATURE_TEAMS,
   CONFIG_FEATURE_API_KEYS,
@@ -332,6 +340,7 @@ export type SettingType =
 
 /** One admin tab per group. The tab list is derived from these values. */
 export type SettingGroup =
+  | "Operations"
   | "General"
   | "Branding"
   | "Social"
@@ -374,6 +383,87 @@ function socialHelp(platform: string, envKey: string, example: string): string {
 }
 
 export const SETTINGS_REGISTRY = {
+  // OPERATIONS
+  //
+  // Deliberately first, so this is the tab the settings page opens on. These
+  // are the switches an operator needs during an incident, and an incident is
+  // the worst time to hunt through eleven tabs for them.
+  //
+  // Every one is enforced server-side, at the request boundary, by
+  // lib/admin/service-state.ts. Hiding the matching UI is a courtesy layered
+  // on top, never the mechanism. Flipping any of them writes an
+  // admin_audit_log row through the shared system_setting_changed action, so
+  // "who paused scanning, and when" is answerable after the fact.
+
+  MAINTENANCE_MODE: {
+    tier: "runtime",
+    type: "bool",
+    default: CONFIG_MAINTENANCE_MODE,
+    group: "Operations",
+    label: "Maintenance mode",
+    help: "Serves a maintenance page instead of the app to everyone except staff. Staff keep full access, including the login page and the admin panel, so this cannot lock you out. Scans, signups and new logins are refused for the duration. /api/v3/health keeps answering so your orchestrator does not restart the container in a loop. Also settable as the environment variable MAINTENANCE_MODE=true, which is the form to use when the database is down and this panel is unreachable.",
+  },
+  MAINTENANCE_MESSAGE: {
+    tier: "runtime",
+    type: "string",
+    default: CONFIG_MAINTENANCE_MESSAGE,
+    group: "Operations",
+    label: "Maintenance message",
+    help: "Shown on the maintenance page and returned with every refused request. Say what is happening and when you expect to be back. Leave empty for the built-in wording.",
+    max: 500,
+  },
+  PAUSE_SIGNUPS: {
+    tier: "runtime",
+    type: "bool",
+    default: CONFIG_PAUSE_SIGNUPS,
+    group: "Operations",
+    label: "Pause new signups",
+    help: "Refuses new account creation at the API: the signup endpoint and first-time OAuth sign-in, which would otherwise create an account silently. Existing users are unaffected and can still sign in. Staff invitations still work, since those are an operator action rather than a public signup.",
+  },
+  PAUSE_SIGNUPS_MESSAGE: {
+    tier: "runtime",
+    type: "string",
+    default: CONFIG_PAUSE_SIGNUPS_MESSAGE,
+    group: "Operations",
+    label: "Paused signups message",
+    help: "Reason shown to someone who tries to register while signups are paused. Leave empty for the built-in wording.",
+    max: 500,
+  },
+  PAUSE_LOGINS: {
+    tier: "runtime",
+    type: "bool",
+    default: CONFIG_PAUSE_LOGINS,
+    group: "Operations",
+    label: "Pause new logins",
+    help: "Stops non-staff accounts starting a new session: password login, the second-factor step, and the Google, GitHub and Discord sign-in callbacks. Staff accounts are exempt, so you can always get back in. Sessions that already exist are NOT revoked and keep working: a pause is meant to be reversible, and signing everyone out is a separate, destructive act. Revoke sessions from the user panel if that is what you actually want.",
+  },
+  PAUSE_LOGINS_MESSAGE: {
+    tier: "runtime",
+    type: "string",
+    default: CONFIG_PAUSE_LOGINS_MESSAGE,
+    group: "Operations",
+    label: "Paused logins message",
+    help: "Reason shown to someone who tries to sign in while logins are paused. Leave empty for the built-in wording.",
+    max: 500,
+  },
+  PAUSE_SCANNING: {
+    tier: "runtime",
+    type: "bool",
+    default: CONFIG_PAUSE_SCANNING,
+    group: "Operations",
+    label: "Pause scanning",
+    help: "Refuses every new scan across all entry points: single, crawl, bulk, authenticated, GitHub repository, the signed-out demo scan, subdomain and crawl discovery, the live port sweep, and the scheduled-scan worker. Scans already running are left to finish rather than aborted, so nothing is left half-written; expect the queue to drain over the next few minutes.",
+  },
+  PAUSE_SCANNING_MESSAGE: {
+    tier: "runtime",
+    type: "string",
+    default: CONFIG_PAUSE_SCANNING_MESSAGE,
+    group: "Operations",
+    label: "Paused scanning message",
+    help: "Reason returned to anyone who submits a scan while scanning is paused. Leave empty for the built-in wording.",
+    max: 500,
+  },
+
   // GENERAL
 
   APP_NAME: {
@@ -3387,6 +3477,10 @@ export const NEVER_CONFIGURABLE = {
     "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
   SCAN_SCREENSHOT_MAX_BYTES:
     "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
+  BROWSERBASE_VIEWPORT_WIDTH:
+    "One number with two readers that must not disagree: the API route sends it to Browserbase when it creates the session, and the viewer page inlines it into the client bundle to size the embed frame to the same aspect ratio. A runtime edit reaches the server side only, and the live view goes back to being letterboxed inside its own iframe.",
+  BROWSERBASE_VIEWPORT_HEIGHT:
+    "Same pair as BROWSERBASE_VIEWPORT_WIDTH: the ratio is what the viewer frame is built from, and half of it is compiled into the browser bundle.",
 } as const satisfies Record<string, string>;
 
 export type SettingKey = keyof typeof SETTINGS_REGISTRY;
