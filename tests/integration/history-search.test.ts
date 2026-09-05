@@ -32,13 +32,19 @@ let fx: Fixture;
 async function insertScan(
   userId: number,
   url: string,
-  opts: { tag?: string; ageDays?: number; scanType?: string | null } = {},
+  opts: { tag?: string; ageDays?: number; scanType?: string } = {},
 ): Promise<number> {
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO scan_history (user_id, url, status, started_at, scanned_at, scan_type)
      VALUES ($1, $2, 'completed', NOW(), NOW() - ($3 * INTERVAL '1 day'), $4)
      RETURNING id`,
-    [userId, url, opts.ageDays ?? 0, opts.scanType ?? null],
+    // 'web', not null. scan_history.scan_type is NOT NULL DEFAULT 'web', and
+    // passing an explicit null overrides the default rather than falling back
+    // to it, so every insert here violated the constraint and the whole suite
+    // errored before a single assertion ran. The filter this file tests reads
+    // "scan_type IS NULL OR scan_type != 'github'", and the IS NULL arm covers
+    // rows written before the column existed; a fresh row is 'web'.
+    [userId, url, opts.ageDays ?? 0, opts.scanType ?? "web"],
   );
   const id = rows[0].id;
   if (opts.tag) {
