@@ -1,6 +1,6 @@
 # VulnRadar Product Features: AI Knowledge
 
-_Auto-compiled from the routes under `app/` on 2026-09-04._
+_Auto-compiled from the routes under `app/` on 2026-09-05._
 
 Every user-facing page this deployment ships, with the purpose read out
 of the page's own metadata, heading and subtitle. If a feature is not

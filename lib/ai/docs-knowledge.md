@@ -1,6 +1,6 @@
 # VulnRadar Public Docs: AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-09-04._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-09-05._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit
@@ -1538,6 +1538,7 @@ Your own webhooks plus any assigned to a team you belong to. All team roles can 
 - **Overview** (`#overview`)
 - **Supported Platforms** (`#supported-platforms`)
 - **API Endpoints** (`#endpoints`)
+- **Events** (`#events`)
 - **Webhook Payloads** (`#payloads`)
 - **Security** (`#security`)
 - **Integration Examples** (`#examples`)
@@ -1545,18 +1546,22 @@ Your own webhooks plus any assigned to a team you belong to. All team roles can 
 ### Headings
 - Discord
 - Slack
-- Generic
+- Generic: scan.completed
+- Generic: scan.regressed
 - Creating a Discord webhook
 - Local development: receive on webhook.site
 
 ### Notes
+- Every kind of scan fires them: a single-URL scan, a crawl (what --crawl runs in the CLI and the GitHub Action), a bulk run, an authenticated scan, and a GitHub repo scan. Only one of those used to, so if you registered a webhook and never saw a delivery from a crawl or an authenticated scan, that is why.
 - A webhook can also be assigned to a team. A team-assigned webhook is visible to every co-member, editable by those with write access, and fires on a teammate's scans as well as its creator's.
 - detects the platform by matching the URL pattern. Override with the type body field if needed.
 - Generic is the row most integrations end up on: anything that is not Discord or Slack gets the plain body, which is the one documented in Webhook Payloads below.
 - Manage webhooks through these session-authenticated endpoints (the /api/v3/webhooks family requires a logged-in user; API keys are not accepted). Two more exist and are documented in full on the API reference : POST /webhooks/"}/rotate-secret (issue a new signing secret in place, owner only) and GET /webhooks/"}/deliveries (the 50 most recent delivery attempts with their status).
+- Both go to the same registered webhooks, and scan.regressed is sent after that scan's scan.completed, never instead of it. It is the same diff the critical-findings email is built from: a finding you have marked a false positive, accepted the risk of, or decided not to fix does not count as new, so a persistent finding on an hourly schedule does not re-alert every run.
+- It exists because scan.completed carries counts and not findings, so routing an alert to a person meant a second API call to work out what actually changed. scan.regressed carries the findings inline, which is what makes a Slack or Discord alert diff-driven rather than count-driven.
 - Each platform receives a tailored payload. The summary object is the same in all three: critical, high, medium, low, info, total.
+- What identifies the target depends on what was scanned. A web scan sends url (and normalizedUrl, the same value, kept for consumers written against the older payload). A GitHub repo scan has no URL, so it sends repository and no url key at all rather than a URL-shaped string that is not one. Branch on whichever key is present.
 - Embed color follows the scan&rsquo;s safety verdict, the same safe/caution/unsafe tier the badge and the host page use, not a raw severity count: 0x22c55e (green, safe), 0xeab308 (yellow, caution), 0xef4444 (red, unsafe). A count-based rule cannot tell an exploitable high from a hardening one like a missing HSTS header, so it used to paint scans red that the scorer calls safe.
-- Delivered with Content-Type: application/json, User-Agent: -Webhook/1.0, and (if the webhook has a secret) an X-VulnRadar-Signature header -- see Security below.
 
 ### Code examples
 ```json
@@ -1622,12 +1627,45 @@ Your own webhooks plus any assigned to a team you belong to. All team roles can 
   "event": "scan.completed",
   "data": {
     "url": "https://example.com",
+    "normalizedUrl": "https://example.com",
+    "scan_id": 4821,
     "summary": {
       "critical": 1, "high": 2, "medium": 1, "low": 1, "info": 0, "total": 5
     },
     "findings_count": 5,
     "duration": 1423,
-    "scanned_at": "2026-03-10T15:30:00.000Z"
+    "scanned_at": "2026-03-10T15:30:00.000Z",
+    "incomplete": ["dns", "tls"]
+  }
+}
+```
+
+```json
+{
+  "event": "scan.regressed",
+  "data": {
+    "url": "https://example.com",
+    "normalizedUrl": "https://example.com",
+    "scan_id": 4821,
+    "scanned_at": "2026-03-10T15:30:00.000Z",
+    "new_findings_count": 1,
+    "outstanding_findings_count": 2,
+    "new_findings": [
+      {
+        "id": "exposed-db-credentials--a1b2c3",
+        "title": "Database credentials exposed in JavaScript bundle",
+        "severity": "critical",
+        "category": "secrets-extended"
+      }
+    ],
+    "outstanding_findings": [
+      {
+        "id": "csp-unsafe-inline--a1b2c3",
+        "title": "Content-Security-Policy allows unsafe-inline",
+        "severity": "high",
+        "category": "headers"
+      }
+    ]
   }
 }
 ```
@@ -2896,7 +2934,7 @@ individual URLs instead.
 | `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 31 | 0 |
 | `/docs/api` | - | 8 | 5 | 0 | 6 | 41 | 0 | 17 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |
-| `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 7 | 5 |
+| `/docs/webhooks` | ✓ | 7 | 0 | 0 | 4 | 0 | 0 | 13 | 6 |
 | `/docs/rate-limits` | - | 6 | 6 | 0 | 4 | 0 | 0 | 11 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 3 | 0 | 0 | 8 | 0 |
 | `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 20 | 9 |
