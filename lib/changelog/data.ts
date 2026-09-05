@@ -141,7 +141,7 @@ interface Release {
 const CHANGELOG: Release[] = [
   {
     version: "3.8.1",
-    date: "September 3, 2026",
+    date: "September 5, 2026",
     title: "A Scanned Page Can No Longer Stall the Server",
     // Not a highlights release: a patch closing three engine defects, not a
     // feature release worth promoting on the landing page.
@@ -149,6 +149,38 @@ const CHANGELOG: Release[] = [
     summary:
       "Three ways a page being scanned could take the whole service down with it, found by auditing the scan engine against deliberately hostile input rather than real pages. All three ran on every scan, all three were reachable without an account, and all three blocked the event loop inside a single synchronous call, which meant the scan watchdog could not fire and every other scan and request stalled with them. Plus the admin backup list was counting one backup as two.",
     changes: [
+      {
+        icon: Share2,
+        label: "Making a Scan Private Did Not Revoke Its Share Link",
+        desc: "The API reference has always said that turning a scan private revokes any existing share link. It did not. A share link is deliberately its own capability, so the page that serves it matches on the link alone and never asks whether the scan is public, which is what lets a scan that was never public still be shared deliberately. The consequence was that someone flipped a scan private, was told the link was revoked, and the full findings, response headers and private notes carried on serving to anyone who still had the URL. Going private now clears the token, so no existing link resolves.",
+        category: "security",
+      },
+      {
+        icon: Lock,
+        label:
+          "Subdomain Discovery Was Sold as Paid and Guarded Only in the Browser",
+        desc: "The button refused the click below the Pro tier and the upgrade prompt named the plan, but the endpoint behind it checked no plan at all: a direct request, or any API key with scan permission, ran the whole thing on a free account. That is the most expensive outbound operation in the product, a 191-prefix DNS brute force plus up to a thousand further lookups plus four third-party queries plus reachability probing. It is now checked on the server by the same helper the other three paid re-runs use. Reading an already-cached result stays free for everyone, since it sends no traffic; it is the forced re-run that is gated, which is the same line the daily charge was already drawn on.",
+        category: "security",
+      },
+      {
+        icon: Search,
+        label: "Google Was Told Two Different Things About the Home Page",
+        desc: "The bare domain permanently redirects to the landing page, and the landing page declared itself the canonical URL while the sitemap listed it too. So nothing claimed the address people actually type and link, and Search Console reported the page as a duplicate with no canonical selected. A canonical says which address should be indexed rather than which one renders, so both now name the root. The social card had the matching problem from the other direction: it lives at a fixed path, so every cache kept whatever bytes it fetched first and the old card kept appearing in Discord for a fortnight after it changed. The address now carries a hash of the image itself, so it changes exactly when the picture does.",
+        category: "fixed",
+      },
+      {
+        icon: Database,
+        label: "The Boot Banner Named a Schema Version That Never Existed",
+        desc: "Startup reported schema v3.5.0. There have only ever been three schema versions and the 3.x line has one, so that was an app version that had found its way into the column, and the banner was describing a database state that does not exist. Startup now resolves a stored value onto the versions that are real, and only ever downward, to the newest genuine version at or below what was stored: that cannot turn a passing check into a failing one, and cannot claim a migration ran when it did not. The running version was also pinned by hand and had drifted a release behind, so the server announced the wrong number and stamped it onto every scan export.",
+        category: "fixed",
+      },
+      {
+        icon: ShieldCheck,
+        label:
+          "Two Release Workflow Weaknesses, Found by Our Own Code Scanning",
+        desc: "The step that packs the command-line tool for a release put the tag name straight into a shell command. Tag names arrive from event data, so a tag containing shell characters would have run as code. The rule against exactly this is written at the top of that file and the step directly above follows it. The ARM image workflow also left an authenticated repository credential behind for later steps to find, including the container build; it does not push with it, so it is now dropped after checkout. Neither was reachable in practice, but both were real. Four more alerts came from a large generated report that was committed by accident, builds its own page out of text scraped from scanned sites, and is rendered nowhere: it is deleted, which took five megabytes of generated files out of the repository with it.",
+        category: "security",
+      },
       {
         icon: Gauge,
         label: "Nested HTML Could Exhaust Memory and Kill the Process",

@@ -356,6 +356,26 @@ export function EmailLogsManager() {
               </button>
             ))}
           </div>
+
+          {/* Why there is no retry button on these rows.
+              redacted_html is redacted BEFORE it is stored: every URL becomes
+              [REDACTED LINK], every 4+ digit run [REDACTED CODE], every long
+              token [REDACTED TOKEN], so an admin reading this log cannot
+              harvest someone's password-reset link. That is deliberate, and it
+              also means the log physically cannot resend a working message: a
+              retry from here would deliver a dead unsubscribe link and a
+              redacted call to action, which is worse than the failure it is
+              retrying. Retrying belongs to whatever produced the message, so
+              point at it instead. */}
+          {status === "failed" && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              These cannot be resent from here: the stored copy has its links
+              and codes redacted, so it would arrive broken. Resend a broadcast
+              from the Broadcasts panel, which retries only the addresses that
+              failed. Everything else is resent by the action that sent it, for
+              example asking for a new verification email.
+            </p>
+          )}
         </AdminPanelHeader>
 
         <CardContent className="p-0">
