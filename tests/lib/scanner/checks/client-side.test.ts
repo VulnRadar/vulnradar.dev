@@ -13,6 +13,36 @@ import { detectors } from "@/lib/scanner/checks/client-side";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  // The port run and the trailing URL run both matched digits, so a value
+  // that never closed its quote traded characters between them at every
+  // split: 18.9 seconds on a 128 KB body. Both are bounded now, so the
+  // detector needs cases proving it still reads a real localhost URL.
+  "cs-hardcoded-localhost-api-url": [
+    {
+      description: "a dev API base URL left pointing at localhost fires",
+      body: '<html><body><script>const apiUrl = "http://localhost:3000/api/v1";</script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "localhost",
+    },
+    {
+      description: "the loopback IP with no port fires too",
+      body: "<html><body><script>const baseURL = 'https://127.0.0.1/api';</script></body></html>",
+      expect: "fire",
+      evidenceIncludes: "localhost",
+    },
+    {
+      description: "a real production API base URL does not fire",
+      body: '<html><body><script>const apiUrl = "https://api.example.com/v1";</script></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a localhost URL whose quote never closes, followed by a digit run, does not fire",
+      body: `<html><body><script>endpoint="https://localhost:${"9".repeat(4000)}</script></body></html>`,
+      expect: "skip",
+    },
+  ],
+
   "api-key-hardcoded-in-js": [
     {
       description:

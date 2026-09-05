@@ -14,7 +14,13 @@ import {
 } from "../_helpers";
 import { safeFetch } from "../safe-fetch";
 import { safeReadBody } from "../read-bounded-body";
-import { hasTagWith, openingTagOf, tagElements, tagsWith } from "./_tag-scan";
+import {
+  hasTagWith,
+  openingTagOf,
+  stripTagElements,
+  tagElements,
+  tagsWith,
+} from "./_tag-scan";
 
 /**
  * True when a "data" JSON key and an "errors" JSON key both appear within a
@@ -1072,8 +1078,14 @@ export const detectors: Record<string, DetectFn> = {
     // A local variant that replaces each stripped region with a long
     // placeholder (bigger than any bound this function uses) keeps them
     // reliably apart instead.
-    const html = body.replace(
-      /<(?:code|pre|kbd|samp|template)\b[^>]{0,2000}>[\s\S]*?<\/(?:code|pre|kbd|samp|template)\s*>/gi,
+    // Through _tag-scan's single forward pass rather than a local copy of the
+    // `<tag\b[^>]*>[\s\S]*?</tag\s*>` shape, which rescans the rest of the
+    // document from every opening tag that never closes: this detector
+    // measured 3112 ms on a 256 KB body of `"<code>x"` repeated, all of it
+    // here.
+    const html = stripTagElements(
+      body,
+      ["code", "pre", "kbd", "samp", "template"],
       " ".repeat(200),
     );
     const patterns = [

@@ -20,6 +20,7 @@ import {
   pollScanStatus,
   PollAbortedError,
   nextPollDelayMs,
+  type ScanProgressState,
   type ScanStatusResponse,
 } from "@/app/dashboard/poll-scan-status";
 
@@ -111,12 +112,14 @@ describe("pollScanStatus", () => {
       currentCategory: "headers",
       categoriesCompleted: 3,
       categoriesTotal: 20,
+      partialFindings: [],
     });
     // A terminal response that carries no counters must not report NaN.
     expect(progress[1]).toEqual({
       currentCategory: null,
       categoriesCompleted: 0,
       categoriesTotal: 0,
+      partialFindings: [],
     });
   });
 
@@ -221,6 +224,42 @@ describe("pollScanStatus", () => {
     await expect(pollScanStatus(1, 30, undefined, FAST)).rejects.toThrow(
       /taking longer than expected/i,
     );
+  });
+
+  it("forwards the findings the status route has been streaming all along", async () => {
+    // The server has reported these per finished check family since progress
+    // tracking landed; this loop never declared the field, so the only thing
+    // a three-minute crawl could show was a counter.
+    globalThis.fetch = fetchSequence([
+      jsonResponse({
+        status: "running",
+        categoriesCompleted: 2,
+        categoriesTotal: 17,
+        partialFindings: [
+          { severity: "high", title: "Missing HSTS" },
+          { severity: "bogus", title: "Dropped" },
+        ],
+      } as ScanStatusResponse),
+      jsonResponse({ status: "completed", result: { url: "https://a.test" } }),
+    ]) as unknown as typeof fetch;
+
+    const seen: ScanProgressState[] = [];
+    await pollScanStatus(1, 5000, (p) => seen.push(p), FAST);
+
+    expect(seen[0].partialFindings).toEqual([
+      { severity: "high", title: "Missing HSTS" },
+    ]);
+  });
+
+  it("reports an empty findings list rather than undefined before anything is found", async () => {
+    globalThis.fetch = fetchSequence([
+      jsonResponse({ status: "completed", result: { url: "https://a.test" } }),
+    ]) as unknown as typeof fetch;
+
+    const seen: ScanProgressState[] = [];
+    await pollScanStatus(1, 5000, (p) => seen.push(p), FAST);
+
+    expect(seen[0].partialFindings).toEqual([]);
   });
 });
 

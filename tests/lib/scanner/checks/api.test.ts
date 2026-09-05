@@ -218,6 +218,30 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
       evidenceIncludes: "HS256",
     },
+    // The payload alternation was split into one pattern per shape to remove
+    // the whitespace splice point, so both shapes need their own case: an
+    // object literal (above) and a bare identifier (here). A body of
+    // `jwt.sign(` and nothing else took 3.5 seconds through the old single
+    // pattern at 2 KB.
+    {
+      description:
+        "a bare identifier payload rather than an object literal still fires",
+      body: '<html><body><script>const t = jwt.sign(payload, "hunter2");</script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "HS256",
+    },
+    {
+      description:
+        "an env-var secret with explicit algorithm and expiry options does not fire",
+      body: "<html><body><script>const t = jwt.sign({ sub: 1 }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '1h' });</script></body></html>",
+      expect: "skip",
+    },
+    {
+      description:
+        "an unterminated jwt.sign( call with nothing after it does not fire",
+      body: `<html><body><script>jwt.sign(${" ".repeat(4000)}</script></body></html>`,
+      expect: "skip",
+    },
     {
       description:
         "tutorial page showing the same call as an example inside <code>",

@@ -1,7 +1,7 @@
 "use client";
 
 import { Globe, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
-import { getDomain, type ScanRecord } from "./history-types";
+import { getDomain, scanRowState, type ScanRecord } from "./history-types";
 import { StatStrip } from "@/components/shared/stat-strip";
 
 interface HistoryStatsProps {
@@ -13,8 +13,11 @@ interface HistoryStatsProps {
 
 export function HistoryStats({ scans, capped }: HistoryStatsProps) {
   const totalScans = scans.length;
-  const cleanScans = scans.filter((s) => s.findings_count === 0).length;
-  const issueScans = scans.filter((s) => s.findings_count > 0).length;
+  // Same rule the rows use (scanRowState): a pending, abandoned or failed scan
+  // has findings_count 0 because it never produced a result, so counting it as
+  // "came back clean" told the account it was safer than it had been told.
+  const cleanScans = scans.filter((s) => scanRowState(s) === "clean").length;
+  const issueScans = scans.filter((s) => scanRowState(s) === "findings").length;
   const totalIssues = scans.reduce(
     (acc, s) => acc + (s.findings_count || 0),
     0,

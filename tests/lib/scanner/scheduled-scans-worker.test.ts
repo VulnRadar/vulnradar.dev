@@ -91,7 +91,8 @@ vi.mock("@/lib/config/runtime-config", () => ({
 // exercise the happy path; the dedicated cases below drive the refusals.
 const mockCheckAccessRules =
   vi.fn<(url: string) => Promise<{ allowed: boolean; reason?: string }>>();
-const mockGetDailyLimit = vi.fn<(userId: number) => Promise<number>>();
+const mockCanMakeRequest =
+  vi.fn<(userId: number) => Promise<{ allowed: boolean; limit: number }>>();
 const mockIncrementDailyCountCapped =
   vi.fn<
     (
@@ -104,9 +105,40 @@ vi.mock("@/lib/scanner/access-rules", () => ({
   checkAccessRules: (url: string) => mockCheckAccessRules(url),
 }));
 vi.mock("@/lib/rate-limiting/daily-limits", () => ({
-  getDailyLimit: (userId: number) => mockGetDailyLimit(userId),
+  canMakeRequest: (userId: number) => mockCanMakeRequest(userId),
   incrementDailyCountCapped: (userId: number, limit: number) =>
     mockIncrementDailyCountCapped(userId, limit),
+}));
+
+/**
+ * The concurrent-scan cap. The worker inserts its 'pending' row through
+ * reserveConcurrentScanSlot now (it used to use a bare pool.query and was the
+ * one scan entry point with no cap at all), so this stands in for the locked
+ * transaction and hands the insert callback a client whose .query is the same
+ * mockPoolQuery every other assertion in this file reads.
+ */
+type ReservationResult =
+  | { ok: true; scanId: number }
+  | {
+      ok: false;
+      check: {
+        allowed: boolean;
+        current: number;
+        limit: number;
+        message: string;
+      };
+    };
+const mockReserveConcurrentScanSlot =
+  vi.fn<
+    (
+      userId: number,
+      insertRow: (client: { query: typeof mockPoolQuery }) => Promise<number>,
+    ) => Promise<ReservationResult>
+  >();
+vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
+  reserveConcurrentScanSlot: (...args: unknown[]) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockReserveConcurrentScanSlot as any)(...args),
 }));
 
 const { claimDueSchedules, processSchedule, runInBatches, runDueSchedules } =
@@ -147,10 +179,20 @@ beforeEach(() => {
   mockGetSettings.mockResolvedValue({});
   mockCheckAccessRules.mockReset();
   mockCheckAccessRules.mockResolvedValue({ allowed: true });
-  mockGetDailyLimit.mockReset();
-  mockGetDailyLimit.mockResolvedValue(100);
+  mockCanMakeRequest.mockReset();
+  mockCanMakeRequest.mockResolvedValue({ allowed: true, limit: 100 });
   mockIncrementDailyCountCapped.mockReset();
   mockIncrementDailyCountCapped.mockResolvedValue({ recorded: true, count: 1 });
+  mockReserveConcurrentScanSlot.mockReset();
+  mockReserveConcurrentScanSlot.mockImplementation(
+    async (
+      _userId: number,
+      insertRow: (client: { query: typeof mockPoolQuery }) => Promise<number>,
+    ) => ({
+      ok: true as const,
+      scanId: await insertRow({ query: mockPoolQuery }),
+    }),
+  );
 
   // Default: every pool.query call succeeds with a generic shape. Tests
   // override specific calls with mockResolvedValueOnce / mockImplementation
@@ -510,25 +552,118 @@ describe("processSchedule", () => {
     const result = await processSchedule(schedule, new Date());
 
     expect(result).toEqual({ id: 30, outcome: "scanned" });
-    expect(mockGetDailyLimit).toHaveBeenCalledWith(77);
+    expect(mockCanMakeRequest).toHaveBeenCalledWith(77);
     expect(mockIncrementDailyCountCapped).toHaveBeenCalledWith(77, 100);
     expect(mockExecuteScan).toHaveBeenCalled();
   });
 
+  // The quota is now CHECKED before the slot reservation and CHARGED after it,
+  // the ordering POST /api/v3/scan uses. Charging first (what this worker did)
+  // burned a scan from the day's allowance for a run that the capacity gate
+  // then refused, with no refund path.
+  it("charges the daily quota only after the concurrency slot is reserved", async () => {
+    const order: string[] = [];
+    mockReserveConcurrentScanSlot.mockImplementation(
+      async (
+        _userId: number,
+        insertRow: (client: { query: typeof mockPoolQuery }) => Promise<number>,
+      ) => {
+        order.push("reserve");
+        return {
+          ok: true as const,
+          scanId: await insertRow({ query: mockPoolQuery }),
+        };
+      },
+    );
+    mockIncrementDailyCountCapped.mockImplementation(async () => {
+      order.push("charge");
+      return { recorded: true, count: 1 };
+    });
+
+    await processSchedule(makeSchedule({ id: 33 }), new Date());
+
+    expect(order).toEqual(["reserve", "charge"]);
+  });
+
   it("skips the run and reschedules when the account is over its daily quota, without deactivating the schedule", async () => {
     const schedule = makeSchedule({ id: 31, user_id: 78 });
-    mockIncrementDailyCountCapped.mockResolvedValue({
-      recorded: false,
-      count: 100,
-    });
+    mockCanMakeRequest.mockResolvedValue({ allowed: false, limit: 100 });
 
     const result = await processSchedule(schedule, new Date());
 
     expect(result).toEqual({ id: 31, outcome: "quota_gated" });
     expect(mockExecuteScan).not.toHaveBeenCalled();
+    // Nothing was inserted and nothing was charged: an over-quota schedule
+    // must not leave a 'pending' row holding a concurrency slot.
+    expect(mockReserveConcurrentScanSlot).not.toHaveBeenCalled();
+    expect(mockIncrementDailyCountCapped).not.toHaveBeenCalled();
 
     // Being over quota is temporary, so the schedule stays active and simply
     // runs again next cadence -- the same treatment the plan gate gets.
+    const deactivateCall = mockPoolQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("SET active = false"),
+    );
+    expect(deactivateCall).toBeUndefined();
+    const rescheduleCall = mockPoolQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("SET next_run_at = $1 WHERE id = $2"),
+    );
+    expect(rescheduleCall).toBeDefined();
+  });
+
+  // The worker inserted its 'pending' row with a bare pool.query and never
+  // referenced concurrent-scans.ts, so it was the one scan entry point of five
+  // with no capacity cap -- while its rows still COUNTED toward the cap, so a
+  // batch of due schedules could occupy every slot and starve the owner's own
+  // manual scan.
+  it("inserts the scan_history row through the concurrency reservation, not a bare pool.query", async () => {
+    const schedule = makeSchedule({ id: 40, user_id: 91, team_id: 4 });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history")) {
+        return { rows: [{ id: 777 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const result = await processSchedule(schedule, new Date());
+
+    expect(result).toEqual({ id: 40, outcome: "scanned" });
+    expect(mockReserveConcurrentScanSlot).toHaveBeenCalledTimes(1);
+    expect(mockReserveConcurrentScanSlot.mock.calls[0][0]).toBe(91);
+    // The row it inserts is still the same one, team_id and all -- the
+    // reservation only changes which client issues it.
+    const insertArgs = mockPoolQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertArgs![1].at(-1)).toBe(4);
+    expect(mockExecuteScan).toHaveBeenCalledWith(
+      expect.objectContaining({ scanId: 777 }),
+    );
+  });
+
+  it("defers the run when the account is already at its concurrent-scan cap, without scanning, charging or deactivating", async () => {
+    const schedule = makeSchedule({ id: 41, user_id: 92 });
+    mockReserveConcurrentScanSlot.mockResolvedValue({
+      ok: false as const,
+      check: {
+        allowed: false,
+        current: 2,
+        limit: 2,
+        message: "You already have 2 scan(s) running.",
+      },
+    });
+
+    const result = await processSchedule(schedule, new Date());
+
+    expect(result).toEqual({
+      id: 41,
+      outcome: "concurrency_gated",
+      detail: "You already have 2 scan(s) running.",
+    });
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+    // Being at capacity is transient, exactly like the plan and quota gates:
+    // reschedule at the normal cadence, never deactivate. And the quota is
+    // not charged for a scan that did not run.
+    expect(mockIncrementDailyCountCapped).not.toHaveBeenCalled();
     const deactivateCall = mockPoolQuery.mock.calls.find(([sql]) =>
       String(sql).includes("SET active = false"),
     );
@@ -674,6 +809,8 @@ describe("runDueSchedules (end to end: claim + bounded-concurrency processing)",
       scanned: 0,
       blocked: 0,
       planGated: 0,
+      quotaGated: 0,
+      concurrencyGated: 0,
       errors: 0,
     });
     // The claim transaction never even opened, so no due row was soft-locked
@@ -698,6 +835,8 @@ describe("runDueSchedules (end to end: claim + bounded-concurrency processing)",
       scanned: 0,
       blocked: 0,
       planGated: 0,
+      quotaGated: 0,
+      concurrencyGated: 0,
       errors: 0,
     });
     // SCHEDULE_WORKER_CLAIM_LIMIT is read unconditionally -- it bounds the
@@ -789,9 +928,53 @@ describe("runDueSchedules (end to end: claim + bounded-concurrency processing)",
       scanned: 1,
       blocked: 1,
       planGated: 0,
+      quotaGated: 0,
+      concurrencyGated: 0,
       errors: 1,
     });
     // Only the safe, non-erroring schedule actually reached executeScan.
     expect(mockExecuteScan).toHaveBeenCalledTimes(1);
+  });
+
+  // The stats tally covered four of the five (now six) outcomes, so a pass in
+  // which every due schedule was over quota logged "0 scanned, 0 disabled,
+  // 0 deferred, 0 errored (of N due)" -- which reads as a broken worker, not
+  // as N accounts at their cap. Every outcome now has a counter.
+  it("counts a quota-gated and a capacity-gated schedule instead of dropping them from the tally", async () => {
+    mockGetSetting.mockResolvedValue(5);
+    const claimed = [
+      makeSchedule({ id: 1, user_id: 1 }),
+      makeSchedule({ id: 2, user_id: 2 }),
+    ];
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("FOR UPDATE SKIP LOCKED")) return { rows: claimed };
+      return { rows: [] };
+    });
+    mockCanMakeRequest.mockImplementation(async (userId: number) => ({
+      allowed: userId !== 1,
+      limit: 100,
+    }));
+    mockReserveConcurrentScanSlot.mockResolvedValue({
+      ok: false as const,
+      check: {
+        allowed: false,
+        current: 1,
+        limit: 1,
+        message: "at capacity",
+      },
+    });
+
+    const stats = await runDueSchedules();
+
+    expect(stats).toEqual({
+      processed: 2,
+      scanned: 0,
+      blocked: 0,
+      planGated: 0,
+      quotaGated: 1,
+      concurrencyGated: 1,
+      errors: 0,
+    });
+    expect(mockExecuteScan).not.toHaveBeenCalled();
   });
 });

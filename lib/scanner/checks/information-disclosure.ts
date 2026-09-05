@@ -17,7 +17,7 @@ import {
   stripExampleContent,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
-import { hasTagWith, tagsWith } from "./_tag-scan";
+import { hasTagWith, stripTagElements, tagsWith } from "./_tag-scan";
 
 export const detectors: Record<string, DetectFn> = {
   // ── Private / internal IPs / email / PII — moved to secrets-extended.ts ──────────────────────────────
@@ -497,8 +497,12 @@ export const detectors: Record<string, DetectFn> = {
     // to each other -- defeating a [^<]-based bound on its own. A local
     // strip variant that replaces matched regions with a long placeholder
     // instead of deleting them keeps them reliably apart.
-    const html = body.replace(
-      /<(?:code|pre|kbd|samp|template)\b[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)\s*>/gi,
+    // Same single-forward-pass strip as content.ts's sibling, and for the
+    // same reason: the local copy of `<tag\b[^>]*>[\s\S]*?</tag\s*>` measured
+    // 3083 ms on a 256 KB body of `"<code>x"` repeated.
+    const html = stripTagElements(
+      body,
+      ["code", "pre", "kbd", "samp", "template"],
       " ".repeat(200),
     );
     const patterns = [

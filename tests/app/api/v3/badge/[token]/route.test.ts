@@ -176,6 +176,88 @@ describe("GET /api/v3/badge/[token]", () => {
     expect(body).not.toContain("example.com");
   });
 
+  /**
+   * execute-scan.ts stores the grade in result_meta.siteGrade specifically so
+   * "the public host report and the badge agree with the scan record even if
+   * the mapping is ever retuned". The badge recomputed it from findings
+   * instead, which is exactly the drift that comment exists to prevent: a
+   * retune would silently change what an already-embedded badge printed for a
+   * scan that ran months ago.
+   *
+   * The rows below all carry findings that would recompute to a DIFFERENT
+   * letter, so a test can only pass by reading the stored value.
+   */
+  it("prints the grade the scan stored, not one recomputed from findings", async () => {
+    const token = "7".repeat(64);
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          url: "https://example.com",
+          summary: {},
+          findings: [
+            { severity: "critical", title: "SQL Injection in login form" },
+          ],
+          scanned_at: "2026-01-15T00:00:00.000Z",
+          result_meta: { siteGrade: "B" },
+        },
+      ],
+    });
+
+    const res = await callGet(token);
+
+    const body = await res.text();
+    expect(body).toContain("B -");
+    expect(body).not.toContain("F -");
+    // The safety rating still picks the colour, so a stored grade never
+    // repaints a dangerous host green.
+    expect(body).toContain("#ef4444");
+  });
+
+  it("reads a stored grade out of a result_meta column returned as a JSON string", async () => {
+    const token = "8".repeat(64);
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          url: "https://example.com",
+          summary: {},
+          findings: [],
+          scanned_at: "2026-01-15T00:00:00.000Z",
+          result_meta: JSON.stringify({ siteGrade: "C" }),
+        },
+      ],
+    });
+
+    const body = await (await callGet(token)).text();
+    expect(body).toContain("C -");
+  });
+
+  it.each([
+    ["a scan that predates the stored grade", { dangerScore: 0 }],
+    ["a null result_meta", null],
+    ["unparseable result_meta", "{not json"],
+    ["a grade that is not one of the six letters", { siteGrade: "Z" }],
+    ["a non-string grade", { siteGrade: 3 }],
+  ])("recomputes the grade for %s", async (_label, result_meta) => {
+    const token = "9".repeat(64);
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          url: "https://example.com",
+          summary: {},
+          findings: [
+            { severity: "critical", title: "SQL Injection in login form" },
+          ],
+          scanned_at: "2026-01-15T00:00:00.000Z",
+          result_meta,
+        },
+      ],
+    });
+
+    const body = await (await callGet(token)).text();
+    expect(body).toContain("F -");
+    expect(body).not.toContain("Z -");
+  });
+
   it("falls back to an empty findings array when the column is null", async () => {
     const token = "2".repeat(64);
     mockQuery.mockResolvedValueOnce({

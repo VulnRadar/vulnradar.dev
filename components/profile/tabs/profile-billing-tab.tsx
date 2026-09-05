@@ -268,6 +268,16 @@ export function ProfileBillingTab({
     );
   }
 
+  /**
+   * The plan's display name, from the same catalog the pricing page, the
+   * Stripe webhook emails and the admin billing overview all name plans with.
+   * Falls back to the raw id only for a plan the catalog does not know, which
+   * is better than the blank line this headline used to be.
+   */
+  const planLabel = billingInfo
+    ? (getPlanById(billingInfo.plan)?.name ?? billingInfo.plan)
+    : "";
+
   return (
     <div className="flex flex-col gap-8">
       {/* Plan, first.
@@ -313,8 +323,14 @@ export function ProfileBillingTab({
                           40px icon and the status badge taking their width
                           first, a 320px phone left about 130px here and
                           "Professional" clipped. */}
+                      {/* planLabel is derived from `plan` through the catalog,
+                          never read from a `planName` field: GET
+                          /api/v3/billing has never returned one (only the
+                          email-code-gated /billing/verify does), so this
+                          headline was an empty paragraph for every account,
+                          paid or not. */}
                       <p className="font-semibold text-foreground">
-                        {billingInfo.planName}
+                        {planLabel}
                       </p>
                       {/* A number and our own unit. "25 scans/day" should
                           wrap, never clip to "25 scans/d...". */}

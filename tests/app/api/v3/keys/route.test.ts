@@ -58,9 +58,18 @@ vi.mock("@/lib/config/runtime-config", () => ({
 }));
 
 const mockGetUserPlan = vi.fn();
-vi.mock("@/lib/rate-limiting/daily-limits", () => ({
-  getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
-}));
+vi.mock("@/lib/rate-limiting/daily-limits", async (importOriginal) => {
+  // Only getUserPlan is replaced. lib/api/api-keys.ts also imports
+  // resolveEffectivePlan from here to derive a key's live daily limit, and
+  // that is pure policy over a row -- re-implementing it in a mock would be
+  // testing a copy of it.
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/daily-limits")>();
+  return {
+    ...actual,
+    getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
+  };
+});
 
 // Key creation is rate limited (AUDIT-012#auth-08). Mocked so the limiter's
 // own pool.query calls don't consume entries from this suite's ordered queue;
@@ -131,14 +140,25 @@ describe("GET /api/v3/keys", () => {
   });
 
   it("returns only the session user's own keys", async () => {
-    const row = existingKeyRow();
+    // daily_limit is the one field NOT returned as stored. api_keys
+    // .daily_limit is a creation-time snapshot no billing path updates, so
+    // enforcement resolves the owner's current plan instead -- and this
+    // listing has to report the same number, or the profile's "12 of 25
+    // today" meter contradicts the limit the API is applying. The stored 25
+    // here is the stale free-plan value; the caller is on core_supporter.
+    const row = existingKeyRow({ daily_limit: 25 });
     mockQuery.mockResolvedValueOnce({ rows: [row] });
 
     const res = await GET();
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.keys).toEqual([row]);
+    const { BILLING_CORE_SUPPORTER_API_REQUESTS_PER_DAY: liveLimit } =
+      await resolveFromRegistry([
+        "BILLING_CORE_SUPPORTER_API_REQUESTS_PER_DAY",
+      ]);
+    expect(json.keys).toEqual([{ ...row, daily_limit: liveLimit }]);
+    expect(liveLimit).not.toBe(25);
 
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("ak.user_id = $1");

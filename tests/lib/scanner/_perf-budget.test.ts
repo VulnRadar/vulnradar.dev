@@ -33,6 +33,12 @@
 import { describe, it, expect } from "vitest";
 import { allChecks } from "@/lib/scanner/registry";
 import { isPathDisallowed, parseRobots } from "@/lib/scanner/crawl-discovery";
+import {
+  extractScriptContents,
+  stripDocBlocks,
+  stripExampleContent,
+  withDocBlocksStripped,
+} from "@/lib/scanner/_helpers";
 
 /** See the header: large enough to separate linear from quadratic, small
  *  enough that the whole sweep costs a few seconds. */
@@ -40,6 +46,19 @@ const BODY_BYTES = 24_000;
 
 /** ~70x the slowest healthy detector, well under the broken ones. */
 const PER_DETECTOR_BUDGET_MS = 200;
+
+/**
+ * Vitest's per-test timeout for the groups below, which is a different thing
+ * from the budgets and must not be confused with them.
+ *
+ * A budget failing is the signal this file exists for and prints the detector
+ * and the measurement. A timeout is just the runner giving up, and it prints
+ * neither. Several groups here sweep every check over a 256 KB body, which is
+ * legitimately a few seconds of honest linear work and comfortably past the
+ * 5-second default, so without this the suite fails for the wrong reason on a
+ * loaded machine and says nothing useful when it does.
+ */
+const SLOW_TEST_TIMEOUT_MS = 120_000;
 
 /**
  * Detectors measured to be superlinear in body length, on this machine, on
@@ -196,6 +215,68 @@ const SHAPES: Record<string, string> = {
   nearMissKeyRun: rep("AKIAIOSFODNN7EXAMPL"),
 };
 
+/**
+ * A literal some detector anchors on, followed by one long run of the
+ * character class the pattern AFTER that literal also matches.
+ *
+ * This family was the corpus's second blind spot. Every shape above puts many
+ * START POSITIONS in front of a pattern; these put ONE start position in front
+ * of two adjacent runs that compete for the same characters. `\s*` next to
+ * `.*`, `\s*` next to `[^,)]+`, `\d+` next to `[^"']*`: the trailing literal
+ * never arrives, so the matcher proves failure once for every way of splitting
+ * the run between the two, which is quadratic from a single occurrence. The
+ * payload is tiny, so the 1 MB body cap is no defence at all: 2 KB of it took
+ * 3.5 seconds through api-jwt-hs256-weak-secret.
+ *
+ * Measured on a 128 KB body before the fixes: golang-panic-trace-exposed
+ * 21,561 ms, code-jwt-verify-no-secret 19,524 ms, vibe-sql-string-concat
+ * 19,492 ms, cs-hardcoded-localhost-api-url 18,935 ms, open-redirect
+ * 16,246 ms, rails-error-page-disclosure 1,964 ms.
+ *
+ * The names say which detector family the shape was found to break.
+ */
+const RUN_SHAPES: Record<string, string> = {
+  // golang-panic-trace-exposed
+  panicNoTrace: "panic:" + " ".repeat(BODY_BYTES),
+  // code-jwt-verify-no-secret
+  jwtVerifyNoArgs: "<script>jwt.verify(" + " ".repeat(BODY_BYTES),
+  // api-jwt-hs256-weak-secret
+  jwtSignNoArgs: "<script>jwt.sign(" + " ".repeat(BODY_BYTES),
+  // open-redirect
+  windowLocationNoSource: "<script>window.location =" + " ".repeat(BODY_BYTES),
+  // vibe-sql-string-concat
+  sqlLiteralNoWhere: "<script>const q = 'SELECT" + " ".repeat(BODY_BYTES),
+  // cs-hardcoded-localhost-api-url: a port that never ends and a quote that
+  // never closes, so the digit run and the URL run trade characters.
+  localhostPortNoQuote:
+    '<script>endpoint="https://localhost:' + "9".repeat(BODY_BYTES),
+  // rails-error-page-disclosure
+  railsVersionNoApp: rep("Rails 1.1.1 "),
+  // email's DKIM tag matching, which reads DNS TXT records the scanned
+  // domain publishes, on the same `\s*` next to `[^;]*` shape.
+  dkimTagNoValue: "v=DKIM1; t=" + " ".repeat(BODY_BYTES),
+};
+
+/**
+ * Documentation-block markup, repeated and never closed.
+ *
+ * The corpus had no `<code`/`<pre`/`<kbd`/`<samp` in it at all, which is how
+ * `<tag\b[^>]*>[\s\S]*?</tag\s*>` survived in _helpers.ts's three strippers
+ * long after every detector using that shape had been fixed. One
+ * `stripDocBlocks` call measured 15 ms at 16 KB and 996 ms at 128 KB.
+ *
+ * At this body size no SINGLE detector crosses the per-detector budget on
+ * these, which is exactly the point: the strip ran once per detector, about
+ * 150 times per scan, so the damage only existed in aggregate. The whole-sweep
+ * budget further down is what actually catches it.
+ */
+const DOC_BLOCK_SHAPES: Record<string, string> = {
+  unterminatedCode: rep("<code>x"),
+  unterminatedPre: rep("<pre>x"),
+  unterminatedKbd: rep("<kbd>x"),
+  unterminatedScriptOpen: rep("<script>x"),
+};
+
 /** Runs every synchronous detector once and returns the ids that blew the
  *  budget, slowest first, each with its measured time. */
 function detectorsOverBudget(
@@ -294,6 +375,277 @@ describe("markup detector time budget on unterminated tags", () => {
       ).toEqual([]);
     });
   }
+});
+
+describe("detector time budget on a literal followed by one long run", () => {
+  for (const [name, body] of Object.entries(RUN_SHAPES)) {
+    it(
+      `keeps every detector inside budget on ${name}`,
+      () => {
+        const over = detectorsOverBudget(body, MARKUP_CONTEXT);
+        expect(
+          over.map((o) => `${o.id}=${o.ms}ms`),
+          `Over ${PER_DETECTOR_BUDGET_MS}ms on a ${BODY_BYTES}-byte body. Two adjacent runs that match the same characters, with the literal after them never arriving, is quadratic from a SINGLE occurrence: the matcher proves failure once per way of splitting the run. Fold the whitespace into the class that already matches it and bound the run, so no two parts of the pattern can claim the same character.`,
+        ).toEqual([]);
+      },
+      SLOW_TEST_TIMEOUT_MS,
+    );
+  }
+});
+
+describe("detector time budget on documentation-block markup", () => {
+  for (const [name, body] of Object.entries(DOC_BLOCK_SHAPES)) {
+    it(
+      `keeps every detector inside budget on ${name}`,
+      () => {
+        const over = detectorsOverBudget(body, MARKUP_CONTEXT);
+        expect(
+          over.map((o) => `${o.id}=${o.ms}ms`),
+          `Over ${PER_DETECTOR_BUDGET_MS}ms on a ${BODY_BYTES}-byte body. Strip <code>/<pre>/<kbd>/<samp> regions through lib/scanner/checks/_tag-scan.ts's stripTagElements, not a local <tag\\b[^>]*>[\\s\\S]*?</tag\\s*> of your own: that shape rescans the rest of the document from every opening tag the page never closes.`,
+        ).toEqual([]);
+      },
+      SLOW_TEST_TIMEOUT_MS,
+    );
+  }
+});
+
+/**
+ * A second, larger body size, because three of the defects this suite now
+ * guards are invisible at 24 KB.
+ *
+ * The 24 KB body was chosen so that a quadratic REGEX shows up in about a
+ * second. Two other shapes in the same family have much smaller constants and
+ * need more input before they separate from a healthy linear detector:
+ *
+ * - a quadratic `indexOf` loop (form-method-get-sensitive rescanned the whole
+ *   remainder for every <form>): 50 ms at 24 KB, 5,679 ms at 256 KB.
+ * - a bounded run with a 2000x constant (`<[a-z][a-z0-9]*[^>]{0,2000}ATTR`,
+ *   which pays a full 2000-character scan for every `<` in a document that
+ *   contains no `>` at all): 107 ms at 24 KB, 1,146 ms at 256 KB.
+ *
+ * Also measured over budget here before the fixes, and not by the 24 KB group:
+ * the CSP family through getEffectiveCsp (csp-missing, csp-no-default-src,
+ * csp-base-uri-missing, csp-frame-src-missing, csp-form-action-missing) at
+ * about 3,100 ms each, sql-error-in-page at 3,112 ms, sql-error-exposure at
+ * 3,083 ms, target-blank-no-noopener at 1,128 ms and
+ * code-clickjack-target-blank-js-href at 1,102 ms.
+ *
+ * The budget is looser than the 24 KB one for the obvious reason: a healthy
+ * detector's honest cost scales with the body. The slowest healthy detector
+ * measured 122 ms here, so 500 ms is about four times the healthy ceiling and
+ * two to thirty times below everything listed above.
+ */
+const LARGE_BODY_BYTES = 262_144;
+const LARGE_BUDGET_MS = 500;
+
+const LARGE_SHAPES: Record<string, string> = (() => {
+  const big = (unit: string) =>
+    unit.repeat(Math.max(1, Math.floor(LARGE_BODY_BYTES / unit.length)));
+  // Distinct URLs, because the quadratic here was `body.indexOf(tag)` from
+  // zero for every tag: identical tags all resolve on the first one and cost
+  // nothing.
+  let distinctMeta = "";
+  for (let i = 0; distinctMeta.length < LARGE_BODY_BYTES; i++) {
+    distinctMeta += `<meta http-equiv="refresh" content="0;url=https://evil${i}.example/">`;
+  }
+  return {
+    // form-method-get-sensitive
+    formOpenNoClose: big("<form>"),
+    // inline-style-attr, target-blank-no-noopener,
+    // code-clickjack-target-blank-js-href: `<` with no `>` anywhere
+    bareOpenAngleRun: big("<a"),
+    // open-redirect-meta-refresh-confirmed
+    metaRefreshDistinct: distinctMeta,
+    // sql-error-in-page, sql-error-exposure, and the three stripper helpers
+    docBlockRun: big("<code>x"),
+    // the CSP family, through getEffectiveCsp
+    unterminatedMeta: big('<meta name="viewport" content="'),
+    unterminatedPasswordInput: big('<input type="password" '),
+  };
+})();
+
+describe("detector time budget on a large body", () => {
+  for (const [name, body] of Object.entries(LARGE_SHAPES)) {
+    it(
+      `keeps every detector inside budget on ${name}`,
+      () => {
+        const over: { id: string; ms: number }[] = [];
+        for (const check of allChecks) {
+          const started = Date.now();
+          try {
+            check(MARKUP_CONTEXT.url, MARKUP_CONTEXT.headers, body);
+          } catch {
+            // Same reasoning as detectorsOverBudget: a throwing detector is
+            // engine.test.ts's problem, and its elapsed time still counts.
+          }
+          const ms = Date.now() - started;
+          if (ms > LARGE_BUDGET_MS) over.push({ id: check.checkId ?? "?", ms });
+        }
+        expect(
+          over.sort((a, b) => b.ms - a.ms).map((o) => `${o.id}=${o.ms}ms`),
+          `Over ${LARGE_BUDGET_MS}ms on a ${LARGE_BODY_BYTES}-byte body, against the 1 MB body cap execute-scan allows. A detector that passes the 24 KB budgets above and fails here is superlinear with a small constant, or linear with a large one; both are seconds of blocked event loop at the cap.`,
+        ).toEqual([]);
+      },
+      SLOW_TEST_TIMEOUT_MS,
+    );
+  }
+});
+
+/**
+ * The whole check set, once, over one body.
+ *
+ * This is the budget the per-detector ones structurally cannot express. The
+ * three strippers in lib/scanner/_helpers.ts are called by every detector in
+ * api.ts, supply-chain.ts and vibe-code.ts through their wrapper maps: exactly
+ * 150 detectors, each stripping the same body again. At 24 KB one quadratic
+ * strip is about 33 ms, comfortably inside the 200 ms per-detector line, and
+ * no individual detector ever looked slow. Summed, the same body cost 4,155 ms
+ * across those three modules alone.
+ *
+ * So the guard has to be on the total. Calibration, on the same machine as
+ * every other number in this file: the slowest healthy shape sweeps all of
+ * allChecks in 145 ms, and the defect above is 4,155 ms for three modules or
+ * roughly 1,600 ms for api.ts on its own. 1000 ms sits about seven times above
+ * the healthy ceiling and below any single module reintroducing it.
+ */
+const WHOLE_SWEEP_BUDGET_MS = 1000;
+
+describe("whole-sweep time budget", () => {
+  const everyShape: Record<string, string> = {
+    unbrokenRun: UNBROKEN_RUN,
+    nearMissSecrets: NEAR_MISS_SECRETS,
+    unterminatedMarkup: UNTERMINATED_MARKUP,
+    lazyBridgeVersions: LAZY_BRIDGE_VERSIONS,
+    unsatisfiableJsonBatch: UNSATISFIABLE_JSON_BATCH,
+    deepNesting: DEEP_NESTING,
+    ...SHAPES,
+    ...RUN_SHAPES,
+    ...DOC_BLOCK_SHAPES,
+  };
+
+  for (const [name, body] of Object.entries(everyShape)) {
+    it(
+      `sweeps every check over ${name} inside budget`,
+      () => {
+        const started = Date.now();
+        for (const check of allChecks) {
+          try {
+            check(MARKUP_CONTEXT.url, MARKUP_CONTEXT.headers, body);
+          } catch {
+            // Not this suite's concern; see detectorsOverBudget.
+          }
+        }
+        const elapsed = Date.now() - started;
+        expect(
+          elapsed,
+          `One pass of all ${allChecks.length} checks over a ${BODY_BYTES}-byte body took ${elapsed}ms.\n` +
+            "Nothing here need be slow on its own for this to fail: work repeated once per detector is invisible to a per-detector budget and is what this line exists to catch. Check for a helper being recomputed inside a wrapper map rather than once per body.",
+        ).toBeLessThan(WHOLE_SWEEP_BUDGET_MS);
+      },
+      SLOW_TEST_TIMEOUT_MS,
+    );
+  }
+});
+
+describe("response-body strippers", () => {
+  // These are called from the wrapper maps of three detector modules and from
+  // detectors that need script content, so they run on every scan. They each
+  // carried the `<tag\b[^>]*>[\s\S]*?</tag\s*>` shape: on a body of
+  // `"<code>x"` repeated, stripDocBlocks measured 15 ms at 16 KB, 75 ms at
+  // 32 KB, 266 ms at 64 KB and 996 ms at 128 KB, four times the cost for
+  // twice the input. Linear now, at 2 to 7 ms on the largest of those.
+  const STRIPPER_BODY_BYTES = 131_072;
+  const STRIPPER_BUDGET_MS = 100;
+  const codeRun = "<code>x".repeat(Math.floor(STRIPPER_BODY_BYTES / 7));
+  const scriptRun = "<script>x".repeat(Math.floor(STRIPPER_BODY_BYTES / 9));
+
+  const cases: [string, () => unknown][] = [
+    ["stripDocBlocks", () => stripDocBlocks(codeRun)],
+    ["stripExampleContent", () => stripExampleContent(codeRun)],
+    ["extractScriptContents", () => extractScriptContents(scriptRun)],
+  ];
+
+  for (const [name, run] of cases) {
+    it(
+      `${name} stays linear on unterminated tags`,
+      () => {
+        const started = Date.now();
+        run();
+        const elapsed = Date.now() - started;
+        expect(
+          elapsed,
+          `${name} took ${elapsed}ms on a ${STRIPPER_BODY_BYTES}-byte body. Route it through lib/scanner/checks/_tag-scan.ts rather than reintroducing a lazy tag-pair regex.`,
+        ).toBeLessThan(STRIPPER_BUDGET_MS);
+      },
+      SLOW_TEST_TIMEOUT_MS,
+    );
+  }
+
+  it("still removes the regions it is meant to remove", () => {
+    expect(stripDocBlocks("a<code>secret</code>b")).toBe("ab");
+    expect(stripDocBlocks("a<pre class='x'>secret</pre >b")).toBe("ab");
+    // <script> is deliberately left alone here: vibe-code.ts's detectors need
+    // to see genuine inline script content.
+    expect(stripDocBlocks("a<script>keep</script>b")).toBe(
+      "a<script>keep</script>b",
+    );
+    // `<codex>` is not a `<code>` tag, which is what the `\b` meant.
+    expect(stripDocBlocks("a<codex>keep</codex>b")).toBe(
+      "a<codex>keep</codex>b",
+    );
+    // An opening tag that never closes ends the sweep rather than eating the
+    // rest of the document.
+    expect(stripDocBlocks("a<code>tail")).toBe("a<code>tail");
+
+    expect(stripExampleContent("a<script>x</script>b<code>y</code>c")).toBe(
+      "abc",
+    );
+    expect(
+      extractScriptContents("<script>one</script>x<script>two</script>"),
+    ).toEqual(["one", "two"]);
+  });
+
+  it("memoises on the body it was last given without ever serving a stale strip", () => {
+    // The strip is hoisted out of the per-detector wrapper by a one-entry
+    // memo, which is the whole reason 150 detectors cost one strip instead of
+    // 150. The risk a memo adds is serving the previous body's result, so
+    // alternate two bodies and demand the right answer every time.
+    const seen: string[] = [];
+    const record = withDocBlocksStripped({
+      first: (_u, _h, body) => {
+        seen.push(body);
+        return null;
+      },
+      second: (_u, _h, body) => {
+        seen.push(body);
+        return null;
+      },
+    });
+    const url = "https://example.com/";
+    const headers = new Headers();
+    const a = "alpha<code>hidden-a</code>tail";
+    const b = "beta<pre>hidden-b</pre>tail";
+
+    for (const body of [a, b, a, b, b, a]) {
+      record.first(url, headers, body);
+      record.second(url, headers, body);
+    }
+
+    expect(seen).toEqual([
+      "alphatail",
+      "alphatail",
+      "betatail",
+      "betatail",
+      "alphatail",
+      "alphatail",
+      "betatail",
+      "betatail",
+      "betatail",
+      "betatail",
+      "alphatail",
+      "alphatail",
+    ]);
+  });
 });
 
 describe("robots.txt rule matching time budget", () => {

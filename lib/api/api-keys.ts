@@ -20,6 +20,11 @@ import {
   resolveApiKeyScopes,
   type ApiKeyScope,
 } from "@/lib/config/client-constants";
+import { resolveEffectivePlan } from "@/lib/rate-limiting/daily-limits";
+import {
+  getPlanLimitsForPlan,
+  getUserPlanLimits,
+} from "@/lib/billing/plan-limits";
 
 /**
  * Constant-time compare for a decrypted API key against the presented one.
@@ -175,6 +180,24 @@ interface KeyValidationResult {
   email: string;
   userName: string;
   keyName: string;
+  /**
+   * The OWNER'S CURRENT plan allowance (PlanLimits.apiRequestsPerDay), resolved
+   * on every validation -- NOT the api_keys.daily_limit column.
+   *
+   * That column is stamped once at creation and re-stamped only on rotation.
+   * No billing path writes it: not the Stripe webhook, not the staff-plan
+   * grant/revoke, not an admin plan change. So a cancelled Elite subscriber
+   * kept their old high limit forever, and someone upgrading from Free stayed
+   * on the free cap despite paying, contradicting what the pricing FAQ
+   * promises ("raises your daily limit on the spot"). A stored copy of a
+   * derived value is what caused that, and a webhook that has to remember to
+   * update a second table would drift again, so it is derived here instead.
+   *
+   * Cheap enough to sit on every authenticated API request: the plan columns
+   * come back on the JOIN the lookup already does, and the per-plan numbers
+   * resolve out of the runtime-config snapshot (30s TTL, one cached table for
+   * every key), so this adds no database round trip.
+   */
   dailyLimit: number;
   needsTermsAcceptance?: boolean;
   // Always a concrete array: a legacy row's NULL column is already resolved
@@ -184,26 +207,87 @@ interface KeyValidationResult {
   scopes: ApiKeyScope[];
 }
 
-function rowToResult(
+/**
+ * Columns every validateApiKey lookup selects so the owner's plan can be
+ * resolved without a second read of the users row. `resolveEffectivePlan`
+ * applies the staff tag and the "a gift only ever upgrades" rule over exactly
+ * these three fields.
+ */
+const PLAN_COLUMNS = `u.plan, u.role, gs.plan AS gifted_plan`;
+
+/** The join those columns come from. Kept beside them so the two cannot drift. */
+const PLAN_JOIN = `LEFT JOIN gifted_subscriptions gs
+                ON gs.user_id = u.id
+               AND gs.revoked_at IS NULL
+               AND gs.expires_at > NOW()`;
+
+/**
+ * The finite stand-in for "no cap". Deliberately not Infinity: this number is
+ * returned to clients in the 429 body and in X-RateLimit-Limit, and
+ * JSON.stringify(Infinity) is `null`. It is the same value POST /api/v3/keys
+ * and the rotate route have always written into api_keys.daily_limit for an
+ * unlimited plan, exported here so the three of them share one definition.
+ */
+export const UNLIMITED_API_KEY_DAILY_LIMIT = 999999;
+
+/**
+ * Turn a resolved PlanLimits (or null, meaning billing is switched off) into
+ * the number checkRateLimit compares `used` against.
+ */
+function normalizeApiDailyLimit(
+  limits: Awaited<ReturnType<typeof getUserPlanLimits>>,
+): number {
+  // null = billing disabled entirely: a self-hosted deployment has no plans
+  // to charge against, so its keys are uncapped.
+  if (!limits) return UNLIMITED_API_KEY_DAILY_LIMIT;
+  const limit = limits.apiRequestsPerDay;
+  // Fail CLOSED on a corrupt (non-numeric) setting, the same stance
+  // resolveConcurrentLimit takes: NaN would fall through `used < NaN` as
+  // "never allowed" anyway, and the alternative reading (treat it as no cap)
+  // is a billing leak. -1 is a real configured answer, not corruption.
+  if (!Number.isFinite(limit)) return 0;
+  return limit === -1 ? UNLIMITED_API_KEY_DAILY_LIMIT : limit;
+}
+
+/**
+ * The owner's live per-day API request allowance, from the plan columns the
+ * key lookup already selected. This is the hot path (every authenticated API
+ * request), which is why it takes the joined row rather than a user id: no
+ * second read of the users row, and the per-plan numbers come out of the
+ * runtime-config snapshot.
+ */
+async function resolveKeyDailyLimit(row: {
+  plan?: string | null;
+  role?: string | null;
+  gifted_plan?: string | null;
+}): Promise<number> {
+  return normalizeApiDailyLimit(
+    await getPlanLimitsForPlan(resolveEffectivePlan(row)),
+  );
+}
+
+async function rowToResult(
   row: {
     key_id: number;
     user_id: number;
     name: string;
-    daily_limit: number;
     email: string;
     user_name: string;
     tos_accepted_at: string | null;
     scopes?: unknown;
+    plan?: string | null;
+    role?: string | null;
+    gifted_plan?: string | null;
   },
   termsUpdatedAt: string,
-): KeyValidationResult {
+): Promise<KeyValidationResult> {
   return {
     keyId: row.key_id,
     userId: row.user_id,
     email: row.email,
     userName: row.user_name,
     keyName: row.name,
-    dailyLimit: row.daily_limit,
+    dailyLimit: await resolveKeyDailyLimit(row),
     needsTermsAcceptance: !hasAcceptedLatestTerms(
       row.tos_accepted_at,
       termsUpdatedAt,
@@ -408,11 +492,13 @@ export async function validateApiKey(
   if (isEncryptionConfigured()) {
     // Primary path: O(1) indexed lookup by HMAC locator.
     const locatorResult = await pool.query(
-      `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
+      `SELECT ak.id as key_id, ak.user_id, ak.name,
               ak.revoked_at, ak.key_encrypted, ak.bound_ip, ak.scopes,
-              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at
+              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at,
+              ${PLAN_COLUMNS}
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
+              ${PLAN_JOIN}
         WHERE ak.key_locator = $1
           AND ak.key_encrypted IS NOT NULL`,
       [locator],
@@ -438,11 +524,13 @@ export async function validateApiKey(
     // Backfill: key matched a row that has no locator yet (legacy row).
     // Compute locator from decrypted key and persist it for future lookups.
     const legacyResult = await pool.query(
-      `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
+      `SELECT ak.id as key_id, ak.user_id, ak.name,
               ak.revoked_at, ak.key_encrypted, ak.key_locator, ak.bound_ip, ak.scopes,
-              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at
+              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at,
+              ${PLAN_COLUMNS}
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
+              ${PLAN_JOIN}
         WHERE ak.key_locator IS NULL
           AND ak.key_encrypted IS NOT NULL`,
     );
@@ -470,11 +558,13 @@ export async function validateApiKey(
 
     // Fallback: hash-based bcrypt lookup (old keys without encryption).
     const hashResult = await pool.query(
-      `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
+      `SELECT ak.id as key_id, ak.user_id, ak.name,
               ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
-              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at
+              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at,
+              ${PLAN_COLUMNS}
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
+              ${PLAN_JOIN}
         WHERE ak.key_hash IS NOT NULL
           AND ak.key_locator IS NULL
           AND ak.key_encrypted IS NULL`,
@@ -496,11 +586,13 @@ export async function validateApiKey(
 
   // No encryption configured: O(1) locator lookup for bcrypt-hashed keys.
   const locatorResult = await pool.query(
-    `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
+    `SELECT ak.id as key_id, ak.user_id, ak.name,
             ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
-            u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at
+            u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at,
+            ${PLAN_COLUMNS}
        FROM api_keys ak
             JOIN users u ON ak.user_id = u.id
+            ${PLAN_JOIN}
       WHERE ak.key_locator = $1
         AND ak.key_hash IS NOT NULL`,
     [locator],
@@ -523,11 +615,13 @@ export async function validateApiKey(
 
   // Legacy bcrypt keys without locator: full scan (backfill on match).
   const legacyHashResult = await pool.query(
-    `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
+    `SELECT ak.id as key_id, ak.user_id, ak.name,
             ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
-            u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at
+            u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at,
+            ${PLAN_COLUMNS}
        FROM api_keys ak
             JOIN users u ON ak.user_id = u.id
+            ${PLAN_JOIN}
       WHERE ak.key_hash IS NOT NULL
         AND ak.key_locator IS NULL`,
   );
@@ -697,7 +791,19 @@ export async function recordUsage(_keyId: number) {
 // than resolved here, so the caller decides how to render "this key
 // predates scoping" (see resolveApiKeyScopes, used both by the API route's
 // response and directly by the profile UI).
+//
+// `daily_limit` is the ONE field not returned as stored: it is overwritten
+// with the owner's live plan allowance, the same number validateApiKey now
+// enforces against. The stored column is a creation-time snapshot no billing
+// path updates, so reporting it here made the profile's "12 of 25 today" meter
+// disagree with the limit the API was actually applying the moment the account
+// changed plan. One resolve covers every row the caller owns.
 export async function getUserApiKeys(userId: number) {
+  // getUserPlanLimits rather than resolveKeyDailyLimit's joined-row form: this
+  // is the cold path (a profile page load), and it is the same resolver the
+  // key-creation and rotation routes already call, so the three cannot drift.
+  const dailyLimit = normalizeApiDailyLimit(await getUserPlanLimits(userId));
+
   const result = await pool.query(
     // bound_ip is selected because it is enforced: when
     // API_KEY_IP_BINDING_ENABLED is on, a key that worked yesterday starts
@@ -712,7 +818,7 @@ export async function getUserApiKeys(userId: number) {
     [userId],
   );
 
-  return result.rows;
+  return result.rows.map((row) => ({ ...row, daily_limit: dailyLimit }));
 }
 
 /**

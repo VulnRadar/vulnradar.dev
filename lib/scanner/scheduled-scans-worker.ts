@@ -67,9 +67,10 @@ import {
 import { userMeetsScheduleFrequency } from "@/lib/billing/plan-limits";
 import { checkAccessRules } from "./access-rules";
 import {
-  getDailyLimit,
+  canMakeRequest,
   incrementDailyCountCapped,
 } from "@/lib/rate-limiting/daily-limits";
+import { reserveConcurrentScanSlot } from "@/lib/rate-limiting/concurrent-scans";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import {
   scheduleDisabledEmail,
@@ -115,7 +116,13 @@ export interface DueSchedule {
 
 export interface ProcessOutcome {
   id: number;
-  outcome: "scanned" | "blocked" | "plan_gated" | "quota_gated" | "error";
+  outcome:
+    | "scanned"
+    | "blocked"
+    | "plan_gated"
+    | "quota_gated"
+    | "concurrency_gated"
+    | "error";
   detail?: string;
 }
 
@@ -289,7 +296,7 @@ export async function processSchedule(
       return { id: schedule.id, outcome: "blocked", detail: reason };
     }
 
-    // billing: charge the daily scan quota, exactly as every manual path
+    // billing: check the daily scan quota, exactly as every manual path
     // does. Scheduled runs used to be entirely unmetered: they neither
     // checked nor consumed dailyScans, so an Elite account (unlimited
     // schedules, hourly cadence) could run an unbounded number of full scans
@@ -297,12 +304,13 @@ export async function processSchedule(
     // GET /api/v3/billing read zero the whole time. Over quota reschedules at
     // the normal cadence rather than deactivating, matching how the plan gate
     // above treats a temporary condition.
-    const dailyLimit = await getDailyLimit(schedule.user_id);
-    const charge = await incrementDailyCountCapped(
-      schedule.user_id,
-      dailyLimit,
-    );
-    if (!charge.recorded) {
+    //
+    // Read-only here; the counter is CHARGED below, once the concurrency slot
+    // is actually reserved. This is the ordering POST /api/v3/scan uses, and
+    // for the same reason: charging first burned a scan from the day's
+    // allowance for a run that then got refused, with no refund path.
+    const dailyQuota = await canMakeRequest(schedule.user_id);
+    if (!dailyQuota.allowed) {
       await rescheduleNext(schedule, now);
       return { id: schedule.id, outcome: "quota_gated" };
     }
@@ -324,22 +332,57 @@ export async function processSchedule(
     // scheduled run of a TEAM schedule that omitted the column produced a row
     // only the schedule's owner could see -- the team never saw the result of
     // the schedule it owns. ref: AUDIT-011#drift-01
-    const insertRes = await pool.query<{ id: number }>(
-      `INSERT INTO scan_history
-         (user_id, url, source, notes, status, started_at, categories_total, is_public, team_id)
-       VALUES ($1, $2, 'scheduled', $3, 'pending', NOW(), $4, $5, $6)
-       RETURNING id`,
-      [
-        schedule.user_id,
-        normalizedUrl,
-        DEFAULT_SCAN_NOTE,
-        categoriesTotal,
-        isPublic,
-        schedule.team_id ?? null,
-      ],
+    // capacity: reserve a concurrent-scan slot and insert the 'pending' row in
+    // one locked transaction, exactly as the five manual entry points do
+    // (scan, crawl x2, bulk, authenticated). This worker used to insert the
+    // row with a plain pool.query and never mention concurrent-scans.ts at
+    // all, so scheduled runs were the one path that could exceed the cap.
+    // They still COUNT toward it (the reservation query counts every
+    // 'pending'/'running' row regardless of source), which is what made the
+    // gap bite from both directions: a batch of due schedules could occupy
+    // every slot the account has and starve the owner's own manual scan,
+    // while nothing stopped the batch itself from overshooting.
+    //
+    // Over capacity reschedules at the normal cadence rather than
+    // deactivating: it is a transient condition, the same class as the plan
+    // and quota gates above.
+    const reservation = await reserveConcurrentScanSlot(
+      schedule.user_id,
+      async (client) => {
+        const insertRes = await client.query<{ id: number }>(
+          `INSERT INTO scan_history
+             (user_id, url, source, notes, status, started_at, categories_total, is_public, team_id)
+           VALUES ($1, $2, 'scheduled', $3, 'pending', NOW(), $4, $5, $6)
+           RETURNING id`,
+          [
+            schedule.user_id,
+            normalizedUrl,
+            DEFAULT_SCAN_NOTE,
+            categoriesTotal,
+            isPublic,
+            schedule.team_id ?? null,
+          ],
+        );
+        const insertedId = insertRes.rows[0]?.id;
+        if (!insertedId) throw new Error("scan_history insert returned no id");
+        return insertedId;
+      },
     );
-    const scanHistoryId = insertRes.rows[0]?.id;
-    if (!scanHistoryId) throw new Error("scan_history insert returned no id");
+    if (!reservation.ok) {
+      await rescheduleNext(schedule, now);
+      return {
+        id: schedule.id,
+        outcome: "concurrency_gated",
+        detail: reservation.check.message,
+      };
+    }
+    const scanHistoryId = reservation.scanId;
+
+    // Charge the quota now that the run is definitely going ahead. Capped and
+    // atomic, so a manual scan racing this one cannot push the counter past
+    // the cap; if the cap was reached in the meantime this run still proceeds
+    // (rare) rather than being killed after its row exists.
+    await incrementDailyCountCapped(schedule.user_id, dailyQuota.limit);
 
     await executeScan({
       scanId: scanHistoryId,
@@ -448,13 +491,32 @@ export async function runInBatches<T, R>(
   return results;
 }
 
+/**
+ * Every ProcessOutcome has a counter here, and formatStats prints every
+ * counter. The two gates that were missing (quota, and now capacity) were
+ * invisible: a pass in which every due schedule was over quota logged
+ * "0 scanned, 0 disabled, 0 deferred, 0 errored (of 12 due)", which reads as
+ * a worker bug rather than as twelve accounts at their daily cap.
+ */
 export interface RunDueSchedulesStats {
   processed: number;
   scanned: number;
   blocked: number;
   planGated: number;
+  quotaGated: number;
+  concurrencyGated: number;
   errors: number;
 }
+
+const EMPTY_STATS: RunDueSchedulesStats = {
+  processed: 0,
+  scanned: 0,
+  blocked: 0,
+  planGated: 0,
+  quotaGated: 0,
+  concurrencyGated: 0,
+  errors: 0,
+};
 
 /** One full pass: claim whatever is due, process it with bounded
  *  concurrency, and summarize the outcome. Exported directly (not just via
@@ -471,7 +533,7 @@ export async function runDueSchedules(): Promise<RunDueSchedulesStats> {
   // not a failing worker. The resolver caches settings for 30s, so this read
   // costs nothing per tick. ref: AUDIT-012#logic-07
   if (!(await getSetting("FEATURE_SCHEDULED_SCANS"))) {
-    return { processed: 0, scanned: 0, blocked: 0, planGated: 0, errors: 0 };
+    return { ...EMPTY_STATS };
   }
 
   // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). Same shape and
@@ -483,13 +545,13 @@ export async function runDueSchedules(): Promise<RunDueSchedulesStats> {
   // next tick after the pause is lifted.
   const pausedReason = await scanningPausedReason();
   if (pausedReason) {
-    return { processed: 0, scanned: 0, blocked: 0, planGated: 0, errors: 0 };
+    return { ...EMPTY_STATS };
   }
 
   const claimLimit = await getSetting("SCHEDULE_WORKER_CLAIM_LIMIT");
   const due = await claimDueSchedules(claimLimit);
   if (due.length === 0) {
-    return { processed: 0, scanned: 0, blocked: 0, planGated: 0, errors: 0 };
+    return { ...EMPTY_STATS };
   }
 
   const concurrency = await getSetting("SCHEDULE_WORKER_BATCH_CONCURRENCY");
@@ -498,19 +560,25 @@ export async function runDueSchedules(): Promise<RunDueSchedulesStats> {
     processSchedule(schedule, now),
   );
 
+  const count = (outcome: ProcessOutcome["outcome"]) =>
+    results.filter((r) => r.outcome === outcome).length;
+
   return {
     processed: results.length,
-    scanned: results.filter((r) => r.outcome === "scanned").length,
-    blocked: results.filter((r) => r.outcome === "blocked").length,
-    planGated: results.filter((r) => r.outcome === "plan_gated").length,
-    errors: results.filter((r) => r.outcome === "error").length,
+    scanned: count("scanned"),
+    blocked: count("blocked"),
+    planGated: count("plan_gated"),
+    quotaGated: count("quota_gated"),
+    concurrencyGated: count("concurrency_gated"),
+    errors: count("error"),
   };
 }
 
 function formatStats(stats: RunDueSchedulesStats): string {
   return (
     `${stats.scanned} scanned, ${stats.blocked} disabled (unsafe target), ` +
-    `${stats.planGated} deferred (plan), ${stats.errors} errored ` +
+    `${stats.planGated} deferred (plan), ${stats.quotaGated} deferred (daily quota), ` +
+    `${stats.concurrencyGated} deferred (at capacity), ${stats.errors} errored ` +
     `(of ${stats.processed} due)`
   );
 }

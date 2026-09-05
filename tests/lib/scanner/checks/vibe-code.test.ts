@@ -99,6 +99,28 @@ const fixtures: DetectorFixtures = {
       body: "<script>var x=1;</script><code>const query = `SELECT * FROM users WHERE id = ${req.params.id}`;</code>",
       expect: "skip",
     },
+    // The first pattern's `\s+.*` pair was the quadratic one (19.5 seconds on
+    // a 128 KB body of `'SELECT` followed by whitespace), so the shipped
+    // concatenation it exists to catch needs its own case.
+    {
+      description:
+        "a quoted SELECT concatenated with a variable at the WHERE clause fires",
+      body: "<script>const q = 'SELECT * FROM users WHERE id = ' + userId;</script>",
+      expect: "fire",
+      evidenceIncludes: "SQL string concatenation",
+    },
+    {
+      description:
+        "a parameterised query with the same shape of literal does not fire",
+      body: "<script>const q = db.query('SELECT * FROM users WHERE id = $1', [userId]);</script>",
+      expect: "skip",
+    },
+    {
+      description:
+        "a quoted SELECT followed by a long whitespace run does not fire",
+      body: `<script>const q = 'SELECT${" ".repeat(4000)}</script>`,
+      expect: "skip",
+    },
   ],
   "vibe-http-not-https": [
     {

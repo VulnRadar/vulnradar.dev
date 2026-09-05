@@ -104,6 +104,134 @@ export async function getDiscordTokens(userId: number): Promise<{
 }
 
 /**
+ * The stored authorization is gone for good: the user revoked the app in
+ * their Discord settings, or the refresh token itself expired. This is a
+ * terminal state, not a retryable failure, and the only fix is the user
+ * reconnecting. Surfaced to the profile page rather than swallowed, because
+ * the alternative is showing "not in server" forever with no explanation.
+ */
+export class DiscordReauthRequiredError extends Error {
+  constructor(message = "Discord authorization is no longer valid.") {
+    super(message);
+    this.name = "DiscordReauthRequiredError";
+  }
+}
+
+/** Persist a refreshed token pair. Deliberately leaves guild_joined alone:
+ *  refreshing a token says nothing about server membership. */
+export async function updateDiscordTokensForUser(
+  userId: number,
+  accessToken: string,
+  refreshToken: string,
+  tokenExpiresAt: Date,
+): Promise<void> {
+  await pool.query(
+    `UPDATE discord_connections SET
+     access_token = $1, refresh_token = $2, token_expires_at = $3, updated_at = NOW()
+     WHERE user_id = $4`,
+    [
+      encryptApiKey(accessToken),
+      encryptApiKey(refreshToken),
+      tokenExpiresAt,
+      userId,
+    ],
+  );
+}
+
+/**
+ * Exchange the stored refresh token for a fresh access token, persist the
+ * new pair, and hand the access token back.
+ *
+ * Discord access tokens expire after 7 days. The refresh token that arrives
+ * beside them has been written, encrypted and re-encrypted on key rotation
+ * since Discord sign-in shipped, and nothing ever spent it: `getDiscordTokens`
+ * had no callers outside its own module and no refresh existed at all. The
+ * visible symptom was that "auto-join our Discord" worked for a week after
+ * connecting and then failed silently forever, leaving the account shown as
+ * "not in server".
+ *
+ * Throws DiscordReauthRequiredError when Discord rejects the refresh token
+ * itself (a revoked authorization), and a plain Error for anything
+ * transient. Never retries: a caller that wants a retry does one attempt,
+ * refreshes, and tries once more.
+ */
+export async function refreshDiscordAccessToken(
+  userId: number,
+): Promise<string> {
+  const clientId = process.env.DISCORD_CLIENT_ID;
+  const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "Discord OAuth is not configured on this server (DISCORD_CLIENT_ID/DISCORD_CLIENT_SECRET).",
+    );
+  }
+
+  const stored = await getDiscordTokens(userId);
+  if (!stored?.refreshToken) {
+    throw new DiscordReauthRequiredError(
+      "No stored Discord refresh token to exchange.",
+    );
+  }
+
+  const response = await fetch("https://discord.com/api/oauth2/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: stored.refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    let code = "";
+    try {
+      code = JSON.parse(body).error ?? "";
+    } catch {
+      /* not JSON */
+    }
+    // invalid_grant is Discord saying the refresh token is dead. A 5xx or a
+    // rate limit is not, and must not push the user into reconnecting.
+    if (code === "invalid_grant" || response.status === 401) {
+      console.error(
+        `[Discord] Refresh token rejected for user ${userId} (${code || response.status}).`,
+      );
+      throw new DiscordReauthRequiredError();
+    }
+    console.error(
+      `[Discord] Token refresh failed with HTTP ${response.status} (${code || "no error code"}).`,
+    );
+    throw new Error(`Discord token refresh failed (HTTP ${response.status}).`);
+  }
+
+  const tokens = (await response.json()) as {
+    access_token?: unknown;
+    refresh_token?: unknown;
+    expires_in?: unknown;
+  };
+  if (
+    typeof tokens.access_token !== "string" ||
+    typeof tokens.refresh_token !== "string"
+  ) {
+    throw new Error("Discord token refresh returned no usable token pair.");
+  }
+
+  const expiresInSeconds =
+    typeof tokens.expires_in === "number" && tokens.expires_in > 0
+      ? tokens.expires_in
+      : 0;
+  await updateDiscordTokensForUser(
+    userId,
+    tokens.access_token,
+    tokens.refresh_token,
+    new Date(Date.now() + expiresInSeconds * 1000),
+  );
+  return tokens.access_token;
+}
+
+/**
  * Check if Discord account is linked to a user
  */
 export async function getDiscordUserConnection(

@@ -44,9 +44,30 @@ const DiscordIcon = () => (
   </svg>
 );
 
+/**
+ * A stored avatar URL, but only if it really is one of Discord's CDN hosts.
+ * The value is written by our own OAuth callback, so this is a guard against
+ * a future writer rather than a live threat, and it costs one URL parse.
+ */
+function discordCdnUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return null;
+    if (url.hostname !== "cdn.discordapp.com") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 type DiscordConnection = {
   guildJoined: boolean;
   connectedAt: string | null;
+  /** Discord refused the stored refresh token, so the link is dead until the
+   *  user reconnects. Distinct from "not in server", which is a state that
+   *  can still fix itself on the next check. */
+  reauthRequired: boolean;
 };
 
 /** Shared identity for the Connections list's account-linking rows below --
@@ -562,6 +583,7 @@ export function ProfileSocialTab({
           setDiscordData({
             guildJoined: !!d.guildJoined,
             connectedAt: d.updatedAt ?? null,
+            reauthRequired: !!d.reauthRequired,
           });
         }
       })
@@ -654,6 +676,14 @@ export function ProfileSocialTab({
       })
     : null;
 
+  // Two Discord flows, two places the avatar can live: the connection row
+  // stores a CDN hash, the users row (Discord sign-in) stores a whole URL.
+  // The hash wins because it is the fresher of the two, and the stored URL
+  // is checked to be a Discord CDN URL before it is used as an image src.
+  const discordAvatarSrc = user?.discordAvatar
+    ? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.discordAvatar}.png?size=128`
+    : discordCdnUrl(user?.discordAvatarUrl);
+
   const googleIdentity: OAuthIdentity | null = user?.googleId
     ? {
         name: user.googleName ?? null,
@@ -718,9 +748,9 @@ export function ProfileSocialTab({
               <>
                 {/* Connected account card */}
                 <div className="rounded-lg border border-border/60 bg-muted/30 p-4 flex items-center gap-4">
-                  {user.discordAvatar ? (
+                  {discordAvatarSrc ? (
                     <Image
-                      src={`https://cdn.discordapp.com/avatars/${user.discordId}/${user.discordAvatar}.png?size=128`}
+                      src={discordAvatarSrc}
                       alt="Discord avatar"
                       width={52}
                       height={52}
@@ -756,6 +786,15 @@ export function ProfileSocialTab({
                         </>
                       )}
                     </div>
+                    {/* A revoked or expired Discord authorization used to show
+                        up as a permanent, unexplained "Not in server". It is a
+                        terminal state with exactly one fix, so it says so. */}
+                    {discordData?.reauthRequired && (
+                      <p className="text-xs text-[hsl(var(--severity-medium))] mt-1">
+                        Discord no longer accepts this link. Reconnect below to
+                        restore server access.
+                      </p>
+                    )}
                     {connectedAt && (
                       <p className="text-xs text-muted-foreground/60 mt-0.5">
                         Connected {connectedAt}

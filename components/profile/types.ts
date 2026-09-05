@@ -23,7 +23,10 @@ export interface ProfileUser {
   badges?: UserBadge[];
   discordId?: string | null;
   discordUsername?: string | null;
+  /** CDN avatar hash (discord_connections). */
   discordAvatar?: string | null;
+  /** Whole avatar URL (users row, written by the Discord sign-in flow). */
+  discordAvatarUrl?: string | null;
   /** False only for an OAuth-only account that never set a password. */
   hasPassword?: boolean;
   googleId?: string | null;
@@ -60,8 +63,17 @@ export interface DataRequestInfo {
 
 export interface BillingInfo {
   billingEnabled: boolean;
+  /**
+   * The plan id (`free`, `core_supporter`, ...). Deliberately the only plan
+   * field here: this type describes GET /api/v3/billing, which returns an id
+   * and no display name. A `planName` used to sit beside it, and the Billing
+   * tab rendered it as its headline, so the top line of the paid-account
+   * screen was an empty paragraph for every user. The display name is derived
+   * from this id through lib/billing/catalog.ts's getPlanById, which is the
+   * same catalog the pricing page, the Stripe webhook emails and the admin
+   * billing overview all name plans from.
+   */
   plan: string;
-  planName: string | null;
   subscriptionStatus: string | null;
   stripeCustomerId: string | null;
   subscription: {

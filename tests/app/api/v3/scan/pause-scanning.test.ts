@@ -217,6 +217,8 @@ describe("PAUSE_SCANNING refuses every scan entry point", () => {
       scanned: 0,
       blocked: 0,
       planGated: 0,
+      quotaGated: 0,
+      concurrencyGated: 0,
       errors: 0,
     });
     expect(mockConnect).not.toHaveBeenCalled();

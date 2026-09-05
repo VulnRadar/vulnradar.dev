@@ -334,6 +334,9 @@ describe("GET /api/v3/auth/me", () => {
         plan: "free",
         subscription_status: null,
         discord_id: "fallback-discord-id",
+        discord_username: "signed-up-with-discord",
+        discord_avatar_url:
+          "https://cdn.discordapp.com/avatars/fallback-discord-id/hash.png",
       };
       discordRow = {
         discord_id: "connected-discord-id",
@@ -346,12 +349,50 @@ describe("GET /api/v3/auth/me", () => {
 
       expect(json.discordId).toBe("connected-discord-id");
       expect(json.discordUsername).toBe("someone");
+      expect(json.discordAvatar).toBe("avatarhash");
 
+      // Signing up with Discord writes the name and avatar onto the users
+      // row and never touches discord_connections. discordId already fell
+      // back there; the name and avatar did not, so such an account showed
+      // in the profile as a nameless, faceless "Connected".
       discordRow = null;
       const res2 = await GET(meRequest());
       const json2 = await res2.json();
       expect(json2.discordId).toBe("fallback-discord-id");
-      expect(json2.discordUsername).toBeNull();
+      expect(json2.discordUsername).toBe("signed-up-with-discord");
+      expect(json2.discordAvatarUrl).toBe(
+        "https://cdn.discordapp.com/avatars/fallback-discord-id/hash.png",
+      );
+      // The hash column only ever exists on the connection row, so it stays
+      // null here rather than being conflated with the whole URL above.
+      expect(json2.discordAvatar).toBeNull();
+    });
+
+    it("selects the Discord identity columns it reads from the users row", async () => {
+      // The columns were written by lib/auth/auth.ts on every Discord
+      // sign-up and simply never selected here, which is why the fallback
+      // above could not have worked before.
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      sessionRow = defaultSessionRow({ user_id: 7 });
+      userInfoRow = {
+        totp_enabled: false,
+        two_factor_method: null,
+        onboarding_completed: true,
+        role: "user",
+        avatar_url: null,
+        backup_codes: null,
+        plan: "free",
+        subscription_status: null,
+        discord_id: null,
+      };
+
+      await GET(meRequest());
+
+      const userQuery = queries.find((q) =>
+        q.sql.includes("onboarding_completed"),
+      );
+      expect(userQuery?.sql).toContain("discord_username");
+      expect(userQuery?.sql).toContain("discord_avatar_url");
     });
 
     it("returns the user's badges", async () => {

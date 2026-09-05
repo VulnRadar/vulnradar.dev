@@ -61,9 +61,18 @@ vi.mock("@/lib/config/runtime-config", () => ({
 }));
 
 const mockGetUserPlan = vi.fn();
-vi.mock("@/lib/rate-limiting/daily-limits", () => ({
-  getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
-}));
+vi.mock("@/lib/rate-limiting/daily-limits", async (importOriginal) => {
+  // Only getUserPlan is replaced. lib/api/api-keys.ts also imports
+  // resolveEffectivePlan from here to derive a key's live daily limit, and
+  // that is pure policy over a row -- re-implementing it in a mock would be
+  // testing a copy of it.
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/daily-limits")>();
+  return {
+    ...actual,
+    getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
+  };
+});
 
 const { POST } = await import("@/app/api/v3/keys/[id]/rotate/route");
 

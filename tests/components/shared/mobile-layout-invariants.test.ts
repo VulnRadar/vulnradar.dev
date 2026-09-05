@@ -209,7 +209,10 @@ const FIXED_LABELS: [rel: string, label: string][] = [
   ["components/scanner/scanning-indicator.tsx", "{step}"],
   // One of our own plan names, beside a limits line already commented as
   // "should wrap, never clip".
-  ["components/profile/tabs/profile-billing-tab.tsx", "{billingInfo.planName}"],
+  // Was "{billingInfo.planName}", a field GET /api/v3/billing has never
+  // returned, so this headline rendered empty for every account. It is now
+  // derived from the plan id through the catalog and held in planLabel.
+  ["components/profile/tabs/profile-billing-tab.tsx", "{planLabel}"],
   // Our own sentence describing a slash command, next to a shrink-0 command.
   ["components/ai-chat/chat-widget.tsx", "{c.description}"],
   // An OpenAPI route, the only thing telling two endpoint rows apart.

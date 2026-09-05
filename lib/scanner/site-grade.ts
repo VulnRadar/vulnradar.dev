@@ -76,3 +76,19 @@ export const SITE_GRADE_SUMMARY: Record<SiteGrade, string> = {
   D: "Exploitable high-severity issues found.",
   F: "Critical exploitable vulnerabilities found.",
 };
+
+/**
+ * Whether an unknown value (a `result_meta.siteGrade` read back out of the
+ * database, in practice) is one of the six letters. Callers that read the
+ * stored grade use this to decide between it and recomputing from findings,
+ * so a hand-edited or corrupt row can never put an arbitrary string on a
+ * public badge.
+ */
+export function isSiteGrade(value: unknown): value is SiteGrade {
+  // hasOwnProperty, not `in`: `"toString" in SITE_GRADE_SUMMARY` is true
+  // through the prototype chain, and this value comes from the database.
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(SITE_GRADE_SUMMARY, value)
+  );
+}

@@ -517,69 +517,50 @@ export async function GET(request: NextRequest) {
   });
 }
 
-// Permission helpers per role
-// Admin: all actions
-// Moderator: the actions listed in modActions below -- MUST stay a superset
-// of every action whose permission ROLE_PERMISSION_MAP[STAFF_ROLES.MODERATOR]
-// grants in lib/auth/permissions-client.ts, or the admin panel UI shows a
-// moderator a button (gated client-side by hasStaffPermission) that this
-// route then 403s (see the false-success dialog + permission-drift fixes,
-// AUDIT-010: "disable"/"enable"/"toggle_ai_ban" were missing here even
-// though DISABLE_USER/ENABLE_USER/MODERATE_CONTENT are granted to
-// moderators client-side).
-// Support: GET/view only, no PATCH mutations
+// Permission helpers per role.
+//
+// Admin (and super_admin, which passes every check admin passes): all actions.
+// Everyone else, moderator included: ROLE_PERMISSION_MAP in
+// lib/auth/permissions-client.ts decides, which is the same source
+// getAvailableActions() uses client-side to pick which buttons to render. One
+// source of truth for both halves is the only arrangement in which the panel
+// and this route cannot disagree.
+//
+// Moderator used to be the exception: a hand-maintained `modActions` array
+// here, consulted INSTEAD of the map. It had drifted into a superset, and 14
+// of its entries named actions the map denies a moderator outright
+// (create_badge, delete_badge, revoke_api_keys, delete_webhooks,
+// delete_schedules, clear_rate_limits, add_note, clear_avatar,
+// send_notification, notify_account_changes, gift_subscription, revoke_gift,
+// verify_email, unverify_email). The UI hid every one of those buttons, so
+// they were unreachable through the panel -- and reachable in full by a direct
+// PATCH, with no second gate in any of the case bodies. Two were genuinely
+// part of the job and are now GRANTED IN THE MAP instead: CLEAR_USER_AVATAR
+// (removing an offensive profile picture is exactly what this role is for)
+// and ADD_USER_NOTE, split out of MANAGE_USER_NOTES so a moderator can record
+// why it actioned an account without also gaining the power to rewrite or
+// delete an admin's note. The other twelve are refused, which is what the map
+// has always said:
+//   - EDIT_USER_EMAIL (verify_email / unverify_email) is the same permission
+//     as update_email, removed from this list earlier as the moderator tier's
+//     account-takeover primitive. Granting it back to reach "verify" would
+//     hand that primitive straight back.
+//   - GRANT_PREMIUM / REVOKE_PREMIUM belong to the billing role.
+//   - CREATE_BADGE / DELETE_BADGE edit the global badge catalogue, not a
+//     user's awards; a moderator keeps AWARD_BADGE / REVOKE_BADGE.
+//   - REVOKE_USER_API_KEYS, DELETE_USER_WEBHOOKS, DELETE_USER_SCHEDULES
+//     destroy a user's integrations rather than moderating content.
+//   - MANAGE_RATE_LIMITS is the broad version of RESET_USER_DAILY_LIMIT,
+//     which a moderator already has.
+//   - MANAGE_NOTIFICATIONS (send_notification / notify_account_changes) is
+//     the content_manager role's grant.
+//   - MANAGE_USER_NOTES now means edit_note/delete_note only, and a moderator
+//     must not be able to rewrite or delete an admin's note about a user.
+// Support: GET/view only, no PATCH mutations (no ADMIN_ACTIONS permission).
 function canPerformAction(role: string, action: string): boolean {
-  const modActions = [
-    "award_badge",
-    "revoke_badge",
-    "create_badge",
-    "delete_badge",
-    "update_name",
-    // auth (AUDIT-002#auth-01): "update_email" used to be here, and it was
-    // the moderator tier's account-takeover primitive. A moderator cannot
-    // reset a password, set a password, or impersonate -- but they could
-    // point any regular user's address at one they control, then run
-    // forgot-password and collect the reset link. ROLE_PERMISSION_MAP never
-    // granted a moderator EDIT_USER_EMAIL, so the admin UI already hid the
-    // control; only this hand-maintained list disagreed, and a direct PATCH
-    // reached it anyway. Changing a user's address is now admin-only, which
-    // is what the permission map has always said.
-    "notify_account_changes",
-    "verify_email",
-    "unverify_email",
-    "revoke_sessions",
-    "revoke_api_keys",
-    "disable",
-    "enable",
-    "delete_scans",
-    "delete_webhooks",
-    "delete_schedules",
-    "clear_rate_limits",
-    "force_logout_all",
-    "add_note",
-    "clear_avatar",
-    "reset_2fa",
-    "send_notification",
-    "toggle_ai_ban",
-    "gift_subscription",
-    "revoke_gift",
-    "reset_daily_limit",
-    "reset_ai_usage",
-    "reset_github_review_usage",
-    "reset_free_github_trial",
-  ];
   // super_admin passes every check admin passes.
   if (role === STAFF_ROLES.ADMIN || role === STAFF_ROLES.SUPER_ADMIN)
     return true;
-  if (role === STAFF_ROLES.MODERATOR) return modActions.includes(action);
-  // Every other role (support, and the specialist roles added after this
-  // modActions list was last hand-maintained -- billing/security_analyst/
-  // content_manager/ops) is governed purely by its ROLE_PERMISSION_MAP
-  // grant in permissions-client.ts, the same source getAvailableActions()
-  // already uses client-side to decide which buttons to show. Falling
-  // through here instead of hardcoding another role list keeps the two in
-  // sync automatically -- support and "user" both have no ADMIN_ACTIONS
-  // permission, so this is a no-op for them (still view-only).
   return hasActionPermission(role, action);
 }
 

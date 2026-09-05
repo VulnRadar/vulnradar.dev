@@ -36,6 +36,7 @@ vi.mock("@/lib/billing/github-review-usage", () => ({
 
 const { GET, POST } = await import("@/app/api/v3/billing/route");
 const { PLAN_LIMITS } = await import("@/lib/rate-limiting/daily-limits");
+const { getPlanById } = await import("@/lib/billing/catalog");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 
 beforeEach(() => {
@@ -178,6 +179,44 @@ describe("GET /api/v3/billing", () => {
     expect(json.usage.remaining).toBe(PLAN_LIMITS.free - 5);
     expect(json.usage.unlimited).toBe(false);
   });
+
+  /**
+   * The Billing tab's headline is the plan's display name, and it used to
+   * render `billingInfo.planName` -- a field this endpoint has never returned
+   * (only the email-code-gated /billing/verify does). The top line of the
+   * screen that charges people money was therefore an empty paragraph for
+   * every account, paid or not.
+   *
+   * The component now derives the name from `plan` through the catalog. These
+   * two assertions are the contract that makes that work: the endpoint returns
+   * a plan id, and the id is one the catalog can name.
+   */
+  it.each(["free", "core_supporter", "pro_supporter", "elite_supporter"])(
+    "returns a catalog-nameable plan id and no planName field (%s)",
+    async (plan) => {
+      mockGetStripe.mockReturnValue({ subscriptions: { retrieve: vi.fn() } });
+      setupPoolForGet({
+        user: {
+          plan,
+          subscription_status: null,
+          stripe_customer_id: null,
+          stripe_subscription_id: null,
+          role: "user",
+        },
+        gift: null,
+        dailyPlanRow: { plan, role: "user", gifted_plan: null },
+        dailyCount: "0",
+      });
+
+      const json = await (await GET()).json();
+
+      expect(json.plan).toBe(plan);
+      expect(json).not.toHaveProperty("planName");
+      const name = getPlanById(json.plan)?.name;
+      expect(name).toBeTruthy();
+      expect(name).not.toBe(json.plan);
+    },
+  );
 
   it("includes AI verification usage from checkAiUsageQuota, with resetsAt computed from windowStart + windowHours", async () => {
     mockGetStripe.mockReturnValue({ subscriptions: { retrieve: vi.fn() } });

@@ -274,6 +274,23 @@ export default defineConfig({
           functions: 100,
           branches: 95,
         },
+        "lib/scanner/finding-display.ts": {
+          // 100 / 97.43 / 100 / 100 actual. The one uncovered branch is the
+          // `?? 0` on a code point, which String.prototype[@@iterator] can
+          // never actually hand back as undefined.
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 95,
+        },
+        "lib/scanner/partial-findings.ts": {
+          // 100 across the board. One pure validator whose every branch is a
+          // rejection path a malformed stored payload can really reach.
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 95,
+        },
         "lib/reports/csv-report.ts": {
           // 100% / 100% / 100% / 88.63% actual. The uncovered branches are
           // the per-field `?? ""` fallbacks for fields absent from a finding
@@ -318,7 +335,7 @@ export default defineConfig({
           branches: 80,
         },
         "lib/scanner/scheduled-scans-worker.ts": {
-          // 81.31% / 81.25% / 68.42% / 55.31% actual. The uncovered lines
+          // 83.2% / 83.2% / 70.58% / 58.33% actual. The uncovered lines
           // are schedulePeriodicScheduledScans --
           // the setInterval registration wrapper, exercised at real startup
           // via instrumentation.ts rather than under a fake timer here, same

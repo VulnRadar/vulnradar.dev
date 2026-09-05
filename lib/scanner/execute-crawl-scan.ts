@@ -52,6 +52,7 @@ import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 import { applyAdaptiveConfidence } from "./adaptive-confidence";
 import { attachCvssScores } from "./cvss";
 import { getDangerScore, getEngineConfidence } from "./safety-rating";
+import { getSiteGrade } from "./site-grade";
 import {
   captureAndStoreScreenshot,
   shouldCaptureScreenshot,
@@ -904,6 +905,13 @@ export async function executeCrawlScan(
         // instead of leaving those stats silently blank. Computed from the
         // merged, deduped findings across every crawled page.
         dangerScore: getDangerScore(allFindings),
+        // The same whole-site A+ to F letter the single-URL path stores
+        // (execute-scan.ts). A crawl was the odd one out: it produced no
+        // siteGrade at all, so a crawl result showed no site grade and a
+        // badge pointed at one had to recompute what every other scan had
+        // already written down. Computed over the merged, deduped findings
+        // for the same reason dangerScore above is.
+        siteGrade: getSiteGrade(allFindings),
         engineConfidence: getEngineConfidence(
           allFindings,
           incomplete.length > 0,

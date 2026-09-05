@@ -119,6 +119,17 @@ export const STAFF_PERMISSIONS = {
   // panel could not perform.
   DELETE_USER_WEBHOOKS: "delete_user_webhooks",
   DELETE_USER_SCHEDULES: "delete_user_schedules",
+  /**
+   * Write a NEW staff note on a user. Split out of MANAGE_USER_NOTES so the
+   * moderator tier can be granted it without also being granted the power to
+   * rewrite or delete an admin's note -- a distinction the codebase already
+   * enforced (see the "moderator cannot edit or delete an admin note" case in
+   * tests/app/api/v3/admin/route.test.ts) but could only express through the
+   * hand-maintained action list that app/api/v3/admin/route.ts used to keep
+   * beside this map. With that list gone, the map has to be able to say it.
+   */
+  ADD_USER_NOTE: "add_user_note",
+  /** Edit or delete an existing staff note, including someone else's. */
   MANAGE_USER_NOTES: "manage_user_notes",
   CLEAR_USER_AVATAR: "clear_user_avatar",
 
@@ -204,8 +215,18 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.DELETE_ANY_SCAN,
     STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
     STAFF_PERMISSIONS.MODERATE_CONTENT,
-    // Matches app/api/v3/admin/route.ts's canPerformAction modActions,
-    // which already allows a moderator to call these 4 reset actions.
+    // Content moderation in the literal sense: an offensive profile picture
+    // is the thing this role exists to remove, and MODERATE_CONTENT above
+    // does not cover it.
+    STAFF_PERMISSIONS.CLEAR_USER_AVATAR,
+    // A role that can disable an account has to be able to record why. Only
+    // the ADD half: MANAGE_USER_NOTES (edit/delete, including someone else's
+    // note) stays admin-only, which is the split the route's old parallel
+    // action list encoded by listing add_note and not edit_note/delete_note.
+    STAFF_PERMISSIONS.ADD_USER_NOTE,
+    // app/api/v3/admin/route.ts's canPerformAction now consults this map for
+    // moderators too, rather than a parallel hand-maintained list; these
+    // four resets were already on both sides of that split.
     STAFF_PERMISSIONS.RESET_USER_DAILY_LIMIT,
     STAFF_PERMISSIONS.RESET_USER_AI_USAGE,
     STAFF_PERMISSIONS.RESET_USER_GITHUB_REVIEW_USAGE,
@@ -608,7 +629,7 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     id: "add_note",
     label: "Add Note",
     description: "Add an internal admin note",
-    permission: STAFF_PERMISSIONS.MANAGE_USER_NOTES,
+    permission: STAFF_PERMISSIONS.ADD_USER_NOTE,
     category: "user",
     icon: "StickyNote",
   },

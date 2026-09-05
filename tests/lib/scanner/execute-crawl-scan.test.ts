@@ -555,6 +555,46 @@ describe("executeCrawlScan (authenticated)", () => {
   // hardcoded to the complete value, so a deep scan that came back short
   // still reported "nothing exploitable found" at full confidence.
 
+  /**
+   * A crawl was the one scan path that never computed a site grade at all, so
+   * a crawl result showed no grade and a badge pointed at one had to recompute
+   * what every single-URL scan had already written down. It is stored here
+   * alongside dangerScore, over the same merged, deduped finding set.
+   */
+  it("stores the whole-site grade beside the danger score, like the single-URL path", async () => {
+    await executeCrawlScan(baseParams({ scanId: 61 }));
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 61,
+    );
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+
+    // Derived from the same danger score the row already carries, so the
+    // letter and the number can never disagree on screen. The mapping is
+    // lib/scanner/site-grade.ts's own table, restated here rather than
+    // imported so a retune of it has to be a deliberate edit in both places.
+    const scoreToGrade = [
+      "A+",
+      "A",
+      "A",
+      "B",
+      "B",
+      "C",
+      "C",
+      "D",
+      "D",
+      "F",
+      "F",
+    ];
+    expect(resultMeta.siteGrade).toBe(
+      scoreToGrade[resultMeta.dangerScore as number],
+    );
+  });
+
   it("writes no incomplete marker when every branch completed", async () => {
     await executeCrawlScan(baseParams({ scanId: 30 }));
 

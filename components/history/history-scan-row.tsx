@@ -6,6 +6,8 @@ import {
   Terminal,
   Globe,
   ShieldCheck,
+  ShieldAlert,
+  Loader2,
   MoreHorizontal,
   ChevronRight,
   AlertTriangle,
@@ -30,6 +32,7 @@ import {
   getDomain,
   displayUrl,
   isRecentScan,
+  scanRowState,
   type TagMutationResult,
 } from "./history-types";
 
@@ -56,7 +59,19 @@ export function HistoryScanRow({
     ? fullDisplay.slice(domain.length)
     : "";
 
-  const isClean = scan.findings_count === 0;
+  // A scan_history row exists as 'pending' with zero findings and zero
+  // duration before any work starts, so "findings_count === 0" answered
+  // "clean?" for a scan that had not run, had been abandoned, or had failed
+  // outright. On a security scanner those must never look the same, so the
+  // state comes from sh.status first (see scanRowState).
+  const state = scanRowState(scan);
+  const isClean = state === "clean";
+  const isRunning = state === "running";
+  const isUnfinished = state === "unfinished";
+  // Both non-result states borrow ScanSummary's partial-verdict hue rather
+  // than inventing a third palette: an incomplete scan is a warning, not a
+  // severity.
+  const inconclusive = isRunning || isUnfinished;
   const summary = scan.summary || {};
   const critical = summary.critical || 0;
   const high = summary.high || 0;
@@ -99,7 +114,7 @@ export function HistoryScanRow({
   // wash of that severity. Held at /5 for the same contrast reason as
   // SEVERITY_TONE.panel, and the hover/focus background replaces it outright
   // rather than compositing, so the pointed-at row still reads as pointed at.
-  const isLoud = !isClean && (critical > 0 || high > 0);
+  const isLoud = state === "findings" && (critical > 0 || high > 0);
 
   return (
     <div
@@ -119,9 +134,11 @@ export function HistoryScanRow({
         isLoud && tone.panel,
       )}
       style={{
-        borderLeftColor: isClean
-          ? "hsl(var(--success))"
-          : `hsl(var(--severity-${worst}))`,
+        borderLeftColor: inconclusive
+          ? "hsl(var(--warning))"
+          : isClean
+            ? "hsl(var(--success))"
+            : `hsl(var(--severity-${worst}))`,
       }}
     >
       {/* Icon chip + URL + tags. `sm:contents` unwraps this at sm+ so the
@@ -132,12 +149,18 @@ export function HistoryScanRow({
         <div
           className={cn(
             "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-            isClean
-              ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]"
-              : cn(tone.surface, tone.text),
+            inconclusive
+              ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]"
+              : isClean
+                ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]"
+                : cn(tone.surface, tone.text),
           )}
         >
-          {isClean ? (
+          {isUnfinished ? (
+            <ShieldAlert className="h-4 w-4" />
+          ) : isRunning ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : isClean ? (
             <ShieldCheck className="h-4 w-4" />
           ) : scan.source === "api" ? (
             <Terminal className="h-4 w-4" />
@@ -185,7 +208,16 @@ export function HistoryScanRow({
 
       {/* Severity pills - desktop */}
       <div className="hidden sm:flex items-center justify-center gap-1 w-40">
-        {isClean ? (
+        {inconclusive ? (
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--warning))]">
+            {isUnfinished ? (
+              <ShieldAlert className="h-3 w-3" />
+            ) : (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            )}
+            {isUnfinished ? "Did not finish" : "Running"}
+          </span>
+        ) : isClean ? (
           <span className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--success))]">
             <ShieldCheck className="h-3 w-3" />
             Clean
@@ -305,7 +337,16 @@ export function HistoryScanRow({
         >
           {formatRelativeTime(scan.scanned_at)}
         </span>
-        {isClean ? (
+        {inconclusive ? (
+          <span className="flex items-center gap-1 font-medium text-[hsl(var(--warning))]">
+            {isUnfinished ? (
+              <ShieldAlert className="h-3 w-3" />
+            ) : (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            )}
+            {isUnfinished ? "Did not finish" : "Running"}
+          </span>
+        ) : isClean ? (
           <span className="flex items-center gap-1 text-[hsl(var(--success))]">
             <ShieldCheck className="h-3 w-3" />
             Clean

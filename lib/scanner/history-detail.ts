@@ -33,6 +33,8 @@ export interface HistoryDetailResponse {
   portScan?: ScanResult["portScan"];
   /** From scan_history.result_meta: TLS grade (A+..F), when the target served HTTPS. */
   sslGrade?: ScanResult["sslGrade"];
+  /** From scan_history.result_meta: whole-site grade (A+..F), stored at scan time. */
+  siteGrade?: ScanResult["siteGrade"];
   /** From scan_history.result_meta: multi-source threat-reputation summary. */
   threatIntel?: ScanResult["threatIntel"];
   /** From scan_history.result_meta: detected software with CVE correlation. */
@@ -76,6 +78,7 @@ export function mapHistoryDetailResponse(
     subdomains: data.subdomains,
     portScan: data.portScan,
     sslGrade: data.sslGrade,
+    siteGrade: data.siteGrade,
     threatIntel: data.threatIntel,
     softwareInventory: data.softwareInventory,
   };

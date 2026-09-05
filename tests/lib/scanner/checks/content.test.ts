@@ -27,6 +27,40 @@ import {
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  // The optional wrapper call sat between two `\s*` runs and could match
+  // nothing, leaving the two runs free to split the same whitespace every
+  // way: 16.2 seconds on a 128 KB body. The paren is folded into the
+  // optional group now, so every form it has to keep matching is listed.
+  "open-redirect": [
+    {
+      description: "a redirect parameter carrying an absolute URL fires",
+      body: '<html><body><a href="/go?next=https://evil.example/pwn">continue</a></body></html>',
+      expect: "fire",
+      evidenceIncludes: "open-redirect",
+    },
+    {
+      description: "assigning location straight from the query string fires",
+      body: "<html><body><script>window.location = new URLSearchParams(location.search).get('r')</script></body></html>",
+      expect: "fire",
+    },
+    {
+      description: "the decodeURIComponent-wrapped form fires",
+      body: "<html><body><script>window.location = decodeURIComponent(location.hash)</script></body></html>",
+      expect: "fire",
+    },
+    {
+      description: "a relative in-app redirect target does not fire",
+      body: '<html><body><a href="/login?next=/dashboard">sign in</a></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a window.location assignment followed by a long whitespace run does not fire",
+      body: `<html><body><script>window.location =${" ".repeat(4000)}</script></body></html>`,
+      expect: "skip",
+    },
+  ],
+
   "server-info": [
     {
       description: "Server: nginx/1.18.0 -- real version disclosure fires",

@@ -11,6 +11,7 @@ import {
   CircleSlash,
   Copy,
   ExternalLink,
+  FileCode2,
   Flag,
   Terminal,
 } from "lucide-react";
@@ -33,6 +34,13 @@ import {
   truncateExcerpt,
   EXCERPT_PREVIEW_COUNT,
 } from "@/lib/scanner/evidence-excerpts";
+import {
+  corroborationLabel,
+  cweRef,
+  findingLocationLabel,
+  owaspRef,
+  type TaxonomyRef,
+} from "@/lib/scanner/finding-display";
 import { useTeammates } from "./use-teammates";
 import {
   getQueryParam,
@@ -840,6 +848,10 @@ export function IssueDetail({
   const tone = SEVERITY_TONE[issue.severity] ?? SEVERITY_TONE.info;
   const verdict = issue.aiVerdict ? AI_VERDICT_COPY[issue.aiVerdict] : null;
   const category = CATEGORY_LABEL[issue.category] || issue.category;
+  const cwe = cweRef(issue.cwe);
+  const owasp = owaspRef(issue.owasp);
+  const corroboration = corroborationLabel(issue.alsoReportedBy);
+  const locationLabel = findingLocationLabel(issue.location);
 
   const handleBack = useCallback(() => {
     removeQueryParam(FINDING_QUERY_PARAM);
@@ -968,6 +980,44 @@ export function IssueDetail({
                 </span>
               </>
             )}
+            {/* Corroboration. dedupe.ts folds checks that agreed on the same
+                underlying issue into one finding and records which ones in
+                alsoReportedBy, and nothing read it: three checks agreeing
+                collapsed into a finding that read weaker than one a single
+                check raised, because the merge left no trace on screen. */}
+            {corroboration && (
+              <>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <span
+                  className="text-xs text-muted-foreground"
+                  title={issue.alsoReportedBy?.join(", ")}
+                >
+                  {corroboration}
+                </span>
+              </>
+            )}
+            {/* CWE and OWASP are hand-authored on 721 of the check
+                definitions and were readable only by opening a SARIF or CSV
+                export. Linked, because a bare "CWE-79" is a lookup the
+                reader should not have to do by hand. */}
+            {cwe && (
+              <>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <TaxonomyChip
+                  taxonomy={cwe}
+                  title={`${cwe.label} on cwe.mitre.org`}
+                />
+              </>
+            )}
+            {owasp && (
+              <>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <TaxonomyChip
+                  taxonomy={owasp}
+                  title={`OWASP Top 10: ${owasp.name}`}
+                />
+              </>
+            )}
           </div>
           <h2 className="text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">
             {issue.title}
@@ -990,6 +1040,19 @@ export function IssueDetail({
                 {issue.cveIds.join(", ")}
               </p>
             )}
+          {/* Where in the source it is. Repo scans (lib/scanner/github-repo-scan.ts
+              and lib/ai/review-source.ts) have always recorded a file, and
+              sometimes a line, and only the CSV and SARIF exports read it: on
+              screen a repo finding said "Hardcoded API key" and left the reader
+              to find the file themselves. The path comes from a third party's
+              repository, so it is stripped and bounded before it is printed,
+              and it is printed as text. */}
+          {locationLabel && (
+            <p className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground/80">
+              <FileCode2 aria-hidden className="h-3 w-3 shrink-0" />
+              <span className="min-w-0 break-all">{locationLabel}</span>
+            </p>
+          )}
         </div>
       </header>
 
@@ -1181,6 +1244,43 @@ export function IssueDetail({
         </footer>
       )}
     </article>
+  );
+}
+
+/**
+ * One taxonomy id in the metadata row: CWE-79, A03:2021.
+ *
+ * A link when the id parsed into a canonical reference page and plain text
+ * when it did not, so a finding stored with a malformed tag by some older
+ * engine still prints its id rather than pointing at a made-up URL.
+ */
+function TaxonomyChip({
+  taxonomy,
+  title,
+}: {
+  taxonomy: TaxonomyRef;
+  title: string;
+}) {
+  if (!taxonomy.url) {
+    return (
+      <span className="text-xs text-muted-foreground" title={title}>
+        {taxonomy.label}
+      </span>
+    );
+  }
+  return (
+    <a
+      href={taxonomy.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={title}
+      className={cn(
+        "rounded-sm text-xs text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors hover:text-primary hover:decoration-solid",
+        FOCUS_RING,
+      )}
+    >
+      {taxonomy.label}
+    </a>
   );
 }
 

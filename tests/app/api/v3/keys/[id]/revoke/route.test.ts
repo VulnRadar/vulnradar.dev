@@ -31,6 +31,17 @@ vi.mock("@/lib/notifications/notifications", () => ({
     mockSendNotificationEmail(...args),
 }));
 
+// getUserApiKeys reports the owner's LIVE plan allowance as each key's
+// daily_limit (api_keys.daily_limit is a creation-time snapshot no billing
+// path updates, so enforcement stopped reading it). That resolution is not
+// what this suite is about, and leaving it real would put a settings read and
+// a plan read into the positional pool.query queue below. Answering
+// BILLING_ENABLED false short-circuits getUserPlanLimits before either.
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: vi.fn(async () => false),
+  getSettings: vi.fn(async () => ({})),
+}));
+
 const { POST } = await import("@/app/api/v3/keys/[id]/revoke/route");
 
 function params(id = "42") {

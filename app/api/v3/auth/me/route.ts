@@ -101,7 +101,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     await Promise.all([
       pool.query(
         `SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url,
-                backup_codes, plan, subscription_status, discord_id,
+                backup_codes, plan, subscription_status,
+                discord_id, discord_username, discord_avatar_url,
                 (password_hash IS NOT NULL) AS has_password,
                 google_id, google_email, google_name, google_avatar_url,
                 github_id, github_email, github_name, github_avatar_url, github_login,
@@ -186,10 +187,20 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     hasPassword: user?.has_password ?? true,
     onboardingCompleted: user?.onboarding_completed || false,
     backupCodesInvalid,
-    // Discord connection
+    // Discord. Two distinct flows land here and only one of them writes to
+    // discord_connections: signing in with Discord writes discord_id,
+    // discord_username and discord_avatar_url onto the users row
+    // (lib/auth/auth.ts's OAUTH_IDENTITY_COLUMNS), while the "join our
+    // server" connection writes the separate table. `discordId` already fell
+    // back to the users row; the name and avatar did not, so a
+    // Discord-created account rendered as a nameless, faceless "Connected".
     discordId: discordConnection?.discord_id || user?.discord_id || null,
-    discordUsername: discordConnection?.discord_username || null,
+    discordUsername:
+      discordConnection?.discord_username || user?.discord_username || null,
+    // A CDN avatar *hash*, only ever present on the connection row. The
+    // users row stores a whole URL instead, so the two cannot share a field.
     discordAvatar: discordConnection?.discord_avatar || null,
+    discordAvatarUrl: user?.discord_avatar_url || null,
     // Google/GitHub account links (see instrumentation.ts's users columns
     // and app/api/v3/auth/oauth/[provider]/callback/route.ts's
     // handleOAuthLink()). Unlike Discord, no separate `_connections` table

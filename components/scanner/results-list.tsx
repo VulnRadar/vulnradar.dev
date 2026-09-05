@@ -20,6 +20,7 @@ import {
   BotMessageSquare,
   Check,
   CircleHelp,
+  FileCode2,
   Loader2,
 } from "lucide-react";
 import {
@@ -34,6 +35,7 @@ import {
   type RemediationStatus,
   type FindingRemediation,
 } from "@/lib/scanner/remediation";
+import { findingLocationLabel } from "@/lib/scanner/finding-display";
 import { cn } from "@/lib/ui/utils";
 import { tourAnchor } from "@/lib/tour/anchors";
 import { plural, pluralize } from "@/lib/ui/plural";
@@ -1037,6 +1039,7 @@ function FindingRow({
     remediation?.status === "accepted_risk" ||
     remediation?.status === "wont_fix";
   const demoted = issue.aiVerdict === "possible_fp" || resolved;
+  const locationLabel = findingLocationLabel(issue.location);
 
   return (
     <button
@@ -1139,6 +1142,20 @@ function FindingRow({
             >
               <VerdictIcon aria-hidden className="h-2.5 w-2.5" />
               AI: {verdict.label}
+            </span>
+          )}
+          {/* Repo-scan findings carry the file (and often the line) they came
+              from. Only the CSV and SARIF exports ever read it, so a repo scan
+              listed "Hardcoded API key" eight times with nothing to tell the
+              eight apart. Last chip in the row, and only present on findings
+              that have a location at all, so a URL scan looks unchanged. */}
+          {locationLabel && (
+            <span
+              className="inline-flex min-w-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+              title={locationLabel}
+            >
+              <FileCode2 aria-hidden className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{locationLabel}</span>
             </span>
           )}
         </div>

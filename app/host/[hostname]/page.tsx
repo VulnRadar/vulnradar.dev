@@ -151,6 +151,7 @@ export default function HostReportPage() {
           // same detail here as on /shared instead of this surface silently
           // dropping it (how the SSL grade went missing on this page).
           sslGrade: data.sslGrade,
+          siteGrade: data.siteGrade,
           threatIntel: data.threatIntel,
           softwareInventory: data.softwareInventory,
           dnsRecords: data.dnsRecords,

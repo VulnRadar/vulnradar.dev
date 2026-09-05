@@ -10,6 +10,10 @@
 
 import { API, SCANNING } from "@/lib/config/constants";
 import type { Vulnerability } from "@/lib/scanner/types";
+import {
+  normalizePartialFindings,
+  type PartialFinding,
+} from "@/lib/scanner/partial-findings";
 import type { ScanAuthReport } from "@/lib/scanner/auth/types";
 import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 import type { ScanTag } from "@/components/history";
@@ -43,6 +47,8 @@ export interface ScanStatusResponse {
   currentCategory?: string | null;
   categoriesCompleted?: number;
   categoriesTotal?: number;
+  /** Only on a pending/running response. See PartialFinding. */
+  partialFindings?: unknown;
 }
 
 /** The real, server-measured progress of a running scan (see scan-jobs.ts). */
@@ -50,6 +56,15 @@ export interface ScanProgressState {
   currentCategory: string | null;
   categoriesCompleted: number;
   categoriesTotal: number;
+  /**
+   * What the scan has found so far. The scan engine has reported this per
+   * completed category since progress tracking landed, the status route has
+   * returned it, and the OpenAPI spec documented it -- this poll loop simply
+   * never declared the field, so through a three-minute crawl the only thing
+   * on screen was a counter. Empty array, never undefined, so a consumer can
+   * render it without a guard.
+   */
+  partialFindings: PartialFinding[];
 }
 
 /**
@@ -169,6 +184,7 @@ export async function pollScanStatus(
         currentCategory: data.currentCategory ?? null,
         categoriesCompleted: data.categoriesCompleted ?? 0,
         categoriesTotal: data.categoriesTotal ?? 0,
+        partialFindings: normalizePartialFindings(data.partialFindings),
       });
       if (data.status === "completed" || data.status === "failed") {
         return data;

@@ -6,6 +6,8 @@ import { cn } from "@/lib/ui/utils";
 import { tourAnchor } from "@/lib/tour/anchors";
 import type { Category } from "@/lib/scanner/types";
 import { ALL_CATEGORIES } from "@/lib/scanner/types";
+import type { PartialFinding } from "@/lib/scanner/partial-findings";
+import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
 import {
   ACTIVE_PROBES_CATEGORY,
@@ -70,6 +72,18 @@ const MIN_STEP_DISPLAY_MS = 120;
  */
 const SETTLE_ANIMATION_MS = 500;
 
+/**
+ * How many of the findings-so-far are printed by name.
+ *
+ * Deliberately the FIRST few in arrival order rather than the most recent or
+ * the most severe: a row that never moves, never reorders and never
+ * disappears is the only version of this that does not make the card twitch
+ * every two seconds while someone is reading it. Everything past this is a
+ * single counter line, so the card's height settles after the first poll
+ * that finds anything and then stops changing.
+ */
+const PARTIAL_FINDINGS_SHOWN = 5;
+
 const MODE_CONFIG = {
   quick: { label: "Quick scan", icon: Zap },
   deep: { label: "Deep crawl", icon: Globe2 },
@@ -100,6 +114,16 @@ interface ScanningIndicatorProps {
   currentCategory?: string | null;
   categoriesCompleted?: number;
   categoriesTotal?: number;
+  /**
+   * What the scan has turned up so far, as the server reports each family
+   * finishing. Already validated and de-duplicated by
+   * normalizePartialFindings in app/dashboard/poll-scan-status.ts.
+   *
+   * This is a live readout, not a result: dedupe runs after the last
+   * family, so the final list can be shorter than this one, and the copy
+   * below says "so far" for exactly that reason.
+   */
+  partialFindings?: PartialFinding[];
 }
 
 export function ScanningIndicator({
@@ -110,6 +134,7 @@ export function ScanningIndicator({
   currentCategory = null,
   categoriesCompleted = 0,
   categoriesTotal = 0,
+  partialFindings,
 }: ScanningIndicatorProps) {
   const [startedAt] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState(0);
@@ -280,6 +305,9 @@ export function ScanningIndicator({
       : displayBarPercent;
 
   const ModeIcon = MODE_CONFIG[mode].icon;
+  const foundSoFar = partialFindings ?? [];
+  const namedFindings = foundSoFar.slice(0, PARTIAL_FINDINGS_SHOWN);
+  const unnamedCount = foundSoFar.length - namedFindings.length;
 
   return (
     <div className="w-full max-w-3xl" aria-busy="true">
@@ -301,6 +329,11 @@ export function ScanningIndicator({
         {hasRealProgress
           ? `${Math.min(categoriesCompleted, categoriesTotal)} of ${categoriesTotal} check families complete.`
           : "Scan starting."}
+        {/* Same region, not a second live one: the findings list below is not
+            announced on its own, so a reader hears one sentence per poll
+            instead of one per finding. */}
+        {foundSoFar.length > 0 &&
+          ` ${foundSoFar.length} ${foundSoFar.length === 1 ? "finding" : "findings"} so far.`}
       </p>
       <div
         {...tourAnchor("scanProgress")}
@@ -416,6 +449,54 @@ export function ScanningIndicator({
             );
           })}
         </ul>
+
+        {/* Findings so far. The engine has reported these per finished family
+            all along and nothing read them, so a three-minute crawl showed a
+            counter and nothing else while the server already knew what it had
+            found. "So far" is literal: dedupe runs after the last family, so
+            this list can be longer than the final result, and the completed
+            result replaces it wholesale rather than adding to it.
+
+            aria-hidden because the card's one status region above already
+            says how many there are; announcing each title as it lands would
+            interrupt a screen reader every couple of seconds. */}
+        {foundSoFar.length > 0 && (
+          <div
+            aria-hidden="true"
+            className="border-t border-border/60 px-4 py-3 sm:px-5"
+          >
+            <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Found so far
+            </p>
+            <ul className="flex flex-col gap-1.5">
+              {namedFindings.map((finding) => {
+                const tone =
+                  SEVERITY_TONE[finding.severity] ?? SEVERITY_TONE.info;
+                return (
+                  <li
+                    key={`${finding.severity}:${finding.title}`}
+                    className="flex items-center gap-2 text-xs leading-snug"
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 shrink-0 rounded-full",
+                        tone.solid,
+                      )}
+                    />
+                    <span className="min-w-0 truncate text-muted-foreground">
+                      {finding.title}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {unnamedCount > 0 && (
+              <p className="mt-2 text-xs tabular-nums text-muted-foreground/70">
+                and {unnamedCount} more
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {onCancel && (

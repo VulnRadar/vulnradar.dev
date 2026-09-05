@@ -16,6 +16,51 @@ import { detectors } from "@/lib/scanner/checks/code";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  // ── Detectors whose patterns were rewritten for the DoS sweep ────────────
+  // Each of these had two runs competing for the same characters. The
+  // rewrite is only correct if the detector still fires on a genuine
+  // instance, which is what the "fire" cases below are for.
+
+  "code-jwt-verify-no-secret": [
+    {
+      description: "jwt.verify called with an empty string secret fires",
+      body: "<html><body><script>jwt.verify(token, '');</script></body></html>",
+      expect: "fire",
+      evidenceIncludes: "signature check can be bypassed",
+    },
+    {
+      description: "a spaced-out call with an undefined secret still fires",
+      body: "<html><body><script>jwt.verify( req.token , undefined );</script></body></html>",
+      expect: "fire",
+    },
+    {
+      description: "a real secret from the environment does not fire",
+      body: "<html><body><script>jwt.verify(token, process.env.JWT_SECRET);</script></body></html>",
+      expect: "skip",
+    },
+    {
+      description:
+        "an unterminated jwt.verify( followed by whitespace does not fire",
+      body: `<html><body><script>jwt.verify(${" ".repeat(4000)}</script></body></html>`,
+      expect: "skip",
+    },
+  ],
+
+  "code-clickjack-target-blank-js-href": [
+    {
+      description:
+        "an anchor with a javascript: href and target=_blank still fires",
+      body: '<html><body><a href="javascript:stealTab()" target="_blank">go</a></body></html>',
+      expect: "fire",
+      evidenceIncludes: "javascript:",
+    },
+    {
+      description: "the inert javascript:void(0) idiom does not fire",
+      body: '<html><body><a href="javascript:void(0)" target="_blank">go</a></body></html>',
+      expect: "skip",
+    },
+  ],
+
   "hardcoded-credentials": [
     {
       description: "a real-looking hardcoded password value fires",

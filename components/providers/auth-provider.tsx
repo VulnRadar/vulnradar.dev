@@ -41,7 +41,12 @@ export interface MeResponse {
   scansPrivateByDefault: boolean;
   discordId: string | null;
   discordUsername: string | null;
+  /** CDN avatar hash from the discord_connections row (the "join our server"
+   *  flow). Built into a cdn.discordapp.com URL by the caller. */
   discordAvatar: string | null;
+  /** Whole avatar URL from the users row (the Discord sign-in flow). Only
+   *  one of these two is ever set for a given account. */
+  discordAvatarUrl: string | null;
   googleId: string | null;
   googleEmail: string | null;
   googleName: string | null;

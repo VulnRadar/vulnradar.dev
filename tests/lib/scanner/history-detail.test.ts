@@ -68,6 +68,28 @@ describe("mapHistoryDetailResponse", () => {
     });
   });
 
+  /**
+   * siteGrade was computed and persisted into result_meta by execute-scan.ts
+   * and read by nothing: it was absent from ScanResult, absent from this
+   * mapper, and the badge recomputed it instead. Every result surface renders
+   * through this mapper, so a field it drops is a field the product does not
+   * have.
+   */
+  it("carries the stored siteGrade through, like sslGrade beside it", () => {
+    const result = mapHistoryDetailResponse(
+      makeResponse({ siteGrade: "C", sslGrade: "A+" }),
+    );
+
+    expect(result.siteGrade).toBe("C");
+    expect(result.sslGrade).toBe("A+");
+  });
+
+  it("leaves siteGrade undefined for a scan that predates it being stored", () => {
+    // Deliberately not recomputed here: an absent grade renders no cell, which
+    // is right for a mapper that only maps.
+    expect(mapHistoryDetailResponse(makeResponse()).siteGrade).toBeUndefined();
+  });
+
   it("defaults authenticated to false rather than leaving it undefined", () => {
     const result = mapHistoryDetailResponse(makeResponse());
 

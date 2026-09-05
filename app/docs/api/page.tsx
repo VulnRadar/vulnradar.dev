@@ -1153,7 +1153,7 @@ format=json       -> application/json            vulnradar-example.com.json`,
     notes: [
       "Returns HTTP 201, not 200. There is no top-level id or name: everything is under key.",
       "raw_key is shown exactly once. The server stores only the encrypted form + a SHA-256 fingerprint.",
-      "daily_limit is your plan's API request allowance, not a per-key setting: 25 on Free, 100 on Core Supporter, 5,000 on Pro Supporter, effectively unlimited on Elite Supporter. It is re-read from your plan on every rotation.",
+      "daily_limit is your plan's API request allowance, not a per-key setting: 25 on Free, 100 on Core Supporter, 5,000 on Pro Supporter, effectively unlimited on Elite Supporter. It follows your plan: change plan and every existing key enforces the new number on its next request, with nothing to rotate or recreate.",
       "scopes is optional and defaults to scan:write + scan:read. scan:delete is deliberately not a default: request it explicitly if the key needs to delete history.",
     ],
     errors: [
@@ -1199,7 +1199,7 @@ format=json       -> application/json            vulnradar-example.com.json`,
     notes: [
       "The id does not change. Anything keyed on it (audit records, per-key dashboards, allow-lists) keeps working across a rotation.",
       "Because the row survives, so does its usage history: today's consumed quota carries over to the rotated key rather than resetting.",
-      "daily_limit is re-read from your current plan, so rotating a key after a plan change also updates its limit.",
+      "daily_limit reports your current plan's allowance. Rotation is not how a plan change reaches a key: every key is checked against your live plan on each request.",
       "Note the envelope differs from POST /keys: this one wraps the key in { success: true, key } and returns 200.",
     ],
     errors: [

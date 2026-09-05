@@ -12,8 +12,9 @@ import {
   Sparkles,
   type LucideIcon as LucideIconType,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import type { ScanResult } from "@/lib/scanner/types";
+import { SITE_GRADE_SUMMARY, type SiteGrade } from "@/lib/scanner/site-grade";
 import { cn } from "@/lib/ui/utils";
 import { tourAnchor } from "@/lib/tour/anchors";
 import {
@@ -190,9 +191,11 @@ export function Stat({
 }
 
 /**
- * Tier colors for the SSL grade: A/A+ green, B blue (brand), C amber, D/F red.
+ * Tier colors for a letter grade: A/A+ green, B blue (brand), C amber, D/F
+ * red. Shared by the SSL grade and the whole-site grade so the same letter
+ * never reads as two different tiers on one page.
  */
-function sslGradeValueClass(grade: string): string {
+function letterGradeValueClass(grade: string): string {
   const g = grade.toUpperCase();
   if (g === "A+" || g === "A") return "text-[hsl(var(--success))]";
   if (g === "B") return "text-primary";
@@ -244,6 +247,61 @@ function Readout({
   );
 }
 
+/** Whole-site letter-grade cell: the A+ to F scale every free peer grades on,
+ * and what the README badge prints. Read from the stored result rather than
+ * recomputed, so the badge, the public host report and the scan record all
+ * state the same letter (see lib/scanner/site-grade.ts). Sits before the SSL
+ * grade because it is about the whole site, not just the TLS handshake. */
+function SiteGradeStat({ grade }: { grade: SiteGrade }) {
+  return (
+    <Readout
+      label="Site grade"
+      value={grade}
+      valueClass={letterGradeValueClass(grade)}
+    >
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="What does the site grade mean?"
+            className={cn(
+              "ml-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:text-foreground",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+          >
+            <HelpCircle aria-hidden className="h-3.5 w-3.5" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-72 text-left">
+          <p className="text-xs font-semibold text-foreground">Site grade</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            One letter for the whole site, on the same A+ to F scale other
+            scanners use. It is derived from the risk score beside it, not
+            scored separately, so the two can never disagree.
+          </p>
+          <div className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1 text-[11px]">
+            {(Object.entries(SITE_GRADE_SUMMARY) as [SiteGrade, string][]).map(
+              ([letter, summary]) => (
+                <Fragment key={letter}>
+                  <span
+                    className={cn(
+                      "font-semibold",
+                      letterGradeValueClass(letter),
+                    )}
+                  >
+                    {letter}
+                  </span>
+                  <span className="text-muted-foreground">{summary}</span>
+                </Fragment>
+              ),
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </Readout>
+  );
+}
+
 /** SSL/TLS letter-grade cell. The grade's colour is the one piece of tier
  * information in the readout strip, so it keeps its colour while the other
  * cells stay neutral. The "?" opens a plain-language explainer. */
@@ -252,7 +310,7 @@ function SslGradeStat({ grade }: { grade: string }) {
     <Readout
       label="SSL grade"
       value={grade}
-      valueClass={sslGradeValueClass(grade)}
+      valueClass={letterGradeValueClass(grade)}
     >
       <Popover>
         <PopoverTrigger asChild>
@@ -493,6 +551,7 @@ export function ScanSummary({
               valueClass={riskScoreClass(result.dangerScore)}
             />
           )}
+          {result.siteGrade && <SiteGradeStat grade={result.siteGrade} />}
           {result.sslGrade && <SslGradeStat grade={result.sslGrade} />}
           {result.engineConfidence !== undefined && (
             <Readout label="Confidence" value={`${result.engineConfidence}%`} />

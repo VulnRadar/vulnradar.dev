@@ -17,6 +17,7 @@ import type { FindingRemediation } from "./remediation";
 import type { PortScanResult } from "./port-scan";
 import type { ThreatIntelSummary } from "./reputation-lookup";
 import type { SoftwareInventorySummary } from "./software-inventory";
+import type { SiteGrade } from "./site-grade";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -224,6 +225,19 @@ export interface ScanResult {
    * Based on severity distribution and exploitability of findings.
    */
   dangerScore?: number;
+  /**
+   * Whole-site letter grade, A+ through F: the vocabulary every free peer
+   * (MDN HTTP Observatory, SecurityHeaders.com, ImmuniWeb) grades on, derived
+   * as a pure function of `dangerScore` so it can never disagree with the
+   * number beside it (see lib/scanner/site-grade.ts). Stored in
+   * result_meta.siteGrade at the end of the scan and read back from there, so
+   * the scan record, the public host report and the README badge all state
+   * the same letter even if the mapping is later retuned. Absent on a scan
+   * from before it was stored, in which case getSiteGrade(findings)
+   * reproduces it. Distinct from `sslGrade`, which grades only the TLS
+   * handshake.
+   */
+  siteGrade?: SiteGrade;
   /**
    * SSL Labs-style TLS letter grade for the scanned host: "A+", "A", "B",
    * "C", "D", or "F". Computed by lib/scanner/ssl-grade.ts from the TLS

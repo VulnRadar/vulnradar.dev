@@ -56,6 +56,7 @@ export interface HostReportData {
    * scans only -- host_reputation never reflects a private scan.
    */
   sslGrade?: ScanResult["sslGrade"];
+  siteGrade?: ScanResult["siteGrade"];
   threatIntel?: ScanResult["threatIntel"];
   softwareInventory?: ScanResult["softwareInventory"];
   dnsRecords?: ScanResult["dnsRecords"];

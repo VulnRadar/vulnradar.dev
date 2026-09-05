@@ -1,6 +1,10 @@
 import { NextResponse, NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
-import { rotateApiKey, getUserApiKeys } from "@/lib/api/api-keys";
+import {
+  rotateApiKey,
+  getUserApiKeys,
+  UNLIMITED_API_KEY_DAILY_LIMIT,
+} from "@/lib/api/api-keys";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getUserPlanLimits } from "@/lib/billing/plan-limits";
 
@@ -43,11 +47,14 @@ export async function POST(
   const planLimits = await getUserPlanLimits(session.userId);
   const dailyLimit = planLimits ? planLimits.apiRequestsPerDay : -1;
 
-  // Rotate the key
+  // Rotate the key. As at creation, this only refreshes the stored
+  // snapshot in api_keys.daily_limit; enforcement resolves the owner's
+  // current plan on every request now, so a rotation is no longer how a
+  // plan change reaches the key.
   const newKey = await rotateApiKey(
     keyId,
     session.userId,
-    dailyLimit === -1 ? 999999 : dailyLimit,
+    dailyLimit === -1 ? UNLIMITED_API_KEY_DAILY_LIMIT : dailyLimit,
   );
   if (!newKey) {
     return NextResponse.json(

@@ -10,7 +10,11 @@
 // `<tag\b[^>]*>[\s\S]*?</tag\s*>` copies of the exact shape it was written to
 // replace, which is why they stayed quadratic after every detector that used
 // that shape had been fixed.
-import { stripTagElements, tagElementContents } from "./checks/_tag-scan";
+import {
+  openTags,
+  stripTagElements,
+  tagElementContents,
+} from "./checks/_tag-scan";
 
 /**
  * FNV-1a 32-bit hash → base-36 string.
@@ -93,9 +97,18 @@ export function escapeRegExp(input: string): string {
  */
 export function getEffectiveCsp(headers: Headers, body: string): string {
   const headerCsp = getHeader(headers, "content-security-policy") || "";
-  const metaTag = body.match(
-    /<meta\b[^>]*http-equiv=["']?content-security-policy["']?[^>]*>/i,
-  )?.[0];
+  // `<meta\b[^>]*ATTR[^>]*>` is the spliced shape checks/_tag-scan.ts exists
+  // to replace, and this helper is on the hot path of the whole CSP family:
+  // on a 256 KB body of unterminated <meta> tags each of csp-missing,
+  // csp-no-default-src, csp-base-uri-missing, csp-frame-src-missing and
+  // csp-form-action-missing measured about 3.1 SECONDS, all of it here.
+  // Unbounded on purpose, which is what the pattern this replaces was: a
+  // strict policy with a long source list or a set of hashes runs past 2000
+  // characters, and missing it here would report "no CSP at all" on a page
+  // that has a perfectly good one.
+  const metaTag = openTags(body, "meta", Infinity).find((t) =>
+    /http-equiv=["']?content-security-policy["']?/i.test(t),
+  );
   // A real CSP value is full of single quotes ('self', 'unsafe-inline',
   // ...), so a shared [^"']* class terminates at the FIRST one -- e.g.
   // content="default-src 'self'; form-action 'self'" would capture only

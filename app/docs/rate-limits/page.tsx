@@ -153,8 +153,9 @@ export default function RateLimitsPage() {
             <InlineCode>daily_limit</InlineCode> is your plan&rsquo;s{" "}
             <InlineCode>apiRequestsPerDay</InlineCode>, not a separate per-key
             default: 25 on Free, 100 on Core Supporter, 5,000 on Pro Supporter,
-            effectively unlimited on Elite Supporter. Rotating a key re-reads it
-            from your current plan.
+            effectively unlimited on Elite Supporter. Every key is checked
+            against your live plan on each request, so a change of plan applies
+            to keys you already hold with nothing to rotate or recreate.
           </p>
         </DocsCallout>
 

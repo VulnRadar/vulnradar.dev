@@ -2,9 +2,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
-import { getSiteGrade } from "@/lib/scanner/site-grade";
+import {
+  getSiteGrade,
+  isSiteGrade,
+  type SiteGrade,
+} from "@/lib/scanner/site-grade";
 import { APP_NAME } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+
+/**
+ * The scan's own stored siteGrade, or null when the row predates it being
+ * stored (or holds something that is not one of the six letters). pg hands
+ * back a JSONB column already parsed, but a legacy TEXT value would arrive as
+ * a string, so both are handled and a malformed one degrades to "recompute"
+ * rather than throwing on a public, cacheable image endpoint.
+ */
+function readStoredSiteGrade(resultMeta: unknown): SiteGrade | null {
+  let meta: unknown = resultMeta;
+  if (typeof meta === "string") {
+    try {
+      meta = JSON.parse(meta);
+    } catch {
+      return null;
+    }
+  }
+  if (!meta || typeof meta !== "object") return null;
+  const grade = (meta as Record<string, unknown>).siteGrade;
+  return isSiteGrade(grade) ? grade : null;
+}
 
 function escapeXml(str: string): string {
   return str
@@ -39,8 +64,13 @@ export async function GET(
   // owner intentionally let lapse, defeating the point of expiry.
   const tokenHash = createHash("sha256").update(token).digest("hex");
 
+  // result_meta carries the siteGrade the scan itself computed and stored.
+  // The badge used to recompute the grade from the findings, which is exactly
+  // the drift execute-scan.ts stores it to prevent: retuning the mapping would
+  // have changed what an embedded badge printed for a scan that had already
+  // run, while the scan record kept its original letter.
   let result = await pool.query(
-    `SELECT sh.url, sh.summary, sh.findings, sh.scanned_at
+    `SELECT sh.url, sh.summary, sh.findings, sh.scanned_at, sh.result_meta
      FROM scan_history sh
      WHERE sh.share_token_hash = $1
        AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())`,
@@ -63,7 +93,7 @@ export async function GET(
   // is_public, same as before.
   if (result.rows.length === 0) {
     result = await pool.query(
-      `SELECT sh.url, sh.summary, sh.findings, sh.scanned_at
+      `SELECT sh.url, sh.summary, sh.findings, sh.scanned_at, sh.result_meta
        FROM host_badges hb
        JOIN scan_history sh
          ON sh.url = hb.url
@@ -111,7 +141,10 @@ export async function GET(
   };
 
   const { color } = ratingConfig[safetyRating];
-  const grade = getSiteGrade(findings);
+  // Stored grade first, recompute only for a scan that predates it being
+  // stored. See the SELECT comment above.
+  const storedGrade = readStoredSiteGrade(row.result_meta);
+  const grade = storedGrade ?? getSiteGrade(findings);
 
   const scanDate = new Date(row.scanned_at).toLocaleDateString("en-US", {
     month: "short",

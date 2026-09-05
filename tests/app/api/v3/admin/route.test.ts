@@ -554,6 +554,86 @@ describe("PATCH /api/v3/admin — authorization", () => {
     expect(mockLogAction).not.toHaveBeenCalled();
   });
 
+  /**
+   * canPerformAction used to answer for a moderator out of a hand-maintained
+   * `modActions` array instead of ROLE_PERMISSION_MAP, and that array had
+   * drifted into naming 14 actions the map denies. The admin panel hid the
+   * buttons (getAvailableActions filters by the same map), so the only way to
+   * reach them was a direct PATCH -- and none of the case bodies carried a
+   * second gate, so they all executed. Moderator now consults the map like
+   * every other role.
+   *
+   * Each entry names the permission the map withholds, so a future grant is a
+   * deliberate edit to this list rather than a silent re-widening.
+   */
+  it.each([
+    ["create_badge", "CREATE_BADGE"],
+    ["delete_badge", "DELETE_BADGE"],
+    ["revoke_api_keys", "REVOKE_USER_API_KEYS"],
+    ["delete_webhooks", "DELETE_USER_WEBHOOKS"],
+    ["delete_schedules", "DELETE_USER_SCHEDULES"],
+    ["clear_rate_limits", "MANAGE_RATE_LIMITS"],
+    ["send_notification", "MANAGE_NOTIFICATIONS"],
+    ["notify_account_changes", "MANAGE_NOTIFICATIONS"],
+    ["gift_subscription", "GRANT_PREMIUM"],
+    ["revoke_gift", "REVOKE_PREMIUM"],
+    // Same permission as update_email, which was removed from the old list as
+    // the moderator tier's account-takeover primitive (point a user's address
+    // at one you control, then run forgot-password). Reaching it through
+    // "verify" must not be a way back in.
+    ["verify_email", "EDIT_USER_EMAIL"],
+    ["unverify_email", "EDIT_USER_EMAIL"],
+  ])(
+    "refuses a moderator %s, which ROLE_PERMISSION_MAP denies (%s)",
+    async (action) => {
+      queueRole("moderator");
+      const res = await PATCH(
+        patchRequest({
+          action,
+          userId: 5,
+          currentAdminPassword: ADMIN_PASSWORD,
+        }),
+      );
+      const json = await res.json();
+      expect(res.status).toBe(403);
+      expect(json.error).toBe(
+        "You don't have permission to perform this action.",
+      );
+      expect(mockLogAction).not.toHaveBeenCalled();
+    },
+  );
+
+  // The two that WERE genuinely part of the job, and are now granted in the
+  // map rather than through a parallel list. clear_avatar is content
+  // moderation; add_note is how a moderator records why it disabled someone.
+  // ADD_USER_NOTE is deliberately narrower than MANAGE_USER_NOTES so the
+  // edit/delete-someone-else's-note case above still refuses.
+  it.each(["clear_avatar", "add_note"])(
+    "still allows a moderator %s, granted in the map rather than by a parallel list",
+    async (action) => {
+      queueRole("moderator");
+      queueTarget({
+        email: "t@example.com",
+        role: "user",
+        unsubscribe_token: null,
+      });
+      queueAdminPassword(adminHash);
+      const res = await PATCH(
+        patchRequest({
+          action,
+          userId: 5,
+          note: "left a note",
+          currentAdminPassword: ADMIN_PASSWORD,
+        }),
+      );
+      const json = await res.json().catch(() => ({}));
+      expect(json.error).not.toBe(
+        "You don't have permission to perform this action.",
+      );
+    },
+    20000,
+  );
+
   // AUDIT-010 regression: DISABLE_USER/ENABLE_USER/MODERATE_CONTENT are
   // granted to STAFF_ROLES.MODERATOR in lib/auth/permissions-client.ts's
   // ROLE_PERMISSION_MAP, so the admin panel UI shows a moderator the

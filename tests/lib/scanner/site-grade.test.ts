@@ -7,7 +7,11 @@
  * be able to grade A. ref: AUDIT-014#comp-03
  */
 import { describe, it, expect } from "vitest";
-import { getSiteGrade, SITE_GRADE_SUMMARY } from "@/lib/scanner/site-grade";
+import {
+  getSiteGrade,
+  isSiteGrade,
+  SITE_GRADE_SUMMARY,
+} from "@/lib/scanner/site-grade";
 import { getSafetyRating, getDangerScore } from "@/lib/scanner/safety-rating";
 
 function finding(severity: string, title: string) {
@@ -91,5 +95,34 @@ describe("getSiteGrade", () => {
     for (const grade of ["A+", "A", "B", "C", "D", "F"] as const) {
       expect(SITE_GRADE_SUMMARY[grade]).toBeTruthy();
     }
+  });
+});
+
+/**
+ * The guard the badge and any other reader of a stored result_meta.siteGrade
+ * uses to decide between the stored letter and recomputing. It stands between
+ * an arbitrary database value and a public SVG, so it has to reject anything
+ * that is not one of the six letters.
+ */
+describe("isSiteGrade", () => {
+  it("accepts every grade getSiteGrade can return", () => {
+    for (const grade of ["A+", "A", "B", "C", "D", "F"] as const) {
+      expect(isSiteGrade(grade)).toBe(true);
+    }
+  });
+
+  it.each([
+    ["a letter outside the scale", "Z"],
+    ["the lowercase form", "a+"],
+    ["an empty string", ""],
+    ["a number", 3],
+    ["null", null],
+    ["undefined", undefined],
+    ["an object", { grade: "A" }],
+    // `"toString" in SITE_GRADE_SUMMARY` is true via the prototype chain, so a
+    // bare `in` check without the typeof guard would let this through.
+    ["an inherited Object.prototype key", "toString"],
+  ])("rejects %s", (_label, value) => {
+    expect(isSiteGrade(value)).toBe(false);
   });
 });

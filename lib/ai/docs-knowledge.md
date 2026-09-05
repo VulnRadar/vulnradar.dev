@@ -1693,8 +1693,9 @@ apiRequestsPerDay). A new key&rsquo;s
 daily_limit is your plan&rsquo;s
 apiRequestsPerDay, not a separate per-key
 default: 25 on Free, 100 on Core Supporter, 5,000 on Pro Supporter,
-effectively unlimited on Elite Supporter. Rotating a key re-reads it
-from your current plan.
+effectively unlimited on Elite Supporter. Every key is checked
+against your live plan on each request, so a change of plan applies
+to keys you already hold with nothing to rotate or recreate.
 
 > **INFO: Staff accounts scan on a plan**
 > A user whose role is one of
@@ -1767,7 +1768,7 @@ applies.
 ### Notes
 - Two separate limit systems protect the platform. They are enforced in different places and behave differently on overflow.
 - Two separate counters: scans/day enforced for session-authenticated users, and API requests/day enforced for Bearer-authenticated API keys.
-- Daily quotas are defined in lib/billing/catalog.ts (one entry per plan: dailyScans and apiRequestsPerDay). A new key&rsquo;s daily_limit is your plan&rsquo;s apiRequestsPerDay, not a separate per-key default: 25 on Free, 100 on Core Supporter, 5,000 on Pro Supporter, effectively unlimited on Elite Supporter. Rotating a key re-reads it from your current plan.
+- Daily quotas are defined in lib/billing/catalog.ts (one entry per plan: dailyScans and apiRequestsPerDay). A new key&rsquo;s daily_limit is your plan&rsquo;s apiRequestsPerDay, not a separate per-key default: 25 on Free, 100 on Core Supporter, 5,000 on Pro Supporter, effectively unlimited on Elite Supporter. Every key is checked against your live plan on each request, so a change of plan applies to keys you already hold with nothing to rotate or recreate.
 - A user whose role is one of is resolved to the staff plan tag, which carries the same daily allowance as Pro Supporter. That is a plan, not an exemption: staff still spend against a quota and can still run out. Only running with billing turned off makes a daily limit genuinely unlimited.
 - Every named limit below is admin-editable and configured in lib/config/config-values.ts as a CONFIG_RATE_LIMIT_*_ATTEMPTS + _WINDOW_MINUTES pair (the map from limit name to registry keys is CONFIGURABLE_LIMITS in lib/rate-limiting/rate-limit.ts). The window is converted to seconds when the limit is resolved. Every number in the table below is therefore a shipped default, not a constant: the instance you are calling may have been tuned.
 - The Keyed on column is the part that matters when you are sizing a client or reasoning about abuse. A limit keyed on the user is not reset by changing IP; a limit keyed on the IP is shared by everyone behind the same NAT or proxy. This table previously listed IP for all of them, and omitted nine limits that are enforced.

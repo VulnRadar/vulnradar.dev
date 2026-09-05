@@ -14,12 +14,22 @@ export interface ScanTag {
   source: "auto" | "user";
 }
 
+/**
+ * scan_history.status, as the list API projects it (see the CHECK constraint
+ * in lib/database/schema/02-features.mjs). Optional because the read-only
+ * surfaces that reuse ScanRecord (public scans, /host) select their own column
+ * list; absent is treated as "completed" by scanRowState below, which is what
+ * those surfaces only ever show.
+ */
+export type ScanRecordStatus = "pending" | "running" | "completed" | "failed";
+
 export interface ScanRecord {
   // Opaque public_id (the list API aliases scan_history.public_id AS id), not
   // the sequential numeric primary key. Carried as-is into ?scan= links, the
   // detail fetch, and the tag body-param, all of which resolve it server-side.
   id: string;
   url: string;
+  status?: ScanRecordStatus | string;
   summary: {
     critical?: number;
     high?: number;
@@ -54,6 +64,35 @@ export interface ScanDetailState {
   scanNotes: string;
   editingNotes: boolean;
   savingNotes: boolean;
+}
+
+/**
+ * What a history row is actually reporting.
+ *
+ * The row used to derive this from `findings_count === 0` alone, and a
+ * scan_history row is inserted as 'pending' with summary '{}', findings_count
+ * 0 and duration 0 BEFORE any work starts. So a scan that failed, or that the
+ * user navigated away from, rendered with a green shield and the word "Clean":
+ * "we found nothing" and "the scan died" were the same picture. The list API
+ * has projected sh.status for exactly this reason (see the comment above the
+ * SELECT in app/api/v3/history/route.ts); nothing on the client read it.
+ *
+ * "unfinished" mirrors ScanSummary's `VERDICT.partial` (components/scanner/
+ * scan-summary.tsx): a result with nothing in it is not a result yet, and it
+ * gets the warning hue rather than the success hue. A missing status is
+ * "completed", which is what every pre-status row and every read-only surface
+ * that reuses ScanRecord is.
+ */
+export type ScanRowState = "clean" | "findings" | "running" | "unfinished";
+
+export function scanRowState(scan: {
+  status?: string;
+  findings_count: number;
+}): ScanRowState {
+  const status = scan.status ?? "completed";
+  if (status === "failed") return "unfinished";
+  if (status === "pending" || status === "running") return "running";
+  return scan.findings_count === 0 ? "clean" : "findings";
 }
 
 // Canonical relative-time formatter (see lib/ui/relative-time.ts).

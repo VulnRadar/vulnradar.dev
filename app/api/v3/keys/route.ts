@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
-import { generateApiKey, getUserApiKeys } from "@/lib/api/api-keys";
+import {
+  generateApiKey,
+  getUserApiKeys,
+  UNLIMITED_API_KEY_DAILY_LIMIT,
+} from "@/lib/api/api-keys";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { apiKeyCreatedEmail } from "@/lib/email/email";
 import {
@@ -111,12 +115,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // second, separate lookup. planLimits is null only when billing is off
   // (unlimited here too) -- a staff caller now resolves to the Pro
   // Supporter plan's real apiRequestsPerDay, not null.
+  //
+  // What this writes into api_keys.daily_limit is only the creation-time
+  // snapshot. Enforcement no longer reads that column: validateApiKey
+  // resolves the owner's CURRENT plan allowance on every request, because
+  // nothing ever updated the column on a plan change (see
+  // resolveKeyDailyLimit in lib/api/api-keys.ts).
   const dailyLimit = planLimits ? planLimits.apiRequestsPerDay : -1;
 
   const key = await generateApiKey(
     session.userId,
     name,
-    dailyLimit === -1 ? 999999 : dailyLimit,
+    dailyLimit === -1 ? UNLIMITED_API_KEY_DAILY_LIMIT : dailyLimit,
     scopes,
   );
 

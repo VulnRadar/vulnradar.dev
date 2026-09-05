@@ -15,6 +15,35 @@ import { detectors } from "@/lib/scanner/checks/headers";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  // Rewritten from `<[a-z][a-z0-9]*[^>]{0,2000}\bstyle\s*=`, whose name run
+  // and attribute run matched the same characters: 5.5 seconds on a 1 MB
+  // body of `"<a"` repeated. It walks the tags now, so it needs cases
+  // proving it still counts real inline styles and still needs three.
+  "inline-style-attr": [
+    {
+      description: "three elements carrying inline style attributes fire",
+      body: '<html><body><div style="color:red">a</div><span style="color:blue">b</span><p style="margin:0">c</p></body></html>',
+      expect: "fire",
+      evidenceIncludes: "3 elements",
+    },
+    {
+      description: "two inline styles stay under the threshold",
+      body: '<html><body><div style="color:red">a</div><span style="color:blue">b</span></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "a page with no inline styles does not fire",
+      body: '<html><body><div class="a">a</div><span class="b">b</span><p class="c">c</p></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a run of opening angle brackets that never closes a tag does not fire",
+      body: "<a".repeat(4000),
+      expect: "skip",
+    },
+  ],
+
   // ── Security header presence ────────────────────────────────────────
 
   "hsts-missing": [
@@ -100,6 +129,22 @@ const fixtures: DetectorFixtures = {
         "content-type": "text/html",
         "content-security-policy": "default-src 'self'",
       },
+      expect: "skip",
+    },
+    {
+      // getEffectiveCsp reads the meta tag through _tag-scan now, and that
+      // helper bounds attribute text at 2000 characters by default. A strict
+      // policy with a long source list runs past that, and losing it here
+      // would report "no CSP at all" on a page that has a perfectly good one,
+      // so the meta lookup deliberately opts out of the bound.
+      description:
+        "a meta CSP whose policy is longer than 2000 characters is still seen",
+      url: "https://example.com/",
+      headers: { "content-type": "text/html" },
+      body: `<html><head><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' ${Array.from(
+        { length: 90 },
+        (_, i) => `https://cdn${i}.example.com`,
+      ).join(" ")}"></head><body>x</body></html>`,
       expect: "skip",
     },
     {

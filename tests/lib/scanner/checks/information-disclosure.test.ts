@@ -15,6 +15,38 @@ import { detectors } from "@/lib/scanner/checks/information-disclosure";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  // `panic:\s+.+` had two runs competing for the same spaces with
+  // "goroutine" never arriving: 21.5 seconds on a 128 KB body of `panic:`
+  // followed by whitespace. Both branches of the rewritten check need a
+  // genuine trace to prove they still fire.
+  "golang-panic-trace-exposed": [
+    {
+      description: "a panic line immediately followed by the goroutine header",
+      body: "<html><body>panic: runtime error: index out of range [3] with length 2\ngoroutine 1 [running]:\nmain.handler()</body></html>",
+      expect: "fire",
+      evidenceIncludes: "goroutine",
+    },
+    {
+      description:
+        "the goroutine header plus a .go source reference, the shape a real panic dump with a blank line takes",
+      body: "<html><body>panic: boom\n\ngoroutine 17 [running]:\nmain.main()\n\t/app/cmd/server/main.go:42 +0x18</body></html>",
+      expect: "fire",
+      evidenceIncludes: "goroutine",
+    },
+    {
+      description:
+        "a blog post using the word goroutine in prose does not fire",
+      body: "<html><body><p>A goroutine is Go's lightweight thread.</p></body></html>",
+      expect: "skip",
+    },
+    {
+      description:
+        "a bare panic: label followed by a long whitespace run does not fire",
+      body: `<html><body>panic:${" ".repeat(4000)}</body></html>`,
+      expect: "skip",
+    },
+  ],
+
   // ── IP / PII — handled by secrets-extended.ts (wins detectorMap as bundle 8 > 6) ────────────────
 
   // ── Errors / stack traces ───────────────────────────────────────────
@@ -479,6 +511,20 @@ const fixtures: DetectorFixtures = {
       description: "Rails error page",
       body: "<html><body>Rails.root: /var/www/app</body></html>",
       expect: "fire",
+    },
+    // The version branch is the one whose floating `.*` was bounded: it
+    // rescanned to the end of the line from every `Rails N.N.N` on the page.
+    {
+      description:
+        "the version-and-application banner Rails prints in development still fires",
+      body: "<html><body>Rails 7.0.4 application starting in development on http://127.0.0.1:3000</body></html>",
+      expect: "fire",
+    },
+    {
+      description:
+        "a version mention with no 'application' anywhere on the line does not fire",
+      body: "<html><body>Built with Rails 7.0.4 and deployed nightly.</body></html>",
+      expect: "skip",
     },
   ],
 

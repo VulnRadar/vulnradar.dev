@@ -1036,6 +1036,7 @@ function DashboardContent() {
             currentCategory={scanProgress?.currentCategory ?? null}
             categoriesCompleted={scanProgress?.categoriesCompleted ?? 0}
             categoriesTotal={scanProgress?.categoriesTotal ?? 0}
+            partialFindings={scanProgress?.partialFindings}
             onCancel={runningScanId ? handleCancelScan : undefined}
           />
         </div>

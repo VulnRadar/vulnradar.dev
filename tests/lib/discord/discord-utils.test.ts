@@ -2,10 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createHash } from "node:crypto";
 
 /**
- * lib/discord/discord-utils.ts has no outbound `fetch` calls of its own
- * (Discord's HTTP API is called elsewhere, e.g. the OAuth callback route);
- * this file is DB reads/writes, an outbound email send, and AES-256-GCM
- * token encryption. Mocked at the database boundary (pg pool, same pattern
+ * lib/discord/discord-utils.ts is DB reads/writes, an outbound email send,
+ * AES-256-GCM token encryption, and (since the refresh landed) one outbound
+ * call to Discord's token endpoint, which is stubbed per-test rather than
+ * globally so the suites that predate it keep proving no request is made.
+ * Mocked at the database boundary (pg pool, same pattern
  * as tests/lib/notifications/user-notifications.test.ts) and the email
  * boundary (lib/email/email's sendEmail, same pattern as
  * tests/lib/notifications/notifications.test.ts), keeping email2FACodeEmail
@@ -39,9 +40,12 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
 const {
   sendDiscordEmail2FACode,
   updateDiscordTokens,
+  updateDiscordTokensForUser,
   getDiscordTokens,
   getDiscordUserConnection,
   getUserTwoFAConfig,
+  refreshDiscordAccessToken,
+  DiscordReauthRequiredError,
 } = await import("@/lib/discord/discord-utils");
 const { encryptApiKey, decryptApiKey } = await import("@/lib/auth/crypto");
 
@@ -229,5 +233,155 @@ describe("getUserTwoFAConfig", () => {
   it("returns null for an unknown user", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     expect(await getUserTwoFAConfig(404)).toBeNull();
+  });
+});
+
+/**
+ * The refresh that never existed.
+ *
+ * Discord expires an access token after 7 days. The refresh token beside it
+ * has been stored, encrypted and re-encrypted on key rotation since Discord
+ * sign-in shipped, and nothing ever spent it: getDiscordTokens had no
+ * callers outside its own module and no refresh function existed at all.
+ */
+describe("refreshDiscordAccessToken", () => {
+  const previousClientId = process.env.DISCORD_CLIENT_ID;
+  const previousClientSecret = process.env.DISCORD_CLIENT_SECRET;
+  let mockFetch: ReturnType<typeof vi.fn>;
+  let consoleError: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    process.env.DISCORD_CLIENT_ID = "client-id";
+    process.env.DISCORD_CLIENT_SECRET = "client-secret";
+    mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+    consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    consoleError.mockRestore();
+    if (previousClientId === undefined) delete process.env.DISCORD_CLIENT_ID;
+    else process.env.DISCORD_CLIENT_ID = previousClientId;
+    if (previousClientSecret === undefined) {
+      delete process.env.DISCORD_CLIENT_SECRET;
+    } else {
+      process.env.DISCORD_CLIENT_SECRET = previousClientSecret;
+    }
+  });
+
+  /** The stored row, with both token columns really encrypted (the crypto is
+   *  not mocked in this suite) so the exchange has to decrypt to succeed. */
+  function storedConnection() {
+    return {
+      rows: [
+        {
+          access_token: encryptApiKey("old-access"),
+          refresh_token: encryptApiKey("stored-refresh"),
+          token_expires_at: new Date("2020-01-01T00:00:00.000Z"),
+          guild_joined: false,
+        },
+      ],
+    };
+  }
+
+  it("exchanges the stored refresh token and persists the new pair", async () => {
+    mockQuery.mockResolvedValueOnce(storedConnection()); // SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        access_token: "fresh-access",
+        refresh_token: "fresh-refresh",
+        expires_in: 604800,
+      }),
+    });
+
+    const token = await refreshDiscordAccessToken(7);
+    expect(token).toBe("fresh-access");
+
+    // The refresh token that went out is the decrypted stored one, not the
+    // ciphertext: sending the ciphertext would fail against Discord in a way
+    // no local test would otherwise catch.
+    const [, init] = mockFetch.mock.calls[0];
+    const body = (init as { body: URLSearchParams }).body;
+    expect(body.get("grant_type")).toBe("refresh_token");
+    expect(body.get("refresh_token")).toBe("stored-refresh");
+
+    const [updateSql, updateParams] = mockQuery.mock.calls[1];
+    expect(updateSql).toContain("UPDATE discord_connections");
+    // guild_joined is deliberately untouched: refreshing a token says
+    // nothing about server membership.
+    expect(updateSql).not.toContain("guild_joined");
+    const params = updateParams as [string, string, Date, number];
+    expect(decryptApiKey(params[0])).toBe("fresh-access");
+    expect(decryptApiKey(params[1])).toBe("fresh-refresh");
+    expect(params[3]).toBe(7);
+  });
+
+  it("throws a terminal reauth error when Discord rejects the refresh token", async () => {
+    mockQuery.mockResolvedValueOnce(storedConnection());
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: "invalid_grant" }),
+    });
+
+    await expect(refreshDiscordAccessToken(7)).rejects.toBeInstanceOf(
+      DiscordReauthRequiredError,
+    );
+    // Nothing was written: a rejected refresh must not overwrite the pair
+    // the user would still have if they re-authorize.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a 5xx as transient rather than as a revoked authorization", async () => {
+    mockQuery.mockResolvedValueOnce(storedConnection());
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      text: async () => "upstream down",
+    });
+
+    const error = await refreshDiscordAccessToken(7).catch((e) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(DiscordReauthRequiredError);
+  });
+
+  it("is terminal when there is no stored connection to refresh", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await expect(refreshDiscordAccessToken(7)).rejects.toBeInstanceOf(
+      DiscordReauthRequiredError,
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("refuses to call Discord at all when the OAuth app is not configured", async () => {
+    delete process.env.DISCORD_CLIENT_SECRET;
+    await expect(refreshDiscordAccessToken(7)).rejects.toThrow(
+      /not configured/i,
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateDiscordTokensForUser", () => {
+  it("encrypts both tokens at rest and keys on the user id", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const expiresAt = new Date("2026-09-11T00:00:00.000Z");
+
+    await updateDiscordTokensForUser(9, "access", "refresh", expiresAt);
+
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("WHERE user_id = $4");
+    const values = params as [string, string, Date, number];
+    expect(values[0]).not.toBe("access");
+    expect(values[1]).not.toBe("refresh");
+    expect(decryptApiKey(values[0])).toBe("access");
+    expect(decryptApiKey(values[1])).toBe("refresh");
+    expect(values[2]).toBe(expiresAt);
+    expect(values[3]).toBe(9);
   });
 });

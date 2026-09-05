@@ -29,6 +29,25 @@ vi.mock("@/lib/auth/crypto", () => ({
   decryptApiKey: (v: string) => `decrypted:${v}`,
 }));
 
+// The token refresh is mocked at this module boundary (its own behaviour is
+// covered in tests/lib/discord/discord-utils.test.ts). The error class comes
+// from the same mock so the route's `instanceof` check resolves against the
+// class the test throws, and hoisted because vi.mock factories run before
+// the module body.
+const discordUtils = vi.hoisted(() => {
+  class DiscordReauthRequiredError extends Error {
+    constructor(message = "Discord authorization is no longer valid.") {
+      super(message);
+      this.name = "DiscordReauthRequiredError";
+    }
+  }
+  return {
+    DiscordReauthRequiredError,
+    refreshDiscordAccessToken: vi.fn(),
+  };
+});
+vi.mock("@/lib/discord/discord-utils", () => discordUtils);
+
 const { GET, PATCH, DELETE } =
   await import("@/app/api/v3/account/discord/route");
 
@@ -50,6 +69,7 @@ beforeEach(() => {
   delete process.env.DISCORD_BOT_TOKEN;
   delete process.env.DISCORD_GUILD_ID;
   mockFetch.mockReset();
+  discordUtils.refreshDiscordAccessToken.mockReset();
   vi.stubGlobal("fetch", mockFetch);
 });
 
@@ -220,6 +240,144 @@ describe("GET /api/v3/account/discord", () => {
     expect(res.status).toBe(200);
     expect(json.guildJoined).toBe(true); // unchanged, from the stored row
     expect(mockQuery).toHaveBeenCalledTimes(1); // no UPDATE attempted
+  });
+});
+
+/**
+ * Discord expires an access token after 7 days, so the auto-join worked only
+ * for accounts connected within the last week and then failed silently
+ * forever, leaving everyone else permanently shown as "not in server". The
+ * refresh token was stored and encrypted the whole time and never spent.
+ */
+describe("GET /api/v3/account/discord: expired access tokens", () => {
+  function connectedRow(overrides: Record<string, unknown> = {}) {
+    return {
+      rows: [
+        {
+          discord_id: "123",
+          discord_username: "vulnbot",
+          discord_avatar: "abc",
+          guild_joined: false,
+          updated_at: "2026-01-01T00:00:00.000Z",
+          access_token: "enc-token",
+          token_expires_at: null,
+          ...overrides,
+        },
+      ],
+    };
+  }
+
+  /** Discord's answer when the user token in the join body is stale. */
+  function tokenRejected() {
+    return {
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({ message: "401: Unauthorized" }),
+    };
+  }
+
+  beforeEach(() => {
+    process.env.DISCORD_BOT_TOKEN = "bot-token";
+    process.env.DISCORD_GUILD_ID = "guild-1";
+  });
+
+  it("refreshes once and retries the join when the stored token is rejected", async () => {
+    mockQuery.mockResolvedValueOnce(connectedRow());
+    mockFetch.mockResolvedValueOnce({ status: 404 }); // GET member
+    mockFetch.mockResolvedValueOnce(tokenRejected()); // PUT join, stale token
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204 }); // PUT retry
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE guild_joined
+    discordUtils.refreshDiscordAccessToken.mockResolvedValue("fresh-access");
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.guildJoined).toBe(true);
+    expect(json.reauthRequired).toBe(false);
+    expect(discordUtils.refreshDiscordAccessToken).toHaveBeenCalledTimes(1);
+    expect(discordUtils.refreshDiscordAccessToken).toHaveBeenCalledWith(3);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    // The retry carries the NEW token, not the one Discord just refused.
+    const [, retryOptions] = mockFetch.mock.calls[2];
+    expect(JSON.parse(retryOptions.body)).toEqual({
+      access_token: "fresh-access",
+    });
+  });
+
+  it("retries exactly once: a second rejection is a failure, not another refresh", async () => {
+    mockQuery.mockResolvedValueOnce(connectedRow());
+    mockFetch.mockResolvedValueOnce({ status: 404 });
+    mockFetch.mockResolvedValueOnce(tokenRejected());
+    mockFetch.mockResolvedValueOnce(tokenRejected());
+    discordUtils.refreshDiscordAccessToken.mockResolvedValue("fresh-access");
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.guildJoined).toBe(false);
+    expect(discordUtils.refreshDiscordAccessToken).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(3); // one GET, two PUTs, no more
+  });
+
+  it("refreshes up front when the stored token has already expired", async () => {
+    mockQuery.mockResolvedValueOnce(
+      connectedRow({ token_expires_at: new Date("2020-01-01T00:00:00.000Z") }),
+    );
+    mockFetch.mockResolvedValueOnce({ status: 404 });
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    discordUtils.refreshDiscordAccessToken.mockResolvedValue("fresh-access");
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.guildJoined).toBe(true);
+    expect(discordUtils.refreshDiscordAccessToken).toHaveBeenCalledTimes(1);
+    // No wasted PUT with a token already known to be dead.
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const [, joinOptions] = mockFetch.mock.calls[1];
+    expect(JSON.parse(joinOptions.body)).toEqual({
+      access_token: "fresh-access",
+    });
+  });
+
+  it("surfaces a revoked authorization instead of a silent not-in-server", async () => {
+    mockQuery.mockResolvedValueOnce(connectedRow());
+    mockFetch.mockResolvedValueOnce({ status: 404 });
+    mockFetch.mockResolvedValueOnce(tokenRejected());
+    discordUtils.refreshDiscordAccessToken.mockRejectedValue(
+      new discordUtils.DiscordReauthRequiredError(),
+    );
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.guildJoined).toBe(false);
+    // The whole point: the user is told the link is dead rather than being
+    // left staring at "Not in server" that will never resolve itself.
+    expect(json.reauthRequired).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2); // no retry after a dead refresh
+  });
+
+  it("does not spend a refresh on a failure that is not about the token", async () => {
+    mockQuery.mockResolvedValueOnce(connectedRow());
+    mockFetch.mockResolvedValueOnce({ status: 404 });
+    // 403: the bot lacks Create Instant Invite on the guild. Refreshing the
+    // user's token cannot fix that, so it must not be attempted.
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      text: async () => "Missing Permissions",
+    });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.guildJoined).toBe(false);
+    expect(json.reauthRequired).toBe(false);
+    expect(discordUtils.refreshDiscordAccessToken).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
 
