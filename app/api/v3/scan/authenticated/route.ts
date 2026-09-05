@@ -62,6 +62,7 @@ import {
 } from "@/lib/scanner/auth/request-schema";
 import type { ScanAuthReport } from "@/lib/scanner/auth/types";
 import { scanningPausedResponse } from "@/lib/admin/service-state";
+import { notifyScanComplete } from "@/lib/webhooks/scan-notifications";
 
 /**
  * POST /api/v3/scan/authenticated
@@ -637,6 +638,35 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       const savedScanId = scanHistoryId;
       void saveAutoTags(savedScanId, authedUserId, findings).then((tags) => {
         void maybeSuggestAiTag(savedScanId, authedUserId, tags, findings);
+      });
+    }
+
+    // The shared notification tail every other scan path runs
+    // (lib/webhooks/scan-notifications.ts): the scan-complete email, the
+    // critical/high regression alert, and every webhook the caller or the
+    // scan's team registered. This route builds its own pipeline instead of
+    // calling executeScan, so it used to fire none of the three -- the
+    // deepest scan on offer, and the one most likely to surface something
+    // real behind a login, completed in total silence.
+    //
+    // `incomplete` is passed through rather than dropped for the same reason
+    // it reaches the screen: a run whose DNS and TLS branches timed out, or
+    // whose session was lost partway, must not be notified as a clean scan.
+    // Fire-and-forget, like upsertHostReputation above: the notification
+    // cannot delay or fail this response, and the helper never rejects.
+    if (scanHistoryId !== null) {
+      void notifyScanComplete({
+        userId: authedUserId,
+        scanId: scanHistoryId,
+        // finalScanUrl, matching the scan_history.url this route persisted a
+        // few lines up, so the regression diff finds the previous scans of
+        // this same target instead of treating every run as the first.
+        target: { kind: "url", value: finalScanUrl },
+        summary,
+        findings,
+        duration,
+        scannedAt: new Date().toISOString(),
+        incomplete,
       });
     }
 

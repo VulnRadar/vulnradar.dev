@@ -53,6 +53,7 @@ vi.mock("@/lib/api/api-keys", () => ({
   recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
 }));
 
+const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { GET, DELETE } = await import("@/app/api/v3/history/route");
 
 function getRequest(headers: Record<string, string> = {}) {
@@ -71,6 +72,11 @@ function deleteRequest(headers: Record<string, string> = {}) {
 
 beforeEach(() => {
   systemSettingsRows = [];
+  // runtime-config holds its settings snapshot for 30 seconds, which is longer
+  // than this file takes to run, so without this the first test to populate
+  // `systemSettingsRows` decided the retention window for every test after it
+  // and a param assertion's correctness depended on its position in the file.
+  invalidateSettingsCache();
   mockQuery.mockClear();
   mockBusinessQuery.mockReset();
   mockGetSession.mockReset();
@@ -223,10 +229,8 @@ describe("GET /api/v3/history", () => {
 
     /**
      * The limit and offset are always the LAST two params, whichever retention
-     * branch ran. Asserted as a tail rather than a whole array because
-     * runtime-config memoizes settings for the life of the module, so a plan's
-     * retention window here depends on what an earlier test in this file put
-     * in system_settings, and that is not what these tests are about.
+     * branch ran and whatever filters are on. Asserted as a tail because that
+     * tail is the invariant these tests are about.
      */
     const paging = (params: unknown[]) => params.slice(-2);
 
@@ -284,6 +288,211 @@ describe("GET /api/v3/history", () => {
 
       expect(json.offset).toBe(0);
       expect(json.truncated).toBe(true);
+    });
+  });
+
+  /**
+   * Server-side search. The history page used to filter the rows it had
+   * already loaded, so a scan still inside the plan's retention window could
+   * not be found by URL once it had scrolled past the capped first page.
+   * ref: AUDIT-014#qolf-01
+   *
+   * `pool.query` is faked in this tier, so these assert the query text and the
+   * bound parameters, not what Postgres does with them. That is the point for
+   * the tenant-scoping ones: the filter must be *added to* the user_id
+   * predicate, never substituted for it, and that is visible in the SQL.
+   */
+  describe("search and tag filtering", () => {
+    function filteredRequest(query: string) {
+      return new NextRequest(`http://localhost/api/v3/history?${query}`, {
+        method: "GET",
+      });
+    }
+
+    /** [plan lookup, list, account total, filtered count]. */
+    function primeFiltered(rows: unknown[], total: number, matched: number) {
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ plan: "free", role: "user" }],
+      });
+      mockBusinessQuery.mockResolvedValueOnce({ rows });
+      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: total }] });
+      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: matched }] });
+    }
+
+    it("filters on the URL in SQL, still scoped to the caller's own rows", async () => {
+      primeFiltered([{ id: "a", url: "https://shop.test" }], 412, 3);
+
+      const res = await GET(filteredRequest("q=shop"));
+      const json = await res.json();
+
+      const [sql, params] = mockBusinessQuery.mock.calls[1];
+      // The ownership predicate is still there: the filter narrows it rather
+      // than replacing the WHERE.
+      expect(sql).toContain("sh.user_id = $1");
+      expect(sql).toContain("sh.url ILIKE $2 ESCAPE");
+      expect(params).toEqual([7, "%shop%", 100, 0]);
+      expect(json.q).toBe("shop");
+      expect(json.scans).toHaveLength(1);
+    });
+
+    it("cannot be steered onto another user: user_id stays bound to the session, whatever q says", async () => {
+      mockGetSession.mockResolvedValue({ userId: 7 });
+      primeFiltered([], 412, 0);
+
+      await GET(
+        filteredRequest(`q=${encodeURIComponent("' OR sh.user_id = 9 --")}`),
+      );
+
+      const [sql, params] = mockBusinessQuery.mock.calls[1];
+      // The whole hostile string arrived as one bound value, so it is a
+      // substring to match, not SQL. Its "_" comes back escaped for LIKE,
+      // which is the other half of the same point: it is pattern input, and
+      // not even that.
+      expect(params[0]).toBe(7);
+      expect(params[1]).toBe("%' OR sh.user\\_id = 9 --%");
+      expect(sql).not.toContain("= 9");
+      // Every query this handler ran is bound to user 7.
+      for (const [, callParams] of mockBusinessQuery.mock.calls.slice(1)) {
+        expect((callParams as unknown[])[0]).toBe(7);
+      }
+    });
+
+    it("escapes LIKE metacharacters so a bare % is a literal, not 'every row I own'", async () => {
+      primeFiltered([], 412, 0);
+
+      await GET(filteredRequest(`q=${encodeURIComponent("100%_a\\b")}`));
+
+      const [, params] = mockBusinessQuery.mock.calls[1];
+      expect(params[1]).toBe("%100\\%\\_a\\\\b%");
+    });
+
+    it("filters on a tag through a user-scoped EXISTS, not the scan join alone", async () => {
+      primeFiltered([{ id: "a" }], 412, 2);
+
+      await GET(filteredRequest("tag=prod"));
+
+      const [sql, params] = mockBusinessQuery.mock.calls[1];
+      expect(sql).toContain("FROM scan_tags st_f");
+      expect(sql).toContain("st_f.user_id = $1");
+      expect(sql).toContain("st_f.tag = $2");
+      expect(params).toEqual([7, "prod", 100, 0]);
+    });
+
+    it("combines q and tag, and keeps limit and offset as the last two params", async () => {
+      primeFiltered([], 412, 0);
+
+      await GET(filteredRequest("q=shop&tag=prod&limit=25&offset=50"));
+
+      const [sql, params] = mockBusinessQuery.mock.calls[1];
+      expect(sql).toContain("sh.url ILIKE $2");
+      expect(sql).toContain("st_f.tag = $3");
+      expect(params).toEqual([7, "%shop%", "prod", 25, 50]);
+    });
+
+    it("accepts `search` as an alias for `q`", async () => {
+      primeFiltered([], 412, 0);
+
+      const res = await GET(filteredRequest("search=shop"));
+      const json = await res.json();
+
+      const [, params] = mockBusinessQuery.mock.calls[1];
+      expect(params[1]).toBe("%shop%");
+      expect(json.q).toBe("shop");
+    });
+
+    it("treats a blank or whitespace-only q as no filter at all", async () => {
+      for (const blank of ["", "%20%20"]) {
+        mockBusinessQuery.mockReset();
+        mockBusinessQuery.mockResolvedValueOnce({
+          rows: [{ plan: "free", role: "user" }],
+        });
+        mockBusinessQuery.mockResolvedValueOnce({ rows: [] });
+        mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: 5 }] });
+
+        const res = await GET(filteredRequest(`q=${blank}`));
+        const json = await res.json();
+
+        const [sql, params] = mockBusinessQuery.mock.calls[1];
+        expect(sql, `q=${blank}`).not.toContain("ILIKE");
+        expect(params, `q=${blank}`).toEqual([7, 100, 0]);
+        expect(json.q, `q=${blank}`).toBe(null);
+        // No fourth query: an unfiltered request costs exactly what it did
+        // before search existed.
+        expect(mockBusinessQuery.mock.calls, `q=${blank}`).toHaveLength(3);
+      }
+    });
+
+    it("reports the filtered count as `matched` and leaves `total` the account total", async () => {
+      primeFiltered([{ id: "a" }], 412, 3);
+
+      const res = await GET(filteredRequest("q=shop"));
+      const json = await res.json();
+
+      // `total` is what the delete-everything confirmation counts. A filtered
+      // number there would understate what the unbounded DELETE removes.
+      expect(json.total).toBe(412);
+      expect(json.matched).toBe(3);
+
+      // The account total is counted without the filter...
+      const [, totalParams] = mockBusinessQuery.mock.calls[2];
+      expect(totalParams).toEqual([7]);
+      // ...and the matched count with it.
+      const [matchedSql, matchedParams] = mockBusinessQuery.mock.calls[3];
+      expect(matchedSql).toContain("COUNT(*)");
+      expect(matchedSql).toContain("sh.url ILIKE $2");
+      expect(matchedParams).toEqual([7, "%shop%"]);
+    });
+
+    it("sets matched to total when nothing is filtered", async () => {
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ plan: "free", role: "user" }],
+      });
+      mockBusinessQuery.mockResolvedValueOnce({ rows: [] });
+      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: 412 }] });
+
+      const res = await GET(getRequest());
+      const json = await res.json();
+
+      expect(json.total).toBe(412);
+      expect(json.matched).toBe(412);
+    });
+
+    it("pages against the filtered set: truncated follows matched, not the account total", async () => {
+      // 412 scans on the account, 12 of them match, and this is the last page
+      // of those 12. Measured against `total` this would claim there is more.
+      primeFiltered(new Array(2).fill({ id: "x" }), 412, 12);
+
+      const res = await GET(filteredRequest("q=shop&limit=10&offset=10"));
+      const json = await res.json();
+
+      expect(json.truncated).toBe(false);
+      expect(json.matched).toBe(12);
+    });
+
+    it("still reports truncated on the first page of a filtered set", async () => {
+      primeFiltered(new Array(10).fill({ id: "x" }), 412, 12);
+
+      const res = await GET(filteredRequest("q=shop&limit=10"));
+      const json = await res.json();
+
+      expect(json.truncated).toBe(true);
+    });
+
+    it("keeps the retention window in front of the filter, so search cannot reach expired scans", async () => {
+      systemSettingsRows = [{ key: "BILLING_FREE_RETENTION", value: "30" }];
+      primeFiltered([], 412, 0);
+
+      await GET(filteredRequest("q=shop"));
+
+      const [sql, params] = mockBusinessQuery.mock.calls[1];
+      expect(sql).toContain("sh.scanned_at > NOW()");
+      // [userId, retentionDays, pattern, limit, offset]
+      expect(params).toEqual([7, 30, "%shop%", 100, 0]);
+      // The filtered count carries the same window, so `matched` cannot count
+      // rows the list would never return.
+      const [matchedSql, matchedParams] = mockBusinessQuery.mock.calls[3];
+      expect(matchedSql).toContain("sh.scanned_at > NOW()");
+      expect(matchedParams).toEqual([7, 30, "%shop%"]);
     });
   });
 

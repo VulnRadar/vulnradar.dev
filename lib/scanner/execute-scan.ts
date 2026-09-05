@@ -26,7 +26,6 @@ import {
   getCancelSignal,
   clearCancel,
 } from "./scan-jobs";
-import pool from "@/lib/database/db";
 import type { Category, Vulnerability } from "./types";
 import {
   APP_NAME,
@@ -51,22 +50,14 @@ import {
 import { safeFetch } from "./safe-fetch";
 import { safeReadBody } from "./read-bounded-body";
 import { redactSensitiveResponseHeaders } from "./response-headers";
-import { sendNotificationEmail } from "@/lib/notifications/notifications";
-import { scanCompleteEmail, criticalFindingsEmail } from "@/lib/email/email";
-import {
-  getDangerScore,
-  getEngineConfidence,
-  getSafetyRating,
-  type SafetyRating,
-} from "./safety-rating";
+import { getDangerScore, getEngineConfidence } from "./safety-rating";
 import { getSiteGrade } from "./site-grade";
 import { checkSourceMapSourcesExposed } from "./checks/content";
 import { getCheckDef, buildVulnerabilityFromEvidence } from "./registry";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 import { applyAdaptiveConfidence } from "./adaptive-confidence";
 import { attachCvssScores } from "./cvss";
-import { deliverWebhook } from "@/lib/webhooks/delivery";
-import { checkForNewCriticalOrHighFindings } from "./regression-alert";
+import { notifyScanComplete } from "@/lib/webhooks/scan-notifications";
 import {
   captureAndStoreScreenshot,
   shouldCaptureScreenshot,
@@ -204,7 +195,6 @@ export interface ExecuteScanParams {
 export async function executeScan(params: ExecuteScanParams): Promise<void> {
   const {
     scanId,
-    url,
     normalizedUrl,
     protocolType,
     isRawIpTarget,
@@ -869,249 +859,27 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // webhooks for a result nobody will see.
     if (!applied) return;
 
-    // Send email notifications (non-blocking)
-    pool
-      .query("SELECT email FROM users WHERE id = $1", [authedUserId])
-      .then(async ({ rows }) => {
-        if (rows.length === 0) return;
-        const userEmail = rows[0].email;
-
-        // Send scan complete notification. Suppressed for a routine
-        // scheduled-scan run (see ExecuteScanParams.silenceRoutineEmail) --
-        // the critical/high findings alert right below still fires either
-        // way, so a schedule that actually finds something new still
-        // notifies.
-        if (!silenceRoutineEmail) {
-          const scanEmail = scanCompleteEmail(
-            normalizedUrl,
-            summary,
-            duration,
-            scanId,
-          );
-          await sendNotificationEmail({
-            userId: authedUserId,
-            userEmail,
-            type: "scan_complete",
-            emailContent: scanEmail,
-          }).catch((error) => {
-            console.error(
-              `[${APP_NAME}] Failed to send scan complete email:`,
-              error instanceof Error ? error.message : error,
-            );
-          });
-        }
-
-        // Send critical/high regression alert only when the diff against
-        // the previous scan of this URL turns up a genuinely NEW
-        // critical/high finding (see lib/scanner/regression-alert.ts) --
-        // not merely whether this scan's summary has any critical/high
-        // count at all. Without this, a persistent finding on a schedule
-        // that reruns hourly would re-alert on every single run.
-        try {
-          const regressionCheck = await checkForNewCriticalOrHighFindings({
-            userId: authedUserId,
-            url: normalizedUrl,
-            scanId,
-            currentFindings: findings,
-          });
-          if (regressionCheck.hasNewCriticalOrHigh) {
-            const criticalEmail = criticalFindingsEmail(
-              normalizedUrl,
-              regressionCheck.newFindings,
-              regressionCheck.outstandingFindings,
-              scanId,
-            );
-            await sendNotificationEmail({
-              userId: authedUserId,
-              userEmail,
-              type: "severity_alerts",
-              emailContent: criticalEmail,
-            });
-          }
-        } catch (error) {
-          console.error(
-            `[${APP_NAME}] Failed to send critical findings email:`,
-            error instanceof Error ? error.message : error,
-          );
-        }
-      })
-      .catch((error) => {
-        console.error(
-          `[${APP_NAME}] Failed to fetch user email for notifications:`,
-          error instanceof Error ? error.message : error,
-        );
-      });
-
-    // Fire webhooks for all scans (non-blocking). Includes both the scan
-    // owner's own webhooks AND any webhook assigned to the team this scan
-    // belongs to -- team-assigned webhooks were previously never delivered
-    // (the query filtered on user_id only), so a webhook shared to a team fired
-    // only for its creator's scans, never a teammate's. The subquery resolves
-    // the scan's team_id (NULL for a personal scan, so the team clause matches
-    // nothing there); DISTINCT-by-row means a webhook matching both clauses
-    // still fires once.
-    pool
-      .query(
-        `SELECT id, url, type, secret FROM webhooks
-         WHERE active = true
-           AND (
-             user_id = $1
-             OR team_id = (SELECT team_id FROM scan_history WHERE id = $2)
-           )`,
-        [authedUserId, scanId],
-      )
-      .then(({ rows }) => {
-        for (const {
-          id: webhookId,
-          url: webhookUrl,
-          type: webhookType,
-          secret: webhookSecret,
-        } of rows) {
-          let body: string;
-          const scanData = {
-            normalizedUrl,
-            summary,
-            findings_count: summary.total,
-            duration,
-            scanned_at: scannedAt,
-          };
-
-          if (webhookType === "discord") {
-            // Discord embed format. Color follows the same canonical
-            // safe/caution/unsafe tier every other surface uses (the
-            // public host page, history, the extension) instead of a
-            // raw severity-count threshold -- a raw "critical > 0 or
-            // high > 0" check can't tell an exploitable finding from a
-            // pure hardening one (e.g. a lone "Missing HSTS"), so it
-            // colored the embed red/orange for scans the canonical
-            // scorer calls safe.
-            const VERDICT_COLOR: Record<SafetyRating, number> = {
-              safe: 0x22c55e,
-              caution: 0xeab308,
-              unsafe: 0xef4444,
-            };
-            const severityColor = VERDICT_COLOR[getSafetyRating(findings)];
-            body = JSON.stringify({
-              embeds: [
-                {
-                  title: `${APP_NAME} Scan Complete`,
-                  description: `Scan finished for **${url}**`,
-                  color: severityColor,
-                  fields: [
-                    {
-                      name: "Critical",
-                      value: String(summary.critical),
-                      inline: true,
-                    },
-                    {
-                      name: "High",
-                      value: String(summary.high),
-                      inline: true,
-                    },
-                    {
-                      name: "Medium",
-                      value: String(summary.medium),
-                      inline: true,
-                    },
-                    { name: "Low", value: String(summary.low), inline: true },
-                    {
-                      name: "Info",
-                      value: String(summary.info),
-                      inline: true,
-                    },
-                    {
-                      name: "Total Issues",
-                      value: String(summary.total),
-                      inline: true,
-                    },
-                    {
-                      name: "Duration",
-                      value: `${(duration / 1000).toFixed(1)}s`,
-                      inline: true,
-                    },
-                  ],
-                  footer: { text: `${APP_NAME} Security Scanner` },
-                  timestamp: scannedAt,
-                },
-              ],
-            });
-          } else if (webhookType === "slack") {
-            // Slack Block Kit format
-            body = JSON.stringify({
-              blocks: [
-                {
-                  type: "header",
-                  text: {
-                    type: "plain_text",
-                    text: `${APP_NAME} Scan Complete`,
-                  },
-                },
-                {
-                  type: "section",
-                  text: { type: "mrkdwn", text: `*URL:* ${url}` },
-                },
-                {
-                  type: "section",
-                  fields: [
-                    {
-                      type: "mrkdwn",
-                      text: `*Critical:* ${summary.critical}`,
-                    },
-                    { type: "mrkdwn", text: `*High:* ${summary.high}` },
-                    { type: "mrkdwn", text: `*Medium:* ${summary.medium}` },
-                    { type: "mrkdwn", text: `*Low:* ${summary.low}` },
-                    { type: "mrkdwn", text: `*Total:* ${summary.total}` },
-                    {
-                      type: "mrkdwn",
-                      text: `*Duration:* ${(duration / 1000).toFixed(1)}s`,
-                    },
-                  ],
-                },
-                {
-                  type: "context",
-                  elements: [
-                    {
-                      type: "mrkdwn",
-                      text: `Sent by ${APP_NAME} Security Scanner`,
-                    },
-                  ],
-                },
-              ],
-            });
-          } else {
-            // Generic JSON
-            body = JSON.stringify({
-              event: "scan.completed",
-              data: scanData,
-            });
-          }
-
-          // Signed (HMAC-SHA256 of `body` via the webhook's own secret, sent
-          // as X-VulnRadar-Signature: sha256=<hex>), logged to
-          // webhook_deliveries, and retried once on failure -- see
-          // lib/webhooks/delivery.ts. That module re-validates the URL via
-          // safeFetch's own SSRF check before every attempt (registration
-          // and edit time aren't the only chance DNS / routing has to
-          // change), so no separate validateScanTarget call is needed here.
-          deliverWebhook(
-            {
-              id: webhookId,
-              userId: authedUserId,
-              url: webhookUrl,
-              type: webhookType,
-              secret: webhookSecret ?? null,
-            },
-            "scan.completed",
-            body,
-          ).catch((err) => {
-            console.error(`[${APP_NAME}] Webhook delivery failed`, {
-              type: webhookType,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-        }
-      })
-      .catch(() => {});
+    // Every notification this scan produces (scan-complete email,
+    // critical/high regression alert, and every webhook the owner or the
+    // scan's team registered) is one shared tail, so the four other ways a
+    // scan can be produced fire the same set instead of silently firing
+    // none. See lib/webhooks/scan-notifications.ts. Detached: a webhook is
+    // allowed up to 25s of retry and the scan must not wait on it, and the
+    // helper never rejects.
+    void notifyScanComplete({
+      userId: authedUserId,
+      scanId,
+      // normalizedUrl, not finalScanUrl: this is the key the regression diff
+      // looks up prior scans by, and changing it would make every scan that
+      // followed a redirect read as the first scan of a new target.
+      target: { kind: "url", value: normalizedUrl },
+      summary,
+      findings,
+      duration,
+      scannedAt,
+      incomplete,
+      silenceRoutineEmail,
+    });
   } catch (error) {
     if (error instanceof ScanCancelledError) {
       await finalizeScanFailure(scanId, "Cancelled");

@@ -9,9 +9,17 @@ import type { ScanRecord } from "@/components/history/history-types";
  * cannot be imported from a test at all. Same split as
  * components/host/danger-score-trend-utils.ts.
  *
- * These run over the rows the page already loaded, which the API caps. That
- * cap is a real limitation and the page says so above the list; pushing all of
- * this into SQL is the proper fix and belongs with server-side search.
+ * These run over the rows the page already loaded, which the API caps.
+ *
+ * Search and tag are no longer only here: GET /api/v3/history takes `q` and
+ * `tag` and applies both in SQL across the whole retention window
+ * (AUDIT-014#qolf-01), so the page refetches on a debounce and this pass is
+ * the instant local narrowing that happens while that request is in flight.
+ * Keeping it means the two agree: it must stay a case-insensitive substring
+ * match on the URL, which is what `url ILIKE '%q%'` does server-side.
+ *
+ * Severity, date and sort have no server side and really do only see the
+ * loaded rows. The page says so above the list.
  */
 
 export type HistorySeverityFilter = "any" | "critical" | "high" | "clean";

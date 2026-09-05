@@ -51,7 +51,6 @@ import { redactSensitiveResponseHeaders } from "./response-headers";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 import { applyAdaptiveConfidence } from "./adaptive-confidence";
 import { attachCvssScores } from "./cvss";
-import { checkForNewCriticalOrHighFindings } from "./regression-alert";
 import { getDangerScore, getEngineConfidence } from "./safety-rating";
 import {
   captureAndStoreScreenshot,
@@ -69,8 +68,7 @@ import {
   readSoftwareFingerprint,
   correlateSoftwareCves,
 } from "./software-inventory";
-import { sendNotificationEmail } from "@/lib/notifications/notifications";
-import { criticalFindingsEmail } from "@/lib/email/email";
+import { notifyScanComplete } from "@/lib/webhooks/scan-notifications";
 
 /**
  * Pages in flight at once. Deliberately small: a crawl is still a stranger's
@@ -938,54 +936,31 @@ export async function executeCrawlScan(
     });
 
     // Row already reached a terminal state (watchdog timeout or
-    // cancellation raced this completion) -- don't alert for a result
-    // nobody will see. Unlike execute-scan.ts, a crawl scan never sent any
-    // notification email at all before this; the only one added here is
-    // the critical/high regression alert, gated the same way a single-URL
-    // scan's is (lib/scanner/regression-alert.ts): only when the diff
-    // against the previous scan of this exact main URL turns up a
-    // genuinely new, non-suppressed critical/high finding.
+    // cancellation raced this completion) -- don't notify for a result
+    // nobody will see.
+    //
+    // A crawl used to send exactly one notification, the critical/high
+    // regression alert, and no scan-complete email and no webhook at all:
+    // `--crawl` is what the CLI and the GitHub Action expose, so a CI-facing
+    // path finished in near silence. It now runs the same shared tail as
+    // every other scan path (lib/webhooks/scan-notifications.ts), which owns
+    // the regression alert too. The inline copy that used to live here is
+    // gone rather than kept alongside it, so there is no second email.
     if (applied) {
-      pool
-        .query("SELECT email FROM users WHERE id = $1", [authedUserId])
-        .then(async ({ rows }) => {
-          if (rows.length === 0) return;
-          const userEmail = rows[0].email;
-
-          try {
-            const regressionCheck = await checkForNewCriticalOrHighFindings({
-              userId: authedUserId,
-              url: normalizedMainUrl,
-              scanId,
-              currentFindings: allFindings,
-            });
-            if (regressionCheck.hasNewCriticalOrHigh) {
-              const criticalEmail = criticalFindingsEmail(
-                normalizedMainUrl,
-                regressionCheck.newFindings,
-                regressionCheck.outstandingFindings,
-                scanId,
-              );
-              await sendNotificationEmail({
-                userId: authedUserId,
-                userEmail,
-                type: "severity_alerts",
-                emailContent: criticalEmail,
-              });
-            }
-          } catch (error) {
-            console.error(
-              `[${APP_NAME}] Failed to send critical findings email:`,
-              error instanceof Error ? error.message : error,
-            );
-          }
-        })
-        .catch((error) => {
-          console.error(
-            `[${APP_NAME}] Failed to fetch user email for crawl scan notifications:`,
-            error instanceof Error ? error.message : error,
-          );
-        });
+      void notifyScanComplete({
+        userId: authedUserId,
+        scanId,
+        // The main URL, which is what this crawl's tracker row stores as
+        // scan_history.url and therefore the key the regression diff needs.
+        target: { kind: "url", value: normalizedMainUrl },
+        summary: mergedSummary,
+        findings: allFindings,
+        duration: totalDuration,
+        scannedAt,
+        // A crawl accumulates unfinished branches across every page it
+        // visited; the same list result_meta.incomplete stores.
+        incomplete,
+      });
     }
   } catch (error) {
     if (error instanceof ScanCancelledError) {

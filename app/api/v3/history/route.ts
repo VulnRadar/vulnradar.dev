@@ -64,6 +64,30 @@ function parsePaging(
   return { limit, offset };
 }
 
+/**
+ * Read the optional `q` (URL substring) and `tag` filters off the query string.
+ *
+ * `search` is accepted as an alias for `q` because the web UI's control is
+ * called Search and an API client guessing at the name will reach for one of
+ * the two.
+ *
+ * Absence is the previous behaviour exactly (no filtering), and an empty or
+ * whitespace-only value counts as absent rather than as "match nothing": a
+ * cleared search box must return the list, not an empty one.
+ */
+function parseFilters(searchParams: URLSearchParams): {
+  q: string | null;
+  tag: string | null;
+} {
+  const rawQ = (
+    searchParams.get("q") ??
+    searchParams.get("search") ??
+    ""
+  ).trim();
+  const rawTag = (searchParams.get("tag") ?? "").trim();
+  return { q: rawQ || null, tag: rawTag || null };
+}
+
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie
   const authHeader = request.headers.get("authorization");
@@ -144,6 +168,48 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     historyMaxRows,
   );
 
+  // Search and tag filtering run here, in SQL, over the whole retention
+  // window. They used to run in the browser over whatever page the history
+  // view had already loaded, so a scan still inside the plan's retention
+  // window could not be found by URL once it had scrolled past that page:
+  // searching returned "no match" for a scan that exists. ref:
+  // AUDIT-014#qolf-01
+  //
+  // Both filters are appended to the same user-scoped WHERE the unfiltered
+  // list already used, never substituted for it, so a filter can only narrow
+  // the caller's own rows. Values go in as bind parameters; nothing here is
+  // concatenated into the SQL text except the parameter numbers.
+  const { q, tag } = parseFilters(request.nextUrl.searchParams);
+  const filtering = q !== null || tag !== null;
+
+  // The account-scoped clause both the list and the true account total share.
+  // `total` is what the delete-everything confirmation counts, so it must stay
+  // blind to q/tag.
+  const baseParams: unknown[] = [authedUserId];
+  let baseWhere =
+    "sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')";
+  if (retentionDays > 0) {
+    baseParams.push(Math.floor(retentionDays));
+    baseWhere += `\n         AND sh.scanned_at > NOW() - ($${baseParams.length} * INTERVAL '1 day')`;
+  }
+
+  const listParams: unknown[] = [...baseParams];
+  let listWhere = baseWhere;
+  if (q !== null) {
+    // Escaped so this is a literal substring rather than a pattern: an
+    // unescaped "_" matches any single character and a bare "%" matches every
+    // row the caller owns, which turns a search into a full listing.
+    listParams.push(`%${q.replace(/[\\%_]/g, "\\$&")}%`);
+    listWhere += `\n         AND sh.url ILIKE $${listParams.length} ESCAPE '\\'`;
+  }
+  if (tag !== null) {
+    // st_f.user_id = $1 as well as the scan join: tags are per-user rows, so
+    // filtering on the join alone would let one user's tag on a shared URL
+    // select another user's scan.
+    listParams.push(tag);
+    listWhere += `\n         AND EXISTS (SELECT 1 FROM scan_tags st_f WHERE st_f.scan_id = sh.id AND st_f.user_id = $1 AND st_f.tag = $${listParams.length})`;
+  }
+
   // GitHub repo scans (sh.scan_type = 'github') are excluded here: they get
   // their own dedicated history at /repos (app/api/v3/scan/github/history),
   // scoped per-repo instead of mixed into this URL-scan list. See the
@@ -155,31 +221,17 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // duration 0, so a scan the user navigated away from used to appear in
   // History wearing a clean result's clothes: "0 findings in 0.0s".
   const result = await pool.query(
-    retentionDays <= 0
-      ? `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source, sh.status,
+    `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source, sh.status,
          COALESCE(
            (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
             FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),
            '[]'::json
          ) as tags
        FROM scan_history sh
-       WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
+       WHERE ${listWhere}
        ORDER BY sh.scanned_at DESC
-       LIMIT $2 OFFSET $3`
-      : `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source, sh.status,
-         COALESCE(
-           (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
-            FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),
-           '[]'::json
-         ) as tags
-       FROM scan_history sh
-       WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
-         AND sh.scanned_at > NOW() - ($2 * INTERVAL '1 day')
-       ORDER BY sh.scanned_at DESC
-       LIMIT $3 OFFSET $4`,
-    retentionDays <= 0
-      ? [authedUserId, pageLimit, pageOffset]
-      : [authedUserId, Math.floor(retentionDays), pageLimit, pageOffset],
+       LIMIT $${listParams.length + 1} OFFSET $${listParams.length + 2}`,
+    [...listParams, pageLimit, pageOffset],
   );
 
   // The list above is capped at HISTORY_LIST_MAX_ROWS, so scans.length is a
@@ -193,17 +245,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   let total = result.rows.length;
   try {
     const totalRes = await pool.query<{ n: number }>(
-      retentionDays <= 0
-        ? `SELECT COUNT(*)::int AS n
+      `SELECT COUNT(*)::int AS n
            FROM scan_history sh
-           WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')`
-        : `SELECT COUNT(*)::int AS n
-           FROM scan_history sh
-           WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
-             AND sh.scanned_at > NOW() - ($2 * INTERVAL '1 day')`,
-      retentionDays <= 0
-        ? [authedUserId]
-        : [authedUserId, Math.floor(retentionDays)],
+           WHERE ${baseWhere}`,
+      baseParams,
     );
     total = totalRes?.rows?.[0]?.n ?? result.rows.length;
   } catch (err) {
@@ -211,6 +256,31 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       "[history] total count failed, falling back to page size",
       err,
     );
+  }
+
+  // How many rows the filters match across the whole retention window, which
+  // is the number this page's pagination is about. Without a filter it is the
+  // account total and no second count is issued. It is reported separately
+  // from `total` on purpose: `total` is what the delete-everything
+  // confirmation counts, and a filtered number there would understate what the
+  // unbounded DELETE removes.
+  let matched = total;
+  if (filtering) {
+    matched = pageOffset + result.rows.length;
+    try {
+      const matchedRes = await pool.query<{ n: number }>(
+        `SELECT COUNT(*)::int AS n
+           FROM scan_history sh
+           WHERE ${listWhere}`,
+        listParams,
+      );
+      matched = matchedRes?.rows?.[0]?.n ?? matched;
+    } catch (err) {
+      console.error(
+        "[history] filtered count failed, falling back to page size",
+        err,
+      );
+    }
   }
 
   // Record API key usage
@@ -221,15 +291,22 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   return ApiResponse.success({
     scans: result.rows,
     total,
+    matched,
+    // Echoed back so a client can tell what the server actually filtered on
+    // rather than assuming its request arrived intact.
+    q,
+    tag,
     // The page size actually applied, not the ceiling: a caller that asked for
     // ?limit=10 was previously told `limit: 100` because this reported the cap
     // rather than the number of rows it was willing to return.
     limit: pageLimit,
     offset: pageOffset,
     maxLimit: historyMaxRows,
-    // "There are rows after this page", which for the default offset of 0 is
-    // the same boolean it has always been.
-    truncated: pageOffset + result.rows.length < total,
+    // "There are rows after this page", measured against the filtered set so
+    // paging works through a search rather than through the whole account.
+    // With no filter, matched === total and this is the same boolean it has
+    // always been.
+    truncated: pageOffset + result.rows.length < matched,
   });
 });
 

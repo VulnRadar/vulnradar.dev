@@ -76,6 +76,10 @@ export default function HistoryPage() {
   // page size. totalScans is the real account total and is what every
   // user-facing count must use, above all the delete-everything confirmation.
   const [totalScans, setTotalScans] = useState(0);
+  // How many scans the server-side search and tag filter matched across the
+  // whole retention window, which is a different number from totalScans the
+  // moment either is set. Equal to totalScans when neither is.
+  const [matchedScans, setMatchedScans] = useState(0);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
   const [query, setQuery] = useState<HistoryQuery>(DEFAULT_HISTORY_QUERY);
@@ -310,9 +314,31 @@ export default function HistoryPage() {
     };
   }, [setCurrentPage]);
 
+  // Debounced projection of the search box onto the request. The list refetches
+  // on every change to these two, so they lag the input by a keystroke pause
+  // rather than firing a query per character. filterHistory still runs over the
+  // rows already on screen, so typing narrows the list immediately and the
+  // server's answer (which sees scans this page never loaded) replaces it.
+  const [serverSearch, setServerSearch] = useState("");
+  useEffect(() => {
+    const trimmed = query.search.trim();
+    const timer = setTimeout(() => setServerSearch(trimmed), 250);
+    return () => clearTimeout(timer);
+  }, [query.search]);
+  const serverTag = query.tag;
+  const serverFiltering = serverSearch !== "" || serverTag !== null;
+
   const fetchHistory = useCallback(async () => {
     try {
-      const res = await fetch(API.HISTORY);
+      // Search and tag run in SQL over the whole retention window. They used to
+      // run in the browser over the capped page this endpoint returns, so a
+      // scan still inside retention could not be found once it had scrolled
+      // past that page. ref: AUDIT-014#qolf-01
+      const params = new URLSearchParams();
+      if (serverSearch) params.set("q", serverSearch);
+      if (serverTag) params.set("tag", serverTag);
+      const qs = params.toString();
+      const res = await fetch(qs ? `${API.HISTORY}?${qs}` : API.HISTORY);
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
           router.push("/login");
@@ -326,10 +352,20 @@ export default function HistoryPage() {
       setListError(null);
       setScans(rows);
       setTotalScans(typeof data.total === "number" ? data.total : rows.length);
+      // Older responses (a cached deploy mid-rollout) have no `matched`, so
+      // fall back to the account total rather than to 0, which would render
+      // the "showing N of 0" line over a full list.
+      setMatchedScans(
+        typeof data.matched === "number"
+          ? data.matched
+          : typeof data.total === "number"
+            ? data.total
+            : rows.length,
+      );
     } catch {
       setListError("Couldn't reach the server to load your history.");
     }
-  }, [router]);
+  }, [router, serverSearch, serverTag]);
 
   // A failure here is silent on purpose: the tag filter is one control in a
   // row of four and its absence says everything it needs to.
@@ -362,10 +398,23 @@ export default function HistoryPage() {
     setLoading(false);
   }, [fetchHistory, fetchTags]);
 
+  // First pass loads both and waits for both, for the reveal reason above.
+  // Every later pass is a search or tag change, which only the list cares
+  // about: refetching the tag vocabulary on each keystroke pause would be a
+  // second request for an answer that cannot have changed, and swapping the
+  // list into its skeleton mid-search would throw away the rows the user is
+  // reading while they type.
+  const listLoadedOnce = useRef(false);
   useEffect(() => {
+    if (listLoadedOnce.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- refetch-on-filter-change: fetchHistory's setState calls only fire after the request settles, not synchronously in this effect
+      fetchHistory();
+      return;
+    }
+    listLoadedOnce.current = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: loadList's setState calls only fire after its async requests settle, not synchronously in this effect
     loadList();
-  }, [loadList]);
+  }, [loadList, fetchHistory]);
 
   // Handlers
   const handleViewScan = (scan: ScanRecord) => {
@@ -442,6 +491,7 @@ export default function HistoryPage() {
         // copy, and was left at its old value after a successful clear, so the
         // page still claimed 143 scans over an empty list.
         setTotalScans(0);
+        setMatchedScans(0);
         setShowClearConfirm(false);
         setClearConfirmText("");
       } else {
@@ -791,7 +841,11 @@ export default function HistoryPage() {
               ) : (
                 <p className="mt-1 text-sm text-muted-foreground">
                   {totalScans} {totalScans === 1 ? "scan" : "scans"} on record
-                  {scans.length < totalScans
+                  {/* Only while nothing is being searched. With a search on,
+                      the loaded rows are the matches for it, not "the most
+                      recent", and the notice below the filters says so
+                      properly. */}
+                  {!serverFiltering && scans.length < totalScans
                     ? `, showing the ${scans.length} most recent`
                     : ""}
                   {retentionKnown
@@ -876,7 +930,14 @@ export default function HistoryPage() {
                 </InlineAlert>
               )}
 
-              <HistoryStats scans={scans} capped={scans.length < totalScans} />
+              {/* Against the matched set while a search is on, since that is
+                  what the loaded rows are a window onto then. */}
+              <HistoryStats
+                scans={scans}
+                capped={
+                  scans.length < (serverFiltering ? matchedScans : totalScans)
+                }
+              />
 
               {scans.length > 0 && (
                 <HistoryFilters
@@ -886,18 +947,28 @@ export default function HistoryPage() {
                 />
               )}
 
-              {/* Search and tag filtering run over the rows this page loaded,
-                which the API caps at HISTORY_LIST_MAX_ROWS. Saying so is the
-                difference between "no match" and "no match in the part we
-                looked at": without it a scan that is still inside retention
-                simply appears not to exist. Server-side search is the real
-                fix and is tracked separately; until then this at least does
-                not mislead. */}
-              {hasFilters && scans.length < totalScans && (
+              {/* Two different situations, and they used to share one line
+                that described the worse of them.
+
+                Search and tag now run in SQL across the whole retention
+                window, so a match is a match no matter how far back it sits;
+                the only thing the page can still be missing is matches beyond
+                the row cap, which is what the first notice says.
+
+                Severity and date have no server side, so they really do only
+                look at the loaded rows, and the second notice is the old
+                warning kept for exactly that case. */}
+              {serverFiltering && scans.length < matchedScans && (
                 <p className="rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-2.5 text-xs text-muted-foreground">
-                  Searching the {scans.length} most recent scans, not all{" "}
-                  {totalScans} on this account. An older scan may not appear
-                  here yet.
+                  {matchedScans} scans match. Showing the {scans.length} most
+                  recent of them: narrow the search to reach the older ones.
+                </p>
+              )}
+              {!serverFiltering && hasFilters && scans.length < totalScans && (
+                <p className="rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-2.5 text-xs text-muted-foreground">
+                  Filtering the {scans.length} most recent scans, not all{" "}
+                  {totalScans} on this account. Search by URL or tag to look
+                  through all of them.
                 </p>
               )}
 

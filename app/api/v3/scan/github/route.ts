@@ -39,6 +39,7 @@ import {
   RATE_LIMITS,
 } from "@/lib/rate-limiting/rate-limit";
 import { scanningPausedResponse } from "@/lib/admin/service-state";
+import { notifyScanComplete } from "@/lib/webhooks/scan-notifications";
 
 const REPO_FULL_NAME_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
@@ -297,6 +298,31 @@ export async function POST(request: Request) {
         `[${APP_NAME}] Failed to save GitHub repo scan history:`,
         err instanceof Error ? err.message : err,
       );
+    }
+
+    // The shared notification tail (lib/webhooks/scan-notifications.ts).
+    // A repo scan fired nothing at all before this. It reports a
+    // `repository` target rather than a `url` one: "owner/repo" is not a URL
+    // and the payload builder must not present it as one, so the generic
+    // webhook body carries `repository` and no `url` key for this path.
+    //
+    // No `incomplete` list: this pipeline has no timed-out-branch concept to
+    // report. A file it could not fetch or decode is skipped by
+    // fetchSelectedFiles and surfaces as filesScanned being lower than what
+    // was selected, and an AI review that did not run surfaces as
+    // aiReviewSkipped. Both are in the response, neither is an
+    // ScanResult.incomplete area, so inventing one here would be a claim the
+    // scan cannot back.
+    if (scanHistoryId !== null) {
+      void notifyScanComplete({
+        userId,
+        scanId: scanHistoryId,
+        target: { kind: "repository", value: repoFullName },
+        summary,
+        findings,
+        duration,
+        scannedAt: result.scannedAt,
+      });
     }
 
     return NextResponse.json({

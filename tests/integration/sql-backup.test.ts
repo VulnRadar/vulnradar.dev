@@ -560,9 +560,30 @@ describeIntegration("pure-JavaScript SQL dump and restore", () => {
     // this test can fail on now is the missing end marker, and the only thing
     // the rollback has to undo is that statement.
     const truncated = join(tempDir, "truncated.sql.gz");
-    const head = dumpText.slice(0, dumpText.indexOf("--#VR:SECTION"));
+
+    // Both of these are asserted rather than assumed, because getting either
+    // wrong degrades this test silently instead of failing it. dumpText is
+    // populated by an earlier test in this file, and indexOf returns -1 when
+    // the marker is absent, which makes slice(0, -1) an EMPTY head: the file
+    // then has no dump marker at all and the restore rejects with "no
+    // VulnRadar dump marker" long before it can reach the end-marker check
+    // this test exists to prove. It still throws, so a bare rejects.toThrow()
+    // would have passed while testing nothing.
+    expect(dumpText, "the dump from the earlier test must be in hand").not.toBe(
+      "",
+    );
+    const cut = dumpText.indexOf("--#VR:SECTION");
+    expect(
+      cut,
+      "the dump must contain a section marker to cut at",
+    ).toBeGreaterThan(0);
+
+    const head = dumpText.slice(0, cut);
     expect(head, "the cut must land before any DDL").not.toContain(
       "CREATE SEQUENCE",
+    );
+    expect(head, "the head must still carry the dump marker").toContain(
+      "--#VR:DUMP",
     );
     await pipeline(
       Readable.from([
