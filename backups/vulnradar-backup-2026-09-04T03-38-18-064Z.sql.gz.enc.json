@@ -1,6 +1,0 @@
-{
-  "algorithm": "aes-256-gcm",
-  "iv": "b328f401c700228c3cca25b7",
-  "authTag": "964087bf17f7622e385c80c33de3a9ab",
-  "createdAt": "2026-09-04T03:38:26.857Z"
-}

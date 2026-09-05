@@ -7,9 +7,24 @@ node_modules/
 .opencode
 graphify-out
 
-# Pre-migration database backups (scripts/_lib/_lib.backup.mjs) -- real
-# customer data, never commit.
+# Database backups: real customer data, never commit.
+#
+# /databases/ was the only rule here and it covered the pre-migration dumps
+# from scripts/_lib/_lib.backup.mjs and nothing else. The admin panel and
+# scripts/backup-db.mjs write to BACKUP_DIR, which defaults to <cwd>/backups,
+# and that path was never ignored: an encrypted production dump was committed
+# from a local run and shipped inside the v3.8.1 release tarball.
+#
+# So the directory AND the file shapes, because the directory is only where
+# they land by default and the point is that one cannot be committed from
+# anywhere.
 /databases/
+/backups/
+*.sql
+*.sql.gz
+*.sql.gz.enc
+*.sql.gz.enc.json
+!scripts/**/*.sql
 
 # Agent instructions - never commit; per-developer files
 AGENTS.md

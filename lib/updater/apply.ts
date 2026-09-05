@@ -30,6 +30,11 @@ import {
   copyTreeOverlay,
   pruneExtraneous,
 } from "@/lib/updater/copy-with-excludes";
+import {
+  PROTECTED_NAMES,
+  PROTECTED_PREFIXES,
+  STRIP_PREFIXES,
+} from "@/lib/updater/release-paths";
 import { reapplyStartPort } from "@/lib/updater/preserve-start-port";
 import {
   appendLog,
@@ -223,40 +228,6 @@ export async function runUpdateJob(
       /* first run, or an unreadable/malformed package.json -- nothing to preserve */
     }
 
-    // PROTECTED: never copied over and never pruned. User data and expensive
-    // build/dependency output that MUST survive an update untouched. .env and
-    // .env.* are always protected by copy-with-excludes' own DOTENV rule, so
-    // they don't need listing here.
-    //   - names (any depth): the dependency tree and git metadata.
-    //   - root prefixes: build output (.next), the DB backup directory, the
-    //     legacy on-disk avatar dir + any other runtime data, and caches.
-    const PROTECTED_NAMES = ["node_modules", ".git"];
-    const PROTECTED_PREFIXES = [
-      ".next",
-      "data",
-      "backups",
-      ".npm",
-      ".cache",
-      "logs",
-      "uploads",
-    ];
-    // STRIP: dev-only files that ship in the release tarball but a running
-    // install has no reason to keep. Excluded from the copy AND pruned from the
-    // destination if an older install still has them (test suites, the separate
-    // browser-extension product, CI config, internal audit tracking, and the
-    // repo's license/contributing docs the app itself never reads). Root-level
-    // prefixes only, so a legitimately-needed path deeper in the tree that
-    // happens to share a name is never at risk.
-    const STRIP_PREFIXES = [
-      "tests",
-      ".github",
-      "extension",
-      ".claude",
-      "audits",
-      "vitest.config.ts",
-      "LICENSE",
-      "CONTRIBUTING.md",
-    ];
     const copyResult = await copyTreeOverlay(sourceRoot, appRoot, {
       excludeNames: PROTECTED_NAMES,
       excludePrefixes: [...PROTECTED_PREFIXES, ...STRIP_PREFIXES],

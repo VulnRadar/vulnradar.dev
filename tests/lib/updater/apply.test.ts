@@ -200,13 +200,21 @@ describe("runUpdateJob: the destructive prune is driven with the intended lists"
   ];
   const STRIP_PREFIXES = [
     "tests",
-    ".github",
+    "vitest.config.ts",
     "extension",
+    "cli",
+    ".github",
     ".claude",
     "audits",
-    "vitest.config.ts",
+    "eslint.config.mjs",
+    ".prettierignore",
+    "components.json",
+    "Dockerfile",
+    ".dockerignore",
     "LICENSE",
     "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY-POSTURE.md",
   ];
 
   it("passes exactly the protected and strip lists to pruneExtraneous", async () => {
