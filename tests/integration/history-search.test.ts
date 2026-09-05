@@ -49,7 +49,12 @@ async function insertScan(
   const id = rows[0].id;
   if (opts.tag) {
     await pool.query(
-      `INSERT INTO scan_tags (scan_id, user_id, tag, source) VALUES ($1, $2, $3, 'manual')`,
+      // 'user', not 'manual': scan_tags_source_check allows exactly
+      // ('auto', 'user', 'ai'). This is the second column in this fixture to
+      // be written with a value the schema rejects, and like the first it took
+      // the whole suite down before an assertion ran rather than failing one
+      // case, because the error surfaces from the fixture.
+      `INSERT INTO scan_tags (scan_id, user_id, tag, source) VALUES ($1, $2, $3, 'user')`,
       [id, userId, opts.tag],
     );
   }

@@ -243,7 +243,19 @@ describe("checkTlsCertChainCompleteness", () => {
 
 // ── checkOcspStapling ────────────────────────────────────────────────────
 
-function mockOcspSocket(authorized = true) {
+/**
+ * `ocspUri` decides which of the two findings the check can produce.
+ *
+ * A server can only staple a response it can fetch, and it fetches it from the
+ * OCSP URI in the certificate's Authority Information Access extension. A
+ * certificate that names no responder cannot be stapled by any configuration,
+ * so the check has to say something different there: telling that operator to
+ * turn on ssl_stapling is advice that cannot work.
+ */
+function mockOcspSocket(
+  authorized = true,
+  ocspUri: string | null = "http://ocsp.example.com",
+) {
   const handlers: Record<string, (...args: unknown[]) => void> = {};
   const sock: Record<string, unknown> = {
     on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
@@ -251,11 +263,40 @@ function mockOcspSocket(authorized = true) {
     }),
     destroy: vi.fn(),
     authorized,
+    getPeerCertificate: vi.fn(() => ({
+      infoAccess: ocspUri ? { "OCSP - URI": [ocspUri] } : {},
+    })),
   };
   return { sock, handlers };
 }
 
 describe("checkOcspStapling", () => {
+  it("says the certificate names no responder, rather than telling the operator to enable stapling", async () => {
+    // The case a real scan of a Cloudflare-fronted site hits today: Google
+    // Trust Services issues certificates with no OCSP URI at all, so there is
+    // no responder for any server to fetch a response from. Verified against
+    // vulnradar.dev, whose certificate reports infoAccess with no "OCSP - URI"
+    // entry. The old wording told those operators to switch on ssl_stapling,
+    // which cannot work and is the kind of finding that teaches people to stop
+    // reading the output.
+    const { sock } = mockOcspSocket(true, null);
+    tlsMock.connect.mockImplementationOnce(((
+      _opts: unknown,
+      cb: () => void,
+    ) => {
+      setImmediate(cb);
+      return sock as unknown as import("node:tls").TLSSocket;
+    }) as unknown as typeof tlsMock.connect);
+
+    const out = await checkOcspStapling("example.com", "https://example.com");
+
+    expect(out).toHaveLength(1);
+    expect(out[0].title).toBe("Certificate Publishes No OCSP Responder");
+    // The fix steps must not tell someone to turn on something that cannot
+    // work for this certificate.
+    expect(out[0].fixSteps?.join(" ")).not.toMatch(/ssl_stapling on/i);
+  });
+
   it("fires when the cert is valid but no OCSP response was stapled", async () => {
     const { sock } = mockOcspSocket(true);
     tlsMock.connect.mockImplementationOnce(((
