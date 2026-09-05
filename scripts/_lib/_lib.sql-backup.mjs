@@ -79,6 +79,7 @@
  */
 
 import { createReadStream } from "node:fs";
+import { pipeline } from "node:stream";
 import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
 import {
@@ -1241,12 +1242,27 @@ export function detectBackupFormat(gzPath) {
   });
 }
 
-/** Line-by-line reader over a gzipped dump. Never buffers the whole file. */
+/**
+ * Line-by-line reader over a gzipped dump. Never buffers the whole file.
+ *
+ * pipeline() and not `createReadStream(gzPath).pipe(createGunzip())`, because
+ * pipe() does not forward the SOURCE's errors to the destination. A file that
+ * cannot be opened or read part way through (ENOENT, EACCES, EMFILE under a
+ * loaded test run, a disk error) would leave the caller with a gunzip that
+ * never errors and never ends: the reader yields whatever arrived before the
+ * failure and stops, and the restore then reports whatever that prefix looked
+ * like instead of the read error. Reading nothing is the worst of those, since
+ * it is indistinguishable from a file that simply is not one of ours.
+ *
+ * pipeline destroys the gunzip with the source's error, which readline then
+ * raises on the iterator, so the caller sees the real cause.
+ */
 export function readDumpLines(gzPath) {
-  return createInterface({
-    input: createReadStream(gzPath).pipe(createGunzip()),
-    crlfDelay: Infinity,
-  });
+  const gunzip = createGunzip();
+  // The error reaches the caller through gunzip; the callback exists only
+  // because pipeline requires one.
+  pipeline(createReadStream(gzPath), gunzip, () => {});
+  return createInterface({ input: gunzip, crlfDelay: Infinity });
 }
 
 /**
@@ -1288,6 +1304,7 @@ export async function restoreSqlDump({ client, lines, onLog }) {
   let batch = [];
   let batchBytes = 0;
   let copyRows = 0;
+  let linesRead = 0;
 
   await client.query("BEGIN");
   try {
@@ -1314,6 +1331,7 @@ export async function restoreSqlDump({ client, lines, onLog }) {
     };
 
     for await (const line of lines) {
+      linesRead += 1;
       if (mode === "copy-rows") {
         if (line === "\\.") {
           await flushRows();
@@ -1424,7 +1442,14 @@ export async function restoreSqlDump({ client, lines, onLog }) {
     await flushStatement();
 
     if (!header) {
-      throw new Error("This file has no VulnRadar dump marker.");
+      // The count is in the message because the two causes are opposite and
+      // the fix differs: a file with lines in it is a pg_dump file or an
+      // edited one (restore it with psql), and a file with no lines at all is
+      // an empty or unreadable file, which is a storage problem rather than a
+      // format one.
+      throw new Error(
+        `This file has no VulnRadar dump marker (${linesRead} line(s) read).`,
+      );
     }
     if (!sawEnd) {
       throw new Error(

@@ -13,6 +13,7 @@ import {
   restoreSqlDump,
   readDumpLines,
   detectBackupFormat,
+  MARKER_PREFIX,
 } from "../../scripts/_lib/_lib.sql-backup.mjs";
 
 /**
@@ -561,29 +562,46 @@ describeIntegration("pure-JavaScript SQL dump and restore", () => {
     // the rollback has to undo is that statement.
     const truncated = join(tempDir, "truncated.sql.gz");
 
-    // Both of these are asserted rather than assumed, because getting either
-    // wrong degrades this test silently instead of failing it. dumpText is
-    // populated by an earlier test in this file, and indexOf returns -1 when
-    // the marker is absent, which makes slice(0, -1) an EMPTY head: the file
-    // then has no dump marker at all and the restore rejects with "no
-    // VulnRadar dump marker" long before it can reach the end-marker check
-    // this test exists to prove. It still throws, so a bare rejects.toThrow()
-    // would have passed while testing nothing.
+    // The cut is taken on LINE boundaries, and the head's marker is matched
+    // with startsWith, because both of the things this setup has to guarantee
+    // are line-shaped and a substring test cannot see either of them.
+    //
+    // The reader only recognises a marker at the start of a line. So a cut
+    // taken with indexOf on the raw text can land INSIDE the DUMP marker's
+    // JSON payload and leave a line the reader cannot parse, and a head that
+    // merely CONTAINS "--#VR:DUMP" (quoted inside a comment, say) is a head
+    // the reader sees no marker in at all. Either one fails this test on a
+    // different error than the truncation it exists to prove, which is the
+    // failure mode that is expensive to read afterwards: the assertion below
+    // reports the markers it actually found, rather than leaving a downstream
+    // "this file has no VulnRadar dump marker" to be worked backwards from.
+    //
+    // dumpText is populated by an earlier test in this file, so its presence
+    // is asserted rather than assumed for the same reason.
     expect(dumpText, "the dump from the earlier test must be in hand").not.toBe(
       "",
     );
-    const cut = dumpText.indexOf("--#VR:SECTION");
+    const allLines = dumpText.split("\n");
+    const sectionAt = allLines.findIndex((l) =>
+      l.startsWith(`${MARKER_PREFIX}SECTION`),
+    );
     expect(
-      cut,
+      sectionAt,
       "the dump must contain a section marker to cut at",
     ).toBeGreaterThan(0);
 
-    const head = dumpText.slice(0, cut);
+    const headLines = allLines.slice(0, sectionAt);
+    const headMarkers = headLines.filter((l) => l.startsWith(MARKER_PREFIX));
+    expect(
+      headMarkers.filter((l) => l.startsWith(`${MARKER_PREFIX}DUMP `)).length,
+      `the head must carry the DUMP marker as a line; markers found: ${
+        headMarkers.map((l) => l.slice(0, 40)).join(" | ") || "none"
+      }`,
+    ).toBe(1);
+
+    const head = headLines.join("\n") + "\n";
     expect(head, "the cut must land before any DDL").not.toContain(
       "CREATE SEQUENCE",
-    );
-    expect(head, "the head must still carry the dump marker").toContain(
-      "--#VR:DUMP",
     );
     await pipeline(
       Readable.from([
