@@ -50,21 +50,59 @@ function privateLayoutPaths(): string[] {
 }
 
 describe("DISALLOWED_PATHS", () => {
-  it("disallows /admin, covering /admin/ai-chats/<id> by prefix", () => {
-    expect(isDisallowed("/admin")).toBe(true);
-    expect(isDisallowed("/admin/ai-chats/abc")).toBe(true);
+  /**
+   * The invariant inverted, deliberately.
+   *
+   * It used to be "every private route is disallowed". That is the wrong tool:
+   * Disallow does not prevent indexing (Google can index a blocked URL from an
+   * external link) and it stops the crawler fetching the page, so the noindex
+   * tag that WOULD keep it out is never read. Disallow plus noindex is
+   * self-defeating, and Search Console reported exactly that for /compare,
+   * /dashboard and /profile under "Blocked by robots.txt".
+   *
+   * So the rule now is the opposite: a route that carries noindex must NOT be
+   * disallowed, because the crawler has to reach it to see the tag. Anything
+   * that cannot carry a tag, /api/ above all, still needs Disallow and is
+   * exempt here.
+   */
+  it("lets the crawler reach every noindex route, so the tag is actually read", () => {
+    // Two exemptions, and neither is about indexing.
+    //
+    // /api/ serves JSON: there is no document to put a meta tag in, so
+    // Disallow is the only control that exists.
+    //
+    // The token pages are the more important one. A crawler that FETCHES a
+    // password reset, email verification, unsubscribe or staff invite link can
+    // consume the one-time token in it, and the user's real click then fails.
+    // Keeping a crawler out of those is not an indexing decision at all, and
+    // Disallow is the right tool for it. They are unguessable anyway, so
+    // nothing is disclosed by naming the prefix.
+    const CANNOT_CARRY_A_TAG = [
+      "/api/",
+      "/forgot-password",
+      "/reset-password",
+      "/verify-email",
+      "/unsubscribe",
+      "/staff-invite",
+      "/badge",
+      "/host/",
+    ];
+    const blocked = privateLayoutPaths().filter(
+      (p) =>
+        !CANNOT_CARRY_A_TAG.some((prefix) => p.startsWith(prefix)) &&
+        isDisallowed(p),
+    );
+    expect(
+      blocked,
+      "these declare privatePageMetadata (noindex) and are also disallowed, " +
+        "so the crawler can never fetch them to read the noindex",
+    ).toEqual([]);
   });
 
-  // The check that would have caught /admin, and catches the next one.
-  it("covers every route that declares itself private", () => {
-    const uncovered = privateLayoutPaths().filter(
-      (p) =>
-        // Covered outright, or covered by the trailing-slash form: /shared
-        // and /browser are not routes themselves, only /shared/<token> and
-        // /browser/<id>, and "/shared/" disallows every one of those.
-        !isDisallowed(p) && !DISALLOWED_PATHS.includes(`${p}/`),
-    );
-    expect(uncovered).toEqual([]);
+  it("still disallows what cannot carry a noindex tag", () => {
+    // /api/ serves JSON, so there is no document to put a meta tag in and
+    // Disallow is the only control that applies.
+    expect(isDisallowed("/api/")).toBe(true);
   });
 
   it("never disallows a route that is published as public and indexable", () => {

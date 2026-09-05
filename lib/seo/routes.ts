@@ -140,23 +140,12 @@ export const DISALLOWED_PATHS: readonly string[] = [
   // spends a fetch on /admin and lands on the /login?redirect=/admin
   // duplicate the QUERY_DISALLOW rule in app/robots.ts exists to stop.
   // Prefix matching covers /admin/ai-chats/<id> (AUDIT-014#seo-15).
-  "/admin",
-  "/dashboard",
-  "/profile",
   // Auth-gated: redirects anon visitors (Googlebot included) to
   // /login?redirect=/compare, so an indexed copy is a thin duplicate of the
   // login page and it kept generating a duplicate /login?redirect= URL in
   // Search Console. Not a public marketing page.
-  "/compare",
-  "/history",
-  "/assets",
-  "/attack-surface",
-  "/repos",
-  "/shares",
   "/shared/",
   "/host/",
-  "/teams",
-  "/checkout",
   "/browser/",
   // Auth-gated, same as /compare above. The badge BUILDER reads the caller's
   // own scan history and is out of PUBLIC_PATHS, so a crawl of it lands on
@@ -179,6 +168,28 @@ export const DISALLOWED_PATHS: readonly string[] = [
   // one: it keeps the path out of robots.txt and the sitemap even if somebody
   // later adds a /dev page that forgets the gate.
   "/dev",
+  // Auth-gated app routes are deliberately NOT listed here.
+  //
+  // Disallow does not prevent indexing. Google can index a blocked URL from an
+  // external link, and, worse, a Disallow stops the crawler from ever fetching
+  // the page, which means it never reads the noindex tag that would actually
+  // keep it out. Disallow plus noindex is self-defeating: the first blocks the
+  // second from being seen. Search Console reported exactly that state for
+  // /compare, /dashboard and /profile under "Blocked by robots.txt".
+  //
+  // Those routes all declare privatePageMetadata, which sets
+  // robots: { index: false, follow: false }, and they require a session, so an
+  // anonymous crawler that follows one lands on the login page. Letting the
+  // crawler fetch them is what makes the noindex effective. The cost is a
+  // handful of crawl fetches.
+  //
+  // It also stops robots.txt publishing the location of the admin panel, which
+  // our own scanner reports as a medium finding on other people's sites and
+  // was reporting on ours. That is a consequence of the change rather than the
+  // reason for it: the indexing argument stands on its own.
+  //
+  // /api/ stays: it serves no HTML, so there is no tag to carry a noindex and
+  // Disallow is the only control available.
 ] as const;
 
 /**
