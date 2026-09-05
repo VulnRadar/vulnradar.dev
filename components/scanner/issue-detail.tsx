@@ -835,8 +835,8 @@ export function IssueDetail({
 }: IssueDetailProps) {
   const [activeTab, setActiveTab] = useState(0);
   // This component explicitly supports `issue` changing while mounted (see
-  // the effect keyed on issue.id below, and the key={issue.id} that
-  // RemediationControl was given for the same reason), but activeTab was
+  // the effect keyed on issue.id below, and the finding-derived keys Evidence
+  // and RemediationControl were given for the same reason), but activeTab was
   // never reset. Going from a finding with three code examples with tab 2
   // open to one with a single example read issue.codeExamples[2].code and
   // threw, taking out the whole view. Clamping is enough and it also
@@ -1085,9 +1085,22 @@ export function IssueDetail({
       {/* Keyed on the finding, like RemediationControl below: without it the
           panel's expand state (which lines are shown, which excerpt values
           are open) survives a move to the next finding and applies itself to
-          content it was never about. */}
+          content it was never about.
+
+          The key is NAMESPACED, and that prefix is load-bearing. These two
+          are siblings in one static child list, and a bare `issue.id` on both
+          made them collide: the `{verdict && ...}` slot above is null on any
+          finding the AI verifier has not run, a null slot drops React out of
+          its positional fast path, and the slow path builds its lookup as
+          `map.set(fiber.key, fiber)`. One key for two siblings means one
+          entry, RemediationControl overwrote Evidence in it, and on every
+          re-render Evidence matched the wrong fiber, was mounted fresh, and
+          its old fiber -- no longer in the map -- was never queued for
+          deletion. The result was a new "What the scanner saw" panel stacked
+          under the last one on every triage click, with no warning, since
+          React only reports duplicate keys in development. */}
       <Evidence
-        key={issue.id}
+        key={`evidence:${issue.id}`}
         evidence={issue.evidence}
         excerpts={issue.evidenceExcerpts}
       />
@@ -1113,7 +1126,7 @@ export function IssueDetail({
 
       {findingUrl && (
         <RemediationControl
-          key={issue.id}
+          key={`remediation:${issue.id}`}
           findingId={issue.id}
           findingUrl={findingUrl}
           initial={issue.remediation}
