@@ -146,7 +146,10 @@ describe("docs pages read their numbers from the code", () => {
    * verdict and three colours; the orange it named no longer exists anywhere.
    */
   it("quotes exactly the Discord embed colours the delivery code sends", () => {
-    const scanSource = source("lib/scanner/execute-scan.ts");
+    // Follows VERDICT_COLOR to lib/webhooks/scan-notifications.ts, where the
+    // shared notification tail now lives. It used to sit in execute-scan.ts,
+    // which was the only path that notified at all.
+    const scanSource = source("lib/webhooks/scan-notifications.ts");
     const verdictBlock = scanSource.match(
       /VERDICT_COLOR:\s*Record<SafetyRating,\s*number>\s*=\s*\{([^}]*)\}/,
     );

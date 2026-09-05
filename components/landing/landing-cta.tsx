@@ -5,6 +5,7 @@ import { ArrowRight, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BILLING_ENABLED, ROUTES } from "@/lib/config/client-constants";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 
 interface LandingCtaProps {
   freeScansPerDay: number;
@@ -12,6 +13,9 @@ interface LandingCtaProps {
 
 export function LandingCta({ freeScansPerDay }: LandingCtaProps) {
   const { me } = useAuth();
+  // Read without `loaded`: the pre-fetch value is the build-time FEATURES
+  // default, so a correctly configured deployment never sees this block change.
+  const { featureDemoMode } = useClientConfig();
   const isLoggedIn = !!me?.userId;
 
   return (
@@ -44,8 +48,9 @@ export function LandingCta({ freeScansPerDay }: LandingCtaProps) {
                 </h2>
                 <p className="text-muted-foreground leading-relaxed max-w-xl">
                   {BILLING_ENABLED
-                    ? `${freeScansPerDay} scans a day on the free tier, no card. The demo needs no account at all.`
-                    : "No card, no limit on this deployment. The demo needs no account at all."}
+                    ? `${freeScansPerDay} scans a day on the free tier, no card.`
+                    : "No card, no limit on this deployment."}
+                  {featureDemoMode && " The demo needs no account at all."}
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
@@ -55,15 +60,17 @@ export function LandingCta({ freeScansPerDay }: LandingCtaProps) {
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
-                <Link href={ROUTES.DEMO}>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="h-11 px-6 w-full"
-                  >
-                    Try the demo first
-                  </Button>
-                </Link>
+                {featureDemoMode && (
+                  <Link href={ROUTES.DEMO}>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="h-11 px-6 w-full"
+                    >
+                      Try the demo first
+                    </Button>
+                  </Link>
+                )}
               </div>
             </>
           )}

@@ -15,6 +15,7 @@ import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { backdrops, focus, transitions } from "@/lib/ui/animations";
 import { cn } from "@/lib/ui/utils";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 
 interface LandingNavProps {
   /** Short label rendered beside the wordmark, e.g. "Staff", "Shared report". */
@@ -28,11 +29,11 @@ interface LandingNavProps {
 // gone. If a page needs a wider measure, widen the page, not the nav.
 const NAV_CONTAINER = "max-w-6xl";
 
-function navLinks() {
+function navLinks(demoEnabled: boolean) {
   return [
     ...(BILLING_ENABLED ? [{ href: ROUTES.PRICING, label: "Pricing" }] : []),
     { href: ROUTES.DOCS, label: "Docs" },
-    { href: ROUTES.DEMO, label: "Demo" },
+    ...(demoEnabled ? [{ href: ROUTES.DEMO, label: "Demo" }] : []),
     { href: ROUTES.CHANGELOG, label: "Changelog" },
     { href: ROUTES.CONTACT, label: "Contact" },
   ];
@@ -40,10 +41,13 @@ function navLinks() {
 
 export function LandingNav({ badge }: LandingNavProps) {
   const { me, isLoading } = useAuth();
+  const { featureDemoMode } = useClientConfig();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const isLoggedIn = !!me?.userId;
-  const links = navLinks();
+  // Read without `loaded`: the pre-fetch value is the build-time FEATURES
+  // default, so a deployment configured at build time never sees the row move.
+  const links = navLinks(featureDemoMode);
 
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);

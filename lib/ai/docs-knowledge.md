@@ -898,6 +898,9 @@ The authenticated user's own scans, most recent first, 100 per page by default. 
     }
   ],
   "total": 143,
+  "matched": 143,
+  "q": null,
+  "tag": null,
   "limit": 100,
   "offset": 0,
   "maxLimit": 100,

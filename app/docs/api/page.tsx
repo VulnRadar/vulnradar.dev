@@ -549,6 +549,20 @@ const endpoints: Endpoint[] = [
         description: "Rows to skip. This is how you reach page 2.",
         default: "0",
       },
+      {
+        name: "q",
+        type: "string",
+        description:
+          "Case-insensitive substring of the scanned URL. Matched in SQL across your whole retention window, not just this page. % and _ are literal characters, not wildcards. Also accepted as search.",
+        default: "none",
+      },
+      {
+        name: "tag",
+        type: "string",
+        description:
+          "Exact tag, matched against your own tags on each scan. Combines with q as AND.",
+        default: "none",
+      },
     ],
     responseExample: `{
   "scans": [
@@ -565,6 +579,9 @@ const endpoints: Endpoint[] = [
     }
   ],
   "total": 143,
+  "matched": 143,
+  "q": null,
+  "tag": null,
   "limit": 100,
   "offset": 0,
   "maxLimit": 100,
@@ -573,6 +590,7 @@ const endpoints: Endpoint[] = [
     notes: [
       "id is an opaque, non-enumerable string. Treat it as a token, not a number: /history/{id} also accepts the legacy integer id, but this list only ever returns the opaque form.",
       "total is every scan on the account inside retention, not the length of this page. truncated means there are rows AFTER this page: walk them with ?offset=100, ?offset=200 and so on until it goes false. Before pagination existed this endpoint reported truncated: true and gave you no way to act on it.",
+      "matched is how many rows q and tag select, and is what truncated and your paging are measured against. With neither filter set it equals total. total stays the unfiltered account count on purpose, so a client can show both without a search making the account look smaller than it is.",
       "limit is the page size actually applied to your request, and maxLimit is the largest this deployment will serve. A self-hosted instance may have raised or lowered maxLimit, so read it rather than assuming 100.",
       "status distinguishes a finished scan from one still pending or running, or one that failed. A pending row carries an empty summary and findings_count 0, which is not the same thing as a clean result.",
       "This list is your own scans only. There is no team clause on the query. For a teammate's scans use GET /api/v3/teams/member-scans?teamId=&userId=, and for a single scan a teammate owns use GET /history/{id}, which does honour team access.",

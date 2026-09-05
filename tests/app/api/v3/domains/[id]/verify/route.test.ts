@@ -200,11 +200,18 @@ describe("POST /api/v3/domains/[id]/verify", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.verified).toBe(false);
-    expect(json.status).toBe("failed");
+    // "reverify_failed", not "failed": domains_status_check allows only
+    // ('pending','verified','reverify_failed'), so the old value raised a
+    // check violation and last_check_error was never stored.
+    expect(json.status).toBe("reverify_failed");
     expect(json.error).toBe("No TXT record found.");
 
     const [, updateParams] = mockQuery.mock.calls[1];
-    expect(updateParams).toEqual(["failed", "No TXT record found.", 1]);
+    expect(updateParams).toEqual([
+      "reverify_failed",
+      "No TXT record found.",
+      1,
+    ]);
   });
 
   it("allows a team member with write access to verify a team-assigned domain", async () => {

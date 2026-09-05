@@ -404,15 +404,17 @@ export default function HistoryPage() {
   // second request for an answer that cannot have changed, and swapping the
   // list into its skeleton mid-search would throw away the rows the user is
   // reading while they type.
+  //
+  // Neither call needs the react-hooks/set-state-in-effect suppression the
+  // single-call version carried: both are async, so their setState calls fire
+  // after the request settles rather than synchronously in this effect.
   const listLoadedOnce = useRef(false);
   useEffect(() => {
     if (listLoadedOnce.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- refetch-on-filter-change: fetchHistory's setState calls only fire after the request settles, not synchronously in this effect
       fetchHistory();
       return;
     }
     listLoadedOnce.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: loadList's setState calls only fire after its async requests settle, not synchronously in this effect
     loadList();
   }, [loadList, fetchHistory]);
 

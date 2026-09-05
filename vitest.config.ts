@@ -225,6 +225,17 @@ export default defineConfig({
           functions: 90,
           branches: 80,
         },
+        "lib/config/feature-surfaces.ts": {
+          // 100 / 100 / 100 / 100 actual. It is a pure lookup table plus four
+          // small predicates with no I/O, so anything under this floor means a
+          // new surface or a new branch arrived without a test, which is
+          // exactly the rot this module exists to prevent: the whole gap it
+          // closes was a set of flags nothing read.
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 95,
+        },
         "lib/scanner/cvss.ts": {
           // 98.11% / 94.28% / 100% / 100% actual. Uncovered: an
           // impact <= 0 early-return in computeCvssBaseScore that's

@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { PowerOff } from "lucide-react";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { HistoryViewTabs } from "@/components/history";
 import { DomainsSection } from "@/components/profile/tabs/developer/domains-section";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import { EmptyState } from "@/components/shared/empty-state";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 
 /**
  * First-class attack-surface view: the caller's verified-domain portfolio. The
@@ -18,6 +21,10 @@ import { InlineAlert } from "@/components/shared/inline-alert";
 export default function AttackSurfacePage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // `loaded` here, unlike the landing entry points: DomainsSection already
+  // loads behind its own placeholder, so gating costs no extra shift and the
+  // disabled state never flashes where verification is on.
+  const { featureDomainVerification, loaded } = useClientConfig();
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -47,7 +54,15 @@ export default function AttackSurfacePage() {
         <div className="mt-6 space-y-3">
           {error && <InlineAlert tone="error">{error}</InlineAlert>}
           {success && <InlineAlert tone="success">{success}</InlineAlert>}
-          <DomainsSection setError={setError} setSuccess={setSuccess} />
+          {loaded && !featureDomainVerification ? (
+            <EmptyState
+              icon={PowerOff}
+              title="Domain verification is turned off"
+              description="This deployment runs with domain verification disabled, so there is no portfolio to add to here. Scans still run against any URL you paste."
+            />
+          ) : (
+            <DomainsSection setError={setError} setSuccess={setSuccess} />
+          )}
         </div>
       </main>
       <Footer />

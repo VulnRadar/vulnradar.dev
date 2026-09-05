@@ -54,6 +54,8 @@ import {
 import { API, BULK_SCAN_CLIENT_URL_LIMIT } from "@/lib/config/client-constants";
 import { classifyScanTarget } from "@/lib/scanner/scan-target-classify";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
+import { resolveScanMode } from "@/lib/config/feature-surfaces";
 export type ScanMode = "quick" | "deep" | "bulk";
 export type { InlineAuthValue };
 
@@ -342,10 +344,20 @@ export function ScanForm({
   // the server render one console and the client's first render another. React
   // answers that by regenerating the tree, which replays the route skeleton
   // over the page: /dashboard?mode=quick got it, plain /dashboard did not.
-  const [mode, setMode] = useQuerySeededState<ScanMode>(
+  const [rawMode, setMode] = useQuerySeededState<ScanMode>(
     () => parseModeFromQuery(getQueryParam("mode")),
     parseModeFromQuery(null),
   );
+  // POST /api/v3/scan/bulk refuses every request when FEATURE_BULK_SCANS is
+  // off, so the Bulk tab was a mode you could select, paste a hundred URLs
+  // into, and only then be told about. The flag stands in at its compiled
+  // build-time default until the live config lands, which is the value the
+  // deployment was built with, so the mode strip does not reflow after paint.
+  // ?mode=bulk on a deployment without it falls back to Quick rather than
+  // selecting a tab that is not in the strip.
+  const clientConfig = useClientConfig();
+  const featureBulkScans = clientConfig.featureBulkScans;
+  const mode: ScanMode = resolveScanMode(rawMode, clientConfig, "quick");
   const [enabledFamilies, setEnabledFamilies] = useQuerySeededState<
     Set<Category>
   >(
@@ -732,7 +744,9 @@ export function ScanForm({
           {[
             { id: "quick" as const, label: "Quick", icon: Zap },
             { id: "deep" as const, label: "Deep", icon: Globe },
-            { id: "bulk" as const, label: "Bulk", icon: ListChecks },
+            ...(featureBulkScans
+              ? [{ id: "bulk" as const, label: "Bulk", icon: ListChecks }]
+              : []),
           ].map(({ id, label, icon: Icon }) => {
             const active = mode === id;
             return (

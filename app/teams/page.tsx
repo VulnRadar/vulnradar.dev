@@ -2,9 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { PowerOff } from "lucide-react";
 
 import { tourAnchor } from "@/lib/tour/anchors";
 import { AppPageShell } from "@/components/shared/app-page-shell";
+import { EmptyState } from "@/components/shared/empty-state";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { usePagination } from "@/components/ui/pagination-control";
 import { API, TEAM_ROLES } from "@/lib/config/client-constants";
 import {
@@ -85,6 +88,7 @@ function confirmDescription(confirmation: Confirmation): React.ReactNode {
 export default function TeamsPage() {
   const router = useRouter();
   const { me } = useAuth();
+  const { featureTeams, loaded } = useClientConfig();
 
   // List view state
   const [teams, setTeams] = useState<Team[]>([]);
@@ -698,6 +702,21 @@ export default function TeamsPage() {
     !limits || limits.teamMembers < 0
       ? 10
       : Math.min(10, Math.max(0, limits.teamMembers - 1));
+
+  // `loaded` here, unlike the landing entry points: the body already waits
+  // behind TeamsDataSkeleton, so gating costs no extra shift and the disabled
+  // state never flashes on a deployment that has teams on.
+  if (loaded && !featureTeams) {
+    return (
+      <AppPageShell>
+        <EmptyState
+          icon={PowerOff}
+          title="Teams are turned off"
+          description="This deployment runs with the teams feature disabled, so there is nothing to create or join here. Your own scans, history and shared reports are unaffected."
+        />
+      </AppPageShell>
+    );
+  }
 
   return (
     <AppPageShell className="flex flex-col gap-5">

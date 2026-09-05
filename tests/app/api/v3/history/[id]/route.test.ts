@@ -532,11 +532,21 @@ describe("PATCH /api/v3/history/[id]", () => {
     const res = await PATCH(patchRequest({ isPublic: false }), params());
 
     expect(res.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(3);
+    expect(mockQuery).toHaveBeenCalledTimes(4);
     const [deleteSql, deleteParams] = mockQuery.mock.calls[2];
     expect(deleteSql).toContain("DELETE FROM host_reputation");
     expect(deleteSql).toContain("source_scan_id = $1");
     expect(deleteParams).toEqual([55]);
+
+    // Going private also revokes the share link, which the API docs have
+    // always promised and this route never did. The reader matches on
+    // share_token_hash with no is_public predicate, deliberately (a share
+    // link is its own capability), so without this the link stayed fully
+    // live while the owner had been told it was revoked.
+    const [revokeSql, revokeParams] = mockQuery.mock.calls[3];
+    expect(revokeSql).toContain("share_token = NULL");
+    expect(revokeSql).toContain("share_expires_at = NULL");
+    expect(revokeParams).toEqual([55]);
   });
 
   it("does not touch host_reputation when flipping from private back to public", async () => {

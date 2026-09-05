@@ -40,6 +40,7 @@ import {
   BILLING_ENABLED,
   ROUTES,
 } from "@/lib/config/client-constants";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 
 interface PaletteEntry {
   id: string;
@@ -75,6 +76,22 @@ export function CommandPalette() {
   const pathname = usePathname();
   const { me, isStaff } = useAuth();
   const isLoggedIn = !!me?.userId;
+  // This list is the densest set of feature entry points in the app: six of
+  // these rows are the only one-keystroke route to a feature that a deployment
+  // can turn off, and an ungated row here reintroduces the 403-on-arrival the
+  // flags exist to prevent. Same convention as BILLING_ENABLED below, which
+  // has always dropped its row rather than showing a dead one. Each flag reads
+  // its compiled build-time default until the live config lands, which is the
+  // value the deployment was built with, so the list does not reshuffle after
+  // paint unless an admin has overridden the flag without a rebuild.
+  const {
+    featureTeams,
+    featureApiKeys,
+    featureWebhooks,
+    featureScheduledScans,
+    featureEmailNotifications,
+    featureDomainVerification,
+  } = useClientConfig();
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -123,13 +140,17 @@ export function CommandPalette() {
             icon: Globe,
             keywords: "hosts inventory",
           },
-          {
-            id: "attack-surface",
-            label: "Attack Surface",
-            href: ROUTES.ATTACK_SURFACE,
-            icon: ShieldAlert,
-            keywords: "domains verified portfolio",
-          },
+          ...(featureDomainVerification
+            ? [
+                {
+                  id: "attack-surface",
+                  label: "Attack Surface",
+                  href: ROUTES.ATTACK_SURFACE,
+                  icon: ShieldAlert,
+                  keywords: "domains verified portfolio",
+                },
+              ]
+            : []),
           {
             id: "public-scans",
             label: "Public Scans",
@@ -158,13 +179,17 @@ export function CommandPalette() {
             icon: Share2,
             keywords: "share report link",
           },
-          {
-            id: "teams",
-            label: "Teams",
-            href: ROUTES.TEAMS,
-            icon: Users,
-            keywords: "members invite organisation",
-          },
+          ...(featureTeams
+            ? [
+                {
+                  id: "teams",
+                  label: "Teams",
+                  href: ROUTES.TEAMS,
+                  icon: Users,
+                  keywords: "members invite organisation",
+                },
+              ]
+            : []),
           {
             id: "badge",
             label: "Status badge",
@@ -175,32 +200,49 @@ export function CommandPalette() {
         ],
       });
 
-      out.push({
-        heading: "Monitoring and developer",
-        entries: [
-          {
-            id: "schedules",
-            label: "Scheduled scans",
-            href: `${ROUTES.PROFILE}?tab=developer&dtab=schedules`,
-            icon: CalendarClock,
-            keywords: "recurring cron monitoring daily weekly",
-          },
-          {
-            id: "webhooks",
-            label: "Webhooks",
-            href: `${ROUTES.PROFILE}?tab=developer&dtab=webhooks`,
-            icon: Webhook,
-            keywords: "callback notify integration slack",
-          },
-          {
-            id: "api-keys",
-            label: "API keys",
-            href: `${ROUTES.PROFILE}?tab=developer&dtab=api-keys`,
-            icon: Key,
-            keywords: "token secret integration",
-          },
-        ],
-      });
+      // The whole group goes when all three are off, rather than leaving a
+      // heading over nothing.
+      const developerEntries: PaletteEntry[] = [
+        ...(featureScheduledScans
+          ? [
+              {
+                id: "schedules",
+                label: "Scheduled scans",
+                href: `${ROUTES.PROFILE}?tab=developer&dtab=schedules`,
+                icon: CalendarClock,
+                keywords: "recurring cron monitoring daily weekly",
+              },
+            ]
+          : []),
+        ...(featureWebhooks
+          ? [
+              {
+                id: "webhooks",
+                label: "Webhooks",
+                href: `${ROUTES.PROFILE}?tab=developer&dtab=webhooks`,
+                icon: Webhook,
+                keywords: "callback notify integration slack",
+              },
+            ]
+          : []),
+        ...(featureApiKeys
+          ? [
+              {
+                id: "api-keys",
+                label: "API keys",
+                href: `${ROUTES.PROFILE}?tab=developer&dtab=api-keys`,
+                icon: Key,
+                keywords: "token secret integration",
+              },
+            ]
+          : []),
+      ];
+      if (developerEntries.length > 0) {
+        out.push({
+          heading: "Monitoring and developer",
+          entries: developerEntries,
+        });
+      }
 
       out.push({
         heading: "Account",
@@ -219,13 +261,21 @@ export function CommandPalette() {
             icon: Lock,
             keywords: "2fa totp password sessions backup codes",
           },
-          {
-            id: "notifications",
-            label: "Notification preferences",
-            href: `${ROUTES.PROFILE}?tab=notifications`,
-            icon: Activity,
-            keywords: "email digest alerts",
-          },
+          // Every switch on that tab is an email preference, and
+          // sendNotificationEmail() returns early for every category when
+          // FEATURE_EMAIL_NOTIFICATIONS is off, so with the flag down the tab
+          // is a page of controls that change nothing.
+          ...(featureEmailNotifications
+            ? [
+                {
+                  id: "notifications",
+                  label: "Notification preferences",
+                  href: `${ROUTES.PROFILE}?tab=notifications`,
+                  icon: Activity,
+                  keywords: "email digest alerts",
+                },
+              ]
+            : []),
           {
             id: "privacy",
             label: "Privacy and data",
@@ -323,7 +373,16 @@ export function CommandPalette() {
     });
 
     return out;
-  }, [isLoggedIn, isStaff]);
+  }, [
+    isLoggedIn,
+    isStaff,
+    featureTeams,
+    featureApiKeys,
+    featureWebhooks,
+    featureScheduledScans,
+    featureEmailNotifications,
+    featureDomainVerification,
+  ]);
 
   const go = useCallback(
     (href: string) => {

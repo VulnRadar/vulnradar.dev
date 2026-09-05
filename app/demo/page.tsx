@@ -2,6 +2,11 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { PowerOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { IssueDetail } from "@/components/scanner/issue-detail";
 import {
   DemoHero,
@@ -13,10 +18,34 @@ import {
 } from "@/components/demo";
 import { ScanResultDetail } from "@/components/scanner/scan-result-detail";
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
-import { API } from "@/lib/config/client-constants";
+import { API, ROUTES } from "@/lib/config/client-constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 
 export default function DemoPage() {
+  const { featureDemoMode, loaded } = useClientConfig();
+
+  // `loaded` here, unlike the landing entry points: this page already renders
+  // behind a Suspense fallback, so waiting costs nothing and the disabled
+  // state never flashes on a deployment that has the demo on.
+  if (loaded && !featureDemoMode) {
+    return (
+      <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 sm:py-20">
+        <EmptyState
+          icon={PowerOff}
+          title="Demo mode is turned off"
+          description="This deployment runs with the demo disabled, so there is no no-account scan to run here. Create a free account and scan from the dashboard instead."
+          action={
+            <Link href={ROUTES.SIGNUP}>
+              <Button size="lg" className="h-11 px-6">
+                Create a free account
+              </Button>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <Suspense fallback={<DemoScanning />}>
       <DemoPageContent />

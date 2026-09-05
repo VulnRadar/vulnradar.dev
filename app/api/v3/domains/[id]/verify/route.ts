@@ -79,7 +79,13 @@ export async function POST(
 
   const result = await checkDnsVerification(row.domain, row.verification_token);
 
-  const status = result.verified ? "verified" : "failed";
+  // "reverify_failed", not "failed": domains_status_check allows exactly
+  // ('pending','verified','reverify_failed'), so "failed" raised a 23514 check
+  // violation on every failed verification. Nothing caught it, so the UPDATE
+  // rolled back and last_check_error, the one field that tells the user which
+  // DNS record is wrong, was never written. lib/domains/reverify-worker.ts has
+  // always used the allowed value; this route was the outlier.
+  const status = result.verified ? "verified" : "reverify_failed";
   await pool.query(
     `UPDATE domains
      SET status = $1::varchar,

@@ -6,11 +6,25 @@ import { ROUTES } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { toggles } from "@/lib/ui/animations";
 import { tourAnchor } from "@/lib/tour/anchors";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
+import {
+  visibleSurfaces,
+  type FeatureSurface,
+} from "@/lib/config/feature-surfaces";
 
-const TABS = [
+const TABS: {
+  href: string;
+  label: string;
+  /** Client feature flag this destination depends on, if any. */
+  feature?: FeatureSurface;
+}[] = [
   { href: ROUTES.HISTORY, label: "My History" },
   { href: ROUTES.ASSETS, label: "Assets" },
-  { href: ROUTES.ATTACK_SURFACE, label: "Attack Surface" },
+  {
+    href: ROUTES.ATTACK_SURFACE,
+    label: "Attack Surface",
+    feature: "domainVerification",
+  },
   { href: ROUTES.PUBLIC_SCANS, label: "Public Scans" },
 ];
 
@@ -26,6 +40,12 @@ const TABS = [
  */
 export function HistoryViewTabs() {
   const pathname = usePathname();
+  // /attack-surface is the domain-verification portfolio and nothing else, so
+  // with FEATURE_DOMAIN_VERIFICATION off the tab leads to a page whose only
+  // control cannot be used. The flag reads its compiled build-time default
+  // until the live config lands, so the strip does not reflow after paint on a
+  // deployment that sets flags at build time.
+  const tabs = visibleSurfaces(TABS, useClientConfig());
 
   return (
     /* The four labels need roughly 409px and a 390px phone offers about 358.
@@ -42,7 +62,7 @@ export function HistoryViewTabs() {
         {...tourAnchor("historyTabs")}
         className="flex w-max min-w-full gap-1 border-b border-border/50"
       >
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = pathname === tab.href;
           return (
             <Link

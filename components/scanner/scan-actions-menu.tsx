@@ -254,7 +254,7 @@ export function ScanActionsMenu({
   const { me } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const { featurePdfReports } = useClientConfig();
+  const { featurePdfReports, featureTeams } = useClientConfig();
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -344,8 +344,13 @@ export function ScanActionsMenu({
   // only state the verify endpoint can attach verdicts to.
   // Which teams this scan can be handed to. Owner-only, because the PATCH
   // route rejects a team change from anyone else.
+  //
+  // The "Share with a team" row already disappears when this comes back empty,
+  // which is what FEATURE_TEAMS off produces (every /api/v3/teams route 403s),
+  // so checking the flag here is about not issuing a request whose answer is
+  // known rather than about the row.
   useEffect(() => {
-    if (!scanId || !isOwner) return;
+    if (!scanId || !isOwner || !featureTeams) return;
     let cancelled = false;
     fetch(API.TEAMS)
       .then((r) => (r.ok ? r.json() : { teams: [] }))
@@ -377,7 +382,7 @@ export function ScanActionsMenu({
     return () => {
       cancelled = true;
     };
-  }, [scanId, isOwner]);
+  }, [scanId, isOwner, featureTeams]);
 
   // The scan's current team, read once the picker is actually opened. It comes
   // from GET /api/v3/history/[id], whose response carries the whole findings

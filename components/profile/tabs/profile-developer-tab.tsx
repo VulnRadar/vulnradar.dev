@@ -22,6 +22,13 @@ import {
 } from "@/lib/config/client-constants";
 import { useQueryParam } from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
+import {
+  resolveDeveloperSection,
+  visibleSurfaces,
+  type FeatureSurface,
+} from "@/lib/config/feature-surfaces";
+import { EmptyState } from "@/components/shared/empty-state";
 import { getPlanById } from "@/lib/billing/catalog";
 import {
   AlertDialog,
@@ -71,14 +78,25 @@ const UNLIMITED_API_KEYS = -1;
 // -- see components/profile/tabs/profile-social-tab.tsx's
 // GithubRepoAccessSection and app/profile/page.tsx's handling of the
 // OAuth callback's dtab=github landing.
+//
+// `feature` is the client feature flag the sub-tab depends on. Each of these
+// three has a server-side kill switch on its own API (app/api/v3/keys,
+// webhooks, schedules), and until this was wired the switch was invisible
+// here: the form rendered, took input, and failed with a 403 on submit.
 const DEVELOPER_SECTIONS: Array<{
   id: DeveloperSection;
   label: string;
   icon: LucideIcon;
+  feature: FeatureSurface;
 }> = [
-  { id: "api-keys", label: "API Keys", icon: Key },
-  { id: "webhooks", label: "Webhooks", icon: Webhook },
-  { id: "schedules", label: "Scheduled Scans", icon: CalendarClock },
+  { id: "api-keys", label: "API Keys", icon: Key, feature: "apiKeys" },
+  { id: "webhooks", label: "Webhooks", icon: Webhook, feature: "webhooks" },
+  {
+    id: "schedules",
+    label: "Scheduled Scans",
+    icon: CalendarClock,
+    feature: "schedules",
+  },
 ];
 
 // "domains" is deliberately not in the strip above. Verified domains moved to
@@ -195,9 +213,19 @@ export function ProfileDeveloperTab({
     "dtab",
     "api-keys",
   );
-  const activeSection: DeveloperSection = isDeveloperSection(devSectionRaw)
-    ? devSectionRaw
-    : "api-keys";
+
+  // The sub-tabs this deployment actually has, and where a ?dtab= lands once
+  // they are applied. `loaded` is free here because everything below already
+  // sits behind this tab's own skeleton, so gating on it costs no layout shift
+  // and means a disabled section is never drawn even for a frame.
+  const flags = useClientConfig();
+  const configLoaded = flags.loaded;
+  const sections = visibleSurfaces(DEVELOPER_SECTIONS, flags);
+  const resolvedSection = resolveDeveloperSection(
+    isDeveloperSection(devSectionRaw) ? devSectionRaw : null,
+    flags,
+  );
+  const activeSection = resolvedSection as DeveloperSection | null;
 
   const [newKeyName, setNewKeyName] = useState("");
   // scoping: defaults to scan:write + scan:read (not scan:delete) -- the
@@ -668,7 +696,10 @@ export function ProfileDeveloperTab({
     });
   }
 
-  if (loading) {
+  // Waiting on the feature flags too, not just the account data. Every sub-tab
+  // below is behind one, so drawing the strip first would mean drawing sections
+  // this deployment may have turned off and then taking them away.
+  if (loading || !configLoaded) {
     return <DeveloperTabSkeleton />;
   }
 
@@ -679,12 +710,28 @@ export function ProfileDeveloperTab({
     return 0;
   };
 
+  // Every sub-tab turned off. The strip and its border would be an empty rule
+  // across the panel, so say what happened instead. The parent hides the whole
+  // Developer tab in this case, which makes this the direct-link path
+  // (?tab=developer on a deployment that has all three off).
+  if (sections.length === 0) {
+    return (
+      <EmptyState
+        icon={Key}
+        title="Developer features are turned off"
+        description="API keys, webhooks and scheduled scans are all disabled on this deployment, so there is nothing to configure here."
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* Developer sub-tabs: API Keys / Webhooks / Scheduled Scans, each
-          independently scannable instead of one long scroll. */}
+          independently scannable instead of one long scroll. Only the ones
+          this deployment has enabled: a section whose API answers 403 is a
+          form that takes input and then refuses it. */}
       <div className="flex gap-0.5 border-b border-border/80 scroll-x-only scrollbar-hide -mx-1 px-1">
-        {DEVELOPER_SECTIONS.map((section) => {
+        {sections.map((section) => {
           const count = sectionCount(section.id);
           const isActive = activeSection === section.id;
           return (

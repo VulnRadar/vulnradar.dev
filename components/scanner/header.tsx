@@ -13,13 +13,18 @@ import {
 } from "@/components/ui/sheet";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/ui/utils";
 import { APP_NAME, ROUTES, API } from "@/lib/config/client-constants";
 import { backdrops, transitions } from "@/lib/ui/animations";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { NotificationBell } from "@/components/shared/notification-center";
 import { useAuth, clearAuthCache } from "@/components/providers/auth-provider";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
+import {
+  visibleSurfaces,
+  type FeatureSurface,
+} from "@/lib/config/feature-surfaces";
 import { tourAnchor, type TourAnchor } from "@/lib/tour/anchors";
 
 // Deep-links straight to the Developer tab of the profile page. Scheduled
@@ -40,13 +45,15 @@ const NAV_LINKS: {
   href: string;
   label: string;
   tour?: TourAnchor;
+  /** Client feature flag this destination depends on, if any. */
+  feature?: FeatureSurface;
 }[] = [
   { href: ROUTES.DASHBOARD, label: "Scanner" },
   { href: ROUTES.HISTORY, label: "History", tour: "navHistory" },
   { href: ROUTES.REPOS, label: "Repos" },
   { href: ROUTES.COMPARE, label: "Compare", tour: "navCompare" },
   { href: ROUTES.SHARES, label: "Shared", tour: "navShares" },
-  { href: ROUTES.TEAMS, label: "Teams", tour: "navTeams" },
+  { href: ROUTES.TEAMS, label: "Teams", tour: "navTeams", feature: "teams" },
   { href: ROUTES.BADGE, label: "Badge" },
   { href: ROUTES.PROFILE, label: "Profile", tour: "navProfile" },
 ];
@@ -55,6 +62,14 @@ export function Header() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { isStaff } = useAuth();
+  // FEATURE_TEAMS is enforced on every /api/v3/teams route, so with it off the
+  // Teams page loaded and then 403'd on its first request: the user found out
+  // the deployment has no teams from an error, having already navigated. The
+  // flag reads its compiled build-time default until the live config lands, so
+  // a deployment that sets flags at build time never changes this row after
+  // paint; only an admin-panel override corrects it, once.
+  const flags = useClientConfig();
+  const navLinks = useMemo(() => visibleSurfaces(NAV_LINKS, flags), [flags]);
 
   function isNavActive(href: string): boolean {
     const base = href.split("?")[0].split("#")[0];
@@ -135,7 +150,7 @@ export function Header() {
             aria-label="Main"
             className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2"
           >
-            {NAV_LINKS.map(({ href, label, tour }) => {
+            {navLinks.map(({ href, label, tour }) => {
               const active = isNavActive(href);
               return (
                 <Link
@@ -226,7 +241,7 @@ export function Header() {
             {/* Links */}
             <SheetBody className="p-3">
               <nav aria-label="Mobile" className="flex flex-col gap-0.5">
-                {NAV_LINKS.map(({ href, label, tour }) => {
+                {navLinks.map(({ href, label, tour }) => {
                   const active = isNavActive(href);
                   return (
                     <Link

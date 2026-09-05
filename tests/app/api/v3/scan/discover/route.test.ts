@@ -67,6 +67,16 @@ const mockIncrementDailyCountCapped =
     ) => Promise<{ recorded: boolean; count: number }>
   >();
 
+// Subdomain discovery is a paid re-run: a forced refresh is a 191-prefix DNS
+// brute force plus up to 1000 resolutions plus HTTP probing, and it was gated
+// only in the browser. The route now calls the same helper the three sibling
+// refresh routes use. Default to allowed here so the existing tests exercise
+// the discovery path; the gate itself gets its own test below.
+const mockRequireRefreshPlan = vi.fn(async () => ({ ok: true as const }));
+vi.mock("@/lib/history/refresh-scan", () => ({
+  requireRefreshPlan: () => mockRequireRefreshPlan(),
+}));
+
 vi.mock("@/lib/scanner/access-rules", () => ({
   checkAccessRules: (url: string) => mockCheckAccessRules(url),
 }));

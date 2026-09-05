@@ -10,6 +10,7 @@ import {
 } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import type { SettingKey } from "@/lib/config/registry";
+import { buildHistoryFilter } from "@/lib/history/list-filter";
 import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
@@ -168,53 +169,25 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     historyMaxRows,
   );
 
-  // Search and tag filtering run here, in SQL, over the whole retention
-  // window. They used to run in the browser over whatever page the history
-  // view had already loaded, so a scan still inside the plan's retention
-  // window could not be found by URL once it had scrolled past that page:
-  // searching returned "no match" for a scan that exists. ref:
-  // AUDIT-014#qolf-01
-  //
-  // Both filters are appended to the same user-scoped WHERE the unfiltered
-  // list already used, never substituted for it, so a filter can only narrow
-  // the caller's own rows. Values go in as bind parameters; nothing here is
-  // concatenated into the SQL text except the parameter numbers.
+  // Search and tag filtering run in SQL, over the whole retention window, and
+  // the clause is built by lib/history/list-filter.ts so tests/integration can
+  // run this exact WHERE against a real PostgreSQL. Both filters are appended
+  // to the user-scoped clause the unfiltered list already used, never
+  // substituted for it, so a filter can only narrow the caller's own rows.
   const { q, tag } = parseFilters(request.nextUrl.searchParams);
-  const filtering = q !== null || tag !== null;
+  const {
+    baseWhere,
+    baseParams,
+    where: listWhere,
+    params: listParams,
+    filtering,
+  } = buildHistoryFilter({
+    userId: authedUserId,
+    retentionDays,
+    q,
+    tag,
+  });
 
-  // The account-scoped clause both the list and the true account total share.
-  // `total` is what the delete-everything confirmation counts, so it must stay
-  // blind to q/tag.
-  const baseParams: unknown[] = [authedUserId];
-  let baseWhere =
-    "sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')";
-  if (retentionDays > 0) {
-    baseParams.push(Math.floor(retentionDays));
-    baseWhere += `\n         AND sh.scanned_at > NOW() - ($${baseParams.length} * INTERVAL '1 day')`;
-  }
-
-  const listParams: unknown[] = [...baseParams];
-  let listWhere = baseWhere;
-  if (q !== null) {
-    // Escaped so this is a literal substring rather than a pattern: an
-    // unescaped "_" matches any single character and a bare "%" matches every
-    // row the caller owns, which turns a search into a full listing.
-    listParams.push(`%${q.replace(/[\\%_]/g, "\\$&")}%`);
-    listWhere += `\n         AND sh.url ILIKE $${listParams.length} ESCAPE '\\'`;
-  }
-  if (tag !== null) {
-    // st_f.user_id = $1 as well as the scan join: tags are per-user rows, so
-    // filtering on the join alone would let one user's tag on a shared URL
-    // select another user's scan.
-    listParams.push(tag);
-    listWhere += `\n         AND EXISTS (SELECT 1 FROM scan_tags st_f WHERE st_f.scan_id = sh.id AND st_f.user_id = $1 AND st_f.tag = $${listParams.length})`;
-  }
-
-  // GitHub repo scans (sh.scan_type = 'github') are excluded here: they get
-  // their own dedicated history at /repos (app/api/v3/scan/github/history),
-  // scoped per-repo instead of mixed into this URL-scan list. See the
-  // matching exclusion in this route's DELETE handler below.
-  //
   // sh.status is projected so the list can distinguish a finished scan from
   // one that is still pending/running or that failed. The row is inserted as
   // 'pending' before any work starts, with summary '{}', findings_count 0 and

@@ -12,6 +12,7 @@ import {
   incrementDailyCountCapped,
 } from "@/lib/rate-limiting/daily-limits";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
+import { requireRefreshPlan } from "@/lib/history/refresh-scan";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { getSetting } from "@/lib/config/runtime-config";
 import { setDiscoveryStage } from "@/lib/scanner/discovery-progress";
@@ -173,6 +174,28 @@ export async function POST(request: NextRequest) {
     // aim roughly 200,000 DNS lookups a day at targets it does not own. A
     // cache hit stays free, since it does no outbound work.
     if (forceRefresh) {
+      // billing: the plan gate, which lived only in the browser.
+      //
+      // components/scanner/subdomain-discovery.tsx refuses the click below
+      // pro_supporter and premium-upgrade-modal.tsx declares it as such, but
+      // this route imported no plan module at all: a direct POST, or any API
+      // key with scan:write, ran the full engine on a free account. That is
+      // the most expensive outbound operation in the product, so the gate
+      // being client-side only meant the paywall was decorative.
+      //
+      // Gated HERE rather than at the top of the route, deliberately. A cache
+      // hit does no outbound work and costs nothing, so reading an existing
+      // result stays available to everyone; it is the forced re-run that
+      // spends the DNS brute force and the third-party queries, which is the
+      // same line the daily charge below is drawn on.
+      //
+      // requireRefreshPlan is the same helper the three sibling refresh routes
+      // use (history/[id]/dns, ports, screenshot) and resolves to the same
+      // pro_supporter minimum, so all four premium re-runs now answer
+      // identically instead of this one being the exception.
+      const planCheck = await requireRefreshPlan(userId);
+      if (!planCheck.ok) return planCheck.response;
+
       const dailyLimit = await getDailyLimit(userId);
       const charge = await incrementDailyCountCapped(userId, dailyLimit);
       if (!charge.recorded) {

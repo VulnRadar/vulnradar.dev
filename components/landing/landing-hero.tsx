@@ -5,6 +5,7 @@ import { ArrowRight, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/config/client-constants";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 import {
   ResponseReadout,
   type ResponseReadoutRow,
@@ -53,6 +54,9 @@ const HERO_READOUT_ROWS: ResponseReadoutRow[] = [
 
 export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
   const { me } = useAuth();
+  // Read without `loaded`: the pre-fetch value is the build-time FEATURES
+  // default, so a correctly configured deployment never sees this row change.
+  const { featureDemoMode } = useClientConfig();
   const isLoggedIn = !!me?.userId;
 
   const stats: [string, string][] = [
@@ -111,11 +115,13 @@ export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
                   </Button>
                 </Link>
               )}
-              <Link href={ROUTES.DEMO}>
-                <Button size="lg" variant="outline" className="h-11 px-6">
-                  Try the demo
-                </Button>
-              </Link>
+              {featureDemoMode && (
+                <Link href={ROUTES.DEMO}>
+                  <Button size="lg" variant="outline" className="h-11 px-6">
+                    Try the demo
+                  </Button>
+                </Link>
+              )}
             </div>
 
             <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 border-t border-border/50 pt-5">

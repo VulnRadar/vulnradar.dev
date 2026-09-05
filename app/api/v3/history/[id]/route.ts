@@ -418,6 +418,28 @@ export async function PATCH(
     await pool.query(`DELETE FROM host_reputation WHERE source_scan_id = $1`, [
       scan.id,
     ]);
+
+    // Revoke the share link too, which is what the API documentation has
+    // always promised ("Turning isPublic off revokes any existing share
+    // link", lib/api/openapi-spec.ts) and what this route never did.
+    //
+    // The reader at app/api/v3/shared/[token]/route.ts matches on
+    // share_token_hash and expiry with no is_public predicate, deliberately:
+    // a share link is its own capability, so a scan that was never public can
+    // still be shared by URL. The consequence was that marking a scan private
+    // left the link fully live, serving findings, response headers and notes
+    // to anyone holding it, while the owner had been told it was revoked.
+    //
+    // share_token_hash is a generated column over share_token, so clearing
+    // the token clears the hash with it and no existing URL can resolve.
+    // share_expires_at goes too, so a later re-share starts from a clean
+    // state rather than inheriting an old expiry.
+    await pool.query(
+      `UPDATE scan_history
+          SET share_token = NULL, share_expires_at = NULL
+        WHERE id = $1`,
+      [scan.id],
+    );
   }
 
   // Record API key usage

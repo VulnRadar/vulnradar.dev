@@ -53,6 +53,8 @@ import {
   Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
+import { profileTabEnabled } from "@/lib/config/feature-surfaces";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { ProfileDataSkeleton } from "@/components/profile/profile-skeleton";
 import {
@@ -84,9 +86,23 @@ function ProfileContent() {
     "tab",
     "general",
   );
-  const activeProfileTabSafe: ProfileTab = isValidProfileTab(activeProfileTab)
-    ? (activeProfileTab as ProfileTab)
-    : "general";
+  // Two of the eight tabs are entirely one feature each, and both features can
+  // be turned off. Developer is API keys + webhooks + scheduled scans, so it
+  // survives while any one of the three is on; Notifications is nothing but
+  // email preferences, and sendNotificationEmail() returns early for every
+  // category when FEATURE_EMAIL_NOTIFICATIONS is off, so with that down every
+  // switch on it changes nothing. Each flag stands in at its compiled
+  // build-time default until the live config lands, which is the value the
+  // deployment was built with, so the strip does not reflow after paint.
+  const clientConfig = useClientConfig();
+  const tabEnabled = (tab: ProfileTab): boolean =>
+    profileTabEnabled(tab, clientConfig);
+  // A ?tab= pointing at a disabled tab lands on General rather than on a panel
+  // the strip no longer offers a way back from.
+  const activeProfileTabSafe: ProfileTab =
+    isValidProfileTab(activeProfileTab) && tabEnabled(activeProfileTab)
+      ? (activeProfileTab as ProfileTab)
+      : "general";
 
   // admin: always reflect the current tab in the URL, even on first
   // load when no tab has been clicked. Otherwise the URL is
@@ -741,7 +757,7 @@ function ProfileContent() {
   // that change what the product does to you. The mobile strip stays flat,
   // because it already scrolls and group labels in a horizontal row would
   // just be more to scroll past.
-  const TAB_GROUPS: {
+  const ALL_TAB_GROUPS: {
     label: string;
     tabs: { id: ProfileTab; label: string; icon: React.ReactNode }[];
   }[] = [
@@ -801,6 +817,12 @@ function ProfileContent() {
       ],
     },
   ];
+  // A group whose every tab is disabled goes with them, so the strip never
+  // shows a heading with nothing under it.
+  const TAB_GROUPS = ALL_TAB_GROUPS.map((g) => ({
+    ...g,
+    tabs: g.tabs.filter((t) => tabEnabled(t.id)),
+  })).filter((g) => g.tabs.length > 0);
   const TABS = TAB_GROUPS.flatMap((g) => g.tabs);
 
   return (
