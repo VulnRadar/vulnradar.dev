@@ -83,6 +83,16 @@ vi.mock("@/lib/config/runtime-config", async () => {
   };
 });
 
+// A repo scan used to fire no notification at all. It now calls the shared
+// tail (lib/webhooks/scan-notifications.ts), mocked at that module boundary
+// here so its own two lookups do not consume the mockQuery call sequence the
+// scan_history assertions below depend on. What the tail then delivers is
+// covered by tests/lib/webhooks/scan-notifications.test.ts.
+const mockNotifyScanComplete = vi.fn(async (..._args: unknown[]) => {});
+vi.mock("@/lib/webhooks/scan-notifications", () => ({
+  notifyScanComplete: (...args: unknown[]) => mockNotifyScanComplete(...args),
+}));
+
 const { POST } = await import("@/app/api/v3/scan/github/route");
 
 function postReq(body: unknown) {
@@ -133,6 +143,7 @@ beforeEach(() => {
   });
   mockCheckGlobalRateLimit.mockReset();
   mockCheckGlobalRateLimit.mockResolvedValue({ allowed: true });
+  mockNotifyScanComplete.mockClear();
 });
 
 describe("POST /api/v3/scan/github", () => {
@@ -304,5 +315,28 @@ describe("POST /api/v3/scan/github", () => {
       false,
       false, // creditCovered
     );
+  });
+});
+
+describe("POST /api/v3/scan/github - notifications", () => {
+  it("runs the shared notification tail, reporting a repository target rather than a URL one", async () => {
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+    expect(res.status).toBe(200);
+
+    expect(mockNotifyScanComplete).toHaveBeenCalledTimes(1);
+    expect(mockNotifyScanComplete.mock.calls[0][0]).toMatchObject({
+      userId: 5,
+      scanId: 99,
+      target: { kind: "repository", value: "octocat/hello-world" },
+    });
+  });
+
+  it("does not notify when the scan_history row could not be written", async () => {
+    mockQuery.mockRejectedValue(new Error("pool exhausted"));
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(200);
+    expect(mockNotifyScanComplete).not.toHaveBeenCalled();
   });
 });

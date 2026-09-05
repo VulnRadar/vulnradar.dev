@@ -64,6 +64,16 @@ vi.mock("@/lib/email/email", () => ({
   criticalFindingsEmail: () => ({}),
 }));
 
+// The scan-complete email, the regression alert and the webhooks all now go
+// out through one shared tail (lib/webhooks/scan-notifications.ts), which the
+// tests below still drive for real. Only the HTTP attempt at the very bottom
+// of it is mocked: deliverWebhook's signing, logging and retry policy have
+// their own suite (tests/lib/webhooks/delivery.test.ts).
+const mockDeliverWebhook = vi.fn();
+vi.mock("@/lib/webhooks/delivery", () => ({
+  deliverWebhook: (...args: unknown[]) => mockDeliverWebhook(...args),
+}));
+
 // Port sweep is mocked at the module boundary: scanPorts opens real TCP
 // sockets, so the executeScan envelope tests must never invoke the real one.
 // It is gated behind the portScan flag (default off in baseParams), so every
@@ -138,6 +148,8 @@ beforeEach(() => {
   mockRunSyncChecks.mockReset();
   mockRunAsyncChecksDetailed.mockReset();
   mockSendNotificationEmail.mockReset();
+  mockDeliverWebhook.mockReset();
+  mockDeliverWebhook.mockResolvedValue(undefined);
   mockScanPorts.mockReset();
   mockScanPorts.mockResolvedValue(null);
   mockBuildRiskyPortFindings.mockReset();
@@ -675,5 +687,78 @@ describe("executeScan", () => {
         expect.objectContaining({ type: "severity_alerts" }),
       );
     });
+  });
+});
+
+describe("executeScan: webhook notifications", () => {
+  function installWebhookQueryMock(
+    rows: { id: number; url: string; type: string; secret: string | null }[],
+  ) {
+    mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes("SELECT email FROM users")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
+        return { rows, rowCount: rows.length };
+      }
+      const last = Array.isArray(params) ? params[params.length - 1] : 1;
+      return { rows: [{ id: last }], rowCount: 1 };
+    });
+  }
+
+  function installCleanScan() {
+    mockSafeFetch.mockResolvedValue(
+      new Response("<html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    mockRunSyncChecks.mockReturnValue({
+      findings: [],
+      checksRun: 1,
+      checksSkipped: 0,
+      deduped: 0,
+    });
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+  }
+
+  it("delivers scan.completed for a single-URL scan", async () => {
+    installWebhookQueryMock([
+      { id: 1, url: "https://hook.example/a", type: "generic", secret: "s" },
+    ]);
+    installCleanScan();
+
+    await executeScan(baseParams({ scanId: 30 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockDeliverWebhook).toHaveBeenCalledTimes(1);
+    const [target, event, body] = mockDeliverWebhook.mock.calls[0];
+    expect(target).toMatchObject({ id: 1, userId: 42 });
+    expect(event).toBe("scan.completed");
+    expect(JSON.parse(body as string).data.url).toBe("https://example.com/");
+  });
+
+  it("still completes the scan when the webhook delivery throws", async () => {
+    installWebhookQueryMock([
+      { id: 1, url: "https://hook.example/a", type: "generic", secret: null },
+    ]);
+    installCleanScan();
+    mockDeliverWebhook.mockRejectedValue(new Error("receiver returned 500"));
+
+    await executeScan(baseParams({ scanId: 31 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const completed = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("status = 'completed'"),
+    );
+    expect(completed).toBeDefined();
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        (sql as string).includes("status = 'failed'"),
+      ),
+    ).toBe(false);
   });
 });

@@ -79,6 +79,27 @@ vi.mock("@/lib/scanner/async-checks", () => ({
   ) => (scope === "page" ? ["osv-libraries"] : ["dns"]),
 }));
 
+// A crawl now runs the same shared notification tail every other scan path
+// runs (lib/webhooks/scan-notifications.ts) instead of only its own
+// regression-alert email. The tail is driven for real; only the HTTP attempt
+// at the bottom of it is mocked, since deliverWebhook's signing, logging and
+// retry policy have their own suite (tests/lib/webhooks/delivery.test.ts).
+const mockDeliverWebhook = vi.fn();
+vi.mock("@/lib/webhooks/delivery", () => ({
+  deliverWebhook: (...args: unknown[]) => mockDeliverWebhook(...args),
+}));
+
+const mockSendNotificationEmail = vi.fn();
+vi.mock("@/lib/notifications/notifications", () => ({
+  sendNotificationEmail: (...args: unknown[]) =>
+    mockSendNotificationEmail(...args),
+}));
+
+vi.mock("@/lib/email/email", () => ({
+  scanCompleteEmail: () => ({}),
+  criticalFindingsEmail: () => ({}),
+}));
+
 const { executeCrawlScan } = await import("@/lib/scanner/execute-crawl-scan");
 
 /** Columns per tuple in the per-page multi-row child INSERT. */
@@ -110,6 +131,15 @@ function installDefaultQueryMock() {
         rows.push({ id: 900 + rows.length, url: p[i + 1] });
       }
       return { rows, rowCount: rows.length };
+    }
+    // The shared notification tail's own two lookups. Answered explicitly so
+    // the default "one row back" branch below does not hand the email/webhook
+    // fan-out a row-shaped object it will then try to notify.
+    if (sql.includes("SELECT email FROM users")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
+      return { rows: [], rowCount: 0 };
     }
     const last = Array.isArray(params) ? params[params.length - 1] : 1;
     return { rows: [{ id: last }], rowCount: 1 };
@@ -164,6 +194,9 @@ beforeEach(() => {
   });
   mockRunAsyncChecks.mockReset();
   mockRunAsyncChecks.mockResolvedValue({ findings: [], incomplete: [] });
+  mockDeliverWebhook.mockReset();
+  mockDeliverWebhook.mockResolvedValue(undefined);
+  mockSendNotificationEmail.mockReset();
 });
 
 describe("executeCrawlScan", () => {
@@ -588,5 +621,73 @@ describe("executeCrawlScan (authenticated)", () => {
     // not depend on any individual page being fetchable, so they are not
     // reported as incomplete just because a page was unreachable.
     expect(resultMeta.incomplete).toEqual(["osv-libraries"]);
+  });
+});
+
+describe("executeCrawlScan: notifications", () => {
+  function installNotifyingQueryMock(
+    rows: { id: number; url: string; type: string; secret: string | null }[],
+  ) {
+    const base = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes("SELECT email FROM users")) {
+        return { rows: [{ email: "owner@example.com" }], rowCount: 1 };
+      }
+      if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
+        return { rows, rowCount: rows.length };
+      }
+      if (sql.includes("SELECT findings FROM scan_history")) {
+        return { rows: [] };
+      }
+      return base(sql, params);
+    });
+  }
+
+  it("delivers scan.completed and sends the scan-complete email, which a crawl never used to do", async () => {
+    installNotifyingQueryMock([
+      { id: 1, url: "https://hook.example/a", type: "generic", secret: "s" },
+    ]);
+
+    await executeCrawlScan(baseParams({ scanId: 40 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockDeliverWebhook).toHaveBeenCalledTimes(1);
+    const [, event, body] = mockDeliverWebhook.mock.calls[0];
+    expect(event).toBe("scan.completed");
+    expect(JSON.parse(body as string).data.url).toBe("https://example.com/");
+    expect(mockSendNotificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "scan_complete" }),
+    );
+  });
+
+  it("sends exactly one regression alert email, not the shared tail's plus its own", async () => {
+    installNotifyingQueryMock([]);
+    mockRunSyncChecks.mockReturnValue({
+      findings: [
+        {
+          id: "crawl-critical--hash",
+          title: "Critical issue",
+          description: "d",
+          severity: "critical",
+          category: "configuration",
+          evidence: "",
+          riskImpact: "",
+          explanation: "",
+          fixSteps: [],
+          codeExamples: [],
+        },
+      ],
+      checksRun: 1,
+      checksSkipped: 0,
+      deduped: 0,
+    });
+
+    await executeCrawlScan(baseParams({ scanId: 41 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const alerts = mockSendNotificationEmail.mock.calls.filter(
+      ([arg]) => (arg as { type: string }).type === "severity_alerts",
+    );
+    expect(alerts).toHaveLength(1);
   });
 });

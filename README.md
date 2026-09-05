@@ -36,8 +36,12 @@ install. GPL-3.0 and self-hostable.
   URL's most recent completed scan, with no new embed code to paste
 - **Scan diffing and shareable report links**, so a fix can be shown to have
   landed rather than asserted
-- **Scheduled scans, bulk scanning, and signed webhooks** that fire when a
-  background scan actually finishes, not when the API call returned
+- **Scheduled scans, bulk scanning, and signed webhooks** that fire when the
+  scan actually finishes rather than when the request that started it
+  returned, on every kind of scan: single URL, crawl, bulk, authenticated,
+  and GitHub repo. A `scan.regressed` event carries the findings that are new
+  since the previous scan of the same target, so an alert can be routed to a
+  person without a second API call
 - **Exports** to PDF, JSON, SARIF, Markdown, or a compliance crosswalk, so
   findings go into the tool your team already uses
 - **A browser extension** for Chrome and Firefox that scans the tab you are on

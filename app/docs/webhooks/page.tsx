@@ -30,6 +30,7 @@ const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
   { id: "supported-platforms", label: "Supported Platforms" },
   { id: "endpoints", label: "API Endpoints" },
+  { id: "events", label: "Events" },
   { id: "payloads", label: "Webhook Payloads" },
   { id: "security", label: "Security" },
   { id: "examples", label: "Integration Examples" },
@@ -54,18 +55,26 @@ export default function WebhooksPage() {
       <DocsSection id="overview" title="Overview">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Webhooks fire after every successful scan triggered by a session or an
-          API key. Scans run as background jobs, so delivery happens when the
-          job actually finishes, not when the original API call returned. Each
-          delivery is signed (see Security below) and re-checks the destination
-          URL against the SSRF rules again at delivery time, not just when you
-          registered it. A delivery that fails (network error, timeout, or a
-          non-2xx response) gets exactly one retry a few seconds later; if that
-          also fails, the attempt is logged and, if you have the notification
-          enabled, you get an email. The per-user cap is set by your plan, not a
-          flat number:{" "}
+          API key. Most scans run as background jobs, so delivery happens when
+          the job actually finishes rather than when the request that started it
+          returned; an authenticated scan and a GitHub repo scan run inline, and
+          fire as they finish. Each delivery is signed (see Security below) and
+          re-checks the destination URL against the SSRF rules again at delivery
+          time, not just when you registered it. A delivery that fails (network
+          error, timeout, or a non-2xx response) gets exactly one retry a few
+          seconds later; if that also fails, the attempt is logged and, if you
+          have the notification enabled, you get an email. The per-user cap is
+          set by your plan, not a flat number:{" "}
           <strong className="text-foreground">{WEBHOOK_CAPS}</strong>. Free
           accounts do get a webhook: the step up you pay for is 1 to 5 at Pro
           Supporter.
+        </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Every kind of scan fires them: a single-URL scan, a crawl (what{" "}
+          <InlineCode>--crawl</InlineCode> runs in the CLI and the GitHub
+          Action), a bulk run, an authenticated scan, and a GitHub repo scan.
+          Only one of those used to, so if you registered a webhook and never
+          saw a delivery from a crawl or an authenticated scan, that is why.
         </p>
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           A webhook can also be assigned to a team. A team-assigned webhook is
@@ -300,11 +309,61 @@ export default function WebhooksPage() {
         </div>
       </DocsSection>
 
+      <DocsSection id="events" title="Events">
+        <DocsTable
+          caption="Webhook events, when each fires, and what its payload carries"
+          columns={[
+            { key: "event", header: "Event" },
+            { key: "fires", header: "Fires when" },
+            { key: "carries", header: "Payload carries" },
+          ]}
+          data={[
+            {
+              event: "scan.completed",
+              fires: "Every scan that finishes and is persisted",
+              carries: "Severity counts, duration, and what did not finish",
+            },
+            {
+              event: "scan.regressed",
+              fires:
+                "A scan turns up a critical or high finding that was not in the previous scan of the same target",
+              carries: "The new findings themselves, plus what is outstanding",
+            },
+          ]}
+        />
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Both go to the same registered webhooks, and{" "}
+          <InlineCode>scan.regressed</InlineCode> is sent after that scan&apos;s{" "}
+          <InlineCode>scan.completed</InlineCode>, never instead of it. It is
+          the same diff the critical-findings email is built from: a finding you
+          have marked a false positive, accepted the risk of, or decided not to
+          fix does not count as new, so a persistent finding on an hourly
+          schedule does not re-alert every run.
+        </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          It exists because <InlineCode>scan.completed</InlineCode> carries
+          counts and not findings, so routing an alert to a person meant a
+          second API call to work out what actually changed.{" "}
+          <InlineCode>scan.regressed</InlineCode> carries the findings inline,
+          which is what makes a Slack or Discord alert diff-driven rather than
+          count-driven.
+        </p>
+      </DocsSection>
+
       <DocsSection id="payloads" title="Webhook Payloads">
         <p className="text-sm text-muted-foreground">
           Each platform receives a tailored payload. The{" "}
           <InlineCode>summary</InlineCode> object is the same in all three:
           critical, high, medium, low, info, total.
+        </p>
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          What identifies the target depends on what was scanned. A web scan
+          sends <InlineCode>url</InlineCode> (and{" "}
+          <InlineCode>normalizedUrl</InlineCode>, the same value, kept for
+          consumers written against the older payload). A GitHub repo scan has
+          no URL, so it sends <InlineCode>repository</InlineCode> and no{" "}
+          <InlineCode>url</InlineCode> key at all rather than a URL-shaped
+          string that is not one. Branch on whichever key is present.
         </p>
 
         <Card className="p-6 border-border/40">
@@ -384,22 +443,39 @@ export default function WebhooksPage() {
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="text-base font-semibold mb-4">Generic</h3>
+          <h3 className="text-base font-semibold mb-4">
+            Generic: scan.completed
+          </h3>
           <CodeBlock
             code={`{
   "event": "scan.completed",
   "data": {
     "url": "https://example.com",
+    "normalizedUrl": "https://example.com",
+    "scan_id": 4821,
     "summary": {
       "critical": 1, "high": 2, "medium": 1, "low": 1, "info": 0, "total": 5
     },
     "findings_count": 5,
     "duration": 1423,
-    "scanned_at": "2026-03-10T15:30:00.000Z"
+    "scanned_at": "2026-03-10T15:30:00.000Z",
+    "incomplete": ["dns", "tls"]
   }
 }`}
             language="json"
           />
+          <p className="text-xs text-muted-foreground mt-3">
+            <InlineCode>incomplete</InlineCode> is present only when part of the
+            scan did not finish, and it is the difference between &ldquo;we
+            found nothing&rdquo; and &ldquo;we could not finish looking&rdquo;.
+            An area listed there was not checked, so treat a{" "}
+            <InlineCode>findings_count</InlineCode> of 0 alongside it as
+            unknown, not clean. When every branch ran the key is absent
+            entirely, so a consumer that only tests for the key can tell the two
+            apart. The Discord embed carries the same fact as a{" "}
+            <strong className="text-foreground">Coverage</strong> field and
+            Slack as an extra section, since neither format has a key to read.
+          </p>
           <p className="text-xs text-muted-foreground mt-3">
             Delivered with{" "}
             <InlineCode>Content-Type: application/json</InlineCode>,{" "}
@@ -407,6 +483,52 @@ export default function WebhooksPage() {
             and (if the webhook has a secret) an{" "}
             <InlineCode>X-VulnRadar-Signature</InlineCode> header -- see
             Security below.
+          </p>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="text-base font-semibold mb-4">
+            Generic: scan.regressed
+          </h3>
+          <CodeBlock
+            code={`{
+  "event": "scan.regressed",
+  "data": {
+    "url": "https://example.com",
+    "normalizedUrl": "https://example.com",
+    "scan_id": 4821,
+    "scanned_at": "2026-03-10T15:30:00.000Z",
+    "new_findings_count": 1,
+    "outstanding_findings_count": 2,
+    "new_findings": [
+      {
+        "id": "exposed-db-credentials--a1b2c3",
+        "title": "Database credentials exposed in JavaScript bundle",
+        "severity": "critical",
+        "category": "secrets-extended"
+      }
+    ],
+    "outstanding_findings": [
+      {
+        "id": "csp-unsafe-inline--a1b2c3",
+        "title": "Content-Security-Policy allows unsafe-inline",
+        "severity": "high",
+        "category": "headers"
+      }
+    ]
+  }
+}`}
+            language="json"
+          />
+          <p className="text-xs text-muted-foreground mt-3">
+            <InlineCode>new_findings</InlineCode> is what changed since the
+            previous scan of this target: critical and high only, with anything
+            you have already triaged removed.{" "}
+            <InlineCode>outstanding_findings</InlineCode> is what was already
+            there and still is. Finding <InlineCode>id</InlineCode> is stable
+            across scans of the same URL, so it works as a deduplication key in
+            your own alerting. Discord and Slack receive the same diff as a
+            formatted message listing the first ten new findings.
           </p>
         </Card>
       </DocsSection>

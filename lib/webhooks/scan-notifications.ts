@@ -100,13 +100,6 @@ export interface ScanNotificationParams {
    * that finds something new must still notify.
    */
   silenceRoutineEmail?: boolean;
-  /**
-   * Skip the regression alert *email* only. The webhook still fires. For a
-   * caller that already sent its own copy of that email and has not been
-   * migrated off it yet; nothing sets this today, and a path that needs it
-   * should move its send in here instead.
-   */
-  skipRegressionEmail?: boolean;
 }
 
 /** Human-readable one-liner naming what did not finish. */
@@ -432,10 +425,10 @@ async function sendScanEmails(
     }
   }
 
-  if (
-    !params.skipRegressionEmail &&
-    regression?.hasNewCriticalOrHigh === true
-  ) {
+  // The crawl path used to send its own copy of this email inline. That copy
+  // was deleted rather than left in place beside this one, so the alert has
+  // exactly one producer and a crawl cannot double-send it.
+  if (regression?.hasNewCriticalOrHigh === true) {
     try {
       await sendNotificationEmail({
         userId: params.userId,

@@ -147,6 +147,18 @@ vi.mock("@/lib/auth/authorization", async (importOriginal) => {
   return { ...actual, logAction: mockLogAction };
 });
 
+// This route builds its own pipeline rather than calling executeScan, so it
+// used to fire no webhook, no scan-complete email and no regression alert.
+// It now calls the shared tail (lib/webhooks/scan-notifications.ts), whose
+// own delivery behaviour is covered in tests/lib/webhooks/scan-notifications
+// .test.ts. Mocked at that module boundary here so the tail's two lookups do
+// not consume the mockQuery call sequence this file's
+// "never writes scan_history" assertions depend on.
+const mockNotifyScanComplete = vi.fn(async (..._args: unknown[]) => {});
+vi.mock("@/lib/webhooks/scan-notifications", () => ({
+  notifyScanComplete: (...args: unknown[]) => mockNotifyScanComplete(...args),
+}));
+
 const { POST } = await import("@/app/api/v3/scan/authenticated/route");
 
 function postRequest(body: unknown): NextRequest {
@@ -162,6 +174,7 @@ beforeEach(() => {
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
   mockEstablishScanSession.mockReset();
+  mockNotifyScanComplete.mockClear();
   mockLogAction.mockClear();
   mockIsUrlOwnedByUser.mockReset();
   mockIsUrlOwnedByUser.mockResolvedValue(true);
@@ -800,5 +813,71 @@ describe("POST /api/v3/scan/authenticated - an unfinished scan cannot present as
     const short = await (await POST(postRequest(FORM_AUTH_BODY))).json();
 
     expect(short.engineConfidence).toBeLessThan(complete.engineConfidence);
+  });
+});
+
+describe("POST /api/v3/scan/authenticated - notifications", () => {
+  it("runs the shared notification tail for the persisted scan", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 910 }] });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(mockNotifyScanComplete).toHaveBeenCalledTimes(1);
+    expect(mockNotifyScanComplete.mock.calls[0][0]).toMatchObject({
+      userId: 42,
+      scanId: 910,
+      target: { kind: "url", value: "https://app.example.com/dashboard" },
+    });
+  });
+
+  it("tells the notification an unfinished scan was unfinished, rather than reporting zero findings as clean", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: ["dns", "tls"],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 911 }] });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    const params = mockNotifyScanComplete.mock.calls[0][0] as {
+      summary: { total: number };
+      incomplete: string[];
+    };
+    expect(params.summary.total).toBe(0);
+    expect(params.incomplete).toEqual(["dns", "tls"]);
+  });
+
+  it("reports a lost session to the notification too, so a signed-out scan is not notified as a clean authenticated one", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: true, reason: "Session dropped after login" },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 912 }] });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    const params = mockNotifyScanComplete.mock.calls[0][0] as {
+      incomplete: string[];
+    };
+    expect(params.incomplete).toContain("authenticated-session");
+  });
+
+  it("does not notify when the login failed and no scan row was ever written", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: false,
+      reason: "Credentials rejected",
+    });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(mockNotifyScanComplete).not.toHaveBeenCalled();
   });
 });
