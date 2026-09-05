@@ -169,9 +169,14 @@ jobs:
         # the same reason the extension is: it guarantees the artifact matches
         # what was actually tagged. The CLI has no dependencies, so there is
         # nothing to install first.
+        # security: TAG arrives as an environment variable, never as a
+        # ${{ }} substitution inside the script body. See the note at the top
+        # of the "Resolve tag" step: the value originates in event data, so
+        # interpolating it lets a tag name inject shell.
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.vars.outputs.tag }}"
           ARTIFACT_DIR="${RUNNER_TEMP}/release-artifacts"
           mkdir -p "${ARTIFACT_DIR}"
 

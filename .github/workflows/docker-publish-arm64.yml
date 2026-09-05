@@ -86,6 +86,15 @@ jobs:
           # moved on to rather than what was released.
           ref: ${{ steps.vars.outputs.tag }}
           fetch-depth: 0
+          # security: a workflow_run job holds this repository's secrets, so it
+          # must not leave an authenticated git remote behind for a later step
+          # (or a Docker build of the checked-out tree) to find. Nothing here
+          # pushes with git; the registry push authenticates separately.
+          #
+          # The ref itself is gated to a ^vX.Y.Z tag by the step above, and
+          # docker-publish only fires on a tag push to this repository, which a
+          # fork cannot do. This closes the credential half regardless.
+          persist-credentials: false
 
       - name: Set up QEMU
         if: steps.vars.outputs.skip != 'true'

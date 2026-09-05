@@ -113,3 +113,15 @@ id_ed25519
 # which is not shared, so any fresh clone would stage it.
 .claude/
 .vercel/
+
+# Generated audit artefacts. The AUDIT-*/ records stay tracked because the
+# audit:list / audit:show / audit:close scripts read them; these three are
+# one-off output that was committed by accident.
+#
+# report.html alone carried four HIGH js/xss-through-dom code-scanning alerts:
+# it builds its own DOM from finding text, and finding text is scraped from
+# scanned third-party pages. Nothing renders it in the product, so the alerts
+# were pure noise from a file that did not belong in git.
+audits/report.html
+audits/merged-findings.json
+audits/email-previews/
