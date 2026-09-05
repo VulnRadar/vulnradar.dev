@@ -735,7 +735,7 @@ export async function checkDKIM(
 
   async function probeDKIMSelector(
     sel: string,
-  ): Promise<{ found: boolean; selector: string }> {
+  ): Promise<{ found: boolean; selector: string; timedOut?: boolean }> {
     const dkimHost = `${sel}._domainkey.${domain}`;
     try {
       const records = await Promise.race([
@@ -759,15 +759,65 @@ export async function checkDKIM(
         ),
       ]);
       if (cnames.length > 0) return { found: true, selector: sel };
-    } catch {
-      /* no CNAME or timeout */
+    } catch (err) {
+      // A timeout is not an answer. Both probes above swallowed every failure
+      // and returned "no record", so a slow resolver produced a confident
+      // "No DKIM Records Found" on a domain that publishes DKIM. That is the
+      // difference between "we looked and it is not there" and "we could not
+      // look", which the MTA-STS and TLS-RPT checks in this same file already
+      // report separately.
+      const msg = err instanceof Error ? (err.message ?? "") : String(err);
+      if (isProbeTimeout(msg))
+        return { found: false, selector: sel, timedOut: true };
     }
-    return { found: false, selector: sel };
+    return { found: false, selector: sel, timedOut: false };
   }
 
-  const results = await Promise.allSettled(selectors.map(probeDKIMSelector));
+  // Bounded concurrency, not Promise.allSettled over every selector.
+  //
+  // 25 selectors times two lookups each is 50 DNS queries fired at once, which
+  // a home or small-office resolver answers by dropping most of them. That is
+  // how this check reported "none returned a record" against a domain whose
+  // CNAME delegation resolves in a few milliseconds when asked on its own, and
+  // it starved the other DNS branches in the same scan: the MTA-STS and
+  // TLS-RPT probes for records that plainly exist both came back unanswered on
+  // the same run.
+  const DKIM_PROBE_CONCURRENCY = 5;
+  const results: PromiseSettledResult<{
+    found: boolean;
+    selector: string;
+    timedOut?: boolean;
+  }>[] = [];
+  for (let i = 0; i < selectors.length; i += DKIM_PROBE_CONCURRENCY) {
+    const batch = selectors.slice(i, i + DKIM_PROBE_CONCURRENCY);
+    const settled = await Promise.allSettled(batch.map(probeDKIMSelector));
+    results.push(...settled);
+    // Stop as soon as one selector answers: the remaining probes cannot change
+    // the verdict, and not sending them is the cheapest way to be kind to the
+    // resolver and to the rest of the scan.
+    if (settled.some((r) => r.status === "fulfilled" && r.value.found)) break;
+  }
   const hit = results.find((r) => r.status === "fulfilled" && r.value.found) as
     PromiseFulfilledResult<{ found: boolean; selector: string }> | undefined;
+
+  // Every selector that answered said "no such record", or some timed out?
+  const anyTimedOut = results.some(
+    (r) => r.status === "fulfilled" && r.value.timedOut === true,
+  );
+
+  if (!hit && anyTimedOut) {
+    // Some selector probes never answered, so this scan cannot say DKIM is
+    // absent. Reporting "no records found" here is the same mistake as calling
+    // an unfinished scan clean.
+    return [
+      makeProbeIncompleteVuln(
+        url,
+        A.dkimCheckDidNotComplete,
+        "DKIM",
+        `_domainkey.${domain}`,
+      ),
+    ];
+  }
 
   if (!hit) {
     return [

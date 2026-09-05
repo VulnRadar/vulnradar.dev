@@ -311,6 +311,7 @@ export const ASYNC_CHECKS = {
     "info",
     "email",
   ),
+  dkimCheckDidNotComplete: def("DKIM Check Did Not Complete", "info", "email"),
   tlsRptCheckDidNotComplete: def(
     "TLS-RPT Check Did Not Complete",
     "info",
