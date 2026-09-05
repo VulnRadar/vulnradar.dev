@@ -502,13 +502,25 @@ describe("detector time budget on a large body", () => {
  * no individual detector ever looked slow. Summed, the same body cost 4,155 ms
  * across those three modules alone.
  *
- * So the guard has to be on the total. Calibration, on the same machine as
- * every other number in this file: the slowest healthy shape sweeps all of
- * allChecks in 145 ms, and the defect above is 4,155 ms for three modules or
- * roughly 1,600 ms for api.ts on its own. 1000 ms sits about seven times above
- * the healthy ceiling and below any single module reintroducing it.
+ * So the guard has to be on the total. Calibration, on a development machine:
+ * the slowest healthy shape sweeps all of allChecks in 145 ms, and the defect
+ * above is 4,155 ms for three modules or roughly 1,600 ms for api.ts on its
+ * own.
+ *
+ * The budget is 2500 ms rather than something nearer the healthy ceiling,
+ * because this runs on shared CI hardware that is several times slower and
+ * noisier than the machine those numbers came from: at 1000 ms the deep-nesting
+ * shape measured 1,167 ms on a GitHub runner while every other shape passed,
+ * which is a false alarm about the machine rather than a fact about the code.
+ *
+ * 2500 ms still sits well under a single module reintroducing the defect
+ * (api.ts alone was ~1,600 ms on the fast machine, so several times that on a
+ * runner), which is what this is for. The thing being caught is a quadratic
+ * blowup measured in seconds, not a tens-of-percent drift, and a budget that
+ * fails on hardware variance gets muted, which would cost more than the
+ * precision buys.
  */
-const WHOLE_SWEEP_BUDGET_MS = 1000;
+const WHOLE_SWEEP_BUDGET_MS = 2500;
 
 describe("whole-sweep time budget", () => {
   const everyShape: Record<string, string> = {
