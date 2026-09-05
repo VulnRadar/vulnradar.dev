@@ -21,7 +21,7 @@ and full description.
 ## v3.8.1 - September 5, 2026
 **A Scanned Page Can No Longer Stall the Server**
 
-Ten ways a page being scanned could take the whole service down with it, found by auditing the scan engine against deliberately hostile input rather than real pages. Every one ran on every scan, every one was reachable without an account, and every one blocked the event loop inside a single synchronous call, which meant the scan watchdog could not fire and every other scan and request stalled with them. Plus the admin backup list was counting one backup as two.
+Ten ways a page being scanned could take the whole service down with it, found by auditing the scan engine against deliberately hostile input rather than real pages. Every one ran on every scan, every one was reachable without an account, and every one blocked the event loop inside a single synchronous call, which meant the scan watchdog could not fire and every other scan and request stalled with them. Alongside them: turning a scan private did not revoke its share link, an authenticated scan that stopped early was reported as clean, subdomain discovery was sold as paid and refused only in the browser, findings now carry the evidence the check actually fired on, every email was redrawn, and four switches can take the service, signups, logins or scanning offline when something is going wrong.
 
 ### Changes
 - [Share2] **[SECURITY]** **Making a Scan Private Did Not Revoke Its Share Link**

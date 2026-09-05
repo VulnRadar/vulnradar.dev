@@ -143,11 +143,12 @@ const CHANGELOG: Release[] = [
     version: "3.8.1",
     date: "September 5, 2026",
     title: "A Scanned Page Can No Longer Stall the Server",
-    // Not a highlights release: a patch closing three engine defects, not a
-    // feature release worth promoting on the landing page.
+    // Not a highlights release. It is large, but what is in it is a repair
+    // bill: ten denial-of-service defects in the engine, and the rest of the
+    // list is things that were wrong rather than things that are new.
     highlights: false,
     summary:
-      "Ten ways a page being scanned could take the whole service down with it, found by auditing the scan engine against deliberately hostile input rather than real pages. Every one ran on every scan, every one was reachable without an account, and every one blocked the event loop inside a single synchronous call, which meant the scan watchdog could not fire and every other scan and request stalled with them. Plus the admin backup list was counting one backup as two.",
+      "Ten ways a page being scanned could take the whole service down with it, found by auditing the scan engine against deliberately hostile input rather than real pages. Every one ran on every scan, every one was reachable without an account, and every one blocked the event loop inside a single synchronous call, which meant the scan watchdog could not fire and every other scan and request stalled with them. Alongside them: turning a scan private did not revoke its share link, an authenticated scan that stopped early was reported as clean, subdomain discovery was sold as paid and refused only in the browser, findings now carry the evidence the check actually fired on, every email was redrawn, and four switches can take the service, signups, logins or scanning offline when something is going wrong.",
     changes: [
       {
         icon: Share2,
