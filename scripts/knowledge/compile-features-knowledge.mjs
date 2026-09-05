@@ -448,6 +448,29 @@ function groupFor(route) {
   return DEFAULT_GROUP;
 }
 
+/**
+ * True when the route's own layout or page declares privatePageMetadata, which
+ * is what a route uses to say "this requires a session" (it sets
+ * robots: index false, follow false, for the same reason).
+ *
+ * Checked on the route's directory and then upward, because a section root
+ * often declares it once for everything beneath it.
+ */
+function declaresPrivateMetadata(route) {
+  const segments = route.split("/").filter(Boolean);
+  for (let depth = segments.length; depth >= 0; depth--) {
+    const dir = join(APP_DIR, ...segments.slice(0, depth));
+    for (const file of ["layout.tsx", "page.tsx"]) {
+      const full = join(dir, file);
+      if (!existsSync(full)) continue;
+      if (readFileSync(full, "utf8").includes("privatePageMetadata")) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function describeRoute({ route, dir }, navLabels, disallowed, routesTable) {
   const pageSrc = readFileSync(join(dir, "page.tsx"), "utf8");
   const layoutPath = join(dir, "layout.tsx");
@@ -480,9 +503,22 @@ function describeRoute({ route, dir }, navLabels, disallowed, routesTable) {
   }
 
   const nav = navLabels.get(route) ?? null;
-  const needsSession = disallowed.some(
-    (p) => route === p || route.startsWith(p.endsWith("/") ? p : `${p}/`),
-  );
+
+  // Whether a route needs a session is read from the route's OWN declaration,
+  // privatePageMetadata, not from robots.txt.
+  //
+  // It used to come from DISALLOWED_PATHS, which happened to list the same
+  // routes and is about crawling, not authentication. The two drifted apart
+  // the moment auth-gated routes were removed from robots.txt (they are kept
+  // out of search by their noindex tag instead, which a Disallow would stop
+  // the crawler from ever reading), and this file immediately started telling
+  // the assistant that /dashboard, /profile, /history, /repos, /teams and
+  // /shares were "public, no account needed".
+  //
+  // privatePageMetadata is the honest signal: a page declares it precisely
+  // because it requires a session, so it cannot drift from a policy decision
+  // made in a different file for a different reason.
+  const needsSession = declaresPrivateMetadata(route);
 
   return {
     route,

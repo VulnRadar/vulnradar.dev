@@ -31,7 +31,7 @@ VulnRadar is an open-source, GPL-3.0 web vulnerability scanner you can self-host
 
 ### Assets
 Route: /assets
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Assets
 In-app navigation label: Assets
 Also known as: hosts inventory
@@ -40,7 +40,7 @@ This page exists at /assets. Its source states no description in a form that cou
 
 ### Attack Surface
 Route: /attack-surface
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Attack Surface
 Heading on the page: Attack surface
 In-app navigation label: Attack Surface
@@ -85,7 +85,7 @@ The 895+ checks a scan runs, grouped into 18 categories. Not a marketing number:
 
 ### Compare scans
 Route: /compare
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Compare Scans
 Heading on the page: Compare
 In-app navigation label: Compare scans
@@ -105,7 +105,7 @@ Bugs, false positives, feature ideas, security disclosures, or enterprise deploy
 
 ### Scanner
 Route: /dashboard
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Dashboard
 Heading on the page: Scan a host
 In-app navigation label: Scanner
@@ -133,7 +133,7 @@ VulnRadar is GPL-3.0 and free to self-host. Donations pay for the hosting behind
 
 ### History
 Route: /history
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Scan History
 In-app navigation label: History
 Also known as: past scans results
@@ -166,7 +166,7 @@ Billing is switched off on this VulnRadar deployment. Every account gets the ful
 
 ### Profile and account settings
 Route: /profile
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Profile
 Heading on the page: Account Settings
 In-app navigation label: Profile and account settings
@@ -186,7 +186,7 @@ Every scan someone chose to list here, most recent first. Each one links to the 
 
 ### Repos
 Route: /repos
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Repos
 In-app navigation label: Repos
 Also known as: github repositories code
@@ -210,7 +210,7 @@ This page exists at /shared/[token]. Its source states no description in a form 
 
 ### Shared links
 Route: /shares
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Shared Reports
 Heading on the page: Shared reports
 In-app navigation label: Shared links
@@ -220,7 +220,7 @@ Anyone with a link below can read that report without logging in. Revoke a link 
 
 ### Teams
 Route: /teams
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Teams
 In-app navigation label: Teams
 Also known as: members invite organisation
@@ -229,7 +229,7 @@ A team shares its scans. Everyone in one can open every report run under it, and
 
 ### Join a Team
 Route: /teams/join
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Join a Team
 
 This page exists at /teams/join. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
@@ -262,60 +262,60 @@ Paste a URL and VulnRadar follows it end to end: the redirect chain, the securit
 
 ### AI Credits
 Route: /ai-credits
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: AI Credits
 
 This page exists at /ai-credits. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
 ### Live-Browser Minutes
 Route: /browser-credits
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Live-Browser Minutes
 
 This page exists at /browser-credits. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
 ### Checkout
 Route: /checkout/[productId]
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Checkout
 
 This page exists at /checkout/[productId]. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
 ### /checkout/browser-credits
 Route: /checkout/browser-credits
-Access: public, no account needed
+Access: signed in (or a share token)
 
 This page exists at /checkout/browser-credits. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
 ### /checkout/credits
 Route: /checkout/credits
-Access: public, no account needed
+Access: signed in (or a share token)
 
 This page exists at /checkout/credits. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
 ### /checkout/github-credits
 Route: /checkout/github-credits
-Access: public, no account needed
+Access: signed in (or a share token)
 
 This page exists at /checkout/github-credits. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
 ### Checkout Complete
 Route: /checkout/success
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Checkout Complete
 
 This page exists at /checkout/success. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
 ### Credits
 Route: /credits
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: Credits
 
 Three separate balances, one for each metered feature. A balance is spent only after that feature's free allowance for the period runs out, and none of them expires.
 
 ### GitHub Review Credits
 Route: /github-credits
-Access: public, no account needed
+Access: signed in (or a share token)
 Page title: GitHub Review Credits
 
 This page exists at /github-credits. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.

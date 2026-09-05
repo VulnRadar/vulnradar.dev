@@ -206,3 +206,41 @@ describe("the retrieval index covers the feature inventory", () => {
     }
   });
 });
+
+/**
+ * The access line has to come from the route's own declaration.
+ *
+ * It used to be derived from robots.txt's DISALLOWED_PATHS, which listed the
+ * same routes for a completely different reason (crawling, not auth). The two
+ * drifted apart the moment auth-gated routes were removed from robots.txt, and
+ * this file started telling the assistant that /dashboard, /profile, /history,
+ * /repos, /teams and /shares needed no account. An assistant confidently
+ * telling someone their dashboard is public is worse than saying nothing.
+ */
+describe("access lines", () => {
+  const AUTH_GATED = [
+    "/dashboard",
+    "/profile",
+    "/history",
+    "/repos",
+    "/teams",
+    "/shares",
+    "/admin",
+    "/compare",
+    "/assets",
+  ];
+
+  it.each(AUTH_GATED)("marks %s as needing a session", (route) => {
+    const block = features().split(`\nRoute: ${route}\n`)[1];
+    expect(block, `${route} is missing from the generated file`).toBeDefined();
+    const access = block.split("\n").find((l) => l.startsWith("Access:"));
+    expect(access, `${route} has no Access line`).toBeDefined();
+    expect(access).toContain("signed in");
+  });
+
+  it("still marks a genuinely public page as public", () => {
+    const block = features().split("\nRoute: /pricing\n")[1];
+    const access = block.split("\n").find((l) => l.startsWith("Access:"));
+    expect(access).toContain("public");
+  });
+});
