@@ -335,8 +335,14 @@ export const detectors: Record<string, DetectFn> = {
 
   "cs-hardcoded-localhost-api-url": (_url, _headers, body) => {
     const scripts = extractScriptContents(body).join("\n");
+    // The port's `\d+` and the trailing `[^"']*` both match digits, so a
+    // value that never closes its quote made the two runs trade characters
+    // at every split: `endpoint="https://localhost:` followed by a digit run
+    // measured 362 ms at 16 KB and 18,935 ms at 128 KB. A port is at most
+    // five digits and a URL tail this check cares about is well under 300
+    // characters, and bounding both is what caps the failed match.
     const pattern =
-      /(?:baseURL|apiUrl|API_URL|API_BASE_URL|endpoint)\s*[:=]\s*["']https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?[^"']*["']/i;
+      /(?:baseURL|apiUrl|API_URL|API_BASE_URL|endpoint)\s*[:=]\s*["']https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d{1,5})?[^"']{0,300}["']/i;
     if (pattern.test(scripts)) {
       return "Client-side script hardcodes an API base URL pointing at localhost — looks like a dev config that was never swapped for production before shipping.";
     }

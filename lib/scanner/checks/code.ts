@@ -1814,8 +1814,14 @@ export const detectors: Record<string, DetectFn> = {
     // it doesn't silently accept the token, so it isn't flagged here. The
     // actual silent-bypass footgun is passing an empty/undefined secret,
     // which the library treats as a (weak but real) verification key.
+    // No `\s*` before the token argument: `[^,)]` already matches whitespace,
+    // so `\s*[^,)]+` let both runs claim the same characters while the
+    // mandatory `,` never arrived. `"jwt.verify( " + " \t".repeat(n)`
+    // measured 379 ms at 16 KB and 19,524 ms at 128 KB. Bounding the run is
+    // what caps the failed match at 200 steps per occurrence: a token
+    // argument longer than that is not a real call.
     const pattern =
-      /jwt\.verify\s*\(\s*[^,)]+,\s*(?:''|""|``|undefined)\s*[,)]/i;
+      /jwt\.verify\s*\([^,)]{1,200},\s*(?:''|""|``|undefined)\s*[,)]/i;
     const match = body.match(pattern);
     if (!match) return null;
     const idx = body.indexOf(match[0]);

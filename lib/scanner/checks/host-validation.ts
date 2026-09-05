@@ -270,6 +270,15 @@ export const detectors: Record<string, DetectFn> = {
     // the http-equiv match, which multiplies on a body of unterminated
     // <meta> tags. ref: lib/scanner/checks/_tag-scan.ts
     const urlRe = /content=["'][^"'>]*url=([^"'>\s]+)/i;
+    // `body.indexOf(tag)` from zero for every tag rescans the document from
+    // the start each time, which is quadratic on a page carrying many
+    // distinct meta-refresh tags: 718 ms on a 1 MB body. The tags come back
+    // in document order and do not overlap, so a cursor that only moves
+    // forward finds each tag's own occurrence in one pass. It also fixes a
+    // second-order bug: with the old search, two identical tags both resolved
+    // to the first one's offset, so the second was judged against the wrong
+    // preceding text.
+    let searchFrom = 0;
     for (const tag of tagsWith(
       body,
       "meta",
@@ -278,7 +287,9 @@ export const detectors: Record<string, DetectFn> = {
     )) {
       const m = urlRe.exec(tag);
       if (!m) continue;
-      const idx = body.indexOf(tag);
+      const idx = body.indexOf(tag, searchFrom);
+      if (idx === -1) continue;
+      searchFrom = idx + tag.length;
       const before = body.slice(Math.max(0, idx - 200), idx);
       if (/<code|<pre|```|example|documentation/i.test(before)) continue;
       let target: URL;

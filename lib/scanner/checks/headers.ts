@@ -14,7 +14,13 @@ import {
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 import { SRI_EXEMPT_HOSTS } from "./client-side";
-import { hasTagWith, openingTagOf, tagElements, tagsWith } from "./_tag-scan";
+import {
+  anyOpenTags,
+  hasTagWith,
+  openingTagOf,
+  tagElements,
+  tagsWith,
+} from "./_tag-scan";
 
 const h = getHeader;
 
@@ -1367,12 +1373,16 @@ export const detectors: Record<string, DetectFn> = {
   },
   "inline-style-attr": (_url, _headers, body) => {
     if (!body) return null;
-    if (/<[a-z][a-z0-9]*[^>]{0,2000}\bstyle\s*=/i.test(body)) {
-      const matches =
-        body.match(/<[a-z][a-z0-9]*[^>]{0,2000}\bstyle\s*=/gi) || [];
-      if (matches.length >= 3) {
-        return `${matches.length} elements have inline style= attributes (CSP hygiene).`;
-      }
+    // `<[a-z][a-z0-9]*[^>]{0,2000}\bstyle\s*=` had the name run and the
+    // bounded attribute run matching the same characters, so on markup where
+    // the tag never closes every `<` paid the full 2000-character run and
+    // back: linear, but with a 2000x constant that measured 1146 ms on 256 KB
+    // and 5477 ms on a 1 MB body of `"<a"` repeated. Walk the tags once and
+    // test the attribute against each tag's own text, which is also where an
+    // attribute genuinely belongs.
+    const matches = anyOpenTags(body).filter((t) => /\bstyle\s*=/i.test(t));
+    if (matches.length >= 3) {
+      return `${matches.length} elements have inline style= attributes (CSP hygiene).`;
     }
     return null;
   },

@@ -11,7 +11,7 @@
  */
 
 import {
-  stripDocBlocks,
+  withDocBlocksStripped,
   extractScriptContents,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
@@ -224,7 +224,13 @@ const rawDetectors: Record<string, DetectFn> = {
   "vibe-sql-string-concat": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
     const patterns = [
-      /["`']SELECT\s+.*WHERE\s+\w+\s*=\s*["'`]\s*\+/i,
+      // `\s+` followed by `.*` let both runs claim the same spaces with
+      // WHERE never arriving: `"<script>'SELECT" + " ".repeat(n)` measured
+      // 366 ms at 16 KB and 19,492 ms at 128 KB. One required space then a
+      // bounded rest-of-line says the same thing: the whole point is a query
+      // literal being concatenated, and those are one line and far under 200
+      // characters.
+      /["`']SELECT[ \t][^\n]{0,200}WHERE\s{1,20}\w{1,60}\s{0,20}=\s{0,20}["'`]\s{0,20}\+/i,
       /(?:SELECT|INSERT|UPDATE|DELETE)[\s\S]{0,150}\+\s*(?:req\.|request\.)(?:params|body|query)\.\w+/i,
       /`SELECT[\s\S]{0,100}\$\{(?:req|request)\.(?:params|body|query)/i,
     ];
@@ -742,10 +748,5 @@ const rawDetectors: Record<string, DetectFn> = {
 // our own site. Strip those documentation-rendering regions (but not real
 // <script> tags -- several detectors need to see genuine script content)
 // before any pattern runs.
-export const detectors: Record<string, DetectFn> = Object.fromEntries(
-  Object.entries(rawDetectors).map(([id, fn]) => [
-    id,
-    ((url, headers, body) =>
-      fn(url, headers, stripDocBlocks(body))) as DetectFn,
-  ]),
-);
+export const detectors: Record<string, DetectFn> =
+  withDocBlocksStripped(rawDetectors);

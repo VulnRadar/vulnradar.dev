@@ -8,7 +8,7 @@
 import {
   getSetCookies,
   hasHeader,
-  stripDocBlocks,
+  withDocBlocksStripped,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 import { tagsWith } from "./_tag-scan";
@@ -582,11 +582,29 @@ const rawDetectors: Record<string, DetectFn> = {
     // pattern this same check's own JSON recommends (env-var secret,
     // explicit algorithm/expiry options) matched as "weak secret". Anchor
     // on the secret's actual position: the second argument to jwt.sign().
-    if (
-      /jwt\.sign\(\s*(?:\{[^{}]*\}|[^,{}]+)\s*,\s*['"][a-zA-Z0-9]{1,15}['"]/i.test(
-        body,
-      )
-    ) {
+    //
+    // Split into one pattern per payload shape rather than an alternation
+    // wrapped in `\s*`. The single pattern was
+    // `jwt\.sign\(\s*(?:\{[^{}]*\}|[^,{}]+)\s*,` and `[^,{}]` matches
+    // whitespace, so `\s*`, the payload run and the trailing `\s*` all
+    // competed for the same characters while the mandatory `,` never
+    // arrived: `"jwt.sign(" + " ".repeat(n)` measured 53 ms at 500 bytes,
+    // 418 ms at 1 KB and 3573 ms at 2 KB, roughly eight times the cost for
+    // twice the input, which puts 4 KB at half a minute. The body cap does
+    // not help because the payload is tiny.
+    //
+    // Neither pattern below has a splice point. OBJECT_PAYLOAD's runs are
+    // separated by `{`, `}` and `,`, none of which is whitespace, so no two
+    // of them can match the same character. BARE_PAYLOAD drops the leading
+    // `\s*` entirely because `[^,{}]` already covers leading whitespace, and
+    // bounds the run: a first argument that is not an object and is longer
+    // than 200 characters does not occur, and the bound is what makes the
+    // failed match cost 200 steps instead of one per offset.
+    const OBJECT_PAYLOAD =
+      /jwt\.sign\(\s*\{[^{}]{0,2000}\}\s*,\s*['"][a-zA-Z0-9]{1,15}['"]/i;
+    const BARE_PAYLOAD =
+      /jwt\.sign\([^,{}]{1,200},\s*['"][a-zA-Z0-9]{1,15}['"]/i;
+    if (OBJECT_PAYLOAD.test(body) || BARE_PAYLOAD.test(body)) {
       return "JWT signed with short or hardcoded HS256 secret.";
     }
     return null;
@@ -1340,10 +1358,5 @@ const rawDetectors: Record<string, DetectFn> = {
 // tutorial or API-docs page rendering an example payload as literal text in
 // a <pre>/<code> block would otherwise self-trigger them, matching the same
 // false-positive class already fixed for vibe-code.ts.
-export const detectors: Record<string, DetectFn> = Object.fromEntries(
-  Object.entries(rawDetectors).map(([id, fn]) => [
-    id,
-    ((url, headers, body) =>
-      fn(url, headers, stripDocBlocks(body))) as DetectFn,
-  ]),
-);
+export const detectors: Record<string, DetectFn> =
+  withDocBlocksStripped(rawDetectors);

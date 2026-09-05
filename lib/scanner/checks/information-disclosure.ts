@@ -425,15 +425,11 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "api-version-exposed": (_url, _headers, body) => {
-    if (
-      /["']\/api\/v[0-9]+/gi.test(body) &&
-      /["']\/api\/v[0-9]+.*["']\/api\/v[0-9]+/gi.test(body)
-    ) {
-      return "Multiple API versions exposed - older versions may have vulnerabilities.";
-    }
-    return null;
-  },
+  // Removed: "api-version-exposed" had no entry in checks-data/, so the
+  // registry never bound it to a check and it never ran. It also carried the
+  // same defect class this file was just swept for: `["']\/api\/v[0-9]+.*
+  // ["']\/api\/v[0-9]+` is a floating `.*` between two occurrences of the
+  // same literal, which rescans the line from every one of them.
 
   // ── privacy / compliance ─────────────────────────────────────────────────
 
@@ -846,7 +842,16 @@ export const detectors: Record<string, DetectFn> = {
     if (
       /ActionController::(Routing|Unknown|Render)\s+Error/i.test(body) ||
       /ActionView::(Template::)?Error/i.test(body) ||
-      /Rails\s+\d+\.\d+\.\d+.*application/i.test(body) ||
+      // A floating `.*` between the version and "application" rescans to the
+      // end of the line from every `Rails N.N.N` in the document: a body of
+      // `"Rails 1.1.1 "` repeated measured 32 ms at 16 KB and 1964 ms at
+      // 128 KB. Bounding the gap and the version components caps the work per
+      // occurrence; Rails prints "Rails 7.0.4 application starting in
+      // development", so 80 characters is far more room than the real page
+      // needs.
+      /Rails\s{1,20}\d{1,4}\.\d{1,4}\.\d{1,4}[^\n]{0,80}application/i.test(
+        body,
+      ) ||
       /Rails\.root\s*:/i.test(body)
     ) {
       return "Rails default / development error page detected — set RAILS_ENV=production and consider_all_requests_local=false.";
@@ -995,9 +1000,18 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "golang-panic-trace-exposed": (_url, _headers, body) => {
+    // `panic:\s+.+` had `\s+` and `.+` competing for the same run of spaces
+    // with "goroutine" never arriving: `"panic:" + " ".repeat(n)` measured
+    // 514 ms at 16 KB and 21,561 ms at 128 KB, four times the cost for twice
+    // the input. Go prints the panic value on the same line as `panic:`, so
+    // a single required space/tab followed by a bounded rest-of-line says the
+    // same thing with no two runs able to claim the same character.
     if (
-      /panic:\s+.+\n?goroutine\s+\d+\s+\[running\]/i.test(body) ||
-      (/goroutine\s+\d+\s+\[running\]/i.test(body) && /\.go:\d+/.test(body))
+      /panic:[ \t][^\n]{0,300}\n?goroutine[ \t]{1,20}\d{1,10}[ \t]{1,20}\[running\]/i.test(
+        body,
+      ) ||
+      (/goroutine\s{1,20}\d{1,10}\s{1,20}\[running\]/i.test(body) &&
+        /\.go:\d+/.test(body))
     ) {
       return "Go panic / goroutine stack trace exposed in response — leaks source file paths and internal call stack.";
     }

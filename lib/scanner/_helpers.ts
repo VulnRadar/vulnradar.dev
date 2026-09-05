@@ -5,6 +5,13 @@
  * category detector modules can import the same primitives.
  */
 
+// checks/_tag-scan.ts is the one place that knows how to walk HTML tags in a
+// single forward pass. The strippers below used to carry their own
+// `<tag\b[^>]*>[\s\S]*?</tag\s*>` copies of the exact shape it was written to
+// replace, which is why they stayed quadratic after every detector that used
+// that shape had been fixed.
+import { stripTagElements, tagElementContents } from "./checks/_tag-scan";
+
 /**
  * FNV-1a 32-bit hash → base-36 string.
  * Used so that the same check fired against the same URL always produces
@@ -154,55 +161,28 @@ export type EvidenceFn = (
   body: string,
 ) => string | null;
 
-/**
- * Strip non-HTML regions from a response body for regex matching.
- *
- * Removes `<script>`, `<style>`, `<template>`, and HTML comments so that
- * patterns like `eval(`, `md5(`, or HTML tag names don't match against
- * minified JS source, CSS hex values, or framework JSON blobs
- * (`__NEXT_DATA__ = {...}`). The function preserves a single space
- * between removed regions so character offsets in the result roughly
- * align with the input.
- */
-export function stripNonHtml(input: string): string {
-  // Best-effort strip of non-HTML regions so other detectors don't over-fire
-  // on inline JS/CSS. Body is capped at 1 MB by the caller. These patterns
-  // match only literal start-tag + end-tag-with-optional-whitespace, which
-  // is the narrowest safe form. Exotic variants like </script\n foo> are NOT
-  // stripped — that's intentional; they'd cause false positives, not misses.
-  let s = input.replace(/<!--[\s\S]*?-->/g, " ");
-  s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " "); // codeql[js/bad-tag-filter]
-  s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " "); // codeql[js/bad-tag-filter]
-  s = s.replace(/<template\b[^>]*>[\s\S]*?<\/template\s*>/gi, " "); // codeql[js/bad-tag-filter]
-  return s.replace(/\s+/g, " ");
-}
+/** Tags a documentation or tutorial page uses to render example code as
+ *  literal text. */
+const DOC_BLOCK_TAGS = ["code", "pre", "kbd", "samp"] as const;
 
 /**
  * Strip `<script>` and code/example regions (`<code>`, `<pre>`, `<kbd>`,
  * `<samp>`, `<template>`) from a response body for regex matching.
  *
- * Distinct from `stripNonHtml` above: this does NOT strip `<style>` or
- * HTML comments, because secrets/PII detectors intentionally still scan
- * those regions (e.g. a leaked token left in an HTML comment is a real
- * finding). It DOES additionally strip `<code>/<pre>/<kbd>/<samp>` so that
- * documentation pages showing example payloads, IPs, or credit-card
+ * Does NOT strip `<style>` or HTML comments, because secrets/PII detectors
+ * intentionally still scan those regions (e.g. a leaked token left in an
+ * HTML comment is a real finding). It DOES strip `<code>/<pre>/<kbd>/<samp>`
+ * so that documentation pages showing example payloads, IPs, or credit-card
  * numbers as sample text don't self-trigger the same detectors.
  *
- * Same narrow start-tag + end-tag-with-optional-whitespace matching as
- * `stripNonHtml` — see that function's comment for why exotic unclosed
- * variants are deliberately not stripped.
+ * The result is never treated as sanitized HTML or rendered anywhere, so an
+ * incomplete strip changes detection accuracy, not security.
  */
 export function stripExampleContent(input: string): string {
-  // This removes <script>/<code>/<pre>/<template> regions from a scanned
-  // page's body before other detectors run pattern matching on it; the
-  // result is never treated as sanitized HTML or rendered anywhere, so an
-  // incomplete strip changes detection accuracy, not security.
-  let s = input.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ""); // codeql[js/bad-tag-filter,js/incomplete-multi-character-sanitization]
-  s = s.replace(
-    /<(?:code|pre|kbd|samp|template)\b[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)\s*>/gi, // codeql[js/bad-tag-filter,js/incomplete-multi-character-sanitization]
-    "",
-  );
-  return s;
+  return stripTagElements(stripTagElements(input, ["script"]), [
+    ...DOC_BLOCK_TAGS,
+    "template",
+  ]);
 }
 
 /**
@@ -222,9 +202,47 @@ export function stripExampleContent(input: string): string {
  * site's live script.
  */
 export function stripDocBlocks(input: string): string {
-  return input.replace(
-    /<(?:code|pre|kbd|samp)\b[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp)\s*>/gi, // codeql[js/bad-tag-filter,js/incomplete-multi-character-sanitization]
-    "",
+  return stripTagElements(input, DOC_BLOCK_TAGS);
+}
+
+/**
+ * `stripDocBlocks` memoised on the body it was last given.
+ *
+ * Three detector modules (api.ts, supply-chain.ts, vibe-code.ts) wrap EVERY
+ * detector they export in a `stripDocBlocks(body)` call, which is roughly 150
+ * strips of the same body per scan. Making the strip linear (see
+ * `stripTagElements`) fixes the shape of the cost but not the multiplier: 150
+ * linear strips of a 1 MB body is still 150 MB of copying that produces the
+ * same string every time. The engine hands every detector the same body
+ * string object, so a one-entry memo collapses all of it to one strip per
+ * scan, across all three modules rather than one each.
+ *
+ * It holds one body (the 1 MB execute-scan caps at, at most) until the next
+ * scan replaces it. That is deliberate and is the whole mechanism: the entry
+ * has to outlive the individual detector call to be worth anything.
+ */
+let lastStripInput: string | null = null;
+let lastStripOutput = "";
+
+/**
+ * Wrap a raw detector map so every detector sees the body with
+ * documentation/example regions already removed, stripping ONCE per body
+ * rather than once per detector.
+ */
+export function withDocBlocksStripped(
+  raw: Record<string, EvidenceFn>,
+): Record<string, EvidenceFn> {
+  return Object.fromEntries(
+    Object.entries(raw).map(([id, fn]) => [
+      id,
+      ((url, headers, body) => {
+        if (body !== lastStripInput) {
+          lastStripOutput = stripDocBlocks(body);
+          lastStripInput = body;
+        }
+        return fn(url, headers, lastStripOutput);
+      }) as EvidenceFn,
+    ]),
   );
 }
 
@@ -233,16 +251,10 @@ export function stripDocBlocks(input: string): string {
  *
  * Used by detectors that need to inspect JS source specifically (e.g.
  * eval() usage inside inline scripts) rather than exclude it from
- * matching. Same narrow tag-matching rules as `stripNonHtml`.
+ * matching.
  */
 export function extractScriptContents(input: string): string[] {
-  const scripts: string[] = [];
-  const scriptPattern = /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi; // codeql[js/bad-tag-filter]
-  let m: RegExpExecArray | null;
-  while ((m = scriptPattern.exec(input)) !== null) {
-    scripts.push(m[1]);
-  }
-  return scripts;
+  return tagElementContents(input, ["script"]);
 }
 
 /**

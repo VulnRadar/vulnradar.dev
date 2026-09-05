@@ -6,7 +6,10 @@
  * tree or enable supply-chain attacks.
  */
 
-import { stripDocBlocks, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  withDocBlocksStripped,
+  type EvidenceFn as DetectFn,
+} from "../_helpers";
 import { tagsWith, tagElements } from "./_tag-scan";
 
 // ── Shared helpers for the manifest / CDN detectors below ─────────────────
@@ -682,10 +685,5 @@ const rawDetectors: Record<string, DetectFn> = {
 // lockfile/.env/Dockerfile content inside a <pre>/<code> block as
 // documentation, which would otherwise satisfy these same fingerprint
 // patterns as literal page text.
-export const detectors: Record<string, DetectFn> = Object.fromEntries(
-  Object.entries(rawDetectors).map(([id, fn]) => [
-    id,
-    ((url, headers, body) =>
-      fn(url, headers, stripDocBlocks(body))) as DetectFn,
-  ]),
-);
+export const detectors: Record<string, DetectFn> =
+  withDocBlocksStripped(rawDetectors);

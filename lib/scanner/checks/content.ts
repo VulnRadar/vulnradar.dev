@@ -283,13 +283,24 @@ export const detectors: Record<string, DetectFn> = {
       body.includes("_next/") ||
       body.includes("__nuxt");
     const formOpenRe = /<form[^>]{0,2000}>/gi;
+    // `body.indexOf("</form>", ...)` inside the loop rescans the whole
+    // remainder of the document for every <form> when the document never
+    // closes one, which is quadratic: `"<form>"` repeated measured 359 ms at
+    // 64 KB and 22,775 ms at 512 KB, four times the cost for twice the input.
+    // This cursor only moves forward, and the opening tags come back in
+    // document order, so the closing-tag search over the whole loop is a
+    // single pass. Once it runs out, every later form is unclosed too.
+    let nextClose = body.indexOf("</form>");
     let m: RegExpExecArray | null;
     while ((m = formOpenRe.exec(body))) {
       const f = m[0];
       const explicitGet = /method\s*=\s*["']?get/i.test(f);
       const noMethod = !f.includes("method");
       if (explicitGet || (noMethod && !isFramework)) {
-        const closeIdx = body.indexOf("</form>", formOpenRe.lastIndex);
+        while (nextClose !== -1 && nextClose < formOpenRe.lastIndex) {
+          nextClose = body.indexOf("</form>", nextClose + 1);
+        }
+        const closeIdx = nextClose;
         const after = body.substring(
           formOpenRe.lastIndex,
           closeIdx === -1 ? formOpenRe.lastIndex + 500 : closeIdx,
@@ -1406,7 +1417,13 @@ export const detectors: Record<string, DetectFn> = {
       // ?next=/dashboard are normal SPA navigation — flagging them causes
       // false positives on virtually every authenticated web app.
       /[?&](?:redirect|return|next|url|goto|dest|redir|returnTo|continue|forward|target)=(?:https?%3A|https?:|\/\/)[^&"'\s]*/gi,
-      /window\.location\s*=\s*(?:decodeURIComponent|unescape)?\(?\s*(?:new\s+URLSearchParams|location\.(?:search|hash))/gi,
+      // The optional wrapper call sat between two `\s*` runs and could match
+      // nothing, which left the two runs adjacent and free to split the same
+      // whitespace every way: `"window.location =" + " ".repeat(n)` measured
+      // 274 ms at 16 KB and 16,246 ms at 128 KB. Folding the paren into the
+      // optional group means the group can only start on `d`, `u` or `(`, so
+      // the leading `\s*` is the only run that can claim a space.
+      /window\.location\s*=\s*(?:(?:decodeURIComponent|unescape)?\(\s*)?(?:new\s+URLSearchParams|location\.(?:search|hash))/gi,
     ];
     const found: string[] = [];
     for (const p of patterns) {

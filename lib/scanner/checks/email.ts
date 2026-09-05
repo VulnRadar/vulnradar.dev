@@ -135,10 +135,22 @@ function makeEmailVuln(
  * second as the first invents a finding out of a network blip. Same
  * ENODATA/ENOTFOUND/ENOENT convention as checks/dns.ts.
  */
+/**
+ * A TXT record is delivered as a list of character-strings that the resolver
+ * hands back separately, and joining them is what reconstructs the published
+ * value. Nothing in that path bounds the total, and every regex below runs
+ * over the joined result, so the length is capped here rather than at each
+ * use. 4096 characters is far above any real SPF, DMARC or DKIM record: a
+ * 2048-bit DKIM key serialises to roughly 400. Whether a resolver will
+ * actually deliver an RRset large enough to matter is NOT established, so
+ * treat this as cheap and correct rather than as a demonstrated ceiling.
+ */
+const MAX_TXT_RECORD_CHARS = 4096;
+
 async function txtRecords(name: string): Promise<string[] | null> {
   try {
     const records = await withTimeout(resolveTxtOnce(name));
-    return records.map((r) => r.join(""));
+    return records.map((r) => r.join("").slice(0, MAX_TXT_RECORD_CHARS));
   } catch (err: unknown) {
     const code =
       err && typeof err === "object" && "code" in err
@@ -517,8 +529,15 @@ export async function checkDkimSelectorFlags(
 
   const findings: Vulnerability[] = [];
 
+  // No `\s*` after the `=`: `[^;]` already matches whitespace, so the two
+  // runs competed for the same characters while `\by\b` never arrived. The
+  // record text comes from DNS at a name the scanned domain controls, so it
+  // is attacker-supplied: a `t=` tag followed by a whitespace run measured
+  // 21 ms at 4 KB and 1401 ms at 32 KB, four times the cost for twice the
+  // input. Bounding the tag value caps the failed match; a DKIM tag value is
+  // a handful of characters.
   const testing = found.find(({ record }) =>
-    /(?:^|;)\s*t\s*=\s*[^;]*\by\b/i.test(record),
+    /(?:^|;)\s{0,20}t\s{0,20}=[^;]{0,200}\by\b/i.test(record),
   );
   if (testing) {
     findings.push(
@@ -579,8 +598,10 @@ export async function checkDkimSelectorFlags(
     );
   }
 
+  // Same shape and same fix as the t= match above: 31 ms at 4 KB and 1547 ms
+  // at 32 KB before bounding the tag value.
   const sha1 = found.find(({ record }) =>
-    /(?:^|;)\s*h\s*=\s*(?:[^;]*\b)?sha1\b/i.test(record),
+    /(?:^|;)\s{0,20}h\s{0,20}=(?:[^;]{0,200}\b)?sha1\b/i.test(record),
   );
   if (sha1 && !/sha256/i.test(sha1.record)) {
     findings.push(

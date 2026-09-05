@@ -105,3 +105,172 @@ export function openingTagOf(element: string): string {
   const end = element.indexOf(">");
   return end === -1 ? element : element.slice(0, end + 1);
 }
+
+/** `\w` as a code-point test, so the name scan below does not build a
+ *  one-character string per `<` in the document. */
+function isWordCharCode(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122) ||
+    code === 95
+  );
+}
+
+interface TagRegion {
+  /** Offset of the `<` that opens the element. */
+  start: number;
+  /** Offset just past the opening tag's `>`. */
+  contentStart: number;
+  /** Offset of the `<` that begins the closing tag. */
+  contentEnd: number;
+  /** Offset just past the closing tag's `>`. */
+  end: number;
+}
+
+/**
+ * Every `<tag ...>...</tag>` region in `body` for any name in `tags`, in
+ * document order, non-overlapping, in ONE forward pass.
+ *
+ * This is the linear replacement for `<tag\b[^>]*>[\s\S]*?</tag\s*>`. That
+ * shape rescans the whole remainder of the document from every opening tag
+ * that never closes, so a body of `"<code>x"` repeated is quadratic: measured
+ * at 15 ms for 16 KB and 996 ms for 128 KB, four times the cost for twice the
+ * input. Here the `<` cursor, the `>` cursor and the closing-tag cursor only
+ * ever move forward, so the whole sweep costs one pass over the body no
+ * matter how the tags nest or fail to close.
+ *
+ * Matching rules are deliberately identical to the pattern this replaces, so
+ * routing a stripper through it cannot change what any detector sees:
+ *
+ * - The element name is read as `\w+` immediately after the `<`, which is
+ *   exactly what `<code\b` accepts: `<code-foo>` is a `code` tag (`\b` sits
+ *   between `e` and `-`) and `<codex>` is not.
+ * - The opening tag ends at the first `>` after the name, which is what
+ *   `[^>]*>` means.
+ * - The closing tag is the first `</name\s*>` for ANY name in `tags` after
+ *   that, which is what a lazy `[\s\S]*?` bridge into an alternation does.
+ * - An opening tag with no closing tag after it ends the sweep, the same
+ *   result the old pattern reached far more expensively.
+ */
+function tagRegions(body: string, tags: readonly string[]): TagRegion[] {
+  const names = new Set(tags.map((t) => t.toLowerCase()));
+  let longestName = 0;
+  for (const n of names) longestName = Math.max(longestName, n.length);
+
+  const close = new RegExp(`</(?:${tags.join("|")})\\s*>`, "gi");
+  const out: TagRegion[] = [];
+  let i = 0;
+
+  while (i < body.length) {
+    const lt = body.indexOf("<", i);
+    if (lt === -1) break;
+
+    let nameEnd = lt + 1;
+    while (
+      nameEnd < body.length &&
+      nameEnd - lt - 1 <= longestName &&
+      isWordCharCode(body.charCodeAt(nameEnd))
+    ) {
+      nameEnd++;
+    }
+    if (!names.has(body.slice(lt + 1, nameEnd).toLowerCase())) {
+      i = lt + 1;
+      continue;
+    }
+
+    const gt = body.indexOf(">", nameEnd);
+    if (gt === -1) break;
+
+    close.lastIndex = gt + 1;
+    const c = close.exec(body);
+    if (!c) break;
+
+    const end = c.index + c[0].length;
+    out.push({
+      start: lt,
+      contentStart: gt + 1,
+      contentEnd: c.index,
+      end,
+    });
+    i = end;
+  }
+
+  return out;
+}
+
+/**
+ * `body` with every `<tag ...>...</tag>` element removed, for any name in
+ * `tags`. Linear in the body length: see {@link tagRegions}.
+ */
+export function stripTagElements(
+  body: string,
+  tags: readonly string[],
+): string {
+  if (!body) return body;
+  const regions = tagRegions(body, tags);
+  if (regions.length === 0) return body;
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const r of regions) {
+    parts.push(body.slice(cursor, r.start));
+    cursor = r.end;
+  }
+  parts.push(body.slice(cursor));
+  return parts.join("");
+}
+
+/**
+ * The inner text of every `<tag ...>...</tag>` element in `body`, for any
+ * name in `tags`. Linear in the body length: see {@link tagRegions}.
+ */
+export function tagElementContents(
+  body: string,
+  tags: readonly string[],
+): string[] {
+  if (!body) return [];
+  return tagRegions(body, tags).map((r) =>
+    body.slice(r.contentStart, r.contentEnd),
+  );
+}
+
+/**
+ * Every opening `<name ...>` element in `body`, whatever the name, as raw tag
+ * text including the angle brackets, in one forward pass.
+ *
+ * {@link openTags} needs a name because it compiles the name into its
+ * pattern. A detector that cares about an attribute on ANY element used to
+ * express that as `<[a-z][a-z0-9]*[^>]{0,2000}ATTR`, whose leading name run
+ * and bounded attribute run both match the same characters: on markup where
+ * the tag never closes, every `<` pays the full 2000-character run and back.
+ * Linear in the body length, but with a 2000x constant that measured 5.5
+ * SECONDS on a 1 MB body of `"<a"` repeated. Here the `<` cursor and the `>`
+ * cursor only ever move forward, so a document of unterminated tags costs one
+ * scan in total rather than one per `<`.
+ */
+export function anyOpenTags(body: string): string[] {
+  if (!body) return [];
+  const out: string[] = [];
+  let i = 0;
+
+  while (i < body.length) {
+    const lt = body.indexOf("<", i);
+    if (lt === -1) break;
+    // A name has to start with a letter, which is what `<[a-z]` required and
+    // what keeps `</div>`, `<!-- -->` and `<!doctype>` out. Skipping those
+    // costs one character, never a `>` search, so a document that is nothing
+    // but `<` never pays for a scan it cannot use.
+    const first = body.charCodeAt(lt + 1);
+    if (!((first >= 65 && first <= 90) || (first >= 97 && first <= 122))) {
+      i = lt + 1;
+      continue;
+    }
+    const gt = body.indexOf(">", lt + 1);
+    if (gt === -1) break;
+    out.push(body.slice(lt, gt + 1));
+    // Past the `>`, so no region of the body is ever scanned twice.
+    i = gt + 1;
+  }
+
+  return out;
+}
