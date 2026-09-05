@@ -31,7 +31,12 @@ export interface PublicRoute {
  * data the pages render so the sitemap can never drift out of sync with them.
  */
 const STATIC_PUBLIC_ROUTES: readonly PublicRoute[] = [
-  { path: "/landing", priority: 1.0, changeFrequency: "weekly" },
+  // The ROOT, not /landing. / permanently redirects to /landing, so both
+  // serve the same page, and app/landing/page.tsx now declares "/" as its
+  // canonical. A sitemap listing /landing while the page canonicalises to /
+  // is two contradictory signals about the same document, which is what left
+  // Search Console reporting a duplicate with no canonical selected.
+  { path: "/", priority: 1.0, changeFrequency: "weekly" },
   { path: "/pricing", priority: 0.9, changeFrequency: "weekly" },
   { path: "/demo", priority: 0.9, changeFrequency: "weekly" },
   { path: "/checks", priority: 0.8, changeFrequency: "monthly" },

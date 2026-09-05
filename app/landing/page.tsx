@@ -29,7 +29,18 @@ import { getCategoryCounts } from "@/lib/scanner/registry";
 export const metadata: Metadata = pageMetadata({
   title: "Scan Any Website for Security Issues",
   description: `Paste a URL, get a security report in under 3 seconds: ${TOTAL_CHECKS_LABEL} deterministic checks across headers, TLS, cookies, DNS, and secrets. No agent to install.`,
-  path: "/landing",
+  // Canonicalised to the ROOT, not to /landing.
+  //
+  // / permanently redirects here, so both URLs serve this page, and pointing
+  // the canonical at /landing left the URL people actually link (the bare
+  // domain) with nothing claiming it. Search Console reported /landing as
+  // "Duplicate without user-selected canonical" for exactly that reason.
+  //
+  // A canonical says which URL should be indexed, not which one renders, so
+  // naming "/" is correct even though this file is served at /landing. The
+  // sitemap lists "/" to match; a sitemap and a canonical that disagree is
+  // its own conflicting signal.
+  path: "/",
 });
 
 const FREE_SCANS = BILLING_PLAN_LIMITS.free;
