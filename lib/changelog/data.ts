@@ -140,6 +140,24 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.8.2",
+    date: "September 5, 2026",
+    title: "The Updater Stopped Refusing Installs It Had Always Updated",
+    // Not a highlights release: it repairs something 3.8.0 broke.
+    highlights: false,
+    summary:
+      "3.8.0 taught the in-app updater to refuse container deployments, and it recognised them by a marker file that every container has. Panel installs that run VulnRadar from source, which had updated in place for eight releases, were told to pull a Docker image they do not have.",
+    changes: [
+      {
+        icon: RefreshCw,
+        label:
+          "The Updater Told Panel Installs to Pull an Image They Do Not Have",
+        desc: "In 3.8.0 the updater started refusing to run inside a container, because inside our own Docker image it could not work: the app directory belongs to root while the process runs as a different user, so the copy failed part way through, after it had already overwritten package.json, leaving the reported version describing code that was not installed. The refusal was right and the question was wrong. It looked for the marker file Docker and Podman leave in every container they start, which is true of our image and equally true of every install that runs VulnRadar from source inside one: Pterodactyl and Pelican eggs, unRAID, and hand-rolled setups, all of which have a writable app directory that survives a restart, and all of which had a working Update button since 3.1.0. They were told to run a Docker pull against a deployment with no image to pull, and the button was gone. The updater now asks what it actually needs to know, by trying it: it creates a directory where the update would be written and removes it again, so a deployment that can take an update is offered one and a deployment that cannot is told which directory it cannot write to. Our own image says outright that it updates by being replaced, which is a fact about how it is delivered rather than anything a permission check could see, so the pull instructions still appear exactly where they belong.",
+        category: "fixed",
+      },
+    ],
+  },
+  {
     version: "3.8.1",
     date: "September 5, 2026",
     title: "A Scanned Page Can No Longer Stall the Server",

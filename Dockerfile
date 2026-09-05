@@ -208,6 +208,18 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+# infra: this image updates by being replaced, not by rewriting itself. The
+# updater cannot see that on its own: it can tell whether /app is writable,
+# and being told "yes" here (someone runs as root, or bind-mounts /app) would
+# not make an in-place update stick, because the writable layer goes away with
+# the next `docker compose pull`. So the image says so, and the updater shows
+# that instead of a button.
+#
+# Only this image sets it. A source install running inside a container, which
+# is how the Pterodactyl and Pelican eggs run, has a real persistent app
+# directory and updates in place exactly as a bare-metal one does.
+ENV VULNRADAR_UPDATER_DISABLED=true
+
 # infra: run under tini so SIGTERM is forwarded to the Node worker
 # and in-flight requests drain cleanly on container shutdown.
 # (schema auto-creates via instrumentation.ts on startup)

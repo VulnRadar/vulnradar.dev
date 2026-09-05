@@ -18,6 +18,17 @@ and full description.
 
 ---
 
+## v3.8.2 - September 5, 2026
+**The Updater Stopped Refusing Installs It Had Always Updated**
+
+3.8.0 taught the in-app updater to refuse container deployments, and it recognised them by a marker file that every container has. Panel installs that run VulnRadar from source, which had updated in place for eight releases, were told to pull a Docker image they do not have.
+
+### Changes
+- [RefreshCw] **[FIXED]** **The Updater Told Panel Installs to Pull an Image They Do Not Have**
+  In 3.8.0 the updater started refusing to run inside a container, because inside our own Docker image it could not work: the app directory belongs to root while the process runs as a different user, so the copy failed part way through, after it had already overwritten package.json, leaving the reported version describing code that was not installed. The refusal was right and the question was wrong. It looked for the marker file Docker and Podman leave in every container they start, which is true of our image and equally true of every install that runs VulnRadar from source inside one: Pterodactyl and Pelican eggs, unRAID, and hand-rolled setups, all of which have a writable app directory that survives a restart, and all of which had a working Update button since 3.1.0. They were told to run a Docker pull against a deployment with no image to pull, and the button was gone. The updater now asks what it actually needs to know, by trying it: it creates a directory where the update would be written and removes it again, so a deployment that can take an update is offered one and a deployment that cannot is told which directory it cannot write to. Our own image says outright that it updates by being replaced, which is a fact about how it is delivered rather than anything a permission check could see, so the pull instructions still appear exactly where they belong.
+
+---
+
 ## v3.8.1 - September 5, 2026
 **A Scanned Page Can No Longer Stall the Server**
 
@@ -2002,7 +2013,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 66
-- **Total changes documented:** 726
-- **Latest:** v3.8.1 (September 5, 2026) - A Scanned Page Can No Longer Stall the Server
+- **Total releases:** 67
+- **Total changes documented:** 727
+- **Latest:** v3.8.2 (September 5, 2026) - The Updater Stopped Refusing Installs It Had Always Updated
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
