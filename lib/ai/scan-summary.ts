@@ -41,6 +41,7 @@ import { callAnthropicMessages } from "@/lib/ai/anthropic";
 import {
   resolveAnthropicThinkingBudget,
   resolveOpenAiCompatReasoningExtras,
+  resolveAiCallTimeoutMs,
 } from "@/lib/ai/reasoning";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
@@ -241,11 +242,18 @@ export async function generateScanSummary(
   const settings = await getSettings([
     "AI_SUMMARY_MAX_TOKENS",
     "AI_SUMMARY_CALL_TIMEOUT_MS",
+    "AI_REASONING_TIMEOUT_MULTIPLIER",
     "AI_SUMMARY_TOP_FINDINGS_LIMIT",
     "AI_SUMMARY_MAX_OUTPUT_CHARS",
   ] as const);
   const maxTokens = settings.AI_SUMMARY_MAX_TOKENS;
-  const callTimeoutMs = settings.AI_SUMMARY_CALL_TIMEOUT_MS;
+  const callTimeoutMs = resolveAiCallTimeoutMs(
+    endpoint.baseUrl,
+    endpoint.model,
+    "summary",
+    settings.AI_SUMMARY_CALL_TIMEOUT_MS,
+    settings.AI_REASONING_TIMEOUT_MULTIPLIER,
+  );
   const maxOutputChars = settings.AI_SUMMARY_MAX_OUTPUT_CHARS;
   const prompt = buildPrompt(result, settings.AI_SUMMARY_TOP_FINDINGS_LIMIT);
   const controller = new AbortController();

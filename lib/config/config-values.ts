@@ -26,7 +26,7 @@ export const CONFIG_APP_SLUG = "vulnradar";
  * the two above it, so it belongs here rather than in a component.
  */
 export const CONFIG_AI_BOT_NAME = "Vera";
-export const CONFIG_APP_VERSION = "3.8.3";
+export const CONFIG_APP_VERSION = "3.8.4";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
 // 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
@@ -929,6 +929,26 @@ export const CONFIG_AI_CHAT_MAX_INPUT_LENGTH = 2000;
 //   not just a hypothetical. Non-reasoning models only need ~100 tokens for
 //   the tiny JSON output, but extra headroom is harmless.
 export const CONFIG_AI_VERIFY_MAX_TOKENS = 6000;
+
+// How much longer an AI call is allowed to take when the model will reason
+// before answering, as a multiple of that surface's configured timeout.
+//
+// Every AI timeout in this app was one fixed number tuned against a fast,
+// non-reasoning model, because that is what the managed deployment ran. A
+// reasoning model spends most of its wall clock before the first visible
+// token, so those ceilings cut it off mid-thought, and each surface then
+// fails quietly in its own way: a finding lands as "no verdict" rather than
+// "uncertain", a scan summary is dropped, a tag suggestion never appears.
+// Nothing errors. The only symptom is output that got thinner after someone
+// changed the model, which is close to undiagnosable from the outside.
+//
+// A multiplier rather than a second set of absolute values, so the
+// fast-model numbers stay the numbers an operator tuned and the reasoning
+// allowance moves with them. 3 was picked against the surface with the least
+// headroom: auto-tagging at 12s becomes 36s, which is a realistic floor for
+// a thinking model on a small prompt. Verification goes 60s to 180s, and
+// summaries 40s to 120s.
+export const CONFIG_AI_REASONING_TIMEOUT_MULTIPLIER = 3;
 // Per-finding HTTP timeout (ms): how long to wait for the AI API to respond.
 // Raised from 40_000: a scan with 50+ findings routinely hit this ceiling on
 // a slower or reasoning-model provider, silently dropping the finding to
@@ -954,23 +974,25 @@ export const CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS = 8_000;
 // pushed past ~10-15: that's the point where fan-out starts looking like
 // the unbounded-Promise.race version this chunking replaced.
 export const CONFIG_AI_VERIFY_CHUNK_SIZE = 10;
-// Hard ceiling for the entire deep-scan batch (ms), across however many
-// chunks it takes to get through every finding. Verdicts are persisted
-// after each chunk (see lib/ai/verify-findings.ts), so hitting this
-// ceiling stops further chunks rather than discarding work already done.
+// Raised from 600_000 when the per-call ceiling stopped being one number.
+// CONFIG_AI_REASONING_TIMEOUT_MULTIPLIER means a thinking model's calls get
+// 180_000 rather than 60_000, and leaving this budget alone would have
+// SHRUNK worst-case coverage from 10 chunks to 3, the same mistake the
+// previous raise of this constant was written to avoid.
 //
-// Raised from 300_000 alongside CONFIG_AI_VERIFY_CALL_TIMEOUT_MS going from
-// 40_000 to 60_000 above -- left alone, that call-timeout raise would have
-// SHRUNK worst-case coverage (300_000 / 60_000 = 5 chunks instead of 7-8),
-// the opposite of the point. Worst case now (every call in every chunk hangs
-// for the full call timeout -- a provider outage): floor(600_000 / 60_000) =
-// 10 full chunks attempted before the deadline check trips, plus the chunk
-// already in flight when it does, so up to 11 chunks x 10 findings = 110
-// findings attempted (all returning no verdict) over a bounded ~660s -- not
-// unbounded, just wide enough to cover a real 50-100+ finding scan even on a
-// slow or reasoning-model provider. Typical case (a responsive provider,
-// call latency well under the 60s ceiling): a pessimistic ~15-20s per chunk
-// still clears 30-40 chunks = 300-400 findings inside this budget.
+// Worst case on a FAST model (every call in every chunk hangs for the full
+// 60s ceiling, i.e. a provider outage): floor(900_000 / 60_000) = 15 full
+// chunks before the deadline check trips, plus the chunk in flight when it
+// does, so up to 16 x 10 = 160 findings attempted over a bounded ~960s.
+//
+// Worst case on a REASONING model (180s ceiling): 5 full chunks plus the one
+// in flight, so ~60 findings. That is deliberately not the same coverage,
+// and it is the right trade: the ceiling is what an unresponsive provider
+// costs, while what fills this budget in practice is typical latency, and a
+// thinking model's typical latency is nowhere near its ceiling. Verdicts are
+// persisted after every chunk, so a scan that runs out of budget keeps every
+// verdict it already earned rather than discarding the batch.
+//
 // This is an on-demand, user-triggered action (the "Verify with AI" scan
 // action), not part of the main scan request, so a multi-minute budget is
 // acceptable UX the same way CONFIG_SCAN_TIMEOUT_SECONDS/
@@ -978,13 +1000,17 @@ export const CONFIG_AI_VERIFY_CHUNK_SIZE = 10;
 // user explicitly asked for and is watching a progress state for.
 //
 // Note: the /api/v3/scan/verify and /api/v3/scan/verify-batch routes each
-// also have their own `maxDuration` (currently 720s, i.e. this budget plus
-// the probe timeout plus one more call-timeout's worth of overrun plus
-// slack) -- this constant bounds lib/ai's own loop, not the platform, and
-// the two must be kept in that order (route maxDuration > this value) or
-// the platform kills the request before this deadline ever gets a chance
-// to fire cleanly.
-export const CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS = 600_000;
+// also have their own `maxDuration` (now 1140s: this budget, plus the probe
+// timeout, plus one reasoning-length call's worth of overrun, plus slack).
+// The order route maxDuration > this value must hold, or the platform kills
+// the request before this deadline fires cleanly.
+//
+// And note the hop this file cannot see: a reverse proxy in front of the app
+// has its own read timeout, and nginx's default proxy_read_timeout is 60
+// SECONDS. These routes answer with a single JSON body at the end rather
+// than streaming, so a proxy left at the default cuts every verification
+// longer than a minute regardless of what is configured here.
+export const CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS = 900_000;
 
 // Hard cap on findings[] accepted by one call to POST /api/v3/scan/verify-batch.
 // Unlike /api/v3/scan/verify (which only ever processes findings already

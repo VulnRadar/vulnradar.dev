@@ -53,7 +53,10 @@ import {
 } from "./verify-findings";
 import { isAnthropicProvider } from "@/lib/ai/provider";
 import { callAnthropicMessages } from "@/lib/ai/anthropic";
-import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
+import {
+  resolveAnthropicThinkingBudget,
+  resolveAiCallTimeoutMs,
+} from "@/lib/ai/reasoning";
 import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { checkAiUsageQuota, recordAiTokens } from "@/lib/billing/ai-usage";
@@ -353,18 +356,30 @@ export async function generateAutoTagSuggestions(
     // generateScanSummary's own "free" call: this never blocks on quota.
     const { usingOwnAi } = await checkAiUsageQuota(userId);
     const {
-      AI_AUTOTAG_CALL_TIMEOUT_MS: callTimeoutMs,
+      AI_AUTOTAG_CALL_TIMEOUT_MS: baseCallTimeoutMs,
+      AI_REASONING_TIMEOUT_MULTIPLIER: reasoningTimeoutMultiplier,
       AI_AUTOTAG_MAX_TOKENS: maxOutputTokens,
       AI_AUTOTAG_TOP_FINDINGS_LIMIT: topFindingsLimit,
       AI_AUTOTAG_MAX_SUGGESTIONS: maxSuggestions,
     } = await getSettings([
       "AI_AUTOTAG_CALL_TIMEOUT_MS",
+      "AI_REASONING_TIMEOUT_MULTIPLIER",
       "AI_AUTOTAG_MAX_TOKENS",
       "AI_AUTOTAG_TOP_FINDINGS_LIMIT",
       "AI_AUTOTAG_MAX_SUGGESTIONS",
     ] as const);
     const prompt = buildPrompt(findings, topFindingsLimit);
     const controller = new AbortController();
+    // 12s was the tightest ceiling in the app and the one a reasoning model
+    // is least able to meet: a tag suggestion that overruns simply never
+    // appears, with nothing logged to say why.
+    const callTimeoutMs = resolveAiCallTimeoutMs(
+      endpoint.baseUrl,
+      endpoint.model,
+      "summary",
+      baseCallTimeoutMs,
+      reasoningTimeoutMultiplier,
+    );
     const timer = setTimeout(() => controller.abort(), callTimeoutMs);
 
     try {

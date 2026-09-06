@@ -1,4 +1,4 @@
-import { resolveProviderName } from "./provider";
+import { resolveProviderName, isAnthropicProvider } from "./provider";
 
 /**
  * Per-provider "native reasoning" wiring, layered on top of the inline
@@ -116,4 +116,54 @@ const ALWAYS_REASONS = new Set(["deepseek-reasoner"]);
 
 export function modelReasonsWithoutRequest(model: string): boolean {
   return ALWAYS_REASONS.has(model.toLowerCase().split("/").pop() ?? "");
+}
+
+/**
+ * Whether this call will actually spend time reasoning before it answers.
+ *
+ * Three different mechanisms end up in the same place: an Anthropic-shaped
+ * request carrying a thinking budget, an OpenAI-compatible request carrying
+ * reasoning_effort, and a model that reasons on every request whether asked
+ * or not. A timeout has to care about the outcome, not which of the three
+ * produced it.
+ */
+export function callWillReason(
+  baseUrl: string | null,
+  model: string,
+  purpose: ReasoningPurpose,
+): boolean {
+  if (isAnthropicProvider(baseUrl)) return true;
+  if (modelReasonsWithoutRequest(model)) return true;
+  return (
+    Object.keys(resolveOpenAiCompatReasoningExtras(baseUrl, model, purpose))
+      .length > 0
+  );
+}
+
+/**
+ * How long to wait for one AI call, given what that call is about to do.
+ *
+ * Every AI timeout in this app was a single fixed number chosen against a
+ * fast, non-reasoning model, because that is what the managed deployment ran.
+ * A reasoning model spends most of its wall clock before the first visible
+ * token, so those ceilings cut it off mid-thought, and each surface fails
+ * differently and quietly: a verification finding lands as "no verdict"
+ * rather than "uncertain", a summary is dropped, a tag suggestion never
+ * appears. Nothing errors, so the only symptom is output that got thinner
+ * after someone changed the model.
+ *
+ * The multiplier applies to whatever the admin has configured rather than
+ * replacing it, so the fast-model number stays the number an operator tuned,
+ * and the reasoning allowance moves with it.
+ */
+export function resolveAiCallTimeoutMs(
+  baseUrl: string | null,
+  model: string,
+  purpose: ReasoningPurpose,
+  configuredMs: number,
+  multiplier: number,
+): number {
+  return callWillReason(baseUrl, model, purpose)
+    ? Math.round(configuredMs * multiplier)
+    : configuredMs;
 }

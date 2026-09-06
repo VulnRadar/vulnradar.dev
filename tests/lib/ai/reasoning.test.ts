@@ -3,6 +3,8 @@ import {
   resolveOpenAiCompatReasoningExtras,
   resolveAnthropicThinkingBudget,
   resolveOpenAiReasoningEffort,
+  callWillReason,
+  resolveAiCallTimeoutMs,
 } from "@/lib/ai/reasoning";
 
 describe("resolveOpenAiCompatReasoningExtras", () => {
@@ -112,5 +114,89 @@ describe("resolveOpenAiReasoningEffort", () => {
         `${id} must not be sent reasoning_effort`,
       ).toBeNull();
     }
+  });
+});
+
+// Every AI timeout in this app was one fixed number tuned against a fast,
+// non-reasoning model. A thinking model overran all of them, and each
+// surface failed quietly in its own way: no verdict, no summary, no tag.
+describe("callWillReason", () => {
+  it("is true for an Anthropic-shaped endpoint, whoever the vendor is", () => {
+    expect(callWillReason("https://api.anthropic.com/v1", "x", "verify")).toBe(
+      true,
+    );
+    expect(
+      callWillReason("https://api.minimax.io/anthropic/v1", "MiniMax-M3", "verify"),
+    ).toBe(true);
+  });
+
+  it("is true for a model sent reasoning_effort", () => {
+    expect(callWillReason("https://api.openai.com/v1", "gpt-5.4", "verify")).toBe(
+      true,
+    );
+    expect(callWillReason("https://api.x.ai/v1", "grok-4.6", "verify")).toBe(true);
+  });
+
+  it("is true for a model that reasons whether asked or not", () => {
+    expect(
+      callWillReason("https://api.deepseek.com/v1", "deepseek-reasoner", "verify"),
+    ).toBe(true);
+  });
+
+  it("is false for a fast model on an OpenAI-shaped endpoint", () => {
+    expect(
+      callWillReason("https://api.minimax.io/v1", "MiniMax-M2.7-highspeed", "verify"),
+    ).toBe(false);
+    expect(
+      callWillReason("https://api.openai.com/v1", "gpt-4o-mini", "verify"),
+    ).toBe(false);
+  });
+});
+
+describe("resolveAiCallTimeoutMs", () => {
+  it("leaves a fast model on exactly the configured value", () => {
+    expect(
+      resolveAiCallTimeoutMs(
+        "https://api.minimax.io/v1",
+        "MiniMax-M2.7-highspeed",
+        "verify",
+        60_000,
+        3,
+      ),
+    ).toBe(60_000);
+  });
+
+  it("multiplies for a reasoning model", () => {
+    expect(
+      resolveAiCallTimeoutMs(
+        "https://api.minimax.io/anthropic/v1",
+        "MiniMax-M3",
+        "verify",
+        60_000,
+        3,
+      ),
+    ).toBe(180_000);
+    // The tightest ceiling in the app, and the one most likely to bite.
+    expect(
+      resolveAiCallTimeoutMs(
+        "https://api.anthropic.com/v1",
+        "claude-opus-5",
+        "summary",
+        12_000,
+        3,
+      ),
+    ).toBe(36_000);
+  });
+
+  it("is a no-op at a multiplier of 1, so an operator can turn it off", () => {
+    expect(
+      resolveAiCallTimeoutMs(
+        "https://api.anthropic.com/v1",
+        "claude-opus-5",
+        "verify",
+        60_000,
+        1,
+      ),
+    ).toBe(60_000);
   });
 });

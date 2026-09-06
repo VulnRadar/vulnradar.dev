@@ -18,7 +18,7 @@ export const runtime = "nodejs";
 // See app/api/v3/scan/verify/route.ts for why this must stay above
 // CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS -- verifyFindingsBatch shares the same
 // deadline/chunk settings as runAiVerification.
-export const maxDuration = 720;
+export const maxDuration = 1140;
 
 export async function POST(req: NextRequest) {
   // Accept session auth OR API key auth

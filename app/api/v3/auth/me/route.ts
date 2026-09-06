@@ -164,7 +164,18 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       if (codes.length > 0 && !codes[0].includes(":")) {
         backupCodesInvalid = true;
       }
-    } catch {}
+    } catch (err) {
+      // Unparseable is not the same as fine. This column is written as JSON
+      // by our own code, so a value that will not parse is a value nobody
+      // can redeem, and swallowing it told an account with 2FA enabled that
+      // its recovery codes were in order. The account holder would discover
+      // otherwise at exactly the moment the codes are for: locked out.
+      backupCodesInvalid = true;
+      console.error(
+        `[AUTH-ME] backup_codes for user ${session.userId} could not be parsed; flagging for regeneration:`,
+        err,
+      );
+    }
   }
 
   return ApiResponse.success({

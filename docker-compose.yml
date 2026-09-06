@@ -53,11 +53,11 @@ services:
   # unknown` before anything else in the stack starts.
   #
   # To pin to an immutable digest instead:
-  #   1. `docker pull ghcr.io/vulnradar/vulnradar:v3.8.3`
+  #   1. `docker pull ghcr.io/vulnradar/vulnradar:v3.8.4`
   #   2. `docker images --digests ghcr.io/vulnradar/vulnradar`
   #   3. Replace the tag below with `ghcr.io/vulnradar/vulnradar@sha256:<digest>`
   app:
-    image: ghcr.io/vulnradar/vulnradar:v3.8.3
+    image: ghcr.io/vulnradar/vulnradar:v3.8.4
     build:
       # Lets `docker compose build app` work from a source checkout, which is
       # what the self-hosting upgrade docs tell operators to run. Without a

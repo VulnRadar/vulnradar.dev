@@ -13,6 +13,7 @@ import { callAnthropicMessages } from "@/lib/ai/anthropic";
 import {
   resolveAnthropicThinkingBudget,
   resolveOpenAiCompatReasoningExtras,
+  resolveAiCallTimeoutMs,
 } from "@/lib/ai/reasoning";
 import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
@@ -52,6 +53,7 @@ interface VerifySettings {
   maxTokens: number;
   chunkSize: number;
   callTimeoutMs: number;
+  reasoningTimeoutMultiplier: number;
   probeTimeoutMs: number;
   totalTimeoutMs: number;
   probeBodySnippetChars: number;
@@ -67,6 +69,7 @@ async function resolveVerifySettings(): Promise<VerifySettings> {
     "AI_VERIFY_MAX_TOKENS",
     "AI_VERIFY_CHUNK_SIZE",
     "AI_VERIFY_CALL_TIMEOUT_MS",
+    "AI_REASONING_TIMEOUT_MULTIPLIER",
     "AI_VERIFY_PROBE_TIMEOUT_MS",
     "AI_VERIFY_TOTAL_TIMEOUT_MS",
     "AI_VERIFY_PROBE_BODY_SNIPPET_CHARS",
@@ -75,6 +78,7 @@ async function resolveVerifySettings(): Promise<VerifySettings> {
     maxTokens: settings.AI_VERIFY_MAX_TOKENS,
     chunkSize: settings.AI_VERIFY_CHUNK_SIZE,
     callTimeoutMs: settings.AI_VERIFY_CALL_TIMEOUT_MS,
+    reasoningTimeoutMultiplier: settings.AI_REASONING_TIMEOUT_MULTIPLIER,
     probeTimeoutMs: settings.AI_VERIFY_PROBE_TIMEOUT_MS,
     totalTimeoutMs: settings.AI_VERIFY_TOTAL_TIMEOUT_MS,
     probeBodySnippetChars: settings.AI_VERIFY_PROBE_BODY_SNIPPET_CHARS,
@@ -332,7 +336,17 @@ async function callVerify(
   settings: VerifySettings,
 ): Promise<CallVerifyResult> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), settings.callTimeoutMs);
+  // A reasoning model spends most of its wall clock before the first token,
+  // and a finding that overruns lands as "no verdict" rather than
+  // "uncertain", so the ceiling has to know what kind of call this is.
+  const callTimeoutMs = resolveAiCallTimeoutMs(
+    endpoint.baseUrl,
+    endpoint.model,
+    "verify",
+    settings.callTimeoutMs,
+    settings.reasoningTimeoutMultiplier,
+  );
+  const timer = setTimeout(() => controller.abort(), callTimeoutMs);
   const prompt = buildVerifyPrompt(finding, probe);
 
   try {

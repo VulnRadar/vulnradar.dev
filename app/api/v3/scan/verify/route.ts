@@ -21,7 +21,7 @@ export const runtime = "nodejs";
 // platform kills the request before that in-app deadline ever gets a chance
 // to fire and persist its own partial results cleanly. Raised from 360s
 // alongside CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS going from 300s to 600s.
-export const maxDuration = 720;
+export const maxDuration = 1140;
 
 export async function POST(req: NextRequest) {
   // Accept session auth OR API key auth, same dual-auth pattern as the

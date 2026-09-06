@@ -240,6 +240,32 @@ describe("GET /api/v3/auth/me", () => {
       expect(res.status).toBe(200);
       expect(json.backupCodesInvalid).toBe(true);
     });
+    // The catch path, which had no coverage and used to swallow silently.
+    // backup_codes is written as JSON by our own code, so a value that will
+    // not parse is a value nobody can redeem; reporting it as fine tells an
+    // account with 2FA on that its recovery codes are in order, and it finds
+    // out otherwise at the one moment they matter.
+    it("flags backup codes as invalid when the stored value cannot be parsed", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      sessionRow = defaultSessionRow({ user_id: 7 });
+      userInfoRow = {
+        totp_enabled: true,
+        two_factor_method: "app",
+        onboarding_completed: true,
+        role: "user",
+        avatar_url: null,
+        backup_codes: "not even valid json",
+        plan: "free",
+        subscription_status: null,
+        discord_id: null,
+      };
+
+      const res = await GET(meRequest());
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.backupCodesInvalid).toBe(true);
+    });
 
     it("does not flag backup codes as invalid when they are real (hashed) codes", async () => {
       cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");

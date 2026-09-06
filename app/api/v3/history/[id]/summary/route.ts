@@ -20,7 +20,7 @@ export const runtime = "nodejs";
 // multi-call batches verify/route.ts has to budget for), so it never needs
 // that route's much larger maxDuration, but it does need to exceed whatever
 // an admin actually configures that setting to, not just its 40s default.
-export const maxDuration = 150;
+export const maxDuration = 300;
 
 /**
  * On-demand scan-level AI summary, analogous to POST /api/v3/scan/verify
