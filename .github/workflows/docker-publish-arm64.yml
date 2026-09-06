@@ -3,7 +3,7 @@ name: Publish ARM64 Image
 # release: arm64, built after the release rather than in front of it.
 #
 # This used to be one `platforms: linux/amd64,linux/arm64` build on the tag
-# workflow. GitHub's runners are amd64, so the arm64 leg runs under QEMU: on
+# workflow. GitHub's hosted amd64 runners ran the arm64 leg under QEMU: on
 # v3.8.0 it spent over 40 minutes on `npm ci` alone, before even reaching
 # `npm run build`, and because release.yml waits on docker-publish, the GitHub
 # release sat unpublished the entire time. A 4.5 minute release became an
@@ -16,6 +16,20 @@ name: Publish ARM64 Image
 # sees is that arm64 appears a little after the release instead of holding it
 # up, and `docker pull` on arm64 in that window fails the way it did before
 # multi-arch existed at all.
+#
+# It runs on a NATIVE arm64 runner, which is why there is no QEMU setup step.
+# Emulation was not just slow, it was unreliable in a way that cost nothing to
+# detect and everything to wait out: on v3.8.2 QEMU died 35 seconds into the
+# build with "uncaught target signal 4 (Illegal instruction) - core dumped",
+# and then the job HUNG rather than failing, because BuildKit went on waiting
+# for a process that was already gone. It sat there for 3 hours 21 minutes and
+# was only stopped by hand; with no timeout on the job it would have run to
+# GitHub's 6 hour default. Native runners remove that entire class of failure
+# and bring the build back to roughly amd64 speed. timeout-minutes below is the
+# backstop for anything else that ever wedges: successful builds under QEMU
+# took 22 to 28 minutes, and a native build should be a fraction of that, so
+# 45 minutes is generous and still fails visibly instead of silently burning a
+# runner for a quarter of a day.
 
 on:
   # Primary path: the amd64 publish succeeded, so there is an index to add to.
@@ -43,7 +57,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -95,10 +110,6 @@ jobs:
           # docker-publish only fires on a tag push to this repository, which a
           # fork cannot do. This closes the credential half regardless.
           persist-credentials: false
-
-      - name: Set up QEMU
-        if: steps.vars.outputs.skip != 'true'
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
       - name: Set up Docker Buildx
         if: steps.vars.outputs.skip != 'true'
