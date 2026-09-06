@@ -43,14 +43,11 @@ describe("VERIFY_SYSTEM_PROMPT", () => {
     );
   });
 
+  // styled-jsx and single-provider DNS were deliberately REMOVED from this
+  // list: neither was a false positive, and listing them taught the model to
+  // dismiss true findings. See the not-a-false-positive tests below.
   it("carries the known-benign catalogue the checks keep tripping over", () => {
-    for (const topic of [
-      "black lies",
-      "DANE",
-      "OCSP",
-      "styled-jsx",
-      "NSEC3PARAM",
-    ]) {
+    for (const topic of ["black lies", "DANE", "OCSP", "NSEC3PARAM"]) {
       expect(
         VERIFY_SYSTEM_PROMPT,
         `the known benign patterns section must still cover ${topic}`,
@@ -69,5 +66,35 @@ describe("VERIFY_SYSTEM_PROMPT", () => {
         line.includes(EM_DASH) && !line.includes("must never use an em dash"),
     );
     expect(strays, "em dash outside the rule that bans it").toEqual([]);
+  });
+
+  // These two entries shipped in the first version of the benign catalogue
+  // and told the model that a real single point of failure and a finding
+  // whose own title says "framework-required" were false positives. Both got
+  // marked possible_fp at 87% on our own scan. Intentional is not the same as
+  // untrue, and the reader already has Accepted risk / Not applicable buttons
+  // for the judgement the model was making on their behalf.
+  it("does not teach the model to dismiss true-but-intentional findings", () => {
+    expect(VERIFY_SYSTEM_PROMPT).not.toContain(
+      "deliberate, reasonable trade rather than a misconfiguration",
+    );
+    expect(VERIFY_SYSTEM_PROMPT).not.toContain(
+      "the practical XSS exposure is close to nil",
+    );
+  });
+
+  it("states that a real risk stays confirmed even when it is deliberate", () => {
+    expect(VERIFY_SYSTEM_PROMPT).toContain("What is NOT a false positive");
+    expect(VERIFY_SYSTEM_PROMPT).toContain("refutes nothing");
+    expect(VERIFY_SYSTEM_PROMPT).toContain("Unfixable is not untrue");
+  });
+
+  it("keeps the accept-or-dismiss decision with the reader", () => {
+    expect(VERIFY_SYSTEM_PROMPT).toContain("Accepted risk");
+    expect(VERIFY_SYSTEM_PROMPT).toContain("belongs to the reader, not to you");
+  });
+
+  it("does not let the model re-score severity instead of judging truth", () => {
+    expect(VERIFY_SYSTEM_PROMPT).toContain("You are not re-scoring");
   });
 });

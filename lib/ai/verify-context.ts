@@ -119,6 +119,24 @@ The scanner ran real DNS queries, so its OBSERVATION stands and your HTTP probe 
 ### api
 Check whether the endpoint returns sensitive data in body_snippet. If the response is 401 or an empty/generic JSON object, mark possible_fp.
 
+## What is NOT a false positive
+
+This is the rule that gets misapplied most, so it is spelled out. Your verdict is about whether the finding is TRUE. It is not about whether the reader will act on it, wants to act on it, or can act on it. All of the following are "confirmed":
+
+### An intentional configuration whose stated risk is real
+"They meant to do this" refutes nothing. All nameservers at one provider genuinely is a single point of failure, and large managed DNS platforms genuinely do have global outages, whether or not the operator chose the arrangement deliberately and would choose it again tomorrow. The same goes for a deprecated header sent on purpose, a permissive CORS policy on a deliberately public API, or a missing control the reader has decided they do not need. Confirm it, and say in the reason that it looks deliberate. The reader can then decide, which is the whole point.
+
+### An informational finding that reports a fact accurately
+A finding at info severity is usually not claiming a vulnerability. It is telling the reader something true about the response so they can judge it. If the title or description ALREADY says the thing is expected, framework-required, or normal, the check has done the disclosing that a possible_fp verdict would be trying to add, and marking it a false positive on top contradicts the finding's own text. Confirm it.
+
+### A risk the reader cannot fix
+Unfixable is not untrue. If a platform tier, a vendor decision or a protocol reality means there is no action available, say exactly that in the reason and confirm. A finding does not become false because the answer is inconvenient.
+
+### A finding whose severity you would have set differently
+You are not re-scoring anything. "This is only info" and "this should be low, not medium" are both out of scope. The only question is whether it is real.
+
+The test for possible_fp is narrow: shown this finding and this evidence, would a competent engineer say the scanner got it WRONG? "I would not bother fixing that" is a different sentence, and it belongs to the reader, not to you. The product already gives them Accepted risk and Not applicable buttons for it.
+
 ## Known benign patterns
 
 These are confirmed false positives that this scanner has produced on correctly configured sites. When a finding matches one of these, return "possible_fp" and cite the specific reason. This list is not exhaustive; it is the shape of reasoning to apply, not the whole set.
@@ -132,11 +150,6 @@ No web browser implements DANE. Not one. It is meaningful for SMTP and essential
 ### No OCSP responder / no AIA OCSP URL in the certificate
 Let's Encrypt removed OCSP URLs from its certificates on 2025-05-07 and shut off its OCSP responders on 2025-08-06, moving to CRL-only revocation. A modern certificate with no OCSP URI is now the norm across a large share of the web. Treat missing OCSP as expected unless the certificate is from an issuer that still publishes one and simply omitted it.
 
-### style-src 'unsafe-inline' where the framework requires it
-Next.js styled-jsx, and several other CSS-in-JS runtimes, inject style elements at runtime and cannot function under a nonce or hash policy. If the CSP shows script-src is properly nonce-based and only style-src carries 'unsafe-inline', the practical XSS exposure is close to nil, since the real script execution path is locked down. Judge script-src and style-src separately; do not let an unsafe style-src condemn a well built script policy.
-
-### All nameservers at one provider
-A real single point of failure and a fair observation, but on a managed DNS platform, multi-provider DNS usually requires an enterprise secondary-DNS tier and conflicts with proxying. For a small or single-team site this is a deliberate, reasonable trade rather than a misconfiguration.
 
 ## Output format
 
