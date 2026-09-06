@@ -321,7 +321,15 @@ describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdi
     expect(sql).toContain(
       "ON CONFLICT (user_id, finding_id, finding_url) DO NOTHING",
     );
-    expect(params).toEqual([7, 42, "f1", "https://example.com", "confirmed"]);
+    // One statement per chunk, findings passed as arrays, so a chunk of ten
+    // is one round trip rather than ten.
+    expect(params).toEqual([
+      7,
+      42,
+      "https://example.com",
+      ["f1"],
+      ["confirmed"],
+    ]);
   });
 
   it("upserts scan_finding_feedback as false_positive when the AI verdict is possible_fp", async () => {
@@ -350,10 +358,81 @@ describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdi
     expect(feedbackCall![1]).toEqual([
       7,
       42,
-      "f1",
       "https://example.com",
-      "false_positive",
+      ["f1"],
+      ["false_positive"],
     ]);
+  });
+
+  // Production logged this thirty times in one burst: a scan deleted while a
+  // multi-minute verification was still running leaves every feedback insert
+  // pointing at a row that is gone. The verdicts are still worth keeping, and
+  // the schema says so, scan_history_id is nullable with ON DELETE SET NULL.
+  it("re-inserts the feedback unlinked when the scan row was deleted mid-run", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      confirmedResponse("x"),
+    );
+    let sawFkViolation = false;
+    mockQuery.mockImplementation(async (sql: unknown, params?: unknown[]) => {
+      if (
+        String(sql).includes("scan_finding_feedback") &&
+        params?.[1] !== null
+      ) {
+        sawFkViolation = true;
+        const err = new Error(
+          'insert or update on table "scan_finding_feedback" violates foreign key constraint',
+        ) as Error & { code?: string };
+        err.code = "23503";
+        throw err;
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await runAiVerification("https://example.com", [makeFinding("f1")], 42, 7);
+
+    expect(sawFkViolation, "the linked insert must be attempted first").toBe(
+      true,
+    );
+    const unlinked = mockQuery.mock.calls.filter(
+      ([sql, params]) =>
+        String(sql).includes("scan_finding_feedback") &&
+        (params as unknown[])?.[1] === null,
+    );
+    expect(
+      unlinked.length,
+      "the verdicts must be retried with a null scan_history_id rather than dropped",
+    ).toBe(1);
+    expect((unlinked[0][1] as unknown[])[3]).toEqual(["f1"]);
+  });
+
+  it("logs once for a whole chunk, not once per finding", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      confirmedResponse("x"),
+    );
+    const errors: unknown[] = [];
+    const spy = vi
+      .spyOn(console, "error")
+      .mockImplementation((...args: unknown[]) => {
+        if (String(args[0]).includes("Mark this result")) errors.push(args);
+      });
+    mockQuery.mockImplementation(async (sql: unknown) => {
+      if (String(sql).includes("scan_finding_feedback")) {
+        throw new Error("connection terminated");
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    try {
+      await runAiVerification(
+        "https://example.com",
+        [makeFinding("f1"), makeFinding("f2"), makeFinding("f3")],
+        42,
+        7,
+      );
+      expect(errors.length).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("does not write feedback for an 'uncertain' AI verdict, no honest mapping exists", async () => {

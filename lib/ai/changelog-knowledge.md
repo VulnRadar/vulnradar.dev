@@ -38,6 +38,8 @@ Extended reasoning was only ever requested from Claude, because that is where th
   AI verification answers with one JSON body at the end rather than streaming, and it can legitimately take minutes on a large scan with a reasoning model. Nginx's default proxy_read_timeout is sixty seconds, so a proxy left at its defaults will cut the connection long before anything configured inside the app matters, and the browser sees a 504 with no explanation. The timeout constants now document that hop explicitly, since it is the one layer the application cannot see or fix on your behalf. If you run VulnRadar behind nginx and use deep scan, set proxy_read_timeout and proxy_send_timeout above the deep-scan budget on that location.
 - [Key] **[FIXED]** **Unreadable Backup Codes Were Reported as Fine**
   The account endpoint checks whether your two-factor backup codes are still in the old plaintext format so the app can prompt you to regenerate them. It read the stored value, and if that value could not be parsed at all it quietly moved on and reported the codes as healthy. That column is written by us as JSON, so a value that will not parse is a value nobody can redeem: the account had no working recovery path, the prompt that exists to say so never appeared, and the holder would find out at the exact moment backup codes are for, locked out of their own account. Unparseable now counts as invalid, which is what it always was, and the regeneration prompt fires. The failure is logged too, since a row in that state says something went wrong earlier that nobody saw.
+- [Database] **[FIXED]** **Deleting a Scan Mid-Verification Filled the Log With Errors**
+  When AI verification finishes a finding it pre-fills the Mark this result control with the verdict it reached, so you are not asked to click a button for something already decided. It wrote one row per finding, in its own query, linked to the scan being verified. Verification of a large scan runs for minutes, and if the scan was deleted during that window, by a single delete or a Clear history, every one of those writes pointed at a row that no longer existed. Each failed on the foreign key and each logged its own error, so one run produced thirty near-identical database errors describing something entirely benign, and the verdicts were thrown away. The whole chunk is one statement now rather than one per finding, so a chunk of ten costs one round trip instead of ten. And a scan that vanished mid-run is handled rather than logged at: the verdicts are re-recorded without the scan link, which the schema was always built for, since that column is nullable and set to null when a scan is deleted anyway. A failure that is not this one still logs, once, with a count.
 
 ---
 
@@ -2062,6 +2064,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 69
-- **Total changes documented:** 742
+- **Total changes documented:** 743
 - **Latest:** v3.8.4 (September 6, 2026) - The AI Was Answering Without Thinking
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

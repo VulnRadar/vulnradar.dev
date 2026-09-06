@@ -631,23 +631,57 @@ async function syncFeedbackFromAiVerdicts(
   verdicts: Map<string, Omit<VerifyResult, "id">>,
 ): Promise<void> {
   if (!userId) return;
+
+  const findingIds: string[] = [];
+  const feedbackVerdicts: string[] = [];
   for (const [findingId, v] of verdicts) {
     const feedbackVerdict = AI_VERDICT_TO_FEEDBACK[v.verdict];
     if (!feedbackVerdict) continue;
-    try {
-      await pool.query(
-        `INSERT INTO scan_finding_feedback
-           (user_id, scan_history_id, finding_id, finding_url, verdict, notes)
-         VALUES ($1, $2, $3, $4, $5, 'Set automatically from an AI verify verdict.')
-         ON CONFLICT (user_id, finding_id, finding_url) DO NOTHING`,
-        [userId, scanHistoryId ?? null, findingId, url, feedbackVerdict],
-      );
-    } catch (err) {
-      console.error(
-        "[AI-VERIFY] Failed to sync 'Mark this result' feedback (non-fatal):",
-        err instanceof Error ? err.message : err,
-      );
+    findingIds.push(findingId);
+    feedbackVerdicts.push(feedbackVerdict);
+  }
+  if (findingIds.length === 0) return;
+
+  // One statement for the whole chunk. This ran a query per finding, so a
+  // chunk of ten meant ten round trips, and a failure that applied to all of
+  // them (see below) was logged ten times over.
+  const insert = (historyId: number | null) =>
+    pool.query(
+      `INSERT INTO scan_finding_feedback
+         (user_id, scan_history_id, finding_id, finding_url, verdict, notes)
+       SELECT $1, $2, f.finding_id, $3, f.verdict,
+              'Set automatically from an AI verify verdict.'
+         FROM UNNEST($4::text[], $5::text[]) AS f(finding_id, verdict)
+       ON CONFLICT (user_id, finding_id, finding_url) DO NOTHING`,
+      [userId, historyId, url, findingIds, feedbackVerdicts],
+    );
+
+  try {
+    await insert(scanHistoryId ?? null);
+  } catch (err) {
+    // 23503 is foreign_key_violation: the scan row went away while we were
+    // verifying it, which a delete or a "Clear history" during a run that
+    // can last minutes will do. The verdicts are still worth keeping, and
+    // the schema already says so: scan_history_id is nullable and the
+    // constraint is ON DELETE SET NULL, so a feedback row is designed to
+    // outlive its scan. Re-insert unlinked rather than throw the chunk away
+    // and log a foreign key error once per finding for something benign.
+    if ((err as { code?: string })?.code === "23503") {
+      try {
+        await insert(null);
+        return;
+      } catch (unlinkedErr) {
+        console.error(
+          "[AI-VERIFY] Could not record 'Mark this result' feedback unlinked either (non-fatal):",
+          unlinkedErr instanceof Error ? unlinkedErr.message : unlinkedErr,
+        );
+        return;
+      }
     }
+    console.error(
+      `[AI-VERIFY] Failed to sync 'Mark this result' feedback for ${findingIds.length} finding(s) (non-fatal):`,
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
