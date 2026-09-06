@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Knowledge
 
-_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-09-05._
+_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-09-06._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific scanner checks:
@@ -12113,30 +12113,29 @@ dig +short SOA example.com
 ### `dns-tlsa-record-missing` [dns / info / header]
 **TLSA (DANE) Record Missing**
 
-No TLSA record exists at _443._tcp.yourdomain.com. TLSA records (DANE) pin the expected TLS certificate or public key in DNS, providing an additional layer of verification beyond CA trust.
+None of the mail exchangers for yourdomain.com publish a TLSA record at _25._tcp, so a sending mail server cannot verify the certificate it is handed over SMTP. This is only reported for a domain that both accepts mail and is DNSSEC-signed: DANE has no verifiable meaning without DNSSEC, and no web browser implements it, so a missing TLSA record on a web host is the correct configuration rather than a gap.
 
-**Risk:** Without TLSA, certificate validation relies entirely on the CA ecosystem. A compromised or rogue CA can issue fraudulent certificates that pass standard TLS validation.
+**Risk:** A sending mail server that cannot verify the receiving server certificate has no way to tell a real MX from an attacker who has redirected the connection, and SMTP opportunistic TLS falls back to plaintext rather than failing, so the downgrade is silent on both ends.
 
-**Why it matters:** DANE (DNS-Based Authentication of Named Entities) uses DNSSEC-secured TLSA records to bind certificates or public keys to DNS names. With DNSSEC + TLSA, a client can verify that the certificate presented matches what the domain owner published, independently of the CA.
+**Why it matters:** DANE (DNS-Based Authentication of Named Entities) uses DNSSEC-secured TLSA records to bind a certificate or public key to a DNS name, letting a client verify what it is handed independently of the CA ecosystem. Its deployed home is SMTP, where a large share of sending infrastructure checks it. On the web it is effectively dead: no browser has ever implemented DANE, and pinning a certificate that an ACME client rotates automatically breaks TLS at the next renewal unless republishing is automated.
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc6698
 - https://datatracker.ietf.org/doc/html/rfc7671
 
 **Fix:**
-- Enable DNSSEC for your domain first.
-- Publish a TLSA record at _443._tcp.yourdomain.com.
-- Verify: dig +short TLSA _443._tcp.example.com
-- **Generate TLSA record** (bash):
+- Publish a TLSA record under each mail exchanger, at _25._tcp.mx.yourdomain.com.
+- Use DANE-EE (3 1 1) against the server own key so certificate renewal does not break delivery, or automate republishing alongside renewal.
+- Keep DNSSEC signed: a TLSA record in an unsigned zone can be stripped or forged in transit and buys nothing.
+- Verify: dig +short TLSA _25._tcp.mx.example.com
+- **Generate the TLSA hash from the MX host key** (bash):
 ```bash
 # TLSA 3 1 1 = domain-issued cert, SubjectPublicKeyInfo, SHA-256
-openssl s_client -connect example.com:443 < /dev/null 2>/dev/null | \
-  openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | \
-  openssl dgst -sha256 -binary | xxd -p -c 32
+openssl s_client -starttls smtp -connect mx.example.com:25 < /dev/null 2>/dev/null | \n  openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | \n  openssl dgst -sha256 -binary | xxd -p -c 32
 ```
 - **DNS zone file** (dns):
 ```dns
-_443._tcp.example.com. IN TLSA 3 1 1 <sha256-hash-of-pubkey>
+_25._tcp.mx.example.com. IN TLSA 3 1 1 <sha256-hash-of-pubkey>
 ```
 
 ### `dns-dangling-cname` [dns / medium / header]
@@ -14333,21 +14332,23 @@ Content-Security-Policy: ... object-src 'none';
 ```
 
 ### `coep-credentialless` [headers / info / header]
-**COEP Not Using credentialless or require-corp**
+**Script Relies on Cross-Origin Isolation That COEP Prevents**
 
-Cross-Origin-Embedder-Policy is set but does not use 'credentialless' or 'require-corp'.
+An inline script branches on cross-origin isolation, by reading window.crossOriginIsolated or waiting on Atomics, but Cross-Origin-Embedder-Policy is set to a value that keeps isolation off, so that flag is permanently false and the branch behind it never runs.
 
-**Risk:** Without proper COEP, your page may not achieve cross-origin isolation, which is required for SharedArrayBuffer and high-resolution timers.
+**Risk:** The isolation-dependent path is dead code the author most likely believes is live. Whatever it guards, a faster timer, a threaded WebAssembly module, a shared memory worker, silently never happens, and the fallback runs on every browser instead of none.
 
-**Why it matters:** COEP with 'require-corp' or 'credentialless' enables cross-origin isolation when combined with COOP. This prevents Spectre-style side-channel attacks.
+**Why it matters:** Cross-origin isolation requires COEP require-corp or credentialless TOGETHER with COOP same-origin. COEP unsafe-none is the browser default and is the correct setting for the overwhelming majority of sites: require-corp blocks every cross-origin resource that does not opt in with a Cross-Origin-Resource-Policy header, which typically breaks fonts, payment iframes and analytics. This is reported only when a script shows it expects isolation, never for the default value on its own.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Set COEP to 'credentialless' (more compatible) or 'require-corp' (stricter).
-- Ensure all cross-origin resources either have CORP headers or use credentialless.
+- Decide which one is wrong: the header or the script. Most of the time it is the script, and the isolation-dependent branch should be removed.
+- If you genuinely need isolation, set Cross-Origin-Embedder-Policy: credentialless and Cross-Origin-Opener-Policy: same-origin, then verify window.crossOriginIsolated is true.
+- Before enabling it, confirm every cross-origin resource you load sends Cross-Origin-Resource-Policy, or it will stop loading. Fonts, payment iframes and embedded third-party viewers are the usual casualties.
+- Prefer credentialless over require-corp: it loads non-cooperating resources without credentials rather than blocking them outright.
 - **Header** (http):
 ```http
 Cross-Origin-Embedder-Policy: credentialless

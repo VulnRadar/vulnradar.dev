@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Index (compact)
 
-_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-09-05._
+_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-09-06._
 
 One line per check. Format: `[severity] check-id - title`.
 Full details (fix steps, code examples, references) live in
@@ -531,7 +531,7 @@ remediation documentation in the docs.
 - [medium  ] `csp-form-action-missing` [combined] - CSP Missing form-action Directive
 - [medium  ] `csp-base-uri-missing` [combined] - CSP Missing base-uri Directive
 - [medium  ] `csp-object-src-missing` [combined] - CSP Missing object-src Directive
-- [info    ] `coep-credentialless` [header] - COEP Not Using credentialless or require-corp
+- [info    ] `coep-credentialless` [header] - Script Relies on Cross-Origin Isolation That COEP Prevents
 - [info    ] `csp-report-uri-deprecated` [header] - CSP Uses Deprecated report-uri
 - [high    ] `csp-unsafe-inline-script` [combined] - CSP Allows unsafe-inline Scripts
 - [high    ] `csp-unsafe-eval-detected` [combined] - CSP Allows unsafe-eval
