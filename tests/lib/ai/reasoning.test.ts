@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveOpenAiCompatReasoningExtras,
   resolveAnthropicThinkingBudget,
+  resolveOpenAiReasoningEffort,
 } from "@/lib/ai/reasoning";
 
 describe("resolveOpenAiCompatReasoningExtras", () => {
@@ -62,5 +63,54 @@ describe("resolveAnthropicThinkingBudget", () => {
     const maxTokens = 3000;
     const budget = resolveAnthropicThinkingBudget(maxTokens);
     expect(budget).toBeLessThanOrEqual(maxTokens - 256);
+  });
+});
+
+describe("resolveOpenAiReasoningEffort", () => {
+  it("asks for the most reasoning when verifying, least when summarizing", () => {
+    expect(resolveOpenAiReasoningEffort("gpt-5.4", "verify")).toBe("high");
+    expect(resolveOpenAiReasoningEffort("gpt-5.4", "chat")).toBe("medium");
+    expect(resolveOpenAiReasoningEffort("gpt-5.4", "summary")).toBe("low");
+  });
+
+  it("asks for more reasoning when verifying than when summarizing", () => {
+    expect(resolveOpenAiReasoningEffort("gpt-5.4", "verify")).toBe("high");
+    expect(resolveOpenAiReasoningEffort("gpt-5.4", "summary")).toBe("low");
+  });
+
+  it("covers the reasoning families across providers, not just OpenAI", () => {
+    for (const id of [
+      "gpt-5",
+      "gpt-5.4-mini",
+      "o3-mini",
+      "gemini-3-pro-preview",
+      "grok-4.6",
+    ]) {
+      expect(
+        resolveOpenAiReasoningEffort(id, "verify"),
+        `${id} should request reasoning`,
+      ).toBe("high");
+    }
+  });
+
+  it("strips a gateway vendor prefix before matching", () => {
+    expect(resolveOpenAiReasoningEffort("openai/gpt-5.4", "verify")).toBe(
+      "high",
+    );
+  });
+
+  it("sends nothing for a model that does not take the parameter", () => {
+    for (const id of [
+      "gpt-4o-mini",
+      "mistral-small-latest",
+      "llama-3.3-70b-versatile",
+      "deepseek-chat",
+      "MiniMax-M3",
+    ]) {
+      expect(
+        resolveOpenAiReasoningEffort(id, "verify"),
+        `${id} must not be sent reasoning_effort`,
+      ).toBeNull();
+    }
   });
 });

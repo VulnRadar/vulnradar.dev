@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { isLocalUrl, resolveProviderName } from "@/lib/ai/provider";
+import {
+  isLocalUrl,
+  resolveProviderName,
+  isAnthropicProvider,
+} from "@/lib/ai/provider";
 
 describe("isLocalUrl", () => {
   it("returns true for localhost URLs", () => {
@@ -169,5 +173,37 @@ describe("resolveProviderName", () => {
     expect(resolveProviderName("https://random-api.com/v1/chat")).toBe(
       "Custom LLM",
     );
+  });
+});
+
+// A provider is not the same thing as a request shape. MiniMax serves
+// OpenAI-shaped requests at /v1 and Anthropic-shaped ones at /anthropic on
+// the SAME host, so host-only matching sent the Anthropic route an OpenAI
+// body and silently dropped thinking: the model still answered, just without
+// reasoning, which is the worst way for this to be wrong.
+describe("isAnthropicProvider: routes by path, not just host", () => {
+  it("recognizes MiniMax's Anthropic-compatible endpoint", () => {
+    expect(isAnthropicProvider("https://api.minimax.io/anthropic")).toBe(true);
+    expect(isAnthropicProvider("https://api.minimax.io/anthropic/v1")).toBe(
+      true,
+    );
+    // Mainland China host, same route.
+    expect(isAnthropicProvider("https://api.minimaxi.com/anthropic")).toBe(
+      true,
+    );
+  });
+
+  it("still treats the OpenAI-compatible MiniMax route as not Anthropic", () => {
+    expect(isAnthropicProvider("https://api.minimax.io/v1")).toBe(false);
+  });
+
+  it("keeps recognizing Anthropic itself", () => {
+    expect(isAnthropicProvider("https://api.anthropic.com/v1")).toBe(true);
+  });
+
+  it("does not match a path that merely starts with the same letters", () => {
+    expect(isAnthropicProvider("https://example.com/anthropicish")).toBe(false);
+    expect(isAnthropicProvider("https://api.openai.com/v1")).toBe(false);
+    expect(isAnthropicProvider(null)).toBe(false);
   });
 });

@@ -90,8 +90,36 @@ export function resolveProviderName(baseUrl: string | null): string {
  * OpenAI-compatible request path uses this one function, so detection can't
  * drift between chat/route.ts, verify-findings.ts, and verify-audit.ts.
  */
+function urlPath(u: string): string {
+  try {
+    return new URL(u).pathname.toLowerCase().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Whether this endpoint speaks the Anthropic Messages API.
+ *
+ * This decides the request SHAPE, not who the vendor is, and those are not
+ * the same question. Several providers publish an Anthropic-compatible
+ * surface alongside their OpenAI-compatible one and route between them by
+ * PATH on the same host: MiniMax takes OpenAI-shaped requests at
+ * https://api.minimax.io/v1 and Anthropic-shaped ones at
+ * https://api.minimax.io/anthropic, and its own documentation points at the
+ * Anthropic path for the advanced model features.
+ *
+ * Matching on hostname alone therefore sent every one of those endpoints an
+ * OpenAI-shaped request, which silently dropped extended thinking, since
+ * thinking is only expressible in the Anthropic body here. The model still
+ * answered, so nothing failed; the answers were just made without reasoning,
+ * which is the worst way for this to be wrong.
+ */
 export function isAnthropicProvider(baseUrl: string | null): boolean {
-  return resolveProviderName(baseUrl) === "Claude";
+  if (!baseUrl) return false;
+  if (resolveProviderName(baseUrl) === "Claude") return true;
+  // "/anthropic", "/anthropic/v1", and anything below them.
+  return /^\/anthropic(\/|$)/.test(urlPath(baseUrl) + "");
 }
 
 /**

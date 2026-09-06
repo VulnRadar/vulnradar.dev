@@ -10,7 +10,10 @@ import {
   isAnthropicProvider,
 } from "@/lib/ai/provider";
 import { callAnthropicMessages } from "@/lib/ai/anthropic";
-import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
+import {
+  resolveAnthropicThinkingBudget,
+  resolveOpenAiCompatReasoningExtras,
+} from "@/lib/ai/reasoning";
 import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { recordAiTokens } from "@/lib/billing/ai-usage";
@@ -371,19 +374,51 @@ async function callVerify(
       /* ignore */
     }
 
-    const res = await fetch(`${endpoint.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: endpoint.model,
-        max_tokens: settings.maxTokens,
-        messages: [
-          { role: "system", content: VERIFY_SYSTEM_PROMPT },
-          { role: "user", content: prompt },
-        ],
-      }),
-      signal: controller.signal,
-    });
+    // Reasoning on the OpenAI-compatible path too, not just Anthropic's.
+    // Without this every GPT-5, o-series, Gemini 3 and Grok 4 verdict was a
+    // snap judgement, on a question whose answer is shown to the user as a
+    // statement about their security.
+    const extras = resolveOpenAiCompatReasoningExtras(
+      endpoint.baseUrl,
+      endpoint.model,
+      "verify",
+    );
+    const askedToReason = Object.keys(extras).length > 0;
+    const baseBody: Record<string, unknown> = {
+      model: endpoint.model,
+      max_tokens: settings.maxTokens,
+      messages: [
+        { role: "system", content: VERIFY_SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
+    };
+    const post = (body: Record<string, unknown>) =>
+      fetch(`${endpoint.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+    let res = await post({ ...baseBody, ...extras });
+    // A strict endpoint rejects an unknown body field with a 400. Throwing the
+    // whole verdict away over an optional quality knob is the wrong trade, and
+    // the allowlist in resolveOpenAiReasoningEffort cannot be right forever,
+    // so drop the field and ask once more instead of returning nothing.
+    if (!res.ok && res.status === 400 && askedToReason) {
+      let refusal = "";
+      try {
+        refusal = await res.clone().text();
+      } catch {
+        /* ignore */
+      }
+      if (/reasoning/i.test(refusal)) {
+        console.error(
+          `[AI-VERIFY] ${endpoint.model} refused reasoning_effort; retrying without it.`,
+        );
+        res = await post(baseBody);
+      }
+    }
 
     if (!res.ok) {
       let body = "";

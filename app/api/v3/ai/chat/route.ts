@@ -323,7 +323,7 @@ export async function POST(req: Request) {
           { role: "system", content: systemPrompt },
           ...conversationMessages,
         ],
-        ...resolveOpenAiCompatReasoningExtras(baseUrl, model),
+        ...resolveOpenAiCompatReasoningExtras(baseUrl, model, "chat"),
       };
 
       const headers: Record<string, string> = {

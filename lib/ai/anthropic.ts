@@ -58,6 +58,11 @@ const ANTHROPIC_ADAPTIVE_THINKING_MODELS = new Set([
   "claude-opus-5",
   "claude-opus-4-8",
   "claude-sonnet-5",
+  // MiniMax M3 over its Anthropic-compatible endpoint. Its docs specify
+  // {"type":"adaptive"} and say thinking is OFF by default, so omitting the
+  // field entirely would leave the model answering without reasoning, and
+  // sending budget_tokens would be rejected.
+  "MiniMax-M3",
 ]);
 
 export function anthropicUsesAdaptiveThinking(model: string): boolean {

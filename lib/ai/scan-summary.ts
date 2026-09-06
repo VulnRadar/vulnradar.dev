@@ -38,7 +38,10 @@ import {
 } from "./verify-findings";
 import { isAnthropicProvider } from "@/lib/ai/provider";
 import { callAnthropicMessages } from "@/lib/ai/anthropic";
-import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
+import {
+  resolveAnthropicThinkingBudget,
+  resolveOpenAiCompatReasoningExtras,
+} from "@/lib/ai/reasoning";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
@@ -146,19 +149,47 @@ async function callSummaryModel(
     /* ignore */
   }
 
-  const res = await fetch(`${endpoint.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: endpoint.model,
-      max_tokens: maxTokens,
-      messages: [
-        { role: "system", content: SUMMARY_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-    }),
-    signal,
-  });
+  // Low effort rather than high: a summary restates findings that have
+  // already been decided, and its latency is visible on every completed scan.
+  const extras = resolveOpenAiCompatReasoningExtras(
+    endpoint.baseUrl,
+    endpoint.model,
+    "summary",
+  );
+  const askedToReason = Object.keys(extras).length > 0;
+  const baseBody: Record<string, unknown> = {
+    model: endpoint.model,
+    max_tokens: maxTokens,
+    messages: [
+      { role: "system", content: SUMMARY_SYSTEM_PROMPT },
+      { role: "user", content: prompt },
+    ],
+  };
+  const post = (body: Record<string, unknown>) =>
+    fetch(`${endpoint.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+
+  let res = await post({ ...baseBody, ...extras });
+  // Same fallback as the verifier: an endpoint that refuses the field should
+  // cost us the reasoning, not the summary.
+  if (!res.ok && res.status === 400 && askedToReason) {
+    let refusal = "";
+    try {
+      refusal = await res.clone().text();
+    } catch {
+      /* ignore */
+    }
+    if (/reasoning/i.test(refusal)) {
+      console.error(
+        `[AI-SCAN-SUMMARY] ${endpoint.model} refused reasoning_effort; retrying without it.`,
+      );
+      res = await post(baseBody);
+    }
+  }
 
   if (!res.ok) {
     let body = "";

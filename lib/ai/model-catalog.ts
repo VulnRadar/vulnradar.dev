@@ -40,6 +40,35 @@ export const AI_MODEL_CATALOG: AiProviderCatalogEntry[] = [
     keyHint: "Find your API key at platform.openai.com/api-keys",
     models: [
       {
+        id: "gpt-5.4",
+        label: "GPT-5.4",
+        contextWindow: 400_000,
+        maxOutputTokens: 128_000,
+        supportsThinking: true,
+      },
+      {
+        id: "gpt-5.4-mini",
+        label: "GPT-5.4 mini",
+        contextWindow: 400_000,
+        maxOutputTokens: 128_000,
+        supportsThinking: true,
+      },
+      {
+        id: "gpt-5.4-nano",
+        label: "GPT-5.4 nano",
+        contextWindow: 400_000,
+        maxOutputTokens: 128_000,
+        supportsThinking: true,
+        note: "API only. Cheapest of the 5.4 line; prefer a larger model for finding verification.",
+      },
+      {
+        id: "gpt-5.2",
+        label: "GPT-5.2",
+        contextWindow: 400_000,
+        maxOutputTokens: 128_000,
+        supportsThinking: true,
+      },
+      {
         id: "gpt-5",
         label: "GPT-5",
         contextWindow: 400_000,
@@ -87,6 +116,13 @@ export const AI_MODEL_CATALOG: AiProviderCatalogEntry[] = [
     keyHint: "Find your API key at console.anthropic.com",
     models: [
       {
+        id: "claude-fable-5-1",
+        label: "Claude Fable 5.1",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        supportsThinking: true,
+      },
+      {
         id: "claude-opus-5",
         label: "Claude Opus 5",
         contextWindow: 1_000_000,
@@ -124,6 +160,20 @@ export const AI_MODEL_CATALOG: AiProviderCatalogEntry[] = [
     keyPlaceholder: "AIzaSy...",
     keyHint: "Find your API key at aistudio.google.com",
     models: [
+      {
+        id: "gemini-3-pro-preview",
+        label: "Gemini 3 Pro",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 64_000,
+        supportsThinking: true,
+      },
+      {
+        id: "gemini-3-flash-preview",
+        label: "Gemini 3 Flash",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 64_000,
+        supportsThinking: true,
+      },
       {
         id: "gemini-2.5-pro",
         label: "Gemini 2.5 Pro",
@@ -228,6 +278,13 @@ export const AI_MODEL_CATALOG: AiProviderCatalogEntry[] = [
     keyHint: "Find your API key at platform.minimax.io",
     models: [
       {
+        id: "MiniMax-M3",
+        label: "MiniMax M3",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 131_072,
+        note: "Reasoning only runs on MiniMax's Anthropic-compatible endpoint (the MiniMax (Anthropic API) provider below), which is what its own docs recommend. On this OpenAI-compatible URL the model answers without thinking.",
+      },
+      {
         id: "MiniMax-M2.7-highspeed",
         label: "MiniMax M2.7 Speed",
         contextWindow: 204_800,
@@ -262,6 +319,61 @@ export const AI_MODEL_CATALOG: AiProviderCatalogEntry[] = [
         maxOutputTokens: 8_000,
         supportsThinking: true,
         note: "Chain-of-thought reasoning tokens (up to 32K) are separate from this output cap and from the context window.",
+      },
+    ],
+  },
+  {
+    // MiniMax publishes BOTH an OpenAI-compatible surface (above) and an
+    // Anthropic-compatible one, on the same host, routed by path. Its own
+    // documentation points here for the advanced model features, and it is
+    // the only one of the two where M3 will actually think: reasoning is an
+    // Anthropic-body field in this codebase, so a request sent to /v1 goes
+    // out without it and the model answers cold.
+    id: "minimax-anthropic",
+    name: "MiniMax (Anthropic API)",
+    baseUrl: "https://api.minimax.io/anthropic/v1",
+    keyPlaceholder: "your-api-key",
+    keyHint:
+      "Same key as MiniMax above; this is the Anthropic-compatible route. Mainland China: https://api.minimaxi.com/anthropic/v1",
+    models: [
+      {
+        id: "MiniMax-M3",
+        label: "MiniMax M3 (thinking)",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 131_072,
+        supportsThinking: true,
+        note: "Thinking is off by default on M3 and is requested as {type: adaptive}, which this endpoint supports and the OpenAI-compatible one does not.",
+      },
+    ],
+  },
+  {
+    id: "xai",
+    name: "xAI (Grok)",
+    baseUrl: "https://api.x.ai/v1",
+    keyPlaceholder: "xai-...",
+    keyHint: "Find your API key at console.x.ai",
+    models: [
+      {
+        id: "grok-4.6",
+        label: "Grok 4.6",
+        contextWindow: 500_000,
+        maxOutputTokens: 128_000,
+        supportsThinking: true,
+      },
+      {
+        id: "grok-4.5",
+        label: "Grok 4.5",
+        contextWindow: 500_000,
+        maxOutputTokens: 128_000,
+        supportsThinking: true,
+      },
+      {
+        id: "grok-4.1-fast",
+        label: "Grok 4.1 Fast",
+        contextWindow: 2_000_000,
+        maxOutputTokens: 128_000,
+        supportsThinking: true,
+        note: "Largest context of the Grok line, and the cheapest. Good for whole-scan summaries.",
       },
     ],
   },

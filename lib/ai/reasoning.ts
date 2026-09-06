@@ -22,28 +22,29 @@ import { resolveProviderName } from "./provider";
 
 export type OpenAiCompatExtras = Record<string, unknown>;
 
-const OPENAI_REASONING_MODEL = /^o\d(-|$)/i;
-
 /**
- * Extra fields to merge into an OpenAI-compatible chat/completions payload
- * to request native reasoning, when the provider/model supports it. Returns
- * an empty object when there's nothing to add — merging that in is a no-op.
+ * The reasoning fields to merge into an OpenAI-COMPATIBLE request body.
+ *
+ * One function for all three callers (chat, verification, summary) so the
+ * question "does this model reason, and how hard" has a single answer. It
+ * previously keyed off resolveProviderName, which meant only endpoints this
+ * app recognises by hostname could reason at all: Grok got nothing, and so
+ * did every model reached through a gateway that namespaces its ids.
+ * resolveOpenAiReasoningEffort below matches on the MODEL instead, which is
+ * what actually decides whether the field is accepted.
  */
 export function resolveOpenAiCompatReasoningExtras(
   baseUrl: string | null,
   model: string,
+  purpose: ReasoningPurpose = "chat",
 ): OpenAiCompatExtras {
-  const provider = resolveProviderName(baseUrl);
-
-  if (provider === "ChatGPT" && OPENAI_REASONING_MODEL.test(model)) {
-    return { reasoning_effort: "medium" };
-  }
-
-  if (provider === "Gemini") {
+  // Gemini takes its own shape rather than reasoning_effort when reached
+  // through Google's own OpenAI-compatibility layer.
+  if (resolveProviderName(baseUrl) === "Gemini") {
     return { google: { thinking_config: { include_thoughts: true } } };
   }
-
-  return {};
+  const effort = resolveOpenAiReasoningEffort(model, purpose);
+  return effort ? { reasoning_effort: effort } : {};
 }
 
 /**
@@ -58,4 +59,61 @@ export function resolveAnthropicThinkingBudget(maxTokens: number): number {
   const budget = Math.floor(maxTokens * 0.5);
   if (budget < 1024) return 0;
   return Math.min(budget, maxTokens - 256);
+}
+
+/**
+ * The `reasoning_effort` value to send to an OpenAI-COMPATIBLE endpoint, or
+ * null for a model that does not take the parameter.
+ *
+ * Reasoning used to be requested only on the Anthropic path, because that is
+ * where this codebase first needed it. The effect was that every other
+ * provider answered cold, including models built specifically to think:
+ * GPT-5, the o-series and Gemini 3 all expose reasoning through this exact
+ * field, and a verification verdict made without it is a snap judgement on a
+ * question that deserves better.
+ *
+ * The allowlist is deliberate rather than a catch-all. A strict endpoint
+ * rejects an unknown body field with a 400, so guessing would break working
+ * configurations; callers additionally retry once without the field if a
+ * request is refused for it, which covers a model we get wrong here.
+ *
+ * "verify" asks for the most reasoning, because a wrong verdict is shown to
+ * the user as a judgement about their security. "summary" asks for less: it
+ * restates findings that have already been decided, and latency there is
+ * visible on every completed scan.
+ */
+export type ReasoningPurpose = "verify" | "summary" | "chat";
+
+export function resolveOpenAiReasoningEffort(
+  model: string,
+  purpose: ReasoningPurpose,
+): "low" | "medium" | "high" | null {
+  // OpenRouter and similar gateways namespace the id as "vendor/model".
+  const id = model.toLowerCase().split("/").pop() ?? "";
+  const reasons =
+    /^gpt-5/.test(id) ||
+    /^o[1-9](-|$)/.test(id) ||
+    /^gemini-(2.5|3)/.test(id) ||
+    /^grok-4/.test(id);
+  if (!reasons) return null;
+  if (purpose === "verify") return "high";
+  // Chat sits between the two: a support answer benefits from some thought,
+  // but the reply streams to someone watching it appear.
+  return purpose === "chat" ? "medium" : "low";
+}
+
+/**
+ * Models that reason on every request whether or not you ask, and take no
+ * parameter to control it.
+ *
+ * These are NOT a gap in the wiring, they are the opposite: sending
+ * reasoning_effort to one is at best ignored and at worst a 400. The set
+ * exists so that "this model thinks" and "this app asks it to think" can be
+ * told apart, which is what the catalog's supportsThinking flag is checked
+ * against.
+ */
+const ALWAYS_REASONS = new Set(["deepseek-reasoner"]);
+
+export function modelReasonsWithoutRequest(model: string): boolean {
+  return ALWAYS_REASONS.has(model.toLowerCase().split("/").pop() ?? "");
 }

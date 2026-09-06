@@ -18,6 +18,23 @@ and full description.
 
 ---
 
+## v3.8.4 - September 6, 2026
+**The AI Was Answering Without Thinking**
+
+Extended reasoning was only ever requested from Claude, because that is where this app first needed it. Every other provider answered cold, including the models built specifically to think, and including the one our own managed AI runs. Nothing failed, which is why it went unnoticed: the answers simply arrived without any reasoning behind them. Reasoning is now requested wherever the model supports it, the model list has grown from 24 to 36 across 11 providers, and the verification agent has stopped calling true findings false positives.
+
+### Changes
+- [Sparkles] **[FIXED]** **Reasoning Was Requested From Claude and Nobody Else**
+  Both AI paths that make a judgement, finding verification and the scan summary, asked for extended thinking only when the endpoint was Anthropic's. Every other provider got a plain request with no reasoning field at all, so GPT-5, the o-series, Gemini and Grok all answered on instinct despite each exposing reasoning through a documented parameter. A verification verdict is shown to you as a statement about your own security, and it was being made as a snap judgement. Reasoning is now requested on the OpenAI-compatible path too, at high effort for verification, where being wrong is expensive, and low for summaries, which restate findings that have already been decided and whose latency you feel on every completed scan. A model that reasons unconditionally and takes no parameter, DeepSeek's reasoner among them, is recognised rather than sent a field it would reject, and an endpoint that refuses the parameter outright gets asked again without it, because losing the reasoning is a better outcome than losing the answer.
+- [Bot] **[FIXED]** **An Anthropic-Compatible Endpoint Was Treated as an OpenAI One**
+  Several providers publish both an OpenAI-compatible and an Anthropic-compatible API, on the same host, told apart only by the path. MiniMax is one, and its own documentation points at the Anthropic route for the advanced model features. We decided which request shape to send by looking at the hostname alone, so that route was handed an OpenAI-shaped body and the thinking request, which only exists in the Anthropic body, was dropped on the floor. The endpoint answered anyway, so nothing ever surfaced as an error. The check now reads the path as well as the host, which is the difference between knowing who the vendor is and knowing what the endpoint speaks.
+- [Layers] **[ADDED]** **The Model List Went From 24 to 36**
+  Settings offered nine providers and a fairly dated slice of what each one sells. There are eleven now, and the list runs current: GPT-5.4 and its mini and nano variants alongside 5.2, Claude Fable 5.1 next to Opus 5 and Sonnet 5, Gemini 3 Pro and Flash, xAI's Grok as a provider we recognised in code but never offered a model for, and MiniMax M3 with its million-token context against the roughly two hundred thousand of the M2.7 line it follows. M3 appears twice on purpose, once on each of MiniMax's two API routes, because only one of them can carry a thinking request, and the entry that cannot no longer claims it can. That last part is now enforced: a test derives the answer from the actual wiring, so a model advertising reasoning on a route this app sends none for fails the build instead of quietly misleading you.
+- [ShieldCheck] **[FIXED]** **The Verifier Called True Findings False Positives**
+  Guidance we gave the verification agent told it that all your nameservers sitting at one provider was a deliberate reasonable trade, and that a framework-required style-src carried practically no exposure. It followed the instruction and marked both as probably-not-real at high confidence, on our own scan. Both verdicts were wrong, and the mistake underneath them was treating two different sentences as one: whether a finding is TRUE, and whether you are going to act on it. Every nameserver really is at one provider and that really is a single point of failure; managed platforms really do have outages. The guidance is replaced with the opposite rule, spelled out: an intentional configuration whose risk is real stays confirmed, an informational finding that reports a fact accurately stays confirmed, and a risk with no available fix stays confirmed, because unfixable is not untrue. Every finding already carries Accepted risk and Not applicable controls. That judgement is yours, and a verdict that pre-empts it tells you something false about your own infrastructure.
+
+---
+
 ## v3.8.3 - September 5, 2026
 **The Scanner Reported a Zone It Could Not Actually Walk**
 
@@ -2038,7 +2055,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 68
-- **Total changes documented:** 735
-- **Latest:** v3.8.3 (September 5, 2026) - The Scanner Reported a Zone It Could Not Actually Walk
+- **Total releases:** 69
+- **Total changes documented:** 739
+- **Latest:** v3.8.4 (September 6, 2026) - The AI Was Answering Without Thinking
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
