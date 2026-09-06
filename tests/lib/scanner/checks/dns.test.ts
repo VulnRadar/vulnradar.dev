@@ -39,6 +39,7 @@ import {
   checkCnameChain,
   checkCaaIodef,
   checkVerificationTokenSprawl,
+  usesSyntheticDenial,
 } from "@/lib/scanner/checks/dns";
 
 const dnsMock = vi.mocked(dns);
@@ -300,7 +301,15 @@ describe("checkNullMxRecommended", () => {
 // failed" case is asserted explicitly: a network failure must never be read
 // as "the record is absent".
 
-type DohFixture = Record<string, { Answer?: { data: string }[] } | "fail">;
+type DohFixture = Record<
+  string,
+  | {
+      Status?: number;
+      Answer?: { data: string }[];
+      Authority?: { type: number; name?: string; data?: string }[];
+    }
+  | "fail"
+>;
 
 function stubDoh(fixture: DohFixture) {
   const originalFetch = globalThis.fetch;
@@ -311,7 +320,16 @@ function stubDoh(fixture: DohFixture) {
     if (entry === undefined || entry === "fail") {
       throw new Error("network");
     }
-    return { json: async () => entry } as unknown as Response;
+    // The denial probe queries a RANDOM label, so a fixture cannot name it
+    // up front. "__QUERIED__" stands in for whatever name was actually
+    // asked for, which is the whole point of the black-lies fingerprint.
+    const queried = decodeURIComponent(
+      /[?&]name=([^&]+)/.exec(href)?.[1] ?? "",
+    );
+    const body = JSON.parse(
+      JSON.stringify(entry).split("__QUERIED__").join(queried),
+    );
+    return { json: async () => body } as unknown as Response;
   });
   globalThis.fetch = spy as unknown as typeof fetch;
   return () => {
@@ -464,11 +482,102 @@ describe("checkDsDigestAlgorithm", () => {
   });
 });
 
+// The probe is exported and tested directly because its three outcomes,
+// "synthesized" / "pre-signed" / "cannot tell", collapse to the same visible
+// behaviour in checkNsecParameters (two of them suppress the finding), so
+// going through the check alone cannot tell a correct answer from a lucky one.
+describe("usesSyntheticDenial", () => {
+  it("recognizes black lies: NOERROR and an NSEC minted for the queried name", async () => {
+    const restore = stubDoh({
+      TXT: {
+        Status: 0,
+        Answer: [],
+        Authority: [
+          { type: 6, name: "example.com" },
+          { type: 47, name: "__QUERIED__" },
+        ],
+      },
+    });
+    try {
+      expect(await usesSyntheticDenial("example.com")).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("reads NXDOMAIN as a pre-signed, walkable zone", async () => {
+    const restore = stubDoh({ TXT: { Status: 3 } });
+    try {
+      expect(await usesSyntheticDenial("example.com")).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not claim black lies when the NSEC names some other zone entry", async () => {
+    const restore = stubDoh({
+      TXT: {
+        Status: 0,
+        Answer: [],
+        Authority: [{ type: 47, name: "www.example.com" }],
+      },
+    });
+    try {
+      expect(await usesSyntheticDenial("example.com")).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it("returns unknown for a wildcard, a SERVFAIL, and an unreachable resolver", async () => {
+    const wildcard = stubDoh({
+      TXT: { Status: 0, Answer: [{ data: "v=spf1 -all" }] },
+    });
+    try {
+      expect(await usesSyntheticDenial("example.com")).toBeNull();
+    } finally {
+      wildcard();
+    }
+
+    const servfail = stubDoh({ TXT: { Status: 2 } });
+    try {
+      expect(await usesSyntheticDenial("example.com")).toBeNull();
+    } finally {
+      servfail();
+    }
+
+    const dead = stubDoh({ TXT: "fail" });
+    try {
+      expect(await usesSyntheticDenial("example.com")).toBeNull();
+    } finally {
+      dead();
+    }
+  });
+
+  it("ignores a trailing dot and case when matching the NSEC owner", async () => {
+    const restore = stubDoh({
+      TXT: {
+        Status: 0,
+        Answer: [],
+        Authority: [{ type: 47, name: "__QUERIED__." }],
+      },
+    });
+    try {
+      expect(await usesSyntheticDenial("EXAMPLE.com")).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe("checkNsecParameters", () => {
   it("flags a signed zone with no NSEC3PARAM record", async () => {
     const restore = stubDoh({
       DNSKEY: { Answer: [{ data: "257 3 13 abc" }] },
       NSEC3PARAM: { Answer: [] },
+      // NXDOMAIN for a name that cannot exist: the zone pre-signed the gaps,
+      // so the chain is real and walkable.
+      TXT: { Status: 3 },
     });
     try {
       const findings = await checkNsecParameters(
@@ -478,6 +587,58 @@ describe("checkNsecParameters", () => {
       expect(findings.map((f) => f.id.split("--")[0])).toEqual([
         "dns-nsec-zone-walking",
       ]);
+      expect(findings[0].evidence).toContain("NXDOMAIN");
+    } finally {
+      restore();
+    }
+  });
+
+  // Cloudflare live-signs and answers a name that does not exist with NOERROR
+  // plus one NSEC record minimally covering the queried name ("black lies").
+  // The record shape the check keys on (DNSKEY present, no NSEC3PARAM) is
+  // identical to a walkable zone's, so only the denial probe separates them.
+  it("reports nothing for a live-signed zone that synthesizes denial", async () => {
+    const restore = stubDoh({
+      DNSKEY: { Answer: [{ data: "257 3 13 abc" }] },
+      NSEC3PARAM: { Answer: [] },
+      TXT: { Status: 0, Answer: [], Authority: [{ type: 47 }] },
+    });
+    try {
+      expect(
+        await checkNsecParameters("example.com", "https://example.com"),
+      ).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("reports nothing when the denial probe cannot be completed", async () => {
+    const restore = stubDoh({
+      DNSKEY: { Answer: [{ data: "257 3 13 abc" }] },
+      NSEC3PARAM: { Answer: [] },
+      TXT: "fail",
+    });
+    try {
+      expect(
+        await checkNsecParameters("example.com", "https://example.com"),
+      ).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+
+  // A wildcard answers NOERROR for every label, so NOERROR on its own is not
+  // the black-lies fingerprint and says nothing about the denial records.
+  it("reports nothing when a wildcard answers the probe", async () => {
+    const restore = stubDoh({
+      DNSKEY: { Answer: [{ data: "257 3 13 abc" }] },
+      NSEC3PARAM: { Answer: [] },
+      TXT: { Status: 0, Answer: [{ data: "v=wildcard" }] },
+    });
+    try {
+      expect(
+        await checkNsecParameters("example.com", "https://example.com"),
+      ).toEqual([]);
     } finally {
       restore();
     }

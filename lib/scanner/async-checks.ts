@@ -1923,25 +1923,74 @@ export async function checkDNSKEYRecord(
   ];
 }
 
+/**
+ * DANE, scoped to the only place it is actually used.
+ *
+ * This check used to query _443._tcp.<domain> and report every web host with
+ * no TLSA record. No browser implements DANE, not one, so that advice could
+ * not be acted on by anything that would ever visit the site, and on a host
+ * using an ACME certificate that rotates on its own schedule a pinned TLSA
+ * record breaks TLS at the next renewal unless republishing is automated.
+ * Absent TLSA on a web host is the correct configuration.
+ *
+ * DANE is real and widely deployed for SMTP, where the sending MTA does check
+ * it, so the check now looks where it matters: _25._tcp under each MX host.
+ * Two further gates keep it to domains that can act on the answer. A domain
+ * with no MX receives no mail and has nothing to protect. A domain without
+ * DNSSEC cannot publish a TLSA record anyone can trust, and telling it to
+ * publish one is advice with a prerequisite it does not have; checkDNSSEC
+ * already reports that prerequisite on its own.
+ */
 export async function checkTLSARecord(
   domain: string,
   url: string,
 ): Promise<Vulnerability[]> {
-  const name = `_443._tcp.${domain}`;
-  const has = await dohHasAnswer(name, "TLSA");
-  if (has === null || has) return [];
+  let exchanges: string[];
+  try {
+    const records = await Promise.race([
+      resolveMxOnce(domain),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 4000),
+      ),
+    ]);
+    exchanges = records
+      // RFC 7505 null MX ("."): the domain has declared it accepts no mail.
+      .map((r) => r.exchange.replace(/[.]$/, "").trim())
+      .filter((e) => e.length > 0)
+      // Bound the work: a domain with a dozen MX hosts does not need a dozen
+      // more DoH round trips to answer a question about all of them.
+      .slice(0, 4);
+  } catch {
+    return [];
+  }
+  if (exchanges.length === 0) return [];
+
+  // DANE without DNSSEC is unverifiable, so "publish a TLSA record" is not
+  // yet the right next step for an unsigned zone.
+  const signed = await dohHasAnswer(domain, "DNSKEY");
+  if (signed === null || !signed) return [];
+
+  const results = await Promise.all(
+    exchanges.map((mx) => dohHasAnswer(`_25._tcp.${mx}`, "TLSA")),
+  );
+  // Any inconclusive lookup and the check says nothing: a resolver that did
+  // not answer is not evidence that a record is absent.
+  if (results.some((r) => r === null)) return [];
+  if (results.some((r) => r === true)) return [];
+
+  const checked = exchanges.map((mx) => `_25._tcp.${mx}`).join(", ");
   return [
     makeVuln(
       url,
       A.tlsaDaneRecordMissing,
-      `No TLSA record exists at ${name}. TLSA records (DANE) pin the expected TLS certificate or public key in DNS, adding a layer of verification beyond CA trust.`,
-      `Google and Cloudflare DoH both returned an empty Answer section for a TLSA query against ${name}.`,
-      "Without TLSA, certificate validation relies entirely on the CA ecosystem; a compromised or rogue CA can issue a fraudulent certificate that passes standard TLS validation.",
-      "DANE uses DNSSEC-secured TLSA records to bind a certificate or public key to a DNS name, letting a client verify the certificate independently of the CA.",
+      `${domain} is DNSSEC-signed and accepts mail, but none of its mail exchangers publish a TLSA record, so sending servers cannot verify the certificate they are handed over SMTP.`,
+      `Google and Cloudflare DoH both returned an empty Answer section for a TLSA query against ${checked}.`,
+      "A sending mail server that cannot verify the receiving server's certificate has no way to tell a real MX from an attacker who has redirected the connection, and SMTP opportunistic TLS falls back to plaintext rather than failing, so a downgrade is silent on both ends.",
+      "DANE binds a certificate or public key to a DNS name through a DNSSEC-signed TLSA record, letting a sending MTA verify the receiving MTA independently of the CA ecosystem. Unlike on the web, where no browser implements it, DANE for SMTP is checked by a large share of sending infrastructure and is what MTA-STS's stricter cousin looks like when the zone is signed.",
       [
-        "Enable DNSSEC for the domain first (TLSA has no integrity guarantee without it).",
-        `Publish a TLSA record at ${name}.`,
-        `Verify: dig +short TLSA ${name}`,
+        `Publish a TLSA record under each mail exchanger: ${checked}.`,
+        "Use DANE-EE (3 1 1) against the server's own key so certificate renewal does not break delivery, or automate republishing alongside renewal.",
+        `Verify: dig +short TLSA _25._tcp.${exchanges[0]}`,
       ],
       [],
       60,
@@ -2271,7 +2320,6 @@ async function runDNSSecurityChecks(
     dnsResolutionResult,
     dsResult,
     dnskeyResult,
-    tlsaResult,
     zoneTransferResult,
     caaPermissiveResult,
     soaSerialStaleResult,
@@ -2295,6 +2343,7 @@ async function runDNSSecurityChecks(
       mtaStsPolicyResult,
       backupMxResult,
       mxCnameResult,
+      tlsaResult,
       bimiResult,
       dkimWeakKeyResult,
     ]) {

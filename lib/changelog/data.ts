@@ -140,6 +140,48 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.8.3",
+    date: "September 5, 2026",
+    title: "The Scanner Reported a Zone It Could Not Actually Walk",
+    // Not a highlights release: two false-positive fixes, one in a check and
+    // one in the agent that was supposed to catch checks like it.
+    highlights: false,
+    summary:
+      "Five findings that fired on correctly configured sites, and the reason none of them were caught. A DNSSEC check called a zone enumerable on evidence that a large share of the signed internet produces without being enumerable at all. We asked for OCSP stapling on certificates that name no responder to staple from, and for DANE on web hosts that no browser will ever check it on. The AI verification pass could not have flagged any of them, because the prompt told it that DNS and TLS findings are real by definition. We also reported the browsers own default Cross-Origin-Embedder-Policy value as though it were a missing header, and recommended a replacement that breaks fonts and payment iframes. Each check now proves its claim before making it, or looks where the answer means something, and the verification agent is finally allowed to disagree with a finding whose measurement is correct but whose conclusion is not.",
+    changes: [
+      {
+        icon: Network,
+        label: "Zone Walking Was Reported on Zones That Cannot Be Walked",
+        desc: "The check reasoned that a signed zone publishing no NSEC3PARAM record must be using NSEC, and that an NSEC zone can be walked to recover every name in it. The first step is right and the second is only right for zones that pre-signed the gaps between their real names. Cloudflare, and every other provider that signs answers as they are served, generates the denial-of-existence record on demand for the exact name that was asked about, a technique known as black lies from the RFC 4470 white-lies family. That record never names a second real name, so there is no chain to follow and nothing to enumerate, and the zone looks identical to a walkable one from the outside: DNSKEY present, NSEC3PARAM absent. Our own domain is one of them, and we were reporting it. The check now asks a question that separates the two instead of guessing from record shape: it queries a random name that cannot exist and reads the response code. A pre-signed zone has nothing covering that name and can only answer NXDOMAIN, which is the walkable case and the only case that now produces a finding. A live-signing zone answers NOERROR and hands back an NSEC record minted for the name just asked about, which the check recognises by matching the record owner against its own probe. Anything it cannot settle, a resolver that did not answer or a wildcard that absorbs every name, reports nothing at all, because a low severity finding is not worth a guess. The rule is the response, not a list of provider names, so it holds for providers we have never heard of.",
+        category: "fixed",
+      },
+      {
+        icon: Sparkles,
+        label: "The AI Verification Pass Could Not Call a DNS Finding Wrong",
+        desc: "AI verification exists to tell you which findings are real, and for two whole categories it was structurally incapable of saying no. The prompt instructed it that DNS findings are always confirmed and TLS findings almost always are. That started as a fix for the opposite complaint, a model that answered uncertain on DNS because an HTTP probe cannot see a DNS record, and it overshot into an instruction the model could not disobey no matter what it knew. Every false positive in the categories most prone to them, DNSSEC inference, DANE, revocation, was waved through with high confidence. The prompt now separates the two claims stacked inside every finding: the observation, which the scanner measured and an HTTP probe genuinely cannot contradict, and the interpretation, the leap from that measurement to this is a problem, which can be wrong on its own. The measurement is still protected. The conclusion is now open to challenge, and a finding whose reading of the wire is perfect but whose conclusion does not hold is a false positive like any other. Alongside it, the model is told not to confirm anything merely because the probe could not refute it, which is how a check the probe cannot see used to become an automatic pass, and it now carries the specific patterns this scanner has been wrong about before: live-signed DNSSEC denial, DANE records on hosts served to browsers that have never implemented DANE, certificates with no OCSP responder now that Let us Encrypt has moved to CRL-only revocation, and a style-src that a framework leaves no way to tighten. A test fails the build if the prompt ever tells the model a category is true by default again.",
+        category: "changed",
+      },
+      {
+        icon: Lock,
+        label: "We Told Most of the Web to Enable Something It Cannot Enable",
+        desc: "OCSP stapling only works if the certificate names a responder for the server to fetch a status from, and a growing share of certificates no longer do. Let us Encrypt removed the OCSP URL from its certificates in May 2025 and switched its responders off that August, moving revocation to certificate revocation lists, and Google Trust Services issues without one as well. The check already knew the difference and reported it anyway, as an informational finding whose own remediation steps said that no action was available and that the certificate authority, not the operator, decides. That is a line item on a report that exists only to be dismissed, and it fired on nearly every modern certificate we scanned, including our own. It is gone. Stapling is now reported only where it can actually be switched on, meaning the certificate publishes a responder and the server did not staple a response, which is a genuine and fixable server configuration. Nothing about the SSL grade changes, because stapling was only ever a small bonus there and never a penalty for its absence.",
+        category: "changed",
+      },
+      {
+        icon: Mail,
+        label: "DANE Is Now Checked Where Anything Actually Enforces It",
+        desc: "The check asked whether a TLSA record existed for the web host and reported every site that had none. No browser has ever implemented DANE, so that was a recommendation nothing visiting the site could act on, and following it was worse than ignoring it: pinning a certificate that an ACME client renews on its own schedule breaks TLS at the next renewal unless the record is republished in step. DANE is real and well deployed in exactly one place, SMTP, where the sending mail server does check it before delivering. So that is where it is checked now, under each of the domain mail exchangers rather than the web host. Two gates keep the advice to domains that can act on it: a domain with no mail exchanger has no mail to protect, and an unsigned zone cannot publish a TLSA record anyone can trust, so it is told to enable DNSSEC by the check that already covers that and is not handed a second finding about the step that depends on it. The remediation now names the right port, the right records and the DANE-EE form that survives certificate renewal.",
+        category: "changed",
+      },
+      {
+        icon: ShieldCheck,
+        label: "We Reported a Browser Default as a Missing Header",
+        desc: "Cross-Origin-Embedder-Policy has three values, and the one every browser uses when nothing is set is the one we reported. So the check fired on essentially every site scanned, ours included, and the remediation it offered was worse than doing nothing: require-corp blocks every cross-origin resource that does not opt in with its own header, which on an ordinary site means the web fonts, the payment iframe and the embedded viewer stop loading. We know because we tried it here, watched the BrowserBase live view break in Firefox, and reverted. Cross-origin isolation is a capability you opt into for SharedArrayBuffer and high resolution timers, not a defence you are missing, and the check that already covers a page genuinely using shared memory tests the real condition, which is this header together with Cross-Origin-Opener-Policy rather than this header alone. So this one now reports the case that check does not: a script that branches on window.crossOriginIsolated or waits on Atomics while the header guarantees that flag is false, meaning the branch is dead code its author almost certainly thinks is live. A page that never mentions isolation is left alone.",
+        category: "changed",
+      },
+    ],
+  },
+  {
     version: "3.8.2",
     date: "September 5, 2026",
     title: "The Updater Stopped Refusing Installs It Had Always Updated",

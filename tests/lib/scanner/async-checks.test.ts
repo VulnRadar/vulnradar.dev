@@ -114,6 +114,7 @@ import {
   checkDMARCSubdomainPolicy,
   checkBIMI,
   checkDKIMWeakKey,
+  checkTLSARecord,
 } from "@/lib/scanner/async-checks";
 
 const dnsMock = vi.mocked(dns);
@@ -2151,5 +2152,112 @@ describe("runAsyncChecksDetailed progress hook", () => {
         throw new Stop();
       }),
     ).rejects.toThrow(Stop);
+  });
+});
+
+// ── checkTLSARecord ──────────────────────────────────────────────────
+//
+// DANE is checked where it is actually enforced: _25._tcp under the MX
+// hosts. The check used to query _443._tcp.<domain> and fire on every web
+// host, which no browser has ever been able to act on.
+
+/**
+ * Routes the two DoH calls dohHasAnswer makes (Google and Cloudflare) by the
+ * record type in the query string. `true` answers with a record, `false`
+ * answers with an empty Answer section, and "fail" rejects both, which is how
+ * dohHasAnswer reports "could not tell".
+ */
+function stubDohByType(byType: Record<string, boolean | "fail">) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: unknown) => {
+      const href = String(input);
+      const type = /[?&]type=([A-Z0-9]+)/i.exec(href)?.[1] ?? "";
+      const entry = byType[type];
+      if (entry === undefined || entry === "fail") throw new Error("network");
+      return {
+        json: async () => ({ Answer: entry ? [{ data: "x" }] : [] }),
+      } as unknown as Response;
+    }),
+  );
+}
+
+describe("checkTLSARecord", () => {
+  it("reports missing DANE on a signed domain whose MX hosts publish no TLSA", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mx1.dane-none.test", priority: 10 },
+      { exchange: "mx2.dane-none.test", priority: 20 },
+    ]);
+    stubDohByType({ DNSKEY: true, TLSA: false });
+
+    const findings = await checkTLSARecord(
+      "dane-none.test",
+      "https://dane-none.test",
+    );
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe("info");
+    // The finding has to name the SMTP ports it actually probed, not 443.
+    expect(findings[0].evidence).toContain("_25._tcp.mx1.dane-none.test");
+    expect(findings[0].evidence).toContain("_25._tcp.mx2.dane-none.test");
+    expect(findings[0].evidence).not.toContain("_443._tcp");
+  });
+
+  it("reports nothing when the domain accepts no mail", async () => {
+    dnsMock.resolveMx.mockResolvedValue([]);
+    stubDohByType({ DNSKEY: true, TLSA: false });
+    expect(await checkTLSARecord("no-mx.test", "https://no-mx.test")).toEqual(
+      [],
+    );
+  });
+
+  it("reports nothing for an RFC 7505 null MX", async () => {
+    dnsMock.resolveMx.mockResolvedValue([{ exchange: ".", priority: 0 }]);
+    stubDohByType({ DNSKEY: true, TLSA: false });
+    expect(
+      await checkTLSARecord("null-mx.test", "https://null-mx.test"),
+    ).toEqual([]);
+  });
+
+  // Publishing a TLSA record in an unsigned zone buys nothing, since the
+  // record can be stripped or forged in transit. checkDNSSEC already reports
+  // the missing prerequisite; this check must not stack a second finding on
+  // top telling the operator to do the dependent step first.
+  it("reports nothing when the zone is not DNSSEC-signed", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mx.unsigned.test", priority: 10 },
+    ]);
+    stubDohByType({ DNSKEY: false, TLSA: false });
+    expect(
+      await checkTLSARecord("unsigned.test", "https://unsigned.test"),
+    ).toEqual([]);
+  });
+
+  it("reports nothing when an MX host does publish TLSA", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mx.dane-ok.test", priority: 10 },
+    ]);
+    stubDohByType({ DNSKEY: true, TLSA: true });
+    expect(
+      await checkTLSARecord("dane-ok.test", "https://dane-ok.test"),
+    ).toEqual([]);
+  });
+
+  it("reports nothing when the TLSA lookup could not be completed", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mx.unknown.test", priority: 10 },
+    ]);
+    stubDohByType({ DNSKEY: true, TLSA: "fail" });
+    expect(
+      await checkTLSARecord("unknown.test", "https://unknown.test"),
+    ).toEqual([]);
+  });
+
+  it("reports nothing when the MX lookup itself fails", async () => {
+    dnsMock.resolveMx.mockRejectedValue(new Error("ENOTFOUND"));
+    stubDohByType({ DNSKEY: true, TLSA: false });
+    expect(await checkTLSARecord("broken.test", "https://broken.test")).toEqual(
+      [],
+    );
   });
 });

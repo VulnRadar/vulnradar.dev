@@ -26,7 +26,7 @@ export const CONFIG_APP_SLUG = "vulnradar";
  * the two above it, so it belongs here rather than in a component.
  */
 export const CONFIG_AI_BOT_NAME = "Vera";
-export const CONFIG_APP_VERSION = "3.8.2";
+export const CONFIG_APP_VERSION = "3.8.3";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
 // 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns

@@ -389,41 +389,27 @@ export async function checkOcspStapling(
             //
             // A server can only staple a response it can fetch, and it fetches
             // it from the OCSP URI in the certificate's Authority Information
-            // Access extension. Certificates that publish no such URI cannot
-            // be stapled by anyone, at any configuration.
+            // Access extension. A certificate that publishes no such URI
+            // cannot be stapled by anyone, at any configuration, so there is
+            // no finding to report: nothing is misconfigured and nothing can
+            // be turned on.
             //
-            // That is not a corner case any more. The CA/Browser Forum made
-            // OCSP optional, and CAs have begun dropping it for CRLs, so a
-            // growing share of the web serves certificates with no responder
-            // at all. Telling those operators to "enable ssl_stapling" is
-            // advice that cannot work, and it is the shape of finding that
-            // teaches people to stop reading our output.
+            // That is now the common case rather than a corner case. The
+            // CA/Browser Forum made OCSP optional, Let's Encrypt removed the
+            // OCSP URL from its certificates in May 2025 and shut its
+            // responders off that August, and Google Trust Services issues
+            // without one. Revocation for those certificates travels by CRL,
+            // which is a working design, not a gap. Reporting it fired on
+            // most of the modern web to say "no action is available", which
+            // is the shape of finding that teaches people to stop reading
+            // the output.
             const peer = socket!.getPeerCertificate(false) as {
               infoAccess?: Record<string, string[] | undefined>;
             } | null;
             const ocspUris = peer?.infoAccess?.["OCSP - URI"] ?? [];
             const certPublishesOcsp = ocspUris.length > 0;
 
-            if (authorized && !stapledResponsePresent && !certPublishesOcsp) {
-              findings.push(
-                makeTlsVuln(
-                  "tls-ocsp-stapling-disabled",
-                  url,
-                  "Certificate Publishes No OCSP Responder",
-                  "info",
-                  "This certificate names no OCSP responder, so revocation status cannot be stapled by any server configuration.",
-                  `TLS handshake to ${hostname}:${port} completed with a valid, trusted certificate whose Authority Information Access extension contains no OCSP URI, and no stapled response was returned.`,
-                  "Clients cannot check this certificate's revocation status over OCSP, because there is no responder to ask. Revocation is instead carried by the CA's certificate revocation list, which browsers fetch on their own schedule rather than per visit.",
-                  "OCSP stapling attaches a CA-signed revocation status to the handshake (RFC 6066), but a server can only staple a response it can fetch from the URI in the certificate. The CA/Browser Forum made OCSP optional and several CAs have moved to CRLs only, so certificates without a responder are increasingly normal and there is nothing for an operator to turn on.",
-                  [
-                    "No action is available on the server: stapling needs a responder the certificate does not name.",
-                    "If OCSP matters for your compliance posture, that is a question for the certificate authority, not the web server.",
-                    `Confirm with: openssl s_client -connect ${hostname}:443 < /dev/null 2>/dev/null | openssl x509 -noout -ocsp_uri`,
-                  ],
-                  70,
-                ),
-              );
-            } else if (authorized && !stapledResponsePresent) {
+            if (authorized && !stapledResponsePresent && certPublishesOcsp) {
               findings.push(
                 makeTlsVuln(
                   "tls-ocsp-stapling-disabled",

@@ -1077,12 +1077,37 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── COEP / COOP / CORP coverage ─────────────────────────────────────────
 
-  "coep-credentialless": (_url, headers) => {
+  // Fires only for a document that actually depends on cross-origin
+  // isolation. "unsafe-none" is the browser DEFAULT, so reporting it on its
+  // own reported every site on the web that had no reason to want isolation,
+  // and the remediation was actively wrong for most of them: require-corp
+  // blocks every cross-origin resource that does not opt in with CORP, which
+  // on a typical site means the fonts, the payment iframe and the analytics
+  // beacon stop loading. Our own deployment is the worked example: it tried
+  // credentialless, watched the BrowserBase live-view iframe break in
+  // Firefox, and reverted (see middleware.ts).
+  //
+  // Constructing a SharedArrayBuffer is deliberately NOT the trigger here.
+  // shared-array-buffer-not-isolated already owns that case and tests the
+  // real condition, COOP and COEP together, so firing on it too would report
+  // one problem twice. This check covers the other half: a script that reads
+  // crossOriginIsolated or waits on Atomics is gating its own behaviour on an
+  // isolation flag that a weak COEP guarantees will be false, so that branch
+  // is dead code the author probably thinks is live.
+  "coep-credentialless": (_url, headers, body) => {
     const v = h(headers, "cross-origin-embedder-policy");
     if (!v) return null;
     const lower = v.toLowerCase().trim();
     if (lower === "credentialless" || lower === "require-corp") return null;
-    return `Cross-Origin-Embedder-Policy is '${v}', not 'credentialless' or 'require-corp'.`;
+    if (!body) return null;
+    const scripts = extractScriptContents(body).join("\n");
+    // Left to shared-array-buffer-not-isolated, which reports it better.
+    if (/\bnew\s+SharedArrayBuffer\s*\(/.test(scripts)) return null;
+    const relies =
+      /\bcrossOriginIsolated\b/.test(scripts) ||
+      /\bAtomics\s*\.\s*wait\s*\(/.test(scripts);
+    if (!relies) return null;
+    return `Cross-Origin-Embedder-Policy is '${v}', so window.crossOriginIsolated is permanently false, but an inline script branches on cross-origin isolation. Isolation needs COEP 'require-corp' or 'credentialless' together with COOP 'same-origin'.`;
   },
 
   "cross-origin-resource-policy-report-only-missing": (_url, headers) => {

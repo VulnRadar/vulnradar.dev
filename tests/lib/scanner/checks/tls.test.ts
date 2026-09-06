@@ -244,13 +244,14 @@ describe("checkTlsCertChainCompleteness", () => {
 // ── checkOcspStapling ────────────────────────────────────────────────────
 
 /**
- * `ocspUri` decides which of the two findings the check can produce.
+ * `ocspUri` decides whether the check can produce a finding at all.
  *
  * A server can only staple a response it can fetch, and it fetches it from the
- * OCSP URI in the certificate's Authority Information Access extension. A
+ * OCSP URI in the certificate Authority Information Access extension. A
  * certificate that names no responder cannot be stapled by any configuration,
- * so the check has to say something different there: telling that operator to
- * turn on ssl_stapling is advice that cannot work.
+ * so there is nothing to report: telling that operator to turn on
+ * ssl_stapling is advice that cannot work, and saying no action is available
+ * is not a finding.
  */
 function mockOcspSocket(
   authorized = true,
@@ -271,14 +272,15 @@ function mockOcspSocket(
 }
 
 describe("checkOcspStapling", () => {
-  it("says the certificate names no responder, rather than telling the operator to enable stapling", async () => {
-    // The case a real scan of a Cloudflare-fronted site hits today: Google
-    // Trust Services issues certificates with no OCSP URI at all, so there is
-    // no responder for any server to fetch a response from. Verified against
-    // vulnradar.dev, whose certificate reports infoAccess with no "OCSP - URI"
-    // entry. The old wording told those operators to switch on ssl_stapling,
-    // which cannot work and is the kind of finding that teaches people to stop
-    // reading the output.
+  it("reports nothing when the certificate names no OCSP responder", async () => {
+    // Verified against vulnradar.dev, whose certificate reports infoAccess
+    // with no "OCSP - URI" entry. Stapling is impossible for that
+    // certificate at any server configuration, so there is nothing
+    // misconfigured to report. Let's Encrypt removed the OCSP URL from its
+    // certificates in May 2025 and shut its responders off that August, so
+    // this is now most of the web, and revocation travels by CRL instead.
+    // The check used to emit an info finding here whose own fix steps said
+    // no action was available.
     const { sock } = mockOcspSocket(true, null);
     tlsMock.connect.mockImplementationOnce(((
       _opts: unknown,
@@ -290,11 +292,7 @@ describe("checkOcspStapling", () => {
 
     const out = await checkOcspStapling("example.com", "https://example.com");
 
-    expect(out).toHaveLength(1);
-    expect(out[0].title).toBe("Certificate Publishes No OCSP Responder");
-    // The fix steps must not tell someone to turn on something that cannot
-    // work for this certificate.
-    expect(out[0].fixSteps?.join(" ")).not.toMatch(/ssl_stapling on/i);
+    expect(out).toEqual([]);
   });
 
   it("fires when the cert is valid but no OCSP response was stapled", async () => {

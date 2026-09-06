@@ -406,6 +406,101 @@ async function dohAnswers(
   return null;
 }
 
+/** DNS record type numbers used by the denial-of-existence probe. */
+const DNS_TYPE_NSEC = 47;
+const DNS_RCODE_NOERROR = 0;
+const DNS_RCODE_NXDOMAIN = 3;
+
+interface DohResponse {
+  Status?: number;
+  Answer?: unknown;
+  Authority?: unknown;
+}
+
+/**
+ * The raw DoH JSON body from whichever public resolver replies first with an
+ * object. dohAnswers above only exposes the Answer section; the denial probe
+ * below needs the response code and the Authority section too.
+ */
+async function dohResponse(
+  name: string,
+  type: string,
+): Promise<DohResponse | null> {
+  const [g, c] = await Promise.allSettled([
+    fetch(
+      `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${type}&do=1`,
+      { signal: AbortSignal.timeout(4000) },
+    ).then((r) => r.json()),
+    fetch(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}&do=1`,
+      {
+        signal: AbortSignal.timeout(4000),
+        headers: { Accept: "application/dns-json" },
+      },
+    ).then((r) => r.json()),
+  ]);
+  for (const settled of [g, c]) {
+    if (settled.status !== "fulfilled") continue;
+    const value = settled.value;
+    if (value && typeof value === "object") return value as DohResponse;
+  }
+  return null;
+}
+
+/**
+ * Whether the zone synthesizes its denial-of-existence answers instead of
+ * pre-signing the gaps between real names.
+ *
+ * Cloudflare (and other live-signing providers) answer a query for a name
+ * that does not exist with NOERROR plus a single NSEC record minimally
+ * covering exactly the name that was asked for, rather than NXDOMAIN plus a
+ * pre-signed record naming the next real name in the zone. That technique is
+ * "black lies", from the RFC 4470 white-lies family. Because the record is
+ * generated to match the query, it never names a second real name, so there
+ * is no chain to follow and the zone cannot be walked, even though it is
+ * NSEC-signed and publishes no NSEC3PARAM.
+ *
+ * The fingerprint deliberately reads the response, not the vendor: an
+ * allowlist of nameserver names would go stale and would miss every other
+ * provider doing the same thing. NXDOMAIN for a name that cannot exist is a
+ * conventional offline-signed NSEC zone, which IS walkable.
+ *
+ * Returns null for "cannot tell", which callers must treat the way
+ * dohAnswers's null is treated: unknown, never a decision.
+ */
+export async function usesSyntheticDenial(
+  domain: string,
+): Promise<boolean | null> {
+  const label = `vr-nsec-probe-${Math.random().toString(36).slice(2, 12)}`;
+  const name = `${label}.${domain}`;
+  const json = await dohResponse(name, "TXT");
+  if (!json || typeof json.Status !== "number") return null;
+
+  // A pre-signed zone has no record covering a name that does not exist, so
+  // it can only answer NXDOMAIN. That is the walkable case.
+  if (json.Status === DNS_RCODE_NXDOMAIN) return false;
+  if (json.Status !== DNS_RCODE_NOERROR) return null;
+
+  // A wildcard record answers NOERROR for any label, which says nothing
+  // about how the zone denies existence. Only an EMPTY NOERROR is the black
+  // lies shape.
+  const answer = Array.isArray(json.Answer) ? json.Answer : [];
+  if (answer.length > 0) return null;
+
+  // The giveaway is the NSEC record OWNER: black lies mints it for the exact
+  // name that was asked for, so it matches the probe label. A pre-signed
+  // record is always owned by some other, real name in the zone.
+  const authority = Array.isArray(json.Authority) ? json.Authority : [];
+  const probed = name.replace(/[.]$/, "").toLowerCase();
+  const synthesized = authority.some((r) => {
+    const rec = r as { type?: unknown; name?: unknown };
+    if (rec.type !== DNS_TYPE_NSEC) return false;
+    if (typeof rec.name !== "string") return false;
+    return rec.name.replace(/[.]$/, "").toLowerCase() === probed;
+  });
+  return synthesized ? true : null;
+}
+
 /** DNSSEC algorithm numbers that are no longer considered safe to sign with. */
 const WEAK_DNSSEC_ALGORITHMS: Record<number, string> = {
   1: "RSAMD5",
@@ -612,6 +707,13 @@ export async function checkNsecParameters(
   if (nsec3param === null) return [];
 
   if (nsec3param.length === 0) {
+    // NSEC with no NSEC3PARAM is only walkable when the zone pre-signed the
+    // gaps between real names. A live-signing zone (Cloudflare and friends,
+    // "black lies") has the same two records and is not walkable, so the
+    // record shape alone is not enough to fire on. Anything but a definite
+    // "this zone answers NXDOMAIN" is left alone: a low-severity finding is
+    // not worth reporting on a guess.
+    if ((await usesSyntheticDenial(domain)) !== false) return [];
     return [
       makeDnsVuln(
         "dns-nsec-zone-walking",
@@ -619,7 +721,7 @@ export async function checkNsecParameters(
         "Signed Zone Uses NSEC, Allowing Zone Walking",
         "low",
         `${domain} is DNSSEC-signed but publishes no NSEC3PARAM record, so the zone uses NSEC for authenticated denial of existence.`,
-        `DNSKEY records exist for ${domain} and no NSEC3PARAM record is published.`,
+        `DNSKEY records exist for ${domain}, no NSEC3PARAM record is published, and a query for a random name under the zone returned NXDOMAIN rather than a synthesized NSEC record, so the denial-of-existence records are pre-signed and chainable.`,
         "An NSEC record proves a name does not exist by naming the next name that does, so walking the chain returns the complete contents of the zone. Every internal hostname in it becomes public: vpn, jira, staging, backup, the lot. That is a full target list produced without sending a single request to any of those hosts.",
         "This is a design property of NSEC rather than a misconfiguration, which is why NSEC3 exists. Whether it matters depends on the zone: for one whose names are all public anyway it is close to irrelevant, and for one holding internal infrastructure names it hands over the network map. RFC 9276 recommends NSEC3 with zero iterations and no salt, which gives the enumeration resistance without the cost that made early NSEC3 deployments expensive.",
         [

@@ -487,6 +487,73 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  // "unsafe-none" is the browser DEFAULT, so the value alone is not a
+  // finding. It fired on every site that had no reason to want isolation,
+  // including ours, and the fix it recommended breaks fonts and payment
+  // iframes on most of them.
+  "coep-credentialless": [
+    {
+      description: "weak COEP with a script that reads crossOriginIsolated",
+      url: "https://example.com/",
+      headers: { "cross-origin-embedder-policy": "unsafe-none" },
+      body: "<html><body><script>if (window.crossOriginIsolated) { startWorker(); }</script></body></html>",
+      expect: "fire",
+      evidenceIncludes: "crossOriginIsolated",
+    },
+    {
+      description: "weak COEP with a script that waits on Atomics",
+      url: "https://example.com/",
+      headers: { "cross-origin-embedder-policy": "unsafe-none" },
+      body: "<html><body><script>Atomics.wait(view, 0, 0);</script></body></html>",
+      expect: "fire",
+      evidenceIncludes: "Cross-Origin-Embedder-Policy",
+    },
+    {
+      description:
+        "weak COEP on a page that never mentions isolation, the common case",
+      url: "https://example.com/",
+      headers: { "cross-origin-embedder-policy": "unsafe-none" },
+      body: "<html><body><script>console.log('hi');</script></body></html>",
+      expect: "skip",
+    },
+    {
+      description: "weak COEP with no body to judge",
+      url: "https://example.com/",
+      headers: { "cross-origin-embedder-policy": "unsafe-none" },
+      expect: "skip",
+    },
+    {
+      // shared-array-buffer-not-isolated owns this one and tests COOP too,
+      // so firing here as well would report a single problem twice.
+      description:
+        "SharedArrayBuffer construction is left to the check that owns it",
+      url: "https://example.com/",
+      headers: { "cross-origin-embedder-policy": "unsafe-none" },
+      body: "<html><body><script>const b = new SharedArrayBuffer(1024);</script></body></html>",
+      expect: "skip",
+    },
+    {
+      description: "isolation actually enabled",
+      url: "https://example.com/",
+      headers: { "cross-origin-embedder-policy": "credentialless" },
+      body: "<html><body><script>if (crossOriginIsolated) {}</script></body></html>",
+      expect: "skip",
+    },
+    {
+      description: "require-corp is equally fine",
+      url: "https://example.com/",
+      headers: { "cross-origin-embedder-policy": "require-corp" },
+      body: "<html><body><script>if (crossOriginIsolated) {}</script></body></html>",
+      expect: "skip",
+    },
+    {
+      description: "no COEP header at all is coep-missing's job",
+      url: "https://example.com/",
+      body: "<html><body><script>if (crossOriginIsolated) {}</script></body></html>",
+      expect: "skip",
+    },
+  ],
+
   "coep-missing": [
     {
       description: "no Cross-Origin-Embedder-Policy",

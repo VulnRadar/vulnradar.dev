@@ -196,25 +196,26 @@
     "title": "TLSA (DANE) Record Missing",
     "category": "dns",
     "severity": "info",
-    "description": "No TLSA record exists at _443._tcp.yourdomain.com. TLSA records (DANE) pin the expected TLS certificate or public key in DNS, providing an additional layer of verification beyond CA trust.",
+    "description": "None of the mail exchangers for yourdomain.com publish a TLSA record at _25._tcp, so a sending mail server cannot verify the certificate it is handed over SMTP. This is only reported for a domain that both accepts mail and is DNSSEC-signed: DANE has no verifiable meaning without DNSSEC, and no web browser implements it, so a missing TLSA record on a web host is the correct configuration rather than a gap.",
     "evidence": "DNS-level finding for `dns-tlsa-missing` against {{domain}}.",
-    "riskImpact": "Without TLSA, certificate validation relies entirely on the CA ecosystem. A compromised or rogue CA can issue fraudulent certificates that pass standard TLS validation.",
-    "explanation": "DANE (DNS-Based Authentication of Named Entities) uses DNSSEC-secured TLSA records to bind certificates or public keys to DNS names. With DNSSEC + TLSA, a client can verify that the certificate presented matches what the domain owner published, independently of the CA.",
+    "riskImpact": "A sending mail server that cannot verify the receiving server certificate has no way to tell a real MX from an attacker who has redirected the connection, and SMTP opportunistic TLS falls back to plaintext rather than failing, so the downgrade is silent on both ends.",
+    "explanation": "DANE (DNS-Based Authentication of Named Entities) uses DNSSEC-secured TLSA records to bind a certificate or public key to a DNS name, letting a client verify what it is handed independently of the CA ecosystem. Its deployed home is SMTP, where a large share of sending infrastructure checks it. On the web it is effectively dead: no browser has ever implemented DANE, and pinning a certificate that an ACME client rotates automatically breaks TLS at the next renewal unless republishing is automated.",
     "fixSteps": [
-      "Enable DNSSEC for your domain first.",
-      "Publish a TLSA record at _443._tcp.yourdomain.com.",
-      "Verify: dig +short TLSA _443._tcp.example.com"
+      "Publish a TLSA record under each mail exchanger, at _25._tcp.mx.yourdomain.com.",
+      "Use DANE-EE (3 1 1) against the server own key so certificate renewal does not break delivery, or automate republishing alongside renewal.",
+      "Keep DNSSEC signed: a TLSA record in an unsigned zone can be stripped or forged in transit and buys nothing.",
+      "Verify: dig +short TLSA _25._tcp.mx.example.com"
     ],
     "codeExamples": [
       {
-        "label": "Generate TLSA record",
+        "label": "Generate the TLSA hash from the MX host key",
         "language": "bash",
-        "code": "# TLSA 3 1 1 = domain-issued cert, SubjectPublicKeyInfo, SHA-256\nopenssl s_client -connect example.com:443 < /dev/null 2>/dev/null | \\\n  openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | \\\n  openssl dgst -sha256 -binary | xxd -p -c 32"
+        "code": "# TLSA 3 1 1 = domain-issued cert, SubjectPublicKeyInfo, SHA-256\nopenssl s_client -starttls smtp -connect mx.example.com:25 < /dev/null 2>/dev/null | \\n  openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | \\n  openssl dgst -sha256 -binary | xxd -p -c 32"
       },
       {
         "label": "DNS zone file",
         "language": "dns",
-        "code": "_443._tcp.example.com. IN TLSA 3 1 1 <sha256-hash-of-pubkey>"
+        "code": "_25._tcp.mx.example.com. IN TLSA 3 1 1 <sha256-hash-of-pubkey>"
       }
     ],
     "references": [

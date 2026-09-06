@@ -811,16 +811,18 @@
   {
     "id": "coep-credentialless",
     "type": "header",
-    "title": "COEP Not Using credentialless or require-corp",
+    "title": "Script Relies on Cross-Origin Isolation That COEP Prevents",
     "category": "headers",
     "severity": "info",
-    "description": "Cross-Origin-Embedder-Policy is set but does not use 'credentialless' or 'require-corp'.",
-    "evidence": "COEP header present with unexpected value.",
-    "riskImpact": "Without proper COEP, your page may not achieve cross-origin isolation, which is required for SharedArrayBuffer and high-resolution timers.",
-    "explanation": "COEP with 'require-corp' or 'credentialless' enables cross-origin isolation when combined with COOP. This prevents Spectre-style side-channel attacks.",
+    "description": "An inline script branches on cross-origin isolation, by reading window.crossOriginIsolated or waiting on Atomics, but Cross-Origin-Embedder-Policy is set to a value that keeps isolation off, so that flag is permanently false and the branch behind it never runs.",
+    "evidence": "COEP header present with a value that does not enable cross-origin isolation, alongside an inline script that depends on it.",
+    "riskImpact": "The isolation-dependent path is dead code the author most likely believes is live. Whatever it guards, a faster timer, a threaded WebAssembly module, a shared memory worker, silently never happens, and the fallback runs on every browser instead of none.",
+    "explanation": "Cross-origin isolation requires COEP require-corp or credentialless TOGETHER with COOP same-origin. COEP unsafe-none is the browser default and is the correct setting for the overwhelming majority of sites: require-corp blocks every cross-origin resource that does not opt in with a Cross-Origin-Resource-Policy header, which typically breaks fonts, payment iframes and analytics. This is reported only when a script shows it expects isolation, never for the default value on its own.",
     "fixSteps": [
-      "Set COEP to 'credentialless' (more compatible) or 'require-corp' (stricter).",
-      "Ensure all cross-origin resources either have CORP headers or use credentialless."
+      "Decide which one is wrong: the header or the script. Most of the time it is the script, and the isolation-dependent branch should be removed.",
+      "If you genuinely need isolation, set Cross-Origin-Embedder-Policy: credentialless and Cross-Origin-Opener-Policy: same-origin, then verify window.crossOriginIsolated is true.",
+      "Before enabling it, confirm every cross-origin resource you load sends Cross-Origin-Resource-Policy, or it will stop loading. Fonts, payment iframes and embedded third-party viewers are the usual casualties.",
+      "Prefer credentialless over require-corp: it loads non-cooperating resources without credentials rather than blocking them outright."
     ],
     "codeExamples": [
       {
