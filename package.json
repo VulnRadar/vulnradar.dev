@@ -123,7 +123,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@types/jsonwebtoken": "9.0.10",
-    "@types/node": "26.4.0",
+    "@types/node": "26.4.1",
     "@types/nodemailer": "8.0.1",
     "@types/pg": "8.23.1",
     "@types/react": "19.2.18",
@@ -132,13 +132,13 @@
     "@typescript-eslint/parser": "8.68.0",
     "eslint": "^10.9.1",
     "eslint-config-next": "16.3.4",
-    "postcss": "8.5.26",
+    "postcss": "8.5.28",
     "prettier": "3.9.6",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3"
   },
   "overrides": {
-    "postcss": "8.5.26",
+    "postcss": "8.5.28",
     "sharp": "^0.35.0",
     "brace-expansion@1": "1.1.18",
     "brace-expansion@2": "2.1.4",
