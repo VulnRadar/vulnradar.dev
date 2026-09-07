@@ -294,13 +294,15 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
           "Strict-Transport-Security":
             "max-age=63072000; includeSubDomains; preload",
         }),
-    // Monitor-only: no `enforce` (would hard-block a legitimate cert if a
-    // CT log had an outage) and no `report-uri` (we have no endpoint to
-    // collect those reports). Chrome dropped Expect-CT support entirely in
-    // 107 and enforces CT itself on every cert since 2018 regardless, so
-    // this header is mostly a signal to older/other clients and scanners
-    // that CT was considered, not something actively load-bearing here.
-    "Expect-CT": "max-age=86400",
+    // No Expect-CT. It was sent monitor-only, with the reasoning that it
+    // signalled to scanners that Certificate Transparency "had been
+    // considered". Our own scanner disagrees, in writing: the
+    // `expect-ct-missing` check is info-level and its text says Chrome
+    // removed support in 107, that CT is enforced unconditionally at
+    // certificate validation regardless of any header, and that there is no
+    // meaningful action to take. We were sending a header we tell users not
+    // to bother with, on every response, forever. A deprecated header that
+    // no browser reads is not a signal, it is bytes.
     "Origin-Agent-Cluster": "?1",
     "Document-Policy": "force-load-at-top",
   };

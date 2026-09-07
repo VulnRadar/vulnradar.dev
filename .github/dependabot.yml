@@ -78,6 +78,18 @@ updates:
           - "typescript"
           - "@types/*"
           - "tslib"
+      # vitest and @vitest/coverage-v8 pin each other exactly: the coverage
+      # plugin's peer range is the single version "4.1.11", not a caret range.
+      # Ungrouped, dependabot opened one PR per package, and each was the
+      # other's missing half: the vitest PR left coverage-v8 behind and the
+      # coverage-v8 PR left vitest behind, so BOTH died on the same ERESOLVE
+      # at `npm ci` before a single test ran. Two red PRs that could never go
+      # green on their own, and no amount of re-running would have helped.
+      # Grouped, they move as the one thing they actually are.
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
     ignore:
       # Only get major Next.js updates as PRs you manually review
       - dependency-name: "next"

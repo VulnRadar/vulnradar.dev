@@ -203,6 +203,32 @@ const CHANGELOG: Release[] = [
         desc: "A pass for hardcoded values turned up several facts typed twice where the copies had already drifted. One database column had three different maximum lengths depending on which code path wrote to it, and the widest one accepted values the column then rejected. Every scan pipeline resolved a response-body ceiling from a setting, read the body with it, and then re-capped the body at a hardcoded number sitting just below the shipped default: raising the setting to 5 MB read 5 MB off the wire and threw 4 MB away before any check saw it. The async-checks timeout reached three scan routes and not the main one, which is the one that runs almost every scan. The crawl's per-page fetch timeout reached the page discovery step only, so the fetch that actually scans each page, the most expensive network operation a crawl performs, had no knob at all. The assistant was also telling people a 24-hour subdomain cache and a 5-minute browser session limit, both of which are wrong.",
         category: "fixed",
       },
+      {
+        icon: Target,
+        label:
+          "The Verification Agent Can Now Be Measured Instead of Guessed At",
+        desc: "A prompt is behaviour, and until now the only way to find out that a change to it made verdicts worse was for someone to notice a wrong one on screen. That is exactly how the last pair of bad verdicts was found. There is a labelled set now: findings paired with the verdict a competent engineer would give and a written rationale for why, split deliberately between findings that are real and findings that are not, because a prompt can always be made to score well on one half by getting worse at the other. Confirming everything scores full marks on the real ones. A run sends the same prompt production sends, through the same builder and the same parser, and prints a scorecard per half. Two of the cases are the verdicts that were actually wrong, kept as regressions so they can never quietly come back. Part of it runs in CI for free: it cannot tell you whether a verdict is right without a model, but it does fail the build if someone deletes a rule that a case depends on, which is the failure that would otherwise show up much later as an unexplained score drop.",
+        category: "added",
+      },
+      {
+        icon: Shield,
+        label: "A Database Dump Can No Longer Be Committed Unnoticed",
+        desc: "An encrypted production dump was committed from a local run and shipped inside a published release tarball before anyone spotted it. The ignore rules were widened in response, and widening them was not enough on its own: git ignores nothing it is already tracking, so the same mistake made a minute earlier would have sailed through again. A test now reads the actual git index and fails on any tracked file shaped like a database dump, which catches one added with a force flag, one that lands outside the ignored directories because the backup path was configured elsewhere, and one arriving on a branch whose ignore rules predate the fix.",
+        category: "security",
+      },
+      {
+        icon: Shield,
+        label:
+          "Stopped Sending a Header Our Own Scanner Says Not to Bother With",
+        desc: "Expect-CT went out on every response, monitor-only, on the reasoning that it signalled to scanners that Certificate Transparency had been considered. Our own scanner disagrees in writing: the expect-ct-missing check is informational and its text says Chrome removed support in 107, that CT is enforced unconditionally at certificate validation regardless of any header, and that there is no meaningful action to take. We were sending a header we tell users not to bother with. A deprecated header no browser reads is not a signal, it is bytes on every response.",
+        category: "changed",
+      },
+      {
+        icon: Container,
+        label: "The Release Build Installed an Emulator It Never Used",
+        desc: "The publish workflow set up QEMU on every release. That was there to emulate arm64 back when the job built both architectures at once, and it outlived the split: the build is amd64 on an amd64 runner, which is native, and arm64 moved to its own workflow on a native ARM runner where it takes 4.6 minutes instead of the 27 it took under emulation. So the step installed an emulator that nothing then asked to emulate anything, and dependabot kept opening pull requests to keep it up to date. Removing it is the honest version of merging those. Separately, vitest and its coverage plugin pin each other to one exact version, and ungrouped they arrived as two pull requests that were each other's missing half: both failed at install before a single test ran, and neither could ever have gone green alone. They are grouped now.",
+        category: "fixed",
+      },
     ],
   },
   {

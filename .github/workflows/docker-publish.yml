@@ -31,12 +31,14 @@ jobs:
           # tag against every other release tag in the repository.
           fetch-depth: 0
 
-      # release: QEMU provides the linux/arm64 emulation the build below
-      # needs. Without it `docker buildx build --platform linux/arm64` on an
-      # amd64 runner fails outright.
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
-
+      # No QEMU step. It was here to emulate linux/arm64 back when this job
+      # built both platforms at once, and it outlived that: the build below is
+      # `platforms: linux/amd64` on an amd64 runner, which is native, and
+      # arm64 moved to docker-publish-arm64.yml on a native ARM runner (where
+      # it takes 4.6 minutes instead of the 27 it took under emulation here).
+      # So the step installed an emulator that nothing then asked to emulate
+      # anything, on every release, and dependabot kept opening PRs to keep it
+      # current. Removing it is the honest version of merging those.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 

@@ -37,7 +37,7 @@ export interface AiEndpoint {
   model: string;
 }
 
-interface ProbeData {
+export interface ProbeData {
   status_code: number;
   final_url: string;
   // Almost every header is a single value, but Set-Cookie is not: a site
@@ -236,7 +236,7 @@ function tryParseVerdictJson(clean: string): Record<string, unknown> | null {
   }
 }
 
-function parseVerifyResponseText(
+export function parseVerifyResponseText(
   findingId: string,
   text: string,
 ): VerifyResult | null {
@@ -283,7 +283,10 @@ function parseVerifyResponseText(
   };
 }
 
-function buildVerifyPrompt(finding: Vulnerability, probe: ProbeData): string {
+export function buildVerifyPrompt(
+  finding: Vulnerability,
+  probe: ProbeData,
+): string {
   const probeSection = probe.error
     ? `live_probe: { "error": "${probe.error}" }`
     : `live_probe: ${JSON.stringify(

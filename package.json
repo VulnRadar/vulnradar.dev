@@ -22,6 +22,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "eval:verify": "node scripts/ai/run-verify-eval.mjs",
     "docs:compile": "node scripts/knowledge/compile-docs-knowledge.mjs",
     "changelog:compile": "node scripts/knowledge/compile-changelog-knowledge.mjs",
     "checks:compile": "node scripts/knowledge/compile-checks-knowledge.mjs",
