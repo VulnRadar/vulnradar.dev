@@ -1059,10 +1059,31 @@ describe("templates take the brand from config, never from a literal", () => {
     }
   });
 
-  it("takes the light and dark palettes from lib/config/brand.ts", () => {
+  it("takes its palette from lib/config/brand.ts", () => {
+    expect(read("lib/email/layout.ts")).toContain('from "@/lib/config/brand"');
+  });
+
+  it("renders dark, and says so loudly enough that clients do not invert it", () => {
+    // Email used to render as a white card on a pale canvas, with the dark
+    // values behind a prefers-color-scheme override. The product is dark
+    // everywhere else a user sees it, so its own mail looked like it came
+    // from a different company.
+    //
+    // A dark email's real failure mode is a client deciding to "fix" it, so
+    // the declaration matters as much as the colours: color-scheme in both a
+    // meta tag and CSS is what Gmail and Apple Mail read to leave it alone.
     const layout = read("lib/email/layout.ts");
-    expect(layout).toContain('from "@/lib/config/brand"');
-    expect(layout).toContain("BRAND.onLight");
+    expect(layout).toContain('name="color-scheme" content="dark"');
+    expect(layout).toContain('name="supported-color-schemes" content="dark"');
+    expect(layout).toContain("color-scheme:dark");
+
+    // Outlook.com does not answer the media query, it rewrites the document,
+    // so it is the one client that can lighten this against its will. Those
+    // rules put the palette back and must not be dropped as "redundant"
+    // alongside the prefers-color-scheme block, which genuinely was.
+    expect(layout).toContain('darkRules("[data-ogsc] ")');
+    expect(layout).toContain('darkRules("[data-ogsb] ")');
+    expect(layout).not.toContain("@media (prefers-color-scheme:dark)");
   });
 });
 

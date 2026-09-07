@@ -634,7 +634,13 @@ export function EmailLogsManager() {
                         srcDoc={frameHtml}
                         sandbox=""
                         referrerPolicy="no-referrer"
-                        className="w-full h-[min(600px,55vh)] rounded-lg border border-border/50 bg-white"
+                        // The canvas behind the rendered message, for a
+                        // message that does not paint its own edges. It was
+                        // bg-white, which was right when email rendered light
+                        // and is now a white frame around a dark email. The
+                        // token follows the theme, and the message paints its
+                        // own background over it either way.
+                        className="w-full h-[min(600px,55vh)] rounded-lg border border-border/50 bg-background"
                         title={`Rendered copy of "${viewLog.subject}"`}
                       />
                       <p className="text-[11px] text-muted-foreground/80">

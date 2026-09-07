@@ -79,7 +79,19 @@ export const BRAND = {
     info: "#7b899e",
   },
 
-  // LIGHT-SURFACE VARIANTS, for email.
+  // LIGHT-SURFACE VARIANTS.
+  //
+  // NOT CURRENTLY USED BY ANYTHING. Email rendered light and used this set;
+  // it renders dark now (see the palette comment in lib/email/layout.ts for
+  // why, and for the trade-off that accepts), so nothing reads these values
+  // today.
+  //
+  // Kept rather than deleted because every number below is a measured
+  // contrast ratio against the specific surface it is used on, and that work
+  // is expensive to redo. If a light variant is ever wanted again, for a
+  // per-recipient preference or a light PDF, this is a finished palette
+  // rather than a starting point. If you are adding a light surface, read the
+  // ratios in the comments before changing a hex.
   //
   // Everything above is the dark theme, which is right for the PDF report and
   // the OG cards (they control their own canvas) and wrong for email, which

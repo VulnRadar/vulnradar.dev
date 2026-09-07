@@ -116,7 +116,56 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-const LIGHT = BRAND.onLight;
+/**
+ * The palette every inline style in this file uses, and therefore what the
+ * message looks like before any stylesheet is applied.
+ *
+ * This was BRAND.onLight, and the messages rendered as a white card on a pale
+ * canvas, with dark values available only behind a prefers-color-scheme
+ * override. That was a defensible reading of "email is read on white far more
+ * often than not", and it is not what this product looks like: VulnRadar is
+ * dark everywhere else a user sees it, so its mail arrived looking like it
+ * came from somebody else.
+ *
+ * Dark by default now, with two things carrying the weight that the light
+ * default used to:
+ *
+ *  - color-scheme: dark, in a meta tag and in CSS. This is the signal that
+ *    stops a client "helpfully" inverting an already-dark message, which is
+ *    the failure mode a dark email actually has. Gmail and Apple Mail both
+ *    read it.
+ *  - The Outlook.com rules further down still exist, but they now put the
+ *    dark values BACK rather than introducing them: that client rewrites the
+ *    document and stamps [data-ogsc]/[data-ogsb] rather than answering the
+ *    media query, so it is the one place a dark message can be lightened
+ *    against its will.
+ *
+ * The trade-off this accepts, stated plainly because the previous comment
+ * measured it: a client that strips background colours but keeps text
+ * colours renders near-white text on white. That is rare and mostly ancient,
+ * and every surface here carries both a bgcolor attribute and an inline
+ * background-color so it takes two independent failures to reach it.
+ */
+const PALETTE = {
+  canvas: BRAND.bg,
+  surface: BRAND.surface,
+  surfaceRaised: BRAND.surfaceRaised,
+  border: BRAND.border,
+  borderStrong: BRAND.borderStrong,
+  text: BRAND.text,
+  textMuted: BRAND.textMuted,
+  textFaint: BRAND.textFaint,
+  primary: BRAND.primary,
+  onPrimary: BRAND.onPrimary,
+  primaryText: BRAND.primaryLight,
+  success: BRAND.successLight,
+  successBg: BRAND.successBg,
+  warning: BRAND.warningLight,
+  danger: BRAND.dangerLight,
+  dangerBg: BRAND.dangerBg,
+  callout: BRAND.callout,
+  severity: BRAND.severity,
+} as const;
 
 /**
  * The spacing and radius scale, in one place so a block cannot invent a
@@ -162,20 +211,23 @@ export type EmailSeverity = "critical" | "high" | "medium" | "low" | "info";
  * light value is measured on #f5f7fa (surfaceRaised, the tighter of the two
  * surfaces an accent lands on) and the dark value on #12151c.
  */
+// `light` is the baseline (now dark) value used inline; `dark` is what the
+// Outlook.com rules restore. They are the same colour, which is the point:
+// that client rewrites a dark message and these put it back.
 const ACCENTS: Record<EmailAccent, { light: string; dark: string }> = {
-  brand: { light: LIGHT.primaryText, dark: BRAND.primaryLight },
-  ok: { light: LIGHT.success, dark: BRAND.successLight },
-  warn: { light: LIGHT.warning, dark: BRAND.warningLight },
-  bad: { light: LIGHT.danger, dark: BRAND.dangerLight },
-  neutral: { light: LIGHT.textMuted, dark: BRAND.textMuted },
+  brand: { light: BRAND.primaryLight, dark: BRAND.primaryLight },
+  ok: { light: BRAND.successLight, dark: BRAND.successLight },
+  warn: { light: BRAND.warningLight, dark: BRAND.warningLight },
+  bad: { light: BRAND.dangerLight, dark: BRAND.dangerLight },
+  neutral: { light: BRAND.textMuted, dark: BRAND.textMuted },
 };
 
 const SEVERITIES: Record<EmailSeverity, { light: string; dark: string }> = {
-  critical: { light: LIGHT.severity.critical, dark: BRAND.severity.critical },
-  high: { light: LIGHT.severity.high, dark: BRAND.severity.high },
-  medium: { light: LIGHT.severity.medium, dark: BRAND.severity.medium },
-  low: { light: LIGHT.severity.low, dark: BRAND.severity.low },
-  info: { light: LIGHT.severity.info, dark: BRAND.severity.info },
+  critical: { light: BRAND.severity.critical, dark: BRAND.severity.critical },
+  high: { light: BRAND.severity.high, dark: BRAND.severity.high },
+  medium: { light: BRAND.severity.medium, dark: BRAND.severity.medium },
+  low: { light: BRAND.severity.low, dark: BRAND.severity.low },
+  info: { light: BRAND.severity.info, dark: BRAND.severity.info },
 };
 
 function accentClass(name: string): string {
@@ -259,6 +311,7 @@ function darkRules(prefix: string): string {
 
 function styleBlock(): string {
   return [
+    ":root{color-scheme:dark;supported-color-schemes:dark}",
     "body{margin:0;padding:0;width:100%!important;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}",
     "table{border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0}",
     "img{border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic}",
@@ -283,9 +336,12 @@ function styleBlock(): string {
     ".v-btnw{width:100%!important}",
     ".v-btn a{display:block!important;text-align:center!important}",
     "}",
-    `@media (prefers-color-scheme:dark){${darkRules("")}}`,
-    // Outlook.com does not answer the media query; it rewrites the document
-    // and stamps these attributes on the elements it changed.
+    // No prefers-color-scheme block: the baseline is already dark, so it
+    // would emit every rule a second time to no effect.
+    //
+    // Outlook.com does not answer the media query. It rewrites the document
+    // and stamps these attributes on what it changed, which for a dark
+    // message means lightening it. These put the palette back.
     darkRules("[data-ogsc] "),
     darkRules("[data-ogsb] "),
   ].join("");
@@ -302,7 +358,7 @@ function styleBlock(): string {
  * wordmark below is 600 for the same reason.
  */
 export function emailHeading(text: string): string {
-  return `<h1 class="${C.heading}" style="margin:0 0 12px 0;font-family:${SANS_STACK};font-size:22px;line-height:1.32;font-weight:600;color:${LIGHT.text};letter-spacing:-0.3px;mso-line-height-rule:exactly;">${text}</h1>`;
+  return `<h1 class="${C.heading}" style="margin:0 0 12px 0;font-family:${SANS_STACK};font-size:22px;line-height:1.32;font-weight:600;color:${PALETTE.text};letter-spacing:-0.3px;mso-line-height-rule:exactly;">${text}</h1>`;
 }
 
 /**
@@ -311,11 +367,11 @@ export function emailHeading(text: string): string {
  * the same size as what follows it was not leading anything.
  */
 export function emailLead(text: string): string {
-  return `<p class="${C.body}" style="margin:0 0 ${SPACE.block} 0;font-family:${SANS_STACK};font-size:16px;color:${LIGHT.textMuted};line-height:1.62;mso-line-height-rule:exactly;">${text}</p>`;
+  return `<p class="${C.body}" style="margin:0 0 ${SPACE.block} 0;font-family:${SANS_STACK};font-size:16px;color:${PALETTE.textMuted};line-height:1.62;mso-line-height-rule:exactly;">${text}</p>`;
 }
 
 export function emailParagraph(text: string): string {
-  return `<p class="${C.body}" style="margin:0 0 20px 0;font-family:${SANS_STACK};font-size:15px;color:${LIGHT.textMuted};line-height:1.65;mso-line-height-rule:exactly;">${text}</p>`;
+  return `<p class="${C.body}" style="margin:0 0 20px 0;font-family:${SANS_STACK};font-size:15px;color:${PALETTE.textMuted};line-height:1.65;mso-line-height-rule:exactly;">${text}</p>`;
 }
 
 /**
@@ -324,12 +380,12 @@ export function emailParagraph(text: string): string {
  * same colour, size and dark-mode behaviour as a real template's prose.
  */
 export function emailProse(html: string): string {
-  return `<div class="${C.body}" style="font-family:${SANS_STACK};font-size:15px;color:${LIGHT.textMuted};line-height:1.65;">${html}</div>`;
+  return `<div class="${C.body}" style="font-family:${SANS_STACK};font-size:15px;color:${PALETTE.textMuted};line-height:1.65;">${html}</div>`;
 }
 
 /** Emphasis inside a lead or paragraph, in the heading colour. */
 export function emailStrong(text: string): string {
-  return `<strong class="${C.heading}" style="color:${LIGHT.text};font-weight:600;">${text}</strong>`;
+  return `<strong class="${C.heading}" style="color:${PALETTE.text};font-weight:600;">${text}</strong>`;
 }
 
 /**
@@ -338,7 +394,7 @@ export function emailStrong(text: string): string {
  * the number stays the thing being read.
  */
 export function emailQuiet(text: string): string {
-  return `<span class="${C.faint}" style="color:${LIGHT.textFaint};font-size:12px;font-weight:400;">${text}</span>`;
+  return `<span class="${C.faint}" style="color:${PALETTE.textFaint};font-size:12px;font-weight:400;">${text}</span>`;
 }
 
 /**
@@ -357,8 +413,8 @@ export function emailQuiet(text: string): string {
 export function emailQuote(label: string, inner: string): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 ${SPACE.block} 0;">
       <tr>
-        <td class="v-qr" style="border-left:2px solid ${LIGHT.borderStrong};padding:1px 0 1px 16px;">
-          <p class="${C.faint}" style="margin:0 0 8px 0;font-family:${SANS_STACK};font-size:12px;color:${LIGHT.textFaint};letter-spacing:0.2px;">${label}</p>
+        <td class="v-qr" style="border-left:2px solid ${PALETTE.borderStrong};padding:1px 0 1px 16px;">
+          <p class="${C.faint}" style="margin:0 0 8px 0;font-family:${SANS_STACK};font-size:12px;color:${PALETTE.textFaint};letter-spacing:0.2px;">${label}</p>
           ${inner}
         </td>
       </tr>
@@ -375,7 +431,7 @@ export function emailQuote(label: string, inner: string): string {
  * attribute anyway.
  */
 export function emailLink(href: string, text: string): string {
-  return `<a href="${escapeHtml(href)}" class="${C.link}" style="color:${LIGHT.primaryText};text-decoration:underline;">${text}</a>`;
+  return `<a href="${escapeHtml(href)}" class="${C.link}" style="color:${PALETTE.primaryText};text-decoration:underline;">${text}</a>`;
 }
 
 /**
@@ -399,7 +455,7 @@ export function emailButton(
   label: string,
   accent: "brand" | "bad" = "brand",
 ): string {
-  const bg = accent === "bad" ? LIGHT.danger : LIGHT.primary;
+  const bg = accent === "bad" ? PALETTE.danger : PALETTE.primary;
   // The dark override belongs on the cell and the label, which are the two
   // things that actually paint, and only on the brand button: the danger red
   // reads correctly on both grounds and does not want repainting. The wrapper
@@ -413,14 +469,14 @@ export function emailButton(
       <!--[if mso]>
       <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${safeHref}" style="height:46px;v-text-anchor:middle;width:${vmlWidth}px;" arcsize="14%" stroke="f" fillcolor="${bg}">
         <w:anchorlock/>
-        <center style="color:${LIGHT.onPrimary};font-family:${SANS_STACK};font-size:15px;font-weight:600;">${label}</center>
+        <center style="color:${PALETTE.onPrimary};font-family:${SANS_STACK};font-size:15px;font-weight:600;">${label}</center>
       </v:roundrect>
       <![endif]-->
       <!--[if !mso]><!-->
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="v-btnw" style="border-collapse:separate;">
         <tr>
           <td bgcolor="${bg}"${cls} style="border-radius:${R.control};background-color:${bg};">
-            <a href="${safeHref}"${cls} style="display:inline-block;padding:13px 28px;background-color:${bg};color:${LIGHT.onPrimary};font-family:${SANS_STACK};font-size:15px;font-weight:600;line-height:1.2;text-decoration:none;border-radius:${R.control};">${label}</a>
+            <a href="${safeHref}"${cls} style="display:inline-block;padding:13px 28px;background-color:${bg};color:${PALETTE.onPrimary};font-family:${SANS_STACK};font-size:15px;font-weight:600;line-height:1.2;text-decoration:none;border-radius:${R.control};">${label}</a>
           </td>
         </tr>
       </table>
@@ -441,8 +497,8 @@ export function emailButton(
  */
 export function emailFallbackLink(url: string): string {
   return `
-    <p class="${C.faint}" style="margin:0 0 5px 0;font-family:${SANS_STACK};font-size:13px;color:${LIGHT.textFaint};line-height:1.6;">Or paste this link into your browser:</p>
-    <p class="${C.link}" style="margin:0;font-family:${MONO_STACK};font-size:12px;color:${LIGHT.primaryText};word-break:break-all;line-height:1.6;">${escapeHtml(url)}</p>`;
+    <p class="${C.faint}" style="margin:0 0 5px 0;font-family:${SANS_STACK};font-size:13px;color:${PALETTE.textFaint};line-height:1.6;">Or paste this link into your browser:</p>
+    <p class="${C.link}" style="margin:0;font-family:${MONO_STACK};font-size:12px;color:${PALETTE.primaryText};word-break:break-all;line-height:1.6;">${escapeHtml(url)}</p>`;
 }
 
 /**
@@ -457,14 +513,14 @@ export function emailFallbackLink(url: string): string {
  * hue read as a temperature rather than as a stripe.
  */
 export function emailNote(text: string, accent: EmailAccent = "brand"): string {
-  const tint = LIGHT.callout[accent];
+  const tint = PALETTE.callout[accent];
   // Fill and edge live on the `<td>`, not on the `<table>`: Word paints a cell
   // background and a cell border reliably and a table's only sometimes. The
   // `bgcolor` attribute is the belt to that brace for the oldest clients.
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 ${SPACE.block} 0;">
       <tr>
         <td class="${calloutClass(accent)}" bgcolor="${tint.bg}" style="background-color:${tint.bg};border:1px solid ${tint.edge};border-radius:${R.block};padding:14px 16px;">
-          <span class="${C.body}" style="font-family:${SANS_STACK};font-size:14px;color:${LIGHT.textMuted};line-height:1.6;">${text}</span>
+          <span class="${C.body}" style="font-family:${SANS_STACK};font-size:14px;color:${PALETTE.textMuted};line-height:1.6;">${text}</span>
         </td>
       </tr>
     </table>`;
@@ -513,18 +569,18 @@ export function emailDetailPanel(rows: EmailDetailRow[]): string {
       const font = r.mono ? MONO_STACK : SANS_STACK;
       const a = rowAccent(r.accent);
       const hint = r.hint
-        ? `<div class="${C.faint}" style="margin-top:4px;font-family:${MONO_STACK};font-size:11px;line-height:1.5;color:${LIGHT.textFaint};word-break:break-all;">${r.hint}</div>`
+        ? `<div class="${C.faint}" style="margin-top:4px;font-family:${MONO_STACK};font-size:11px;line-height:1.5;color:${PALETTE.textFaint};word-break:break-all;">${r.hint}</div>`
         : "";
       return `
         <tr>
-          <td class="v-dt ${C.faint}" style="padding:${top} 16px 0 0;color:${LIGHT.textFaint};font-family:${SANS_STACK};font-size:13px;line-height:1.5;width:132px;vertical-align:top;">${r.label}</td>
-          <td class="v-dd ${a ? a.cls : C.heading}" style="padding:${top} 0 0 0;color:${a ? a.color : LIGHT.text};font-family:${font};font-size:14px;font-weight:500;line-height:1.5;word-break:break-word;vertical-align:top;">${r.value}${hint}</td>
+          <td class="v-dt ${C.faint}" style="padding:${top} 16px 0 0;color:${PALETTE.textFaint};font-family:${SANS_STACK};font-size:13px;line-height:1.5;width:132px;vertical-align:top;">${r.label}</td>
+          <td class="v-dd ${a ? a.cls : C.heading}" style="padding:${top} 0 0 0;color:${a ? a.color : PALETTE.text};font-family:${font};font-size:14px;font-weight:500;line-height:1.5;word-break:break-word;vertical-align:top;">${r.value}${hint}</td>
         </tr>`;
     })
     .join("");
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 ${SPACE.block} 0;">
       <tr>
-        <td class="${C.panel}" bgcolor="${LIGHT.surfaceRaised}" style="background-color:${LIGHT.surfaceRaised};border-radius:${R.block};padding:18px 20px;">
+        <td class="${C.panel}" bgcolor="${PALETTE.surfaceRaised}" style="background-color:${PALETTE.surfaceRaised};border-radius:${R.block};padding:18px 20px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${body}</table>
         </td>
       </tr>
@@ -539,8 +595,8 @@ export function emailDetailPanel(rows: EmailDetailRow[]): string {
 export function emailPanel(label: string, inner: string): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px 0;">
       <tr>
-        <td class="${C.panel}" bgcolor="${LIGHT.surfaceRaised}" style="background-color:${LIGHT.surfaceRaised};border-radius:${R.block};padding:18px 20px;">
-          <p class="${C.faint}" style="margin:0 0 12px 0;font-family:${SANS_STACK};font-size:12px;color:${LIGHT.textFaint};letter-spacing:0.2px;">${label}</p>
+        <td class="${C.panel}" bgcolor="${PALETTE.surfaceRaised}" style="background-color:${PALETTE.surfaceRaised};border-radius:${R.block};padding:18px 20px;">
+          <p class="${C.faint}" style="margin:0 0 12px 0;font-family:${SANS_STACK};font-size:12px;color:${PALETTE.textFaint};letter-spacing:0.2px;">${label}</p>
           ${inner}
         </td>
       </tr>
@@ -556,8 +612,8 @@ export function emailPanel(label: string, inner: string): string {
 export function emailCodeBlock(code: string): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 ${SPACE.block} 0;">
       <tr>
-        <td align="center" class="${C.panel}" bgcolor="${LIGHT.surfaceRaised}" style="background-color:${LIGHT.surfaceRaised};border-radius:${R.block};padding:26px 16px;">
-          <div class="${C.link}" style="font-family:${MONO_STACK};font-size:30px;font-weight:600;letter-spacing:9px;text-indent:9px;color:${LIGHT.primaryText};line-height:1.2;mso-line-height-rule:exactly;">${escapeHtml(code)}</div>
+        <td align="center" class="${C.panel}" bgcolor="${PALETTE.surfaceRaised}" style="background-color:${PALETTE.surfaceRaised};border-radius:${R.block};padding:26px 16px;">
+          <div class="${C.link}" style="font-family:${MONO_STACK};font-size:30px;font-weight:600;letter-spacing:9px;text-indent:9px;color:${PALETTE.primaryText};line-height:1.2;mso-line-height-rule:exactly;">${escapeHtml(code)}</div>
         </td>
       </tr>
     </table>`;
@@ -599,9 +655,9 @@ export function emailFindingItem(
   const key = (severity in SEVERITIES ? severity : "info") as EmailSeverity;
   const { light } = SEVERITIES[key];
   const trailer = context
-    ? ` <span class="${C.faint}" style="color:${LIGHT.textFaint};font-size:11px;">${context}</span>`
+    ? ` <span class="${C.faint}" style="color:${PALETTE.textFaint};font-size:11px;">${context}</span>`
     : "";
-  return `<li class="${C.body}" style="margin:0 0 8px 0;font-family:${SANS_STACK};font-size:13px;color:${LIGHT.textMuted};line-height:1.6;"><span class="${accentClass(key)}" style="display:inline-block;min-width:56px;font-size:10px;text-transform:uppercase;font-weight:700;letter-spacing:0.4px;color:${light};">${escapeHtml(severity)}</span> ${title}${trailer}</li>`;
+  return `<li class="${C.body}" style="margin:0 0 8px 0;font-family:${SANS_STACK};font-size:13px;color:${PALETTE.textMuted};line-height:1.6;"><span class="${accentClass(key)}" style="display:inline-block;min-width:56px;font-size:10px;text-transform:uppercase;font-weight:700;letter-spacing:0.4px;color:${light};">${escapeHtml(severity)}</span> ${title}${trailer}</li>`;
 }
 
 export function emailFindingList(items: string): string {
@@ -628,11 +684,11 @@ export function emailChangeRow(
   ) =>
     `<span class="${tint} ${accentClass(accent)}" style="display:inline-block;padding:3px 8px;background-color:${bg};border-radius:4px;font-family:${SANS_STACK};font-size:12px;color:${ACCENTS[accent].light};${strike ? "text-decoration:line-through;" : ""}">${escapeHtml(value || "(empty)")}</span>`;
   return `<tr>
-        <td class="${C.faint} ${C.rule}" style="padding:10px 12px 10px 0;border-bottom:1px solid ${LIGHT.border};color:${LIGHT.textFaint};font-family:${SANS_STACK};font-size:13px;width:120px;vertical-align:top;">${escapeHtml(field)}</td>
-        <td class="${C.rule}" style="padding:10px 0;border-bottom:1px solid ${LIGHT.border};vertical-align:top;">
-          ${pill(oldValue, "v-tint-bad", LIGHT.dangerBg, "bad", true)}
-          <span class="${C.faint}" style="color:${LIGHT.textFaint};padding:0 6px;">&rarr;</span>
-          ${pill(newValue, "v-tint-ok", LIGHT.successBg, "ok", false)}
+        <td class="${C.faint} ${C.rule}" style="padding:10px 12px 10px 0;border-bottom:1px solid ${PALETTE.border};color:${PALETTE.textFaint};font-family:${SANS_STACK};font-size:13px;width:120px;vertical-align:top;">${escapeHtml(field)}</td>
+        <td class="${C.rule}" style="padding:10px 0;border-bottom:1px solid ${PALETTE.border};vertical-align:top;">
+          ${pill(oldValue, "v-tint-bad", PALETTE.dangerBg, "bad", true)}
+          <span class="${C.faint}" style="color:${PALETTE.textFaint};padding:0 6px;">&rarr;</span>
+          ${pill(newValue, "v-tint-ok", PALETTE.successBg, "ok", false)}
         </td>
       </tr>`;
 }
@@ -675,8 +731,8 @@ export function emailLayout({
   // One style for every footer link, so the row reads as a row rather than as
   // four differently-weighted things that happen to be blue.
   const footLink = (href: string, text: string) =>
-    `<a href="${escapeHtml(href)}" class="${C.faint}" style="color:${LIGHT.textFaint};text-decoration:underline;white-space:nowrap;">${text}</a>`;
-  const dot = `<span class="${C.faint}" style="color:${LIGHT.textFaint};padding:0 7px;">&middot;</span>`;
+    `<a href="${escapeHtml(href)}" class="${C.faint}" style="color:${PALETTE.textFaint};text-decoration:underline;white-space:nowrap;">${text}</a>`;
+  const dot = `<span class="${C.faint}" style="color:${PALETTE.textFaint};padding:0 7px;">&middot;</span>`;
 
   // Two different reasons a message can land, and telling the reader the
   // wrong one is worse than saying nothing. A message that carries an
@@ -706,29 +762,29 @@ export function emailLayout({
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <meta name="color-scheme" content="light dark" />
-  <meta name="supported-color-schemes" content="light dark" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="supported-color-schemes" content="dark" />
   <title>${escapeHtml(title || appName)}</title>
   <!--[if mso]>
   <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
   <![endif]-->
   <style>${styleBlock()}</style>
 </head>
-<body class="${C.canvas}" style="margin:0;padding:0;background-color:${LIGHT.canvas};font-family:${SANS_STACK};color:${LIGHT.text};">
+<body class="${C.canvas}" style="margin:0;padding:0;background-color:${PALETTE.canvas};font-family:${SANS_STACK};color:${PALETTE.text};">
   ${preheaderHtml}
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="${C.canvas}" bgcolor="${LIGHT.canvas}" style="background-color:${LIGHT.canvas};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="${C.canvas}" bgcolor="${PALETTE.canvas}" style="background-color:${PALETTE.canvas};">
     <tr>
-      <td align="center" class="${C.canvas} v-shell" bgcolor="${LIGHT.canvas}" style="background-color:${LIGHT.canvas};padding:${SPACE.shellPad};">
+      <td align="center" class="${C.canvas} v-shell" bgcolor="${PALETTE.canvas}" style="background-color:${PALETTE.canvas};padding:${SPACE.shellPad};">
         <!--[if mso]><table role="presentation" width="600" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="v-w" style="width:600px;max-width:600px;">
           <tr>
-            <td class="${C.card}" bgcolor="${LIGHT.surface}" style="background-color:${LIGHT.surface};border:1px solid ${LIGHT.border};border-radius:${R.card};padding:${SPACE.cardPad};">
+            <td class="${C.card}" bgcolor="${PALETTE.surface}" style="background-color:${PALETTE.surface};border:1px solid ${PALETTE.border};border-radius:${R.card};padding:${SPACE.cardPad};">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 26px 0;">
                 <tr>
                   <td>
-                    <a href="${appUrl}" class="${C.heading}" style="text-decoration:none;color:${LIGHT.text};">
+                    <a href="${appUrl}" class="${C.heading}" style="text-decoration:none;color:${PALETTE.text};">
                       <img src="${logoSrc}" alt="" width="26" height="26" style="display:inline-block;vertical-align:middle;border:0;" />
-                      <span class="${C.heading}" style="display:inline-block;vertical-align:middle;margin-left:9px;font-family:${MONO_STACK};font-size:16px;font-weight:600;letter-spacing:-0.3px;color:${LIGHT.text};">${escapeHtml(appName)}</span>
+                      <span class="${C.heading}" style="display:inline-block;vertical-align:middle;margin-left:9px;font-family:${MONO_STACK};font-size:16px;font-weight:600;letter-spacing:-0.3px;color:${PALETTE.text};">${escapeHtml(appName)}</span>
                     </a>
                   </td>
                 </tr>
@@ -738,10 +794,10 @@ export function emailLayout({
           </tr>
           <tr>
             <td style="padding:22px 12px 0 12px;text-align:center;">
-              <p class="${C.faint}" style="margin:0 0 9px 0;font-family:${SANS_STACK};font-size:12px;color:${LIGHT.textFaint};line-height:1.6;">
+              <p class="${C.faint}" style="margin:0 0 9px 0;font-family:${SANS_STACK};font-size:12px;color:${PALETTE.textFaint};line-height:1.6;">
                 ${reasonLine}
               </p>
-              <p class="${C.faint}" style="margin:0;font-family:${SANS_STACK};font-size:12px;color:${LIGHT.textFaint};line-height:1.9;">
+              <p class="${C.faint}" style="margin:0;font-family:${SANS_STACK};font-size:12px;color:${PALETTE.textFaint};line-height:1.9;">
                 ${links}
               </p>
             </td>
