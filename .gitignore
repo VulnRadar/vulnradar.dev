@@ -26,6 +26,13 @@ graphify-out
 *.sql.gz.enc.json
 !scripts/**/*.sql
 
+# Runtime data directories. Empty in a fresh checkout, so git shows nothing,
+# which is exactly why they are easy to miss: they populate during normal
+# operation and only then become stageable. /data/avatars is where
+# scripts/maintenance/migrate-avatars-to-files.mjs writes user avatars, which
+# is personal data.
+/data/
+/engine/data/
 # Agent instructions - never commit; per-developer files
 AGENTS.md
 CLAUDE.md

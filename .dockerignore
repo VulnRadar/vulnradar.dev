@@ -20,8 +20,33 @@ graphify-out
 coverage
 .nyc_output
 
-# Real pre-migration database dumps (see .gitignore). Customer data.
+# Database dumps and archives. Real customer data.
+#
+# `databases` alone was the rule here, and it matched nothing: that directory
+# does not exist. The one that does is `backups/`, which is where both
+# scripts/backup-db.mjs and the admin panel write (BACKUP_DIR defaults to
+# <cwd>/backups), and it was never excluded. With `COPY . .` in the Dockerfile
+# that put a 1.3 MB encrypted production dump, its IV/auth-tag sidecar, and a
+# 25 MB source archive into the build context and the builder layer on every
+# image build.
+#
+# This is the same gap .gitignore documents having already closed on the git
+# side, in the same words. The fix landed there and was never mirrored here,
+# which is the recurring shape of this class: two ignore files, one edited.
+# When you add a data-shaped rule to one, add it to the other.
+#
+# It does not reach the published image (the runner stage copies named paths
+# only), but the context transfer and the build cache are not nothing.
 databases
+backups
+*.sql
+*.sql.gz
+*.sql.gz.enc
+*.sql.gz.enc.json
+*.dump
+*.rar
+*.zip
+*.7z
 
 # Standalone Remotion asset project, not part of the product build.
 marketing
