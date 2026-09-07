@@ -118,10 +118,18 @@ Fussier, because it has to force the browser onto IPv4:
    }
 
    server {
-     # `listen 443 ssl http2;` has been deprecated since nginx 1.25.1 and
-     # warns on every reload. The directive below replaces it.
-     listen 443 ssl;
-     http2 on;
+     # Check your nginx version first: `nginx -v`.
+     #
+     # 1.25.1 and newer: HTTP/2 is its own directive, and putting it on the
+     # listen line warns on every reload.
+     #     listen 443 ssl;
+     #     http2 on;
+     #
+     # Older than 1.25.1: `http2` as a standalone directive does not exist and
+     # nginx refuses to start with "unknown directive", so it goes on the
+     # listen line, which is the line below. Ubuntu 22.04 ships 1.18 and
+     # 24.04 ships 1.24, so this is still the common case.
+     listen 443 ssl http2;
      server_name ip4.vulnradar.dev;
 
      ssl_certificate     /etc/letsencrypt/live/ip4.vulnradar.dev/fullchain.pem;
@@ -151,7 +159,7 @@ Fussier, because it has to force the browser onto IPv4:
    }
    ```
 
-   Use IPv4-only listeners here (`listen 443 ssl;`, NOT `listen [::]:443`).
+   Use IPv4-only listeners here (no `listen [::]:443` line at all).
    The point of this host is to be IPv4-only; an IPv6 listener is unnecessary,
    and if an AAAA record ever slipped in it would let the host answer over IPv6
    and defeat the capture. Then `sudo nginx -t && sudo systemctl reload nginx`.
@@ -196,12 +204,30 @@ add_header Cross-Origin-Embedder-Policy "credentialless" always;
 The better answer is usually to set it in exactly one place. The app already
 sets the full header set; nginx does not need to repeat any of it.
 
-### 2. `Connection: upgrade` must be conditional
+### 2. Do not send `Connection: upgrade` at all
 
-A hardcoded `proxy_set_header Connection "upgrade";` sends the upgrade header
-on **every** request, not just WebSocket ones. Most upstreams tolerate it and
-some proxies and CDNs do not. The idiom is a `map`, at `http` level (outside
-`server`, so usually `/etc/nginx/nginx.conf` or a file in `conf.d/`):
+The copy-pasted Next.js reverse-proxy recipe everyone starts from includes:
+
+```nginx
+proxy_set_header Upgrade    $http_upgrade;
+proxy_set_header Connection "upgrade";
+```
+
+That literal `"upgrade"` is unconditional: it goes out on **every** request,
+not just WebSocket ones. Most upstreams tolerate it, some proxies and CDNs do
+not, and the failure is intermittent because it depends which hop is in the
+path.
+
+**VulnRadar serves no WebSocket endpoints**, so the correct fix is to delete
+both lines rather than to make them conditional. There is no WS route in the
+app, and the live browser view is an iframe pointing at BrowserBase, which the
+visitor's browser connects to directly rather than through your proxy. Keep
+`proxy_http_version 1.1;`, which is about upstream keepalive and is still
+wanted.
+
+If a future feature ever does add a WebSocket route, the idiom is a `map` at
+`http` level (outside `server{}`, so a file in `conf.d/`, which Debian and
+Ubuntu include before `sites-enabled`):
 
 ```nginx
 map $http_upgrade $connection_upgrade {
@@ -210,16 +236,10 @@ map $http_upgrade $connection_upgrade {
 }
 ```
 
-then, in the `location`:
-
-```nginx
-proxy_http_version 1.1;
-proxy_set_header Upgrade    $http_upgrade;
-proxy_set_header Connection $connection_upgrade;
-```
-
-Now a normal request sends `Connection: close` and only a real upgrade sends
-`upgrade`.
+and then `proxy_set_header Connection $connection_upgrade;`. Referencing that
+variable without defining it first is an `unknown "connection_upgrade"
+variable` error at startup, which is what you get if the file lands in the
+wrong directory or after the site config.
 
 ### 3. The read timeout has to clear the longest request
 
