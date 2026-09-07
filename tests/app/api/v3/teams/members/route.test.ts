@@ -248,6 +248,99 @@ describe("POST /api/v3/teams/members", () => {
     expect(mockGetUserPlanLimits).toHaveBeenCalledWith(5); // the owner, not the inviter
   });
 
+  it("re-applies the seat cap and the duplicate check inside the INSERT", async () => {
+    // Both gates are check-then-act. Two admins inviting at the same moment
+    // each read a seat count taken before the other wrote, so both passed
+    // and the team went a seat over the cap its owner pays for; two invites
+    // to the same address raced the same way and produced two live tokens
+    // for one person.
+    mockGetUserPlanLimits.mockResolvedValue({
+      dailyScans: 0,
+      apiKeys: 0,
+      apiRequestsPerDay: 0,
+      teams: 0,
+      teamMembers: 5,
+      webhooks: 0,
+      scheduledScans: 0,
+      bulkScanUrls: 0,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] }); // memberRes
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingUser
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingInvite
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 5 }] }); // ownerRes
+    mockQuery.mockResolvedValueOnce({ rows: [{ seats: 2 }] }); // seat count
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 11 }] }); // guarded INSERT
+    mockQuery.mockResolvedValue({ rows: [] }); // team name / inviter lookups
+
+    await POST(
+      postRequest({ teamId: 1, email: "new@example.com", role: "viewer" }),
+    );
+
+    const [sql, params] = mockQuery.mock.calls[5];
+    expect(sql).toContain("INSERT INTO team_invites");
+    expect(sql).toContain("NOT EXISTS");
+    expect(sql).toContain("FROM team_members WHERE team_id = $1");
+    // The owner's cap, bound last.
+    expect(params[6]).toBe(5);
+  });
+
+  it("reports a lost seat race as a plan limit, not a crash", async () => {
+    mockGetUserPlanLimits.mockResolvedValue({
+      dailyScans: 0,
+      apiKeys: 0,
+      apiRequestsPerDay: 0,
+      teams: 0,
+      teamMembers: 5,
+      webhooks: 0,
+      scheduledScans: 0,
+      bulkScanUrls: 0,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 5 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ seats: 4 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // the guard refused
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // no pending invite, so it was the cap
+
+    const res = await POST(
+      postRequest({ teamId: 1, email: "new@example.com", role: "viewer" }),
+    );
+    const json = await res.json();
+
+    // The old code read rows[0].id straight off an empty result.
+    expect(res.status).toBe(400);
+    expect(json.error).toContain("up to 5 Team members");
+  });
+
+  it("reports a lost duplicate race as a pending invite, not as a plan limit", async () => {
+    mockGetUserPlanLimits.mockResolvedValue({
+      dailyScans: 0,
+      apiKeys: 0,
+      apiRequestsPerDay: 0,
+      teams: 0,
+      teamMembers: 5,
+      webhooks: 0,
+      scheduledScans: 0,
+      bulkScanUrls: 0,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ owner_id: 5 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ seats: 1 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // the guard refused
+    mockQuery.mockResolvedValueOnce({ rows: [{ "?column?": 1 }] }); // an invite is pending
+
+    const res = await POST(
+      postRequest({ teamId: 1, email: "new@example.com", role: "viewer" }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toContain("already pending");
+  });
+
   it("is rate limited", async () => {
     mockCheckRateLimit.mockResolvedValue({
       allowed: false,

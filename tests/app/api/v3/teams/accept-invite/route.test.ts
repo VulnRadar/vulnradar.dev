@@ -147,7 +147,7 @@ describe("POST /api/v3/teams/accept-invite", () => {
     mockQuery.mockResolvedValueOnce({ rows: [invite()] }); // find by token hash
     mockQuery.mockResolvedValueOnce({ rows: [VERIFIED_USER] }); // user's email
     mockQuery.mockResolvedValueOnce({ rows: [] }); // existingMember
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE accepted_at
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 7 }] }); // claim the invite
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT team_members
 
     const res = await POST(postRequest({ token: "plaintext-token" }));
@@ -166,7 +166,7 @@ describe("POST /api/v3/teams/accept-invite", () => {
     mockQuery.mockResolvedValueOnce({ rows: [invite()] }); // find by id
     mockQuery.mockResolvedValueOnce({ rows: [VERIFIED_USER] });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // existingMember
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE accepted_at
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 7 }] }); // claim the invite
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT team_members
 
     const res = await POST(postRequest({ inviteId: 7 }));
@@ -178,6 +178,49 @@ describe("POST /api/v3/teams/accept-invite", () => {
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("ti.id = $1");
     expect(params).toEqual([7]);
+  });
+
+  it("refuses a second acceptance of an invite already claimed", async () => {
+    // Everything above the writes is check-then-act: the invite is read, its
+    // expiry judged and the membership checked, all before either statement
+    // runs. Two clicks on the same link a moment apart both got through
+    // those reads, and the membership insert then hit the UNIQUE
+    // (team_id, user_id) index, so the second click produced a 500 for what
+    // is really "you already accepted this".
+    mockQuery.mockResolvedValueOnce({ rows: [invite()] });
+    mockQuery.mockResolvedValueOnce({ rows: [VERIFIED_USER] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingMember
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // the claim finds nothing
+
+    const res = await POST(postRequest({ inviteId: 7 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toContain("already been accepted");
+    // Refused before the membership write, so the UNIQUE index is never
+    // reached and no 500 escapes.
+    const inserted = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO team_members"),
+    );
+    expect(inserted).toEqual([]);
+  });
+
+  it("claims the invite with the guard in the statement, not a prior read", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [invite()] });
+    mockQuery.mockResolvedValueOnce({ rows: [VERIFIED_USER] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 7 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await POST(postRequest({ inviteId: 7 }));
+
+    const [claimSql] = mockQuery.mock.calls[3];
+    expect(claimSql).toContain("accepted_at IS NULL");
+    expect(claimSql).toContain("RETURNING id");
+    // A second invite to the same person for the same team, accepted at the
+    // same moment, is still one membership rather than a unique violation.
+    const [memberSql] = mockQuery.mock.calls[4];
+    expect(memberSql).toContain("ON CONFLICT (team_id, user_id) DO NOTHING");
   });
 
   it("rejects an inviteId whose email doesn't match the logged-in user, even though the id is valid", async () => {
@@ -258,9 +301,9 @@ describe("POST /api/v3/teams/accept-invite", () => {
   it("a failure marking the notification handled does not fail the accept response", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [invite()] });
     mockQuery.mockResolvedValueOnce({ rows: [VERIFIED_USER] });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingMember
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 7 }] }); // claim the invite
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT team_members
     mockMarkHandled.mockRejectedValueOnce(new Error("db down"));
 
     const res = await POST(postRequest({ inviteId: 7 }));

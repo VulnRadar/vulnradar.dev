@@ -342,6 +342,48 @@ describe("POST /api/v3/webhooks: secret", () => {
 });
 
 describe("POST /api/v3/webhooks: plan-tier limit", () => {
+  it("carries the cap into the INSERT, so a lost race cannot exceed it", async () => {
+    // Count-then-insert is check-then-act: two requests that both read the
+    // same count before either writes both pass the gate, and the account
+    // ends up holding more webhooks than its plan allows with nothing left
+    // to notice it afterwards. The cap is re-applied inside the statement,
+    // the same shape schedules/route.ts uses.
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+
+    await POST(postRequest({ url: "https://example.com/hook" }));
+
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("INSERT INTO webhooks");
+    expect(sql).toContain("SELECT COUNT(*) FROM webhooks WHERE user_id = $1");
+    // Pro Supporter's cap, bound as the last parameter.
+    expect(params[5]).toBe(5);
+  });
+
+  it("answers a refusal from inside the INSERT the way the count answers it", async () => {
+    // The guard held: a concurrent request took the last slot between the
+    // count and this statement, so the INSERT wrote nothing and returned no
+    // row. The old code spread an undefined row into the response.
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 4 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(postRequest({ url: "https://example.com/hook" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toContain("5 Webhooks");
+  });
+
+  it("binds a null cap when the plan is unlimited, so the guard always holds", async () => {
+    mockGetSetting.mockResolvedValue(false); // billing off
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 99 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+
+    await POST(postRequest({ url: "https://example.com/hook" }));
+
+    expect(mockQuery.mock.calls[1][1][5]).toBeNull();
+  });
+
   it("blocks creation once a Pro Supporter (limit 5) already has 5 webhooks", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ count: 5 }] });
 

@@ -266,6 +266,68 @@ describe("POST /api/v3/keys", () => {
     expect(emailCall.type).toBe("api_keys");
   });
 
+  it("carries the active-key cap into the INSERT, so a lost race cannot exceed it", async () => {
+    // Counting keys in the route and inserting in generateApiKey is
+    // check-then-act: two requests that both read the same count before
+    // either writes both pass the gate, and the account ends up holding more
+    // live keys than its plan allows. The cap goes down with the write now.
+    mockGetUserPlan.mockResolvedValue("free"); // apiKeys: 1
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // getUserApiKeys
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 8,
+          key_prefix: "vr_live_cccccccc",
+          name: "CI",
+          daily_limit: 25,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await POST(postRequest({ name: "CI" }));
+
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("INSERT INTO api_keys");
+    // Matching the route's own definition of an active key, which
+    // getUserApiKeys applies in JavaScript rather than in SQL.
+    expect(sql).toContain("WHERE user_id = $1 AND revoked_at IS NULL");
+    expect(params[8]).toBe(1);
+  });
+
+  it("answers a refusal from inside the INSERT the way the count answers it", async () => {
+    mockGetUserPlan.mockResolvedValue("free");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // getUserApiKeys, still under
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // the guard refused
+
+    const res = await POST(postRequest({ name: "CI" }));
+    const json = await res.json();
+
+    // Not a 500 from spreading an undefined row.
+    expect(res.status).toBe(400);
+    expect(json.error).toContain("Rotate an existing key instead");
+  });
+
+  it("binds a null cap when the plan is unlimited, so the guard always holds", async () => {
+    mockGetUserPlan.mockResolvedValue("elite_supporter"); // apiKeys: -1
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 9,
+          key_prefix: "vr_live_dddddddd",
+          name: "CI",
+          daily_limit: 999999,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await POST(postRequest({ name: "CI" }));
+
+    expect(mockQuery.mock.calls[1][1][8]).toBeNull();
+  });
+
   it("maps an unlimited plan (-1) to the 999999 sentinel", async () => {
     mockGetUserPlan.mockResolvedValue("elite_supporter");
     mockQuery.mockResolvedValueOnce({ rows: [] });

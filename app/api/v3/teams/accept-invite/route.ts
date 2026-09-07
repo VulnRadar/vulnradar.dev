@@ -172,13 +172,32 @@ export async function POST(request: Request) {
     );
   }
 
-  // Accept invite
-  await pool.query(
-    "UPDATE team_invites SET accepted_at = NOW() WHERE id = $1",
+  // Accept invite.
+  //
+  // Both writes are guarded because everything above them is check-then-act:
+  // the invite was read, its expiry judged and the membership checked, all
+  // before either statement runs. Two clicks on the same link a moment apart,
+  // or two invites to the same person for the same team, both got through
+  // those reads. The membership insert then hit the UNIQUE (team_id, user_id)
+  // index and the route answered 500, which is a real error page for what is
+  // really just "you already accepted this".
+  const claimed = await pool.query(
+    "UPDATE team_invites SET accepted_at = NOW() WHERE id = $1 AND accepted_at IS NULL RETURNING id",
     [invite.id],
   );
+  if (claimed.rows.length === 0) {
+    return NextResponse.json(
+      { error: "This invitation has already been accepted." },
+      { status: 400 },
+    );
+  }
+  // DO NOTHING rather than a second existence check: the invite has just been
+  // claimed by this request, so the only way the row is already there is a
+  // separate invite to the same team accepted concurrently, and being a
+  // member once is the correct outcome either way.
   await pool.query(
-    "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)",
+    `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)
+     ON CONFLICT (team_id, user_id) DO NOTHING`,
     [invite.team_id, session.userId, invite.role],
   );
 

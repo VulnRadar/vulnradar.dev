@@ -123,12 +123,23 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // resolveKeyDailyLimit in lib/api/api-keys.ts).
   const dailyLimit = planLimits ? planLimits.apiRequestsPerDay : -1;
 
+  const overLimitMessage = () =>
+    planLimits && planLimits.apiKeys !== 0
+      ? `${planLimitMessage("API keys", planLimits.apiKeys)} Rotate an existing key instead.`
+      : planLimitMessage("API keys", planLimits?.apiKeys ?? 0);
+
   const key = await generateApiKey(
     session.userId,
     name,
     dailyLimit === -1 ? UNLIMITED_API_KEY_DAILY_LIMIT : dailyLimit,
     scopes,
+    planLimits && planLimits.apiKeys !== -1 ? planLimits.apiKeys : null,
   );
+  if (!key) {
+    // The cap held inside the INSERT: another request took the last slot
+    // between the count above and the write. Same answer the count gives.
+    return ApiResponse.badRequest(overLimitMessage());
+  }
 
   // Send notification email in background
   const ip = await getClientIp();

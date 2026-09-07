@@ -130,9 +130,41 @@ export async function POST(request: Request) {
     );
   }
 
+  const teamCap =
+    planLimits && planLimits.teams !== -1 ? planLimits.teams : null;
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // The count above is outside this transaction and READ COMMITTED does
+    // not make it atomic with the writes below, so two creates issued at
+    // once both read the same number and both commit, putting the account
+    // over its plan's team cap. A guarded INSERT is not enough on its own
+    // here either: inside a transaction the sibling's uncommitted
+    // team_members row is invisible, so both guards would still pass.
+    //
+    // Serializing per user is what actually closes it, the same way
+    // reserveConcurrentScanSlot does for scan slots. Transaction-scoped, so
+    // it releases on COMMIT or ROLLBACK without a separate unlock, and keyed
+    // on the user so two people creating teams never wait on each other.
+    if (teamCap !== null) {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `team-create:${session.userId}`,
+      ]);
+      const guardRes = await client.query<{ cnt: string }>(
+        `SELECT COUNT(*) AS cnt FROM team_members WHERE user_id = $1 AND role = $2`,
+        [session.userId, TEAM_ROLES.OWNER],
+      );
+      if (Number(guardRes.rows[0].cnt) >= teamCap) {
+        // Rolled back explicitly rather than thrown: the catch below answers
+        // 500 "Failed to create team", and a plan cap is not a server error.
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { error: planLimitMessage("Teams", planLimits?.teams ?? 0) },
+          { status: 400 },
+        );
+      }
+    }
     const slug =
       name
         .trim()

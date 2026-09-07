@@ -126,16 +126,40 @@ export async function POST(request: NextRequest) {
   // The column stores ciphertext (AUDIT-009#webhook-01), so the plaintext is
   // attached to the response here instead of coming back through RETURNING:
   // a RETURNING secret would hand the caller the ciphertext.
+  //
+  // The plan cap is re-checked INSIDE the INSERT, not only by the count
+  // above. Count-then-insert is check-then-act: two requests that both read
+  // the same count before either writes both pass the gate, and the account
+  // ends up over its plan's webhook cap with no way for anything to notice
+  // afterwards. The guarded form is the one schedules/route.ts and
+  // lib/rate-limiting/daily-limits.ts already use. A null cap means unlimited
+  // (billing off, or the plan's own -1) and the WHERE then always holds.
+  const webhookCap =
+    planLimits && planLimits.webhooks !== -1 ? planLimits.webhooks : null;
   const result = await pool.query(
-    "INSERT INTO webhooks (user_id, url, name, type, secret) VALUES ($1, $2, $3, $4, $5) RETURNING id, url, name, type, active, created_at",
+    `INSERT INTO webhooks (user_id, url, name, type, secret)
+     SELECT $1, $2, $3, $4, $5
+     WHERE $6::int IS NULL
+        OR (SELECT COUNT(*) FROM webhooks WHERE user_id = $1) < $6::int
+     RETURNING id, url, name, type, active, created_at`,
     [
       session.userId,
       url,
       webhookName,
       webhookType,
       encryptWebhookSecret(secret),
+      webhookCap,
     ],
   );
+  if (result.rows.length === 0) {
+    // The guard refused: another request took the last slot between the
+    // count above and this statement. Answered exactly as the count would
+    // have answered it.
+    return NextResponse.json(
+      { error: planLimitMessage("Webhooks", planLimits?.webhooks ?? 0) },
+      { status: 400 },
+    );
+  }
 
   // Send notification email
   // audit-log: getClientIp respects

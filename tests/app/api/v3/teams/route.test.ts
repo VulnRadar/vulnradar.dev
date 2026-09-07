@@ -261,6 +261,8 @@ describe("POST /api/v3/teams", () => {
   it("counts existing teams scoped to the session user with role=owner", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
     mockClientQuery.mockResolvedValueOnce({}); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({}); // pg_advisory_xact_lock
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] }); // guard count
     mockClientQuery.mockResolvedValueOnce({
       rows: [{ id: 9, name: "Acme", slug: "acme-abc", created_at: "now" }],
     }); // INSERT teams
@@ -277,6 +279,8 @@ describe("POST /api/v3/teams", () => {
   it("creates the team and adds the creator as owner inside a transaction", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
     mockClientQuery.mockResolvedValueOnce({}); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({}); // pg_advisory_xact_lock
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] }); // guard count
     mockClientQuery.mockResolvedValueOnce({
       rows: [{ id: 9, name: "Acme", slug: "acme-abc", created_at: "now" }],
     }); // INSERT teams
@@ -297,20 +301,22 @@ describe("POST /api/v3/teams", () => {
     });
 
     expect(mockClientQuery.mock.calls[0][0]).toBe("BEGIN");
-    const [insertTeamSql, insertTeamParams] = mockClientQuery.mock.calls[1];
+    const [insertTeamSql, insertTeamParams] = mockClientQuery.mock.calls[3];
     expect(insertTeamSql).toContain("INSERT INTO teams");
     expect(insertTeamParams[0]).toBe("Acme");
     expect(insertTeamParams[2]).toBe(42);
-    const [insertMemberSql, insertMemberParams] = mockClientQuery.mock.calls[2];
+    const [insertMemberSql, insertMemberParams] = mockClientQuery.mock.calls[4];
     expect(insertMemberSql).toContain("INSERT INTO team_members");
     expect(insertMemberParams).toEqual([9, 42, "owner"]);
-    expect(mockClientQuery.mock.calls[3][0]).toBe("COMMIT");
+    expect(mockClientQuery.mock.calls[5][0]).toBe("COMMIT");
     expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 
   it("derives the slug from the trimmed, lowercased team name", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
     mockClientQuery.mockResolvedValueOnce({}); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({}); // pg_advisory_xact_lock
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] }); // guard count
     mockClientQuery.mockResolvedValueOnce({
       rows: [{ id: 9, name: "My Team!", slug: "my-team-x", created_at: "now" }],
     });
@@ -319,15 +325,73 @@ describe("POST /api/v3/teams", () => {
 
     await POST(jsonRequest({ name: "  My Team!  " }));
 
-    const [, insertTeamParams] = mockClientQuery.mock.calls[1];
+    const [, insertTeamParams] = mockClientQuery.mock.calls[3];
     expect(insertTeamParams[0]).toBe("My Team!");
     expect(insertTeamParams[1]).toMatch(/^my-team-[a-z0-9]+$/);
+  });
+
+  it("re-checks the cap under a per-user lock, not just before the transaction", async () => {
+    // The count outside the transaction is check-then-act, and READ
+    // COMMITTED does not make it atomic with the inserts: two creates issued
+    // together both read the same number and both commit, putting the
+    // account over its plan's team cap. A guarded INSERT alone would not fix
+    // it either, since inside a transaction the sibling's uncommitted
+    // team_members row is invisible to it. Serializing per user is what
+    // closes it, the same way reserveConcurrentScanSlot does for scan slots.
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
+    mockClientQuery.mockResolvedValueOnce({}); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({}); // pg_advisory_xact_lock
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] }); // guard count
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, name: "Acme", slug: "acme-abc", created_at: "now" }],
+    });
+    mockClientQuery.mockResolvedValueOnce({});
+    mockClientQuery.mockResolvedValueOnce({});
+
+    await POST(jsonRequest({ name: "Acme" }));
+
+    const [lockSql, lockParams] = mockClientQuery.mock.calls[1];
+    expect(lockSql).toContain("pg_advisory_xact_lock");
+    // Transaction-scoped, so it releases on COMMIT or ROLLBACK with no
+    // separate unlock, and keyed per user so two people never wait on
+    // each other.
+    expect(lockParams).toEqual(["team-create:42"]);
+    const [guardSql, guardParams] = mockClientQuery.mock.calls[2];
+    expect(guardSql).toContain("FROM team_members");
+    expect(guardSql).toContain("role = $2");
+    expect(guardParams).toEqual([42, "owner"]);
+  });
+
+  it("refuses inside the transaction when the last slot went to a racing request", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
+    mockClientQuery.mockResolvedValueOnce({}); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({}); // pg_advisory_xact_lock
+    // Elite is capped at 3, and by the time the lock was granted a
+    // concurrent request had committed the third.
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ cnt: "3" }] });
+
+    const res = await POST(jsonRequest({ name: "Acme" }));
+    const json = await res.json();
+
+    // A plan cap, answered the way the pre-transaction count answers it.
+    // Not the 500 the catch block would have produced from a throw.
+    expect(res.status).toBe(400);
+    expect(json.error).toContain("Your plan allows up to 3 Teams");
+    expect(mockClientQuery).toHaveBeenCalledWith("ROLLBACK");
+    // No team row, and no orphan left behind by a rolled-back insert.
+    const inserted = mockClientQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO"),
+    );
+    expect(inserted).toEqual([]);
+    expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 
   it("rolls back and returns 500 when the insert fails", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] });
     mockClientQuery.mockResolvedValueOnce({}); // BEGIN
-    mockClientQuery.mockRejectedValueOnce(new Error("db down")); // INSERT teams fails
+    mockClientQuery.mockResolvedValueOnce({}); // pg_advisory_xact_lock
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ cnt: "0" }] }); // guard count
+    mockClientQuery.mockRejectedValueOnce(new Error("db down")); // INSERT teams
 
     const res = await POST(jsonRequest({ name: "Acme" }));
 

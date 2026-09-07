@@ -235,9 +235,13 @@ export async function POST(request: Request) {
     [teamId],
   );
   const ownerId = ownerRes.rows[0]?.owner_id;
+  // Held in the outer scope because the INSERT below re-applies it. null
+  // means unlimited: billing off, no owner row, or the plan's own -1.
+  let seatCap: number | null = null;
   if (ownerId) {
     const planLimits = await getUserPlanLimits(ownerId);
     if (planLimits) {
+      seatCap = planLimits.teamMembers === -1 ? null : planLimits.teamMembers;
       const seatCountRes = await pool.query(
         `SELECT
            (SELECT COUNT(*)::int FROM team_members WHERE team_id = $1) +
@@ -262,9 +266,25 @@ export async function POST(request: Request) {
     Date.now() + inviteExpiryDays * 24 * 60 * 60 * 1000,
   );
 
+  // Both gates above are check-then-act, and both are re-applied here as
+  // part of the write. Two admins inviting at the same moment each read a
+  // seat count taken before the other wrote, so both passed and the team
+  // went a seat over the cap its owner is paying for; two invites to the
+  // same address raced the same way and produced two live tokens for one
+  // person. Reading them inside the INSERT is what makes the answer the
+  // count gave still true at the moment the row is written.
   const inviteInsert = await pool.query(
     `INSERT INTO team_invites (team_id, email, role, invited_by, token, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
+     SELECT $1, $2, $3, $4, $5, $6
+     WHERE NOT EXISTS (
+             SELECT 1 FROM team_invites
+              WHERE team_id = $1 AND email = $2
+                AND accepted_at IS NULL AND expires_at > NOW())
+       AND ($7::int IS NULL
+            OR (SELECT COUNT(*) FROM team_members WHERE team_id = $1)
+             + (SELECT COUNT(*) FROM team_invites
+                 WHERE team_id = $1 AND accepted_at IS NULL
+                   AND expires_at > NOW()) < $7::int)
      RETURNING id`,
     [
       teamId,
@@ -273,8 +293,27 @@ export async function POST(request: Request) {
       session.userId,
       tokenHash,
       expiresAt,
+      seatCap,
     ],
   );
+  if (inviteInsert.rows.length === 0) {
+    // One of the two guards refused. Which one decides the message, so ask
+    // the cheaper question: a pending invite either exists or it does not,
+    // and if it does not then it was the seat cap.
+    const raced = await pool.query(
+      "SELECT 1 FROM team_invites WHERE team_id = $1 AND email = $2 AND accepted_at IS NULL AND expires_at > NOW()",
+      [teamId, email.trim().toLowerCase()],
+    );
+    return NextResponse.json(
+      {
+        error:
+          raced.rows.length > 0
+            ? "An invite is already pending for this email."
+            : planLimitMessage("Team members", seatCap ?? 0),
+      },
+      { status: 400 },
+    );
+  }
   const inviteId = inviteInsert.rows[0].id;
 
   // An existing account's id, if the invited email already belongs to one.

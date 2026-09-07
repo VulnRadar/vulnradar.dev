@@ -90,6 +90,17 @@ export async function generateApiKey(
   name: string = "Default",
   dailyLimit?: number,
   scopes: ApiKeyScope[] = DEFAULT_NEW_KEY_SCOPES,
+  /**
+   * The caller's plan cap on active keys, re-applied inside the INSERT.
+   *
+   * Counting keys in the route and inserting here is check-then-act: two
+   * requests that both read the same count before either writes both pass
+   * the gate, and the account ends up holding more live keys than its plan
+   * allows. Passing the number down lets one statement do both. Undefined or
+   * null means unlimited, which is also what a caller that predates this
+   * parameter gets.
+   */
+  activeKeyCap?: number | null,
 ) {
   const limit = dailyLimit ?? (await getSetting("DEFAULT_API_KEY_DAILY_LIMIT"));
 
@@ -110,10 +121,17 @@ export async function generateApiKey(
     keyHash = await hashKey(raw);
   }
 
+  // The count matches the route's own definition of an active key: rows
+  // that have not been revoked. getUserApiKeys selects every row and filters
+  // revoked_at in JavaScript, so this is where that predicate has to be
+  // written out in SQL.
   const result = await pool.query(
     `INSERT INTO api_keys (user_id, key_hash, key_locator, key_prefix, name, daily_limit, key_encrypted, scopes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-             RETURNING id, key_prefix, name, daily_limit, created_at, scopes`,
+     SELECT $1, $2, $3, $4, $5, $6, $7, $8
+     WHERE $9::int IS NULL
+        OR (SELECT COUNT(*) FROM api_keys
+             WHERE user_id = $1 AND revoked_at IS NULL) < $9::int
+     RETURNING id, key_prefix, name, daily_limit, created_at, scopes`,
     [
       userId,
       keyHash,
@@ -123,8 +141,14 @@ export async function generateApiKey(
       limit,
       keyEncrypted,
       JSON.stringify(scopes),
+      activeKeyCap ?? null,
     ],
   );
+
+  // The guard refused: another request took the last slot. Null rather than
+  // a throw, so the caller answers with its own plan-limit message instead
+  // of a 500.
+  if (result.rows.length === 0) return null;
 
   return {
     ...result.rows[0],
