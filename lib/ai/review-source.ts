@@ -26,19 +26,59 @@ import {
 import { recordGithubReviewTokens } from "@/lib/billing/github-review-usage";
 import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { isAnthropicProvider } from "@/lib/ai/provider";
+import { callAnthropicMessages } from "@/lib/ai/anthropic";
+import {
+  resolveAnthropicThinkingBudget,
+  resolveOpenAiCompatReasoningExtras,
+  resolveAiCallTimeoutMs,
+} from "@/lib/ai/reasoning";
 
-const REVIEW_SYSTEM_PROMPT_BASE = `You are a security code reviewer for VulnRadar, a vulnerability scanner. You are given source files from a user's GitHub repository. This repository can be ANY kind of software project: a web app, a CLI tool, a Discord/Slack bot, a game, a library, a build/infra script, anything. Do not assume it's a website. Do not report missing HTTP security headers, cookie flags, or other issues that only make sense for a live web server's response. Review the code itself.
+const REVIEW_SYSTEM_PROMPT_BASE = `You are a security code reviewer for ${APP_NAME}, a vulnerability scanner. You are given source files from a user's GitHub repository, each line prefixed with its line number. Review the code that is actually in front of you.
 
-Find real, specific security issues: hardcoded secrets/credentials, injection risks (SQL, command, path traversal, XSS, SSRF), insecure cryptography, authentication/authorization logic flaws, unsafe deserialization, and similar concrete vulnerabilities.
+WHAT THE REPOSITORY MIGHT BE
+It can be ANY kind of software project: a web app, a CLI tool, a Discord or Slack bot, a game, a library, a Terraform module, a build script, a dotfiles repo. Do not assume it is a website. Never report missing HTTP security headers, cookie flags, TLS settings, or anything else that only describes a live server's response: a different part of ${APP_NAME} scans running sites, and this pass reviews source.
 
-Only report issues you can point to a specific file and line for. Do not report generic style advice, missing tests, or anything that isn't a security issue. Do not repeat the same issue for every occurrence of a pattern. Report each distinct occurrence separately with its own file/line.
+WHAT COUNTS AS A FINDING
+Hardcoded secrets and credentials, injection (SQL, OS command, path traversal, XSS, SSRF, template, LDAP, XPath), insecure or homegrown cryptography, authentication and authorization logic flaws, unsafe deserialization, insecure randomness where it protects something, TOCTOU and race conditions on a security decision, unsafe file or archive handling (zip slip, symlink following), and prototype pollution.
 
-Before reporting a value in a .env, .env.example, or other config/template file as a leaked secret, check whether it's an obvious placeholder (e.g. "your_key_here", "changeme", "xxxxxxxx", empty). Placeholders in a template file are not findings: only report a value there if it's shaped like a real credential.
+READ BEFORE YOU REPORT: THE EVIDENCE RULE
+A finding is a claim about this code, and a wrong claim costs the user more than a missed one costs you. State only what the code in front of you shows.
 
-Return ONLY a JSON array (no prose, no markdown fences). Each element:
-{"file":"path/as/given","line":123,"severity":"critical|high|medium|low|info","title":"short title","description":"what the issue is","evidence":"the specific code or line that proves it","riskImpact":"what an attacker can actually do","explanation":"why this is a vulnerability","fixSteps":["step 1","step 2"]}
+Report an issue only when ALL of these hold:
+  1. You can name the exact file and line, and quote the code at it.
+  2. The dangerous value reaches the dangerous call. Trace it. A variable named "query" near a string concat is not SQL injection; a concatenated string PASSED to db.query is.
+  3. The input is attacker-influenced in some realistic use of this code. A hardcoded local path, a value from the repo's own config, or a literal in a test fixture is not attacker input.
+  4. Nothing between the two already neutralises it: a parameterised query, an allowlist check, an escape or encode call, a type that cannot hold the payload, a framework that escapes by default.
 
-Return an empty array [] if you find nothing worth reporting.
+Do NOT report:
+  - Anything you would phrase as "could be", "may be", "if this is used with", "consider", or "it is recommended". Uncertainty is a reason not to file, not a hedge to attach.
+  - Style, formatting, missing tests, missing docs, dependency versions, TODO comments, or dead code. None of those are security findings.
+  - The same pattern over and over. One representative finding per distinct root cause, at the line that best shows it.
+  - Code that only runs in tests, fixtures, examples, mocks, or documentation, unless it ships a real credential.
+  - A construct that is only dangerous in a language or framework this file is not written in.
+
+PLACEHOLDERS AND FAKE SECRETS
+Before calling a value in .env, .env.example, a sample config, a docker-compose file, or a test a leaked secret, ask whether it is a placeholder: "your_key_here", "changeme", "xxxxxxxx", "REPLACE_ME", "sk-test-...", "password", "example", an empty string, or an obviously fabricated repeating pattern. Placeholders are not findings. Report a value only when it is shaped like a real credential: right length, right prefix, right alphabet, high entropy.
+
+SEVERITY
+critical: remote attacker gets code execution, data exfiltration, or auth bypass with no preconditions. A live production credential in a public repo.
+high: a clear attack path with a realistic precondition, or a real credential that is not yet public.
+medium: exploitable only under specific conditions, or a weakness that meaningfully helps an attacker who is already partway in.
+low: defence in depth. Real, but on its own it does not get anyone anything.
+info: worth the maintainer knowing, no direct risk.
+Rate the code as written, not the worst thing that could happen if it were written differently.
+
+CONFIDENCE
+Give every finding a "confidence" from 0 to 100: how sure you are that this is real and exploitable as written, not how bad it would be. Above 85 means you traced it end to end and could write the exploit. 60 to 85 means the path is clear but one link is inferred. Below 60 means you are guessing, and a guess should not be a finding at all, so do not file it.
+
+OUTPUT
+Return ONLY a JSON array. No prose before or after it, no markdown fences, no explanation of your process. Each element:
+{"file":"path/as/given","line":123,"severity":"critical|high|medium|low|info","confidence":90,"title":"short title","description":"what the issue is","evidence":"the exact code at that line that proves it","riskImpact":"what an attacker can actually do","explanation":"why this is a vulnerability","fixSteps":["step 1","step 2"]}
+
+"file" must be copied character for character from a "--- FILE: ... ---" header above; a path you reword or guess is dropped. "line" must be a line number shown in that file. "evidence" must be code you can see, quoted, not a paraphrase.
+
+Return an empty array [] if you find nothing worth reporting. An empty array is a correct and common answer for a well-written repository, and it is a better answer than a padded one. You are not scored on how many findings you produce.
 
 Never use an em dash (—) anywhere in title, description, riskImpact, explanation, or fixSteps. Use a comma, colon, or a separate sentence instead.`;
 
@@ -53,12 +93,36 @@ interface RawFinding {
   file?: unknown;
   line?: unknown;
   severity?: unknown;
+  confidence?: unknown;
   title?: unknown;
   description?: unknown;
   evidence?: unknown;
   riskImpact?: unknown;
   explanation?: unknown;
   fixSteps?: unknown;
+}
+
+/**
+ * Below this, the prompt tells the model not to file at all, so a finding
+ * that arrives under it is one the model itself called a guess. Dropping it
+ * here is the only place that instruction is actually enforced.
+ */
+const MIN_REPORTABLE_CONFIDENCE = 60;
+
+/**
+ * What a finding scores when the model returns no `confidence` at all: an
+ * older prompt's output, or a model that ignored the field. This is the value
+ * every AI code-review finding used to carry unconditionally, so an endpoint
+ * that never answers the field behaves exactly as it did before.
+ */
+const DEFAULT_REVIEW_CONFIDENCE = 60;
+
+/** Clamp a model-reported confidence to 0-100, or fall back to the default. */
+function parseConfidence(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_REVIEW_CONFIDENCE;
+  }
+  return Math.max(0, Math.min(100, Math.round(raw)));
 }
 
 const VALID_SEVERITIES: Severity[] = [
@@ -158,6 +222,12 @@ function parseFindings(text: string, files: RepoFile[]): Vulnerability[] {
         ? Math.floor(raw.line)
         : undefined;
 
+    // The prompt says not to file below 60 because that is the model calling
+    // its own finding a guess. Models comply with that unevenly, so the floor
+    // is applied here as well as asked for there.
+    const confidence = parseConfidence(raw.confidence);
+    if (confidence < MIN_REPORTABLE_CONFIDENCE) continue;
+
     findings.push({
       id: `ai-code-review--${raw.file}--${line ?? 0}--${idx}`,
       title,
@@ -169,7 +239,7 @@ function parseFindings(text: string, files: RepoFile[]): Vulnerability[] {
       explanation,
       fixSteps,
       codeExamples: [],
-      confidence: 60,
+      confidence,
       detectionMethod: "AI code review",
       location: { file: raw.file, line },
     });
@@ -193,6 +263,7 @@ async function callReviewModel(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   const userPrompt = files.map(buildFileBlock).join("\n\n");
+  const systemPrompt = buildReviewSystemPrompt(isPrivate);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -212,19 +283,76 @@ async function callReviewModel(
   }
 
   try {
-    const res = await fetch(`${endpoint.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: endpoint.model,
-        max_tokens: maxTokens,
-        messages: [
-          { role: "system", content: buildReviewSystemPrompt(isPrivate) },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-      signal: controller.signal,
-    });
+    // Anthropic-shaped endpoints, which is Claude itself and any provider
+    // reached on its /anthropic path (MiniMax among them), have no
+    // /chat/completions at all. This was the ONE AI caller in the app that
+    // never learned that, so pointing AI_BASE_URL at an Anthropic endpoint
+    // left repo scans posting into a 404 and reporting "no AI findings" for
+    // every repository, with only a line in the server log to say otherwise.
+    if (isAnthropicProvider(endpoint.baseUrl)) {
+      const { text, usage } = await callAnthropicMessages(
+        {
+          baseUrl: endpoint.baseUrl,
+          apiKey: endpoint.apiKey,
+          model: endpoint.model,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }],
+          maxTokens,
+          thinkingBudgetTokens: resolveAnthropicThinkingBudget(maxTokens),
+        },
+        controller.signal,
+      );
+      return {
+        findings: parseFindings(text, files),
+        totalTokens: usage.inputTokens + usage.outputTokens,
+      };
+    }
+
+    // Reasoning on the OpenAI-compatible path, at the "verify" level: a code
+    // review is a judgement about whether a specific line is exploitable,
+    // which is the same kind of question finding verification asks and the
+    // same kind a snap answer gets wrong.
+    const extras = resolveOpenAiCompatReasoningExtras(
+      endpoint.baseUrl,
+      endpoint.model,
+      "verify",
+    );
+    const askedToReason = Object.keys(extras).length > 0;
+    const baseBody: Record<string, unknown> = {
+      model: endpoint.model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    };
+    const post = (body: Record<string, unknown>) =>
+      fetch(`${endpoint.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+    let res = await post({ ...baseBody, ...extras });
+    // A strict endpoint answers an unknown body field with a 400. Losing a
+    // whole batch of files over an optional quality knob is the wrong trade,
+    // so drop the field and ask once more. Same recovery as
+    // lib/ai/verify-findings.ts.
+    if (!res.ok && res.status === 400 && askedToReason) {
+      let refusal = "";
+      try {
+        refusal = await res.clone().text();
+      } catch {
+        /* ignore */
+      }
+      if (/reasoning/i.test(refusal)) {
+        console.error(
+          `[AI-REVIEW] ${endpoint.model} refused reasoning_effort; retrying without it.`,
+        );
+        res = await post(baseBody);
+      }
+    }
 
     if (!res.ok) {
       let body = "";
@@ -316,15 +444,28 @@ export async function runGithubAiReview(
   const totalChars = files.reduce((sum, f) => sum + f.content.length, 0);
   const {
     GITHUB_REVIEW_MAX_TOKENS_PER_RUN: maxTokensPerRun,
-    GITHUB_REVIEW_CALL_TIMEOUT_MS: callTimeoutMs,
+    GITHUB_REVIEW_CALL_TIMEOUT_MS: baseCallTimeoutMs,
+    AI_REASONING_TIMEOUT_MULTIPLIER: reasoningTimeoutMultiplier,
     GITHUB_REVIEW_MAX_TOKENS_PER_CALL: maxTokensPerCall,
     GITHUB_REVIEW_PER_CALL_CHAR_BUDGET: perCallCharBudget,
   } = await getSettings([
     "GITHUB_REVIEW_MAX_TOKENS_PER_RUN",
     "GITHUB_REVIEW_CALL_TIMEOUT_MS",
+    "AI_REASONING_TIMEOUT_MULTIPLIER",
     "GITHUB_REVIEW_MAX_TOKENS_PER_CALL",
     "GITHUB_REVIEW_PER_CALL_CHAR_BUDGET",
   ] as const);
+  // A repo review sends tens of thousands of characters per call and asks for
+  // reasoning on top, so it is the single slowest AI call the app makes. On
+  // the flat timeout it was the first to be cut off, and a cut-off batch
+  // returns no findings rather than partial ones.
+  const callTimeoutMs = resolveAiCallTimeoutMs(
+    endpoint.baseUrl,
+    endpoint.model,
+    "verify",
+    baseCallTimeoutMs,
+    reasoningTimeoutMultiplier,
+  );
   if (estimateTokens(totalChars) > maxTokensPerRun) {
     return {
       findings: [],

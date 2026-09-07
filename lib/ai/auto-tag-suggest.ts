@@ -55,6 +55,7 @@ import { isAnthropicProvider } from "@/lib/ai/provider";
 import { callAnthropicMessages } from "@/lib/ai/anthropic";
 import {
   resolveAnthropicThinkingBudget,
+  resolveOpenAiCompatReasoningExtras,
   resolveAiCallTimeoutMs,
 } from "@/lib/ai/reasoning";
 import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
@@ -292,6 +293,17 @@ async function callSuggestionModel(
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: prompt },
       ],
+      // The timeout below already stretches for a model that reasons, and
+      // resolveAiCallTimeoutMs decides that by asking this exact function.
+      // Omitting the field here meant the allowance was granted for thinking
+      // the request never asked for: the Anthropic branch above got a
+      // thinking budget, the OpenAI-compatible one got the long timeout and
+      // answered as fast as it ever had.
+      ...resolveOpenAiCompatReasoningExtras(
+        endpoint.baseUrl,
+        endpoint.model,
+        "summary",
+      ),
     }),
     signal,
   });
