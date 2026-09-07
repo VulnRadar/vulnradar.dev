@@ -1,4 +1,8 @@
-import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
+import {
+  AI_BOT_NAME,
+  APP_NAME,
+  TOTAL_CHECKS_LABEL,
+} from "@/lib/config/constants";
 
 export type SlashCommand = {
   cmd: string;
@@ -60,10 +64,10 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 export function buildHelpText(): string {
   return `**Slash commands**
 
-Vera already pulls the relevant parts of the knowledge below into every
+${AI_BOT_NAME} already pulls the relevant parts of the knowledge below into every
 message on its own. Use a command when you want the whole file loaded.
 
-**Context loaders**: load info Vera can use to answer your questions:
+**Context loaders**: load info ${AI_BOT_NAME} can use to answer your questions:
 - \`/features\`: Every ${APP_NAME} feature and page, and where each one lives
 - \`/docs\`: ${APP_NAME} documentation and setup guides
 - \`/changelog\`: Recent release notes

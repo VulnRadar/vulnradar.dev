@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
+import { CONFIG_MAX_TAG_LENGTH } from "@/lib/config/config-values";
 import { requirePermission } from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import {
@@ -253,7 +254,12 @@ interface PromoteBody {
   minCount?: unknown;
 }
 
-const MAX_TAG_LENGTH = 50;
+// Was a hardcoded 50, against a column the scan-tags route caps at the
+// admin-editable MAX_TAG_LENGTH setting (shipped default 30). Three limits
+// existed for one scan_tags.tag column (30 here, 40 in the AI suggester, 50
+// in this route), and this was the copy that told the operator the wrong
+// number in its own validation message.
+const MAX_TAG_LENGTH = CONFIG_MAX_TAG_LENGTH;
 
 export async function POST(request: NextRequest) {
   const admin = await requirePermission(

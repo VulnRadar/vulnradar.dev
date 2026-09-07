@@ -2145,7 +2145,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SCAN_ASYNC_CHECKS_TIMEOUT_MS,
     group: "Scanning",
     label: "Scan async-checks timeout (ms)",
-    help: "Ceiling for the DNS/TLS/reputation async-checks layer in the demo, bulk, and authenticated scan routes. A check still running past this is dropped from the result rather than delaying the response.",
+    help: "Ceiling for the DNS/TLS/reputation async-checks layer, in every scan route: the main single-URL pipeline as well as the demo, bulk, and authenticated ones. A check still running past this is dropped from the result rather than delaying the response.",
     min: 1000,
     max: 120000,
   },

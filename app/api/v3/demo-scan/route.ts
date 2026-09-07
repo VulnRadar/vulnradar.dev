@@ -192,9 +192,17 @@ export async function POST(request: NextRequest) {
       capturedHeaders[key] = value;
     });
 
+    // Capped at the SAME resolved setting the body was READ with, rather
+    // than at a second hardcoded literal. This used to re-cap at 1,000,000
+    // bytes: both settings ship a 1 MiB default and both describe themselves
+    // as "bytes read from the response body BEFORE body-based checks run",
+    // so the literal was a redundant second ceiling sitting 48 KB under the
+    // shipped default and ignoring the setting outright. Raising the setting
+    // to 5 MB read 5 MB off the wire and threw 4 MB away before any check
+    // saw it.
     const bodyForChecks =
-      responseBody.length > 1_000_000
-        ? responseBody.slice(0, 1_000_000)
+      responseBody.length > MAX_BODY_SIZE
+        ? responseBody.slice(0, MAX_BODY_SIZE)
         : responseBody;
     const syncFindings: Vulnerability[] = [];
     for (const check of allChecks) {

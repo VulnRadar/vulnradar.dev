@@ -211,10 +211,12 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     SCAN_TIMEOUT_SECONDS: scanTimeoutSeconds,
     SCANNER_MAX_RESPONSE_BODY_BYTES: MAX_BODY_SIZE,
     SCANNER_ASYNC_BRANCH_TIMEOUT_MS: asyncBranchTimeoutMs,
+    SCAN_ASYNC_CHECKS_TIMEOUT_MS: asyncChecksTimeoutMs,
   } = await getSettings([
     "SCAN_TIMEOUT_SECONDS",
     "SCANNER_MAX_RESPONSE_BODY_BYTES",
     "SCANNER_ASYNC_BRANCH_TIMEOUT_MS",
+    "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
   ] as const);
   const watchdog = startWatchdog(
     scanId,
@@ -514,16 +516,28 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       asyncTimeoutHandle = setTimeout(() => {
         asyncTimedOut = true;
         resolve({ findings: [], incomplete: ["dns", "tls", "live-fetch"] });
-      }, 15000);
+        // The setting that names this exact ceiling. It reached the demo,
+        // bulk and authenticated routes and not the main pipeline, which is
+        // the one that runs almost every scan, so raising it moved three
+        // routes and left the fourth on a literal.
+      }, asyncChecksTimeoutMs);
     });
 
     // Run synchronous body/header checks and the parsed-page checks through
     // the shared engine, which builds the page context once, applies
     // deduplication, and reports how many checks actually ran. Raw IP
     // targets get no sync checks: those are HTTP-context-only.
+    // Capped at the SAME resolved setting the body was READ with, rather
+    // than at a second hardcoded literal. This used to re-cap at 1,000,000
+    // bytes: both settings ship a 1 MiB default and both describe themselves
+    // as "bytes read from the response body BEFORE body-based checks run",
+    // so the literal was a redundant second ceiling sitting 48 KB under the
+    // shipped default and ignoring the setting outright. Raising the setting
+    // to 5 MB read 5 MB off the wire and threw 4 MB away before any check
+    // saw it.
     const bodyForChecks =
-      responseBody.length > 1_000_000
-        ? responseBody.slice(0, 1_000_000)
+      responseBody.length > MAX_BODY_SIZE
+        ? responseBody.slice(0, MAX_BODY_SIZE)
         : responseBody;
 
     // General software inventory + version-to-CVE correlation, built from the

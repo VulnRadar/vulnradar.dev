@@ -60,10 +60,21 @@ import {
 } from "@/lib/ai/reasoning";
 import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
+import { CONFIG_MAX_TAG_LENGTH } from "@/lib/config/config-values";
 import { checkAiUsageQuota, recordAiTokens } from "@/lib/billing/ai-usage";
 
 const MIN_TAG_LENGTH = 3;
-const MAX_TAG_LENGTH = 40;
+/**
+ * Fallback only. The real cap is the admin-editable MAX_TAG_LENGTH setting,
+ * threaded through sanitizeAiTagSuggestions below, and this is what a caller
+ * that passes nothing gets.
+ *
+ * It was a hardcoded 40 while the column's actual cap is 30, and the admin
+ * promote-a-tag route carried a third copy at 50. Three limits on one
+ * scan_tags.tag column: an AI suggestion between 31 and 40 characters passed
+ * this filter and then failed the insert.
+ */
+const DEFAULT_MAX_TAG_LENGTH = CONFIG_MAX_TAG_LENGTH;
 const MAX_TAG_WORDS = 6;
 
 /** Letters, digits, spaces, and a narrow set of punctuation a real tag name might legitimately contain (e.g. "DNS/Email Hygiene Gaps"). Nothing else survives into a scan_tags row. */
@@ -196,6 +207,7 @@ const RESERVED_TAGS = new Set([
 export function sanitizeAiTagSuggestions(
   text: string,
   maxSuggestions: number = 2,
+  maxTagLength: number = DEFAULT_MAX_TAG_LENGTH,
 ): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -204,8 +216,7 @@ export function sanitizeAiTagSuggestions(
     if (out.length >= maxSuggestions) break;
 
     const clean = stripListMarker(rawLine).replace(/["'`]/g, "").trim();
-    if (clean.length < MIN_TAG_LENGTH || clean.length > MAX_TAG_LENGTH)
-      continue;
+    if (clean.length < MIN_TAG_LENGTH || clean.length > maxTagLength) continue;
     if (!VALID_TAG_PATTERN.test(clean)) continue;
     const words = clean.split(/\s+/);
     if (words.length > MAX_TAG_WORDS) continue;
@@ -245,6 +256,7 @@ async function callSuggestionModel(
   prompt: string,
   maxOutputTokens: number,
   maxSuggestions: number,
+  maxTagLength: number,
   signal: AbortSignal,
 ): Promise<CallResult> {
   if (isAnthropicProvider(endpoint.baseUrl)) {
@@ -261,7 +273,7 @@ async function callSuggestionModel(
       signal,
     );
     return {
-      suggestions: sanitizeAiTagSuggestions(text, maxSuggestions),
+      suggestions: sanitizeAiTagSuggestions(text, maxSuggestions, maxTagLength),
       tokensUsed: usage.inputTokens + usage.outputTokens,
     };
   }
@@ -338,7 +350,7 @@ async function callSuggestionModel(
   if (typeof text !== "string") return { suggestions: [], tokensUsed };
 
   return {
-    suggestions: sanitizeAiTagSuggestions(text, maxSuggestions),
+    suggestions: sanitizeAiTagSuggestions(text, maxSuggestions, maxTagLength),
     tokensUsed,
   };
 }
@@ -373,12 +385,14 @@ export async function generateAutoTagSuggestions(
       AI_AUTOTAG_MAX_TOKENS: maxOutputTokens,
       AI_AUTOTAG_TOP_FINDINGS_LIMIT: topFindingsLimit,
       AI_AUTOTAG_MAX_SUGGESTIONS: maxSuggestions,
+      MAX_TAG_LENGTH: maxTagLength,
     } = await getSettings([
       "AI_AUTOTAG_CALL_TIMEOUT_MS",
       "AI_REASONING_TIMEOUT_MULTIPLIER",
       "AI_AUTOTAG_MAX_TOKENS",
       "AI_AUTOTAG_TOP_FINDINGS_LIMIT",
       "AI_AUTOTAG_MAX_SUGGESTIONS",
+      "MAX_TAG_LENGTH",
     ] as const);
     const prompt = buildPrompt(findings, topFindingsLimit);
     const controller = new AbortController();
@@ -400,6 +414,7 @@ export async function generateAutoTagSuggestions(
         prompt,
         maxOutputTokens,
         maxSuggestions,
+        maxTagLength,
         controller.signal,
       );
       if (tokensUsed > 0 && !usingOwnAi) {

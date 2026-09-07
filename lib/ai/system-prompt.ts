@@ -1,5 +1,7 @@
 import {
   AI_BOT_NAME,
+  API_KEY_PREFIX,
+  BROWSERBASE_MAX_TTL_SECONDS,
   APP_NAME,
   APP_REPO,
   APP_SLUG,
@@ -8,6 +10,10 @@ import {
   RELEASES_URL,
 } from "@/lib/config/constants";
 import { PLANS } from "@/lib/billing/catalog";
+import {
+  CONFIG_HISTORY_LIST_MAX_ROWS,
+  CONFIG_SUBDOMAIN_CACHE_TTL_HOURS,
+} from "@/lib/config/config-values";
 import { getCategoryCounts } from "@/lib/scanner/registry";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
 import type { Category } from "@/lib/scanner/types";
@@ -307,7 +313,7 @@ table. For current pricing, point the user to /pricing.
 ━━━ API REFERENCE (base: ${bareUrl}/api/v3) ━━━━━━━━━━━━━━━━━━━━━
 
 Auth: Bearer token in Authorization header, or session cookie.
-Get keys at: Profile → Developer → API Keys (/profile?tab=developer&dtab=api-keys). Prefix: vr_live_
+Get keys at: Profile → Developer → API Keys (/profile?tab=developer&dtab=api-keys). Prefix: ${API_KEY_PREFIX}
 How many keys a plan may hold at once is the "API keys" column in the PLANS table
 above; it is not the same number on every plan.
 
@@ -316,9 +322,9 @@ GET    /scan/status/{id}        Poll a scan started by POST /scan until status i
 POST   /scan/bulk               Queue several URLs in one call, returns a scan id per URL to poll on /scan/status/{id} (each counts as 1 quota unit). The cap is the plan's "URLs per bulk call"
 POST   /scan/crawl              Crawl + scan pages within the same origin, up to the plan's "Pages per crawl"
 POST   /scan/crawl/discover     Preview crawl URLs without scanning
-POST   /scan/discover           Enumerate subdomains (crt.sh, HackerTarget, brute-force DNS, cached 24h)
+POST   /scan/discover           Enumerate subdomains (crt.sh, HackerTarget, brute-force DNS, cached ${CONFIG_SUBDOMAIN_CACHE_TTL_HOURS}h)
 POST   /scan/github             Security review of a connected GitHub repository's source (this is what /repos drives)
-GET    /history                 Last 100 scans for authed user
+GET    /history                 Last ${CONFIG_HISTORY_LIST_MAX_ROWS} scans for authed user
 GET    /history/[id]            Full scan: findings + response headers
 DELETE /history                 Delete all scan history (irreversible)
 DELETE /history/[id]            Delete one scan
@@ -327,7 +333,7 @@ GET    /keys                    List API keys (secrets never returned)
 POST   /keys                    Create key (raw value shown once, copy immediately)
 POST   /keys/[id]/rotate        Replace key, get new raw value once
 POST   /keys/[id]/revoke        Invalidate immediately
-POST   /browser/sessions        Start BrowserBase live browser session (5-min max)
+POST   /browser/sessions        Start BrowserBase live browser session (${Math.round(BROWSERBASE_MAX_TTL_SECONDS / 60)}-min max)
 GET    /browser/sessions?id=    Read session status
 DELETE /browser/sessions?id=    End session early
 GET    /api/version             Version check vs latest GitHub release (no auth)

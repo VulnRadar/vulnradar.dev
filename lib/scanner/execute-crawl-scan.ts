@@ -84,6 +84,14 @@ const CRAWL_PAGE_CONCURRENCY = 3;
 async function scanSingleUrl(
   url: string,
   maxBodySize: number,
+  /**
+   * CRAWL_PAGE_FETCH_TIMEOUT_MS. The setting existed and the registry's help
+   * text described it as the per-page fetch timeout, but it only ever reached
+   * discoverPages. The fetch that actually SCANS each page, which is the
+   * crawl's most expensive network operation, sat on a hardcoded 15000 and had
+   * no knob at all.
+   */
+  fetchTimeoutMs: number,
   scanners?: string[] | null,
   onProgress?: ScanProgressHook,
   cancelSignal?: AbortSignal,
@@ -134,7 +142,7 @@ async function scanSingleUrl(
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
         redirect: "follow",
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(fetchTimeoutMs),
       },
       [urlObj.hostname],
       session,
@@ -163,9 +171,17 @@ async function scanSingleUrl(
   // scanner: redact sensitive headers.
   const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
+  // Capped at the SAME resolved setting the body was READ with, rather
+  // than at a second hardcoded literal. This used to re-cap at 1,000,000
+  // bytes: both settings ship a 1 MiB default and both describe themselves
+  // as "bytes read from the response body BEFORE body-based checks run",
+  // so the literal was a redundant second ceiling sitting 48 KB under the
+  // shipped default and ignoring the setting outright. Raising the setting
+  // to 5 MB read 5 MB off the wire and threw 4 MB away before any check
+  // saw it.
   const bodyForChecks =
-    responseBody.length > 1_000_000
-      ? responseBody.slice(0, 1_000_000)
+    responseBody.length > maxBodySize
+      ? responseBody.slice(0, maxBodySize)
       : responseBody;
 
   // Software inventory fingerprint (pure, no network): stash this page's
@@ -562,6 +578,7 @@ export async function executeCrawlScan(
         pageSlots[index] = await scanSingleUrl(
           pagesToScan[index],
           maxBodySize,
+          fetchTimeoutMs,
           scanners,
           onProgress,
           cancelSignal,
