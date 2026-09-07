@@ -64,6 +64,7 @@ const FINDING_QUERY_PARAM = "finding";
 
 import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import { EmptyState } from "@/components/shared/empty-state";
 
 export default function HistoryPage() {
   const router = useRouter();
@@ -899,30 +900,25 @@ export default function HistoryPage() {
           {loading ? (
             <HistoryDataSkeleton />
           ) : listError && scans.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-destructive/30 bg-destructive/5 px-4 py-14 text-center">
-              <AlertTriangle
-                className="h-6 w-6 text-destructive/70"
-                aria-hidden="true"
-              />
-              <p className="text-sm font-semibold text-foreground">
-                {listError}
-              </p>
-              <p className="max-w-xs text-xs text-muted-foreground">
-                Your scans have not been deleted. This is a problem reading
-                them, not a change to them.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="bg-transparent"
-                onClick={() => {
-                  setLoading(true);
-                  loadList();
-                }}
-              >
-                Retry
-              </Button>
-            </div>
+            <EmptyState
+              icon={AlertTriangle}
+              tone="error"
+              title={listError}
+              description="Your scans have not been deleted. This is a problem reading them, not a change to them."
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="bg-transparent"
+                  onClick={() => {
+                    setLoading(true);
+                    loadList();
+                  }}
+                >
+                  Retry
+                </Button>
+              }
+            />
           ) : (
             <>
               {listError && (

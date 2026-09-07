@@ -32,6 +32,7 @@ import {
   DocsTable,
 } from "@/components/docs";
 import { cn } from "@/lib/ui/utils";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -926,7 +927,12 @@ npm run lint:fix    # auto-fix`}
       <DocsSection id="contributing" title="Contributing">
         <Card className="p-6 border-primary/50 bg-primary/5">
           <div className="flex items-start gap-3">
-            <Zap className="h-5 w-5 text-primary mt-0.5" />
+            <LeadingIcon
+              icon={Zap}
+              size="lg"
+              line="base"
+              className="text-primary"
+            />
             <div>
               <h3 className="text-base font-semibold mb-2">Open source</h3>
               <p className="text-sm text-muted-foreground mb-4">

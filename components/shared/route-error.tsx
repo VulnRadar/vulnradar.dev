@@ -13,6 +13,9 @@ interface RouteErrorProps {
   description: string;
   error: Error & { digest?: string };
   reset: () => void;
+  /** An optional second control beside "Try again", for a route that has
+   *  somewhere specific to send the reader. */
+  action?: React.ReactNode;
 }
 
 /**
@@ -35,6 +38,7 @@ export function RouteError({
   description,
   error,
   reset,
+  action,
 }: RouteErrorProps) {
   useEffect(() => {
     console.error(`[${area}] Unhandled error:`, error);
@@ -46,7 +50,7 @@ export function RouteError({
       role="alert"
     >
       <div className="max-w-md w-full flex flex-col items-center text-center gap-4">
-        <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/20">
+        <div className="flex items-center justify-center w-14 h-14 rounded-lg bg-destructive/10 border border-destructive/20">
           <AlertTriangle
             className="h-7 w-7 text-destructive"
             aria-hidden="true"
@@ -63,10 +67,13 @@ export function RouteError({
             </p>
           )}
         </div>
-        <Button onClick={reset} className="gap-2">
-          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-          Try again
-        </Button>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button onClick={reset} className="gap-2">
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            Try again
+          </Button>
+          {action}
+        </div>
       </div>
     </div>
   );

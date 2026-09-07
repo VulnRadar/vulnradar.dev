@@ -1,6 +1,6 @@
 import { cn } from "@/lib/ui/utils";
 import type { Severity } from "@/lib/scanner/types";
-import { SEVERITY_ORDER } from "@/lib/config/client-constants";
+import { SEVERITY_LABELS, SEVERITY_ORDER } from "@/lib/config/client-constants";
 
 /**
  * Single source of severity styling for the whole product surface.
@@ -46,7 +46,7 @@ export interface SeverityTone {
 
 export const SEVERITY_TONE: Record<Severity, SeverityTone> = {
   critical: {
-    label: "Critical",
+    label: SEVERITY_LABELS.critical,
     solid: "bg-[hsl(var(--severity-critical))]",
     text: "text-[hsl(var(--severity-critical))]",
     surface: "bg-[hsl(var(--severity-critical))]/15",
@@ -55,7 +55,7 @@ export const SEVERITY_TONE: Record<Severity, SeverityTone> = {
     emphasis: "loud",
   },
   high: {
-    label: "High",
+    label: SEVERITY_LABELS.high,
     solid: "bg-[hsl(var(--severity-high))]",
     text: "text-[hsl(var(--severity-high))]",
     surface: "bg-[hsl(var(--severity-high))]/15",
@@ -64,7 +64,7 @@ export const SEVERITY_TONE: Record<Severity, SeverityTone> = {
     emphasis: "loud",
   },
   medium: {
-    label: "Medium",
+    label: SEVERITY_LABELS.medium,
     solid: "bg-[hsl(var(--severity-medium))]",
     text: "text-[hsl(var(--severity-medium))]",
     surface: "bg-[hsl(var(--severity-medium))]/10",
@@ -73,7 +73,7 @@ export const SEVERITY_TONE: Record<Severity, SeverityTone> = {
     emphasis: "normal",
   },
   low: {
-    label: "Low",
+    label: SEVERITY_LABELS.low,
     solid: "bg-[hsl(var(--severity-low))]",
     text: "text-[hsl(var(--severity-low))]",
     surface: "bg-[hsl(var(--severity-low))]/10",
@@ -82,7 +82,7 @@ export const SEVERITY_TONE: Record<Severity, SeverityTone> = {
     emphasis: "normal",
   },
   info: {
-    label: "Info",
+    label: SEVERITY_LABELS.info,
     solid: "bg-[hsl(var(--severity-info))]",
     text: "text-[hsl(var(--severity-info))]",
     surface: "bg-muted",

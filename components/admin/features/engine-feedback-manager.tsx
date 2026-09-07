@@ -851,13 +851,22 @@ export function EngineFeedbackManager() {
                                 aria-label={`${expandedCheck === c.checkId ? "Hide" : "Show"} the submitted verdicts for ${c.title}`}
                                 className="flex w-full min-w-0 items-start gap-2 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                               >
-                                <ChevronRight
-                                  className={cn(
-                                    "mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ease-out",
-                                    expandedCheck === c.checkId && "rotate-90",
-                                  )}
-                                  aria-hidden="true"
-                                />
+                                {/* icon-lead on the wrapper, rotation on
+                                    the svg: LeadingIcon takes no transform,
+                                    and a pseudo-element does not render on a
+                                    replaced element like an svg. */}
+                                <span
+                                  aria-hidden
+                                  className="icon-lead text-sm text-muted-foreground"
+                                >
+                                  <ChevronRight
+                                    className={cn(
+                                      "h-3.5 w-3.5 transition-transform duration-200 ease-out",
+                                      expandedCheck === c.checkId &&
+                                        "rotate-90",
+                                    )}
+                                  />
+                                </span>
                                 <span className="min-w-0">
                                   <span className="block truncate text-sm font-medium">
                                     {c.title}

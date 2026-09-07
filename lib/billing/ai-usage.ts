@@ -2,6 +2,7 @@ import pool from "@/lib/database/db";
 import { hasOwnAiConfig } from "@/lib/billing/github-review-usage";
 import { getUserPlanLimits } from "@/lib/billing/plan-limits";
 import { getSetting } from "@/lib/config/runtime-config";
+import { CONFIG_AI_USAGE_WINDOW_HOURS } from "@/lib/config/config-values";
 
 /**
  * Unified, fixed-window AI token usage tracking for the aiTokensPerWindow
@@ -29,8 +30,11 @@ import { getSetting } from "@/lib/config/runtime-config";
  * from inside another function body, never at module-evaluation time.)
  */
 
-/** Fallback window length (hours) for currentWindowStart's default parameter, matching CONFIG_AI_USAGE_WINDOW_HOURS's shipped default. */
-const DEFAULT_WINDOW_HOURS = 5;
+/** Fallback window length (hours) for currentWindowStart's default parameter.
+ *  Reads the constant rather than restating its value: "matching
+ *  CONFIG_AI_USAGE_WINDOW_HOURS's shipped default" was a promise a comment
+ *  cannot keep. */
+const DEFAULT_WINDOW_HOURS = CONFIG_AI_USAGE_WINDOW_HOURS;
 
 /**
  * Start (UTC) of the fixed window `date` falls into, for a window of

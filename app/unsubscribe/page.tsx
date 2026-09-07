@@ -153,7 +153,7 @@ function UnsubscribeContent() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
             Invalid unsubscribe link.
           </h1>
           <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
@@ -172,7 +172,7 @@ function UnsubscribeContent() {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-emerald-500">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-[hsl(var(--success))]">
             Unsubscribed.
           </h1>
           <p className="text-sm text-muted-foreground mt-1.5">
@@ -207,7 +207,7 @@ function UnsubscribeContent() {
           holds a placeholder, instead of the whole view being replaced by a
           skeleton and then replaced again. */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
           Email preferences
         </h1>
         {loading ? (

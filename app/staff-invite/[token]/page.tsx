@@ -29,6 +29,7 @@ import {
 } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { transitions } from "@/lib/ui/animations";
+import { AUTH_HEADING_CLASS } from "@/components/auth/auth-shell";
 
 /**
  * Acceptance page for a staff invite (AUDIT-012#authz-10).
@@ -185,9 +186,7 @@ export default function StaffInvitePage() {
               className="h-4 w-4 animate-spin text-muted-foreground shrink-0"
               aria-hidden="true"
             />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              One moment
-            </h1>
+            <h1 className={AUTH_HEADING_CLASS}>One moment</h1>
           </div>
           <p className="text-sm text-muted-foreground mt-2" role="status">
             Checking this invite
@@ -304,7 +303,12 @@ export default function StaffInvitePage() {
                   type="button"
                   onClick={() => setShowPass(!showPass)}
                   className={cn(
+                    // after: overlay, the same technique inline-auth-form.tsx uses.
+                    // The visible control stays 36px so it still fits inside the
+                    // field, while the hit area grows past the 44px minimum. Raising
+                    // h-9 to h-11 instead would have burst the input.
                     "absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 rounded-md",
+                    "after:absolute after:-inset-1.5 sm:after:hidden",
                     "flex items-center justify-center text-muted-foreground hover:text-foreground",
                     transitions.colors,
                     authFocusRing,

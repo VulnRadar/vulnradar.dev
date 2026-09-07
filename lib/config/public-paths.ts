@@ -7,7 +7,20 @@
 // whatever it pulls in is compiled into the edge bundle, and constants.ts is
 // the server superset that reads non-public environment variables
 // (AUDIT-012#fe-15). Both names it needs are declared there anyway.
-import { ROUTES, API } from "./client-constants";
+import { ROUTES, API, API_VERSION } from "./client-constants";
+
+/**
+ * A path under the CURRENT API version.
+ *
+ * Twenty entries below spelled "/api/v3" out by hand, which is the exact
+ * problem this file's header says dropping API_V3 was meant to solve: on a
+ * version bump the allowlist keeps pointing at the old prefix, every public
+ * route stops being public, and middleware 307s anonymous visitors to /login.
+ * Nothing fails at build time. Some entries have an API map entry and use it;
+ * these are the ones that do not, so they get the version from the same
+ * constant the map does.
+ */
+const v = (path: string) => `/api/${API_VERSION}${path}`;
 
 /**
  * Public paths that don't require authentication
@@ -37,13 +50,13 @@ export const PUBLIC_PATHS = [
   API.AUTH.RESEND_VERIFICATION,
 
   // ─── Discord OAuth (must be public for OAuth flow) ─────────────
-  "/api/v3/auth/discord",
-  "/api/v3/auth/discord/callback",
+  v("/auth/discord"),
+  v("/auth/discord/callback"),
 
   // ─── Google/GitHub/Discord sign-in OAuth (must be public: hit by
   // logged-out users, and /info is polled by the login/signup forms
   // before any session exists) ────────────────────────────────────
-  "/api/v3/auth/oauth",
+  v("/auth/oauth"),
 
   // ─── Staff SSO / OIDC ──────────────────────────────────────────
   // Same reasoning as the OAuth entry above, and it was missing entirely,
@@ -55,10 +68,10 @@ export const PUBLIC_PATHS = [
   // back. Each one was 307'd to /login, so the link never rendered, the
   // start URL bounced, and the authorization code was dropped. Prefix
   // match covers /info and /callback.
-  "/api/v3/auth/staff-oidc",
+  v("/auth/staff-oidc"),
 
   // ─── 2FA Email (needed for Discord login with email 2FA) ───────
-  "/api/v3/auth/2fa/email-send",
+  v("/auth/2fa/email-send"),
 
   // ─── Legal Pages ───────────────────────────────────────────────
   // "/legal" (the bare index) was missing here -- only its sub-pages were
@@ -133,18 +146,18 @@ export const PUBLIC_PATHS = [
   // Readiness probe. Must be reachable without a session cookie or the
   // container HEALTHCHECK and any upstream load balancer get a 307 to
   // /login and mark the container down.
-  "/api/v3/health",
+  v("/health"),
   "/api/version",
   "/api/security-txt",
   // IPv4 echo. Must be public: it is fetched credential-less (no session)
   // from the IPv4-only host to observe the caller's own IPv4 for the session
   // list. Without this it 307'd to /login and the capture silently no-op'd.
   // It only ever returns the caller's own IP, so exposing it needs no auth.
-  "/api/v3/whoami-ip",
+  v("/whoami-ip"),
   // OpenAPI spec: a public API description tools import without a session
   // (Postman, Insomnia, an explorer). Without this it 307'd to /login and
   // those tools got the login page back instead of the JSON spec.
-  "/api/v3/openapi.json",
+  v("/openapi.json"),
   // security.txt: public per RFC 9116, must be reachable without
   // auth so security researchers + scanners can find our disclosure
   // contact. The middleware sees the request URL BEFORE the rewrite,
@@ -153,13 +166,13 @@ export const PUBLIC_PATHS = [
   "/security.txt",
 
   // ─── Stripe Webhooks (must be public for Stripe to call) ───────
-  "/api/v3/webhooks/stripe",
-  "/api/v3/stripe/setup-webhook",
-  "/api/v3/stripe/setup-products",
+  v("/webhooks/stripe"),
+  v("/stripe/setup-webhook"),
+  v("/stripe/setup-products"),
 
   // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
-  "/api/v3/shared",
+  v("/shared"),
 
   // ─── Public Scans Directory ─────────────────────────────────────
   // Unauthenticated by design (app/public-scans/page.tsx, app/api/v3/
@@ -168,7 +181,7 @@ export const PUBLIC_PATHS = [
   // Googlebot, since this page is in the sitemap) gets 307'd to /login
   // before ever reaching a page whose entire point is to be public.
   ROUTES.PUBLIC_SCANS,
-  "/api/v3/public-scans",
+  v("/public-scans"),
 
   // ─── Public Demo ───────────────────────────────────────────────
   ROUTES.DEMO,
@@ -195,14 +208,14 @@ export const PUBLIC_PATHS = [
   // list without a session), so signed out it rendered a permanently empty
   // page. It is private now, and app/badge/page.tsx renders the signed-in app
   // header to match. This entry does NOT cover it: the page is "/badge" and
-  // this is "/api/v3/badge", two different prefixes.
-  "/api/v3/badge",
+  // this is v("/badge"), two different prefixes.
+  v("/badge"),
 
   // ─── Public Avatar Files ────────────────────────────────────────
   // Avatars already render on logged-out surfaces (shared scan reports)
   // whether they're a Discord CDN URL, a Gravatar URL, or now a locally
   // stored file served from here. See app/api/v3/avatar/[userId]/route.ts.
-  "/api/v3/avatar",
+  v("/avatar"),
 
   // ─── Public Finding Types Endpoint ─────────────────────────────
   API.FINDING_TYPES,
@@ -211,11 +224,11 @@ export const PUBLIC_PATHS = [
   // /info is public so the widget can show provider name before sign-in.
   // /chat, /context, /conversations require auth (checked inside each
   // route via getSession() returning 401 JSON, not a middleware redirect).
-  "/api/v3/ai/info",
+  v("/ai/info"),
 
   // ─── Email Unsubscribe (token-authenticated, no session needed) ──
   "/unsubscribe",
-  "/api/v3/account/unsubscribe",
+  v("/account/unsubscribe"),
 
   // ─── Post-Checkout Confirmation ─────────────────────────────────
   // Stripe redirects here after a successful purchase; the page itself
@@ -240,7 +253,7 @@ export const PUBLIC_PATHS = [
   // neither looks at the session. Prefix match covers the [token] segment
   // (AUDIT-012#authz-10).
   "/staff-invite",
-  "/api/v3/auth/staff-invite",
+  v("/auth/staff-invite"),
 
   // ─── Public Host Reports ─────────────────────────────────────────
   // app/host/[hostname]/page.tsx is a public host-report lookup for any
@@ -253,5 +266,5 @@ export const PUBLIC_PATHS = [
   // login page's HTML failed to parse as JSON, and every logged-out
   // visitor and crawler saw "Could not load this host's report." Both
   // routes document themselves as public. Prefix match covers /trend.
-  "/api/v3/host",
+  v("/host"),
 ];

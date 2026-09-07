@@ -3,7 +3,11 @@ import { cn } from "@/lib/ui/utils";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { Footer } from "@/components/scanner/footer";
 import { ScanCtaForm } from "@/components/seo/scan-cta-form";
-import { APP_REPO, ROUTES } from "@/lib/config/client-constants";
+import {
+  APP_REPO,
+  ROUTES,
+  SEVERITY_LABELS,
+} from "@/lib/config/client-constants";
 import type { Severity } from "@/lib/scanner/types";
 
 /**
@@ -24,14 +28,6 @@ export function SeoPageShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-
-const SEVERITY_TEXT: Record<Severity, string> = {
-  critical: "Critical",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  info: "Informational",
-};
 
 /**
  * Severity badge. Colours come from the shared --severity-* CSS variables via
@@ -61,7 +57,7 @@ export function SeverityPill({
         className,
       )}
     >
-      {SEVERITY_TEXT[severity]}
+      {SEVERITY_LABELS[severity]}
     </span>
   );
 }

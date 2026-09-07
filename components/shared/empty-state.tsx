@@ -44,6 +44,19 @@ const TONE = {
     icon: "text-[hsl(var(--success))]",
     title: "text-[hsl(var(--success))]",
   },
+  /**
+   * "The list could not be loaded", which is different from "the list is
+   * empty" and was the one tone this component did not have. Its absence is
+   * why /assets, /history, /repos and /shares each grew their own byte-
+   * identical dashed-destructive box instead: four copies of the fifth
+   * grammar this file exists to have ended, added by four people who each
+   * found no tone that fit.
+   */
+  error: {
+    container: "border-destructive/30 bg-destructive/5",
+    icon: "text-destructive/70",
+    title: "text-destructive",
+  },
 } as const;
 
 export function EmptyState({
@@ -66,7 +79,9 @@ export function EmptyState({
   /** Anything other than "default" states a verdict about what the user just
    *  ran, rather than simply reporting that a list is empty, and is drawn with
    *  the matching accent throughout. */
-  tone?: "default" | "warning" | "success";
+  /** Derived from TONE rather than restated, so adding a tone to that table
+   *  is one edit instead of two that can disagree. */
+  tone?: keyof typeof TONE;
   className?: string;
 }) {
   const toned = tone !== "default";
@@ -74,6 +89,14 @@ export function EmptyState({
 
   return (
     <div
+      // An error state announces itself; an empty one does not. A list that
+      // failed to load is news the user did not ask for and needs told about,
+      // which is the same distinction components/shared/inline-alert.tsx draws
+      // between its error and info tones. One of the four hand-rolled copies
+      // this replaced carried role="alert" and the other three did not, so
+      // putting it on the tone rather than on the call site is also how the
+      // four stop disagreeing.
+      role={tone === "error" ? "alert" : undefined}
       className={cn(
         // A fade rather than nothing: this element almost always replaces a
         // list that was just there (a filter cleared, a scan finished), and

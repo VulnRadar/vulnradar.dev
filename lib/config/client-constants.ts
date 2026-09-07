@@ -865,6 +865,26 @@ export const SEVERITY_ORDER = [
  *  every `"use client"` file may import) stays free of scanner imports. */
 export type SeverityName = (typeof SEVERITY_ORDER)[number];
 
+/**
+ * How a severity is written for a reader.
+ *
+ * There were two exhaustive tables for this and they disagreed on one rung:
+ * the scan pages rendered "Info" and the public SEO pages rendered
+ * "Informational", for the same finding at the same severity. Four rungs
+ * agreeing and one not is the worst version of this, because it reads as a
+ * deliberate distinction rather than as drift.
+ *
+ * "Info" is the survivor: it is what the product says everywhere a user
+ * actually triages, and the SEO pages were the outlier.
+ */
+export const SEVERITY_LABELS: Record<SeverityName, string> = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  info: "Info",
+};
+
 export const SEVERITY_PRIORITY: Record<SeverityName, number> = {
   critical: 5,
   high: 4,

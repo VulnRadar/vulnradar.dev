@@ -8,6 +8,7 @@ import {
   checkPasswordRequirements,
   type PasswordRequirementContext,
 } from "@/lib/auth/password-strength";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 /**
  * Shared building blocks for the auth flow. Every screen in the flow is one
@@ -80,7 +81,7 @@ export function AuthSteps({
  *  heading is the page's display heading, so the form column's heading
  *  labels a panel rather than selling the page. It was `text-2xl` flat,
  *  which is a third H1 size belonging to neither tier. */
-const authHeadingClass =
+export const AUTH_HEADING_CLASS =
   "text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground";
 
 export function AuthHeading({
@@ -98,7 +99,7 @@ export function AuthHeading({
       <h1
         ref={ref}
         tabIndex={-1}
-        className={cn(authHeadingClass, "outline-hidden", authFocusRing)}
+        className={cn(AUTH_HEADING_CLASS, "outline-hidden", authFocusRing)}
       >
         {title}
       </h1>
@@ -141,7 +142,7 @@ export function AuthOutcomeHeader({
       <h1
         ref={headingRef}
         tabIndex={headingRef ? -1 : undefined}
-        className={cn(authHeadingClass, "outline-hidden", authFocusRing)}
+        className={cn(AUTH_HEADING_CLASS, "outline-hidden", authFocusRing)}
       >
         {title}
       </h1>
@@ -211,12 +212,9 @@ export function AuthAlert({
       )}
     >
       <div className="flex items-start gap-2.5">
-        <Icon
-          className={cn(
-            "h-4 w-4 shrink-0 mt-px",
-            tone === "error" ? "text-destructive" : "text-primary",
-          )}
-          aria-hidden="true"
+        <LeadingIcon
+          icon={Icon}
+          className={tone === "error" ? "text-destructive" : "text-primary"}
         />
         <div className="min-w-0 flex-1 space-y-2">
           <div

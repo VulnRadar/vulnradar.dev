@@ -306,7 +306,7 @@ export function SchedulesSection({
                         {isPaused && (
                           <Badge
                             variant="outline"
-                            className="text-[10px] px-1.5 py-0 uppercase font-semibold border-amber-500/40 text-amber-600 dark:text-amber-400"
+                            className="text-[10px] px-1.5 py-0 uppercase font-semibold border-[hsl(var(--warning))]/40 text-[hsl(var(--warning))]"
                           >
                             Paused
                           </Badge>

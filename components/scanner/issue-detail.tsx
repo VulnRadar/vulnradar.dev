@@ -1049,8 +1049,16 @@ export function IssueDetail({
               repository, so it is stripped and bounded before it is printed,
               and it is printed as text. */}
           {locationLabel && (
-            <p className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground/80">
-              <FileCode2 aria-hidden className="h-3 w-3 shrink-0" />
+            <p className="flex items-start gap-1.5 font-mono text-[11px] text-muted-foreground/80">
+              {/* items-start, not items-center: break-all below guarantees a
+                  long path wraps, and centring parked the file icon halfway
+                  down a three-line path. */}
+              {/* The icon-lead utility on a WRAPPER, not on the svg: it works
+                  by way of a ::before pseudo-element, and a replaced element
+                  like an svg does not render one. */}
+              <span aria-hidden className="icon-lead text-[11px]">
+                <FileCode2 className="h-3 w-3" />
+              </span>
               <span className="min-w-0 break-all">{locationLabel}</span>
             </p>
           )}

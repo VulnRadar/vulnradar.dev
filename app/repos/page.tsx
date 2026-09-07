@@ -407,34 +407,26 @@ export default function ReposPage() {
       {loading ? (
         <ReposDataSkeleton />
       ) : loadError || !status ? (
-        <div
-          role="alert"
-          className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-destructive/30 bg-destructive/5 px-4 py-14 text-center"
-        >
-          <AlertTriangle
-            className="h-6 w-6 text-destructive/70"
-            aria-hidden="true"
-          />
-          <p className="text-sm font-semibold text-foreground">
-            {loadError ?? STATUS_UNKNOWN_MESSAGE}
-          </p>
-          <p className="max-w-sm text-xs text-muted-foreground">
-            Nothing has changed about your GitHub connection or the repos you
-            picked. This is a problem reading them, not a change to them.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="bg-transparent"
-            onClick={() => {
-              setLoadError(null);
-              setLoading(true);
-              init();
-            }}
-          >
-            Retry
-          </Button>
-        </div>
+        <EmptyState
+          icon={AlertTriangle}
+          tone="error"
+          title={loadError ?? STATUS_UNKNOWN_MESSAGE}
+          description="Nothing has changed about your GitHub connection or the repos you picked. This is a problem reading them, not a change to them."
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-transparent"
+              onClick={() => {
+                setLoadError(null);
+                setLoading(true);
+                init();
+              }}
+            >
+              Retry
+            </Button>
+          }
+        />
       ) : !status.connected ? (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] gap-8 lg:gap-12 items-center pt-6">
           <div className="flex flex-col gap-4 min-w-0">

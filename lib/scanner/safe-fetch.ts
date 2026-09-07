@@ -9,11 +9,16 @@ import { lookup } from "dns/promises";
 import { isIP } from "net";
 import { blockedForAuthenticatedRequest } from "./auth/logout-guard";
 import type { ScanSessionBinding } from "./auth/types";
+import { CONFIG_SCAN_FETCH_TIMEOUT_MS } from "@/lib/config/config-values";
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
-// Keep in sync with scan route timeout defaults (crawl: 8s, scan routes: 15s)
-// safeFetch enforces a 15s max to align with most scan operations
-const DEFAULT_FETCH_TIMEOUT_MS = 15000;
+// The scan routes' own fetch timeout, imported rather than restated. The
+// comment here used to say "keep in sync with scan route timeout defaults
+// (crawl: 8s, scan routes: 15s)", which was already false: the crawl's
+// per-page scan fetch was on 15s too. A comment asking a human to keep two
+// numbers equal is a number that will eventually be wrong, and this one
+// already was.
+const DEFAULT_FETCH_TIMEOUT_MS = CONFIG_SCAN_FETCH_TIMEOUT_MS;
 
 // Basic hostname patterns we never want to scan directly, regardless of DNS resolution.
 // These are a fast, syntactic safeguard that complements validateScanTarget's IP-based checks.

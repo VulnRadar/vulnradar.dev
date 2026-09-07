@@ -57,11 +57,22 @@ describe("leading icons", () => {
 
       const src = fs.readFileSync(file, "utf8");
       for (const [i, line] of src.split("\n").entries()) {
-        const m = line.match(/className="([^"]*)"/);
-        if (!m) continue;
-        const tokens = m[1].split(/\s+/);
+        // Both `className="..."` and the string arguments inside a
+        // `cn(...)` call. Matching only the first let three real offenders
+        // through: an icon whose classes are built by cn() is the same icon
+        // with the same nudge, and components/scanner/threat-intel-panel.tsx
+        // was exactly that.
+        const strings = line.match(/"([^"]*)"/g);
+        if (!strings) continue;
+        const tokens = strings.flatMap((s) => s.slice(1, -1).split(/\s+/));
         // The signature of the pattern this replaced: a fixed vertical nudge
         // on something sized like an icon and held at its natural width.
+        // `accent-*` only ever styles a native form control, and a checkbox
+        // sized h-4 w-4 with a nudge is not a leading icon: it is a checkbox
+        // aligned to its own label. components/auth/login-2fa-form.tsx is the
+        // one in the tree.
+        if (tokens.some((t) => t.startsWith("accent-"))) continue;
+
         const nudged = tokens.includes("mt-0.5") || tokens.includes("mt-px");
         const iconSized =
           (tokens.includes("h-3.5") && tokens.includes("w-3.5")) ||

@@ -137,8 +137,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Brand cyan, matching the same config value app/manifest.ts uses for the
-  // PWA's theme_color. This is also what social embeds (Discord, etc.) read
+  // The brand blue, matching the same config value app/manifest.ts uses for
+  // the PWA's theme_color. (It said "brand cyan" for a long time. The brand
+  // has been blue throughout; CLAUDE.md names that exact wording as how stale
+  // cyan kept getting reintroduced, so it is worth not writing it down.)
+  // This is also what social embeds (Discord, etc.) read
   // for the link-preview accent bar, so it should be the brand color, not a
   // light/dark background shade.
   themeColor: BRANDING_PRIMARY_COLOR,

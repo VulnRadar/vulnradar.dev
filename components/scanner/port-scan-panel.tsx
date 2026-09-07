@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Server } from "lucide-react";
 import type { ClosedPort, PortScanResult } from "@/lib/scanner/port-scan";
 import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
+import { CONFIG_PORT_SCAN_CACHE_TTL_MS } from "@/lib/config/config-values";
 import { PREMIUM_FEATURES } from "@/components/modals/premium-upgrade-modal";
 import {
   PanelActionBar,
@@ -14,11 +15,13 @@ import {
 } from "./panel-refresh";
 
 /**
- * Matches lib/scanner/port-scan.ts PORT_SCAN_TTL_MS: a refresh within this
- * window returns the cached sweep, so "Available to refresh in Xm" tells the
- * user when a genuinely fresh sweep is next available.
+ * The sweep cache TTL itself, imported rather than restated: a refresh within
+ * that window returns the cached sweep, so "Available to refresh in Xm" tells
+ * the user when a genuinely fresh sweep is next available. lib/scanner/
+ * port-scan.ts reads the same constant; a second copy here was one number in
+ * two places with a comment asking someone to notice.
  */
-const REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
+const REFRESH_COOLDOWN_MS = CONFIG_PORT_SCAN_CACHE_TTL_MS;
 
 interface PortScanPanelProps {
   portScan?: PortScanResult | null;

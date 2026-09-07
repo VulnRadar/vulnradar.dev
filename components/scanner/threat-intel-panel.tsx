@@ -12,6 +12,7 @@ import type {
   ThreatIntelSummary,
 } from "@/lib/scanner/reputation-lookup";
 import { cn } from "@/lib/ui/utils";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface ThreatIntelPanelProps {
   threatIntel?: ThreatIntelSummary | null;
@@ -132,7 +133,7 @@ function SourceRow({ source }: { source: ThreatIntelSource }) {
   const { Icon, tone, label } = VERDICT_META[source.verdict];
   return (
     <div className="flex items-start gap-2.5 px-4 py-2">
-      <Icon aria-hidden className={cn("mt-0.5 h-4 w-4 shrink-0", tone)} />
+      <LeadingIcon icon={Icon} className={tone} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-xs font-medium text-foreground">

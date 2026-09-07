@@ -28,6 +28,7 @@ import {
 } from "@/components/assets";
 import { HistoryViewTabs } from "@/components/history";
 import { AppPageShell } from "@/components/shared/app-page-shell";
+import { EmptyState } from "@/components/shared/empty-state";
 
 export default function AssetsPage() {
   const router = useRouter();
@@ -270,25 +271,22 @@ export default function AssetsPage() {
       {loading ? (
         <AssetsDataSkeleton />
       ) : listError ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-destructive/30 bg-destructive/5 px-4 py-14 text-center">
-          <AlertTriangle
-            className="h-6 w-6 text-destructive/70"
-            aria-hidden="true"
-          />
-          <p className="text-sm font-semibold text-foreground">{listError}</p>
-          <p className="max-w-xs text-xs text-muted-foreground">
-            Your scans are unaffected. This page just could not read the list of
-            hosts.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="bg-transparent"
-            onClick={fetchAssets}
-          >
-            Retry
-          </Button>
-        </div>
+        <EmptyState
+          icon={AlertTriangle}
+          tone="error"
+          title={listError}
+          description="Your scans are unaffected. This page just could not read the list of hosts."
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-transparent"
+              onClick={fetchAssets}
+            >
+              Retry
+            </Button>
+          }
+        />
       ) : (
         <AssetsEmptyState
           hasAssets={assets.length > 0}

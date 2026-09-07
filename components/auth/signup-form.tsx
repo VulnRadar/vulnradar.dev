@@ -175,7 +175,12 @@ export function SignupForm({ onSuccess, initialError }: SignupFormProps) {
             type="button"
             onClick={() => setShowPassword(!showPassword)}
             className={cn(
+              // after: overlay, the same technique inline-auth-form.tsx uses.
+              // The visible control stays 36px so it still fits inside the
+              // field, while the hit area grows past the 44px minimum. Raising
+              // h-9 to h-11 instead would have burst the input.
               "absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 rounded-md",
+              "after:absolute after:-inset-1.5 sm:after:hidden",
               "flex items-center justify-center text-muted-foreground hover:text-foreground",
               transitions.colors,
               authFocusRing,

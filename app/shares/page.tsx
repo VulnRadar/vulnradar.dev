@@ -339,27 +339,22 @@ export default function SharesPage() {
           {listError ? (
             // rounded-xl, not rounded-md: this fills the page-panel slot, and
             // its sibling in that same slot (SharesEmptyState) is rounded-xl.
-            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-destructive/30 bg-destructive/5 px-4 py-14 text-center">
-              <AlertTriangle
-                className="h-6 w-6 text-destructive/70"
-                aria-hidden="true"
-              />
-              <p className="text-sm font-semibold text-foreground">
-                {listError}
-              </p>
-              <p className="max-w-xs text-xs text-muted-foreground">
-                Any links you created are still live. This page just could not
-                read the list.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="bg-transparent"
-                onClick={fetchShares}
-              >
-                Retry
-              </Button>
-            </div>
+            <EmptyState
+              icon={AlertTriangle}
+              tone="error"
+              title={listError}
+              description="Any links you created are still live. This page just could not read the list."
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="bg-transparent"
+                  onClick={fetchShares}
+                >
+                  Retry
+                </Button>
+              }
+            />
           ) : shares.length === 0 ? (
             <SharesEmptyState />
           ) : filteredShares.length === 0 ? (

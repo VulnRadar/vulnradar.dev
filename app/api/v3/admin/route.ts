@@ -1186,7 +1186,7 @@ export async function PATCH(request: NextRequest) {
           changes: [
             {
               field: "Badge Awarded",
-              oldValue: "—",
+              oldValue: "None",
               newValue: badgeInfo.rows[0].display_name,
             },
           ],
@@ -1203,7 +1203,7 @@ export async function PATCH(request: NextRequest) {
         success: true,
         change: {
           field: "Badge Awarded",
-          oldValue: "—",
+          oldValue: "None",
           newValue: badgeInfo.rows[0].display_name,
         },
       });
