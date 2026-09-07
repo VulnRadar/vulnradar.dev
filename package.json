@@ -81,7 +81,7 @@
     "@radix-ui/react-tooltip": "1.2.16",
     "@stripe/react-stripe-js": "6.8.2",
     "@stripe/stripe-js": "9.14.0",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "5.0.0",
     "ai": "^7.0.92",
     "bcryptjs": "3.0.3",
     "class-variance-authority": "0.7.1",
