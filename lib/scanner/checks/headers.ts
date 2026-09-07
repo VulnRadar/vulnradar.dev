@@ -85,23 +85,46 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "xpcdp-missing": (_url, headers) => {
+    // The header exists to restrict what a crossdomain.xml policy file may
+    // authorise, and the only clients that ever read either one were Flash
+    // and older Acrobat. Flash reached end of life in December 2020 and was
+    // removed from every browser; absence of the header on a host that
+    // serves no crossdomain.xml authorises nothing, so reporting it was one
+    // more line of work with no reader left to protect.
+    //
+    // An explicitly permissive value is a different statement. Someone set
+    // it, it is still served, and 'all' or 'master-only' is a standing
+    // instruction that any policy file found there may be trusted.
     const v = h(headers, "x-permitted-cross-domain-policies");
-    if (v && v.toLowerCase().trim() === "none") return null;
-    if (!v) {
-      return "Header 'X-Permitted-Cross-Domain-Policies' is not present in the response.";
-    }
+    if (!v) return null;
+    if (v.toLowerCase().trim() === "none") return null;
     return `X-Permitted-Cross-Domain-Policies is '${v}', not 'none'.`;
   },
 
-  "origin-agent-cluster-missing": (_url, headers) => {
-    if (hasHeader(headers, "origin-agent-cluster")) return null;
-    return "Header 'Origin-Agent-Cluster' is not present in the response.";
-  },
+  // Origin-Agent-Cluster asks the browser to give the origin its own agent
+  // cluster, which isolates it for memory and performance reasons and
+  // deliberately does not change the origin's security boundary: the spec
+  // calls it a hint, and a browser is free to ignore it in either direction.
+  // The same header already reads as a performance hint in
+  // checks/configuration.ts's "origin-agent-cluster", which is stubbed for
+  // exactly this reason; this id was the other half of that pair, still
+  // firing.
+  "origin-agent-cluster-missing": () => null,
 
-  "referrer-policy-missing": (_url, headers) => {
-    if (hasHeader(headers, "referrer-policy")) return null;
-    return "Header 'Referrer-Policy' is not present in the response.";
-  },
+  // What this reported ("full URL in Referer on external navigation") stopped
+  // being true in 2020. Chrome 85, Firefox 87, Safari 14 and every browser
+  // since default to strict-origin-when-cross-origin with no header at all:
+  // a cross-origin navigation sends the origin and nothing else, and an
+  // HTTPS-to-HTTP downgrade sends no Referer. The path and query string a
+  // reset token or a session id would sit in are already not being sent.
+  //
+  // Setting the header can still tighten things to no-referrer, and that is
+  // worth doing, but it is hardening rather than a defect: the site is not
+  // leaking anything, and every site on the internet was being told it was.
+  // Mozilla's own Observatory scores a missing Referrer-Policy at zero for
+  // the same reason. An explicitly unsafe value is a real finding and is
+  // reported separately by referrer-policy-unsafe.
+  "referrer-policy-missing": () => null,
 
   "permissions-policy-missing": (_url, headers) => {
     if (
@@ -131,11 +154,15 @@ export const detectors: Record<string, DetectFn> = {
     return "Header 'Cross-Origin-Embedder-Policy' is not present.";
   },
 
-  "xxss-protection-missing": (_url, headers) => {
-    if (hasHeader(headers, "x-xss-protection")) return null;
-    if (hasHeader(headers, "content-security-policy")) return null;
-    return "Neither 'X-XSS-Protection' nor CSP is set.";
-  },
+  // This contradicted x-xss-protection-disabled, three hundred lines down in
+  // this same file, which declines to flag X-XSS-Protection: 0 because 0 is
+  // the value OWASP and Mozilla both recommend. A site that took this
+  // finding's advice and set '1; mode=block' would then be told nothing,
+  // having re-enabled a filter that no browser still ships and that
+  // introduced its own exploitable XSS and information-disclosure bugs
+  // before it was removed. Missing CSP is a real finding and csp-missing
+  // already reports it, without attaching a dead header to the fix.
+  "xxss-protection-missing": () => null,
 
   "cache-control-missing": (url, headers) => {
     if (hasHeader(headers, "cache-control") || hasHeader(headers, "pragma"))

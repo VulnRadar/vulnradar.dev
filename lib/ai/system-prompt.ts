@@ -399,8 +399,13 @@ server-banner (low): Server header reveals software version
 x-content-type-options-missing (low): browser may MIME-sniff responses
   X-Content-Type-Options: nosniff
 
-referrer-policy-missing (low): full URL in Referer on external navigation
-  Referrer-Policy: strict-origin-when-cross-origin
+referrer-policy-unsafe (medium): a policy that opts back into leaking the full URL
+  unsafe-url and no-referrer-when-downgrade send the whole URL, path and query
+  included, to third-party origins. The scanner does not report an absent
+  Referrer-Policy: every browser since 2020 defaults to
+  strict-origin-when-cross-origin on its own, so the header is hardening
+  rather than a fix. Set Referrer-Policy: strict-origin-when-cross-origin, or
+  no-referrer if the site has URLs worth hiding entirely.
 
 spf-missing / spf-fail (high): anyone can spoof email from your domain
   Add DNS TXT: v=spf1 include:_spf.example.com ~all

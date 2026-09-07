@@ -223,10 +223,12 @@ const fixtures: DetectorFixtures = {
 
   "xpcdp-missing": [
     {
+      // Flash, the only thing that ever read a crossdomain.xml policy file,
+      // has been gone since December 2020. Absence of the header authorises
+      // nothing on a host that serves no policy file.
       description: "no X-Permitted-Cross-Domain-Policies",
       url: "https://example.com/",
-      expect: "fire",
-      evidenceIncludes: "X-Permitted-Cross-Domain-Policies",
+      expect: "skip",
     },
     {
       description: "set to none",
@@ -245,10 +247,12 @@ const fixtures: DetectorFixtures = {
 
   "origin-agent-cluster-missing": [
     {
+      // A memory and performance hint the spec says a browser may ignore in
+      // either direction, and not a security boundary. The same header is
+      // already stubbed as a performance hint in checks/configuration.ts.
       description: "no Origin-Agent-Cluster",
       url: "https://example.com/",
-      expect: "fire",
-      evidenceIncludes: "Origin-Agent-Cluster",
+      expect: "skip",
     },
     {
       description: "Origin-Agent-Cluster present",
@@ -369,10 +373,14 @@ const fixtures: DetectorFixtures = {
 
   "referrer-policy-missing": [
     {
+      // Every browser since 2020 defaults to strict-origin-when-cross-origin
+      // with no header set: the origin goes cross-origin, the path and query
+      // do not, and a downgrade sends nothing. The leak this reported does
+      // not happen. referrer-policy-unsafe still catches a policy that opts
+      // back into it.
       description: "no Referrer-Policy",
       url: "https://example.com/",
-      expect: "fire",
-      evidenceIncludes: "Referrer-Policy",
+      expect: "skip",
     },
     {
       description: "Referrer-Policy present",
@@ -571,9 +579,13 @@ const fixtures: DetectorFixtures = {
 
   "xxss-protection-missing": [
     {
+      // Taking this finding's advice means setting '1; mode=block', which
+      // re-enables a filter no browser still ships and that shipped its own
+      // exploitable XSS bugs. x-xss-protection-disabled, in the same file,
+      // declines to flag the '0' this would have argued against.
       description: "no X-XSS-Protection AND no CSP",
       url: "https://example.com/",
-      expect: "fire",
+      expect: "skip",
     },
     {
       description: "CSP present (sufficient)",
