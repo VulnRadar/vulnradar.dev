@@ -131,7 +131,7 @@
     "@types/react-dom": "19.2.7",
     "@typescript-eslint/eslint-plugin": "8.69.0",
     "@typescript-eslint/parser": "8.69.0",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "eslint-config-next": "16.3.4",
     "postcss": "8.5.28",
     "prettier": "3.9.6",
