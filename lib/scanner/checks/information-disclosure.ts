@@ -19,6 +19,27 @@ import {
 } from "../_helpers";
 import { hasTagWith, stripTagElements, tagsWith } from "./_tag-scan";
 
+/**
+ * Whether a Grafana version is inside the range affected by CVE-2021-43798.
+ *
+ * Unauthenticated path traversal through the plugin route, reading any file
+ * the Grafana process can read. Introduced in 8.0.0-beta1 and fixed on each
+ * 8.x line separately, which is why this is a table rather than one bound:
+ * 8.2.7 is patched and 8.3.0, a later release, is not.
+ */
+function hasGrafanaPathTraversal(version: string): boolean {
+  const m = /^(\d+)\.(\d+)(?:\.(\d+))?/.exec(version.trim());
+  if (!m) return false;
+  const major = Number(m[1]);
+  const minor = Number(m[2]);
+  const patch = m[3] === undefined ? 0 : Number(m[3]);
+  if (major !== 8) return false;
+  const FIXED_IN: Record<number, number> = { 0: 7, 1: 8, 2: 7, 3: 1 };
+  const fixedAt = FIXED_IN[minor];
+  if (fixedAt === undefined) return false;
+  return patch < fixedAt;
+}
+
 export const detectors: Record<string, DetectFn> = {
   // ── Private / internal IPs / email / PII — moved to secrets-extended.ts ──────────────────────────────
   // secrets-extended (bundle 8) loads after information-disclosure (bundle 6), so its versions win the
@@ -898,13 +919,22 @@ export const detectors: Record<string, DetectFn> = {
 
   "grafana-version-exposure": (_url, headers, body) => {
     const gv = getHeader(headers, "x-grafana-version");
-    if (gv) {
-      return `X-Grafana-Version header exposes Grafana version: '${gv}' — front with a reverse proxy that strips the header.`;
+    const inBody =
+      /Grafana\s+(?:v|ver\.?|version)?\s*(\d+\.\d+(?:\.\d+)?)/i.exec(body);
+    const version = gv?.trim() || inBody?.[1];
+    if (!version) return null;
+    const where = gv ? "X-Grafana-Version header" : "page body";
+    // The definition cites CVE-2021-43798, which is on CISA's Known
+    // Exploited Vulnerabilities list, and this check used to name it at
+    // every Grafana it found. A current Grafana 11 was handed an
+    // unauthenticated-file-read CVE it has not been vulnerable to for four
+    // years, which is the kind of finding that teaches a reader to stop
+    // believing the report. The version is right there in the evidence, so
+    // compare it.
+    if (hasGrafanaPathTraversal(version)) {
+      return `Grafana ${version} disclosed in the ${where}. That version is inside the range affected by CVE-2021-43798, an unauthenticated path traversal that reads any file the Grafana process can read, and it is on CISA's Known Exploited Vulnerabilities list. Upgrade before doing anything about the fingerprint.`;
     }
-    if (/Grafana\s+(?:v|ver\.?|version)?\s*\d+\.\d+/i.test(body)) {
-      return "Grafana version disclosed in body — front with a reverse proxy that strips version fingerprints.";
-    }
-    return null;
+    return `Grafana ${version} disclosed in the ${where}. This version is not in the range affected by CVE-2021-43798. Publishing it still tells an attacker which advisories to go and read, so strip the fingerprint at a reverse proxy.`;
   },
 
   "nextjs-app-router-rsc-headers": (_url, headers, body) => {

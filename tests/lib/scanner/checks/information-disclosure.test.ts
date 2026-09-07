@@ -15,6 +15,42 @@ import { detectors } from "@/lib/scanner/checks/information-disclosure";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "grafana-version-exposure": [
+    {
+      // The definition cites CVE-2021-43798, a KEV-listed unauthenticated
+      // file read, and the check used to name it at every Grafana it saw.
+      // Grafana 11 has not been affected by it for four years.
+      description: "a current version is not handed a 2021 KEV CVE",
+      headers: { "x-grafana-version": "11.3.0" },
+      expect: "fire",
+      evidenceIncludes: "not in the range affected",
+    },
+    {
+      description: "a version inside the affected range names the CVE",
+      headers: { "x-grafana-version": "8.3.0" },
+      expect: "fire",
+      evidenceIncludes: "CVE-2021-43798",
+    },
+    {
+      // Fixed on each 8.x line separately, so a later release is not
+      // automatically a patched one: 8.2.7 is fixed and 8.3.0 is not.
+      description: "a backported fix on an older line is not affected",
+      headers: { "x-grafana-version": "8.2.7" },
+      expect: "fire",
+      evidenceIncludes: "not in the range affected",
+    },
+    {
+      description: "a version parsed out of the page body, not a header",
+      body: "<html><body>Grafana v9.5.0</body></html>",
+      expect: "fire",
+      evidenceIncludes: "page body",
+    },
+    {
+      description: "no version anywhere does not fire",
+      body: "<p>We use Grafana for dashboards.</p>",
+      expect: "skip",
+    },
+  ],
   // `panic:\s+.+` had two runs competing for the same spaces with
   // "goroutine" never arriving: 21.5 seconds on a 128 KB body of `panic:`
   // followed by whitespace. Both branches of the rewritten check need a
@@ -540,14 +576,6 @@ const fixtures: DetectorFixtures = {
     {
       description: "Jenkins version",
       body: "<html><body>Jenkins ver. 2.387.3</body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "grafana-version-exposure": [
-    {
-      description: "Grafana version",
-      body: "<html><body>Grafana v9.5.0</body></html>",
       expect: "fire",
     },
   ],

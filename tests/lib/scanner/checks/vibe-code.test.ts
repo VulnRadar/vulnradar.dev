@@ -17,6 +17,41 @@ import { detectors } from "@/lib/scanner/checks/vibe-code";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "vibe-no-input-validation": [
+    {
+      // The check has never fired. Its "is there validation" test was a
+      // substring match for zod|joi|yup|ajv|validate|schema|safeParse|parse
+      // against the whole page: "joi" is inside .join(, "parse" is inside
+      // JSON.parse, and "schema" is inside the schema.org URL that every
+      // page with JSON-LD carries. Something always matched.
+      description:
+        "regression: an unvalidated spread beside .join() and schema.org still fires",
+      body: '<script>const tags = list.join(","); const link = "https://schema.org/Thing"; const user = { ...req.body }; await db.users.update(user);</script>',
+      expect: "fire",
+      evidenceIncludes: "no schema validation",
+    },
+    {
+      description: "a spread validated by zod nearby does not fire",
+      body: "<script>const data = schema.safeParse(req.body); const user = { ...req.body };</script>",
+      expect: "skip",
+    },
+    {
+      description: "a spread validated by Joi nearby does not fire",
+      body: "<script>const { value } = Joi.object(shape).validate(req.body); const user = { ...req.body };</script>",
+      expect: "skip",
+    },
+    {
+      description: "Object.assign from the request body fires too",
+      body: "<script>Object.assign(account, req.body);</script>",
+      expect: "fire",
+      evidenceIncludes: "no schema validation",
+    },
+    {
+      description: "no spread of the request body at all does not fire",
+      body: "<script>const user = { name: req.body.name };</script>",
+      expect: "skip",
+    },
+  ],
   "vibe-base64-sensitive": [
     {
       description:

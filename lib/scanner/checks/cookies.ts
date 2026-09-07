@@ -38,11 +38,41 @@ function isSubdomainWideByDesign(name: string): boolean {
   return SUBDOMAIN_WIDE_BY_DESIGN.test(name.trim());
 }
 
+/**
+ * CSRF tokens that are readable by JavaScript ON PURPOSE.
+ *
+ * The double-submit-cookie pattern requires the page's own script to read the
+ * cookie and echo it into a request header, so HttpOnly would break the
+ * protection rather than add to it. Django ships `csrftoken` with
+ * CSRF_COOKIE_HTTPONLY defaulting to False and its documentation says
+ * HttpOnly is not a meaningful defence for it; Laravel ships `XSRF-TOKEN`
+ * specifically so Axios can read it into X-XSRF-TOKEN.
+ *
+ * These names contain "token", so the sensitive-cookie filter below matched
+ * every one of them and reported a correctly configured Django or Laravel
+ * site as missing HttpOnly on an auth cookie. That is the whole framework
+ * doing the right thing, reported as a defect.
+ *
+ * Only the HttpOnly check consults this. Secure and SameSite still apply: a
+ * CSRF token sent over plain HTTP, or with no SameSite, is a real finding.
+ */
+const CSRF_TOKEN_READABLE_BY_DESIGN =
+  /^(?:csrftoken|csrf[_-]?token|xsrf[_-]?token|_csrf|_csrf[_-]?token|ct0)$/i;
+
+function isCsrfTokenReadableByDesign(name: string): boolean {
+  return CSRF_TOKEN_READABLE_BY_DESIGN.test(name.trim());
+}
+
 export const detectors: Record<string, DetectFn> = {
   "cookie-httponly-missing": (_url, headers) => {
     const cookies = getSetCookies(headers);
     const sensitive = cookies.filter((c) => {
       const name = parseCookieName(c).toLowerCase();
+      // A double-submit CSRF token has to be readable by the page's own
+      // script, so HttpOnly on it would break CSRF protection rather than
+      // strengthen it. Excluded here and only here: Secure and SameSite are
+      // still real findings on one.
+      if (isCsrfTokenReadableByDesign(name)) return false;
       return (
         name.includes("session") ||
         name.includes("token") ||
@@ -140,26 +170,20 @@ export const detectors: Record<string, DetectFn> = {
   "cookie-max-age-excessive": () => null, // duplicate of cookie-expires-too-far
   "cookie-path-broad": () => null, // duplicate of cookie-path-cross-app
 
-  "session-cookie-flags": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    if (cookies.length === 0) return null;
-    const issues: string[] = [];
-    for (const c of cookies) {
-      const name = parseCookieName(c).toLowerCase();
-      const isSessionLike =
-        /session|auth|token/i.test(name) || /(^|[_.-])sid($|[_.-])/i.test(name);
-      if (!isSessionLike) continue;
-      if (!cookieHasAttribute(c, "httponly"))
-        issues.push(`${name} missing HttpOnly`);
-      if (!cookieHasAttribute(c, "secure"))
-        issues.push(`${name} missing Secure`);
-      if (!cookieHasAttribute(c, "samesite"))
-        issues.push(`${name} missing SameSite`);
-    }
-    return issues.length > 0
-      ? `Session cookie has issues: ${issues.join(", ")}.`
-      : null;
-  },
+  // Stubbed for the same reason as the two above it: it is a duplicate, and
+  // this one was the loudest.
+  //
+  // It re-tested HttpOnly, Secure AND SameSite on exactly the cookies the
+  // three dedicated checks below already select for, using the same
+  // session/auth/token name match. So one unflagged session cookie produced
+  // FOUR findings for one root cause, and this one was scored high, above
+  // every check it restated. A user with a single missing HttpOnly saw a
+  // high-severity finding, a medium, and a repeat of the medium.
+  //
+  // Nothing is lost by removing it: every attribute it tested has its own
+  // check, at a severity that matches that attribute rather than the worst of
+  // the three.
+  "session-cookie-flags": () => null, // duplicate of the three per-attribute checks below
 
   // ── Per-attribute detectors ───────────────────────────────────────────────
   // Fallback branches that fired for ANY cookie regardless of the actual

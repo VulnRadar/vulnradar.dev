@@ -1004,9 +1004,10 @@
     "severity": "low",
     "description": "The Grafana dashboard version is exposed in HTTP headers or page content.",
     "evidence": "Grafana version information detected in response at {{url}}.",
-    "riskImpact": "Known Grafana versions can be matched against CVEs. Grafana has had critical vulnerabilities including unauthenticated directory traversal (CVE-2021-43798) in specific versions.",
-    "explanation": "Grafana includes version information in headers (X-Grafana-Org-ID, responses) and login page HTML. Version disclosure combined with internet exposure is a significant risk.",
+    "riskImpact": "A published version number turns a general question into a lookup: an attacker reads the advisories for that exact release rather than probing. Whether that matters here depends on the version, and the evidence line says which case this is. Grafana 8.0.0 through 8.3.0 is the range affected by CVE-2021-43798, an unauthenticated path traversal on CISA's Known Exploited Vulnerabilities list; a version outside that range is a fingerprint rather than a live exposure.",
+    "explanation": "Grafana publishes its version in the X-Grafana-Version header and in the login page HTML. This check reads that version and compares it against the range affected by CVE-2021-43798 rather than citing the CVE at every install it finds. The finding stays low severity either way, because the disclosure itself is what is being reported; if the version is in the affected range the evidence says so, and that is the part to act on first.",
     "fixSteps": [
+      "Read the evidence line: if it names CVE-2021-43798, upgrade Grafana before anything else",
       "Place Grafana behind a VPN or require authentication at the network level",
       "Use a reverse proxy to strip version-identifying headers",
       "Keep Grafana updated to the latest stable version"

@@ -19,6 +19,29 @@ const fixtures: DetectorFixtures = {
 
   "cookie-httponly-missing": [
     {
+      // Django's csrftoken and Laravel's XSRF-TOKEN are readable by design:
+      // the double-submit pattern needs the page's own script to echo them
+      // into a header, and HttpOnly would break CSRF protection rather than
+      // add to it. Both names contain "token", so the sensitive filter caught
+      // every correctly configured Django and Laravel site.
+      description: "Django csrftoken is readable by design",
+      cookies: ["csrftoken=abc; Secure; SameSite=Lax"],
+      expect: "skip",
+    },
+    {
+      description: "Laravel XSRF-TOKEN is readable by design",
+      cookies: ["XSRF-TOKEN=abc; Secure; SameSite=Lax"],
+      expect: "skip",
+    },
+    {
+      // The exclusion is scoped to HttpOnly only. A CSRF token sent over
+      // plain HTTP is still a real finding, on the Secure check.
+      description: "a real session cookie beside a CSRF token still fires",
+      cookies: ["csrftoken=abc; Secure; SameSite=Lax", "sessionid=xyz; Secure"],
+      expect: "fire",
+      evidenceIncludes: "sessionid",
+    },
+    {
       description: "cookie without HttpOnly",
       cookies: ["session=abc"],
       expect: "fire",
@@ -264,14 +287,13 @@ const fixtures: DetectorFixtures = {
 
   "session-cookie-flags": [
     {
-      description: "session cookie missing flags",
+      // Removed because it restated all three per-attribute checks below, on
+      // the same cookies, at a HIGHER severity than any of them. One session
+      // cookie missing HttpOnly produced four findings for one root cause,
+      // and the loudest of the four was the duplicate.
+      description:
+        "removed — duplicate of cookie-httponly/secure/samesite-missing",
       cookies: ["SESSIONID=abc"],
-      expect: "fire",
-      evidenceIncludes: "Session",
-    },
-    {
-      description: "session cookie with all flags",
-      cookies: ["SESSIONID=abc; HttpOnly; Secure; SameSite=Strict"],
       expect: "skip",
     },
   ],

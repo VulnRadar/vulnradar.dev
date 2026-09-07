@@ -459,15 +459,44 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "vibe-no-input-validation": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
-    // Look for API handlers that spread req.body directly without any schema
-    const hasBadPattern =
-      /Object\.assign\s*\(\s*\w+\s*,\s*(?:req\.|request\.)body\)/i.test(body) ||
-      /\.\.\.\s*(?:req\.|request\.)body\b/.test(body);
-    if (!hasBadPattern) return null;
-    const hasValidation =
-      /(?:zod|joi|yup|ajv|validate|schema|safeParse|parse)/.test(body);
-    if (!hasValidation) {
-      return "Request body spread/assigned to object without visible schema validation — mass assignment risk.";
+    // An API handler that spreads req.body straight into an object, so every
+    // field the client sends is written, including the ones it should not be
+    // able to set (isAdmin, role, credits).
+    const MASS_ASSIGN =
+      /Object\.assign\s*\(\s*\w+\s*,\s*(?:req\.|request\.)body\s*\)|\.\.\.\s*(?:req\.|request\.)body\b/gi;
+
+    // The old absence-of-validation test was /(?:zod|joi|yup|ajv|validate|
+    // schema|safeParse|parse)/ against the entire page, unbounded and
+    // case-sensitive only by accident. "joi" is inside .join(, "parse" is
+    // inside JSON.parse and parseInt, and "schema" is inside the schema.org
+    // URL that every page with JSON-LD markup carries. Something in that list
+    // matched every page ever scanned, so this check has never once fired.
+    //
+    // Each pattern now names the library at a call site rather than a
+    // substring, and they are looked for near the spread instead of anywhere
+    // on the page: validation in an unrelated bundle 200KB away is not
+    // validation of this handler's body.
+    const VALIDATED = [
+      /\bz\s*\.\s*(?:object|string|number|array|union|discriminatedUnion)\s*\(/,
+      /\b(?:safeParse|parseAsync|safeParseAsync)\s*\(/,
+      /\bJoi\s*\.\s*\w/,
+      /\byup\s*\.\s*(?:object|string|number|array)\s*\(/,
+      /\bnew\s+Ajv\b|\bajv\s*\.\s*(?:compile|validate)\s*\(/,
+      /\b\w*[Ss]chema\s*\.\s*(?:validate|parse|cast|check)\s*\(/,
+      /\bvalidate(?:Body|Request|Input|Payload|Params)?\s*\(/,
+      /\bexpress-validator\b|\bcheckSchema\s*\(|\bbody\s*\(\s*["'][^"']+["']\s*\)\s*\./,
+      /\bclass-validator\b|\bplainToInstance\s*\(/,
+    ];
+    const WINDOW = 600;
+
+    for (const m of body.matchAll(MASS_ASSIGN)) {
+      const at = m.index ?? 0;
+      const near = body.slice(
+        Math.max(0, at - WINDOW),
+        at + m[0].length + WINDOW,
+      );
+      if (VALIDATED.some((v) => v.test(near))) continue;
+      return "Request body spread into an object with no schema validation nearby — every field the client sends is written, including ones it should not be able to set.";
     }
     return null;
   },
