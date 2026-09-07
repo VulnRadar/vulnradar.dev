@@ -983,24 +983,31 @@ export async function checkDNSSEC(
     (googleOK && googleResult.value) ||
     (cloudflareOK && cloudflareResult.value);
 
-  if (!enabled) {
-    return [
-      makeVuln(
-        url,
-        A.dnssecNotEnabled,
-        "DNSSEC does not appear to be enabled for this domain.",
-        `DNSSEC validation (AD flag) not set for ${domain} via Google and Cloudflare DNS resolvers.`,
-        "Without DNSSEC, DNS responses can be spoofed (DNS cache poisoning), redirecting users to malicious servers.",
-        "DNSSEC adds cryptographic signatures to DNS records. It's typically configured through your domain registrar.",
-        [
-          "Enable DNSSEC through your domain registrar.",
-          "Most registrars (Cloudflare, Google Domains, Namecheap) support one-click DNSSEC activation.",
-          "Verify with: dig +dnssec yourdomain.com",
-        ],
-      ),
-    ];
-  }
-  return [];
+  if (enabled) return [];
+
+  // The AD flag alone cannot tell "never signed" from "signed and broken",
+  // and those two want opposite advice. Reading the chain narrows this to the
+  // domain that has simply never turned DNSSEC on. The two records-missing
+  // checks own the half-configured states, and a fully published chain whose
+  // AD flag did not come back is not something to report as "not enabled".
+  const chain = await readDnssecChain(domain);
+  if (!chain || chain.dnskey || chain.ds) return [];
+
+  return [
+    makeVuln(
+      url,
+      A.dnssecNotEnabled,
+      "DNSSEC does not appear to be enabled for this domain.",
+      `DNSSEC validation (AD flag) not set for ${domain} via Google and Cloudflare DNS resolvers.`,
+      "Without DNSSEC, DNS responses can be spoofed (DNS cache poisoning), redirecting users to malicious servers.",
+      "DNSSEC adds cryptographic signatures to DNS records. It's typically configured through your domain registrar.",
+      [
+        "Enable DNSSEC through your domain registrar.",
+        "Most registrars (Cloudflare, Google Domains, Namecheap) support one-click DNSSEC activation.",
+        "Verify with: dig +dnssec yourdomain.com",
+      ],
+    ),
+  ];
 }
 
 /**
@@ -1841,16 +1848,35 @@ export async function checkDNSResolution(
 }
 
 /**
- * Query type `type` for `name` against Google and Cloudflare DoH in
- * parallel, mirroring checkDNSSEC's pattern. Returns null (not "missing")
- * when both resolvers fail so callers don't false-positive on a network
- * error, and true/false for whether either resolver returned a non-empty
- * Answer section.
+ * One DoH round trip per (name, type) per scan.
+ *
+ * The DNSSEC family asks about the same two records from four directions:
+ * checkDNSSEC needs DNSKEY and DS to tell an unsigned zone from a broken
+ * chain, checkDSRecord and checkDNSKEYRecord each need both, and
+ * checkTLSARecord needs DNSKEY. They run concurrently inside one
+ * Promise.allSettled, so without this each of those is its own pair of
+ * requests to Google and Cloudflare: nine round trips to answer two
+ * questions, on every scan of every domain.
+ *
+ * Keyed on the in-flight promise and dropped as soon as it settles, so this
+ * collapses concurrent callers within a single scan and never caches an
+ * answer across scans, which is what a DNS check must not do.
  */
+const dohInFlight = new Map<string, Promise<boolean | null>>();
+
 async function dohHasAnswer(
   name: string,
   type: string,
 ): Promise<boolean | null> {
+  const key = `${name}|${type}`;
+  const pending = dohInFlight.get(key);
+  if (pending) return pending;
+  const run = dohQuery(name, type).finally(() => dohInFlight.delete(key));
+  dohInFlight.set(key, run);
+  return run;
+}
+
+async function dohQuery(name: string, type: string): Promise<boolean | null> {
   const [g, c] = await Promise.allSettled([
     fetch(
       `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${type}`,
@@ -1873,52 +1899,96 @@ async function dohHasAnswer(
   return (gOK && hasAnswer(g.value)) || (cOK && hasAnswer(c.value));
 }
 
-export async function checkDSRecord(
+/**
+ * Where the zone sits in the DNSSEC chain, as one answer.
+ *
+ * DNSKEY says whether the zone signs itself; DS says whether the parent
+ * delegates trust to it. The three checks in this family each own exactly one
+ * of the four combinations, which is what stopped an ordinary unsigned domain
+ * from being reported three times over.
+ */
+async function readDnssecChain(
   domain: string,
-  url: string,
-): Promise<Vulnerability[]> {
-  const has = await dohHasAnswer(domain, "DS");
-  if (has === null || has) return [];
-  return [
-    makeVuln(
-      url,
-      A.dnssecDsRecordMissing,
-      `No DS (Delegation Signer) record was found in the parent zone for ${domain}. DS records are required to establish the DNSSEC chain of trust.`,
-      `Google and Cloudflare DoH both returned an empty Answer section for a DS query against ${domain}.`,
-      "Without a DS record in the parent zone, DNSSEC validation cannot succeed for this zone even if the zone itself is signed, leaving it exposed to DNS cache poisoning.",
-      "The DS record in the parent zone contains a hash of the child zone's DNSKEY, linking the two zones together to complete the chain of trust from the DNS root down.",
-      [
-        "Generate DNSSEC keys for your zone and sign it.",
-        "Submit the resulting DS record to your domain registrar so it is published in the parent TLD zone.",
-        `Verify: dig +short DS ${domain} @1.1.1.1`,
-      ],
-      [],
-      75,
-    ),
-  ];
+): Promise<{ dnskey: boolean; ds: boolean } | null> {
+  const [dnskey, ds] = await Promise.all([
+    dohHasAnswer(domain, "DNSKEY"),
+    dohHasAnswer(domain, "DS"),
+  ]);
+  // A resolver that did not answer is not evidence that a record is absent,
+  // and every finding in this family turns on a record being absent.
+  if (dnskey === null || ds === null) return null;
+  return { dnskey, ds };
 }
 
+/**
+ * The parent zone delegates DNSSEC to a zone that publishes no keys.
+ *
+ * This used to fire on any domain with no DNSKEY, which is every domain that
+ * has simply never turned DNSSEC on: the same fact checkDNSSEC already
+ * reports as an informational note, repeated at medium severity. Scoped to
+ * the case the record's absence actually describes, it is one of the worst
+ * states a zone can be in and nothing else reports it. The parent publishes a
+ * DS record, so every validating resolver expects signatures and refuses to
+ * answer at all without them. The domain is not weakly protected, it is
+ * unreachable for every client behind a validating resolver, while resolving
+ * perfectly from the operator's own machine.
+ */
 export async function checkDNSKEYRecord(
   domain: string,
   url: string,
 ): Promise<Vulnerability[]> {
-  const has = await dohHasAnswer(domain, "DNSKEY");
-  if (has === null || has) return [];
+  const chain = await readDnssecChain(domain);
+  if (!chain || chain.dnskey || !chain.ds) return [];
   return [
     makeVuln(
       url,
       A.dnskeyRecordMissing,
-      `No DNSKEY records were found for ${domain}. DNSKEY records publish the public keys used to sign the zone and are required for DNSSEC validation.`,
-      `Google and Cloudflare DoH both returned an empty Answer section for a DNSKEY query against ${domain}.`,
-      "Without DNSKEY records, no DNSSEC validation is possible for this zone, leaving it exposed to DNS cache poisoning (Kaminsky-style) attacks.",
-      "DNSKEY records hold the public keys corresponding to the private keys used to sign DNS records (RRSIG). A fully signed zone needs both a Key Signing Key and a Zone Signing Key.",
+      `The parent zone publishes a DS record for ${domain}, but the zone itself publishes no DNSKEY records, so the DNSSEC chain of trust is broken at the zone.`,
+      `Google and Cloudflare DoH both returned a DS answer and an empty DNSKEY answer for ${domain}.`,
+      "A DS record in the parent is a promise that this zone is signed. Every validating resolver that sees it will demand signatures, get none, and return SERVFAIL rather than the address, so the domain stops resolving entirely for clients behind a validating resolver while continuing to work from anywhere that does not validate. This is the failure mode that looks like an intermittent outage nobody can reproduce.",
+      "DNSKEY records hold the public keys corresponding to the private keys used to sign DNS records (RRSIG). The usual cause is DNSSEC being switched off at the DNS host, or a zone being moved to a new provider, without the DS record first being withdrawn at the registrar.",
       [
-        "Enable DNSSEC signing on your authoritative DNS server.",
-        "Generate KSK and ZSK key pairs and sign the zone.",
-        `Verify: dig +short DNSKEY ${domain}`,
+        "If you meant to run DNSSEC: re-sign the zone at your DNS provider so it publishes DNSKEY and RRSIG records again.",
+        "If you meant to switch DNSSEC off: remove the DS record at your registrar first, then wait out the parent TTL before unsigning the zone.",
+        `Verify: dig +short DNSKEY ${domain} and dig +short DS ${domain}`,
       ],
       [],
-      75,
+      80,
+    ),
+  ];
+}
+
+/**
+ * A signed zone the parent never delegated to.
+ *
+ * Gated on the zone actually being signed. Without that gate this fired on
+ * every domain that has never enabled DNSSEC, which checkDNSSEC already
+ * covers, and the advice it gave (sign the zone, then submit the DS) was that
+ * same advice with an extra step attached. What is left is the state where
+ * the work has been done and the last step was missed: the zone is signed and
+ * nothing anywhere validates it.
+ */
+export async function checkDSRecord(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  const chain = await readDnssecChain(domain);
+  if (!chain || !chain.dnskey || chain.ds) return [];
+  return [
+    makeVuln(
+      url,
+      A.dnssecDsRecordMissing,
+      `${domain} is signed with DNSSEC, but no DS (Delegation Signer) record was found in the parent zone, so nothing validates those signatures.`,
+      `Google and Cloudflare DoH both returned a DNSKEY answer and an empty DS answer for ${domain}.`,
+      "A signed zone with no DS record in the parent is treated as unsigned by every resolver on the internet. All of the cost of running DNSSEC is being paid and none of the protection is being received: responses can still be spoofed exactly as if the zone had never been signed.",
+      "The DS record in the parent zone contains a hash of the child zone's DNSKEY, linking the two zones together to complete the chain of trust from the DNS root down. It is published by the registrar rather than by the DNS host, which is why this is the step that gets missed.",
+      [
+        "Copy the DS record (or the DNSKEY, if your registrar takes that form) from your DNS provider.",
+        "Submit it to your domain registrar so it is published in the parent TLD zone.",
+        `Verify: dig +short DS ${domain} @1.1.1.1`,
+      ],
+      [],
+      80,
     ),
   ];
 }

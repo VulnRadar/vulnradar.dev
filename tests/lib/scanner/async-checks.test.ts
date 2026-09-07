@@ -96,6 +96,8 @@ import {
   checkDMARC,
   checkDKIM,
   checkDNSSEC,
+  checkDSRecord,
+  checkDNSKEYRecord,
   checkCAA,
   checkDNSSecurity,
   checkTLSCert,
@@ -608,22 +610,130 @@ describe("checkDKIMWeakKey", () => {
 
 // ── checkDNSSEC ──────────────────────────────────────────────────────
 
-describe("checkDNSSEC", () => {
-  it("returns not-enabled finding when neither resolver sees AD flag", async () => {
-    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      json: () => Promise.resolve({ AD: false }),
-    });
-    const findings = await checkDNSSEC("example.com", "https://example.com");
-    expect(findings.length).toBeGreaterThan(0);
-    expect(findings[0].title).toMatch(/DNSSEC/i);
+/**
+ * The DNSSEC family reports one state, once.
+ *
+ * These three checks used to answer the same question from three angles, and
+ * an ordinary domain that has never enabled DNSSEC came back with all three:
+ * an informational "not enabled" note plus two medium findings saying the DS
+ * and DNSKEY records were absent, which is what "not enabled" means. Three
+ * findings, one fact, and the two mediums outranked the note that actually
+ * explained it.
+ *
+ * DNSKEY (does the zone sign itself) and DS (does the parent delegate trust
+ * to it) have four combinations, and each check now owns exactly one.
+ */
+
+/** Answer DoH queries per record type, plus the AD flag on the A query. */
+function mockDoh({
+  ad = false,
+  dnskey = false,
+  ds = false,
+}: {
+  ad?: boolean;
+  dnskey?: boolean;
+  ds?: boolean;
+}) {
+  const answer = [{ name: "example.com.", type: 1, data: "x" }];
+  vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+    async (input: unknown) => {
+      const u = String(input);
+      const present = /type=DNSKEY/i.test(u)
+        ? dnskey
+        : /type=DS/i.test(u)
+          ? ds
+          : false;
+      return {
+        json: async () => ({ AD: ad, ...(present ? { Answer: answer } : {}) }),
+      };
+    },
+  );
+}
+
+describe("the DNSSEC chain", () => {
+  it("reports an unsigned zone once, as the informational note", async () => {
+    mockDoh({ ad: false, dnskey: false, ds: false });
+    const [notEnabled, dsMissing, dnskeyMissing] = await Promise.all([
+      checkDNSSEC("example.com", "https://example.com"),
+      checkDSRecord("example.com", "https://example.com"),
+      checkDNSKEYRecord("example.com", "https://example.com"),
+    ]);
+    expect(notEnabled).toHaveLength(1);
+    expect(notEnabled[0].title).toMatch(/DNSSEC/i);
+    // The two records really are absent. Saying so adds nothing to the note
+    // above it, and says it twice at a severity the note does not carry.
+    expect(dsMissing).toEqual([]);
+    expect(dnskeyMissing).toEqual([]);
   });
 
-  it("returns no findings when at least one resolver sees AD flag", async () => {
-    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      json: () => Promise.resolve({ AD: true }),
-    });
-    const findings = await checkDNSSEC("example.com", "https://example.com");
-    expect(findings).toEqual([]);
+  it("says nothing about a domain whose chain is complete", async () => {
+    mockDoh({ ad: true, dnskey: true, ds: true });
+    const [notEnabled, dsMissing, dnskeyMissing] = await Promise.all([
+      checkDNSSEC("example.com", "https://example.com"),
+      checkDSRecord("example.com", "https://example.com"),
+      checkDNSKEYRecord("example.com", "https://example.com"),
+    ]);
+    expect([...notEnabled, ...dsMissing, ...dnskeyMissing]).toEqual([]);
+  });
+
+  it("reports a signed zone the parent never delegated to, and only that", async () => {
+    mockDoh({ ad: false, dnskey: true, ds: false });
+    const [notEnabled, dsMissing, dnskeyMissing] = await Promise.all([
+      checkDNSSEC("example.com", "https://example.com"),
+      checkDSRecord("example.com", "https://example.com"),
+      checkDNSKEYRecord("example.com", "https://example.com"),
+    ]);
+    expect(dsMissing).toHaveLength(1);
+    expect(dsMissing[0].description).toMatch(/is signed with DNSSEC/i);
+    // "DNSSEC is not enabled" is the wrong sentence to show someone who has
+    // signed their zone: the work is done, one step at the registrar is not.
+    expect(notEnabled).toEqual([]);
+    expect(dnskeyMissing).toEqual([]);
+  });
+
+  it("reports a delegated zone that publishes no keys, and only that", async () => {
+    // The worst of the four and the one nothing used to distinguish: the
+    // parent promises signatures, the zone has none, and every validating
+    // resolver SERVFAILs the domain rather than answering.
+    mockDoh({ ad: false, dnskey: false, ds: true });
+    const [notEnabled, dsMissing, dnskeyMissing] = await Promise.all([
+      checkDNSSEC("example.com", "https://example.com"),
+      checkDSRecord("example.com", "https://example.com"),
+      checkDNSKEYRecord("example.com", "https://example.com"),
+    ]);
+    expect(dnskeyMissing).toHaveLength(1);
+    expect(dnskeyMissing[0].riskImpact).toMatch(/SERVFAIL/);
+    expect(notEnabled).toEqual([]);
+    expect(dsMissing).toEqual([]);
+  });
+
+  it("stays quiet when the resolvers do not answer at all", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("network down"),
+    );
+    const [notEnabled, dsMissing, dnskeyMissing] = await Promise.all([
+      checkDNSSEC("example.com", "https://example.com"),
+      checkDSRecord("example.com", "https://example.com"),
+      checkDNSKEYRecord("example.com", "https://example.com"),
+    ]);
+    expect([...notEnabled, ...dsMissing, ...dnskeyMissing]).toEqual([]);
+  });
+
+  it("asks each resolver about each record once, however many checks want it", async () => {
+    // Four checks in the same Promise.allSettled ask about DNSKEY and DS.
+    // Before the in-flight map that was nine pairs of DoH requests per scan
+    // to answer two questions.
+    mockDoh({ ad: false, dnskey: true, ds: true });
+    const calls = vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>);
+    calls.mockClear();
+    await Promise.all([
+      checkDNSSEC("example.com", "https://example.com"),
+      checkDSRecord("example.com", "https://example.com"),
+      checkDNSKEYRecord("example.com", "https://example.com"),
+    ]);
+    const urls = calls.mock.calls.map((c) => String(c[0]));
+    expect(urls.filter((u) => /type=DNSKEY/i.test(u))).toHaveLength(2);
+    expect(urls.filter((u) => /type=DS(&|$)/i.test(u))).toHaveLength(2);
   });
 });
 
