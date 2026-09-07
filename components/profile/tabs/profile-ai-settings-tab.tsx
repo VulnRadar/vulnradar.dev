@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { AiSettingsTabSkeleton } from "./ai-settings-tab-skeleton";
 import type { ProfileTabProps } from "../types";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000)
@@ -228,9 +229,10 @@ export function ProfileAiSettingsTab({
     return (
       <div className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex flex-col gap-4">
         <div className="flex items-start gap-3">
-          <AlertTriangle
-            className="h-4 w-4 text-destructive shrink-0 mt-0.5"
-            aria-hidden="true"
+          <LeadingIcon
+            icon={AlertTriangle}
+            line="relaxed"
+            className="text-destructive"
           />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground">

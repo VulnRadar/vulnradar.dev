@@ -499,3 +499,41 @@ describe("the AI chat markdown renderer cannot widen the panel", () => {
     expect(src).not.toMatch(/className="[^"]*break-all/);
   });
 });
+
+describe("the AI chat panel is sized to the visible screen, not the layout viewport", () => {
+  const src = code("components/ai-chat/chat-widget.tsx");
+
+  it("does not fill the mobile screen with inset-0", () => {
+    // `fixed inset-0` resolves against the LAYOUT viewport, which on iOS
+    // Safari runs underneath the browser's own toolbars. The sheet drew to the
+    // full height of that, so its composer sat behind the address bar and was
+    // unreachable: the panel looked open and could not be typed into.
+    expect(src).not.toMatch(/"fixed inset-0 z-50"/);
+  });
+
+  it("uses dvh as the no-JavaScript floor", () => {
+    // Dynamic viewport height already excludes the browser chrome, so even
+    // with no visualViewport reading the sheet lands inside the visible area.
+    expect(src).toMatch(/fixed inset-x-0 top-0 h-\[100dvh\]/);
+  });
+
+  it("hands the whole panel back to the desktop popup above sm", () => {
+    // Every mobile-only geometry class needs its sm: counterpart, or the
+    // floating desktop panel inherits a full-height full-width sheet.
+    expect(src).toMatch(/sm:inset-x-auto sm:top-auto sm:h-auto/);
+  });
+
+  it("tracks visualViewport offsetTop, not just its height", () => {
+    // iOS scrolls the layout viewport under the form assist bar, so a panel
+    // pinned to top: 0 drifts off the top of the screen while the keyboard is
+    // open. offsetTop is the correction and it has to be carried through.
+    expect(src).toMatch(/setVisualRect\(\{\s*top: vv\.offsetTop/);
+  });
+
+  it("never reads window.innerHeight while rendering", () => {
+    // A render-time read cannot update on rotation or on a toolbar collapsing,
+    // so the panel kept a height measured for the previous orientation.
+    const render = src.slice(src.indexOf("return (\n    <>"));
+    expect(render).not.toContain("window.innerHeight");
+  });
+});

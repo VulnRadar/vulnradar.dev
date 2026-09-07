@@ -30,6 +30,7 @@ import type {
   DiscoveredSubdomain,
   DiscoveryResult,
 } from "@/lib/scanner/subdomain-types";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 // Re-exported so existing importers (e.g. app/shared/[token]/page.tsx) keep
 // importing DiscoveryResult from this component unchanged.
@@ -289,10 +290,7 @@ export function SubdomainDiscovery({
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-start gap-2.5">
-              <Globe
-                aria-hidden
-                className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
-              />
+              <LeadingIcon icon={Globe} className="text-muted-foreground" />
               <div>
                 <h3 className="text-sm font-semibold text-foreground">
                   Subdomain discovery

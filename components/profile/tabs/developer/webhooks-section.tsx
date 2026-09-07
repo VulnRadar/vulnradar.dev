@@ -22,6 +22,7 @@ import {
 import { useState } from "react";
 import type { WebhookItem } from "@/components/profile/types";
 import type { ConfirmAction } from "./types";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface WebhooksSectionProps {
   webhooks: WebhookItem[];
@@ -109,9 +110,10 @@ export function WebhooksSection({
       {newlyCreatedWebhookSecret && (
         <div className="rounded-xl border border-primary/40 bg-primary/5 p-4 sm:p-5 flex flex-col gap-3">
           <div className="flex items-start gap-2.5">
-            <KeyRound
-              className="h-4 w-4 text-primary shrink-0 mt-0.5"
-              aria-hidden="true"
+            <LeadingIcon
+              icon={KeyRound}
+              line="relaxed"
+              className="text-primary"
             />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">

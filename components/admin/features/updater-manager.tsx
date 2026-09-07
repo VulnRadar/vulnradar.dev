@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface UpdaterStatus {
   current: string;
@@ -268,10 +269,7 @@ export function UpdaterManager() {
     <div className="space-y-6">
       {status && !status.supported && (
         <div className="flex items-start gap-3 p-4 rounded-lg border border-border/50 bg-muted/30">
-          <Info
-            className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5"
-            aria-hidden="true"
-          />
+          <LeadingIcon icon={Info} className="text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             {status.unsupportedReason}
           </p>
@@ -336,10 +334,7 @@ export function UpdaterManager() {
         <CardContent className="p-4 sm:p-5 space-y-5">
           {!status && loadFailed && (
             <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
-              <AlertTriangle
-                className="h-4 w-4 text-destructive shrink-0 mt-0.5"
-                aria-hidden="true"
-              />
+              <LeadingIcon icon={AlertTriangle} className="text-destructive" />
               <p className="text-sm text-destructive">
                 Couldn&apos;t load updater status. Everything below is unknown,
                 not absent. Use Refresh to try again.
@@ -423,10 +418,7 @@ export function UpdaterManager() {
 
           {status && !status.cosignAvailable && (
             <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-              <AlertTriangle
-                className="h-3.5 w-3.5 shrink-0 mt-0.5"
-                aria-hidden="true"
-              />
+              <LeadingIcon icon={AlertTriangle} line="xs" size="sm" />
               cosign isn&apos;t installed on this host. The update will still be
               checksum-verified, but its cosign signature won&apos;t be checked.
             </p>
@@ -504,9 +496,9 @@ export function UpdaterManager() {
 
             {job.status === "completed" && (
               <div className="flex items-start gap-3 p-3 rounded-lg border border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/5">
-                <CheckCircle2
-                  className="h-4 w-4 text-[hsl(var(--success))] shrink-0 mt-0.5"
-                  aria-hidden="true"
+                <LeadingIcon
+                  icon={CheckCircle2}
+                  className="text-[hsl(var(--success))]"
                 />
                 <p className="text-sm text-[hsl(var(--success))]">
                   Update applied. Run{" "}
@@ -529,9 +521,10 @@ export function UpdaterManager() {
                 (s) => s.name === "copy" && s.status === "done",
               ) && (
                 <div className="flex items-start gap-3 p-4 rounded-lg border-2 border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/10">
-                  <AlertTriangle
-                    className="h-5 w-5 text-[hsl(var(--warning))] shrink-0 mt-0.5"
-                    aria-hidden="true"
+                  <LeadingIcon
+                    icon={AlertTriangle}
+                    size="lg"
+                    className="text-[hsl(var(--warning))]"
                   />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-[hsl(var(--warning))]">
@@ -550,10 +543,7 @@ export function UpdaterManager() {
               )}
             {job.status === "failed" && job.error && (
               <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/20 bg-destructive/5">
-                <XCircle
-                  className="h-4 w-4 text-destructive shrink-0 mt-0.5"
-                  aria-hidden="true"
-                />
+                <LeadingIcon icon={XCircle} className="text-destructive" />
                 <p className="text-sm text-destructive">{job.error}</p>
               </div>
             )}

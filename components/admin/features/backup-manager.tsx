@@ -31,6 +31,7 @@ import {
   BACKUP_STALE_INTERVALS_WARN,
   BACKUP_STALE_INTERVALS_CRIT,
 } from "./health-overview-utils";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface BackupJob {
   id: string;
@@ -275,10 +276,7 @@ export function BackupManager() {
         <CardContent className="p-4 sm:p-5 space-y-5">
           {!status && loadFailed && (
             <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
-              <AlertTriangle
-                className="h-4 w-4 text-destructive shrink-0 mt-0.5"
-                aria-hidden="true"
-              />
+              <LeadingIcon icon={AlertTriangle} className="text-destructive" />
               <p className="text-sm text-destructive">
                 Couldn&apos;t load backup status. The figures below are unknown,
                 not zero. Use Refresh to try again.
@@ -367,15 +365,12 @@ export function BackupManager() {
               )}
             >
               {job.status === "success" ? (
-                <CheckCircle2
-                  className="h-4 w-4 text-[hsl(var(--success))] shrink-0 mt-0.5"
-                  aria-hidden="true"
+                <LeadingIcon
+                  icon={CheckCircle2}
+                  className="text-[hsl(var(--success))]"
                 />
               ) : (
-                <XCircle
-                  className="h-4 w-4 text-destructive shrink-0 mt-0.5"
-                  aria-hidden="true"
-                />
+                <LeadingIcon icon={XCircle} className="text-destructive" />
               )}
               <div className="flex-1 min-w-0">
                 <p

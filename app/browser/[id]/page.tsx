@@ -30,6 +30,7 @@ import {
   VIEWER_STORAGE_KEYS,
   type Size,
 } from "@/lib/browserbase/viewer-layout";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface BrowserSession {
   id: string;
@@ -666,10 +667,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
           the header button above bringing it back. */}
       {!ended && showNotice && (
         <div className="shrink-0 flex items-start gap-2 px-3 sm:px-4 py-1.5 bg-[hsl(var(--warning))]/10 border-b border-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] text-[11px] leading-snug">
-          <AlertTriangle
-            className="h-3.5 w-3.5 shrink-0 mt-px"
-            aria-hidden="true"
-          />
+          <LeadingIcon icon={AlertTriangle} line="xs" size="sm" />
           <p className="min-w-0">
             This browser runs on a cloud server, not on your device. Do not type
             real passwords into it. The session is deleted when you close it.

@@ -18,6 +18,7 @@ import { cn } from "@/lib/ui/utils";
 import { copyToClipboard as copyTextToClipboard } from "@/lib/ui/clipboard";
 import { UrlDisplay } from "@/components/shared/url-display";
 import type { ScanEntry } from "./badge-types";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface BadgePreviewProps {
   selected: ScanEntry | null;
@@ -55,10 +56,7 @@ function ScopeToggle({
 
   return (
     <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3">
-      <Globe2
-        className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5"
-        aria-hidden="true"
-      />
+      <LeadingIcon icon={Globe2} className="text-muted-foreground" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-3">
           <label

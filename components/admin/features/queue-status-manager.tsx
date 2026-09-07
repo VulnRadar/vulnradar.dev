@@ -22,6 +22,7 @@ import {
   STALE_RUNNING_MS,
   type QueueStatusResponse,
 } from "./queue-status-utils";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 // No admin panel manager currently uses SWR (see
 // components/providers/auth-provider.tsx for the only usage in the repo,
@@ -139,10 +140,7 @@ export function QueueStatusManager() {
         <CardContent className="px-4 sm:px-5 py-5 space-y-4">
           {!data && loadFailed ? (
             <div className="flex items-start gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/10">
-              <AlertTriangle
-                className="h-4 w-4 text-destructive shrink-0 mt-0.5"
-                aria-hidden="true"
-              />
+              <LeadingIcon icon={AlertTriangle} className="text-destructive" />
               <p className="text-sm text-destructive">
                 Couldn&apos;t load the scanner queue. This is not an all-clear:
                 the queue state is unknown. Use Refresh to try again.

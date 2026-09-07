@@ -1,6 +1,7 @@
 import { ArrowRight, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { ROUTES } from "@/lib/config/constants";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 const EVIDENCE = `> GET / HTTP/1.1
 > Host: example.com
@@ -58,7 +59,11 @@ export function LandingSampleFinding() {
 
           <article className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
             <header className="px-5 py-4 border-b border-border/60 flex items-start gap-3">
-              <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0 text-[hsl(var(--severity-high))]" />
+              <LeadingIcon
+                icon={ShieldAlert}
+                line="base"
+                className="text-[hsl(var(--severity-high))]"
+              />
               <div className="min-w-0 flex-1">
                 <h3 className="text-base font-semibold tracking-tight text-balance">
                   Missing HTTP Strict Transport Security

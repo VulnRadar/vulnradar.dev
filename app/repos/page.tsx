@@ -36,6 +36,7 @@ import type {
   RepoScanSummary,
 } from "@/components/repos/types";
 import type { ScanResult } from "@/lib/scanner/types";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface GithubStatus {
   connected: boolean;
@@ -517,9 +518,11 @@ export default function ReposPage() {
               </code>
             </pre>
             <div className="flex items-start gap-2 border-t border-border/60 px-4 py-3">
-              <ShieldAlert
-                className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5"
-                aria-hidden="true"
+              <LeadingIcon
+                icon={ShieldAlert}
+                line="xs"
+                size="sm"
+                className="text-destructive"
               />
               <p className="text-xs text-muted-foreground">
                 <span className="font-medium text-destructive">Critical:</span>{" "}

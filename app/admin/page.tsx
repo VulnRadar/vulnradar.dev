@@ -368,6 +368,15 @@ function AdminContent() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // The detail panel mounts ABOVE the directory it was opened from. On a phone
+  // you scroll a long way down the list to find someone, tap them, and the
+  // browser holds your scroll offset: the panel is now entirely above the
+  // fold and the screen you land on is the bottom of the user list, which
+  // reads as the page opening at the bottom. Bringing the panel into view is
+  // the whole fix; "start" rather than "nearest" because the panel is taller
+  // than a phone viewport, so its top is the only part worth landing on.
+  const userDetailRef = useRef<HTMLDivElement | null>(null);
+  const scrolledToUserRef = useRef<number | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [auditPage, setAuditPage] = useState(1);
   const [auditTotalPages, setAuditTotalPages] = useState(1);
@@ -583,6 +592,32 @@ function AdminContent() {
   useEffect(() => {
     fetchTeamsRef.current = fetchTeams;
   }, [fetchTeams]);
+
+  // Bring a freshly opened user detail panel onto the screen. Keyed on the id
+  // so it fires once per user rather than on every badge edit or action that
+  // replaces the object, and skipped entirely when the panel is already where
+  // the user is looking.
+  useEffect(() => {
+    const id = selectedUser?.user.id ?? null;
+    if (id === null) {
+      scrolledToUserRef.current = null;
+      return;
+    }
+    if (scrolledToUserRef.current === id) return;
+    scrolledToUserRef.current = id;
+    const el = userDetailRef.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    // Already at the top of the viewport, or close to it: moving the page
+    // under someone who can see the panel is worse than doing nothing.
+    if (top >= 0 && top < 120) return;
+    el.scrollIntoView({
+      block: "start",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  }, [selectedUser]);
 
   const fetchUserDetail = useCallback(
     async (userId: number, skipUrlUpdate = false) => {
@@ -1328,43 +1363,45 @@ function AdminContent() {
 
             {/* User detail */}
             {selectedUser && activeTab === "users" && (
-              <UserDetailPanel
-                detail={selectedUser}
-                detailLoading={detailLoading}
-                actionLoading={actionLoading}
-                callerRole={callerRole}
-                allBadges={allBadges}
-                onBadgesChanged={(awardedIds, revokedIds) => {
-                  setSelectedUser((prev) => {
-                    if (!prev) return prev;
-                    const awardedBadges = allBadges
-                      .filter((b) => awardedIds.includes(b.id))
-                      .map((b) => ({
-                        id: b.id,
-                        name: b.name,
-                        display_name: b.display_name,
-                        description: b.description,
-                        icon: b.icon,
-                        color: b.color,
-                        priority: b.priority,
-                        is_limited: b.is_limited,
-                        image_url: null,
-                        awarded_at: new Date().toISOString(),
-                      }));
-                    const kept = prev.badges.filter(
-                      (b) => !revokedIds.includes(b.id),
-                    );
-                    return { ...prev, badges: [...kept, ...awardedBadges] };
-                  });
-                }}
-                onClose={() => {
-                  setSelectedUser(null);
-                  updateUrlWithUser(null, activeTab);
-                }}
-                onAction={async (userId, action, extra) =>
-                  handleAction(userId, action, extra)
-                }
-              />
+              <div ref={userDetailRef} className="scroll-mt-4">
+                <UserDetailPanel
+                  detail={selectedUser}
+                  detailLoading={detailLoading}
+                  actionLoading={actionLoading}
+                  callerRole={callerRole}
+                  allBadges={allBadges}
+                  onBadgesChanged={(awardedIds, revokedIds) => {
+                    setSelectedUser((prev) => {
+                      if (!prev) return prev;
+                      const awardedBadges = allBadges
+                        .filter((b) => awardedIds.includes(b.id))
+                        .map((b) => ({
+                          id: b.id,
+                          name: b.name,
+                          display_name: b.display_name,
+                          description: b.description,
+                          icon: b.icon,
+                          color: b.color,
+                          priority: b.priority,
+                          is_limited: b.is_limited,
+                          image_url: null,
+                          awarded_at: new Date().toISOString(),
+                        }));
+                      const kept = prev.badges.filter(
+                        (b) => !revokedIds.includes(b.id),
+                      );
+                      return { ...prev, badges: [...kept, ...awardedBadges] };
+                    });
+                  }}
+                  onClose={() => {
+                    setSelectedUser(null);
+                    updateUrlWithUser(null, activeTab);
+                  }}
+                  onAction={async (userId, action, extra) =>
+                    handleAction(userId, action, extra)
+                  }
+                />
+              </div>
             )}
 
             {/* Users: the growth strip, directory table and mobile list all

@@ -27,6 +27,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import type { ProfileTabProps, NotificationPrefs } from "../types";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 // Fills in any column a response that DID arrive left out, so a preference
 // added after a user's row was written still renders as a boolean. It is not
@@ -202,9 +203,10 @@ export function ProfileNotificationsTab({
   if (!notifPrefs) {
     return (
       <div className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex items-start gap-3">
-        <AlertTriangle
-          className="h-4 w-4 text-destructive shrink-0 mt-0.5"
-          aria-hidden="true"
+        <LeadingIcon
+          icon={AlertTriangle}
+          line="relaxed"
+          className="text-destructive"
         />
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">

@@ -19,6 +19,7 @@ import {
   CodeBlock,
   InlineCode,
 } from "@/components/docs";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -118,7 +119,11 @@ export default function SetupPage() {
             },
           ].map((item, i) => (
             <div key={i} className="flex items-start gap-3">
-              <CheckCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+              <LeadingIcon
+                icon={CheckCircle}
+                size="lg"
+                className="text-primary"
+              />
               <div className="flex-1">
                 <h3 className="text-sm font-semibold mb-1">{item.title}</h3>
                 <p className="text-sm text-muted-foreground">

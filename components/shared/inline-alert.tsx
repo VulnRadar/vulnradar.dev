@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Check, Info, X, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { LeadingIcon } from "./leading-icon";
 
 export type InlineAlertTone = "error" | "success" | "warning" | "info";
 
@@ -79,18 +80,20 @@ export function InlineAlert({
       // so it is announced politely rather than interrupting.
       role={tone === "error" || tone === "warning" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm",
+        // leading-relaxed lives HERE, not on the text child. LeadingIcon
+        // aligns against the type it inherits, and inheriting text-sm with
+        // Tailwind's default 20px leading while the text beside it ran at
+        // 22.75px is precisely how the icon ended up sitting high in the one
+        // alert component the whole app renders.
+        "flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm leading-relaxed",
         styles.container,
         className,
       )}
     >
       {!hideIcon && (
-        <Icon
-          aria-hidden="true"
-          className={cn("mt-0.5 h-4 w-4 shrink-0", styles.iconClass)}
-        />
+        <LeadingIcon icon={Icon} line="relaxed" className={styles.iconClass} />
       )}
-      <div className="min-w-0 flex-1 leading-relaxed">
+      <div className="min-w-0 flex-1">
         {/* font-medium against a regular body is half a step and did not read
             as a heading, so a titled alert looked like two sentences that
             happened to be stacked. The title is the part a user scans first
@@ -108,7 +111,7 @@ export function InlineAlert({
           // alert component reused across teams, profile and the dashboard.
           // A fixed 24x24 box centring the same icon keeps the mark the size
           // it was and only grows the hit area.
-          className="-my-0.5 -mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          className="-my-px -mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X aria-hidden="true" className="h-3.5 w-3.5" />
         </button>

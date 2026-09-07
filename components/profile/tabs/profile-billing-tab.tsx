@@ -41,6 +41,7 @@ import {
   type SensitiveBillingData,
 } from "../modals/billing-verification-modal";
 import { ModalShell } from "@/components/ui/modal-shell";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 /** Whole minutes, one decimal only when there's a fractional remainder worth
  *  showing (e.g. "1.5 min" for 90s, but "3 min" for 180s, not "3.0 min"). */
@@ -234,9 +235,10 @@ export function ProfileBillingTab({
     return (
       <div className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex flex-col gap-4">
         <div className="flex items-start gap-3">
-          <AlertTriangle
-            className="h-4 w-4 text-destructive shrink-0 mt-0.5"
-            aria-hidden="true"
+          <LeadingIcon
+            icon={AlertTriangle}
+            line="relaxed"
+            className="text-destructive"
           />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground">

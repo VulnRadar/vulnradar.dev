@@ -56,6 +56,7 @@ import { classifyScanTarget } from "@/lib/scanner/scan-target-classify";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { resolveScanMode } from "@/lib/config/feature-surfaces";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 export type ScanMode = "quick" | "deep" | "bulk";
 export type { InlineAuthValue };
 
@@ -1174,9 +1175,10 @@ export function ScanForm({
           {targetWarning && (
             <div className="border-t border-[hsl(var(--warning))]/20 bg-[hsl(var(--warning))]/5 px-3 py-2.5">
               <div className="flex items-start gap-2">
-                <AlertTriangle
-                  aria-hidden
-                  className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]"
+                <LeadingIcon
+                  icon={AlertTriangle}
+                  line="xs"
+                  className="text-[hsl(var(--warning))]"
                 />
                 <div className="flex-1 space-y-2">
                   <p className="text-xs leading-snug text-foreground">
@@ -1367,7 +1369,7 @@ export function ScanForm({
               role="alert"
               className="flex items-start gap-1.5 border-t border-border px-3 py-2 text-xs text-destructive"
             >
-              <X aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <LeadingIcon icon={X} line="xs" size="sm" />
               {bulkError}
             </p>
           )}

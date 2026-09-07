@@ -46,6 +46,7 @@ import {
 } from "@/components/admin/shared";
 import { formatTimestamp } from "@/components/admin/utils";
 import type { ToastState } from "@/components/admin/types";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface Broadcast {
   id: string;
@@ -427,15 +428,13 @@ export function MassEmailManager() {
             )}
           >
             {segment === "all" ? (
-              <AlertTriangle
-                className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5"
-                aria-hidden="true"
+              <LeadingIcon
+                icon={AlertTriangle}
+                line="xs"
+                className="text-[hsl(var(--warning))]"
               />
             ) : (
-              <Users
-                className="h-4 w-4 text-primary shrink-0 mt-0.5"
-                aria-hidden="true"
-              />
+              <LeadingIcon icon={Users} line="xs" className="text-primary" />
             )}
             <div className="min-w-0">
               <p className="text-xs font-semibold text-foreground">

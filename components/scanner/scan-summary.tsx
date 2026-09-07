@@ -29,6 +29,7 @@ import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { StatIcon, type StatTone } from "@/components/shared/stat-icon";
 import { useAuth } from "@/components/providers/auth-provider";
 import { askAiChatAbout } from "@/lib/ai/chat-bridge";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface ScanSummaryProps {
   result: ScanResult;
@@ -489,9 +490,10 @@ export function ScanSummary({
                     that the count above is a floor, not a total. */}
                 {incomplete && total > 0 && (
                   <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[hsl(var(--warning))]">
-                    <AlertTriangle
-                      aria-hidden
-                      className="mt-px h-3.5 w-3.5 shrink-0"
+                    <LeadingIcon
+                      icon={AlertTriangle}
+                      line="xs-relaxed"
+                      size="sm"
                     />
                     Some checks ran out of time, so this list may be missing
                     findings. Run the scan again for a complete result.

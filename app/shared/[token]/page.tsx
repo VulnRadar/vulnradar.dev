@@ -41,6 +41,7 @@ import {
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 export default function SharedScanPage() {
   const params = useParams();
@@ -338,9 +339,10 @@ export default function SharedScanPage() {
                 {/* Converts the anonymous visitor: this is the page that sells the product. */}
                 <div className="flex flex-col items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
-                    <ScanSearch
-                      aria-hidden
-                      className="mt-0.5 h-5 w-5 shrink-0 text-primary"
+                    <LeadingIcon
+                      icon={ScanSearch}
+                      size="lg"
+                      className="text-primary"
                     />
                     <div>
                       <p className="text-sm font-semibold text-foreground">

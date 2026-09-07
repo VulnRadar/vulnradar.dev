@@ -26,6 +26,7 @@ import {
 } from "@/lib/config/client-constants";
 import type { ApiKey } from "@/components/profile/types";
 import type { ConfirmAction } from "./types";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface ApiKeysSectionProps {
   apiKeys: ApiKey[];
@@ -203,10 +204,7 @@ export function ApiKeysSection({
           className="rounded-xl border border-primary/40 bg-primary/5 p-4 sm:p-5 flex flex-col gap-3 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-ring"
         >
           <div className="flex items-start gap-2.5">
-            <Key
-              className="h-4 w-4 text-primary shrink-0 mt-0.5"
-              aria-hidden="true"
-            />
+            <LeadingIcon icon={Key} line="relaxed" className="text-primary" />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">
                 Copy this key now

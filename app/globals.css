@@ -91,6 +91,51 @@
   text-wrap: pretty;
 }
 
+/* Aligns a leading icon with the FIRST line of the text next to it.
+ *
+ * The app wrote this by hand about forty times, always as `items-start` on the
+ * row plus a fixed `mt-0.5` on the icon. 2px is the right nudge for exactly one
+ * combination: a 16px icon against 14px text at Tailwind's default 20px line
+ * box. Every other pairing was off, and the miss was systematic rather than
+ * random, because the two places it is wrongest are the two the app uses most:
+ *
+ *   text-sm + leading-relaxed  -> a 22.75px line box, so the icon wants 3.4px
+ *   text-xs + h-3.5 icon       -> a 16px line box and a 14px icon, so 1px
+ *
+ * so a 16px icon beside a paragraph of relaxed body text sat ~1.5px high, and
+ * a 14px icon beside dense helper text sat 1px low. Small enough to look like
+ * nothing in isolation and impossible to unsee once noticed, which is what
+ * "the icons are never quite lined up" actually was.
+ *
+ * There is no number here to get wrong. The zero-width space becomes an
+ * anonymous flex item carrying whatever font-size and line-height the icon has
+ * inherited, so the flex line is exactly one line of THAT text tall, and
+ * align-items centres the icon against it. Change the type scale, change the
+ * leading, swap the icon size: it stays centred.
+ *
+ * It aligns to the first line specifically (align-self: flex-start), which is
+ * what a leading icon should do. When the text wraps to three lines the icon
+ * belongs beside line one, not floating in the middle of the block, and
+ * `items-center` on the row is the other half of this bug.
+ *
+ * The one thing it needs: a font-size and line-height matching the text it
+ * sits beside. Its React wrapper, components/shared/leading-icon.tsx, sets
+ * those on the element itself rather than inheriting them, because 38 of the
+ * 43 rows this replaced declare their type on the text child and not on the
+ * flex row. Use that wrapper; reach for the bare class only when there is no
+ * component to hang it on, and put a `text-*` class alongside it if you do.
+ */
+@utility icon-lead {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  align-self: flex-start;
+  &::before {
+    content: "\200b";
+    width: 0;
+  }
+}
+
 @utility scrollbar-hide {
   /* Hide scrollbar but allow scrolling */
   -ms-overflow-style: none;

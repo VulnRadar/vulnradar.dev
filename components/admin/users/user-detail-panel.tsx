@@ -95,6 +95,7 @@ import {
 } from "@/components/admin/shared";
 import { useAdminPermissions } from "@/components/admin/hooks";
 import { GiftSubscriptionModal } from "./gift-subscription-modal";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface UserDetailPanelProps {
   detail: UserDetail;
@@ -1232,9 +1233,11 @@ export function UserDetailPanel({
 
                 {/* Safety note */}
                 <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-muted/30 border border-border/40">
-                  <AlertTriangle
-                    className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5"
-                    aria-hidden="true"
+                  <LeadingIcon
+                    icon={AlertTriangle}
+                    line="xs-relaxed"
+                    size="sm"
+                    className="text-muted-foreground"
                   />
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     Changes are logged in the audit log. Email changes require
@@ -1777,9 +1780,9 @@ export function UserDetailPanel({
                         {pendingDeleteBadge ? (
                           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex flex-col gap-3">
                             <div className="flex items-start gap-3">
-                              <AlertTriangle
-                                className="h-4 w-4 text-destructive shrink-0 mt-0.5"
-                                aria-hidden="true"
+                              <LeadingIcon
+                                icon={AlertTriangle}
+                                className="text-destructive"
                               />
                               <div>
                                 <p className="text-sm font-medium text-foreground">
@@ -2245,9 +2248,10 @@ export function UserDetailPanel({
                     the control it explains. */}
                 {u.totp_enabled && (
                   <div className="flex items-start gap-2.5 p-3 rounded-md bg-[hsl(var(--warning))]/5 border border-[hsl(var(--warning))]/25">
-                    <AlertTriangle
-                      className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5"
-                      aria-hidden="true"
+                    <LeadingIcon
+                      icon={AlertTriangle}
+                      line="relaxed"
+                      className="text-[hsl(var(--warning))]"
                     />
                     <div>
                       <p className="text-sm font-medium">

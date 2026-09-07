@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 import {
   CHANGE_CATEGORIES,
   type Change,
@@ -132,11 +133,8 @@ function isoDate(date: string): string | undefined {
 
 function ChangeRow({ change }: { change: Change }) {
   return (
-    <li className="flex gap-3 py-3">
-      <change.icon
-        className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
-        aria-hidden="true"
-      />
+    <li className="flex items-start gap-3 py-3">
+      <LeadingIcon icon={change.icon} className="text-muted-foreground" />
       <div className="min-w-0">
         <h4 className="text-sm font-medium text-foreground">{change.label}</h4>
         <p className="mt-1 max-w-[76ch] text-sm leading-relaxed text-muted-foreground">

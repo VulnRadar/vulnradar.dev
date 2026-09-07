@@ -26,6 +26,7 @@ import { ScanResultDetail, type CrawlInfo } from "./scan-result-detail";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { tourAnchor } from "@/lib/tour/anchors";
 import { API } from "@/lib/config/client-constants";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 // The trigger is an h-8 w-8 control in a header row, and without a fallback
 // the row rendered one button short until the chunk landed.
@@ -261,9 +262,10 @@ export function DashboardResults({
 
       {authReport?.status === "lost" && (
         <div className="flex items-start gap-3 rounded-md border border-[hsl(var(--severity-high))]/30 bg-[hsl(var(--severity-high))]/10 px-4 py-3">
-          <AlertTriangle
-            aria-hidden
-            className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--severity-high))]"
+          <LeadingIcon
+            icon={AlertTriangle}
+            size="lg"
+            className="text-[hsl(var(--severity-high))]"
           />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-[hsl(var(--severity-high))]">

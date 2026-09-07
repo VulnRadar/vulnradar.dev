@@ -54,6 +54,7 @@ import {
   type FieldValue,
 } from "./settings-registry-utils";
 import { SettingField } from "./settings-field";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 type EffectiveMap = Partial<Record<SettingKey, FieldValue>>;
 type ChangesMap = Partial<Record<SettingKey, FieldValue>>;
@@ -620,9 +621,10 @@ export function SystemSettingsManager() {
                 <TabsContent key={tab} value={tab} className="mt-4">
                   {tabHasBuildTierFields(tab) && (
                     <div className="flex items-start gap-3 p-3 mb-3 rounded-lg border border-primary/20 bg-primary/5">
-                      <Info
-                        className="h-4 w-4 text-primary shrink-0 mt-0.5"
-                        aria-hidden="true"
+                      <LeadingIcon
+                        icon={Info}
+                        line="xs"
+                        className="text-primary"
                       />
                       {/* This used to read "the change only shows up after the
                         next build and deploy", which is false: no build step

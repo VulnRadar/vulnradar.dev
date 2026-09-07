@@ -36,6 +36,7 @@ import {
   type TicketStatus,
 } from "@/lib/support/ticket-constants";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface TicketListItem {
   id: number;
@@ -577,9 +578,9 @@ export function SupportTickets() {
                       {formatRelativeTime(t.last_message_at)}
                     </span>
                   </span>
-                  <ChevronRight
-                    className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/60"
-                    aria-hidden="true"
+                  <LeadingIcon
+                    icon={ChevronRight}
+                    className="text-muted-foreground/60"
                   />
                 </button>
               ))}

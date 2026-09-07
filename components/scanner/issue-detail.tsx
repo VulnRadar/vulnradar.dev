@@ -47,6 +47,7 @@ import {
   removeQueryParam,
   QUERY_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 /** Same key results-list.tsx writes when a finding is selected. */
 const FINDING_QUERY_PARAM = "finding";
@@ -1063,7 +1064,7 @@ export function IssueDetail({
             verdict.tone,
           )}
         >
-          <BotMessageSquare aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+          <LeadingIcon icon={BotMessageSquare} />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">
               {verdict.headline}

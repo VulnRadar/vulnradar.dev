@@ -52,6 +52,7 @@ import {
   QUERY_CHANGE_EVENT,
   LOCATION_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 /** Query param that mirrors the selected finding, e.g. ?finding=missing-csp-header. */
 const FINDING_QUERY_PARAM = "finding";
@@ -1164,9 +1165,9 @@ function FindingRow({
       {/* No chevron in select mode: the row does not navigate there, and an
           arrow pointing off the card said it did. */}
       {!selectable && (
-        <ChevronRight
-          aria-hidden
-          className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+        <LeadingIcon
+          icon={ChevronRight}
+          className="text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
         />
       )}
     </button>

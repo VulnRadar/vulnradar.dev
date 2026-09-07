@@ -8,6 +8,7 @@ import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { cn } from "@/lib/ui/utils";
 import { modalBand, modalPanel } from "@/components/ui/modal-grammar";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface TosModalProps {
   onAccept: () => void;
@@ -314,9 +315,10 @@ export function TosModal({
                 checkbox (below) now carries the weight instead. */}
             {isUpdate && termsChangeSummary && (
               <div className="mt-4 p-3 rounded-lg border border-[hsl(var(--warning))]/20 bg-[hsl(var(--warning))]/5 flex gap-3">
-                <AlertCircle
-                  className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5"
-                  aria-hidden="true"
+                <LeadingIcon
+                  icon={AlertCircle}
+                  line="xs"
+                  className="text-[hsl(var(--warning))]"
                 />
                 <div className="flex-1">
                   <p className="text-xs text-foreground font-medium mb-1">

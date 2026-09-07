@@ -54,6 +54,7 @@ import {
 } from "@/lib/ai/commands";
 import { AI_CHAT_ASK_EVENT, type AiChatAskDetail } from "@/lib/ai/chat-bridge";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 type ChatMessage = {
   id: string;
@@ -412,7 +413,7 @@ function MessageBubble({
         role="alert"
         className="flex items-start gap-2 max-w-[92%] mr-auto rounded-lg px-3 py-2 bg-destructive/8 border border-destructive/25 text-sm leading-relaxed text-destructive"
       >
-        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <LeadingIcon icon={AlertCircle} line="relaxed" />
         <span>{content}</span>
       </div>
     );
@@ -608,6 +609,18 @@ export function ChatWidget() {
   // wants the corner clear"; see lib/tour/tour-chrome.ts for why.
   const tourWantsCornerClear = useTourChromeSuppressed();
   const [kbOffset, setKbOffset] = useState(0);
+  // The VISUAL viewport on a phone: the rectangle the user can actually see,
+  // which is not the layout viewport `inset-0` fills. On iOS Safari the layout
+  // viewport runs underneath the browser's own toolbars, so a full-screen
+  // sheet put its composer behind the address bar, and the keyboard then
+  // covered whatever was left. Tracking the visual rect and sizing the panel
+  // to it makes the sheet exactly as tall as the space there is, keyboard up
+  // or down, toolbar collapsed or not. Null until measured, and on any browser
+  // without visualViewport, where the h-[100dvh] class is the fallback.
+  const [visualRect, setVisualRect] = useState<{
+    top: number;
+    height: number;
+  } | null>(null);
   // Same test the mobile bottom-sheet body-scroll-lock effect below uses:
   // narrow viewport or coarse (touch) pointer. Drives the render-time
   // decision to skip the desktop drag-resize dimensions and let the
@@ -929,6 +942,11 @@ export function ChatWidget() {
       // offsetTop accounts for iOS viewport scroll (e.g. form assist bar)
       const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
       setKbOffset(kb);
+      // The rect the sheet is sized to. offsetTop moves with the page under
+      // the visual viewport, so it has to be carried through rather than
+      // assumed zero, or the panel drifts off the top of the screen the moment
+      // iOS scrolls the layout viewport under the form assist bar.
+      setVisualRect({ top: vv.offsetTop, height: vv.height });
     };
     if (isSheet) {
       vv?.addEventListener("resize", update);
@@ -952,6 +970,7 @@ export function ChatWidget() {
         vv?.removeEventListener("scroll", update);
       }
       setKbOffset(0);
+      setVisualRect(null);
     };
   }, [isOpen]);
 
@@ -1459,24 +1478,30 @@ export function ChatWidget() {
         <div
           ref={panelRef}
           style={
-            kbOffset > 0
-              ? {
-                  bottom: `${kbOffset}px`,
-                  maxHeight: `${window.innerHeight - kbOffset - 8}px`,
-                }
-              : isMobile
-                ? undefined
-                : { width: appliedWidth, height: appliedHeight }
+            isMobile
+              ? // Sized to the rectangle the phone can actually show, not to
+                // the layout viewport. This replaces a `bottom: kbOffset` +
+                // `maxHeight: innerHeight - kbOffset` pair that only engaged
+                // once the keyboard was already up: with the keyboard down and
+                // Safari's toolbars showing, the panel still ran under them and
+                // the composer was unreachable. innerHeight was also read
+                // during render, so it never updated on rotation.
+                visualRect
+                ? { top: visualRect.top, height: visualRect.height }
+                : undefined
+              : { width: appliedWidth, height: appliedHeight }
           }
           className={cn(
-            // Mobile: genuinely full screen, edge to edge. inset-0 alone
-            // (no explicit width/height, see the style prop above) fills the
-            // viewport without relying on the desktop drag-resize state.
-            "fixed inset-0 z-50",
+            // Mobile: full screen, edge to edge. 100dvh rather than inset-0,
+            // because inset-0 resolves against the layout viewport, which on
+            // iOS Safari extends behind the browser chrome. dvh is the
+            // no-JavaScript floor; the style prop above refines it to the
+            // measured visual viewport as soon as there is a measurement.
+            "fixed inset-x-0 top-0 h-[100dvh] z-50",
             "flex flex-col",
             // Desktop: floating popup anchored bottom-right, sized by the
             // resizable panelWidth/panelHeight state via the style prop
-            "sm:inset-x-auto sm:inset-y-auto sm:right-5 sm:bottom-20",
+            "sm:inset-x-auto sm:top-auto sm:h-auto sm:right-5 sm:bottom-20",
             // The modal grammar's own surface (components/ui/modal-grammar.ts):
             // rounded-lg per the radius ladder, a bare --border edge, shadow-lg.
             // It was rounded-xl with a border-border/60 hairline and

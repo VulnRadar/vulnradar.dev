@@ -7,6 +7,7 @@ import { cn } from "@/lib/ui/utils";
 import { CodeBlock } from "./docs-code-block";
 import { ParamTable } from "./docs-table";
 import { type Endpoint, METHOD_COLORS } from "./docs-types";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 export function EndpointCard({
   id,
@@ -119,7 +120,12 @@ export function EndpointCard({
                 key={i}
                 className="flex items-start gap-2 text-xs text-muted-foreground"
               >
-                <CheckCircle className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                <LeadingIcon
+                  icon={CheckCircle}
+                  line="xs"
+                  size="sm"
+                  className="text-primary"
+                />
                 <span>{note}</span>
               </div>
             ))}

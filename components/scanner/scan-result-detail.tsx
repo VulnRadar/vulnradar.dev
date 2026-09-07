@@ -13,6 +13,7 @@ import {
   type CrawlInfo,
   type CrawlPageData,
 } from "./crawl-pages-info";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 /**
  * Every panel in the "More about this host" block collapses to one row: a
@@ -214,9 +215,9 @@ export function ScanResultDetail({
           belt-and-suspenders guard for any result that carries both. */}
       {result.redirect && !result.authenticated && (
         <div className="flex items-start gap-2.5 rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-3">
-          <AlertTriangle
-            aria-hidden
-            className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]"
+          <LeadingIcon
+            icon={AlertTriangle}
+            className="text-[hsl(var(--warning))]"
           />
           <div className="min-w-0 space-y-1">
             <p className="text-sm font-medium text-foreground">

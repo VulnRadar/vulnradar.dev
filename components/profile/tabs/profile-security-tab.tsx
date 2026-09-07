@@ -36,6 +36,7 @@ import {
 } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "@/components/profile/types";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 
 // The API issues this many backup codes per set. Kept as one named value so
 // the copy and the progress readout cannot drift apart.
@@ -462,9 +463,11 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
         className="rounded-xl border border-primary/30 bg-primary/4 p-5 sm:p-6 flex flex-col gap-5 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-ring"
       >
         <div className="flex items-start gap-3">
-          <KeyRound
-            className="h-5 w-5 text-primary shrink-0 mt-0.5"
-            aria-hidden="true"
+          <LeadingIcon
+            icon={KeyRound}
+            line="lg"
+            size="lg"
+            className="text-primary"
           />
           <div className="min-w-0">
             <h2 className="text-lg font-semibold tracking-tight text-foreground">
