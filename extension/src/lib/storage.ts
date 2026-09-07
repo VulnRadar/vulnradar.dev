@@ -70,6 +70,18 @@ export interface StorageShape {
   auth: AuthState | null;
   settings: Settings;
   historyCache: ScanHistoryRow[];
+  /**
+   * When the history list was last fetched from the server, epoch ms.
+   *
+   * The popup fell back to a server fetch whenever the local cache was empty.
+   * For an account with no scans yet the response IS empty, so the cache
+   * stayed empty and every single popup open fetched again. GET
+   * /api/v3/history runs checkApiKeyRateLimit, which INSERTs an api_usage row
+   * rather than merely reading one, so each of those opens spent a daily scan
+   * quota unit. A new Free-tier user could exhaust the day by opening the
+   * popup, without ever running a scan.
+   */
+  historyFetchedAt: number;
   lastAutoScanAt: number;
   rateLimitInfo: RateLimitInfo | null;
   lastResult: ScanResult | null;
@@ -133,6 +145,7 @@ export const DEFAULT: StorageShape = {
   auth: null,
   settings: DEFAULT_SETTINGS,
   historyCache: [],
+  historyFetchedAt: 0,
   lastAutoScanAt: 0,
   rateLimitInfo: null,
   lastResult: null,
@@ -219,6 +232,7 @@ export async function saveAll(state: StorageShape): Promise<void> {
     auth: state.auth,
     settings: state.settings,
     historyCache: state.historyCache,
+    historyFetchedAt: state.historyFetchedAt,
     lastAutoScanAt: state.lastAutoScanAt,
     rateLimitInfo: state.rateLimitInfo ?? null,
     lastResult: state.lastResult ?? null,

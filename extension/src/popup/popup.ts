@@ -14,7 +14,11 @@ import {
 import type { LastScanCompletion } from "../lib/storage";
 import { refreshMe } from "../lib/auth";
 import { api } from "../lib/api";
-import { fetchHistoryFromServer, getHistory } from "../lib/scan";
+import {
+  fetchHistoryFromServer,
+  getHistory,
+  shouldRefetchHistory,
+} from "../lib/scan";
 import type { ScanOutcome } from "../lib/scan";
 import { classifyScanTarget } from "../lib/scan-target";
 import { applyTheme, watchSystemTheme } from "../lib/theme";
@@ -549,7 +553,7 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
           href="#"
           @click=${(e: Event) => {
             e.preventDefault();
-            openHistoryDetail(r.scanHistoryId ?? 0);
+            openHistoryDetail(r.scanPublicId ?? "");
           }}
         >
           Full report <span aria-hidden="true">&rarr;</span>
@@ -806,7 +810,13 @@ function HistoryRow(
   row: ScanHistoryRow,
   previous?: ScanHistoryRow,
 ): TemplateResult {
-  const critical = row.summary.critical + row.summary.high;
+  // A scan that never finished carries summary {}, findings_count 0 and
+  // duration 0, which is indistinguishable from a genuinely clean result
+  // unless status is read. Drawing "0" in a green badge for an abandoned or
+  // failed scan is the worst possible reading of it on a security product.
+  const unfinished = row.status !== "completed";
+  const summary = row.summary ?? {};
+  const critical = (summary.critical ?? 0) + (summary.high ?? 0);
   const open = () => openHistoryDetail(row.id);
   const delta = previous ? row.findings_count - previous.findings_count : null;
 
@@ -823,10 +833,17 @@ function HistoryRow(
       >
         <span
           class="badge badge-sm ${
-            critical > 0 ? "high" : row.summary.medium > 0 ? "medium" : "low"
+            unfinished
+              ? "medium"
+              : critical > 0
+                ? "high"
+                : (summary.medium ?? 0) > 0
+                  ? "medium"
+                  : "low"
           }"
+          title=${unfinished ? `This scan did not finish (${row.status})` : ""}
         >
-          ${row.findings_count}
+          ${unfinished ? "!" : row.findings_count}
         </span>
         ${
           delta !== null && delta !== 0
@@ -1182,8 +1199,11 @@ async function exportReport(r: ScanResult, format: ReportFormat) {
   }
 }
 
-async function openHistoryDetail(id: number) {
-  if (id > 0) {
+async function openHistoryDetail(id: string) {
+  // A non-empty id, not `id > 0`. Scan ids are opaque hex strings now, and
+  // the numeric comparison was false for every one of them, so every row
+  // opened the dashboard instead of the report.
+  if (id) {
     await browser.tabs.create({
       url: `${VULNRADAR.apiHost}/history?scan=${id}`,
     });
@@ -1238,7 +1258,10 @@ async function init() {
   const cached = await getHistory();
   if (cached.length > 0) {
     state.history = cached;
-  } else {
+  } else if (await shouldRefetchHistory()) {
+    // Rate-limited by time, not just by cache emptiness. An account with no
+    // scans caches an empty list forever, so "cache is empty" was true on
+    // every open and each fetch spent a daily quota unit.
     const fetched = await fetchHistoryFromServer();
     state.history = fetched.rows;
     state.historyLoadFailed = !fetched.ok;

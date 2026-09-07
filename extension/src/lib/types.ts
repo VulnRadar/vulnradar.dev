@@ -137,7 +137,14 @@ export interface ScanResult {
    *  "checked and clean", so a zero-finding result with a non-empty list is
    *  not an all-clear and must not be shown as one. */
   readonly incomplete?: readonly string[];
+  /** The numeric row id. The feedback route needs it; nothing user-facing
+   *  should. Use scanPublicId for links. */
   readonly scanHistoryId?: number;
+  /** The opaque id the web app's URLs use (?scan=). GET /scan/status returns
+   *  both, and this is the one that matches what GET /history hands back, so
+   *  a row cached from a local scan and one fetched from the server are the
+   *  same shape. */
+  readonly scanPublicId?: string;
   readonly notes?: string;
   /** Set when the scan followed a redirect away from the requested URL (e.g. a
    *  page behind a login bouncing to /login). Surfaced from the server's
@@ -184,14 +191,32 @@ export interface ScanStatusResponse {
 export type ReportFormat = "sarif" | "pdf" | "md" | "json";
 
 export interface ScanHistoryRow {
-  readonly id: number;
+  /**
+   * The scan's opaque public id, a 32-character hex string.
+   *
+   * This was typed `number`, which is what GET /api/v3/history returned
+   * before scan ids became non-guessable. The API selects
+   * `sh.public_id AS id` now. The popup guarded on `id > 0`, which is false
+   * for a hex string, so every row in Recent Scans opened /dashboard instead
+   * of the scan the user clicked. Only an unchecked `json as T` cast in the
+   * fetch layer let the wrong type through.
+   */
+  readonly id: string;
   readonly url: string;
   readonly summary: ScanSummary;
   readonly findings_count: number;
   readonly duration: number;
   readonly scanned_at: string;
   readonly source: "web" | "api";
-  readonly tags: readonly string[];
+  /**
+   * Present so a scan that never finished is not drawn as a clean one. A
+   * pending or failed row carries `summary: {}`, `findings_count: 0` and
+   * `duration: 0`, which is indistinguishable from a real zero-finding
+   * result unless you read this.
+   */
+  readonly status: "pending" | "running" | "completed" | "failed";
+  /** Objects, not strings: the API returns {tag, source} per tag. */
+  readonly tags: readonly { readonly tag: string; readonly source: string }[];
 }
 
 export type Plan =

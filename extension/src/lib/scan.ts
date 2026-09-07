@@ -36,6 +36,23 @@ export class ScanUnauthenticatedError extends Error {
 }
 
 /**
+ * Every check family is switched off in Options.
+ *
+ * Refused here rather than sent, because the API reads a missing or empty
+ * `scanners` as "run every default category": passing the empty selection
+ * through would run a FULL scan, the exact inverse of what the user asked
+ * for, and charge them a quota unit for it.
+ */
+export class ScanNoFamiliesError extends Error {
+  constructor() {
+    super(
+      "No check families are enabled. Turn at least one on in Options before scanning.",
+    );
+    this.name = "ScanNoFamiliesError";
+  }
+}
+
+/**
  * Validates a URL and returns the normalized form, or throws.
  */
 export function normalizeUrl(input: string): string {
@@ -211,11 +228,20 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   const url = normalizeUrl(input.url);
   const mode = input.mode ?? input.settings.scanMode;
 
-  const families = (
-    Object.entries(input.settings.families) as Array<[ScannerCategory, boolean]>
-  )
-    .filter(([, enabled]) => enabled)
-    .map(([id]) => id);
+  const allFamilies = Object.entries(input.settings.families) as Array<
+    [ScannerCategory, boolean]
+  >;
+  const families = allFamilies.filter(([, on]) => on).map(([id]) => id);
+  // "The user narrowed the set" is not the same as "the user picked nothing",
+  // and the API cannot tell them apart: it reads a missing or empty
+  // `scanners` as "run every default category". So omitting the key when the
+  // list was empty meant switching every family OFF in Options ran a full
+  // scan, which is the exact inverse of what the screen said. Nothing to scan
+  // is a client-side error now, before a request is made.
+  const narrowed = families.length < allFamilies.length;
+  if (allFamilies.length > 0 && families.length === 0) {
+    throw new ScanNoFamiliesError();
+  }
 
   // `portScan` is the field the API reads. This used to serialise the
   // settings panel per-service list as `probes: ["ssh:22", ...]`, which no
@@ -223,7 +249,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   // extension user configured probes, saved, scanned, and nothing happened.
   const body: ScanRequest = {
     url,
-    ...(families.length > 0 ? { scanners: families } : {}),
+    ...(narrowed ? { scanners: families } : {}),
     ...(input.settings.portScan ? { portScan: true } : {}),
   };
 
@@ -263,13 +289,20 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   // Append to rolling history cache (most recent first)
   const cache = (await get("historyCache")) ?? [];
   const newRow: ScanHistoryRow = {
-    id: result.scanHistoryId ?? 0,
+    // The opaque id, matching what GET /history returns. Caching the
+    // numeric scanHistoryId here made a locally-scanned row a different
+    // shape from a server-fetched one in the same cache.
+    id: result.scanPublicId ?? "",
     url: result.url,
     summary: result.summary,
     findings_count: result.findings.length,
     duration: result.duration,
     scanned_at: result.scannedAt,
     source: "api",
+    // runScan only returns once the poll saw a terminal state, and a failed
+    // scan throws before reaching here, so a row cached at this point is
+    // always a completed one.
+    status: "completed",
     tags: [],
   };
   const next = [newRow, ...cache].slice(0, VULNRADAR.historyCacheSize);
@@ -321,6 +354,20 @@ export async function getHistory(): Promise<readonly ScanHistoryRow[]> {
  * tell "you haven't scanned anything yet" from "the history request failed",
  * and the popup renders very different copy for the two.
  */
+/**
+ * How long an empty history result is trusted before the server is asked
+ * again. Each ask costs the caller a daily quota unit, so this is a spend
+ * limit rather than a freshness knob: a scan run from the extension updates
+ * the cache locally and does not wait for this.
+ */
+export const HISTORY_REFETCH_COOLDOWN_MS = 60 * 60 * 1000;
+
+/** Whether a server fetch is worth its quota unit right now. */
+export async function shouldRefetchHistory(): Promise<boolean> {
+  const last = (await get("historyFetchedAt")) ?? 0;
+  return Date.now() - last >= HISTORY_REFETCH_COOLDOWN_MS;
+}
+
 export async function fetchHistoryFromServer(): Promise<{
   readonly ok: boolean;
   readonly rows: readonly ScanHistoryRow[];
@@ -331,6 +378,9 @@ export async function fetchHistoryFromServer(): Promise<{
     const res = await api.history(apiKey);
     const rows = res.body.scans.slice(0, VULNRADAR.historyCacheSize);
     await set("historyCache", rows);
+    // Stamped even when rows is empty, which is the case that mattered: an
+    // empty cache is indistinguishable from a never-fetched one without it.
+    await set("historyFetchedAt", Date.now());
     return { ok: true, rows };
   } catch {
     return { ok: false, rows: [] };

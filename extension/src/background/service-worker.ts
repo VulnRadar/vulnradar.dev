@@ -195,7 +195,7 @@ browser.notifications.onClicked.addListener((_notifId) => {
     if (!settings.openDashboardOnNotify) return;
     const cache = await get("historyCache");
     const latest = cache?.[0];
-    if (latest && latest.id > 0) {
+    if (latest && latest.id) {
       await browser.tabs.create({
         url: `${VULNRADAR.apiHost}/history?scan=${latest.id}`,
       });
@@ -648,11 +648,51 @@ const REPORT_DOWNLOAD_SETTLE_MS = 5 * 60 * 1000;
 
 /**
  * Download a generated report for one scan. Runs HERE rather than in the
- * popup because the popup is torn down the moment it loses focus (which
- * the browser's own save dialog does): a blob URL created there would be
- * revoked mid-download. The service worker outlives it, so the object URL
- * stays valid until browser.downloads reports the download has settled.
+ * popup because the popup is torn down the moment it loses focus, which the
+ * browser's own save dialog does.
+ *
+ * The payload goes to browser.downloads as a data: URL, NOT a blob URL.
+ * URL.createObjectURL is [Exposed=(Window,DedicatedWorker,SharedWorker)] and
+ * is not defined in a service worker at all, so on Chrome, Edge and Brave
+ * (manifest/chrome.json runs background.js as a service_worker) every export
+ * threw "URL.createObjectURL is not a function", the catch below turned it
+ * into a returned error, and the popup printed that string in its export
+ * banner. Every PDF, SARIF, Markdown and JSON export was broken for every
+ * Chrome user. Firefox was fine, because manifest/firefox.json uses a
+ * background page, which has the DOM. tsconfig.json lists both "DOM" and
+ * "WebWorker" in `lib` for the whole source tree, so it type-checked.
+ *
+ * A data: URL needs no lifetime management, which also removes the
+ * revoke-after-settle dance this function used to need.
  */
+/** The file extension each report format is saved with. SARIF was being
+ *  written as .json, which is valid but stops GitHub code scanning and most
+ *  SARIF viewers recognising the file. */
+const REPORT_EXTENSIONS: Record<ReportFormat, string> = {
+  md: "md",
+  pdf: "pdf",
+  sarif: "sarif",
+  json: "json",
+};
+
+/**
+ * Report bytes as a data: URL that browser.downloads can take.
+ *
+ * Chunked rather than `String.fromCharCode(...bytes)`: spreading a whole PDF
+ * into an argument list overflows the call stack somewhere around a hundred
+ * thousand bytes, and a report with a screenshot in it is comfortably larger
+ * than that.
+ */
+function bytesToDataUrl(bytes: ArrayBuffer, contentType: string): string {
+  const view = new Uint8Array(bytes);
+  const CHUNK = 0x8000;
+  let binary = "";
+  for (let i = 0; i < view.length; i += CHUNK) {
+    binary += String.fromCharCode(...view.subarray(i, i + CHUNK));
+  }
+  return `data:${contentType};base64,${btoa(binary)}`;
+}
+
 async function handleReportExport(
   id: number,
   format: ReportFormat,
@@ -661,18 +701,14 @@ async function handleReportExport(
   const apiKey = await getApiKey();
   if (!apiKey) return { error: "Not connected" };
 
-  let objectUrl: string | null = null;
   try {
     const { bytes, contentType } = await fetchReport(apiKey, id, format);
-    const blob = new Blob([bytes], { type: contentType });
-    objectUrl = URL.createObjectURL(blob);
 
     const safeHost = (host || "scan").replace(/[^a-zA-Z0-9._-]/g, "-");
-    const ext = format === "md" ? "md" : format === "pdf" ? "pdf" : "json";
-    const filename = `vulnradar-${safeHost}-${id}.${ext}`;
+    const filename = `vulnradar-${safeHost}-${id}.${REPORT_EXTENSIONS[format]}`;
 
     const downloadId = await browser.downloads.download({
-      url: objectUrl,
+      url: bytesToDataUrl(bytes, contentType),
       filename,
       saveAs: true,
     });
@@ -701,8 +737,6 @@ async function handleReportExport(
       return { error: err.body.error || `API error ${err.status}` };
     }
     return { error: err instanceof Error ? err.message : String(err) };
-  } finally {
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
   }
 }
 
