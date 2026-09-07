@@ -52,10 +52,7 @@ describe("leading icons", () => {
     const offenders: string[] = [];
 
     for (const file of TSX) {
-      const rel = path
-        .relative(ROOT, file)
-        .split(path.sep)
-        .join("/");
+      const rel = path.relative(ROOT, file).split(path.sep).join("/");
       if (ALLOWED_HAND_NUDGES.includes(rel)) continue;
 
       const src = fs.readFileSync(file, "utf8");
