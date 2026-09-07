@@ -2,10 +2,10 @@
 // Regenerated on every `npm run build` / `npm run dev` (prebuild/predev hooks).
 
 export const EXACT_LEGACY_CHECK_COUNT = 852;
-export const EXACT_PAGE_CHECK_COUNT = 43;
-export const EXACT_CHECK_COUNT = 895;
+export const EXACT_PAGE_CHECK_COUNT = 55;
+export const EXACT_CHECK_COUNT = 907;
 export const EXACT_CHECK_CATEGORY_COUNT = 18;
-export const GENERATED_CHECKS_LABEL = "895+";
+export const GENERATED_CHECKS_LABEL = "905+";
 
 /**
  * Last commit date of each `lib/scanner/checks-data/<category>.json`, used
@@ -19,13 +19,13 @@ export const CHECK_CATEGORY_LAST_MODIFIED: Record<string, string> = {
   "client-side": "2026-09-01",
   code: "2026-09-03",
   configuration: "2026-09-03",
-  content: "2026-09-03",
+  content: "2026-09-07",
   cookies: "2026-09-03",
   dns: "2026-09-05",
   email: "2026-09-03",
   headers: "2026-09-05",
   "host-validation": "2026-08-13",
-  "information-disclosure": "2026-09-01",
+  "information-disclosure": "2026-09-07",
   reputation: "2026-08-12",
   "secrets-extended": "2026-08-13",
   ssl: "2026-09-03",

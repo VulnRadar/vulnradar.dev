@@ -1389,17 +1389,54 @@ describe("checkSecurityTxt", () => {
     expect(findings[0].title).toMatch(/security\.txt/i);
   });
 
-  it("returns no findings when security.txt is present", async () => {
+  /** A security.txt whose body is whatever the test needs it to be. */
+  function serveSecurityTxt(body: string) {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      text: () => Promise.resolve("Contact: mailto:security@example.com"),
-      headers: {
-        get: () => null,
-      },
+      url: "https://example.com/.well-known/security.txt",
+      text: () => Promise.resolve(body),
+      headers: { get: () => null },
     });
+  }
+
+  it("returns no findings when security.txt is present and current", async () => {
+    serveSecurityTxt(
+      "Contact: mailto:security@example.com\nExpires: 2099-12-31T23:59:59z",
+    );
+    expect(await checkSecurityTxt("https://example.com")).toEqual([]);
+  });
+
+  it("reports an expired file, which researchers are told not to rely on", async () => {
+    // The check used to ask whether the response was a 200 and return, so it
+    // fetched the file and never read it. RFC 9116 makes Expires required
+    // precisely so the contact details cannot rot unnoticed: past that date
+    // the disclosure channel is closed from the researcher's side while the
+    // file is still being served.
+    serveSecurityTxt(
+      "Contact: mailto:security@example.com\nExpires: 2024-06-30T23:59:59.000Z",
+    );
     const findings = await checkSecurityTxt("https://example.com");
-    expect(findings).toEqual([]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].title).toMatch(/expired/i);
+  });
+
+  it("reports a file with no Expires field at all", async () => {
+    serveSecurityTxt("Contact: mailto:security@example.com");
+    const findings = await checkSecurityTxt("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].title).toMatch(/no expires/i);
+  });
+
+  it("does not read a commented-out Expires as the field", async () => {
+    // Every RFC 9116 comment begins with #, so prose about the field is not
+    // the field, and the line anchor is what separates them.
+    serveSecurityTxt(
+      "Contact: mailto:security@example.com\n# Expires: see our policy page",
+    );
+    const findings = await checkSecurityTxt("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].title).toMatch(/no expires/i);
   });
 
   it("finds security.txt when the apex redirects to www and only www serves it (walmart.com case)", async () => {
@@ -1449,8 +1486,11 @@ describe("checkSecurityTxt", () => {
       },
     );
 
+    // The regression is that the file was reported MISSING when a redirect
+    // stood between the apex and it. Whether that file also happens to lack
+    // an Expires line is a different, correct finding.
     const findings = await checkSecurityTxt("https://walmart.com");
-    expect(findings).toEqual([]);
+    expect(findings.some((f) => /missing/i.test(f.title))).toBe(false);
   });
 });
 

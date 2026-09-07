@@ -257,4 +257,49 @@ export const cookieChecks: PageCheck[] = [
       };
     },
   },
+  {
+    id: "page-cache-public-session-cookie",
+    title: "Shared-cacheable response also sets a session cookie",
+    category: "cookies",
+    severity: "high",
+    method: "cookie-attribute",
+    description:
+      "The response is marked cacheable by shared caches and sets a session cookie, so a CDN or proxy stores that Set-Cookie inside the cached copy and hands it to the next visitor.",
+    riskImpact:
+      "Everyone who gets a cache hit receives the session cookie of whoever filled the cache, which logs them into that person's account. It is the most damaging cache defect there is, it needs no attacker, and it presents as a support ticket that says users are randomly seeing other people's data. It is also invisible from the origin: the origin behaves correctly on every request.",
+    explanation:
+      "A Set-Cookie header is part of the response, so a shared cache that is allowed to store the response stores the header with it. Vary: Cookie does not fix this: Vary changes what the cache keys on, and the cookie here is in the stored body of the entry, not in the request. The fix is to stop the response being shared-cacheable at all.",
+    fixSteps: [
+      "Send Cache-Control: private, no-store on any response that sets a session cookie.",
+      "Set the session cookie from a route that is never cacheable, rather than from a page that is.",
+      "At the CDN, strip Set-Cookie from anything that is cached, so a mistake at the origin cannot become a shared cache entry.",
+    ],
+    codeExamples: [
+      {
+        label: "The response that sets a session is never shared",
+        language: "http",
+        code: "Cache-Control: private, no-store\nSet-Cookie: sessionid=...; Path=/; Secure; HttpOnly; SameSite=Lax",
+      },
+    ],
+    references: [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control",
+    ],
+    needs: ["cookies"],
+    run(ctx) {
+      const cc = (ctx.headers.get("cache-control") ?? "").toLowerCase();
+      // Either of these already forbids a shared cache from storing it.
+      if (/\b(?:no-store|private)\b/.test(cc)) return null;
+      const shared = /\bpublic\b/.test(cc) || /\bs-maxage=[1-9]\d*/.test(cc);
+      if (!shared) return null;
+      const session = ctx.cookies.filter((c) => c.sessionLike);
+      if (session.length === 0) return null;
+      return {
+        evidence: `Cache-Control is "${ctx.headers.get("cache-control")}" and the response sets the session cookie ${session.map((c) => c.name).join(", ")}, so a shared cache will replay it.`,
+        excerpts: [
+          excerpt("Cache-Control", ctx.headers.get("cache-control") ?? ""),
+          excerpt("Set-Cookie", session[0].name + "=..."),
+        ],
+      };
+    },
+  },
 ];

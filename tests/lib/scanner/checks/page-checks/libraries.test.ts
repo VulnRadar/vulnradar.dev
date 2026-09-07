@@ -7,6 +7,32 @@ import { generateId } from "@/lib/scanner/_helpers";
 const fixtures: PageCheckFixtures = {
   "page-outdated-vulnerable-library": [
     {
+      // The sanitizer this product's own fix steps point people at, which
+      // makes it the worst thing on the page to be outdated.
+      description: "DOMPurify 2.3.6 has the mXSS bypasses",
+      body: `<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.6/purify.min.js"></script>`,
+      expect: "fire",
+      evidenceIncludes: "DOMPurify",
+    },
+    {
+      description: "DOMPurify 3.2.6 is patched",
+      body: `<script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>`,
+      expect: "skip",
+    },
+    {
+      description: "Prism 1.25.0 has the line-highlight XSS",
+      body: `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/prism.min.js"></script>`,
+      expect: "fire",
+      evidenceIncludes: "Prism",
+    },
+    {
+      // The moment pattern used to be a bare /moment/i, so it matched a
+      // completely different library that has never had this CVE.
+      description: "regression: momentum.js is not Moment.js",
+      body: `<script src="/vendor/momentum-1.2.3.min.js"></script>`,
+      expect: "skip",
+    },
+    {
       description: "jQuery 1.12.4 is below the fixed version",
       body: `<script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>`,
       expect: "fire",

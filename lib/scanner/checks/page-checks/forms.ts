@@ -192,4 +192,57 @@ export const formChecks: PageCheck[] = [
       };
     },
   },
+  {
+    id: "page-password-field-prefilled-value",
+    title: "Password field rendered with a pre-filled value",
+    category: "content",
+    severity: "high",
+    method: "dom-structure",
+    description:
+      "A password input carries a value attribute, which means the server wrote a password back into the markup it sent.",
+    riskImpact:
+      "That password is now in the page, and the page goes everywhere a page goes: the browser's disk cache, the back-forward history entry, any proxy that logs bodies, any HTML the user saves or emails, and the screenshot they attach to a support ticket. It usually arrives here through a well-meaning form-redisplay path that echoes every submitted field back after a validation error, which means it happens on exactly the requests where the user typed the real password.",
+    explanation:
+      "Browsers never need a password field to be pre-filled: the password manager fills it client-side, without the value ever being in the document the server sent. A value attribute on a password input is always the server having put it there.",
+    fixSteps: [
+      "Never echo a submitted password back into the form, even on a validation error. Re-render the field empty.",
+      "Exclude password fields from any generic old-input or form-repopulation helper the framework provides.",
+      "Send Cache-Control: no-store on any response that renders a login or password-change form.",
+    ],
+    codeExamples: [
+      {
+        label: "Repopulate everything except the password",
+        language: "html",
+        code: '<input type="email" name="email" value="{{ old(\'email\') }}">\n<!-- The password field is rendered empty, always. -->\n<input type="password" name="password" autocomplete="current-password">',
+      },
+    ],
+    references: [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+    ],
+    run(ctx) {
+      const bad = ctx.inputs.filter(
+        (i) =>
+          i.type === "password" &&
+          i.value !== null &&
+          i.value.trim().length >= 4 &&
+          // A template expression that never rendered is a different bug, and
+          // reporting it as a leaked password would be wrong.
+          !/^\s*(?:\{\{|\{%|\$\{|<%|<\?|\[\[|%\(|#\{)/.test(i.value) &&
+          // A masked stand-in the page draws so the field looks populated.
+          !/^[*•.•●]+$/.test(i.value.trim()),
+      );
+      if (bad.length === 0) return null;
+      return {
+        evidence: `${bad.length === 1 ? "A password field is" : `${bad.length} password fields are`} rendered with a value attribute: ${bad.map((b) => b.name ?? b.id ?? "(unnamed)").join(", ")}.`,
+        excerpts: bad
+          .slice(0, 2)
+          .map((b) =>
+            excerpt(
+              "Field",
+              `<input type="password" name="${b.name ?? ""}" value="***">`,
+            ),
+          ),
+      };
+    },
+  },
 ];

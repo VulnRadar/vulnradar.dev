@@ -12,6 +12,7 @@
 
 import type { PageCheck } from "../../check-types";
 import { excerpt } from "../../check-types";
+import { parseCsp } from "../../page-context";
 
 function hasSource(list: string[] | null, needle: string): boolean {
   if (!list) return false;
@@ -23,6 +24,41 @@ function hasWildcardHost(list: string[] | null): boolean {
   if (!list) return false;
   return list.some((s) => s === "*" || /^\*\.[a-z0-9.-]+$/i.test(s));
 }
+
+/**
+ * Hosts that serve caller-controlled JavaScript, so allowlisting one in
+ * script-src hands an injected tag a URL the policy already trusts.
+ *
+ * Two shapes: a JSONP endpoint that reflects a caller-supplied callback name
+ * into executable output, and a host that serves arbitrary published packages.
+ * Both mean the allowlist is only as strong as the least careful thing anyone
+ * has put on that host, which is the reason Google's CSP Evaluator exists.
+ */
+const CSP_BYPASS_HOSTS = new Set([
+  "ajax.googleapis.com",
+  "www.google.com",
+  "www.googletagmanager.com",
+  "storage.googleapis.com",
+  "translate.google.com",
+  "cdnjs.cloudflare.com",
+  "cdn.jsdelivr.net",
+  "unpkg.com",
+  "esm.sh",
+  "s3.amazonaws.com",
+  "vercel.live",
+]);
+
+/** A nonce that is a word rather than a value. */
+const PLACEHOLDER_NONCE =
+  /^(?:nonce|random|randomvalue|changeme|change[-_]?me|csp[-_]?nonce|placeholder|example|test|value|xxx+|todo|abc123|123456)$/i;
+
+/** CSP directives the specification drops when the policy arrives in a meta tag. */
+const META_IGNORED_DIRECTIVES = [
+  "frame-ancestors",
+  "report-uri",
+  "report-to",
+  "sandbox",
+];
 
 export const cspChecks: PageCheck[] = [
   {
@@ -338,6 +374,214 @@ export const cspChecks: PageCheck[] = [
       return {
         evidence: `frame-ancestors permits a wildcard: ${frameAncestors.join(" ")}.`,
         excerpts: [excerpt("CSP frame-ancestors", frameAncestors.join(" "))],
+      };
+    },
+  },
+  {
+    id: "page-csp-script-src-bypass-host",
+    title: "CSP script-src allows a known bypass host",
+    category: "headers",
+    severity: "medium",
+    method: "csp-analysis",
+    description:
+      "The policy allowlists a host that serves attacker-controllable JavaScript, so an injected script can load from an origin the policy already trusts.",
+    riskImpact:
+      "Several of the largest CDNs host either a JSONP endpoint that echoes a caller-supplied callback name, or arbitrary published packages. Allowlisting one of them in script-src means an attacker who can inject a <script src> tag picks a URL on that trusted host and the policy permits it. The site has a Content-Security-Policy and no protection against script injection, which is the case the policy was added to prevent.",
+    explanation:
+      "This is the finding Google's own CSP Evaluator exists for. A host allowlist is only as strong as the least careful thing on the allowlisted host, and on a general-purpose CDN that is whatever anyone has published. 'strict-dynamic' removes the problem entirely: it makes the host list inert and grants trust through the nonce instead, which is why a policy that carries it is not reported here.",
+    fixSteps: [
+      "Add 'strict-dynamic' with a per-response nonce, which makes the host allowlist irrelevant and is the recommended modern shape.",
+      "If the allowlist has to stay, narrow each entry to a path rather than a bare host: https://cdn.example.com/lib/v1.2.3/ rather than cdn.example.com.",
+      "Self-host the handful of scripts that actually need to be there.",
+    ],
+    codeExamples: [
+      {
+        label: "A policy the host list cannot weaken",
+        language: "http",
+        code: "Content-Security-Policy: script-src 'nonce-r4nd0m123' 'strict-dynamic' https: 'unsafe-inline'",
+      },
+    ],
+    references: [
+      "https://csp-evaluator.withgoogle.com/",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+    ],
+    needs: ["csp"],
+    run(ctx) {
+      const csp = ctx.csp!;
+      if (csp.reportOnly) return null;
+      const sources = csp.effective("script-src");
+      if (!sources) return null;
+      // 'strict-dynamic' makes every host in the list inert: trust flows from
+      // the nonce to whatever that script loads, and a bare host expression is
+      // ignored outright. Reporting one then would be reporting a string.
+      if (sources.some((s) => s.toLowerCase() === "'strict-dynamic'")) {
+        return null;
+      }
+      const hits = sources.filter((source) => {
+        const stripped = source.replace(/^https?:\/\//i, "");
+        const slash = stripped.indexOf("/");
+        // A path-scoped source is materially safer: it pins the allowlist to
+        // one directory rather than to everything the host will ever serve.
+        if (slash !== -1 && stripped.slice(slash + 1).length > 0) return false;
+        const host = (slash === -1 ? stripped : stripped.slice(0, slash))
+          .replace(/:\d+$/, "")
+          .toLowerCase();
+        return CSP_BYPASS_HOSTS.has(host);
+      });
+      if (hits.length === 0) return null;
+      return {
+        evidence: `script-src allowlists ${hits.join(", ")}, ${hits.length === 1 ? "a host" : "hosts"} known to serve caller-controlled JavaScript.`,
+        excerpts: [excerpt("CSP script-src", sources.join(" "))],
+      };
+    },
+  },
+
+  {
+    id: "page-csp-nonce-low-entropy",
+    title: "CSP nonce is a placeholder, static, or too short",
+    category: "headers",
+    severity: "high",
+    method: "csp-analysis",
+    description:
+      "The policy's nonce is not a fresh unguessable value: it is an unrendered template placeholder, a fixed string, or too short to resist guessing.",
+    riskImpact:
+      "A nonce is the whole of a nonce-based policy. If the same value is served to every visitor, or if the templating never ran and every response literally carries {{cspNonce}}, an attacker reads it from their own copy of the page and puts it on the script they inject. The policy then permits the injection it was written to block, while every other check on the page reports that a nonce-based CSP is present.",
+    explanation:
+      "CSP requires a nonce to be unpredictable and regenerated per response. The two failure modes visible in a single response are a placeholder the template engine never substituted, and a value short enough to brute force. Both look correct to anything that only asks whether a nonce exists.",
+    fixSteps: [
+      "Generate the nonce per response from a CSPRNG: at least 16 bytes, base64 encoded.",
+      "Check that the templating actually substitutes it: fetch the page twice and confirm the value differs.",
+      "Never reuse a nonce across responses or cache a response that contains one.",
+    ],
+    codeExamples: [
+      {
+        label: "A nonce per response",
+        language: "javascript",
+        code: "const nonce = crypto.randomBytes(16).toString('base64');\nres.setHeader('Content-Security-Policy', `script-src 'nonce-${nonce}' 'strict-dynamic'`);",
+      },
+    ],
+    references: [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src",
+    ],
+    needs: ["csp"],
+    run(ctx) {
+      const csp = ctx.csp!;
+      const nonces = Object.values(csp.directives)
+        .flat()
+        .filter((s) => /^'nonce-/i.test(s))
+        .map((s) => s.slice("'nonce-".length).replace(/'$/, ""));
+      if (nonces.length === 0) return null;
+      const bad = nonces.filter(
+        (n) =>
+          // A template expression that reached the browser: the substitution
+          // never ran, so every visitor gets the same literal.
+          /^(?:\{\{|\{%|\$\{|<%|\[\[|%\(|#\{)/.test(n) ||
+          PLACEHOLDER_NONCE.test(n) ||
+          n.length < 16 ||
+          /^(.)\1*$/.test(n),
+      );
+      if (bad.length === 0) return null;
+      return {
+        evidence: `CSP nonce ${bad.map((n) => `'${n}'`).join(", ")} is not a per-response random value.`,
+        excerpts: [excerpt("CSP", csp.raw)],
+      };
+    },
+  },
+
+  {
+    id: "page-meta-csp-directive-ignored",
+    title: "Meta-tag CSP declares a directive browsers ignore there",
+    category: "headers",
+    severity: "medium",
+    method: "dom-structure",
+    description:
+      'A <meta http-equiv="Content-Security-Policy"> declares frame-ancestors, report-uri, report-to or sandbox, which the specification makes header-only and browsers drop from a meta tag.',
+    riskImpact:
+      "The team believes the page is protected and it is not. frame-ancestors in a meta tag is the common case: the site reads as clickjacking-protected in its own source, no browser enforces it, and the page frames anywhere. Reporting violations is the other half, and a report-uri that is silently ignored means nothing is being collected while a dashboard says otherwise.",
+    explanation:
+      "The CSP specification lists frame-ancestors, report-uri, report-to and sandbox as directives that are ignored when the policy arrives in a meta element. They have to be delivered as a response header. The rest of the policy in the same meta tag is still applied, which is what makes this hard to notice.",
+    fixSteps: [
+      "Move the policy, or at least these directives, into a Content-Security-Policy response header.",
+      "Keep X-Frame-Options as a header too, for anything that predates frame-ancestors.",
+      "Verify with the browser console: an ignored directive is reported there on load.",
+    ],
+    codeExamples: [
+      {
+        label: "nginx",
+        language: "nginx",
+        code: "add_header Content-Security-Policy \"default-src 'self'; frame-ancestors 'none'\" always;",
+      },
+    ],
+    references: [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy#directives",
+    ],
+    run(ctx) {
+      const meta = ctx.metas.find(
+        (m) => m.httpEquiv?.toLowerCase() === "content-security-policy",
+      );
+      if (!meta?.content) return null;
+      const header = ctx.headers.get("content-security-policy") ?? "";
+      const inMeta = parseCsp(meta.content).directives;
+      const ignored = META_IGNORED_DIRECTIVES.filter(
+        (d) =>
+          d in inMeta &&
+          // Declared in the header too, so it is enforced and the meta copy is
+          // redundant rather than broken.
+          !new RegExp(`(?:^|;)\\s*${d}\\b`, "i").test(header),
+      );
+      if (ignored.length === 0) return null;
+      return {
+        evidence: `The meta CSP declares ${ignored.join(", ")}, which ${ignored.length === 1 ? "is" : "are"} ignored in a meta tag and absent from the response header.`,
+        excerpts: [excerpt("meta CSP", meta.content)],
+      };
+    },
+  },
+
+  {
+    id: "page-meta-x-frame-options-ignored",
+    title: "X-Frame-Options declared in a meta tag, which no browser honours",
+    category: "headers",
+    severity: "medium",
+    method: "dom-structure",
+    description:
+      'The page carries <meta http-equiv="X-Frame-Options">, which has never been honoured by any browser, and no equivalent protection arrives as a response header.',
+    riskImpact:
+      "The page can be framed by any site. That is the ordinary clickjacking exposure, with the extra problem that the source says otherwise: somebody added this tag believing it did something, so the gap will not be found by reading the code.",
+    explanation:
+      "X-Frame-Options is defined as a response header and browsers deliberately ignore the meta form, which is why this tag is so widely copy-pasted and so rarely questioned. The modern replacement is the CSP frame-ancestors directive, which must also arrive as a header.",
+    fixSteps: [
+      "Send Content-Security-Policy: frame-ancestors 'none' as a response header, or 'self' if the site frames its own pages.",
+      "Send X-Frame-Options: DENY alongside it for older clients.",
+      "Delete the meta tag, so nothing suggests the protection is in place twice.",
+    ],
+    codeExamples: [
+      {
+        label: "The header form, which works",
+        language: "nginx",
+        code: 'add_header X-Frame-Options "DENY" always;\nadd_header Content-Security-Policy "frame-ancestors \'none\'" always;',
+      },
+    ],
+    references: [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options",
+    ],
+    dedupeGroup: "clickjacking",
+    run(ctx) {
+      const meta = ctx.metas.find(
+        (m) => m.httpEquiv?.toLowerCase() === "x-frame-options",
+      );
+      if (!meta) return null;
+      // The header does the work, so the tag is redundant rather than a gap.
+      if (ctx.headers.get("x-frame-options")) return null;
+      if (
+        ctx.csp &&
+        !ctx.csp.reportOnly &&
+        "frame-ancestors" in ctx.csp.directives
+      ) {
+        return null;
+      }
+      return {
+        evidence: `<meta http-equiv="X-Frame-Options" content="${meta.content ?? ""}"> is present, and no X-Frame-Options header or CSP frame-ancestors directive is.`,
+        excerpts: [excerpt("meta tag", meta.raw)],
       };
     },
   },

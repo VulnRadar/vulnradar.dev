@@ -288,6 +288,18 @@ const CHANGELOG: Release[] = [
         desc: "Found by the first test written against the new templates rather than by review. The email button block escapes the address it links to, because until now every template that rendered one built that address from a constant plus a server-generated token, and nothing had ever passed it a label a person typed. Two of the new templates let the writer choose the label, which made an admin-composed string the input to unescaped markup in a message that goes to every registered account. Labels are escaped and a writer-chosen path is reduced to the characters a path can hold before it is appended, so what is left can only ever be a path on this deployment.",
         category: "security",
       },
+      {
+        icon: ScanSearch,
+        label: "Fourteen New Checks, Weighted Toward What Actually Goes Wrong",
+        desc: "A gap analysis against what the scanner already covers, rather than a list of headers nobody sets. Four are about CSP, because a policy that exists and does nothing is worse than no policy: script-src that allowlists a CDN anyone can publish a package to, which is the finding Google's own CSP Evaluator exists for; a nonce that is a template placeholder the renderer never substituted, or short enough to guess, which makes the whole nonce-based policy decorative; and the two directives people put in a meta tag believing they work, frame-ancestors and X-Frame-Options, neither of which any browser honours there. Four are credentials rendered into pages: S3, Azure and Cloud Storage signed URLs, each a bearer token shaped like a link, plus the https://user:password@host form that people reach for when wiring an internal service in quickly. One is a cache defect with no attacker in it at all, a response marked shared-cacheable that also sets a session cookie, so the CDN hands the next visitor somebody else's session. And a password field rendered with a value attribute, which means the server wrote a real password into markup that is now in the browser cache and the back-button history. Three more are file probes on requests already being made: .DS_Store, verified by its magic bytes rather than by a 200 so it does not fire on every catch-all server, Apache's mod_status page, and MCP server configs, which are the new .env and carry provider tokens inline.",
+        category: "added",
+      },
+      {
+        icon: FileSearch,
+        label: "The security.txt Check Fetched The File And Never Read It",
+        desc: "It asked whether the response was a 200 and returned. RFC 9116 makes Expires a required field precisely so the contact details cannot rot unnoticed, and it tells researchers not to rely on an expired file, so a stale date closes the disclosure channel from their side while the file is still being served: somebody who found something in your site is now looking for another way to report it. Both cases are reported now, expired and absent, and neither costs a request, because the body was already in hand and being thrown away. Four more outdated-library ranges landed alongside, including DOMPurify, which deserved its own entry rather than another row: it is the sanitizer this product's own remediation steps recommend, so an outdated one undermines the advice attached to every XSS finding in the same report. While in that file, the Moment.js pattern was a bare match on the word and also fired on momentum.js, a different library that has never had the CVE.",
+        category: "added",
+      },
     ],
   },
   {

@@ -393,7 +393,7 @@ remediation documentation in the docs.
 - [low     ] `clipboard-access` [body-pattern] - Clipboard API Referenced
 - [medium  ] `webcam-microphone-access` [body-pattern] - Camera or Microphone API Referenced
 - [high    ] `html-injection-patterns` [body-pattern] - HTML injection pattern detected
-- [high    ] `reflected-input` [body-pattern] - Static javascript: URI or Dangerous Inline Script Pattern Found
+- [high    ] `reflected-input` [body-pattern] - DOM XSS Sink or Executable javascript: URI
 - [low     ] `exposed-api-version` [body-pattern] - Internal API version exposed in response
 - [low     ] `server-info` [body-pattern] - Server information disclosed in response
 - [medium  ] `phishing-lookalike-domain` [body-pattern] - Potential phishing lookalike domain detected in links

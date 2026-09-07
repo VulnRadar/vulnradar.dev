@@ -3,6 +3,46 @@ import { cookieChecks } from "@/lib/scanner/checks/page-checks/cookies";
 import { runPageCheckTests, type PageCheckFixtures } from "./_test-harness";
 
 const fixtures: PageCheckFixtures = {
+  "page-cache-public-session-cookie": [
+    {
+      description:
+        "a CDN caches the response and replays the session cookie to the next visitor",
+      headers: { "cache-control": "public, max-age=600" },
+      cookies: ["sessionid=8f2a1b; Path=/; HttpOnly; Secure"],
+      expect: "fire",
+      evidenceIncludes: "shared cache",
+    },
+    {
+      description: "s-maxage is the shared-cache directive, and it counts too",
+      headers: { "cache-control": "max-age=0, s-maxage=300" },
+      cookies: ["sid=abc; Path=/; HttpOnly"],
+      expect: "fire",
+    },
+    {
+      description: "private forbids a shared cache from storing it at all",
+      headers: { "cache-control": "private, max-age=600" },
+      cookies: ["sessionid=8f2a1b; Path=/; HttpOnly"],
+      expect: "skip",
+    },
+    {
+      description: "no-store, likewise",
+      headers: { "cache-control": "public, no-store" },
+      cookies: ["sessionid=8f2a1b; Path=/"],
+      expect: "skip",
+    },
+    {
+      description: "an analytics cookie on a cached asset is not a session",
+      headers: { "cache-control": "public, max-age=31536000" },
+      cookies: ["_ga=GA1.2.1234567.7654321; Path=/"],
+      expect: "skip",
+    },
+    {
+      description: "cacheable with no cookie at all",
+      headers: { "cache-control": "public, max-age=600" },
+      expect: "skip",
+    },
+  ],
+
   "page-cookie-missing-secure": [
     {
       description: "cookie without Secure on an https page",

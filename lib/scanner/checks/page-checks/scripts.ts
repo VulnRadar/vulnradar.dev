@@ -8,7 +8,7 @@
  */
 
 import type { PageCheck } from "../../check-types";
-import { excerpt } from "../../check-types";
+import { excerpt, lineAt } from "../../check-types";
 import type { ParsedCsp } from "../../page-context";
 
 /** URL shorteners and paste sites are an unusual place to load a <script> from. */
@@ -215,6 +215,90 @@ export const scriptChecks: PageCheck[] = [
         excerpts: offending.map((s) =>
           excerpt("script src", s.resolved ?? s.src ?? ""),
         ),
+      };
+    },
+  },
+  {
+    id: "page-inline-source-map-data-uri",
+    title: "Complete original source embedded as an inline source map",
+    category: "information-disclosure",
+    severity: "high",
+    method: "script-analysis",
+    description:
+      "A script carries its source map inline as a data: URI, which embeds the full original source, comments included, in bytes the page already serves.",
+    riskImpact:
+      "This is strictly worse than a linked .map file, which at least has to be requested and can be blocked at the edge. Here the original TypeScript or JSX is already in the response: internal API paths, feature flags, commented-out endpoints, the names of every internal module, and anything a developer wrote in a comment because it was never going to be shipped.",
+    explanation:
+      "A bundler with inline source maps enabled base64s the whole map, including sourcesContent, into the emitted file. It is the default in several dev configurations and survives into production whenever the production build inherits the wrong devtool setting. Nothing has to be fetched: the source is in the page.",
+    fixSteps: [
+      "Set the bundler's production source map mode to external, or to none.",
+      "If maps are wanted for error reporting, generate them separately and upload them to the error tracker rather than serving them.",
+      "Confirm on the built output, not in the config: grep the deployed bundle for sourceMappingURL=data:.",
+    ],
+    codeExamples: [
+      {
+        label: "webpack: never inline in production",
+        language: "javascript",
+        code: "module.exports = {\n  mode: 'production',\n  // Not 'inline-source-map' or 'eval-source-map'.\n  devtool: 'hidden-source-map',\n};",
+      },
+    ],
+    references: [
+      "https://developer.mozilla.org/en-US/docs/Tools/Debugger/How_to/Use_a_source_map",
+    ],
+    run(ctx) {
+      const re =
+        /\/\/[#@]\s*sourceMappingURL\s*=\s*data:application\/json[;,]/i;
+      // Parsed inline script bodies, never raw HTML: a blog post that shows
+      // the directive in a <pre> block is not shipping its own source.
+      const inInline = re.exec(ctx.inlineScript);
+      const isScriptResponse = /javascript|ecmascript/.test(ctx.contentType);
+      const hit = inInline ?? (isScriptResponse ? re.exec(ctx.body) : null);
+      if (!hit) return null;
+      return {
+        evidence:
+          "A source map is embedded as a data: URI, so the original pre-compilation source is being served with the page.",
+        excerpts: [excerpt("Directive", hit[0])],
+      };
+    },
+  },
+
+  {
+    id: "page-dev-build-bundle-in-production",
+    title: "Development build of a framework loaded in production",
+    category: "configuration",
+    severity: "low",
+    method: "script-analysis",
+    description:
+      "The page loads a framework's development build, which ships warnings, invariant messages and the DevTools hook that the production build strips.",
+    riskImpact:
+      "Development builds emit error messages that name internal component paths and prop shapes, keep the DevTools bridge wired so page state is inspectable, and skip the optimisations that make the production build several times smaller and faster. None of it is exploitable on its own; all of it is information about the application's internals that the production build deliberately removes.",
+    explanation:
+      "Every major framework publishes two builds and expects the development one to be replaced at build time. Loading it from a CDN with the filename hardcoded is what defeats that, because there is no build step to make the substitution. The filename says which build it is.",
+    fixSteps: [
+      "Swap the CDN URL for the .production.min.js build of the same version.",
+      "If the bundle is built locally, set NODE_ENV=production so the bundler substitutes it.",
+      "Check the deployed page rather than the config: this is a mistake that only shows up in the shipped HTML.",
+    ],
+    codeExamples: [
+      {
+        label: "The production build",
+        language: "html",
+        code: '<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>',
+      },
+    ],
+    references: ["https://react.dev/learn/build-a-react-app-from-scratch"],
+    run(ctx) {
+      const DEV =
+        /\/(?:react|react-dom|react-dom-server|scheduler|vue|vuex|redux|mobx|preact)[.@-][^/]*\.development(?:\.min)?\.js(?:$|[?#])/i;
+      const hits = ctx.scripts.filter((s) => s.src && DEV.test(s.src));
+      if (hits.length === 0) return null;
+      return {
+        evidence: `The page loads ${hits.length === 1 ? "a development build" : `${hits.length} development builds`}: ${hits.map((h) => h.src).join(", ")}.`,
+        excerpts: hits
+          .slice(0, 3)
+          .map((h) =>
+            excerpt("Script", h.src ?? "", lineAt(ctx.body, h.offset)),
+          ),
       };
     },
   },

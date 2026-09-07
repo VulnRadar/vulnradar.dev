@@ -3,6 +3,36 @@ import { formChecks } from "@/lib/scanner/checks/page-checks/forms";
 import { runPageCheckTests, type PageCheckFixtures } from "./_test-harness";
 
 const fixtures: PageCheckFixtures = {
+  "page-password-field-prefilled-value": [
+    {
+      description:
+        "the server echoed a submitted password back into the markup",
+      body: '<form method="post"><input type="password" name="password" value="Tr0ub4dor3"></form>',
+      expect: "fire",
+      evidenceIncludes: "value attribute",
+    },
+    {
+      description: "an empty value is the correct rendering",
+      body: '<form method="post"><input type="password" name="password" value=""></form>',
+      expect: "skip",
+    },
+    {
+      description: "an unrendered template expression is a different bug",
+      body: '<form method="post"><input type="password" name="password" value="{{ old(\'password\') }}"></form>',
+      expect: "skip",
+    },
+    {
+      description: "a masked stand-in the page drew itself",
+      body: '<form method="post"><input type="password" name="password" value="********"></form>',
+      expect: "skip",
+    },
+    {
+      description: "a value on a text field is ordinary form repopulation",
+      body: '<form method="post"><input type="email" name="email" value="a@b.test"><input type="password" name="password"></form>',
+      expect: "skip",
+    },
+  ],
+
   "page-form-password-over-http": [
     {
       description: "password field posts to an http:// action on an https page",

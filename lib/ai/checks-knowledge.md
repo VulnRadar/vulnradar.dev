@@ -10824,31 +10824,33 @@ div.textContent = req.query.name; // or use textContent
 ```
 
 ### `reflected-input` [content / high / body-pattern]
-**Static javascript: URI or Dangerous Inline Script Pattern Found**
+**DOM XSS Sink or Executable javascript: URI**
 
-The response body contains a static `javascript:` URI or an inline `<script>` block using a dangerous sink (document.cookie, eval, alert, fetch), outside of code/example blocks.
+An inline `<script>` writes a URL-derived value (location, document.URL, document.referrer, or window.name) straight into document.write or innerHTML, or a `javascript:` URI in an href or form target carries a payload that reads cookies or URL data.
 
-**Risk:** These patterns are commonly associated with XSS payloads. This check only confirms the pattern is present in the delivered HTML, not that it originates from unsanitized user input; manually verify whether the surrounding value is attacker-controlled before treating this as a confirmed reflected XSS.
+**Risk:** A value taken from the URL and written into the page without encoding is executed as markup, so anyone who can get a victim to open a crafted link runs script in that victim's session: reading cookies, calling the site's own API as the logged-in user, or rewriting what the page shows. Because the source is the fragment or the referrer, the payload need never reach the server, which is why this class of XSS survives server-side input filtering and does not appear in access logs.
 
-**Why it matters:** This is a static scan for dangerous-looking script patterns in the page source. It does not inspect the request URL or form fields, so it cannot on its own confirm that a query parameter or form value was reflected unencoded.
+**Why it matters:** This is a static read of the delivered HTML. It looks for the two shapes that are dangerous regardless of what the server does: a URL-derived source flowing into a page-rendering sink inside a hand-written inline script, and a javascript: URI whose body touches document.cookie, eval, or URL data. A placeholder href such as javascript:void(0) is not reported, and neither is a bundled script, where a router assigning from location is ordinary framework behaviour.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Review the matched script block or javascript: URI and confirm it isn't executing attacker-controlled data
-- HTML-encode any values that are genuinely reflected from query strings or form fields
-- Implement a Content Security Policy to block unauthorized scripts
-- **Escape reflected values in server-side templates** (javascript):
+- Replace innerHTML and document.write with textContent, or sanitize with a library like DOMPurify before inserting HTML
+- Never pass location.hash, location.search, document.referrer, or window.name into a sink without encoding them first
+- Replace an executable javascript: URI with a real event listener bound in a script file
+- Add a Content-Security-Policy without 'unsafe-inline', which turns a successful injection into a blocked one
+- **Read from the URL without creating a sink** (javascript):
 ```javascript
-// Express.js with EJS: use <%- for raw HTML (dangerous), <%= for escaped
-// Unsafe:
-res.send(`<p>Hello <value></p>`);
+// Unsafe: the fragment is parsed as HTML.
+el.innerHTML = location.hash.slice(1);
 
-// Safe (escaping):
-const name = escapeHtml(req.query.name ?? '');
-res.send(`<p>Hello <value></p>`);
+// Safe: the same value, inserted as text.
+el.textContent = decodeURIComponent(location.hash.slice(1));
+
+// Safe when markup really is required:
+el.innerHTML = DOMPurify.sanitize(decodeURIComponent(location.hash.slice(1)));
 ```
 
 ### `exposed-api-version` [content / low / body-pattern]
@@ -18932,9 +18934,9 @@ proxy_hide_header X-Hudson;
 
 The Grafana dashboard version is exposed in HTTP headers or page content.
 
-**Risk:** Known Grafana versions can be matched against CVEs. Grafana has had critical vulnerabilities including unauthenticated directory traversal (CVE-2021-43798) in specific versions.
+**Risk:** A published version number turns a general question into a lookup: an attacker reads the advisories for that exact release rather than probing. Whether that matters here depends on the version, and the evidence line says which case this is. Grafana 8.0.0 through 8.3.0 is the range affected by CVE-2021-43798, an unauthenticated path traversal on CISA's Known Exploited Vulnerabilities list; a version outside that range is a fingerprint rather than a live exposure.
 
-**Why it matters:** Grafana includes version information in headers (X-Grafana-Org-ID, responses) and login page HTML. Version disclosure combined with internet exposure is a significant risk.
+**Why it matters:** Grafana publishes its version in the X-Grafana-Version header and in the login page HTML. This check reads that version and compares it against the range affected by CVE-2021-43798 rather than citing the CVE at every install it finds. The finding stays low severity either way, because the disclosure itself is what is being reported; if the version is in the affected range the evidence says so, and that is the part to act on first.
 
 **References:**
 - https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/
@@ -18942,6 +18944,7 @@ The Grafana dashboard version is exposed in HTTP headers or page content.
 - https://cwe.mitre.org/data/definitions/200.html
 
 **Fix:**
+- Read the evidence line: if it names CVE-2021-43798, upgrade Grafana before anything else
 - Place Grafana behind a VPN or require authentication at the network level
 - Use a reverse proxy to strip version-identifying headers
 - Keep Grafana updated to the latest stable version

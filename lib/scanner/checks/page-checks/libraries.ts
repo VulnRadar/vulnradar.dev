@@ -32,6 +32,45 @@ interface VulnRange {
 
 const RANGES: VulnRange[] = [
   {
+    // The sanitizer this product's own fix steps recommend, which makes an
+    // outdated one the least useful thing on the page to be outdated: every
+    // other finding's remediation assumes it works.
+    name: "DOMPurify",
+    filePattern: /dompurify|purify(?:\.min)?\.js/i,
+    versionPattern: /dompurify[@/-](\d+\.\d+\.\d+)/i,
+    fixedIn: "3.2.4",
+    cve: ["CVE-2024-45801", "CVE-2024-47875"],
+    summary:
+      "DOMPurify before 3.2.4 has mutation-XSS bypasses: markup that survives sanitisation is re-parsed differently once inserted, so the sanitizer returns something safe and the browser executes something else. The whole 2.x line is affected.",
+  },
+  {
+    name: "marked",
+    filePattern: /(?:^|[/@-])marked(?:\.min)?\.js|marked[@/-]\d/i,
+    versionPattern: /marked[@/-](\d+\.\d+\.\d+)/i,
+    fixedIn: "4.0.10",
+    cve: ["CVE-2022-21680", "CVE-2022-21681"],
+    summary:
+      "marked before 4.0.10 has two regular expressions that backtrack catastrophically on crafted markdown, so a single comment field can hang the thread that renders it.",
+  },
+  {
+    name: "TinyMCE",
+    filePattern: /tinymce/i,
+    versionPattern: /tinymce[@/-](\d+\.\d+\.\d+)/i,
+    fixedIn: "6.7.1",
+    cve: ["CVE-2023-45818", "CVE-2023-48219"],
+    summary:
+      "TinyMCE before 6.7.1 (and before 5.10.7 on the 5.x line) is vulnerable to XSS through crafted content in the editor body and through the notification manager.",
+  },
+  {
+    name: "Prism",
+    filePattern: /prism(?:\.min)?\.js|prismjs/i,
+    versionPattern: /prism(?:js)?[@/-](\d+\.\d+\.\d+)/i,
+    fixedIn: "1.27.0",
+    cve: ["CVE-2022-23647"],
+    summary:
+      "Prism before 1.27.0 is vulnerable to XSS through the line-highlight plugin, which reads a value out of the URL fragment and writes it into the page.",
+  },
+  {
     name: "jQuery",
     filePattern: /jquery(?!-ui)/i,
     versionPattern: /jquery[-.]?(\d+\.\d+\.\d+)/i,
@@ -69,7 +108,9 @@ const RANGES: VulnRange[] = [
   },
   {
     name: "Moment.js",
-    filePattern: /moment/i,
+    // Anchored so it does not also match momentum.js, which is a different
+    // library that has never had this CVE.
+    filePattern: /(?:^|[/@._-])moment(?:[@/._-]|$)/i,
     versionPattern: /moment[-.]?(\d+\.\d+\.\d+)/i,
     fixedIn: "2.29.4",
     cve: ["CVE-2022-24785"],

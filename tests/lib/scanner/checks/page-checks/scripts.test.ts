@@ -3,6 +3,51 @@ import { scriptChecks } from "@/lib/scanner/checks/page-checks/scripts";
 import { runPageCheckTests, type PageCheckFixtures } from "./_test-harness";
 
 const fixtures: PageCheckFixtures = {
+  "page-inline-source-map-data-uri": [
+    {
+      description: "the original source is embedded in the page, not linked",
+      body: "<script>function a(){}\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInNyYy9hcHAudHN4Il19</script>",
+      expect: "fire",
+      evidenceIncludes: "sourceMappingURL",
+    },
+    {
+      description: "a linked .map file is a different check's job",
+      body: "<script>function a(){}\n//# sourceMappingURL=app.4f2a.js.map</script>",
+      expect: "skip",
+    },
+    {
+      description:
+        "a blog post showing the directive is not shipping its source",
+      body: "<pre><code>//# sourceMappingURL=data:application/json;base64,...</code></pre>",
+      expect: "skip",
+    },
+  ],
+
+  "page-dev-build-bundle-in-production": [
+    {
+      description: "the development build of React loaded from a CDN",
+      body: '<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>',
+      expect: "fire",
+      evidenceIncludes: "development build",
+    },
+    {
+      description: "the production build",
+      body: '<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>',
+      expect: "skip",
+    },
+    {
+      description: "the filename in a code block, not in a script tag",
+      body: "<pre><code>react-dom.development.js</code></pre>",
+      expect: "skip",
+    },
+    {
+      description:
+        "a bare vue.js, which is ambiguous and deliberately not matched",
+      body: '<script src="/vendor/vue.js"></script>',
+      expect: "skip",
+    },
+  ],
+
   "page-script-missing-sri": [
     {
       description: "third-party script with no integrity attribute",

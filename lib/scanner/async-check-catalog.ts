@@ -145,6 +145,27 @@ export const ASYNC_CHECKS = {
   ),
 
   // DNS records and zone hygiene
+  dsStoreExposed: def(
+    ".DS_Store File Exposed",
+    "medium",
+    "information-disclosure",
+  ),
+  apacheServerStatusExposed: def(
+    "Apache Server Status Page Exposed",
+    "medium",
+    "information-disclosure",
+  ),
+  mcpConfigExposed: def(
+    "MCP Server Configuration Exposed",
+    "high",
+    "information-disclosure",
+  ),
+  securityTxtExpired: def("security.txt Has Expired", "low", "configuration"),
+  securityTxtMissingExpires: def(
+    "security.txt Has No Expires Field",
+    "info",
+    "configuration",
+  ),
   dnssecNotEnabled: def("DNSSEC Not Enabled", "info", "configuration"),
   caaRecordMissing: def("CAA Record Missing", "medium", "configuration"),
   caaRecordRestrictsWildcardCertificatesOnly: def(

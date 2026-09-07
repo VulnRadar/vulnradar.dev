@@ -3,6 +3,131 @@ import { cspChecks } from "@/lib/scanner/checks/page-checks/csp";
 import { runPageCheckTests, type PageCheckFixtures } from "./_test-harness";
 
 const fixtures: PageCheckFixtures = {
+  "page-csp-script-src-bypass-host": [
+    {
+      description: "a CDN that serves arbitrary published packages",
+      headers: {
+        "content-security-policy":
+          "default-src 'self'; script-src 'self' cdnjs.cloudflare.com",
+      },
+      expect: "fire",
+      evidenceIncludes: "cdnjs.cloudflare.com",
+    },
+    {
+      description: "strict-dynamic makes the whole host list inert",
+      headers: {
+        "content-security-policy":
+          "script-src 'self' 'strict-dynamic' 'nonce-EDNnf03nceIOfn39fn3e9h3sdfa' https://cdnjs.cloudflare.com",
+      },
+      expect: "skip",
+    },
+    {
+      description: "the same host in img-src, which is not a script sink",
+      headers: {
+        "content-security-policy":
+          "default-src 'self'; script-src 'self'; img-src https://ajax.googleapis.com",
+      },
+      expect: "skip",
+    },
+    {
+      description: "a path-scoped source pins the allowlist to one directory",
+      headers: {
+        "content-security-policy":
+          "script-src 'self' https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/",
+      },
+      expect: "skip",
+    },
+    {
+      description: "a host nobody can publish to",
+      headers: {
+        "content-security-policy": "script-src 'self' https://js.stripe.com",
+      },
+      expect: "skip",
+    },
+  ],
+
+  "page-csp-nonce-low-entropy": [
+    {
+      description:
+        "the template never rendered, so every visitor gets the same literal",
+      headers: {
+        "content-security-policy": "script-src 'nonce-{{cspNonce}}'",
+      },
+      expect: "fire",
+      evidenceIncludes: "not a per-response random value",
+    },
+    {
+      description: "a nonce short enough to guess",
+      headers: { "content-security-policy": "script-src 'nonce-abc123'" },
+      expect: "fire",
+    },
+    {
+      description: "a real per-response nonce",
+      headers: {
+        "content-security-policy":
+          "script-src 'nonce-EDNnf03nceIOfn39fn3e9h3sdfa'",
+      },
+      expect: "skip",
+    },
+    {
+      description: "a hash is not a nonce and must not be read as one",
+      headers: {
+        "content-security-policy":
+          "script-src 'sha256-B2yPHKaXnvFWtRChIbabYmUBFZdVfKKXHbWtWidDVF8='",
+      },
+      expect: "skip",
+    },
+  ],
+
+  "page-meta-csp-directive-ignored": [
+    {
+      description: "frame-ancestors in a meta tag, which browsers drop",
+      body: '<meta http-equiv="Content-Security-Policy" content="frame-ancestors \'none\'">',
+      expect: "fire",
+      evidenceIncludes: "frame-ancestors",
+    },
+    {
+      description: "the same meta alongside a real header, which is enforced",
+      headers: {
+        "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
+      },
+      body: '<meta http-equiv="Content-Security-Policy" content="frame-ancestors \'none\'">',
+      expect: "skip",
+    },
+    {
+      description: "default-src IS honoured in a meta tag",
+      body: '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'">',
+      expect: "skip",
+    },
+  ],
+
+  "page-meta-x-frame-options-ignored": [
+    {
+      description: "the meta form, which has never worked in any browser",
+      body: '<meta http-equiv="X-Frame-Options" content="DENY">',
+      expect: "fire",
+      evidenceIncludes: "X-Frame-Options",
+    },
+    {
+      description: "the meta tag beside a real header",
+      headers: { "x-frame-options": "DENY" },
+      body: '<meta http-equiv="X-Frame-Options" content="DENY">',
+      expect: "skip",
+    },
+    {
+      description: "the meta tag beside an enforced frame-ancestors",
+      headers: { "content-security-policy": "frame-ancestors 'none'" },
+      body: '<meta http-equiv="X-Frame-Options" content="SAMEORIGIN">',
+      expect: "skip",
+    },
+    {
+      description:
+        "no meta tag at all is clickjack-missing's job, not this one",
+      body: "<p>hello</p>",
+      expect: "skip",
+    },
+  ],
+
   "page-csp-unsafe-inline-effective": [
     {
       description: "unsafe-inline with no nonce or hash",

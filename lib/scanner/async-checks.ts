@@ -3108,6 +3108,69 @@ async function checkExposedFiles(
 
   const probes: FileProbe[] = [
     {
+      // The magic bytes, not the status code. A catch-all server answers 200
+      // with its SPA shell for every path, which is what makes most .DS_Store
+      // scanners useless: they report the shell as a finding on every site.
+      path: "/.DS_Store",
+      verify: (status, body) =>
+        status === 200 && /^\x00\x00\x00\x01Bud1/.test(body)
+          ? "Bud1 magic header present"
+          : null,
+      def: A.dsStoreExposed,
+      description:
+        "A .DS_Store file is publicly accessible. macOS writes one into every directory it displays, and it records the name of every file that was in that directory, including the ones that are not linked from anywhere.",
+      riskImpact:
+        "It is a directory listing for a server that has directory listing switched off. Backups, old versions, admin pages, staging copies and anything else somebody left in the deployed folder are named in it, which turns guessing at paths into reading them off a list.",
+      fixSteps: [
+        "Delete the file, and add .DS_Store to .gitignore so the next one is not committed.",
+        "Block it at the web server: `location ~ /\\.DS_Store { deny all; return 404; }`.",
+        "Look at what it named. A file it lists is a file that was deployed, whether or not anything links to it.",
+      ],
+    },
+    {
+      path: "/server-status",
+      verify: (status, body) =>
+        status === 200 &&
+        /<title>Apache Status<\/title>|Apache Server Status for/i.test(body)
+          ? body.slice(0, 300)
+          : null,
+      def: A.apacheServerStatusExposed,
+      description:
+        "Apache's mod_status page is publicly reachable, which publishes the requests the server is handling right now.",
+      riskImpact:
+        "The page lists in-flight request lines with their query strings, so any session token, reset token or API key that travels in a URL appears on it as those requests happen. It also gives up client IP addresses, every virtual host name the server answers for, and the server's uptime and load, which together map the deployment for anyone who reloads the page a few times.",
+      fixSteps: [
+        "Restrict the handler to localhost: `<Location /server-status> Require local </Location>`.",
+        "Or remove mod_status entirely if nothing is scraping it.",
+        "Check /server-info as well, which discloses the loaded module and configuration layout.",
+      ],
+    },
+    {
+      // "mcpServers" is the key the config format is defined around, so it
+      // separates a real config from a .well-known service manifest that
+      // happens to share the filename.
+      path: "/.mcp.json",
+      verify: (status, body) =>
+        status === 200 && /"mcpServers"\s*:\s*\{/.test(body)
+          ? body
+              .slice(0, 400)
+              .replace(
+                /("(?:[A-Z_]*(?:TOKEN|KEY|SECRET|PASSWORD)[A-Z_]*)"\s*:\s*")[^"]*/gi,
+                "$1[MASKED]",
+              )
+          : null,
+      def: A.mcpConfigExposed,
+      description:
+        "An MCP server configuration file is publicly accessible. These declare the tools an AI agent may call, and they routinely carry the provider tokens for those tools inline in an env block.",
+      riskImpact:
+        "The tokens in one of these are usually not scoped to anything: a GitHub personal access token, a database URL, a cloud key, whatever the agent needed. They are also the class of secret nobody rotates, because the file was created by an editor rather than by a deployment. Beyond the credentials, the file names every internal service the team wired up, which is a map of the estate.",
+      fixSteps: [
+        "Remove the file from the deployed output, and add .mcp.json and .cursor/ to .gitignore.",
+        "Treat every token in it as compromised and rotate it.",
+        "Move tool credentials out of the config and into the environment, so the file can be committed without carrying secrets.",
+      ],
+    },
+    {
       path: "/.git/config",
       verify: (status, body) => {
         if (status !== 200 || !/\[core\]/i.test(body)) return null;
@@ -4573,6 +4636,83 @@ export async function checkSecurityTxt(
       ),
     ];
   }
+
+  // The file is there. Reading it costs nothing extra: the response is
+  // already in hand, and the old code went straight from res.ok to `return []`
+  // without ever looking at what it had fetched. RFC 9116 makes Expires a
+  // REQUIRED field precisely so a file cannot rot unnoticed, and it tells
+  // researchers not to rely on an expired one, so a stale Expires turns the
+  // disclosure channel off without anything reporting that it did.
+  const hit =
+    wellKnown.status === "fulfilled" && wellKnown.value.ok
+      ? wellKnown.value
+      : root.status === "fulfilled" && root.value.ok
+        ? root.value
+        : null;
+  if (!hit) return [];
+
+  let body: string;
+  try {
+    body = (await hit.text()).slice(0, 16384);
+  } catch {
+    return [];
+  }
+
+  // Anchored at the start of a line: every RFC 9116 comment begins with #, so
+  // "# Expires: see our policy page" is prose about the field, not the field.
+  const expires = /^[ \t]*Expires[ \t]*:[ \t]*(\S+)[ \t]*$/im.exec(body);
+  if (!expires) {
+    return [
+      makeVuln(
+        origin,
+        A.securityTxtMissingExpires,
+        "The security.txt file has no Expires field, which RFC 9116 requires.",
+        `${hit.url} was served without an Expires line.`,
+        "Expires is what tells a researcher whether the contact details in front of them are still maintained. Without it there is nothing to distinguish a file reviewed last month from one written four years ago by somebody who has since left, and the addresses in an unmaintained file are usually the ones that no longer reach anyone.",
+        "RFC 9116 lists exactly two required fields, Contact and Expires, and says the file should not be used past its expiry. The field exists to force a review rather than to describe one.",
+        [
+          "Add an Expires line no more than a year out.",
+          "Put the renewal in the same calendar as the certificate renewals it will sit next to.",
+          `Verify: curl -s ${new URL(".well-known/security.txt", origin).toString()}`,
+        ],
+        [
+          {
+            label: "security.txt",
+            language: "text",
+            code: "Contact: mailto:security@yourdomain.com\nExpires: 2027-12-31T23:59:59z\nPreferred-Languages: en",
+          },
+        ],
+      ),
+    ];
+  }
+
+  const expiresAt = Date.parse(expires[1]);
+  if (Number.isFinite(expiresAt) && expiresAt < Date.now()) {
+    const daysAgo = Math.floor((Date.now() - expiresAt) / 86400000);
+    return [
+      makeVuln(
+        origin,
+        A.securityTxtExpired,
+        `The security.txt file expired ${daysAgo} day${daysAgo === 1 ? "" : "s"} ago.`,
+        `${hit.url} declares Expires: ${expires[1]}.`,
+        "RFC 9116 tells researchers that an expired file should not be used, so the disclosure channel is closed from their side while the file is still being served. Somebody who found something in this site is now looking for a different way to report it, or giving up. An expired file is also a reliable signal that nobody has reviewed the addresses in it, which usually means at least one of them no longer reaches a person.",
+        "The Expires field is a promise that the contact details above it are current as of that date. Passing it does not remove the file; it removes the reason to trust it.",
+        [
+          "Confirm the Contact addresses still reach somebody who reads them.",
+          "Update Expires to a date no more than a year out and redeploy.",
+          "Set a calendar reminder for the renewal, next to the certificate ones.",
+        ],
+        [
+          {
+            label: "security.txt",
+            language: "text",
+            code: "Contact: mailto:security@yourdomain.com\nExpires: 2027-12-31T23:59:59z\nPreferred-Languages: en",
+          },
+        ],
+      ),
+    ];
+  }
+
   return [];
 }
 
