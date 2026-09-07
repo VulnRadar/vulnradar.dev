@@ -238,20 +238,39 @@ const fixtures: DetectorFixtures = {
   ],
   "reflected-input": [
     {
-      description:
-        "a dangerous pattern shown in a syntax-highlighted documentation block does not fire",
-      body: '<div class="syntax-highlight">jaVasCript:alert(1)</div>',
+      // The false positive that made this HIGH-severity id worthless. A
+      // placeholder href is on a large share of the web and does nothing;
+      // the check reported it as a dangerous reflected pattern.
+      description: 'href="javascript:void(0)" is a placeholder, not a finding',
+      body: '<a href="javascript:void(0)" onclick="open()">Menu</a>',
       expect: "skip",
     },
     {
-      description:
-        "regression (false negative): the documentation occurrence FIRST and a real reflected one second still fires -- the old code judged only match[0] and skipped the whole pattern",
-      body:
-        '<div class="syntax-highlight">jaVasCript:alert(1)</div>' +
-        `<p>${"padding text here. ".repeat(20)}</p>` +
-        '<a href="jaVasCript:alert(2)">click</a>',
+      description: "a javascript: URI carrying no payload does not fire",
+      body: '<a href="javascript:;">Menu</a><a href="JavaScript:void(0);">More</a>',
+      expect: "skip",
+    },
+    {
+      description: "a javascript: URI that reads document.cookie does fire",
+      body: "<a href=\"javascript:fetch('/x?c='+document.cookie)\">click</a>",
       expect: "fire",
-      evidenceIncludes: "dangerous content",
+      evidenceIncludes: "javascript: URI",
+    },
+    {
+      // The implementation that was supposed to be running all along: it
+      // lived in checks/code.ts under the same id, and the registry resolves
+      // an id through the bundle that owns its definition, which is this
+      // one. It never ran once.
+      description:
+        "an inline script writing location.hash into innerHTML fires",
+      body: "<script>document.getElementById('out').innerHTML = location.hash.slice(1);</script>",
+      expect: "fire",
+      evidenceIncludes: "DOM XSS sink",
+    },
+    {
+      description: "a bundled script tag is not judged, only inline ones",
+      body: '<script src="/app.js"></script><p>document.write(location.search)</p>',
+      expect: "skip",
     },
   ],
   "oauth-state-missing": [
@@ -618,6 +637,30 @@ const fixtures: DetectorFixtures = {
   ],
   "hardcoded-ip-addresses": [
     {
+      // A four-part version number is a dotted quad. The web is full of
+      // them, and every one was reported as a leaked public IP.
+      description: "a four-part version number is not an IP address",
+      body: '<p>Running app version 4.17.21.0 (build 2.5.0.1)</p><script src="/vendor/jquery/3.6.0.2/jquery.js"></script>',
+      expect: "skip",
+    },
+    {
+      description: "a v-prefixed four-part release tag is not an IP address",
+      body: "<footer>v1.2.3.4</footer>",
+      expect: "skip",
+    },
+    {
+      description: "a longer dotted run is not an IP address at either end",
+      body: "<p>Schema 1.2.3.4.5 supersedes 9.8.7.6.5.</p>",
+      expect: "skip",
+    },
+    {
+      // RFC 6598 carrier-grade NAT and the multicast/reserved space above
+      // 224. Neither is a host anyone could connect to.
+      description: "CGNAT and multicast space are not disclosures",
+      body: "<p>Relay 100.64.12.9 broadcasts on 239.255.255.250.</p>",
+      expect: "skip",
+    },
+    {
       description:
         "regression: an RFC 5737 TEST-NET-3 documentation address (203.0.113.x) does not fire -- our own scan-form placeholder text uses 203.0.113.10 for exactly this reason",
       body: '<input placeholder="example.com or 203.0.113.10">',
@@ -630,6 +673,62 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "hardcoded public IP",
     },
   ],
+  "weak-crypto": [
+    {
+      // High severity, and it fired on the word. A page explaining why not
+      // to use these algorithms scored worse than a page that used one.
+      description: "prose naming an algorithm does not fire",
+      body: "<article><h2>Why we replaced Blowfish and 3DES</h2><p>The DES family and RC4 are no longer acceptable.</p></article>",
+      expect: "skip",
+    },
+    {
+      description:
+        "the dead /\\bECBD[A-Z]?\\b/ pattern is gone, real ECB is caught",
+      body: "<script>const c = crypto.createCipheriv('aes-128-ecb', key, null);</script>",
+      expect: "fire",
+      evidenceIncludes: "Weak cryptographic algorithm",
+    },
+    {
+      description: "a real MD5 hash call fires",
+      body: "<script>const h = crypto.createHash('md5').update(x).digest('hex');</script>",
+      expect: "fire",
+      evidenceIncludes: "Weak cryptographic algorithm",
+    },
+    {
+      description: "a real DES cipher construction fires",
+      body: "<script>CryptoJS.TripleDES.encrypt(msg, key);</script>",
+      expect: "fire",
+      evidenceIncludes: "Weak cryptographic algorithm",
+    },
+  ],
+
+  "sensitive-comments": [
+    {
+      // The comment that made this check noise: it labels a form, it does
+      // not disclose anything, and almost every login page has one.
+      description: "a comment that labels a form does not fire",
+      body: "<!-- password reset form --><!-- begin: api key section --><!-- secret sauce below -->",
+      expect: "skip",
+    },
+    {
+      description: "a masked or templated value is documentation, not a leak",
+      body: "<!-- password: ******** --><!-- api_key: YOUR_API_KEY_HERE --><!-- client_secret: {{ env.SECRET }} -->",
+      expect: "skip",
+    },
+    {
+      description: "a keyword attached to a real value fires",
+      body: "<!-- db password: hunter2correct -->",
+      expect: "fire",
+      evidenceIncludes: "sensitive keywords",
+    },
+    {
+      description: "a private key block fires",
+      body: "<!-- -----BEGIN RSA PRIVATE KEY----- -->",
+      expect: "fire",
+      evidenceIncludes: "sensitive keywords",
+    },
+  ],
+
   "admin-endpoint": [
     {
       description:

@@ -972,21 +972,30 @@ export const detectors: Record<string, DetectFn> = {
 
   "sensitive-comments": (_url, _headers, body) => {
     const comments = body.match(/<!--[\s\S]*?-->/g) || [];
-    // Only flag patterns that suggest real secret material in an HTML comment.
-    // Broad developer keywords (TODO, FIXME, HACK, admin, internal, debug)
-    // appear in virtually every website's source — removing them prevents
-    // false positives on almost every legitimate page.
+    // The keyword has to be attached to a value. Matching the bare word
+    // "password" fired on <!-- password reset form -->, <!-- begin password
+    // field --> and every other comment that labels a login form, which is
+    // most of them, at medium severity. What makes a comment a disclosure is
+    // that something was written down in it, so each pattern below wants the
+    // keyword, a separator, and a value.
     const sensitivePatterns = [
-      /password/i,
-      /secret/i,
-      /api[_\-]?key/i,
-      /private[_\-]?key/i,
-      /access[_\-]?token/i,
+      /(?:password|passwd|pwd)\s*[:=]\s*["']?[^\s"'<>]{4,}/i,
+      /(?:secret|api[_\-]?key|private[_\-]?key|access[_\-]?token|auth[_\-]?token|client[_\-]?secret)\s*[:=]\s*["']?[^\s"'<>]{8,}/i,
+      /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
     ];
+    // A value that is visibly a stand-in is documentation, not a leak: the
+    // masked form an example uses, a templating placeholder, or the words
+    // people write when they mean "put the real one here".
+    const PLACEHOLDER =
+      /^["']?(?:\*+|x{3,}|\.{3,}|-{3,}|<[^>]*>|\{\{?[^}]*\}?\}|\$\{[^}]*\}|%[A-Za-z_]+%|(?:your|my|the|some|a)[_\-]?\w*|change[_\-]?me|placeholder|example|redacted|hidden|removed|todo|tbd|null|none|undefined|password|secret|token|value|here)["']?[.,;]?$/i;
     const found: string[] = [];
     for (const comment of comments) {
       for (const p of sensitivePatterns) {
-        if (p.test(comment)) {
+        const hit = p.exec(comment);
+        if (!hit) continue;
+        const value = hit[0].split(/[:=]/).slice(1).join(":").trim();
+        if (value && PLACEHOLDER.test(value)) continue;
+        {
           found.push(
             comment
               .slice(0, 80)
@@ -1254,30 +1263,54 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
+  /**
+   * DOM XSS: a URL-controlled value written into a page-executed sink.
+   *
+   * This is a high-severity id, and what it used to look for was the string
+   * "javascript:", case-insensitively, anywhere in the page.
+   * href="javascript:void(0)" is a twenty-year-old idiom still present on an
+   * enormous share of the web and is not a vulnerability, so the check
+   * reported HIGH against sites that had done nothing wrong. Its second
+   * pattern looked for dangerous calls inside a <script> tag, in a string
+   * that stripExampleContent had already stripped the <script> blocks from,
+   * so it could never match anything.
+   *
+   * checks/code.ts carried a correct implementation of this id, matching a
+   * URL-derived source assigned to a DOM sink. A detector resolves through
+   * the bundle that owns its definition, this one is defined in
+   * checks-data/content.json, and so that version was never reached. It
+   * lives here now, where the registry will actually run it.
+   */
   "reflected-input": (_url, _headers, body) => {
-    // Run against script-stripped HTML only — the scanner's own pattern strings
-    // (e.g. jaVasCript:) live in the JS bundle and would otherwise self-trigger.
-    const html = stripExampleContent(body);
-    const dangerousPatterns = [
-      /jaVasCript:/gi,
-      /<script[^>]{0,2000}>[^<]*(?:document\.cookie|eval\(|alert\(|fetch\([^)]*document)/gi,
-    ];
-    // Judge EVERY occurrence at its own offset, not just the first. The old
-    // form took html.match(p)[0] (the first match) and html.indexOf of that
-    // string, so a single documentation-context occurrence early in the page
-    // made the whole pattern `continue` -- a genuinely reflected payload
-    // further down the same page reported clean.
-    for (const p of dangerousPatterns) {
-      for (const m of html.matchAll(p)) {
-        const idx = m.index ?? 0;
-        const before = html.slice(Math.max(0, idx - 300), idx).toLowerCase();
-        if (
-          /<code|<pre|```|class=["'][^"']*(?:code|syntax|highlight)|documentation|example/i.test(
-            before,
-          )
-        )
-          continue;
-        return "Potentially reflected dangerous content patterns found.";
+    // Inline scripts only. A URL-derived write inside a bundled framework is
+    // that framework's own router doing its job; a hand-written inline
+    // script is where an unescaped one actually appears.
+    const inlineScripts = [
+      ...body.matchAll(
+        /<script\b(?![^>]{0,2000}\bsrc\b)[^>]{0,2000}>([\s\S]*?)<\/script>/gi,
+      ),
+    ].map((m) => m[1]);
+    const SOURCE_TO_SINK =
+      /(?:document\.write(?:ln)?\s*\(|\.(?:innerHTML|outerHTML)\s*\+?=)\s*[^;\n]{0,120}?(?:document\.(?:URL|referrer|documentURI|baseURI)|location\.(?:search|hash|href)|window\.name|\blocation\b)/i;
+    for (const script of inlineScripts) {
+      if (SOURCE_TO_SINK.test(script)) {
+        return "DOM XSS sink: an inline script writes a URL-derived value (location, referrer, or window.name) straight into a page-rendering sink.";
+      }
+    }
+
+    // A javascript: URI is only worth reporting when it carries a payload.
+    // void(0), a bare semicolon and an empty body are placeholder hrefs.
+    const PAYLOAD =
+      /(?:document\.cookie|\beval\s*\(|\bFunction\s*\(|\batob\s*\(|document\.(?:URL|referrer)|location\.(?:search|hash)|window\.name|\.innerHTML)/i;
+    // Matched once per delimiter rather than with a backreference: a real
+    // javascript: URI almost always contains the other quote character, as
+    // in href="javascript:f('/x')", and a single pattern that closed on
+    // either quote ended the payload capture at the first inner one.
+    for (const m of body.matchAll(
+      /(?:href|src|action|formaction)\s*=\s*(?:"\s*javascript:([^"]{0,400})"|'\s*javascript:([^']{0,400})')/gi,
+    )) {
+      if (PAYLOAD.test(m[1] ?? m[2] ?? "")) {
+        return "A javascript: URI in a link or form target carries an executable payload that reads cookies or URL data.";
       }
     }
     return null;
@@ -1580,15 +1613,27 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "weak-crypto": (url, _headers, body) => {
-    // Word boundaries prevent matching substrings inside larger tokens —
-    // for example the previous regex matched `des` inside `description`,
-    // which fired on every Next.js page that rendered any descriptive copy.
+    // Every pattern here has to name a call, not an algorithm. The bare
+    // /\b(?:DES|3DES|TripleDES|Blowfish|RC4)\b/ this replaces matched the
+    // word Blowfish in a blog post and the letters DES in an acronym list,
+    // and reported HIGH for it: a page about cryptography scored worse than
+    // a page that actually used MD5. The fifth pattern, /\bECBD[A-Z]?\b/,
+    // was presumably meant to be ECB and matched nothing in any language.
     const patterns: RegExp[] = [
       /\.md5\s*\(/i,
       /\.sha1\s*\(/i,
       /\bcrypto\.createHash\s*\(\s*["'](?:md5|sha1)["']/i,
-      /\b(?:DES|3DES|TripleDES|Blowfish|RC4)\b/,
-      /\bECBD[A-Z]?\b/,
+      /\bcreateCipheriv?\s*\(\s*["'](?:des|des3|rc2|rc4|bf|blowfish)[\w-]*["']/i,
+      /\bCryptoJS\s*\.\s*(?:DES|TripleDES|RC4(?:Drop)?)\b/,
+      /\b(?:Cipher|KeyGenerator|SecretKeyFactory)\.getInstance\s*\(\s*["'](?:DES|DESede|RC2|RC4|ARCFOUR|Blowfish)\b/i,
+      /\bMessageDigest\.getInstance\s*\(\s*["'](?:MD5|SHA-?1)["']/i,
+      /\bhashlib\s*\.\s*(?:md5|sha1)\s*\(/i,
+      // ECB mode, named the way OpenSSL, Node and the JCE name it. ECB
+      // encrypts each block independently, so identical plaintext blocks
+      // produce identical ciphertext and the shape of the data survives
+      // encryption.
+      /\b(?:aes|des|camellia|bf)-(?:\d{2,3}-)?ecb\b/i,
+      /\b(?:AES|DES|DESede|Blowfish)\/ECB\//i,
     ];
     for (const p of patterns) {
       if (p.test(body))
@@ -2201,25 +2246,53 @@ export const detectors: Record<string, DetectFn> = {
       /\s(?:d|points)\s*=\s*(["'])[\s\S]*?\1/gi,
       "",
     );
-    const ips = stripExampleContent(withoutSvgCoords).match(ipRe) || [];
-    const publicIps = ips.filter((ip) => {
-      const parts = ip.split(".").map(Number);
-      // Reject anything with an out-of-range octet outright -- not a
-      // valid IPv4 address, so not an IP disclosure regardless of what
-      // coincidentally produced the dotted-quad shape.
-      if (parts.some((p) => p > 255)) return false;
-      if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return false;
-      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
-      if (parts[0] === 192 && parts[1] === 168) return false;
-      if (parts[0] === 169 && parts[1] === 254) return false;
-      // RFC 5737 TEST-NET ranges: reserved specifically for documentation
-      // and examples, never routable -- our own scan URL input's
-      // placeholder text uses 203.0.113.10 for exactly this reason.
-      if (parts[0] === 192 && parts[1] === 0 && parts[2] === 2) return false;
-      if (parts[0] === 198 && parts[1] === 51 && parts[2] === 100) return false;
-      if (parts[0] === 203 && parts[1] === 0 && parts[2] === 113) return false;
-      return true;
-    });
+    const text = stripExampleContent(withoutSvgCoords);
+    const publicIps = [...text.matchAll(ipRe)]
+      .filter((m) => {
+        const ip = m[0];
+        const at = m.index ?? 0;
+        // A four-part version number has the same shape as a dotted quad,
+        // and the web is full of them: "1.0.0.0", plugin builds,
+        // four-segment release tags. What separates them is not the number,
+        // it is what sits next to the number.
+        const before = text.slice(Math.max(0, at - 24), at);
+        const after = text.slice(at + ip.length, at + ip.length + 2);
+        // Part of a longer dotted run, so not an address at either end of it.
+        if (/[\d.]$/.test(before) || /^\.\d/.test(after)) return false;
+        // Introduced as a version: v1.2.3.4, version: 1.2.3.4, pkg@1.2.3.4,
+        // jquery/1.2.3.4, ?ver=1.2.3.4.
+        if (
+          /(?:\bv|\bver|\bversion|\brelease|\bbuild|@|[a-z]\/|=)\s*$/i.test(
+            before,
+          )
+        )
+          return false;
+        const parts = ip.split(".").map(Number);
+        // Reject anything with an out-of-range octet outright -- not a
+        // valid IPv4 address, so not an IP disclosure regardless of what
+        // coincidentally produced the dotted-quad shape.
+        if (parts.some((p) => p > 255)) return false;
+        if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return false;
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
+        if (parts[0] === 192 && parts[1] === 168) return false;
+        if (parts[0] === 169 && parts[1] === 254) return false;
+        // RFC 5737 TEST-NET ranges: reserved specifically for documentation
+        // and examples, never routable -- our own scan URL input's
+        // placeholder text uses 203.0.113.10 for exactly this reason.
+        if (parts[0] === 192 && parts[1] === 0 && parts[2] === 2) return false;
+        if (parts[0] === 198 && parts[1] === 51 && parts[2] === 100)
+          return false;
+        if (parts[0] === 203 && parts[1] === 0 && parts[2] === 113)
+          return false;
+        // Carrier-grade NAT (RFC 6598): shared provider space, no more a
+        // disclosure than 10.0.0.0/8 is.
+        if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return false;
+        // Multicast, reserved, and broadcast. Nothing in here is a host
+        // anyone could connect to, so it cannot be an address that leaked.
+        if (parts[0] >= 224) return false;
+        return true;
+      })
+      .map((m) => m[0]);
     if (publicIps.length > 0)
       return `Found ${publicIps.length} hardcoded public IP address(es).`;
     return null;

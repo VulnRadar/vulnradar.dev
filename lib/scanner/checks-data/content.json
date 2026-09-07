@@ -3565,23 +3565,24 @@
   {
     "id": "reflected-input",
     "type": "body-pattern",
-    "title": "Static javascript: URI or Dangerous Inline Script Pattern Found",
+    "title": "DOM XSS Sink or Executable javascript: URI",
     "category": "content",
     "severity": "high",
-    "description": "The response body contains a static `javascript:` URI or an inline `<script>` block using a dangerous sink (document.cookie, eval, alert, fetch), outside of code/example blocks.",
-    "evidence": "Dangerous inline script or javascript: URI pattern found in response body.",
-    "riskImpact": "These patterns are commonly associated with XSS payloads. This check only confirms the pattern is present in the delivered HTML, not that it originates from unsanitized user input; manually verify whether the surrounding value is attacker-controlled before treating this as a confirmed reflected XSS.",
-    "explanation": "This is a static scan for dangerous-looking script patterns in the page source. It does not inspect the request URL or form fields, so it cannot on its own confirm that a query parameter or form value was reflected unencoded.",
+    "description": "An inline `<script>` writes a URL-derived value (location, document.URL, document.referrer, or window.name) straight into document.write or innerHTML, or a `javascript:` URI in an href or form target carries a payload that reads cookies or URL data.",
+    "evidence": "URL-derived value written to a DOM sink by an inline script, or a javascript: URI with an executable payload.",
+    "riskImpact": "A value taken from the URL and written into the page without encoding is executed as markup, so anyone who can get a victim to open a crafted link runs script in that victim's session: reading cookies, calling the site's own API as the logged-in user, or rewriting what the page shows. Because the source is the fragment or the referrer, the payload need never reach the server, which is why this class of XSS survives server-side input filtering and does not appear in access logs.",
+    "explanation": "This is a static read of the delivered HTML. It looks for the two shapes that are dangerous regardless of what the server does: a URL-derived source flowing into a page-rendering sink inside a hand-written inline script, and a javascript: URI whose body touches document.cookie, eval, or URL data. A placeholder href such as javascript:void(0) is not reported, and neither is a bundled script, where a router assigning from location is ordinary framework behaviour.",
     "fixSteps": [
-      "Review the matched script block or javascript: URI and confirm it isn't executing attacker-controlled data",
-      "HTML-encode any values that are genuinely reflected from query strings or form fields",
-      "Implement a Content Security Policy to block unauthorized scripts"
+      "Replace innerHTML and document.write with textContent, or sanitize with a library like DOMPurify before inserting HTML",
+      "Never pass location.hash, location.search, document.referrer, or window.name into a sink without encoding them first",
+      "Replace an executable javascript: URI with a real event listener bound in a script file",
+      "Add a Content-Security-Policy without 'unsafe-inline', which turns a successful injection into a blocked one"
     ],
     "codeExamples": [
       {
-        "label": "Escape reflected values in server-side templates",
+        "label": "Read from the URL without creating a sink",
         "language": "javascript",
-        "code": "// Express.js with EJS: use <%- for raw HTML (dangerous), <%= for escaped\n// Unsafe:\nres.send(`<p>Hello ${req.query.name}</p>`);\n\n// Safe (escaping):\nconst name = escapeHtml(req.query.name ?? '');\nres.send(`<p>Hello ${name}</p>`);"
+        "code": "// Unsafe: the fragment is parsed as HTML.\nel.innerHTML = location.hash.slice(1);\n\n// Safe: the same value, inserted as text.\nel.textContent = decodeURIComponent(location.hash.slice(1));\n\n// Safe when markup really is required:\nel.innerHTML = DOMPurify.sanitize(decodeURIComponent(location.hash.slice(1)));"
       }
     ],
     "references": [

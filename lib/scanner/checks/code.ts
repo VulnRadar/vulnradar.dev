@@ -2247,27 +2247,11 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "reflected-input": (_url, _headers, body) => {
-    // Only flag actual DOM XSS: a URL-derived source (location, referrer, etc.)
-    // being assigned directly to a dangerous DOM sink in an inline script.
-    // Avoid matching normal script bundles by restricting to inline-only scripts.
-    const inlineScripts = [
-      ...body.matchAll(
-        /<script\b(?![^>]{0,2000}\bsrc\b)[^>]{0,2000}>([\s\S]*?)<\/script>/gi,
-      ),
-    ].map((m) => m[1]);
-
-    for (const script of inlineScripts) {
-      if (
-        /(?:document\.write|\.innerHTML|\.outerHTML)\s*(?:\+=?)\s*(?:location|document\.URL|document\.referrer|window\.name|location\.search|location\.hash)/i.test(
-          script,
-        )
-      ) {
-        return "DOM XSS sink detected — URL or referrer source written directly to a DOM sink.";
-      }
-    }
-    return null;
-  },
+  // "reflected-input": implementation lives in checks/content.ts. The id is
+  // defined in checks-data/content.json, and resolveDetector looks in the
+  // bundle that owns the definition first, so this copy never ran: the
+  // registry answered every scan with content.ts's version. The DOM-XSS
+  // matching that was here is now the whole of that one.
 
   // ── Additional eval-family sinks (code-eval-*) ───────────────────────────
 
