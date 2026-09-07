@@ -9,7 +9,12 @@ import {
   CodeBlock,
   InlineCode,
 } from "@/components/docs";
-import { APP_NAME, APP_REPO } from "@/lib/config/constants";
+import {
+  API_VERSION,
+  APP_NAME,
+  APP_REPO,
+  APP_URL,
+} from "@/lib/config/constants";
 import {
   CONFIG_BILLING_FREE_CRAWL_PAGES,
   CONFIG_BILLING_CORE_SUPPORTER_CRAWL_PAGES,
@@ -36,7 +41,7 @@ export default function CliPage() {
         id="top"
         badge="CLI"
         title="Command-Line Interface"
-        description={`Run a ${APP_NAME} scan from a terminal or a CI job and fail the build when findings cross a threshold you set. Install it from the repo until it lands on npm.`}
+        description={`Run a ${APP_NAME} scan from a terminal or a CI job and fail the build when findings cross a threshold you set. Run it with npx, no install required.`}
       />
 
       <DocsSection id="overview" title="Overview">
@@ -126,7 +131,7 @@ npm install -g .`}
             {
               flag: "--api-base <url>",
               desc: "API base URL, for a self-hosted instance. Falls back to VULNRADAR_API_BASE.",
-              def: "https://vulnradar.dev/api/v3",
+              def: `${APP_URL}/api/${API_VERSION}`,
             },
             {
               flag: "--crawl",

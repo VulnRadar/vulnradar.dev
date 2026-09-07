@@ -1001,7 +1001,20 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
               currency: "usd",
               description: "Pro Supporter subscription",
               invoice_pdf: "https://stripe.example/invoice.pdf",
-              payment_intent: "pi_1",
+              // The CURRENT shape. This fixture used to carry a top-level
+              // `payment_intent: "pi_1"`, which Stripe removed from Invoice:
+              // the test asserted the route read a field the API had stopped
+              // sending, so it passed while production wrote NULL into
+              // billing_history on every payment. A fixture that models a
+              // dead API is worse than no fixture, because it reports the
+              // code as correct.
+              payments: {
+                data: [
+                  {
+                    payment: { type: "payment_intent", payment_intent: "pi_1" },
+                  },
+                ],
+              },
               lines: { data: [{ description: "Pro Supporter" }] },
             },
           },

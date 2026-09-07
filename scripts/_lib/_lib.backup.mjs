@@ -28,6 +28,8 @@
  */
 
 import { spawn } from "node:child_process";
+import { Readable } from "node:stream";
+import pg from "pg";
 import { createWriteStream } from "node:fs";
 import { createGzip } from "node:zlib";
 import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
@@ -36,6 +38,7 @@ import { resolve } from "node:path";
 import { ROOT } from "./_lib.env.mjs";
 import { splitDbUrlForEnv } from "./_lib.db-url.mjs";
 import { info, warn, success } from "./_lib.output.mjs";
+import { generateSqlDump } from "./_lib.sql-backup.mjs";
 import {
   backupFileName,
   createBackupCipher,
@@ -110,11 +113,24 @@ async function pruneOldMigrationBackups(dir) {
  * case only for a bare, non-Docker Node install).
  */
 export async function backupDatabase(connectionString, schemaVersion) {
-  if (!(await commandAvailable("pg_dump"))) {
-    warn(
-      "pg_dump not found on PATH -- skipping the pre-migration backup. Install postgresql-client (the Docker image already includes it) to enable automatic backups.",
+  // Whether pg_dump exists decides HOW the dump is produced, not WHETHER one
+  // is produced.
+  //
+  // This used to warn and return null, and the caller does not check the
+  // return value, so on a host without postgresql-client the migration went
+  // straight on to its DDL, including destructive steps, which run
+  // auto-approved when there is no TTY. The exact population that cannot
+  // install postgresql-client (a Pterodactyl or Pelican Node egg, a minimal
+  // container) is the population that migrated with no backup at all.
+  //
+  // scripts/backup-db.mjs already had the answer: a pure-JS dumper over the
+  // same pg connection the app uses, written for precisely these hosts. It
+  // just was not wired in here.
+  const havePgDump = await commandAvailable("pg_dump");
+  if (!havePgDump) {
+    info(
+      "pg_dump not found on PATH: using the built-in JavaScript dumper for the pre-migration backup.",
     );
-    return null;
   }
 
   const backupDir = resolve(
@@ -143,24 +159,51 @@ export async function backupDatabase(connectionString, schemaVersion) {
 
   info(`Backing up database to ${relativePath} before migrating...`);
 
-  // Keep the DB password out of pg_dump's argv (visible via `ps` on a
-  // shared host); libpq reads it from PGPASSWORD in the child env instead.
-  const { connArg, env } = splitDbUrlForEnv(connectionString);
-  const child = spawn(
-    "pg_dump",
-    ["--no-owner", "--no-privileges", "--format=plain", connArg],
-    { stdio: ["ignore", "pipe", "pipe"], env },
-  );
+  // The dump SOURCE differs; everything downstream of it (gzip, optional
+  // encryption, the file) is identical either way, so a dump from the
+  // fallback restores with the same documented command.
+  let source;
+  let exitCodePromise = Promise.resolve(0);
   let stderr = "";
-  child.stderr.on("data", (chunk) => {
-    stderr += chunk;
-  });
-  const exitCodePromise = new Promise((resolvePromise, rejectPromise) => {
-    child.on("error", rejectPromise);
-    child.on("close", (code) => resolvePromise(code));
-  });
+  let jsPool = null;
+  let jsClient = null;
 
-  const stages = [child.stdout, createGzip()];
+  if (havePgDump) {
+    // Keep the DB password out of pg_dump's argv (visible via `ps` on a
+    // shared host); libpq reads it from PGPASSWORD in the child env instead.
+    const { connArg, env } = splitDbUrlForEnv(connectionString);
+    const child = spawn(
+      "pg_dump",
+      ["--no-owner", "--no-privileges", "--format=plain", connArg],
+      { stdio: ["ignore", "pipe", "pipe"], env },
+    );
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    exitCodePromise = new Promise((resolvePromise, rejectPromise) => {
+      child.on("error", rejectPromise);
+      child.on("close", (code) => resolvePromise(code));
+    });
+    source = child.stdout;
+  } else {
+    // No statement_timeout here, unlike _lib.db.mjs's createPool: a dump of a
+    // large table legitimately runs longer than the 30s an app query gets,
+    // and being cut off mid-dump is the one outcome worse than not having
+    // one.
+    jsPool = new pg.Pool({
+      connectionString,
+      connectionTimeoutMillis: 10000,
+    });
+    jsClient = await jsPool.connect();
+    source = Readable.from(
+      generateSqlDump({ client: jsClient, onLog: info, onWarn: warn }),
+      // Byte mode gives the pipeline real backpressure, so a slow disk
+      // throttles the reader rather than queueing pages in memory.
+      { objectMode: false },
+    );
+  }
+
+  const stages = [source, createGzip()];
   let cipherInfo = null;
   if (encryptionKey) {
     cipherInfo = createBackupCipher(encryptionKey);
@@ -168,12 +211,20 @@ export async function backupDatabase(connectionString, schemaVersion) {
   }
   stages.push(createWriteStream(filePath));
 
-  await pipeline(stages);
-  const exitCode = await exitCodePromise;
-  if (exitCode !== 0) {
-    throw new Error(
-      `pg_dump exited with code ${exitCode}${stderr ? `: ${stderr.trim()}` : ""}`,
-    );
+  try {
+    await pipeline(stages);
+    const exitCode = await exitCodePromise;
+    if (exitCode !== 0) {
+      throw new Error(
+        `pg_dump exited with code ${exitCode}${stderr ? `: ${stderr.trim()}` : ""}`,
+      );
+    }
+  } finally {
+    // Released on the failure path too. A migration that aborts because its
+    // backup failed should not also leave a connection pinned to the database
+    // it is about to stop touching.
+    jsClient?.release();
+    await jsPool?.end();
   }
 
   if (cipherInfo) {

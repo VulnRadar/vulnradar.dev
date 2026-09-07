@@ -46,10 +46,64 @@ export function parseArgs(argv) {
   // below could not tell "user asked for 300" from "nobody said".
   let timeoutExplicit = false;
 
+  // A flag's value has to exist and must not be the next flag. Without this,
+  // `--api-key --json` set apiKey to "--json", swallowed --json, and sent
+  // "Authorization: Bearer --json" for a 401 the user could not explain; and
+  // a trailing `--api-key` set it to undefined and then reported "no API
+  // key, pass --api-key" to someone who just had.
+  // A leading "-" means a flag, EXCEPT when the whole token parses as a
+  // number: "-5" is a value someone typed, and rejecting it as a flag would
+  // report "expects a value" for an argument that was supplied.
+  const looksLikeFlag = (raw) =>
+    raw.startsWith("-") && !Number.isFinite(Number(raw));
+
+  const takeValue = (name, raw) => {
+    if (raw === undefined || looksLikeFlag(raw)) {
+      out.error = `${name} expects a value.`;
+      return null;
+    }
+    return raw;
+  };
+
   const takeNumber = (name, raw) => {
+    if (takeValue(name, raw) === null) return null;
     const n = Number(raw);
     if (!Number.isFinite(n)) {
       out.error = `${name} expects a number, got "${raw}".`;
+      return null;
+    }
+    return n;
+  };
+
+  // Zero and negative are both finite, so takeNumber accepts them, and they
+  // are not equally wrong.
+  //
+  // --timeout 0 (or negative) is always wrong: `while (Date.now() < deadline)`
+  // never runs its body, so the CLI reports "Timed out after 0s" without
+  // polling once, on a scan the server has already started and will finish.
+  // The user is told it failed when it did not.
+  //
+  // --poll-interval 0 is legitimate. GET /scan/status deliberately does not
+  // charge quota (see the comment in app/api/v3/scan/status/[id]/route.ts,
+  // which explains that charging per poll could exhaust a key's daily limit
+  // before one deep scan finished), so a fast poll costs nothing but
+  // requests, and the test suite uses 0 to keep runs quick. Only negative is
+  // meaningless.
+  const takeAtLeast = (name, raw, min) => {
+    const n = takeNumber(name, raw);
+    if (n === null) return null;
+    if (n < min) {
+      out.error = `${name} must be at least ${min}, got ${n}.`;
+      return null;
+    }
+    return n;
+  };
+
+  const takePositive = (name, raw) => {
+    const n = takeNumber(name, raw);
+    if (n === null) return null;
+    if (n <= 0) {
+      out.error = `${name} must be greater than 0, got ${n}.`;
       return null;
     }
     return n;
@@ -69,10 +123,10 @@ export function parseArgs(argv) {
         out.json = true;
         break;
       case "--api-key":
-        out.apiKey = argv[++i];
+        out.apiKey = takeValue(arg, argv[++i]) ?? out.apiKey;
         break;
       case "--api-base":
-        out.apiBase = argv[++i];
+        out.apiBase = takeValue(arg, argv[++i]) ?? out.apiBase;
         break;
       case "--max-critical":
         out.maxCritical = takeNumber(arg, argv[++i]) ?? out.maxCritical;
@@ -84,7 +138,7 @@ export function parseArgs(argv) {
         out.maxMedium = takeNumber(arg, argv[++i]) ?? out.maxMedium;
         break;
       case "--timeout": {
-        const t = takeNumber(arg, argv[++i]);
+        const t = takePositive(arg, argv[++i]);
         if (t !== null) {
           out.timeout = t;
           timeoutExplicit = true;
@@ -92,11 +146,11 @@ export function parseArgs(argv) {
         break;
       }
       case "--poll-interval":
-        out.pollInterval = takeNumber(arg, argv[++i]) ?? out.pollInterval;
+        out.pollInterval = takeAtLeast(arg, argv[++i], 0) ?? out.pollInterval;
         break;
       default:
         if (arg.startsWith("-")) {
-          out.error = `Unknown flag: ${arg}`;
+          out.error ??= `Unknown flag: ${arg}`;
         } else if (out.command === undefined) {
           out.command = arg;
         } else if (out.url === undefined) {

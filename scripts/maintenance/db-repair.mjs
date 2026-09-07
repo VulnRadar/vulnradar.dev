@@ -306,6 +306,17 @@ a person. 2FA-specific data has its own separate tool:
         "yes-repair-data",
       );
       if (!confirmed) {
+        // askExact returns false with no TTY, which is the right refusal but
+        // the wrong exit code: a bare `return` here is 0, and to cron or a
+        // CI step that is indistinguishable from "ran and repaired
+        // everything". Same reasoning, same fix, as the downgrade guard in
+        // scripts/migrate/migrate.mjs.
+        if (!process.stdin.isTTY) {
+          error(
+            "Refusing to apply repairs unattended: this needs an exact confirmation phrase typed interactively. Rerun it in a real terminal.",
+          );
+          process.exit(1);
+        }
         info("Cancelled. No changes made.");
         return;
       }
@@ -337,6 +348,11 @@ a person. 2FA-specific data has its own separate tool:
       warn(
         `${okCount} repair(s) succeeded, ${failCount} failed and were rolled back independently. Already-committed repairs were not affected.`,
       );
+      // Non-zero, or a cron entry and any CI step wrapping this records a
+      // clean run. A partial repair is not a success: some rows are still
+      // broken and something has to notice. The message above already says
+      // which; the exit code is what makes anything act on it.
+      process.exitCode = 1;
     }
   } catch (err) {
     error(`Repair failed: ${err.message}`);

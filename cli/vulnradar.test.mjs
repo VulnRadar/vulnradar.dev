@@ -260,8 +260,13 @@ test("cli: --json prints the raw result and it parses", async () => {
     },
   );
   assert.equal(code, 0);
-  const json = stdout.slice(stdout.indexOf("{"), stdout.lastIndexOf("}") + 1);
-  assert.deepEqual(JSON.parse(json).summary, {
+  // Parsed WHOLE, not carved out by index. This used to be
+  // `stdout.slice(stdout.indexOf("{"), ...)` because the progress and summary
+  // lines were printed to stdout around the document, which meant the CLI's
+  // only machine-readable mode could not be piped into jq. That workaround
+  // living here was the evidence, and it stays gone: --json means stdout is
+  // the JSON and nothing else.
+  assert.deepEqual(JSON.parse(stdout).summary, {
     critical: 0,
     high: 0,
     total: 0,
@@ -355,4 +360,69 @@ test("cli: --help exits 0 with usage on stdout", async () => {
   const { code, stdout } = await runCli(["--help"]);
   assert.equal(code, 0);
   assert.match(stdout, /Usage:\n {2}vulnradar scan <url>/);
+});
+
+// ── Flag values that used to be taken silently ──────────────────────────
+//
+// Every one of these produced a confusing failure somewhere downstream
+// rather than an error at the point the flag was typed.
+
+test("cli: a flag given as another flag's value is rejected, not swallowed", () => {
+  // `--api-key --json` set apiKey to "--json" AND consumed --json, so the
+  // request went out as `Authorization: Bearer --json` and came back 401
+  // with nothing to connect the two.
+  const opts = parseArgs(["scan", "https://x.example", "--api-key", "--json"]);
+  assert.match(opts.error ?? "", /--api-key expects a value/);
+});
+
+test("cli: a trailing value-flag is rejected rather than reported as missing", () => {
+  // This one told the user "no API key. Pass --api-key" immediately after
+  // they had passed --api-key.
+  const opts = parseArgs(["scan", "https://x.example", "--api-key"]);
+  assert.match(opts.error ?? "", /--api-key expects a value/);
+});
+
+test("cli: a negative number is still a value, not a flag", () => {
+  // --max-medium -1 is the documented way to disable the medium gate, so the
+  // "starts with a dash means it is a flag" rule cannot be absolute.
+  const opts = parseArgs(["scan", "https://x.example", "--max-medium", "-1"]);
+  assert.equal(opts.error, undefined);
+  assert.equal(opts.maxMedium, -1);
+});
+
+test("cli: --timeout 0 is refused", () => {
+  // The wait loop is `while (Date.now() < deadline)`, so a zero timeout never
+  // polls once and reports "Timed out after 0s" on a scan the server has
+  // already started and will finish.
+  for (const v of ["0", "-5"]) {
+    const opts = parseArgs(["scan", "https://x.example", "--timeout", v]);
+    assert.match(opts.error ?? "", /--timeout must be greater than 0/);
+  }
+});
+
+test("cli: --poll-interval 0 is allowed, negative is not", () => {
+  // Polling fast costs nothing but requests: GET /scan/status deliberately
+  // does not charge quota. Negative is meaningless.
+  assert.equal(
+    parseArgs(["scan", "https://x.example", "--poll-interval", "0"]).error,
+    undefined,
+  );
+  assert.match(
+    parseArgs(["scan", "https://x.example", "--poll-interval", "-1"]).error ??
+      "",
+    /--poll-interval must be at least 0/,
+  );
+});
+
+test("cli: the FIRST bad flag is the one reported", () => {
+  // Errors used to be overwritten, so with two typos only the second was
+  // named and fixing it revealed the first on the next run.
+  const opts = parseArgs(["scan", "https://x.example", "--typo", "--alsobad"]);
+  assert.match(opts.error ?? "", /--typo/);
+});
+
+test("cli: an unknown flag with no command reports the flag, not bare usage", async () => {
+  const { code, stderr } = await runCli(["--typo"], { routes: {} });
+  assert.equal(code, 1);
+  assert.match(stderr, /Unknown flag: --typo/);
 });

@@ -349,6 +349,15 @@ proven unrecoverable (see scripts/_lib/_lib.2fa-diagnostics.mjs). Run
         "yes-repair-2fa",
       );
       if (!confirmed) {
+        // Same as db-repair.mjs: askExact returns false with no TTY, and a
+        // bare `return` exits 0, which reads as success to whatever spawned
+        // this. Refusing is right; reporting it as a clean run is not.
+        if (!process.stdin.isTTY) {
+          error(
+            "Refusing to reset 2FA unattended: this needs an exact confirmation phrase typed interactively. Rerun it in a real terminal.",
+          );
+          process.exit(1);
+        }
         info("Cancelled. No changes made.");
         return;
       }
@@ -378,6 +387,11 @@ proven unrecoverable (see scripts/_lib/_lib.2fa-diagnostics.mjs). Run
       warn(
         `Repaired ${okCount} user(s); ${failCount} failed and were rolled back independently (see above). Already-committed users were not affected.`,
       );
+      // Non-zero, or a cron entry and any CI step wrapping this records a
+      // clean run. A partial repair is not a success: some rows are still
+      // broken and something has to notice. The message above already says
+      // which; the exit code is what makes anything act on it.
+      process.exitCode = 1;
     }
   } catch (err) {
     error(`Repair failed: ${err.message}`);

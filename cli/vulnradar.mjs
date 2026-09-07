@@ -9,17 +9,35 @@ import { parseArgs, evaluateGate, USAGE } from "./lib.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Progress and summary lines, which are for a human to read.
+ *
+ * With --json these go to stderr, so stdout carries the JSON document and
+ * nothing else. They used to go to stdout unconditionally, wrapping the JSON
+ * in a "Started scan ..." line above and a "Scan complete: ..." line below,
+ * which made `vulnradar scan <url> --json | jq .` fail on the CLI's only
+ * machine-readable output mode. The tell was in this repo already:
+ * cli/vulnradar.test.mjs could not JSON.parse stdout and had to cut the
+ * document out by index.
+ */
+let jsonMode = false;
+const say = (msg) => (jsonMode ? console.error(msg) : console.log(msg));
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  jsonMode = opts.json === true;
 
-  if (opts.help || !opts.command) {
-    console.log(USAGE);
-    process.exit(opts.help ? 0 : 1);
-  }
+  // Errors first. `vulnradar --typo` sets opts.error AND leaves command
+  // undefined, and checking the help branch first printed bare usage with
+  // nothing to say the flag had been rejected.
   if (opts.error) {
     console.error(`Error: ${opts.error}\n`);
     console.error(USAGE);
     process.exit(1);
+  }
+  if (opts.help || !opts.command) {
+    console.log(USAGE);
+    process.exit(opts.help ? 0 : 1);
   }
   if (opts.command !== "scan") {
     console.error(`Unknown command: ${opts.command}. Did you mean "scan"?`);
@@ -60,7 +78,7 @@ async function main() {
     console.error("No scanId in the response.");
     process.exit(1);
   }
-  console.log(`Started scan ${scanId} for ${opts.url}`);
+  say(`Started scan ${scanId} for ${opts.url}`);
 
   // 2. Poll until it completes.
   const deadline = Date.now() + opts.timeout * 1000;
@@ -98,7 +116,7 @@ async function main() {
     console.log(JSON.stringify(result, null, 2));
   }
   const s = result.summary || {};
-  console.log(
+  say(
     `Scan complete: critical=${s.critical || 0} high=${s.high || 0} medium=${s.medium || 0} low=${s.low || 0} total=${s.total || 0}`,
   );
 
