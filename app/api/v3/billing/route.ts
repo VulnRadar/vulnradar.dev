@@ -387,10 +387,24 @@ export async function POST(request: Request) {
         cancelAt: subscription.cancel_at
           ? new Date(subscription.cancel_at * 1000).toISOString()
           : null,
-        currentPeriodEnd: new Date(
-          (subscription as unknown as { current_period_end: number })
-            .current_period_end * 1000,
-        ).toISOString(),
+        // Read off the subscription ITEM, which is where Stripe moved it. It
+        // was read off the subscription through an `as unknown as` cast, and
+        // that field no longer exists on the response: the value was
+        // undefined, `undefined * 1000` is NaN, and `new Date(NaN)
+        // .toISOString()` throws RangeError. This route would have answered
+        // 500 AFTER the cancellation had already been committed to both
+        // Stripe and our own users row, so the caller would be told the
+        // cancellation failed when it had succeeded, and retrying would
+        // repeat it. The rest of this file already reads it from the item.
+        //
+        // Null rather than a thrown date when Stripe sends no period: the
+        // cancellation itself is done either way, and the timestamp is
+        // supporting detail.
+        currentPeriodEnd: subscription.items?.data?.[0]?.current_period_end
+          ? new Date(
+              subscription.items.data[0].current_period_end * 1000,
+            ).toISOString()
+          : null,
       });
     }
 

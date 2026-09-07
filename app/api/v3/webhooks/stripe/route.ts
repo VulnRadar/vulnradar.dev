@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/billing/stripe";
+import { invoicePaymentIntentId } from "@/lib/billing/invoice-payment-intent";
 import { getPlanFromProductId } from "@/lib/billing/products";
 import { getPaidPlans, getPlanById, type PlanId } from "@/lib/billing/catalog";
 import {
@@ -803,8 +804,7 @@ export async function POST(req: NextRequest) {
               FROM users WHERE stripe_customer_id = $8`,
               [
                 invoice.id,
-                (invoice as unknown as { payment_intent?: string })
-                  .payment_intent ?? null,
+                invoicePaymentIntentId(invoice),
                 invoice.amount_paid,
                 invoice.currency,
                 "succeeded",
