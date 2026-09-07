@@ -490,6 +490,19 @@ export async function POST(req: Request) {
       "Content-Type": "text/plain; charset=utf-8",
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
+      // This is the only streaming response in the app, and nginx buffers
+      // proxied responses by default (proxy_buffering on). Without this the
+      // whole reply is held at the proxy and delivered in one lump when the
+      // model finishes, so a self-hosted deployment behind nginx sees the
+      // assistant "think" for twenty seconds and then paste an answer,
+      // instead of typing it. Nothing errors, which is why it would be a
+      // miserable thing to diagnose from the outside.
+      //
+      // The header is nginx-specific and harmless everywhere else: other
+      // proxies ignore an unknown X- header. Setting it here rather than
+      // telling every operator to add `proxy_buffering off;` means the
+      // default deployment streams correctly with no proxy config at all.
+      "X-Accel-Buffering": "no",
       "X-AI-Model": model,
       "X-AI-Provider-Name": providerName,
       "X-AI-Provider-Url": baseUrl ?? "",
