@@ -140,6 +140,72 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.8.5",
+    date: "September 6, 2026",
+    title: "Whose Domain Is It",
+    highlights: false,
+    summary:
+      "Verifying a domain unlocked the intrusive scans and nothing else. It said nothing about the scans other people run against your domain, which is the half an owner actually cares about: anyone could point VulnRadar at your site, publish the result, and it appeared on the public feed and on your host page with your findings in it. You now get the list, the controls to take it out of public view, and a switch that stops the domain being scanned at all. Alongside that: the assistant stopped answering to the underlying model's name, repo scans stopped silently returning nothing on an Anthropic endpoint, the icons across the app line up with the text beside them, and a pass for hardcoded values found four settings that were being overridden by the literal sitting next to them.",
+    changes: [
+      {
+        icon: Shield,
+        label: "You Can Finally Do Something About Scans of Your Own Domain",
+        desc: "Proving you own a domain unlocked active probing, port sweeps and authenticated scans. It gave you nothing at all about the scans OTHER accounts run against you, which is the part a domain owner actually cares about: anyone could scan your site, mark the result public, and that report then sat on the public scan feed and on your domain's host page carrying your findings, with no list you could see and nothing you could do. Open Manage on a verified domain and there are three things now. The list is every scan of the domain a signed-out stranger can already read, whoever ran it, published ones and ones behind an unlisted share link. Private scans other people ran are deliberately not in it: those are their own record, they expose nothing about your domain, and showing them would turn domain verification into a way to watch other accounts. The controls take scans out of public view and revoke their share links. Neither deletes anything, and the screen says so rather than leaving it implied: the report stays in its own owner's private history, because what you control is exposure, not somebody else's data. And the switch refuses every scan of the domain and of anything beneath it, from every account including your own, through the same mechanism and the same enforcement path as a staff blocklist entry, because it is the same statement. An owner can lift a block they put in place themselves and cannot lift a staff one, which is reported plainly rather than hidden behind a button that would quietly do nothing.",
+        category: "added",
+      },
+      {
+        icon: Bot,
+        label: "The Assistant Was Answering to the Model's Name",
+        desc: "Asked who it was, the chat assistant said it was MiniMax. The prompt did name it, once, in its opening sentence, and the block at the very end that survives a truncated context said only that it was the VulnRadar assistant, without giving the name or saying what to do when someone asks directly, so the model answered from its own training instead. There is a section about this now that answers the question rather than only forbidding the wrong answer, names the exact denials that were coming out, and keeps naming the underlying model a perfectly fair thing to do: which model runs behind it is a real question with a real answer, and being that model is not the same as running on it. The name also comes from the setting that exists for it rather than being typed into the prompt, which is the same bug in miniature, and it had been typed into the chat's own help text too.",
+        category: "fixed",
+      },
+      {
+        icon: Code,
+        label: "Repo Scans Returned Nothing on an Anthropic Endpoint",
+        desc: "Every AI feature in the app resolves its provider the same way and branches on which request shape the endpoint speaks. Every one except the GitHub repo code review, which only ever spoke OpenAI's. Pointing the AI endpoint at an Anthropic-compatible route, which is what MiniMax's own documentation recommends for its newest model, left every repository scan posting into a 404 and reporting no AI findings, with a single line in the server log to say otherwise. Nothing failed visibly, which is exactly why it went unnoticed. It now branches like the rest, asks a reasoning model to reason before judging whether a line is exploitable, and gets the reasoning timeout allowance every other AI call already had. It sends tens of thousands of characters per call and was the only one still on a flat timeout.",
+        category: "fixed",
+      },
+      {
+        icon: ScanSearch,
+        label:
+          "The Code Review Prompt Said What to Look For and Nothing About When Not to File",
+        desc: "It listed the vulnerability classes to hunt for and stopped there, which is the same defect the finding-verification prompt had before it was rewritten. It now carries the rule that matters more: name the file and the line, trace the dangerous value to the dangerous call, confirm the input is actually attacker-influenced, and check that nothing in between already neutralises it. Anything you would phrase as a maybe is a reason not to file rather than a hedge to attach. Findings also carry a confidence the model chose instead of the flat 60 every one used to be stamped with, and anything it scores below its own reporting floor is dropped rather than shown, since that is the model calling its own finding a guess.",
+        category: "fixed",
+      },
+      {
+        icon: Crosshair,
+        label: "The Icons Were Never Quite Lined Up With the Text",
+        desc: "An icon sitting beside a line of text was positioned by hand in 43 places, always the same way: nudge it down two pixels. Two pixels is correct for exactly one combination, a 16px icon against 14px text at the default line height, and the app used a dozen combinations. The two most common were both wrong, in opposite directions, by amounts small enough to look like nothing in isolation and impossible to unsee once you have noticed. There is one component for it now and it has no number in it: a zero-width space builds a box exactly one line of that text tall and the icon centres against it, at any type size and any leading. It also aligns to the FIRST line rather than the middle of the block, which is the half of this that was visible from across the room, since a row set to centre floated its icon down the middle of a three-line paragraph. 31 files converted, including the one shared alert component that carries 53 more behind it, and a test now fails the build on a new hand-written nudge. It caught one this pass had missed.",
+        category: "fixed",
+      },
+      {
+        icon: Smartphone,
+        label:
+          "The Chat Window Was Drawn Underneath the Browser's Own Toolbars",
+        desc: "On a phone the chat panel filled the screen edge to edge using the layout viewport, which on iOS Safari extends behind the address bar. The composer sat under it: the panel looked open and could not be typed into. The existing handling only engaged once the keyboard was already up, and it measured the window height while rendering, so it never updated on rotation either. The sheet is now sized to the rectangle the phone can actually show, tracking the viewport's offset as well as its height, because iOS scrolls the page underneath the form assist bar and a panel pinned to the top drifts off screen when it does. Opening a user in the admin panel on a phone also used to land you at the bottom of the page: the detail panel mounts above the directory you scrolled through to find them, so the browser held its position and the panel was entirely above the fold.",
+        category: "fixed",
+      },
+      {
+        icon: Table2,
+        label: "The Repo List Is Now the Same Table as the Scan List",
+        desc: "The repos page and the history page are the same kind of list doing the same job, and repos read as a different product because it was the same idea drawn three different ways. The row opened on a bare 16px icon in a 16px track, so nothing anchored the left edge; it now opens on the same tinted chip the scan list uses, with the repository's own mark in it and its scan state in the tone. A lock stays visible because it is the one fact that changes what a finding means: a secret in a public repo is already leaked. The severity rail was drawn only for repos that had been scanned, so rows shifted sideways depending on their own state. And the three columns to the right were auto-sized, which made them a different width on every row: the Actions header sat over nothing in particular, and Updated landed in a different place depending on whether the row above had five severity pills or the words about not being scanned yet.",
+        category: "fixed",
+      },
+      {
+        icon: Network,
+        label: "Asking for a Port Sweep Could Cost You the Whole Scan",
+        desc: "A port sweep needs a verified domain, and the two places you can ask for one behaved completely differently when you did not have it. From a finished result, the panel says so up front and a refusal costs nothing: the rest of the report is still there. From the dashboard, the toggle said the same sentence in helper text and the API answered with a refusal that rejected the entire scan. Ticking it against an unverified domain did not give you a scan without the sweep. It gave you no scan at all, after you had picked every option and pressed the button. The form works it out before you commit now: the switch goes unavailable against a host you have not verified, names the host it could not match, and links to the page that fixes it. A switch already on when you edit the URL to an uncovered host turns itself off rather than letting the submit fail for a reason the form had already worked out.",
+        category: "fixed",
+      },
+      {
+        icon: Settings,
+        label: "Four Settings Were Being Overridden by the Literal Beside Them",
+        desc: "A pass for hardcoded values turned up several facts typed twice where the copies had already drifted. One database column had three different maximum lengths depending on which code path wrote to it, and the widest one accepted values the column then rejected. Every scan pipeline resolved a response-body ceiling from a setting, read the body with it, and then re-capped the body at a hardcoded number sitting just below the shipped default: raising the setting to 5 MB read 5 MB off the wire and threw 4 MB away before any check saw it. The async-checks timeout reached three scan routes and not the main one, which is the one that runs almost every scan. The crawl's per-page fetch timeout reached the page discovery step only, so the fetch that actually scans each page, the most expensive network operation a crawl performs, had no knob at all. The assistant was also telling people a 24-hour subdomain cache and a 5-minute browser session limit, both of which are wrong.",
+        category: "fixed",
+      },
+    ],
+  },
+  {
     version: "3.8.4",
     date: "September 6, 2026",
     title: "The AI Was Answering Without Thinking",
