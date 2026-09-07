@@ -47,6 +47,7 @@ import {
 import { formatTimestamp } from "@/components/admin/utils";
 import type { ToastState } from "@/components/admin/types";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { CampaignTemplatePicker } from "./campaign-template-picker";
 
 interface Broadcast {
   id: string;
@@ -318,6 +319,17 @@ export function MassEmailManager() {
           subtitle="Saving only stores a draft. Nothing reaches an inbox until you send it from the list below."
         />
         <div className="p-4 sm:p-5 space-y-4">
+          {/* The three fields under this are a subject, a blank textarea and a
+              preference filter, and getting all three right by hand is how a
+              broadcast ends up reaching people who opted out of exactly this
+              kind of message. A template sets all three together. */}
+          <CampaignTemplatePicker
+            onApply={(next) => {
+              setTitle(next.title);
+              setContent(next.content);
+              setCategory(next.category);
+            }}
+          />
           <div>
             <label
               htmlFor={subjectId}
