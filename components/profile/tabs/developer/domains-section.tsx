@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { DomainControlPanel } from "@/components/domains/domain-control-panel";
 import { API } from "@/lib/config/client-constants";
 import {
   Plus,
@@ -355,28 +356,32 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                         )}
                       </div>
                       <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:shrink-0">
-                        {needsRecord && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-11 sm:h-7 gap-1 text-xs"
-                            // a11y (SC 4.1.2): a rotating chevron was the only
-                            // signal that this expands the DNS record block.
-                            aria-expanded={isExpanded}
-                            onClick={() =>
-                              setExpandedId(isExpanded ? null : d.id)
-                            }
-                          >
-                            DNS record
-                            <ChevronDown
-                              className={cn(
-                                "h-3.5 w-3.5 transition-transform",
-                                isExpanded && "rotate-180",
-                              )}
-                              aria-hidden="true"
-                            />
-                          </Button>
-                        )}
+                        {/* One disclosure, two contents. An unverified row
+                            opens the DNS record it still needs; a verified one
+                            opens what verification actually bought, which used
+                            to be nothing you could see: the scans of this
+                            domain anyone can read, and the switch that stops
+                            them being run at all. */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-11 sm:h-7 gap-1 text-xs"
+                          // a11y (SC 4.1.2): a rotating chevron was the only
+                          // signal that this expands the DNS record block.
+                          aria-expanded={isExpanded}
+                          onClick={() =>
+                            setExpandedId(isExpanded ? null : d.id)
+                          }
+                        >
+                          {needsRecord ? "DNS record" : "Manage"}
+                          <ChevronDown
+                            className={cn(
+                              "h-3.5 w-3.5 transition-transform",
+                              isExpanded && "rotate-180",
+                            )}
+                            aria-hidden="true"
+                          />
+                        </Button>
                         {needsRecord && (
                           <Button
                             variant="ghost"
@@ -481,6 +486,10 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                           &quot;Verify now&quot; once it&apos;s live.
                         </p>
                       </div>
+                    )}
+
+                    {isExpanded && !needsRecord && (
+                      <DomainControlPanel domainId={d.id} domain={d.domain} />
                     )}
                   </div>
                 );

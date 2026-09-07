@@ -287,6 +287,13 @@ export const API = {
   WEBHOOKS: `/api/${API_VERSION}/webhooks`,
   SCHEDULES: `/api/${API_VERSION}/schedules`,
   DOMAINS: `/api/${API_VERSION}/domains`,
+  /** Publicly reachable scans of a verified domain, from any account, and the
+   *  owner's controls over them. See lib/domains/owner-control.ts. */
+  DOMAIN_SCANS: (id: number | string) =>
+    `/api/${API_VERSION}/domains/${id}/scans`,
+  /** Whether a verified domain is blocked from being scanned at all. */
+  DOMAIN_BLOCK: (id: number | string) =>
+    `/api/${API_VERSION}/domains/${id}/block`,
   TEAMS: `/api/${API_VERSION}/teams`,
   TEAMS_MEMBERS: `/api/${API_VERSION}/teams/members`,
   TEAMS_MEMBER_SCANS: `/api/${API_VERSION}/teams/member-scans`,

@@ -1,6 +1,6 @@
 # VulnRadar Product Features: AI Knowledge
 
-_Auto-compiled from the routes under `app/` on 2026-09-06._
+_Auto-compiled from the routes under `app/` on 2026-09-07._
 
 Every user-facing page this deployment ships, with the purpose read out
 of the page's own metadata, heading and subtitle. If a feature is not
@@ -46,7 +46,7 @@ Heading on the page: Attack surface
 In-app navigation label: Attack Surface
 Also known as: domains verified portfolio
 
-Your verified domain portfolio. Verifying a domain proves you own it: a verified apex covers every subdomain beneath it and unlocks active probing, authenticated scans, and subdomain discovery across those assets.
+Your verified domain portfolio. Verifying a domain proves you own it: a verified apex covers every subdomain beneath it and unlocks active probing, port sweeps, authenticated scans, and subdomain discovery across those assets.
 
 ### Status badge
 Route: /badge

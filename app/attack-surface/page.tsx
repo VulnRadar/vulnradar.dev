@@ -44,8 +44,14 @@ export default function AttackSurfacePage() {
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             Your verified domain portfolio. Verifying a domain proves you own
             it: a verified apex covers every subdomain beneath it and unlocks
-            active probing, authenticated scans, and subdomain discovery across
-            those assets.
+            active probing, port sweeps, authenticated scans, and subdomain
+            discovery across those assets.
+          </p>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            It also gives you a say over scans other people run. Open Manage on
+            a verified domain to see every scan of it that anyone can read, take
+            those out of public view, revoke their share links, or switch
+            scanning of the domain off entirely.
           </p>
         </div>
 
