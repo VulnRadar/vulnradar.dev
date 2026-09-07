@@ -80,17 +80,44 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // The conflict target is a session id the caller chose, and the update had
+  // no predicate on it, so any caller who knew or obtained another account's
+  // session id could replace that conversation's messages wholesale. The row
+  // kept the victim's user_id (the old DO UPDATE never touched it), so what
+  // staff then read in the admin panel was attacker-written text attributed
+  // to a real, named user.
+  //
+  // The predicate keeps a signed-in conversation writable only by the account
+  // that owns it. An anonymous row stays adoptable, and has to: the widget
+  // works for guests, and a guest who signs in mid-conversation continues
+  // posting the same session id and would otherwise be locked out of their
+  // own thread one message in. COALESCE is what performs that adoption, and
+  // it only ever fills a NULL, so signing in cannot move a conversation off
+  // the account that already holds it.
   const result = await pool.query(
     `INSERT INTO ai_conversations (session_id, user_id, messages, created_at, last_message_at)
      VALUES ($1, $2, $3::jsonb, NOW(), NOW())
      ON CONFLICT (session_id) DO UPDATE
        SET messages = $3::jsonb,
-           last_message_at = NOW()
+           last_message_at = NOW(),
+           user_id = COALESCE(ai_conversations.user_id, EXCLUDED.user_id)
+       WHERE ai_conversations.user_id IS NULL
+          OR ai_conversations.user_id = EXCLUDED.user_id
      RETURNING id, session_id`,
     [sessionId, userId, JSON.stringify(messages)],
   );
 
-  const row = result.rows[0] as { id: number; session_id: string };
+  // The WHERE filtered the update out: the session id exists and belongs to
+  // somebody else. Answered the same way a missing row would be, because
+  // telling the caller which of the two it is confirms that a session id they
+  // guessed is real.
+  const row = result.rows[0] as { id: number; session_id: string } | undefined;
+  if (!row) {
+    return NextResponse.json(
+      { error: "Conversation not found." },
+      { status: 404 },
+    );
+  }
   return NextResponse.json({ id: row.id, sessionId: row.session_id });
 }
 
