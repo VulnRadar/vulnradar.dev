@@ -118,7 +118,10 @@ Fussier, because it has to force the browser onto IPv4:
    }
 
    server {
-     listen 443 ssl http2;
+     # `listen 443 ssl http2;` has been deprecated since nginx 1.25.1 and
+     # warns on every reload. The directive below replaces it.
+     listen 443 ssl;
+     http2 on;
      server_name ip4.vulnradar.dev;
 
      ssl_certificate     /etc/letsencrypt/live/ip4.vulnradar.dev/fullchain.pem;
@@ -128,9 +131,12 @@ Fussier, because it has to force the browser onto IPv4:
 
      # Only the echo endpoint, proxied to the SAME app as vulnradar.dev.
      location = /api/v3/whoami-ip {
-       # Example address only (RFC 5737 documentation range). Replace with your
-       # own origin. The real origin is not published in this repo.
-       proxy_pass http://203.0.113.10:3000;
+       # 127.0.0.1, not the server's own public address. Proxying to the public
+       # IP sends the request back out to the NIC and in again (a hairpin): it
+       # is slower, it depends on the firewall allowing the machine to reach
+       # itself, and it means the app's port has to be reachable from outside
+       # for the proxy to work at all, which is exactly what you do not want.
+       proxy_pass http://127.0.0.1:3000;
        proxy_set_header Host $host;
        proxy_set_header X-Real-IP $remote_addr;
        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -145,7 +151,7 @@ Fussier, because it has to force the browser onto IPv4:
    }
    ```
 
-   Use IPv4-only listeners here (`listen 443 ssl http2;`, NOT `listen [::]:443`).
+   Use IPv4-only listeners here (`listen 443 ssl;`, NOT `listen [::]:443`).
    The point of this host is to be IPv4-only; an IPv6 listener is unnecessary,
    and if an AAAA record ever slipped in it would let the host answer over IPv6
    and defeat the capture. Then `sudo nginx -t && sudo systemctl reload nginx`.
@@ -162,9 +168,91 @@ Fussier, because it has to force the browser onto IPv4:
    Leave it unset to turn the feature off; nothing breaks, IPv6 users just show
    an IPv6 address on the security page.
 
-Both subdomains proxy to the same upstream (`203.0.113.10:3000`, an example
-address from the RFC 5737 documentation range, not the real origin) on the same
+Both subdomains proxy to the same upstream (`127.0.0.1:3000`) on the same
 nginx. It is one app on one port.
+
+---
+
+## D2. The main server block
+
+Four things about the primary `vulnradar.dev` block are easy to get wrong and
+give no error when you do. All four have bitten this deployment.
+
+### 1. `add_header` appends, it does not replace
+
+This is the one that costs the most time, because the symptom looks like a bug
+in the app. nginx's `add_header` does not override a header the upstream
+already sent: it adds a second copy. So a security header set in
+`middleware.ts` and set again in nginx arrives at the browser **twice**, and a
+scanner (including ours) reports the duplicate.
+
+To override an upstream header you have to remove it first:
+
+```nginx
+proxy_hide_header Cross-Origin-Embedder-Policy;
+add_header Cross-Origin-Embedder-Policy "credentialless" always;
+```
+
+The better answer is usually to set it in exactly one place. The app already
+sets the full header set; nginx does not need to repeat any of it.
+
+### 2. `Connection: upgrade` must be conditional
+
+A hardcoded `proxy_set_header Connection "upgrade";` sends the upgrade header
+on **every** request, not just WebSocket ones. Most upstreams tolerate it and
+some proxies and CDNs do not. The idiom is a `map`, at `http` level (outside
+`server`, so usually `/etc/nginx/nginx.conf` or a file in `conf.d/`):
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+```
+
+then, in the `location`:
+
+```nginx
+proxy_http_version 1.1;
+proxy_set_header Upgrade    $http_upgrade;
+proxy_set_header Connection $connection_upgrade;
+```
+
+Now a normal request sends `Connection: close` and only a real upgrade sends
+`upgrade`.
+
+### 3. The read timeout has to clear the longest request
+
+nginx's default `proxy_read_timeout` is **60 seconds**. AI verification on a
+deep scan answers with one JSON body at the end rather than streaming, and with
+a reasoning model it can legitimately run for minutes: the app's own ceiling
+(`CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS`) is 900 seconds. A proxy left at its
+default cuts the connection long before anything configured inside the app
+matters, and the browser gets a 504 with no explanation.
+
+```nginx
+proxy_read_timeout 960s;
+proxy_send_timeout 960s;
+```
+
+Keep it above the app's budget, not equal to it, so the app is always the thing
+that times out and reports why. This is the one layer the application cannot
+see or fix on your behalf.
+
+### 4. Proxy to `127.0.0.1`, not to your own public IP
+
+`proxy_pass http://<your public IP>:3000;` works, and it hairpins: out to the
+NIC and back in. It is slower, it breaks if the firewall stops the machine
+reaching itself, and it requires the app's port to be reachable from the
+internet for the proxy to work at all. That last part is the real cost, because
+it means anyone can bypass Cloudflare by hitting the origin directly.
+
+```nginx
+proxy_pass http://127.0.0.1:3000;
+```
+
+Then bind the app to loopback and firewall the port, so the only route in is
+through nginx.
 
 ---
 
