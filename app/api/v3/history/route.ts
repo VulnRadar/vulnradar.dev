@@ -346,6 +346,27 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
      )`,
     [authedUserId],
   );
+  // Before the scans go, not after. host_reputation.source_scan_id is
+  // ON DELETE SET NULL, so deleting the scans first orphans the findings copy
+  // rather than removing it: the row survives with a null source, every purge
+  // path keys on source_scan_id, and nothing can ever reach it again. The
+  // findings then keep serving on the unauthenticated /host/<hostname> page
+  // forever.
+  //
+  // Every single-scan delete already does this (history/[id]/delete,
+  // history/[id] DELETE, and account deletion, which explains the ordering in
+  // the same words). Clearing all of them was the one path that did not, so
+  // deleting scans one at a time and deleting them together gave opposite
+  // results for the same intent, and the one that looked like the thorough
+  // option was the one that left data public.
+  await pool.query(
+    `DELETE FROM host_reputation
+      WHERE source_scan_id IN (
+        SELECT id FROM scan_history
+        WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')
+      )`,
+    [authedUserId],
+  );
   await pool.query(
     `DELETE FROM scan_history
      WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')`,

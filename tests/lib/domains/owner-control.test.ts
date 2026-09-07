@@ -112,11 +112,29 @@ describe("listDomainScans", () => {
 });
 
 describe("applyDomainScanAction", () => {
-  it("unpublish clears is_public and never deletes", async () => {
+  it("unpublish clears is_public AND removes the public host snapshot", async () => {
+    // This assertion used to read `not.toContain("DELETE")`, and that is what
+    // let the bug ship. /host is served from host_reputation, which keeps its
+    // own copy of the findings, so clearing is_public alone took the scan off
+    // nothing a visitor can see: the owner pressed "Take out of public view",
+    // got a count back, and every finding stayed live on their own domain's
+    // public page.
     await applyDomainScanAction("example.com", "unpublish", null);
     expect(sql()).toContain("SET is_public = false");
-    expect(sql()).toMatch(/^\s*UPDATE scan_history/);
-    expect(sql()).not.toContain("DELETE");
+    expect(sql()).toContain("DELETE FROM host_reputation");
+    // Scoped to the scans this action just changed, so it can never remove a
+    // snapshot for a domain the caller has not verified.
+    expect(sql()).toContain("source_scan_id IN (SELECT id FROM changed)");
+    // One statement: a second query could fail after the first committed and
+    // leave the scan private while /host still served it.
+    expect(sql()).toContain("WITH changed AS");
+  });
+
+  it("unpublish still never deletes the scan itself", async () => {
+    // An owner controls exposure, not another account's record of work it
+    // did. The only DELETE is the public snapshot.
+    await applyDomainScanAction("example.com", "unpublish", null);
+    expect(sql()).not.toContain("DELETE FROM scan_history");
   });
 
   it("revoke-shares clears the token and never deletes", async () => {
@@ -151,10 +169,19 @@ describe("applyDomainScanAction", () => {
   });
 
   it("reports how many rows actually changed", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 3 });
+    // Counted from the CTE rather than read off rowCount: with the purge
+    // attached, rowCount reflects the final SELECT and not the UPDATE.
+    mockQuery.mockResolvedValueOnce({ rows: [{ affected: 3 }] });
     expect(
       await applyDomainScanAction("example.com", "unpublish", null),
     ).toEqual({ affected: 3 });
+  });
+
+  it("reports zero rather than throwing when the count comes back empty", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(
+      await applyDomainScanAction("example.com", "unpublish", null),
+    ).toEqual({ affected: 0 });
   });
 });
 
@@ -220,11 +247,25 @@ describe("blockDomain", () => {
     expect(sql()).toContain("created_by");
   });
 
-  it("pressing it twice is not an error", async () => {
+  it("revives a rule that exists but is not in force", async () => {
+    // A row can exist and not be enforced: staff can deactivate one, or give
+    // it an expires_at that has since lapsed. With DO NOTHING the insert was
+    // skipped, readDomainBlock (which filters on those same two conditions)
+    // found nothing, and the route answered 200 with block: null, which is
+    // exactly what "not blocked" looks like. The owner pressed the button,
+    // was shown no block, and scanning of their domain carried on.
     await blockDomain("example.com", 42, "opting out");
-    expect(sql()).toContain(
-      "ON CONFLICT (rule_type, value_type, value) DO NOTHING",
-    );
+    expect(sql()).toContain("DO UPDATE");
+    expect(sql()).toContain("SET is_active = true");
+    expect(sql()).toContain("expires_at = NULL");
+  });
+
+  it("does not take ownership of a staff rule when reviving one", async () => {
+    // unblockDomain keys on created_by, so updating it here would let an
+    // owner revive a staff rule and then lift it.
+    await blockDomain("example.com", 42, "opting out");
+    const s = sql();
+    expect(s.slice(s.indexOf("DO UPDATE"))).not.toContain("created_by");
   });
 
   it("drops the rule memo so the block takes effect now", async () => {

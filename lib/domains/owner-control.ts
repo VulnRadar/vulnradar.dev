@@ -153,12 +153,26 @@ export interface DomainScanActionResult {
 /**
  * Withdraw public exposure of scans of this domain.
  *
- * `unpublish` clears is_public, which takes the scan off /public-scans and off
- * /host/<domain>. `revoke-shares` clears share_token, which kills every
- * unlisted /shared/<token> link pointing at it. Both leave the row intact in
- * its owner's private history, and both are scoped by the same host match the
- * listing uses, so this can never touch a scan of a domain the caller has not
- * verified.
+ * `unpublish` clears is_public AND deletes the host_reputation snapshot the
+ * scan produced. Both halves are needed and only the first was here: /host is
+ * served from host_reputation, which holds its OWN copy of the findings,
+ * response headers and result_meta (see lib/scanner/host-reputation.ts's
+ * upsertHostReputation). Clearing is_public alone took the scan off nothing a
+ * visitor can see. An owner pressed "Take out of public view", got
+ * {affected: N} back, and every finding stayed live on /host/<their domain>
+ * for anyone, permanently, with no lever left: they do not own the scan row,
+ * so the working purge on PATCH /api/v3/history/[id] is closed to them.
+ *
+ * A privacy control that reports success and does nothing is worse than one
+ * that is missing.
+ *
+ * `revoke-shares` clears share_token, which kills every unlisted
+ * /shared/<token> link AND removes the scan from /public-scans, which is
+ * gated on share_token rather than on is_public.
+ *
+ * Both leave the row intact in its owner's private history, and both are
+ * scoped by the same host match the listing uses, so this can never touch a
+ * scan of a domain the caller has not verified.
  *
  * `publicIds` narrows it to specific scans; omitting it applies to every
  * covered scan, which is the "take my domain out of public view" case.
@@ -185,16 +199,35 @@ export async function applyDomainScanAction(
     idFilter = ` AND sh.public_id = ANY($${params.length}::text[])`;
   }
 
+  // One statement, so the flag and the public snapshot cannot end up
+  // disagreeing: a second query could fail after the first committed and
+  // leave the scan private while /host still served it.
+  //
+  // The DELETE is scoped by source_scan_id from the same CTE, so it can only
+  // remove a snapshot produced by a scan this action just changed. It is a
+  // no-op for revoke-shares, which does not change what /host serves.
+  const purge =
+    action === "unpublish"
+      ? `, purged AS (
+        DELETE FROM host_reputation
+         WHERE source_scan_id IN (SELECT id FROM changed)
+      )`
+      : "";
+
   const result = await pool.query(
-    `UPDATE scan_history sh
-        SET ${setClause}
-      WHERE ${alreadyDone}
-        AND (${HOST_OF_URL} = LOWER($1)
-             OR ${HOST_OF_URL} LIKE '%.' || LOWER($1))${idFilter}`,
+    `WITH changed AS (
+        UPDATE scan_history sh
+           SET ${setClause}
+         WHERE ${alreadyDone}
+           AND (${HOST_OF_URL} = LOWER($1)
+                OR ${HOST_OF_URL} LIKE '%.' || LOWER($1))${idFilter}
+        RETURNING sh.id
+      )${purge}
+      SELECT COUNT(*)::int AS affected FROM changed`,
     params,
   );
 
-  return { affected: result.rowCount ?? 0 };
+  return { affected: result.rows[0]?.affected ?? 0 };
 }
 
 export interface DomainBlock {
@@ -253,8 +286,20 @@ export async function readDomainBlock(
  *
  * One 'url' blacklist row, the same shape and the same enforcement path as an
  * admin block: checkAccessRules refuses the target before any scan starts, on
- * every route. ON CONFLICT DO NOTHING because (rule_type, value_type, value)
- * is unique and pressing the button twice is not an error.
+ * every route.
+ *
+ * ON CONFLICT REACTIVATES rather than doing nothing. A row can exist and not
+ * be in force: staff can deactivate one, or give it an expires_at that has
+ * since lapsed, and checkAccessRules honours only active unexpired rules. With
+ * DO NOTHING the insert was skipped, readDomainBlock (which filters on the
+ * same two conditions) found nothing, and the route answered 200 with
+ * block: null, which is exactly what "not blocked" looks like. The owner
+ * pressed the button, was shown no block, and scanning of their domain
+ * carried on.
+ *
+ * created_by is deliberately NOT updated on the conflict path: an owner may
+ * revive a lapsed rule but must not become the owner of a staff one, because
+ * unblockDomain keys on created_by and that would let them lift it.
  *
  * The rule memo has a 30 second TTL, so it is cleared here rather than left to
  * expire: an owner who has just switched scanning off should not watch scans
@@ -269,7 +314,12 @@ export async function blockDomain(
     `INSERT INTO access_rules
        (rule_type, value_type, value, description, reason, created_by)
      VALUES ('blacklist', 'url', LOWER($1), $2, $3, $4)
-     ON CONFLICT (rule_type, value_type, value) DO NOTHING`,
+     ON CONFLICT (rule_type, value_type, value) DO UPDATE
+       SET is_active = true,
+           expires_at = NULL,
+           reason = EXCLUDED.reason
+     WHERE access_rules.is_active = false
+        OR access_rules.expires_at <= NOW()`,
     [domain, `Blocked by the verified owner of ${domain}.`, reason, userId],
   );
   clearAccessRulesCache();

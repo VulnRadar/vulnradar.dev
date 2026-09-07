@@ -640,7 +640,22 @@ describe("DELETE /api/v3/history", () => {
     expect(tagsSql).toContain("scan_type != 'github'");
     expect(tagsParams).toEqual([7]);
 
-    const [historySql, historyParams] = mockBusinessQuery.mock.calls[1];
+    // The reputation purge comes BEFORE the scans, and the order is the
+    // whole point: host_reputation.source_scan_id is ON DELETE SET NULL, so
+    // deleting the scans first orphans the findings copy instead of removing
+    // it. Every purge path keys on source_scan_id, so an orphaned row is
+    // unreachable forever and keeps serving on the unauthenticated
+    // /host/<hostname> page. Every single-scan delete already did this;
+    // clearing all of them was the one path that did not, which meant
+    // deleting scans one at a time and deleting them together gave opposite
+    // results for the same intent.
+    const [repSql, repParams] = mockBusinessQuery.mock.calls[1];
+    expect(repSql).toContain("DELETE FROM host_reputation");
+    expect(repSql).toContain("source_scan_id IN (");
+    expect(repSql).toContain("scan_type != 'github'");
+    expect(repParams).toEqual([7]);
+
+    const [historySql, historyParams] = mockBusinessQuery.mock.calls[2];
     expect(historySql).toContain("DELETE FROM scan_history");
     expect(historySql).toContain("user_id = $1");
     expect(historySql).toContain("scan_type != 'github'");

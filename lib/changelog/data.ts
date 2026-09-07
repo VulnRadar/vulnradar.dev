@@ -227,6 +227,12 @@ const CHANGELOG: Release[] = [
         desc: "The suite has a reporter that fails the run when fewer test files execute than exist on disk, because the worker pool occasionally drops one and the run still reports success. That reporter is wired in by the name of a lifecycle hook, which is its own version of the same problem: a hook renamed in a future version of the test runner would stop calling it, the suite would go back to passing with files missing, and nothing would say so. It nearly happened on the last major upgrade, and survived only because someone had kept both the old and new hook names. The check is anchored to process exit as well now, which no API change can rename: if neither hook fired, the run fails and says the hook has probably been renamed.",
         category: "fixed",
       },
+      {
+        icon: Mail,
+        label: "The Emails Were White",
+        desc: "Every message the product sent rendered as a white card on a pale grey canvas, while the product itself is dark on every surface a user actually looks at. Mail arrived looking like it came from a different company. The reasoning behind it was defensible and written down, that email is read on a white background more often than not, but the result was a brand that stopped at the inbox. Messages are dark now, and the part that matters is not the colours: a dark email's real failure mode is a client deciding to helpfully invert it, so the message declares its scheme in both a meta tag and its stylesheet, which is what Gmail and Apple Mail read before deciding whether to interfere. Outlook.com is the exception, since it rewrites the document instead of answering the question, so the rules that used to introduce dark colours there now put them back. Verified by rendering a real message and reading the output rather than the source: the only white left is the label on the blue button.",
+        category: "changed",
+      },
     ],
   },
   {
