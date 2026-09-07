@@ -145,7 +145,7 @@ const CHANGELOG: Release[] = [
     title: "Things That Fail Without Saying So",
     highlights: false,
     summary:
-      "A sweep for anything the app was getting wrong quietly. The AI chat was streaming correctly and arriving all at once, because nothing told the reverse proxy to leave it alone. A heading changed size halfway through email verification. Four pages had each grown their own copy of the same error box. An encrypted production backup was being copied into every Docker build. And a pass for hardcoded values found a database column with three different maximum lengths and an allowlist that would have locked every visitor out of the public pages on the next API version bump.",
+      "A sweep for anything the app was getting wrong quietly. The AI chat was streaming correctly and arriving all at once, because nothing told the reverse proxy to leave it alone. A heading changed size halfway through email verification. Four pages had each grown their own copy of the same error box. An encrypted production backup was being copied into every Docker build. And a pass for hardcoded values found a database column with three different maximum lengths and an allowlist that would have locked every visitor out of the public pages on the next API version bump. And the scanner itself got the same treatment: a dozen checks that fired on ordinary sites, one that reported the opposite of the right advice, one that has never fired in its life, and a high-severity XSS check whose real implementation was sitting in the wrong file, never reached.",
     changes: [
       {
         icon: Bot,
@@ -232,6 +232,48 @@ const CHANGELOG: Release[] = [
         label: "The Emails Were White",
         desc: "Every message the product sent rendered as a white card on a pale grey canvas, while the product itself is dark on every surface a user actually looks at. Mail arrived looking like it came from a different company. The reasoning behind it was defensible and written down, that email is read on a white background more often than not, but the result was a brand that stopped at the inbox. Messages are dark now, and the part that matters is not the colours: a dark email's real failure mode is a client deciding to helpfully invert it, so the message declares its scheme in both a meta tag and its stylesheet, which is what Gmail and Apple Mail read before deciding whether to interfere. Outlook.com is the exception, since it rewrites the document instead of answering the question, so the rules that used to introduce dark colours there now put them back. Verified by rendering a real message and reading the output rather than the source: the only white left is the label on the blue button.",
         category: "changed",
+      },
+      {
+        icon: Radar,
+        label: "One Fact, Reported Once",
+        desc: "A domain that had simply never switched DNSSEC on came back with three findings: an informational note saying DNSSEC was not enabled, and two medium findings saying the DS and DNSKEY records were absent, which is what not enabled means. Three entries, one fact, and the two mediums outranked the note that actually explained it. Those two records answer different questions, though: DNSKEY says whether the zone signs itself and DS says whether the parent delegates trust to it, and the four combinations of those are four different situations. Each check now owns exactly one. An unsigned zone gets the note and nothing else. A signed zone whose registrar never got the DS record gets told that specifically, which is the state where all the work has been done and none of the protection is being received. And a zone whose parent publishes a DS while the zone itself publishes no keys gets the finding nothing used to distinguish: every validating resolver on the internet refuses to answer for that domain at all, while it resolves perfectly from the operator's own machine.",
+        category: "fixed",
+      },
+      {
+        icon: ShieldCheck,
+        label: "Four Headers That Were Not Findings",
+        desc: "Missing Referrer-Policy was reported as leaking the full URL on external navigation. That stopped being true in 2020: every browser since defaults to strict-origin-when-cross-origin with no header set, so the path and query a token would sit in are already not being sent. Missing X-XSS-Protection was worse than wrong, because acting on it meant re-enabling a filter that no browser still ships and that shipped its own exploitable bugs before being removed, and the same file already declined to flag the value that switches it off. Origin-Agent-Cluster is a memory hint the spec says a browser may ignore, and the identical check in another file was already stubbed for that reason. X-Permitted-Cross-Domain-Policies protected Flash, which has been gone since 2020, so its absence now authorises nothing; an explicitly permissive value is still reported, because someone set that on purpose. Four checks that fired on almost every site scanned, none of which described a defect.",
+        category: "fixed",
+      },
+      {
+        icon: Bug,
+        label: "The XSS Check Was Looking For The Wrong String",
+        desc: 'A high-severity check searched the page for the text javascript:, case-insensitively, anywhere at all. href="javascript:void(0)" is a twenty-year-old placeholder idiom still sitting on an enormous share of the web and does nothing, so this reported HIGH against sites that had done nothing wrong. Its second pattern searched for dangerous calls inside script tags, in a copy of the page the script tags had already been stripped from, so it could never match. Meanwhile a correct implementation of the same check existed in another file, matching a URL-derived value written into a page-rendering sink, and it had never run once: a check resolves through the file that owns its definition, and that was not the file. The real one is now in the right place. A javascript: URI is reported only when its payload actually reads cookies or URL data.',
+        category: "fixed",
+      },
+      {
+        icon: FileSearch,
+        label: "Checks That Fired On Prose, And One That Never Fired At All",
+        desc: 'Reporting a weak cipher matched the word rather than the call, so an article explaining why not to use Blowfish scored worse than a page that used MD5, and one of its five patterns was a typo that matched nothing in any language. Hardcoded IP addresses matched four-part version numbers, which have exactly the same shape. Sensitive keywords in HTML comments fired on "password reset form", a comment that labels a form and discloses nothing, which is on most login pages. And the mass-assignment check had never fired in its life: it looked for the absence of validation by searching the page for zod|joi|yup|ajv|validate|schema|safeParse|parse as raw substrings, and joi is inside .join(, parse is inside JSON.parse, and schema is inside the schema.org URL that every page with structured data carries. Something always matched, so it always concluded the code was validated. Each of these now looks for the thing itself: a call, an address in a place an address goes, a keyword attached to an actual value, and validation near the code being judged rather than anywhere in a 200KB bundle.',
+        category: "fixed",
+      },
+      {
+        icon: AlertTriangle,
+        label: "A 2021 CVE Cited At Every Grafana Ever Scanned",
+        desc: "Finding a Grafana version disclosed in a response attached CVE-2021-43798 to it, an unauthenticated file read on CISA's Known Exploited Vulnerabilities list, with no comparison against the version it had just read. A current Grafana 11 was handed a critical advisory it has not been vulnerable to for four years. That is the kind of finding that teaches a reader to stop believing the report, which costs more than the finding was ever worth. The version is right there in the evidence, so it gets compared now, and the comparison is a table rather than one bound because the fix was backported to each 8.x line separately: 8.2.7 is patched and 8.3.0, a later release, is not.",
+        category: "fixed",
+      },
+      {
+        icon: MessageSquare,
+        label: "Anyone Could Rewrite Someone Else's Chat History",
+        desc: "The support chat stores each conversation under a session id the browser picks, and saves the whole thread back after every exchange. The save had no ownership check on it, so knowing another account's session id was enough to replace that conversation's messages outright, and because the update never touched the owner field the row kept the victim's name on it. Staff reading the conversation in the admin panel would have been reading attacker-written text attributed to a real user. Saving is now scoped to the account that owns the thread. A signed-out conversation stays adoptable, which it has to be: the widget works signed out, and someone who logs in halfway through would otherwise be locked out of their own thread one message in. Adoption only ever fills an empty owner, so signing in can never move a conversation off the account that already holds it.",
+        category: "security",
+      },
+      {
+        icon: Users,
+        label: "Plan Limits That Two Clicks Could Walk Past",
+        desc: 'Creating an API key, a webhook, a team or a team invite each counted what you already had, compared it against your plan, and then wrote the new row as a separate step. Two requests arriving together both read the count taken before either of them wrote, so both passed the check and the account ended up over its limit, with nothing afterwards that would ever notice. Every one of these now re-applies the cap as part of the write itself, so the answer the count gave is still true at the moment the row lands. Creating a team needed more than that: it already runs in a transaction, and inside one the other request\'s uncommitted row is invisible, so it takes a short per-user lock the way reserving a scan slot already does. Accepting a team invitation got the same treatment for a different reason: two clicks on the same emailed link raced past the already-a-member check and collided on a uniqueness constraint, so the second click was answered with a server error instead of "you already accepted this".',
+        category: "fixed",
       },
     ],
   },
