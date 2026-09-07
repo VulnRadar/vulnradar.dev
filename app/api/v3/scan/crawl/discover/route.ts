@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "A form login submits the username and password you supply to the target's own login page, so it requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains, or use header or cookie authentication with a session you already hold.",
+            "A form login submits the username and password you supply to the target's own login page, so it requires a verified domain. Verify ownership of this domain (or its parent) on the Attack surface page (/attack-surface), or use header or cookie authentication with a session you already hold.",
           statusCode: "DOMAIN_NOT_VERIFIED",
         },
         { status: 403 },

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   Loader2,
   Search,
@@ -51,11 +52,17 @@ import {
   type InlineAuthFormHandle,
   type InlineAuthValue,
 } from "@/components/scanner/inline-auth-form";
-import { API, BULK_SCAN_CLIENT_URL_LIMIT } from "@/lib/config/client-constants";
+import {
+  API,
+  BULK_SCAN_CLIENT_URL_LIMIT,
+  ROUTES,
+} from "@/lib/config/client-constants";
 import { classifyScanTarget } from "@/lib/scanner/scan-target-classify";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { resolveScanMode } from "@/lib/config/feature-surfaces";
+import { useVerifiedDomains } from "@/lib/hooks/use-verified-domains";
+import { hostFromScanTarget } from "@/lib/domains/covering";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 export type ScanMode = "quick" | "deep" | "bulk";
 export type { InlineAuthValue };
@@ -448,6 +455,29 @@ export function ScanForm({
     () => getQueryParam("port_scan") === "1",
     false,
   );
+
+  // Whether the target typed above is covered by a domain this account has
+  // verified. A hint, not a gate: the API re-checks against the database and
+  // that is what actually refuses the work. It exists because the refusal
+  // rejects the WHOLE scan, not just the sweep. Ticking this against an
+  // unverified domain did not get you a scan without ports, it got you no scan
+  // at all, and only after you had chosen your options and pressed the button.
+  // The same sweep offered from a finished result says so before you press
+  // anything and costs you nothing when refused.
+  const verified = useVerifiedDomains(!!me?.userId);
+  const portScanHost = hostFromScanTarget(url);
+  const portScanAllowed = verified.covers(portScanHost);
+  // Only claim the target is NOT covered once there is something to be sure
+  // about: a domain list that has arrived, and a host to test it against.
+  const portScanBlocked =
+    !!me?.userId && verified.loaded && !!portScanHost && !portScanAllowed;
+
+  // Turning the switch on and then editing the URL to an unverified host would
+  // otherwise leave it armed, and the submit would be refused for a reason the
+  // form had already worked out. Drop it instead of failing the scan.
+  useEffect(() => {
+    if (portScan && portScanBlocked) setPortScan(false);
+  }, [portScan, portScanBlocked, setPortScan]);
 
   // The five values above render their server-safe default first and take
   // their real value from the URL in a layout effect, so hydration matches
@@ -1146,8 +1176,10 @@ export function ScanForm({
 
           {/* Opt-in port sweep. Its own row like the screenshot toggle. A port
               sweep makes the server a scan source, so it needs a verified
-              domain -- the helper text says so and the API enforces it. Off by
-              default. */}
+              domain, and the API refuses the whole scan without one. The row
+              works that out here rather than letting the submit discover it:
+              the switch goes unavailable and says which host it could not
+              match, with a link to the page that fixes it. */}
           <div className="flex items-center gap-2.5 border-t border-border px-3 py-2">
             <Network
               aria-hidden
@@ -1155,22 +1187,64 @@ export function ScanForm({
             />
             <label
               htmlFor="scan-port-scan"
-              className="text-xs font-medium text-foreground"
+              className={cn(
+                "text-xs font-medium",
+                portScanBlocked ? "text-muted-foreground" : "text-foreground",
+              )}
             >
               Scan common ports
             </label>
-            <span className="hidden text-[11px] text-muted-foreground sm:block">
-              Sweeps ~130 well-known ports. Needs a verified domain.
+            <span className="hidden min-w-0 text-[11px] text-muted-foreground sm:block">
+              {portScanBlocked ? (
+                <>
+                  <span className="font-mono">{portScanHost}</span> is not a
+                  domain you have verified.{" "}
+                  <Link
+                    href={ROUTES.ATTACK_SURFACE}
+                    className={cn(
+                      "rounded-sm underline underline-offset-2 hover:text-foreground",
+                      FOCUS_RING,
+                    )}
+                  >
+                    Verify it
+                  </Link>
+                </>
+              ) : (
+                "Sweeps ~130 well-known ports. Needs a verified domain."
+              )}
             </span>
             <Switch
               id="scan-port-scan"
-              checked={portScan}
+              checked={portScan && !portScanBlocked}
               onCheckedChange={setPortScan}
-              disabled={isScanning}
+              disabled={isScanning || portScanBlocked}
               aria-label="Scan common ports"
+              aria-describedby={
+                portScanBlocked ? "scan-port-scan-blocked" : undefined
+              }
               className="ml-auto"
             />
           </div>
+          {/* The desktop note above is `hidden sm:block`, so on a phone the
+              switch would simply be unavailable with nothing saying why. */}
+          {portScanBlocked && (
+            <p
+              id="scan-port-scan-blocked"
+              className="border-t border-border px-3 py-2 text-[11px] leading-snug text-muted-foreground sm:hidden"
+            >
+              Port scanning needs a verified domain, and{" "}
+              <span className="font-mono">{portScanHost}</span> is not one yet.{" "}
+              <Link
+                href={ROUTES.ATTACK_SURFACE}
+                className={cn(
+                  "rounded-sm underline underline-offset-2 hover:text-foreground",
+                  FOCUS_RING,
+                )}
+              >
+                Verify it
+              </Link>
+            </p>
+          )}
 
           {targetWarning && (
             <div className="border-t border-[hsl(var(--warning))]/20 bg-[hsl(var(--warning))]/5 px-3 py-2.5">

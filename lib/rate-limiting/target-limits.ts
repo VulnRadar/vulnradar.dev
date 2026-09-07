@@ -89,5 +89,5 @@ export async function checkTargetScanLimit(
 
 /** The message a rejected caller sees. Shared so every entry point agrees. */
 export function targetScanLimitMessage(rootDomain: string): string {
-  return `This target has been scanned too many times in the last hour. ${rootDomain} is temporarily rate limited to protect it from scan volume. Verify ownership of the domain in Profile > Domains to scan it without this limit, or try again later.`;
+  return `This target has been scanned too many times in the last hour. ${rootDomain} is temporarily rate limited to protect it from scan volume. Verify ownership of the domain on the Attack surface page (/attack-surface) to scan it without this limit, or try again later.`;
 }

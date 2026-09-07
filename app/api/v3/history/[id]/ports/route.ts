@@ -86,7 +86,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Port scanning requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before refreshing the port sweep.",
+          "Port scanning requires a verified domain. Verify ownership of this domain (or its parent) on the Attack surface page (/attack-surface) before refreshing the port sweep.",
         statusCode: "DOMAIN_NOT_VERIFIED",
       },
       { status: 403 },

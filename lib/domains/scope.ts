@@ -16,6 +16,7 @@
 
 import pool from "@/lib/database/db";
 import { getAssignableTeamIds } from "@/lib/auth/team-resource-access";
+import { coveringDomainCandidates } from "./covering";
 
 export interface VerifiedDomainMatch {
   id: number;
@@ -32,29 +33,12 @@ export interface VerifiedDomainMatch {
  * happen if a user manually verified both a subdomain and its parent).
  */
 /**
- * Every domain that would cover `host` under the zone-control rule above:
- * the host itself plus each of its parent suffixes. `a.b.example.com`
- * yields a.b.example.com, b.example.com, example.com, com.
- *
- * This exists so the lookup can be an equality test against a small list
- * instead of `$1 = domain OR $1 LIKE '%.' || domain`. That predicate builds
- * its LIKE pattern FROM the column with the parameter on the left, which no
- * b-tree can serve, so idx_domains_domain_verified was unusable and this
- * gate scanned every verified domain across all tenants on every
- * active-probe and port-scan authorization check (AUDIT-012#perf-16).
- *
- * It also closes a latent correctness hole: `_` and `%` are LIKE wildcards,
- * so a stored domain containing an underscore matched hosts it does not
- * own. Equality has no such reading.
+ * Re-exported so every existing importer keeps resolving it from here. The
+ * implementation moved to ./covering, which imports no database, because the
+ * scan form needs the same rule in the browser to tell you whether a port
+ * sweep will be allowed before you spend a submit on finding out.
  */
-export function coveringDomainCandidates(host: string): string[] {
-  const labels = host.split(".").filter(Boolean);
-  const candidates: string[] = [];
-  for (let i = 0; i < labels.length; i++) {
-    candidates.push(labels.slice(i).join("."));
-  }
-  return candidates;
-}
+export { coveringDomainCandidates } from "./covering";
 
 export async function findVerifiedDomainForHost(
   hostname: string,

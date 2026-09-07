@@ -374,8 +374,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: wantsActiveProbing
-            ? "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes."
-            : "Port scanning requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting a port scan.",
+            ? "Active probing requires a verified domain. Verify ownership of this domain (or its parent) on the Attack surface page (/attack-surface) before requesting active-probes."
+            : "Port scanning requires a verified domain. Verify ownership of this domain (or its parent) on the Attack surface page (/attack-surface) before requesting a port scan.",
           statusCode: "DOMAIN_NOT_VERIFIED",
         },
         { status: 403 },

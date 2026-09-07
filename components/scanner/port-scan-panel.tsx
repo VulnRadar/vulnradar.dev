@@ -89,7 +89,7 @@ export function PortScanPanel({
           status="Not scanned"
           actionLabel="Run port sweep"
           proLabel="Pro"
-          note="Probes a curated list of common service ports on this host. It spends no scan quota and no live-browser minutes, but the domain has to be verified under Profile > Domains first."
+          note="Probes a curated list of common service ports on this host. It spends no scan quota and no live-browser minutes, but the domain has to be verified on the Attack surface page first."
           state={refresh}
         />
       </>
