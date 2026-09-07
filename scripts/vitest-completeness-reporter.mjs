@@ -113,10 +113,39 @@ export default class CompletenessReporter {
   // vitest 4's reporter lifecycle. `onFinished` is the pre-4 name and is kept
   // so the guard survives a version move in either direction.
   onTestRunEnd(testModules = []) {
+    this.ran = true;
     this.check(testModules.length);
   }
 
   onFinished(files = []) {
+    this.ran = true;
     this.check(files.length);
+  }
+
+  /**
+   * Fires when NEITHER hook above did.
+   *
+   * This guard is wired in by name, and a reporter hook renamed in a future
+   * vitest major would silently stop calling it: the suite would go back to
+   * passing with files missing and nothing would say so, which is the exact
+   * failure this file exists to make impossible. It nearly happened on the
+   * 4-to-5 move, where onFinished was already the old name.
+   *
+   * A reporter cannot detect its own absence from the inside, so the check is
+   * anchored to process exit instead, which no API change can rename. On a
+   * normal run one of the hooks has already set `ran` and this does nothing.
+   */
+  onInit() {
+    process.once("exit", () => {
+      if (this.ran || this.filtered) return;
+      console.error(
+        `\n${RED}${BOLD}TEST COMPLETENESS CHECK DID NOT RUN${RESET}\n` +
+          `  scripts/vitest-completeness-reporter.mjs was loaded but neither\n` +
+          `  onTestRunEnd nor onFinished was called, so nothing verified that\n` +
+          `  every test file executed. This usually means vitest renamed the\n` +
+          `  reporter hook. Find the new name and add it.\n`,
+      );
+      process.exit(1);
+    });
   }
 }
