@@ -111,6 +111,10 @@ interface AccessRule {
   hit_count: number;
   created_at: string;
   expires_at?: string;
+  /** Null for a rule created before this column was populated, or whose
+   *  creator has since been deleted. */
+  created_by?: number | null;
+  created_by_name?: string | null;
 }
 
 export function IPRulesManager() {
@@ -957,9 +961,26 @@ export function IPRulesManager() {
                                     )}
                                   </div>
                                   <div className="min-w-0">
-                                    <p className="text-sm font-mono text-foreground truncate">
-                                      {rule.ip_address}
-                                    </p>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <p className="text-sm font-mono text-foreground truncate">
+                                        {rule.ip_address}
+                                      </p>
+                                      {/* A verified domain owner can block
+                                          their own domain from the Attack
+                                          surface page, and that lands in this
+                                          same table. Without a marker it is
+                                          indistinguishable from a staff block,
+                                          so an admin sees a blocked domain
+                                          with no idea who blocked it. */}
+                                      {rule.created_by_name && (
+                                        <span
+                                          title={`Added by ${rule.created_by_name}`}
+                                          className="shrink-0 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                                        >
+                                          {rule.created_by_name}
+                                        </span>
+                                      )}
+                                    </div>
                                     {rule.description && (
                                       <p className="text-xs text-muted-foreground truncate mt-0.5">
                                         {rule.description}

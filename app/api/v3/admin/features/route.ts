@@ -313,11 +313,21 @@ export async function POST(req: NextRequest) {
         // it: without inactive rows a paused rule vanished from the UI
         // entirely and could never be resumed.
         const includeInactive = body.include_inactive === true;
+        // created_by, and the name behind it, because a domain's verified
+        // owner can now block their own domain from the Attack surface page
+        // (lib/domains/owner-control.ts). Those rows land in this same table
+        // and were previously indistinguishable from a staff block: an admin
+        // saw a domain blocked with nothing to say who did it or why. LEFT
+        // JOIN so a rule whose creator has since been deleted still lists.
         const result = await pool.query(
-          `SELECT id, rule_type, value_type, value as ip_address, description, reason, hit_count, is_active, created_at, expires_at
-           FROM access_rules
-           ${includeInactive ? "" : "WHERE is_active = true"}
-           ORDER BY created_at DESC`,
+          `SELECT ar.id, ar.rule_type, ar.value_type, ar.value as ip_address,
+                  ar.description, ar.reason, ar.hit_count, ar.is_active,
+                  ar.created_at, ar.expires_at, ar.created_by,
+                  u.name AS created_by_name
+           FROM access_rules ar
+           LEFT JOIN users u ON u.id = ar.created_by
+           ${includeInactive ? "" : "WHERE ar.is_active = true"}
+           ORDER BY ar.created_at DESC`,
         );
         return NextResponse.json({ rules: result.rows });
       }
