@@ -139,11 +139,11 @@ Fussier, because it has to force the browser onto IPv4:
 
      # Only the echo endpoint, proxied to the SAME app as vulnradar.dev.
      location = /api/v3/whoami-ip {
-       # 127.0.0.1, not the server's own public address. Proxying to the public
-       # IP sends the request back out to the NIC and in again (a hairpin): it
-       # is slower, it depends on the firewall allowing the machine to reach
-       # itself, and it means the app's port has to be reachable from outside
-       # for the proxy to work at all, which is exactly what you do not want.
+       # Wherever the app is actually bound. 127.0.0.1 is what you want, but
+       # check with `ss -ltnp | grep 3000` first: on Pterodactyl, and on any
+       # `docker run -p 3000:3000`, the app is bound to a public address and
+       # proxying to loopback gets connection refused. See D2 item 4 for how
+       # to move the binding, which is the part that closes the port.
        proxy_pass http://127.0.0.1:3000;
        proxy_set_header Host $host;
        proxy_set_header X-Real-IP $remote_addr;
@@ -259,20 +259,46 @@ Keep it above the app's budget, not equal to it, so the app is always the thing
 that times out and reports why. This is the one layer the application cannot
 see or fix on your behalf.
 
-### 4. Proxy to `127.0.0.1`, not to your own public IP
+### 4. Proxy to wherever the app actually listens, then close the public port
 
-`proxy_pass http://<your public IP>:3000;` works, and it hairpins: out to the
-NIC and back in. It is slower, it breaks if the firewall stops the machine
-reaching itself, and it requires the app's port to be reachable from the
-internet for the proxy to work at all. That last part is the real cost, because
-it means anyone can bypass Cloudflare by hitting the origin directly.
+`proxy_pass http://<your public IP>:3000;` works and has a real cost: it
+requires the app's port to stay reachable from the internet, which means anyone
+who knows the address can bypass Cloudflare and hit the origin directly. WAF
+rules, bot protection, rate limits and IP filtering all become optional.
 
-```nginx
-proxy_pass http://127.0.0.1:3000;
+`proxy_pass http://127.0.0.1:3000;` is the answer **only if the app is actually
+bound to loopback**. Check before changing it:
+
+```bash
+ss -ltnp | grep 3000
 ```
 
-Then bind the app to loopback and firewall the port, so the only route in is
-through nginx.
+If that shows `127.0.0.1:3000` you are fine. If it shows a public address, the
+proxy will get connection refused and the site goes down, so fix the binding
+first:
+
+- **Docker / docker compose:** publish as `127.0.0.1:3000:3000` rather than
+  `3000:3000`.
+- **Pterodactyl:** Wings binds each container to the IP of its primary
+  allocation, so this is a panel change, not a config one. Admin -> Nodes ->
+  your node -> Allocations, create one on `127.0.0.1`, assign it to the server
+  as primary, remove the public one, restart.
+
+If you cannot change the binding, firewall the port instead, and note that
+**`ufw deny 3000/tcp` does not work when the app is in Docker**. Docker
+publishes ports by writing its own iptables rules into the `DOCKER` chain,
+which is evaluated before UFW sees the packet: the port stays open and `ufw
+status` reports it blocked, which is worse than not trying. The rule belongs in
+`DOCKER-USER`, which Docker consults first and never rewrites:
+
+```bash
+ip route get 1.1.1.1                 # identify the public interface
+sudo iptables -I DOCKER-USER -i eth0 -p tcp --dport 3000 -j DROP
+sudo netfilter-persistent save       # needs iptables-persistent
+```
+
+That drops only traffic arriving from outside. nginx reaching the container
+from the host does not traverse `DOCKER-USER`, so the site keeps working.
 
 ---
 
