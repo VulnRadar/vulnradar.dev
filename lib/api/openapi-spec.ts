@@ -128,7 +128,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           tags: ["Scans"],
           summary: "Create a crawl scan",
           description:
-            "Crawl and scan up to 15 pages of a site instead of a single URL. Otherwise identical to POST /scan.",
+            "Crawl and scan several pages of a site instead of a single URL, up to your plan's crawl page limit. Each page counts as one scan against your daily limit. Otherwise identical to POST /scan.",
           security: [{ apiKey: ["scan:write"] }],
           requestBody: {
             required: true,

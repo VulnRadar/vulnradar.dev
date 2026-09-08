@@ -17,7 +17,7 @@ inputs:
     required: false
     default: "https://vulnradar.dev/api/v3"
   crawl:
-    description: "If true, crawl and scan up to 15 pages instead of scanning just the one URL."
+    description: "If true, crawl and scan several pages of the site instead of scanning just the one URL. How many is your plan's crawl page limit, from 25 upwards; it was documented here as 15, which is not a limit that exists."
     required: false
     default: "false"
   max-critical:
@@ -33,9 +33,9 @@ inputs:
     required: false
     default: "-1"
   timeout-seconds:
-    description: "Give up waiting for the scan after this many seconds."
+    description: "Give up waiting for the scan after this many seconds. Left unset it follows the scan: the server's single-scan budget, or its much larger crawl budget when crawl is true."
     required: false
-    default: "300"
+    default: ""
   poll-interval-seconds:
     description: "Seconds to wait between status polls."
     required: false
@@ -124,6 +124,22 @@ runs:
         elapsed=0
         status="running"
         result=""
+        # An unset timeout follows the scan, matching cli/lib.mjs.
+        #
+        # This defaulted to 300 whatever the mode, and a crawl runs under a
+        # much larger server-side budget, so `crawl: true` in a workflow
+        # reported "Timed out after 300s" and failed the build for a crawl the
+        # server still had minutes left to finish, which then completed
+        # normally and landed in the user's history. The CLI hit exactly this
+        # and fixed it; the Action its own README points people at did not.
+        if [ -z "${VR_TIMEOUT:-}" ]; then
+          if [ "$VR_CRAWL" = "true" ]; then
+            VR_TIMEOUT=900
+          else
+            VR_TIMEOUT=300
+          fi
+        fi
+
         while [ "$elapsed" -lt "$VR_TIMEOUT" ]; do
           status_response=$(curl -sS -w '\n%{http_code}' \
             -H "Authorization: Bearer $VR_API_KEY" \
