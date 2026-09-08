@@ -347,20 +347,46 @@ export default defineConfig({
           branches: 80,
         },
         "lib/scanner/scheduled-scans-worker.ts": {
-          // 83.2% / 83.2% / 70.58% / 58.33% actual. The uncovered lines
+          // 84.78% / 84.24% / 73.91% / 61.44% actual. The uncovered lines
           // are schedulePeriodicScheduledScans --
           // the setInterval registration wrapper, exercised at real startup
           // via instrumentation.ts rather than under a fake timer here, same
           // as lib/database/cleanup.ts's own schedulePeriodicCleanup.
-          lines: 78,
-          statements: 78,
-          functions: 65,
-          branches: 50,
+          lines: 80,
+          statements: 80,
+          functions: 70,
+          branches: 55,
+        },
+        "lib/scanner/stale-scan-sweep.ts": {
+          // 100% actual across the board: both callers and the timer's own
+          // registration are driven under fake timers.
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 90,
         },
         "lib/billing/plan-limits.ts": {
           // 100% / 96.55% / 100% / 93.75% actual.
           lines: 100,
           statements: 95,
+          functions: 100,
+          branches: 90,
+        },
+        "lib/billing/stripe-errors.ts": {
+          // 100% actual across the board. This predicate is what stands
+          // between a Stripe timeout and a second live subscription on the
+          // customer's card, so it is held at full coverage deliberately.
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        "lib/billing/invoice-subscription.ts": {
+          // 100% / 100% / 100% / 95.23% actual. The uncovered branch is the
+          // optional-chain miss on a line item with no parent, which the
+          // shapes Stripe actually sends never produce.
+          lines: 100,
+          statements: 100,
           functions: 100,
           branches: 90,
         },

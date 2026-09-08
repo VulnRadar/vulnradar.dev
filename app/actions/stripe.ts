@@ -2,6 +2,7 @@
 
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
+import { isMissingStripeResource } from "@/lib/billing/stripe-errors";
 import { getOrCreateStripePriceId } from "@/lib/billing/stripe-catalog";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
@@ -19,7 +20,10 @@ import {
   creditBrowserbaseCreditPurchase,
   getBrowserbaseCreditBalanceSeconds,
 } from "@/lib/billing/browserbase-usage";
-import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
+import {
+  ACTIVE_SUBSCRIPTION_STATUSES,
+  LIVE_SUBSCRIPTION_STATUSES,
+} from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getSession } from "@/lib/auth/auth";
 import { isStaffRole } from "@/lib/auth/permissions-client";
@@ -100,9 +104,7 @@ export async function createSubscription(
     isStaffRole(sessionUser.role) || sessionUser.role === "super_admin";
   const hasActiveStripeSub =
     !!user.stripe_subscription_id &&
-    [...ACTIVE_SUBSCRIPTION_STATUSES, "canceling"].includes(
-      user.subscription_status,
-    );
+    LIVE_SUBSCRIPTION_STATUSES.includes(user.subscription_status);
   if (roleIsStaff && !hasActiveStripeSub) {
     const staffFloor =
       sessionUser.role === "super_admin" ? "elite_supporter" : "pro_supporter";
@@ -145,17 +147,28 @@ export async function createSubscription(
   // it, and silently re-create rather than surfacing that as a checkout
   // failure -- the customer is a Stripe-side implementation detail, not
   // something the subscriber should ever have to know went missing.
+  //
+  // "Does not resolve" has to mean a 404 and nothing else. A bare catch here
+  // (which is what this was) also swallowed timeouts and 5xx, so a blip
+  // created a duplicate customer, repointed users.stripe_customer_id at it,
+  // and left the real customer's live subscription attached to an id nothing
+  // in this app refers to any more.
   let customerId: string;
   if (!user.stripe_customer_id) {
     customerId = await createStripeCustomer();
   } else {
+    let existing: Stripe.Customer | Stripe.DeletedCustomer | null = null;
     try {
-      const existing = await stripe.customers.retrieve(user.stripe_customer_id);
-      if (existing.deleted) throw new Error("customer deleted");
-      customerId = user.stripe_customer_id;
-    } catch {
-      customerId = await createStripeCustomer();
+      existing = await stripe.customers.retrieve(user.stripe_customer_id);
+    } catch (err) {
+      // Only a customer Stripe genuinely does not have is safe to replace;
+      // see isMissingStripeResource for why a bare catch here is not.
+      if (!isMissingStripeResource(err)) throw err;
     }
+    customerId =
+      existing && !existing.deleted
+        ? user.stripe_customer_id
+        : await createStripeCustomer();
   }
 
   const metadata = {
@@ -175,14 +188,24 @@ export async function createSubscription(
   // subscription and keeps stripe_subscription_id, so it MUST count as switchable
   // here -- otherwise re-subscribing/switching tier creates a second parallel
   // subscription billed alongside the first (the exact double-bill this guards).
-  const switchableStatuses = [...ACTIVE_SUBSCRIPTION_STATUSES, "canceling"];
   if (
     existingSubscriptionId &&
-    switchableStatuses.includes(user.subscription_status)
+    LIVE_SUBSCRIPTION_STATUSES.includes(user.subscription_status)
   ) {
-    const existingSubscription = await stripe.subscriptions
-      .retrieve(existingSubscriptionId)
-      .catch(() => null);
+    // Swallowing the error here (this was `.catch(() => null)`) turned every
+    // transient Stripe failure into "there is no existing subscription", and
+    // the only thing below that answer is the code that creates a second one.
+    // A timeout on the plan-change screen therefore billed the customer twice,
+    // for two live subscriptions, and nothing in the app would say so. Only a
+    // subscription Stripe genuinely does not have is safe to treat as absent.
+    let existingSubscription: Stripe.Subscription | null = null;
+    try {
+      existingSubscription = await stripe.subscriptions.retrieve(
+        existingSubscriptionId,
+      );
+    } catch (err) {
+      if (!isMissingStripeResource(err)) throw err;
+    }
     if (
       existingSubscription &&
       ACTIVE_SUBSCRIPTION_STATUSES.includes(existingSubscription.status)
@@ -465,13 +488,18 @@ export async function createAiCreditPaymentIntent(
   if (!user.stripe_customer_id) {
     customerId = await createStripeCustomer();
   } else {
+    let existing: Stripe.Customer | Stripe.DeletedCustomer | null = null;
     try {
-      const existing = await stripe.customers.retrieve(user.stripe_customer_id);
-      if (existing.deleted) throw new Error("customer deleted");
-      customerId = user.stripe_customer_id;
-    } catch {
-      customerId = await createStripeCustomer();
+      existing = await stripe.customers.retrieve(user.stripe_customer_id);
+    } catch (err) {
+      // Only a customer Stripe genuinely does not have is safe to replace;
+      // see isMissingStripeResource for why a bare catch here is not.
+      if (!isMissingStripeResource(err)) throw err;
     }
+    customerId =
+      existing && !existing.deleted
+        ? user.stripe_customer_id
+        : await createStripeCustomer();
   }
 
   // automatic_payment_methods (rather than an explicit payment_method_types
@@ -683,13 +711,18 @@ export async function createGithubCreditPaymentIntent(
   if (!user.stripe_customer_id) {
     customerId = await createStripeCustomer();
   } else {
+    let existing: Stripe.Customer | Stripe.DeletedCustomer | null = null;
     try {
-      const existing = await stripe.customers.retrieve(user.stripe_customer_id);
-      if (existing.deleted) throw new Error("customer deleted");
-      customerId = user.stripe_customer_id;
-    } catch {
-      customerId = await createStripeCustomer();
+      existing = await stripe.customers.retrieve(user.stripe_customer_id);
+    } catch (err) {
+      // Only a customer Stripe genuinely does not have is safe to replace;
+      // see isMissingStripeResource for why a bare catch here is not.
+      if (!isMissingStripeResource(err)) throw err;
     }
+    customerId =
+      existing && !existing.deleted
+        ? user.stripe_customer_id
+        : await createStripeCustomer();
   }
 
   const paymentIntent = await stripe.paymentIntents.create({
@@ -837,13 +870,18 @@ export async function createBrowserbaseCreditPaymentIntent(
   if (!user.stripe_customer_id) {
     customerId = await createStripeCustomer();
   } else {
+    let existing: Stripe.Customer | Stripe.DeletedCustomer | null = null;
     try {
-      const existing = await stripe.customers.retrieve(user.stripe_customer_id);
-      if (existing.deleted) throw new Error("customer deleted");
-      customerId = user.stripe_customer_id;
-    } catch {
-      customerId = await createStripeCustomer();
+      existing = await stripe.customers.retrieve(user.stripe_customer_id);
+    } catch (err) {
+      // Only a customer Stripe genuinely does not have is safe to replace;
+      // see isMissingStripeResource for why a bare catch here is not.
+      if (!isMissingStripeResource(err)) throw err;
     }
+    customerId =
+      existing && !existing.deleted
+        ? user.stripe_customer_id
+        : await createStripeCustomer();
   }
 
   const paymentIntent = await stripe.paymentIntents.create({

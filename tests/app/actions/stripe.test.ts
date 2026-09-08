@@ -437,6 +437,94 @@ describe("createSubscription", () => {
     );
   });
 
+  it("refuses to create a second subscription when Stripe could not be reached to check the existing one", async () => {
+    // This is the double-bill. The retrieve above was written
+    // `.catch(() => null)`, so a timeout answered "there is no existing
+    // subscription" and the only code below that answer is the code that
+    // creates one. The customer ended up with two live subscriptions and two
+    // charges a month, and nothing anywhere said so. Failing the plan change
+    // is the correct outcome: they can press the button again.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: "sub_existing",
+          subscription_status: "active",
+        },
+      ],
+    });
+    mockSubscriptionsRetrieve.mockRejectedValue(
+      Object.assign(new Error("Request timed out"), { statusCode: 500 }),
+    );
+
+    await expect(createSubscription("elite_supporter_monthly")).rejects.toThrow(
+      /timed out/i,
+    );
+    expect(mockSubscriptionsCreate).not.toHaveBeenCalled();
+    expect(mockSubscriptionsUpdate).not.toHaveBeenCalled();
+  });
+
+  it("does create a new subscription when Stripe says the stored one genuinely does not exist", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: "sub_vanished",
+          subscription_status: "active",
+        },
+      ],
+    });
+    mockSubscriptionsRetrieve.mockRejectedValue(
+      Object.assign(new Error("No such subscription: 'sub_vanished'"), {
+        code: "resource_missing",
+      }),
+    );
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_new",
+      latest_invoice: {
+        confirmation_secret: { client_secret: "secret_xyz" },
+      },
+    });
+
+    const result = await createSubscription("core_supporter_monthly");
+
+    expect(result.kind).toBe("new");
+    expect(mockSubscriptionsCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to create a duplicate Stripe customer when the retrieve failed for a reason other than a missing customer", async () => {
+    // The same shape one level up. A blip on customers.retrieve created a
+    // second customer and repointed users.stripe_customer_id at it, leaving
+    // the real customer's live subscription attached to an id this app no
+    // longer refers to, so every customer-keyed webhook stopped landing.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_real",
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    mockCustomersRetrieve.mockRejectedValue(
+      Object.assign(new Error("Stripe is temporarily unavailable"), {
+        statusCode: 503,
+      }),
+    );
+
+    await expect(createSubscription("core_supporter_monthly")).rejects.toThrow(
+      /temporarily unavailable/i,
+    );
+    expect(mockCustomersCreate).not.toHaveBeenCalled();
+    expect(mockSubscriptionsCreate).not.toHaveBeenCalled();
+  });
+
   it("falls back to creating a new subscription when the existing one is canceled", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/billing/stripe";
+import { isMissingStripeResource } from "@/lib/billing/stripe-errors";
 import { invoicePaymentIntentId } from "@/lib/billing/invoice-payment-intent";
+import { invoiceSubscriptionId } from "@/lib/billing/invoice-subscription";
 import { getPlanFromProductId } from "@/lib/billing/products";
 import { getPaidPlans, getPlanById, type PlanId } from "@/lib/billing/catalog";
 import {
@@ -12,12 +14,18 @@ import {
   subscriptionChangedEmail,
   type SubscriptionChangeKind,
 } from "@/lib/email/email";
-import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
-import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import {
-  staffPlanFloorCase,
-  STAFF_PLAN_FLOOR_ROLES,
-} from "@/lib/billing/staff-plan";
+  ACTIVE_SUBSCRIPTION_STATUSES,
+  isLiveSubscriptionStatus,
+} from "@/lib/billing/subscription-status";
+import {
+  applySubscriptionCreated,
+  applySubscriptionDeleted,
+  applySubscriptionUpdated,
+  markSubscriptionPaid,
+  markSubscriptionPastDue,
+} from "@/lib/billing/subscription-writes";
+import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
 import {
   creditAiCreditPurchase,
@@ -55,6 +63,14 @@ async function resolvePlanFromStripeProductId(
     const ourProductId = product.metadata?.productId || "";
     return ourProductId ? getPlanFromProductId(ourProductId) : "";
   } catch (err) {
+    // "" is the answer for a product Stripe genuinely does not have, and it
+    // resolves the caller to the free plan. That is the right outcome for a
+    // deleted product and a catastrophic one for a timeout: an active
+    // subscriber whose metadata happened to be missing would be downgraded
+    // and have their badge revoked because a single API call blipped. Let a
+    // transient failure out so the webhook 500s, the idempotency marker is
+    // rolled back, and Stripe redelivers.
+    if (!isMissingStripeResource(err)) throw err;
     console.error("[Stripe] Failed to resolve plan from product id:", err);
     return "";
   }
@@ -443,98 +459,73 @@ export async function POST(req: NextRequest) {
               null)
             : null;
 
-        let result;
+        // All three lookups below go through applySubscriptionCreated, which
+        // refuses a row already bound to this subscription or to another one
+        // that is still live. Stripe does not order its deliveries, and this
+        // is the event whose place in the order is knowable: `created` is
+        // always the oldest thing that can be said about a subscription, so
+        // it never gets to overwrite something newer. Before the guard, a
+        // `created` redelivered after the customer had confirmed payment wrote
+        // "free"/"incomplete" back over an active plan and revoked the badge.
+        const write = {
+          subscriptionId: subscription.id,
+          customerId,
+          plan: planToWrite,
+          status: subscription.status,
+          billingInterval: intervalToWrite,
+        };
+        let matchedUserId: number | null = null;
 
         // Primary: Update by userId if available (most reliable)
         if (userId) {
-          result = await pool.query(
-            `UPDATE users SET
-              plan = $1,
-              stripe_subscription_id = $2,
-              subscription_status = $3,
-              stripe_customer_id = $4,
-              billing_interval = $6
-            WHERE id = $5
-            RETURNING id`,
-            [
-              planToWrite,
-              subscription.id,
-              subscription.status,
-              customerId,
-              userId,
-              intervalToWrite,
-            ],
-          );
-          if (result.rowCount && result.rowCount > 0) {
+          matchedUserId = (
+            await applySubscriptionCreated(write, { by: "id", userId })
+          ).userId;
+          if (matchedUserId) {
             console.log(
               `[Stripe] Subscription created for user ID ${userId}, plan: ${planToWrite}, status: ${subscription.status}`,
             );
             if (planToWrite !== "free") {
-              await grantPremiumBadge(userId);
+              await grantPremiumBadge(matchedUserId);
             }
           }
         }
 
         // Fallback: Try stripe_customer_id
-        if (!result || result.rowCount === 0) {
-          result = await pool.query(
-            `UPDATE users SET
-              plan = $1,
-              stripe_subscription_id = $2,
-              subscription_status = $3,
-              billing_interval = $5
-            WHERE stripe_customer_id = $4
-            RETURNING id`,
-            [
-              planToWrite,
-              subscription.id,
-              subscription.status,
-              customerId,
-              intervalToWrite,
-            ],
-          );
-          if (result.rowCount && result.rowCount > 0) {
+        if (!matchedUserId) {
+          matchedUserId = (
+            await applySubscriptionCreated(write, { by: "customer" })
+          ).userId;
+          if (matchedUserId) {
             console.log(
               `[Stripe] Subscription created for customer ${customerId}, plan: ${planToWrite}, status: ${subscription.status}`,
             );
             if (planToWrite !== "free") {
-              await grantPremiumBadge(result.rows[0].id);
+              await grantPremiumBadge(matchedUserId);
             }
           }
         }
 
         // Last fallback: Try email from Stripe customer
-        if (!result || result.rowCount === 0) {
+        if (!matchedUserId) {
           const customer = (await stripe.customers.retrieve(
             customerId,
           )) as Stripe.Customer;
           if (customer.email) {
-            result = await pool.query(
-              `UPDATE users SET
-                plan = $1,
-                stripe_subscription_id = $2,
-                subscription_status = $3,
-                stripe_customer_id = $4,
-                billing_interval = $6
-              WHERE LOWER(email) = LOWER($5)
-              RETURNING id`,
-              [
-                planToWrite,
-                subscription.id,
-                subscription.status,
-                customerId,
-                customer.email,
-                intervalToWrite,
-              ],
-            );
-            if (result.rowCount && result.rowCount > 0) {
+            matchedUserId = (
+              await applySubscriptionCreated(write, {
+                by: "email",
+                email: customer.email,
+              })
+            ).userId;
+            if (matchedUserId) {
               // log userId from RETURNING
               // instead of customer.email. PII stays out of logs.
               console.log(
-                `[Stripe] Subscription created for user ID ${result.rows[0].id}, plan: ${planToWrite}, status: ${subscription.status}`,
+                `[Stripe] Subscription created for user ID ${matchedUserId}, plan: ${planToWrite}, status: ${subscription.status}`,
               );
               if (planToWrite !== "free") {
-                await grantPremiumBadge(result.rows[0].id);
+                await grantPremiumBadge(matchedUserId);
               }
             } else {
               console.log(
@@ -546,11 +537,11 @@ export async function POST(req: NextRequest) {
 
         // Best-effort "subscription started" notice, only when the create
         // event already resolved to a real paid plan (a subscription created
-        // straight into an active status). The far more common
-        // default_incomplete flow writes "free" here and its real activation
-        // email fires later on customer.subscription.updated, so this doesn't
-        // double-send for that path.
-        if (planToWrite !== "free") {
+        // straight into an active status) AND actually landed on a row. The
+        // far more common default_incomplete flow writes "free" here and its
+        // real activation email fires later on customer.subscription.updated,
+        // so this doesn't double-send for that path.
+        if (planToWrite !== "free" && matchedUserId) {
           try {
             const recipient = await lookupBillingRecipient(customerId);
             if (recipient?.email) {
@@ -628,17 +619,26 @@ export async function POST(req: NextRequest) {
 
         // Capture the account's email and current plan BEFORE the UPDATE
         // below overwrites the plan, so the best-effort change email can tell
-        // an upgrade from a downgrade and knows where to send. Read-only and
-        // wrapped: it never affects the write or the response.
-        let previousRow: { id: number; email: string; plan: string } | null =
-          null;
+        // an upgrade from a downgrade and knows where to send. It also carries
+        // the row's current subscription binding, which is what decides
+        // whether this event is even about the subscription the row holds.
+        // Read-only and wrapped: it never affects the write or the response.
+        let previousRow: {
+          id: number;
+          email: string;
+          plan: string;
+          stripe_subscription_id: string | null;
+          subscription_status: string | null;
+        } | null = null;
         try {
           const prev = await pool.query<{
             id: number;
             email: string;
             plan: string;
+            stripe_subscription_id: string | null;
+            subscription_status: string | null;
           }>(
-            "SELECT id, email, plan FROM users WHERE stripe_customer_id = $1 LIMIT 1",
+            "SELECT id, email, plan, stripe_subscription_id, subscription_status FROM users WHERE stripe_customer_id = $1 LIMIT 1",
             [customerId],
           );
           previousRow = prev.rows[0] ?? null;
@@ -649,34 +649,32 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // Stripe fires customer.subscription.updated on ANY field change to
-        // the subscription object (e.g. a retried payment attempt on an
-        // already-incomplete_expired subscription touches latest_invoice),
-        // not just the plan/status fields we care about -- a subscription
-        // stuck in a bad state can generate a steady stream of genuinely
-        // distinct events (so the idempotency guard above correctly lets
-        // each one through) that are still no-ops from our side. The
-        // "IS DISTINCT FROM" guard only writes and logs when plan or status
-        // actually changed, instead of re-running the same UPDATE and
-        // re-emitting the same log line for every no-op event.
-        const result = await pool.query(
-          `UPDATE users SET
-            plan = $1,
-            subscription_status = $2,
-            billing_interval = $4
-          WHERE stripe_customer_id = $3
-            AND (plan IS DISTINCT FROM $1
-              OR subscription_status IS DISTINCT FROM $2
-              OR billing_interval IS DISTINCT FROM $4)
-          RETURNING id`,
-          [planToWrite, statusToWrite, customerId, intervalToWrite],
-        );
-        // Reconcile the premium badge on EVERY event, not only when the UPDATE
-        // above changed a row: grant/revoke are idempotent, and gating them on
-        // the IS DISTINCT FROM rowcount meant a retry after the row had already
-        // been updated (e.g. the first attempt committed the UPDATE then threw
-        // in the badge grant) would find rowCount:0 and skip the badge forever.
-        const reconcileUserId = result.rows[0]?.id ?? previousRow?.id;
+        // The same rule applySubscriptionUpdated enforces in SQL, read here so
+        // the badge reconcile and the change email below can tell "the guard
+        // refused this event" apart from "the guard matched, nothing changed".
+        // Both look like zero rows updated, and only the second should still
+        // reconcile a badge.
+        const rowOwnsThisSubscription =
+          !previousRow ||
+          !previousRow.stripe_subscription_id ||
+          previousRow.stripe_subscription_id === subscription.id ||
+          !isLiveSubscriptionStatus(previousRow.subscription_status);
+
+        const result = await applySubscriptionUpdated({
+          subscriptionId: subscription.id,
+          customerId,
+          plan: planToWrite,
+          status: statusToWrite,
+          billingInterval: intervalToWrite,
+        });
+        // Reconcile the premium badge on EVERY event this subscription owns,
+        // not only when the UPDATE above changed a row: grant/revoke are
+        // idempotent, and gating them on the IS DISTINCT FROM rowcount meant a
+        // retry after the row had already been updated (e.g. the first attempt
+        // committed the UPDATE then threw in the badge grant) would find
+        // rowCount:0 and skip the badge forever.
+        const reconcileUserId =
+          result.userId ?? (rowOwnsThisSubscription ? previousRow?.id : null);
         if (reconcileUserId) {
           if (planToWrite !== "free") {
             await grantPremiumBadge(reconcileUserId);
@@ -684,7 +682,7 @@ export async function POST(req: NextRequest) {
             await revokePremiumBadge(reconcileUserId);
           }
         }
-        if (result.rowCount && result.rowCount > 0) {
+        if (result.userId) {
           console.log(
             `[Stripe] Subscription updated for customer ${customerId}, plan: ${planToWrite}, status: ${subscription.status}`,
           );
@@ -728,36 +726,30 @@ export async function POST(req: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
 
-        // Downgrade to free plan and revoke premium badge. billing: a
-        // staff account (lib/billing/staff-plan.ts) already holds a real,
-        // granted pro_supporter floor -- a real paid subscription (e.g.
-        // Elite) ending, however it ended, lands back on that floor, not
-        // all the way to free. Matches the synchronous immediate-cancel
-        // routes (app/api/v3/billing/subscription/cancel,
-        // app/api/v3/billing POST cancel_immediately), which this webhook
-        // otherwise duplicates/races with for the immediate-cancel path.
-        const result = await pool.query(
-          `UPDATE users SET
-            plan = ${staffPlanFloorCase("$2")},
-            subscription_status = 'canceled',
-            stripe_subscription_id = NULL,
-            billing_interval = NULL
-          WHERE stripe_customer_id = $1
-          RETURNING id`,
-          [customerId, STAFF_PLAN_FLOOR_ROLES],
-        );
-        if (result.rowCount && result.rowCount > 0) {
-          await revokePremiumBadge(result.rows[0].id);
+        // Downgrade to free and revoke the premium badge, but only if this is
+        // the subscription the row is actually on. A customer left holding a
+        // second, abandoned subscription gets a delete event for it too, and
+        // keying that on the customer alone cancelled the live one instead.
+        const result = await applySubscriptionDeleted({
+          subscriptionId: subscription.id,
+          customerId,
+        });
+        if (result.userId) {
+          await revokePremiumBadge(result.userId);
+          console.log(
+            `[Stripe] Subscription canceled for customer ${customerId}`,
+          );
+        } else {
+          console.log(
+            `[Stripe] Subscription ${subscription.id} deleted but it is not the one customer ${customerId} is on; leaving the account as it is (event ${event.id})`,
+          );
         }
-        console.log(
-          `[Stripe] Subscription canceled for customer ${customerId}`,
-        );
 
         // Best-effort cancellation notice, only when a user actually matched.
         // The DB row was just reset to free/pro-floor above, so name the plan
         // that was actually canceled from the subscription object's own
         // metadata, not the post-reset row.
-        if (result.rowCount && result.rowCount > 0) {
+        if (result.userId) {
           try {
             const recipient = await lookupBillingRecipient(customerId);
             if (recipient?.email) {
@@ -789,11 +781,16 @@ export async function POST(req: NextRequest) {
         const customerId = invoice.customer as string;
 
         if (customerId) {
-          // Update subscription status to active (this is the important part)
-          await pool.query(
-            `UPDATE users SET subscription_status = 'active' WHERE stripe_customer_id = $1`,
-            [customerId],
-          );
+          // Only a subscription invoice says anything about a subscription's
+          // status. A one-off invoice used to mark the account "active" too,
+          // which is the mirror image of the past_due problem below.
+          const paidSubscriptionId = invoiceSubscriptionId(invoice);
+          if (paidSubscriptionId) {
+            await markSubscriptionPaid({
+              subscriptionId: paidSubscriptionId,
+              customerId,
+            });
+          }
 
           // Try to record in billing history (optional - don't fail if table doesn't exist)
           try {
@@ -871,16 +868,36 @@ export async function POST(req: NextRequest) {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = invoice.customer as string;
 
-        await pool.query(
-          `UPDATE users SET subscription_status = 'past_due' WHERE stripe_customer_id = $1`,
-          [customerId],
+        // past_due is a claim about a renewal, so it is only written when the
+        // failed invoice belongs to the subscription the account is on and
+        // that subscription was paying. A one-off invoice, a first invoice on
+        // a checkout nobody completed, or a retry against an account that has
+        // already cancelled all used to stamp past_due here, and none of them
+        // has a later payment to clear it: the account read "past due" for
+        // good. markSubscriptionPastDue reports whether it applied so the
+        // dunning email follows the same rule instead of telling somebody
+        // with no subscription that their payment failed.
+        const failedSubscriptionId = invoiceSubscriptionId(invoice);
+        const dunned = failedSubscriptionId
+          ? (
+              await markSubscriptionPastDue({
+                subscriptionId: failedSubscriptionId,
+                customerId,
+              })
+            ).userId !== null
+          : false;
+        console.log(
+          dunned
+            ? `[Stripe] Payment failed for customer ${customerId}`
+            : `[Stripe] Invoice ${invoice.id} failed for customer ${customerId} but it is not a renewal of their current subscription; leaving the account as it is (event ${event.id})`,
         );
-        console.log(`[Stripe] Payment failed for customer ${customerId}`);
 
         // Best-effort dunning notice (transactional) so the customer can fix
         // the card before the retries run out and the plan drops.
         try {
-          const recipient = await lookupBillingRecipient(customerId);
+          const recipient = dunned
+            ? await lookupBillingRecipient(customerId)
+            : null;
           if (recipient?.email) {
             await sendEmail({
               to: recipient.email,
