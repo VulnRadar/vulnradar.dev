@@ -29,6 +29,21 @@ import { Badge } from "@/components/ui/badge";
 import type { ProfileTabProps, NotificationPrefs } from "../types";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 
+/**
+ * Preference columns the server refuses to turn off.
+ *
+ * PUT /api/v3/account/notifications forces email_security to true whatever it
+ * was sent, and returns 200 because the other nineteen columns wrote fine. So
+ * the switch moved, the page reported "Saved", and the mail kept arriving
+ * until a reload flipped it back: a control that reported success and did
+ * nothing. The route's reasoning is right, and the fix belongs here, in the
+ * screen that offered a choice the account does not actually have.
+ *
+ * Kept in step with ALWAYS_ON in that route by the one thing that makes it
+ * obvious: the switch is disabled and the row says so.
+ */
+const ALWAYS_ON = new Set<keyof NotificationPrefs>(["email_security"]);
+
 // Fills in any column a response that DID arrive left out, so a preference
 // added after a user's row was written still renders as a boolean. It is not
 // a stand-in for a response that never arrived: see the null tri-state below.
@@ -251,8 +266,8 @@ export function ProfileNotificationsTab({
                   key: "email_security" as const,
                   icon: Shield,
                   label: "Security alerts",
-                  desc: "Unusual activity on your account, and anything that looks like someone else getting in.",
-                  badge: "Recommended",
+                  desc: "Unusual activity on your account, and anything that looks like someone else getting in. This one cannot be switched off.",
+                  badge: "Always on",
                 },
                 {
                   key: "email_new_login" as const,
@@ -309,9 +324,12 @@ export function ProfileNotificationsTab({
                   <p className="text-xs text-muted-foreground mt-1">{desc}</p>
                 </div>
                 <Switch
-                  checked={notifPrefs[key]}
+                  checked={notifPrefs[key] || ALWAYS_ON.has(key)}
                   onCheckedChange={(checked) => handleToggle(key, checked)}
-                  aria-label={label}
+                  disabled={ALWAYS_ON.has(key)}
+                  aria-label={
+                    ALWAYS_ON.has(key) ? `${label} (always on)` : label
+                  }
                 />
               </div>
             ))}

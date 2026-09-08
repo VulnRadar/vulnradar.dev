@@ -16,6 +16,7 @@ import {
 // rows this renders. See components/auth/unsubscribe-prefs.ts.
 import {
   PREF_GROUPS,
+  ALWAYS_ON_PREFS,
   type EmailPrefs,
   type PrefKey,
 } from "@/components/auth/unsubscribe-prefs";
@@ -256,10 +257,16 @@ function UnsubscribeContent() {
                         </p>
                       </div>
                       <Switch
-                        checked={prefs?.[key] ?? true}
+                        checked={
+                          ALWAYS_ON_PREFS.has(key) || (prefs?.[key] ?? true)
+                        }
                         onCheckedChange={(val) => handleToggle(key, val)}
-                        disabled={saving}
-                        aria-label={label}
+                        disabled={saving || ALWAYS_ON_PREFS.has(key)}
+                        aria-label={
+                          ALWAYS_ON_PREFS.has(key)
+                            ? `${label} (always on)`
+                            : label
+                        }
                         className="shrink-0 mt-0.5 pointer-events-none"
                       />
                     </div>

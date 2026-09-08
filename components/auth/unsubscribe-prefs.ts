@@ -47,6 +47,22 @@ export type PrefGroup = {
   rows: PrefRow[];
 };
 
+/**
+ * Preference columns the server refuses to switch off.
+ *
+ * Both writers force email_security true whatever they are sent, and both
+ * still answer 200 because the other columns write fine. So the switch moved,
+ * the page said it had saved, and the mail kept arriving until a reload put
+ * the switch back: a control that reported success and did nothing. On the
+ * unsubscribe page that is the worse of the two places for it, because that
+ * page is the one a recipient reaches from the footer of an email.
+ *
+ * Exported so the preferences screen and the unsubscribe page cannot disagree
+ * about it, and named after what the server does rather than after a policy,
+ * so adding a column here means having added one there.
+ */
+export const ALWAYS_ON_PREFS = new Set<PrefKey>(["email_security"]);
+
 export const PREF_GROUPS: PrefGroup[] = [
   {
     label: "Security",
@@ -55,7 +71,7 @@ export const PREF_GROUPS: PrefGroup[] = [
         key: "email_security",
         label: "Security Alerts",
         description:
-          "Critical account security events and compromise warnings.",
+          "Critical account security events and compromise warnings. This one cannot be switched off.",
       },
       {
         key: "email_new_login",
