@@ -365,6 +365,23 @@ export interface ReputationResponse {
   readonly severityCounts: ReputationSeverityCounts | null;
   readonly lastScannedAt: string | null;
   readonly scanId: number | null;
+  /**
+   * "exact" when the result is a scan of the precise page asked about, "host"
+   * when it is the host-level fallback: a scan of a DIFFERENT page on the same
+   * host. The API has returned this since the exact-match branch was added and
+   * this type never carried it, which is part of why nothing here sent the
+   * `url` that branch needs. Optional because a result cached locally from a
+   * scan the extension just ran (cacheReputationFromScan) has no API response
+   * behind it.
+   */
+  readonly matchType?: "exact" | "host" | null;
+  /**
+   * The exact URL that produced an "exact" result, echoing back what was
+   * asked. Always null on a host fallback, deliberately: that match is
+   * somebody else's scan of an unrelated page, and returning its URL would
+   * hand over whatever it contained.
+   */
+  readonly scannedUrl?: string | null;
 }
 
 export interface RateLimitInfo {

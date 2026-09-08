@@ -647,6 +647,12 @@ const CHANGELOG: Release[] = [
         desc: "Two admin actions, sending a staff invite and applying an update, each carried their own copy of the re-enter your password check, and both read the stored password directly. An account created through a social login has no stored password, which those copies read as a wrong one, so those admins could never send an invite or install an update and were told their own password was incorrect every time. Both now use the shared check the rest of the app already uses, which treats a signed-in session as the confirmation when there is no password to re-enter.",
         category: "fixed",
       },
+      {
+        icon: Puzzle,
+        label: "The Extension Showed One Page's Result For A Whole Site",
+        desc: "When you open a site, the extension asks us whether it has been scanned before. That lookup can answer about the exact page or fall back to the host, and the server has preferred the exact page since it was built, with a note saying the extension always sends the page address because it knows the current tab. It never sent it. So a scan of a single repository on GitHub, or one article on a large site, was reported as the standing of every other page there. The exact address is sent now, and a result about one page is remembered against that page rather than against the whole host, so the offline fallback cannot show one page's findings for another.",
+        category: "fixed",
+      },
     ],
   },
   {

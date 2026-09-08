@@ -186,6 +186,8 @@ A sweep for anything the app was getting wrong quietly. The AI chat was streamin
   The endpoint that emails someone an invitation to a staff role, admin included, had no rate limit of any kind. The password it asks the sending admin to re-enter could be guessed at indefinitely, and every attempt that got through mailed a role-granting link to whatever address was in the request. It now uses the same per-admin throttle the rest of the admin panel puts in front of a password prompt, checked before the password so a wrong guess costs an attempt.
 - [UserCheck] **[FIXED]** **Admins Who Signed Up With Google, GitHub Or Discord Were Told Their Password Was Wrong**
   Two admin actions, sending a staff invite and applying an update, each carried their own copy of the re-enter your password check, and both read the stored password directly. An account created through a social login has no stored password, which those copies read as a wrong one, so those admins could never send an invite or install an update and were told their own password was incorrect every time. Both now use the shared check the rest of the app already uses, which treats a signed-in session as the confirmation when there is no password to re-enter.
+- [Puzzle] **[FIXED]** **The Extension Showed One Page's Result For A Whole Site**
+  When you open a site, the extension asks us whether it has been scanned before. That lookup can answer about the exact page or fall back to the host, and the server has preferred the exact page since it was built, with a note saying the extension always sends the page address because it knows the current tab. It never sent it. So a scan of a single repository on GitHub, or one article on a large site, was reported as the standing of every other page there. The exact address is sent now, and a result about one page is remembered against that page rather than against the whole host, so the offline fallback cannot show one page's findings for another.
 
 ---
 
@@ -2270,6 +2272,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 71
-- **Total changes documented:** 837
+- **Total changes documented:** 838
 - **Latest:** v3.8.6 (September 7, 2026) - Things That Fail Without Saying So
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
