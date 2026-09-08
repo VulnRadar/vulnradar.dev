@@ -441,6 +441,12 @@ const CHANGELOG: Release[] = [
         desc: "Deleting your account runs a list of erasures, and the ones written out by hand exist for a specific reason: where the database is set to null the account reference rather than remove the row, whatever you typed stays behind with only your name taken off it. That was found and fixed once, for the notes you leave on individual findings. The same shape was still live on support tickets. A ticket you opened goes with you, but a reply you wrote on a ticket somebody shared with you hung off their ticket, so the message survived your deletion on a thread its owner could still open and read, along with any access you had granted on your own tickets. Both are removed now, and the same kind of test as above reads the schema and fails when a new column pointing at a person is neither cleaned up nor written down as deliberately anonymised.",
         category: "security",
       },
+      {
+        icon: Share2,
+        label: "A Way To Follow Along, Once, Without Being Asked Twice",
+        desc: "The landing page has an invitation to follow the project, and it is deliberately the least intrusive version of that we could build. It is not a modal: nothing is blocked, nothing traps your keyboard, and scrolling past it costs nothing. It waits until you are nearly halfway down the page, so it arrives after you have seen what the scanner does rather than before. Escape closes it, the close button has a real name for a screen reader, it does not animate if your system asks for less motion, and once you dismiss it your browser remembers, so a second visit is clean. It sits above the cookie bar rather than underneath it, using the height that bar already publishes for the purpose. A self-hosted copy with no social accounts configured renders nothing at all instead of an empty box.",
+        category: "added",
+      },
     ],
   },
   {

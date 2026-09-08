@@ -12,6 +12,7 @@ import { LandingApiExample } from "@/components/landing/landing-api-example";
 import { LandingOpenSource } from "@/components/landing/landing-open-source";
 import { LandingFaq, type FaqItem } from "@/components/landing/landing-faq";
 import { LandingCta } from "@/components/landing/landing-cta";
+import { LandingSocialPrompt } from "@/components/landing/landing-social-prompt";
 import { pageMetadata } from "@/lib/seo/metadata";
 import {
   FaqStructuredData,
@@ -136,6 +137,9 @@ export default async function LandingPage() {
         <LandingCta freeScansPerDay={FREE_SCANS} />
       </main>
       <Footer />
+      {/* Last, and fixed, so it paints over the footer rather than pushing
+          the page taller. It reveals itself on scroll and only ever once. */}
+      <LandingSocialPrompt />
     </div>
   );
 }
