@@ -363,6 +363,15 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                 const isExpanded = expandedId === d.id;
                 const needsRecord = d.status !== "verified";
 
+                // Verify and Remove both need canWrite on the server, and the
+                // list carries domains a teammate shared as well as the
+                // caller's own. Same mirror of getTeamResourceAccess used by
+                // the webhooks and schedules lists.
+                const isWritable =
+                  (me?.userId != null && d.user_id === me.userId) ||
+                  (d.team_id != null &&
+                    teams.assignable.some((t) => t.id === d.team_id));
+
                 return (
                   <div key={d.id}>
                     {/* The controls take their own line below sm. An
@@ -491,7 +500,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                             </Link>
                           </Button>
                         )}
-                        {needsRecord && (
+                        {needsRecord && isWritable && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -506,16 +515,18 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                             )}
                           </Button>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => setDeleteTarget(d)}
-                          title="Remove domain"
-                          aria-label={`Remove domain ${d.domain}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {isWritable && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setDeleteTarget(d)}
+                            title="Remove domain"
+                            aria-label={`Remove domain ${d.domain}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 

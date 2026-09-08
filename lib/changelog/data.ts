@@ -706,9 +706,8 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Users,
-        label:
-          "A Shared Webhook Offered Teammates Five Buttons That Always Failed",
-        desc: "The webhooks list mixes the ones you made with any a teammate shared into a team you are in, and it drew every control on all of them. Someone whose team role is view-only was shown pause, edit, send test, rotate secret and delete on a webhook they cannot change, and each one answered with a refusal. Rotating the signing secret was offered even to teammates who genuinely can edit the webhook, because that one is restricted to whoever created it. Each row now shows only what the server will actually accept from you: the controls that need write access appear for the owner and for teammates whose role allows it, rotating stays with the owner, and the delivery history stays visible to everyone who can see the row, since reading what was sent is not a change.",
+        label: "Shared Rows Offered Teammates Buttons That Always Failed",
+        desc: "The webhooks list mixes the ones you made with any a teammate shared into a team you are in, and it drew every control on all of them. Someone whose team role is view-only was shown pause, edit, send test, rotate secret and delete on a webhook they cannot change, and each one answered with a refusal. Rotating the signing secret was offered even to teammates who genuinely can edit the webhook, because that one is restricted to whoever created it. Each row now shows only what the server will actually accept from you: the controls that need write access appear for the owner and for teammates whose role allows it, rotating stays with the owner, and the delivery history stays visible to everyone who can see the row, since reading what was sent is not a change. Scheduled scans and verified domains had the same gap and got the same treatment, so pausing or deleting a shared schedule, and verifying or removing a shared domain, are offered only to the people who can actually do them.",
         category: "fixed",
       },
     ],

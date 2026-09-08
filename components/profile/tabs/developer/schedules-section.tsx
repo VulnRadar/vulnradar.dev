@@ -301,6 +301,18 @@ export function SchedulesSection({
                 const lastRun = scheduleTimestamp(sch, "last_run");
                 const isPaused = sch.active === false;
                 const isToggling = togglingScheduleId === sch.id;
+
+                // Pause and delete both need canWrite on the server, and this
+                // list mixes the caller's own schedules with ones a teammate
+                // shared into a team. Same mirror of getTeamResourceAccess the
+                // webhooks list uses: the owner, or a co-member whose role
+                // grants manage_scans, which is what teams.assignable holds.
+                // Drawn on every row before this, so a viewer-role co-member
+                // was offered both and refused by both.
+                const isWritable =
+                  (currentUserId !== null && sch.user_id === currentUserId) ||
+                  (sch.team_id != null &&
+                    teams.assignable.some((t) => t.id === sch.team_id));
                 return (
                   <div
                     key={sch.id}
@@ -376,41 +388,45 @@ export function SchedulesSection({
                             }
                           />
                         )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground shrink-0"
-                        disabled={isToggling}
-                        onClick={() => onToggleSchedule(sch.id, !isPaused)}
-                        aria-label={
-                          isPaused
-                            ? `Resume scheduled scan for ${sch.url}`
-                            : `Pause scheduled scan for ${sch.url}`
-                        }
-                      >
-                        {isToggling ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : isPaused ? (
-                          <Play className="h-3.5 w-3.5" />
-                        ) : (
-                          <Pause className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
-                        onClick={() =>
-                          onRequestConfirm({
-                            kind: "delete-schedule",
-                            id: sch.id,
-                            label: sch.url,
-                          })
-                        }
-                        aria-label={`Delete scheduled scan for ${sch.url}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {isWritable && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground shrink-0"
+                          disabled={isToggling}
+                          onClick={() => onToggleSchedule(sch.id, !isPaused)}
+                          aria-label={
+                            isPaused
+                              ? `Resume scheduled scan for ${sch.url}`
+                              : `Pause scheduled scan for ${sch.url}`
+                          }
+                        >
+                          {isToggling ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : isPaused ? (
+                            <Play className="h-3.5 w-3.5" />
+                          ) : (
+                            <Pause className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      )}
+                      {isWritable && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                          onClick={() =>
+                            onRequestConfirm({
+                              kind: "delete-schedule",
+                              id: sch.id,
+                              label: sch.url,
+                            })
+                          }
+                          aria-label={`Delete scheduled scan for ${sch.url}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );

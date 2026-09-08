@@ -186,3 +186,44 @@ describe("a shared resource says so on its row", () => {
     }
   });
 });
+
+describe("shared rows offer only what the server accepts", () => {
+  it("gates the schedule write controls on canWrite", () => {
+    // Pause and delete both need canWrite, and the list carries schedules a
+    // teammate shared. Both were drawn on every row, so a viewer-role
+    // co-member was offered both and refused by both.
+    const schedules = read(
+      "components/profile/tabs/developer/schedules-section.tsx",
+    );
+    expect(schedules).toContain("const isWritable =");
+    expect(schedules).toMatch(
+      /teams\.assignable\.some\(\(t\) => t\.id === sch\.team_id\)/,
+    );
+  });
+
+  it("gates the domain write controls on canWrite", () => {
+    // Verify and Remove both go through getTeamResourceAccess.canWrite.
+    const domains = read(
+      "components/profile/tabs/developer/domains-section.tsx",
+    );
+    expect(domains).toContain("const isWritable =");
+    expect(domains).toMatch(
+      /teams\.assignable\.some\(\(t\) => t\.id === d\.team_id\)/,
+    );
+    expect(domains).toContain("{needsRecord && isWritable && (");
+  });
+
+  it("uses one rule across all three lists, not three spellings of it", () => {
+    // Webhooks, schedules and domains all mirror the same server check. If
+    // they drift, one of them starts offering a button that 403s again.
+    for (const rel of [
+      "components/profile/tabs/developer/webhooks-section.tsx",
+      "components/profile/tabs/developer/schedules-section.tsx",
+      "components/profile/tabs/developer/domains-section.tsx",
+    ]) {
+      expect(read(rel), `${rel} should mirror canWrite`).toContain(
+        "teams.assignable.some(",
+      );
+    }
+  });
+});
