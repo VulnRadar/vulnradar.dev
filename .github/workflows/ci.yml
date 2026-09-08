@@ -384,19 +384,25 @@ jobs:
         working-directory: extension
 
       - name: The packaged zips must exist and carry this version
-        # A build that emits no zip, or emits one labelled with a stale
-        # version, is a release that fails review rather than a red CI run.
+        # A build that emits no zip, or one labelled with a stale version, is
+        # a release that fails add-on review rather than a red CI run. Both
+        # halves matter: build:chrome followed by package would zip the other
+        # target's older dist under today's version number.
         run: |
           set -euo pipefail
-          VERSION=$(node -p "require("./package.json").version")
+          VERSION=$(node -p 'require("./package.json").version')
           for target in chrome firefox; do
             zip="vulnradar-${target}-v${VERSION}.zip"
-            test -f "$zip" || { echo "::error::missing $zip"; exit 1; }
-            manifest=$(node -p "require("./dist-${target}/manifest.json").version")
-            test "$manifest" = "$VERSION" || {
-              echo "::error::dist-${target} manifest says $manifest, package.json says $VERSION"
+            if [ ! -f "$zip" ]; then
+              echo "::error::missing $zip"
               exit 1
-            }
+            fi
+            manifest=$(node -p "require('./dist-${target}/manifest.json').version")
+            if [ "$manifest" != "$VERSION" ]; then
+              echo "::error::dist-${target} manifest is $manifest, package.json is $VERSION"
+              exit 1
+            fi
+            echo "ok: $zip (manifest $manifest)"
           done
         working-directory: extension
 
