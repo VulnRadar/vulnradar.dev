@@ -204,6 +204,8 @@ A sweep for anything the app was getting wrong quietly. The AI chat was streamin
   Verifying a domain unlocks a set of controls over what other people's scans of it can show: every published scan of the domain, the ability to unpublish one or revoke its share link, and a switch that stops it being scanned at all. All of that opened inside the row it belonged to, so expanding it pushed everything below it down by the height of a page, and the controls that need the most deliberation were the ones hardest to read. Each verified domain has its own page now, reached by Manage. The unverified case is unchanged and still opens in place, because it is one DNS record and it belongs to adding the domain. A domain that is not yours, or an address that is not a domain at all, gets the same answer, so the page does not reveal which is which.
 - [Table2] **[FIXED]** **Admin Tables Could Shrink To Little More Than Their Own Header**
   Every table in the admin panel caps its height at a fraction of the browser window, so a long list scrolls inside the table instead of running down the page. That fraction is measured against the whole window and takes no account of the browser's own toolbars above the page, or of how far down the page the table starts. On a short window it worked out barely taller than the header row itself, so the table became a pinned header with a thin line of one row visible underneath and the rest spilling past the edge of a box no longer big enough to hold them. The cap can no longer fall below a height that holds several rows. It is still only a cap, so a table with two rows in it is still two rows tall rather than padded out to a fixed height.
+- [Users] **[FIXED]** **A Shared Webhook Offered Teammates Five Buttons That Always Failed**
+  The webhooks list mixes the ones you made with any a teammate shared into a team you are in, and it drew every control on all of them. Someone whose team role is view-only was shown pause, edit, send test, rotate secret and delete on a webhook they cannot change, and each one answered with a refusal. Rotating the signing secret was offered even to teammates who genuinely can edit the webhook, because that one is restricted to whoever created it. Each row now shows only what the server will actually accept from you: the controls that need write access appear for the owner and for teammates whose role allows it, rotating stays with the owner, and the delivery history stays visible to everyone who can see the row, since reading what was sent is not a change.
 
 ---
 
@@ -2288,6 +2290,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 71
-- **Total changes documented:** 846
+- **Total changes documented:** 847
 - **Latest:** v3.8.6 (September 7, 2026) - Things That Fail Without Saying So
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

@@ -704,6 +704,13 @@ const CHANGELOG: Release[] = [
         desc: "Every table in the admin panel caps its height at a fraction of the browser window, so a long list scrolls inside the table instead of running down the page. That fraction is measured against the whole window and takes no account of the browser's own toolbars above the page, or of how far down the page the table starts. On a short window it worked out barely taller than the header row itself, so the table became a pinned header with a thin line of one row visible underneath and the rest spilling past the edge of a box no longer big enough to hold them. The cap can no longer fall below a height that holds several rows. It is still only a cap, so a table with two rows in it is still two rows tall rather than padded out to a fixed height.",
         category: "fixed",
       },
+      {
+        icon: Users,
+        label:
+          "A Shared Webhook Offered Teammates Five Buttons That Always Failed",
+        desc: "The webhooks list mixes the ones you made with any a teammate shared into a team you are in, and it drew every control on all of them. Someone whose team role is view-only was shown pause, edit, send test, rotate secret and delete on a webhook they cannot change, and each one answered with a refusal. Rotating the signing secret was offered even to teammates who genuinely can edit the webhook, because that one is restricted to whoever created it. Each row now shows only what the server will actually accept from you: the controls that need write access appear for the owner and for teammates whose role allows it, rotating stays with the owner, and the delivery history stays visible to everyone who can see the row, since reading what was sent is not a change.",
+        category: "fixed",
+      },
     ],
   },
   {

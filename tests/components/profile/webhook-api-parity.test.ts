@@ -80,3 +80,45 @@ describe("every webhook endpoint is reachable from the UI", () => {
     expect(docs).toMatch(/rotate and history buttons/);
   });
 });
+
+describe("a shared webhook only offers what the server will accept", () => {
+  it("gates the write controls on canWrite, not on being able to see the row", () => {
+    // The list mixes the caller's own webhooks with ones a teammate shared
+    // into a team. Every write control used to be drawn on all of them, so a
+    // viewer-role co-member was offered pause, edit, test, rotate and delete
+    // and got a 403 from each. A button that always fails is worse than none.
+    expect(SECTION).toContain("const isWritable =");
+    // The client mirror of getTeamResourceAccess: owner, or a co-member whose
+    // role grants manage_scans, which is exactly what teams.assignable holds.
+    expect(SECTION).toMatch(
+      /teams\.assignable\.some\(\(t\) => t\.id === wh\.team_id\)/,
+    );
+  });
+
+  it("keeps rotate-secret to the owner alone", () => {
+    // The rotate route is scoped `AND user_id = $2` and answers 404 to anyone
+    // else, including a co-member who may edit and pause the same webhook.
+    const rotateBlock = SECTION.slice(
+      SECTION.indexOf("onRotateWebhookSecret(wh)") - 400,
+      SECTION.indexOf("onRotateWebhookSecret(wh)"),
+    );
+    expect(rotateBlock).toContain("{isOwner && (");
+  });
+
+  it("leaves the delivery history open to anyone who can see the row", () => {
+    // Reading what was delivered is not a write, and the endpoint gates on
+    // canRead.
+    const historyIdx = SECTION.indexOf("onToggleDeliveries(wh.id)");
+    const before = SECTION.slice(historyIdx - 300, historyIdx);
+    expect(before).not.toContain("{isWritable && (");
+    expect(before).not.toContain("{isOwner && (");
+  });
+
+  it("does not hide controls merely because teams are still loading", () => {
+    // Until teams resolve only ownership is known, and an owner must never
+    // watch their own buttons appear a beat late.
+    expect(SECTION).toContain(
+      "const isOwner =\n                  currentUserId !== null && wh.user_id === currentUserId;",
+    );
+  });
+});

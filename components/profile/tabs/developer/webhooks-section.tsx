@@ -279,6 +279,29 @@ export function WebhooksSection({
                 const isEditing = editingWebhookId === wh.id;
                 const isToggling = togglingWebhookId === wh.id;
 
+                // Who may do what, mirroring what the server will actually
+                // accept. This list mixes the caller's own webhooks with ones
+                // a teammate shared into a team, and every write control was
+                // drawn on all of them: a viewer-role co-member was offered
+                // pause, edit, test, rotate and delete, and got a 403 from
+                // each. A button that always fails is worse than no button.
+                //
+                // isOwner: the creator. isWritable: the creator, or a
+                // co-member whose team role grants manage_scans, which is
+                // exactly what getTeamResourceAccess checks for canWrite and
+                // what teams.assignable mirrors on the client. Rotate and the
+                // team picker stay owner-only, because the rotate route is
+                // scoped `AND user_id = $2` and answers 404 to anyone else.
+                //
+                // Nothing is hidden while teams are still loading: until then
+                // only ownership is known, which is the conservative half.
+                const isOwner =
+                  currentUserId !== null && wh.user_id === currentUserId;
+                const isWritable =
+                  isOwner ||
+                  (wh.team_id != null &&
+                    teams.assignable.some((t) => t.id === wh.team_id));
+
                 if (isEditing) {
                   return (
                     <div
@@ -438,43 +461,53 @@ export function WebhooksSection({
                               }
                             />
                           )}
-                        <Switch
-                          checked={wh.active}
-                          disabled={isToggling}
-                          onCheckedChange={(checked) =>
-                            onToggleWebhookActive(wh.id, checked)
-                          }
-                          aria-label={
-                            wh.active ? `Pause ${wh.name}` : `Resume ${wh.name}`
-                          }
-                          title={wh.active ? "Pause webhook" : "Resume webhook"}
-                          className="mr-1"
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
-                          onClick={() => onStartEditWebhook(wh)}
-                          title="Edit webhook"
-                          aria-label={`Edit webhook ${wh.name}`}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-11 w-11 sm:h-7 sm:w-7 text-primary hover:text-primary hover:bg-primary/10"
-                          disabled={testingWebhookId === wh.id}
-                          onClick={() => onTestWebhook(wh.id)}
-                          title="Send test webhook"
-                          aria-label={`Send test webhook to ${wh.name}`}
-                        >
-                          {testingWebhookId === wh.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Play className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
+                        {isWritable && (
+                          <Switch
+                            checked={wh.active}
+                            disabled={isToggling}
+                            onCheckedChange={(checked) =>
+                              onToggleWebhookActive(wh.id, checked)
+                            }
+                            aria-label={
+                              wh.active
+                                ? `Pause ${wh.name}`
+                                : `Resume ${wh.name}`
+                            }
+                            title={
+                              wh.active ? "Pause webhook" : "Resume webhook"
+                            }
+                            className="mr-1"
+                          />
+                        )}
+                        {isWritable && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => onStartEditWebhook(wh)}
+                            title="Edit webhook"
+                            aria-label={`Edit webhook ${wh.name}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {isWritable && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 sm:h-7 sm:w-7 text-primary hover:text-primary hover:bg-primary/10"
+                            disabled={testingWebhookId === wh.id}
+                            onClick={() => onTestWebhook(wh.id)}
+                            title="Send test webhook"
+                            aria-label={`Send test webhook to ${wh.name}`}
+                          >
+                            {testingWebhookId === wh.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Play className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -489,37 +522,41 @@ export function WebhooksSection({
                         >
                           <History className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
-                          disabled={rotatingWebhookId === wh.id}
-                          onClick={() => onRotateWebhookSecret(wh)}
-                          title="Rotate signing secret"
-                          aria-label={`Rotate the signing secret for ${wh.name}`}
-                        >
-                          {rotatingWebhookId === wh.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <RefreshCw className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() =>
-                            onRequestConfirm({
-                              kind: "delete-webhook",
-                              id: wh.id,
-                              label: wh.name,
-                            })
-                          }
-                          title="Delete webhook"
-                          aria-label={`Delete webhook ${wh.name}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {isOwner && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
+                            disabled={rotatingWebhookId === wh.id}
+                            onClick={() => onRotateWebhookSecret(wh)}
+                            title="Rotate signing secret"
+                            aria-label={`Rotate the signing secret for ${wh.name}`}
+                          >
+                            {rotatingWebhookId === wh.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        )}
+                        {isWritable && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() =>
+                              onRequestConfirm({
+                                kind: "delete-webhook",
+                                id: wh.id,
+                                label: wh.name,
+                              })
+                            }
+                            title="Delete webhook"
+                            aria-label={`Delete webhook ${wh.name}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
