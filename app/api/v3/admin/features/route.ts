@@ -5,6 +5,12 @@ import {
   requireAdmin as _requireAdmin,
   logAction,
 } from "@/lib/auth/authorization";
+import {
+  hasGodMode,
+  hasStaffPermission,
+  STAFF_PERMISSIONS,
+} from "@/lib/auth/permissions-client";
+import { STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
 import { sendEmail } from "@/lib/email/email";
 import {
   isSettingKey,
@@ -431,11 +437,96 @@ export async function POST(req: NextRequest) {
       if (action === "resolve") {
         const { id, action_taken } = body;
         const alertResult = await pool.query(
-          `SELECT alert_type, severity FROM security_alerts WHERE id = $1`,
+          `SELECT alert_type, severity, user_id FROM security_alerts WHERE id = $1`,
           [id],
         );
-        const alertType = alertResult.rows[0]?.alert_type || "Unknown";
-        const severity = alertResult.rows[0]?.severity || "Unknown";
+        if (!alertResult.rows[0]) {
+          return NextResponse.json(
+            { error: "Alert not found" },
+            { status: 404 },
+          );
+        }
+        const alertType = alertResult.rows[0].alert_type || "Unknown";
+        const severity = alertResult.rows[0].severity || "Unknown";
+        const alertUserId: number = alertResult.rows[0].user_id;
+
+        // "Block User" used to be a label and nothing else.
+        //
+        // The dialog said "This will block the user and mark the alert as
+        // resolved", the button said "Block & Resolve", and the handler
+        // wrote the phrase block_user into action_taken and stopped. No
+        // UPDATE users, no session eviction, nothing: the account carried on
+        // doing whatever raised the alert. Worse, the audit row then recorded
+        // "Action: block_user", so anyone reading the trail later concluded
+        // the account had been blocked. The control and the record of the
+        // control were both false, which is the worst state a security
+        // action can be in.
+        let blocked = false;
+        if (action_taken === "block_user") {
+          // The same three guards the disable action in
+          // app/api/v3/admin/route.ts applies, because this is that action
+          // reached by another door: an alert on the god-mode account, or on
+          // a peer, must not become a way around them.
+          const targetRes = await pool.query(
+            "SELECT email, role, disabled_at FROM users WHERE id = $1",
+            [alertUserId],
+          );
+          const target = targetRes.rows[0];
+          if (!target) {
+            return NextResponse.json(
+              { error: "The account this alert names no longer exists." },
+              { status: 404 },
+            );
+          }
+          if (alertUserId === user.id) {
+            return NextResponse.json(
+              { error: "Cannot block your own account." },
+              { status: 400 },
+            );
+          }
+          if (hasGodMode(target.role)) {
+            return NextResponse.json(
+              { error: "This account cannot be modified." },
+              { status: 403 },
+            );
+          }
+          if (
+            user.role !== STAFF_ROLES.SUPER_ADMIN &&
+            (STAFF_ROLE_HIERARCHY[target.role] || 0) >=
+              (STAFF_ROLE_HIERARCHY[user.role] || 0)
+          ) {
+            return NextResponse.json(
+              { error: "You cannot act on an account at or above your rank." },
+              { status: 403 },
+            );
+          }
+          if (!hasStaffPermission(user.role, STAFF_PERMISSIONS.DISABLE_USER)) {
+            return NextResponse.json(
+              { error: "You do not have permission to disable an account." },
+              { status: 403 },
+            );
+          }
+
+          await pool.query(
+            "UPDATE users SET disabled_at = NOW() WHERE id = $1 AND disabled_at IS NULL",
+            [alertUserId],
+          );
+          await pool.query("DELETE FROM sessions WHERE user_id = $1", [
+            alertUserId,
+          ]);
+          blocked = true;
+          // Its own row, under the action name the disable card writes, so
+          // an account disabled from an alert appears in the audit log the
+          // same way as one disabled from the user panel.
+          await logAction(
+            user.id,
+            alertUserId,
+            "disable_user",
+            `Disabled account for ${target.email} while resolving ${severity} ${alertType} alert (ID: ${id})`,
+            ip,
+          );
+        }
+
         await pool.query(
           `UPDATE security_alerts SET resolved_at = NOW(), resolved_by = $1, action_taken = $2 WHERE id = $3`,
           [user.id, action_taken, id],
@@ -447,7 +538,7 @@ export async function POST(req: NextRequest) {
           `Resolved ${severity} ${alertType} alert (ID: ${id}). Action: ${action_taken || "None specified"}`,
           ip,
         );
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ success: true, blocked });
       }
     }
 

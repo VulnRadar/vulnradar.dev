@@ -191,12 +191,27 @@ describe("GET /api/v3/scan/status/:id", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 404 (not 403) for a scan owned by a different user", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [row({ user_id: OTHER_ID })] });
+  it("scopes the read to the caller in SQL, not in JavaScript afterwards", async () => {
+    // This used to assert the JS check: the mock returned a row owned by
+    // somebody else and the handler rejected it. The check is in the WHERE
+    // now, which is the whole point, and a faked pool.query answers a query
+    // naming a predicate exactly as it answers one without it (see
+    // tests/README.md). So the meaningful assertion here is the shape of the
+    // statement; that Postgres honours it is the integration tier's job.
+    //
+    // Why it moved: the dashboard polls this every two seconds, and the row
+    // carries four JSONB columns holding every finding's description, fix
+    // steps and code examples, routinely megabytes and TOASTed. With the
+    // check in JavaScript, walking sequential ids made the server read and
+    // detoast other people's scans before deciding to return null.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await GET(req(), ctx("1"));
     expect(res.status).toBe(404);
-    const json = await res.json();
-    expect(json.error).toBe("Scan not found");
+    expect((await res.json()).error).toBe("Scan not found");
+
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(String(sql)).toContain("WHERE id = $1 AND user_id = $2");
+    expect(params).toEqual(["1", OWNER_ID]);
   });
 
   it("rejects an unauthenticated caller", async () => {
@@ -260,13 +275,20 @@ describe("DELETE /api/v3/scan/status/:id", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("returns 404 for a scan owned by a different user, without cancelling anything", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [row({ user_id: OTHER_ID })] });
+  it("scopes the cancel read to the caller in SQL, and writes nothing when it misses", async () => {
+    // Same move as the GET test above: the ownership check is a predicate
+    // now rather than a comparison after the read, so a mock that ignores
+    // the WHERE cannot express "somebody else owns it". A miss returns no
+    // row, and what matters is that nothing is cancelled on the way past.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await DELETE(req("DELETE"), ctx("1"));
 
     expect(res.status).toBe(404);
     expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(String(sql)).toContain("user_id = $2");
+    expect(params).toEqual(["1", OWNER_ID]);
   });
 
   it("returns 409 when the scan finishes in the race between the SELECT and the cancel UPDATE", async () => {

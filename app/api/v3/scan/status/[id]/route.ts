@@ -127,7 +127,26 @@ function scopeCheck(
   );
 }
 
-/** Fetch the scan row, scoped to its owner. Returns null if missing or not owned. */
+/**
+ * Fetch the scan row, scoped to its owner. Returns null if missing or not owned.
+ *
+ * The ownership test used to be `row.user_id !== userId` in JavaScript,
+ * applied after the row had already been read. That is the wrong place for it
+ * on this endpoint above all others: the dashboard polls here every two
+ * seconds, and the row carries four JSONB columns that for a finished scan
+ * hold every finding's description, explanation, fix steps and code examples,
+ * routinely megabytes and TOASTed. So walking sequential ids made the server
+ * read and detoast other people's scans before deciding to return null. No
+ * disclosure, because the check did run, but the work was free to whoever
+ * asked for it. In the predicate it costs an index lookup that matches
+ * nothing.
+ *
+ * Splitting the projection so a progress tick skips those columns entirely
+ * was the obvious next step and is deliberately not done: a running scan's
+ * partial findings ARE rendered by the console, so the split would have to
+ * keep them for the status the poll spends all its time in, which is most of
+ * the benefit gone for a second round trip and a merge.
+ */
 async function getOwnedScan(
   id: string,
   userId: number,
@@ -138,13 +157,10 @@ async function getOwnedScan(
             scanned_at, summary, findings, response_headers, result_meta,
             error_message
      FROM scan_history
-     WHERE id = $1`,
-    [id],
+     WHERE id = $1 AND user_id = $2`,
+    [id, userId],
   );
-  if (result.rows.length === 0) return null;
-  const row = result.rows[0];
-  if (row.user_id !== userId) return null;
-  return row;
+  return result.rows[0] ?? null;
 }
 
 /**
