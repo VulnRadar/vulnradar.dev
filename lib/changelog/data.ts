@@ -698,6 +698,12 @@ const CHANGELOG: Release[] = [
         desc: "Verifying a domain unlocks a set of controls over what other people's scans of it can show: every published scan of the domain, the ability to unpublish one or revoke its share link, and a switch that stops it being scanned at all. All of that opened inside the row it belonged to, so expanding it pushed everything below it down by the height of a page, and the controls that need the most deliberation were the ones hardest to read. Each verified domain has its own page now, reached by Manage. The unverified case is unchanged and still opens in place, because it is one DNS record and it belongs to adding the domain. A domain that is not yours, or an address that is not a domain at all, gets the same answer, so the page does not reveal which is which.",
         category: "changed",
       },
+      {
+        icon: Table2,
+        label: "Admin Tables Could Shrink To Little More Than Their Own Header",
+        desc: "Every table in the admin panel caps its height at a fraction of the browser window, so a long list scrolls inside the table instead of running down the page. That fraction is measured against the whole window and takes no account of the browser's own toolbars above the page, or of how far down the page the table starts. On a short window it worked out barely taller than the header row itself, so the table became a pinned header with a thin line of one row visible underneath and the rest spilling past the edge of a box no longer big enough to hold them. The cap can no longer fall below a height that holds several rows. It is still only a cap, so a table with two rows in it is still two rows tall rather than padded out to a fixed height.",
+        category: "fixed",
+      },
     ],
   },
   {

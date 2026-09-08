@@ -171,9 +171,30 @@ interface TableScrollAreaProps {
 }
 
 /**
+ * The cap can never fall below this, however short the viewport is.
+ *
+ * Every caller states its cap in `vh`, which is a fraction of the WHOLE
+ * viewport and takes no account of the browser chrome above it or of how much
+ * of the page this table starts down. On a short viewport 65vh lands close to
+ * the 40px header, and the table becomes a pinned header with a sliver of one
+ * row under it: reported as "it's not tall enough and stuff bleeds behind it
+ * when scrolling, because of a little line that shows up", which is exactly
+ * what it looks like. Measured at 43.5px tall against a 40px header.
+ *
+ * Expressed with CSS max() rather than a min-height, deliberately. max-height
+ * only ever caps, so a table with two rows is still two rows tall and gains no
+ * dead space; a min-height would reserve 17rem under every short table in the
+ * panel. When the viewport really is tiny the table simply grows past it and
+ * the page scrolls, which is the better of the two failures.
+ */
+const MIN_TABLE_CAP = "17rem";
+
+/**
  * Wraps a <Table> with a bordered, rounded container that scrolls
  * horizontally on narrow screens and, once maxHeight is reached, vertically
- * with the header pinned via `sticky top-0` on <TableHeader>.
+ * with the header pinned via `sticky top-0` on <TableHeader>. The cap never
+ * drops below MIN_TABLE_CAP, so a short viewport cannot squeeze the table down
+ * to its own header.
  */
 export function TableScrollArea({
   children,
@@ -207,7 +228,7 @@ export function TableScrollArea({
     // Leave this alone without a measurement showing what is actually wrong.
     <div
       className={cn("overflow-auto [&>div]:overflow-visible", className)}
-      style={{ maxHeight }}
+      style={{ maxHeight: `max(${maxHeight}, ${MIN_TABLE_CAP})` }}
     >
       {children}
     </div>
