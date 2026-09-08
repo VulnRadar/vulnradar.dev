@@ -449,13 +449,22 @@ export const CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS = 2 * 60 * 1000;
 // running at once.
 export const CONFIG_SCHEDULE_WORKER_BATCH_CONCURRENCY = 5;
 
-// How long a claimed schedule row is "soft-locked" (next_run_at pushed
-// forward) while its scan runs, in minutes. NOT admin-configurable (see
-// NEVER_CONFIGURABLE in registry.ts): this must stay comfortably above
-// CONFIG_SCAN_TIMEOUT_SECONDS / CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS or a
-// long-running scan's claim can expire mid-run and let a second worker
-// double-claim it.
+// Floor for how long a claimed schedule row is "soft-locked" (next_run_at
+// pushed forward) while its scan runs, in minutes. NOT admin-configurable
+// (see NEVER_CONFIGURABLE in registry.ts). It is only the floor: the worker
+// raises it from the live SCAN_TIMEOUT_SECONDS setting at claim time, because
+// that setting goes up to an hour and a lock shorter than the scan it covers
+// expires mid-run and lets the next polling tick claim and re-run the same
+// schedule.
 export const CONFIG_SCHEDULE_WORKER_CLAIM_BUFFER_MINUTES = 15;
+
+// How often the stale-scan sweep (lib/scanner/stale-scan-sweep.ts) runs.
+// The sweep's own age guard already refuses to touch anything younger than
+// twice the longest configured scan budget, so this only decides how promptly
+// a row that IS past that guard gets released; 5 minutes matches the periodic
+// database cleanup's cadence. NOT admin-configurable (see NEVER_CONFIGURABLE
+// in registry.ts): read once when the timer is registered.
+export const CONFIG_STALE_SCAN_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 // IP BINDING - UPDATE IF NEEDED
 //

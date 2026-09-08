@@ -15,12 +15,14 @@
  *
  * - Claiming (`claimDueSchedules`) uses `SELECT ... FOR UPDATE SKIP LOCKED`
  *   inside a short transaction that immediately pushes the claimed rows'
- *   `next_run_at` into the near future (CLAIM_BUFFER_MINUTES) before
+ *   `next_run_at` into the near future (see resolveClaimBufferMinutes) before
  *   committing. This both prevents two workers (or two overlapping polling
  *   ticks, if a scan runs longer than the poll interval) from double-running
  *   the same schedule, and self-heals if this process crashes mid-batch --
  *   the buffer expires and the row becomes claimable again instead of being
- *   stuck forever.
+ *   stuck forever. The lock is a lease, not a stamp: `renewClaims` pushes it
+ *   forward again for whatever is still queued as the batch drains, because
+ *   the tail of a full claim waits far longer than any one scan takes.
  *
  * - Processing (`runInBatches`) runs claimed schedules with bounded
  *   concurrency (SCHEDULE_WORKER_BATCH_CONCURRENCY at a time), not
@@ -58,6 +60,7 @@ import {
   isRawIpv4,
   getProtocolType,
 } from "./execute-scan";
+import { finalizeScanFailure } from "./scan-jobs";
 import {
   computeNextRunAt,
   isScheduleFrequency,
@@ -87,14 +90,31 @@ import { scanningPausedReason } from "@/lib/admin/service-state";
  *  default parameter value below; the shipped compiled default. */
 const CLAIM_LIMIT = 200;
 
-/** How long a claimed row is "soft-locked" (next_run_at pushed forward)
- *  while its scan runs. Comfortably above SCAN_TIMEOUT_SECONDS' typical
- *  range so a normal-length scan never has its own claim expire out from
- *  under it; a crashed worker self-heals after this window instead of
- *  leaving the row stuck forever. NOT admin-configurable (see
- *  NEVER_CONFIGURABLE in lib/config/registry.ts): must stay above the scan
- *  timeout settings or a long scan's claim can expire mid-run. */
+/** Floor for how long a claimed row is "soft-locked" (next_run_at pushed
+ *  forward) while its scan runs. A crashed worker self-heals after this
+ *  window instead of leaving the row stuck forever, so it is also the longest
+ *  a crash can strand a schedule. */
 const CLAIM_BUFFER_MINUTES = CONFIG_SCHEDULE_WORKER_CLAIM_BUFFER_MINUTES;
+
+/**
+ * How long to soft-lock a claimed row for, derived from the live scan budget
+ * rather than fixed at CLAIM_BUFFER_MINUTES.
+ *
+ * The lock has to outlive the scan it covers. SCAN_TIMEOUT_SECONDS is an
+ * admin setting that goes up to an hour, and the lock was a hardcoded 15
+ * minutes, so an admin who raised the scan budget past that got a lock that
+ * expired while the scan was still running: the next polling tick, two
+ * minutes later, saw the row due again, claimed it, inserted a SECOND
+ * scan_history row for the same occurrence and charged the owner's daily
+ * quota a second time. Doubling the budget leaves the same headroom the
+ * shipped defaults had (300s budget, 15 minute lock).
+ */
+async function resolveClaimBufferMinutes(): Promise<number> {
+  const scanTimeoutSeconds = await getSetting("SCAN_TIMEOUT_SECONDS");
+  if (!Number.isFinite(scanTimeoutSeconds)) return CLAIM_BUFFER_MINUTES;
+  const twiceTheBudgetMinutes = Math.ceil((scanTimeoutSeconds * 2) / 60);
+  return Math.max(CLAIM_BUFFER_MINUTES, twiceTheBudgetMinutes);
+}
 
 export interface DueSchedule {
   id: number;
@@ -136,6 +156,7 @@ export interface ProcessOutcome {
  */
 export async function claimDueSchedules(
   limit: number = CLAIM_LIMIT,
+  bufferMinutes: number = CLAIM_BUFFER_MINUTES,
 ): Promise<DueSchedule[]> {
   const client = await pool.connect();
   try {
@@ -156,7 +177,7 @@ export async function claimDueSchedules(
         `UPDATE scheduled_scans
          SET next_run_at = NOW() + make_interval(mins => $2)
          WHERE id = ANY($1::int[])`,
-        [ids, CLAIM_BUFFER_MINUTES],
+        [ids, bufferMinutes],
       );
     }
 
@@ -170,10 +191,43 @@ export async function claimDueSchedules(
   }
 }
 
+/**
+ * Push the soft lock forward again on rows that have been claimed but have
+ * not started yet.
+ *
+ * One claim can be up to SCHEDULE_WORKER_CLAIM_LIMIT rows (200 shipped) and
+ * they run SCHEDULE_WORKER_BATCH_CONCURRENCY at a time (5 shipped), so the
+ * last row in a full claim waits behind roughly forty sequential scans. The
+ * lock was stamped once, at claim time, and sized for a single scan, so it
+ * expired long before those rows' turn came: the next polling tick claimed
+ * them again while this pass still had them queued, and every one of them ran
+ * twice. Renewing as the queue drains keeps the lock covering exactly the
+ * work that is still outstanding, and still lets a crashed worker's rows
+ * become claimable again within one buffer, which a single long lock stamped
+ * up front would not.
+ *
+ * Only ever called with rows that have not been processed yet. A row whose
+ * run has finished already carries its real next_run_at from rescheduleNext,
+ * and pushing that back to now-plus-a-buffer would move the schedule's actual
+ * next occurrence.
+ */
+async function renewClaims(
+  ids: readonly number[],
+  bufferMinutes: number,
+): Promise<void> {
+  if (ids.length === 0) return;
+  await pool.query(
+    `UPDATE scheduled_scans
+     SET next_run_at = NOW() + make_interval(mins => $2)
+     WHERE id = ANY($1::int[]) AND active = true`,
+    [ids, bufferMinutes],
+  );
+}
+
 /** Persist the next occurrence for a schedule, and (only for an actual scan
- *  attempt) stamp last_run_at. Always overwrites the CLAIM_BUFFER_MINUTES
- *  soft-lock placeholder set by claimDueSchedules with the real computed
- *  value. */
+ *  attempt) stamp last_run_at. Always overwrites the soft-lock placeholder
+ *  set by claimDueSchedules (and renewed by renewClaims) with the real
+ *  computed value. */
 async function rescheduleNext(
   schedule: DueSchedule,
   now: Date,
@@ -255,6 +309,10 @@ export async function processSchedule(
   schedule: DueSchedule,
   now: Date = new Date(),
 ): Promise<ProcessOutcome> {
+  // Read by the catch below. The row exists from the moment the concurrency
+  // reservation commits, and from then on anything that throws has to close
+  // it out explicitly: see that block for what happens if nothing does.
+  let scanHistoryId: number | null = null;
   try {
     const normalizedUrl = normalizeUrl(schedule.url);
 
@@ -376,7 +434,7 @@ export async function processSchedule(
         detail: reservation.check.message,
       };
     }
-    const scanHistoryId = reservation.scanId;
+    scanHistoryId = reservation.scanId;
 
     // Charge the quota now that the run is definitely going ahead. Capped and
     // atomic, so a manual scan racing this one cannot push the counter past
@@ -455,6 +513,25 @@ export async function processSchedule(
       `[${APP_NAME}] Scheduled scan failed for schedule #${schedule.id} (${schedule.url}):`,
       message,
     );
+    // Close out the scan_history row if one was already created.
+    //
+    // It is inserted 'pending' by the reservation above, and executeScan only
+    // arms the watchdog that would eventually release it AFTER its own
+    // settings read. A throw in between (the quota charge, that settings read,
+    // anything executeScan does before startWatchdog) left the row 'pending'
+    // with nothing left in the process that would ever touch it again: it
+    // holds one of the owner's concurrent-scan slots, so the account is a slot
+    // down until a restart, and their dashboard shows a scan that never
+    // finishes. Every other executeScan caller already closes this
+    // (app/api/v3/scan/route.ts, app/api/v3/scan/crawl/route.ts,
+    // lib/scanner/execute-bulk-scan.ts); this worker was the one left behind.
+    //
+    // Safe to call unconditionally: finalizeScanFailure guards on
+    // `WHERE status IN ('pending','running')`, so a row executeScan already
+    // finalized is untouched.
+    if (scanHistoryId !== null) {
+      await finalizeScanFailure(scanHistoryId, message).catch(() => {});
+    }
     // A transient failure (DB hiccup, executeScan throwing) is not a
     // permanent target problem -- retry at the normal cadence rather than
     // disabling the user's schedule over a one-off error.
@@ -480,10 +557,19 @@ export async function runInBatches<T, R>(
   items: readonly T[],
   batchSize: number,
   worker: (item: T) => Promise<R>,
+  /**
+   * Called before every batch EXCEPT the first, with the items that have not
+   * started yet (the batch about to run, plus everything queued behind it).
+   * The first batch is skipped because whatever the caller does here it has
+   * just done: `runDueSchedules` renews the claim lease, and the lease on the
+   * first batch is the one `claimDueSchedules` stamped moments ago.
+   */
+  beforeBatch?: (pending: readonly T[]) => Promise<void>,
 ): Promise<R[]> {
   const size = Math.max(1, Math.trunc(batchSize) || 1);
   const results: R[] = [];
   for (let i = 0; i < items.length; i += size) {
+    if (i > 0 && beforeBatch) await beforeBatch(items.slice(i));
     const batch = items.slice(i, i + size);
     const batchResults = await Promise.all(batch.map((item) => worker(item)));
     results.push(...batchResults);
@@ -549,15 +635,35 @@ export async function runDueSchedules(): Promise<RunDueSchedulesStats> {
   }
 
   const claimLimit = await getSetting("SCHEDULE_WORKER_CLAIM_LIMIT");
-  const due = await claimDueSchedules(claimLimit);
+  const bufferMinutes = await resolveClaimBufferMinutes();
+  const due = await claimDueSchedules(claimLimit, bufferMinutes);
   if (due.length === 0) {
     return { ...EMPTY_STATS };
   }
 
   const concurrency = await getSetting("SCHEDULE_WORKER_BATCH_CONCURRENCY");
   const now = new Date();
-  const results = await runInBatches(due, concurrency, (schedule) =>
-    processSchedule(schedule, now),
+  const results = await runInBatches(
+    due,
+    concurrency,
+    (schedule) => processSchedule(schedule, now),
+    // Keep the claim alive over the rows still queued behind the running
+    // batch. Without this the lease covers only the head of a large claim and
+    // the tail gets re-claimed, and re-run, by a later tick. A renewal that
+    // fails is logged and the pass continues: losing a lease risks a
+    // duplicate run, refusing to scan the rest of the batch guarantees a
+    // missed one.
+    async (pending) => {
+      await renewClaims(
+        pending.map((s) => s.id),
+        bufferMinutes,
+      ).catch((err) => {
+        console.error(
+          `[${APP_NAME}] Failed to renew the claim on ${pending.length} queued schedule(s):`,
+          err instanceof Error ? err.message : err,
+        );
+      });
+    },
   );
 
   const count = (outcome: ProcessOutcome["outcome"]) =>

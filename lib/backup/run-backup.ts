@@ -47,14 +47,33 @@ export function runBackupJob(
   appRoot: string = process.cwd(),
 ): Promise<BackupRunResult> {
   return new Promise<BackupRunResult>((resolveJob) => {
-    const scriptPath = join(appRoot, "scripts", "backup-db.mjs");
-    const child = spawn(process.execPath, [scriptPath], {
-      cwd: appRoot,
-      env: process.env,
-      shell: false,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    let child: ReturnType<typeof spawn>;
+    try {
+      const scriptPath = join(appRoot, "scripts", "backup-db.mjs");
+      child = spawn(process.execPath, [scriptPath], {
+        cwd: appRoot,
+        env: process.env,
+        shell: false,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      // spawn reports almost every failure through the child's 'error' event,
+      // but it throws synchronously for a bad argument or an unreachable cwd,
+      // before any of the handlers below exist. A throw inside a Promise
+      // executor rejects the promise, so finishJob was never reached and the
+      // job-store's single-flight slot stayed reserved for the life of the
+      // process: every later backup, scheduled or admin-triggered, was refused
+      // as "one is already running", and the scheduled worker reported each of
+      // those refusals to the failure escalator as a healthy pass. Backups
+      // stopped, and nothing said so.
+      const message = err instanceof Error ? err.message : String(err);
+      appendLog(jobId, `Failed to start backup process: ${message}`);
+      finishJob(jobId, "failed", message);
+      console.error("[backup] Failed to start backup process:", message);
+      resolveJob({ ok: false, error: message });
+      return;
+    }
 
     let settled = false;
     const killTimer = setTimeout(() => {

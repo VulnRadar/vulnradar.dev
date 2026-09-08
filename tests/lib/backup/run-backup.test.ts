@@ -123,6 +123,34 @@ describe("runBackupJob", () => {
     }
   });
 
+  // spawn throws synchronously for a bad argument or an unreachable cwd,
+  // before the child's own 'error' handler exists. That used to reject the
+  // promise with finishJob never called, so the job-store's single-flight slot
+  // stayed reserved for the life of the process: every later backup was
+  // refused as "one is already running", and the scheduled worker reported
+  // each of those refusals to the failure escalator as a healthy pass.
+  it("releases the single-flight slot when spawn throws synchronously", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const job = createJob(1)!;
+      mockSpawn.mockImplementation(() => {
+        throw new Error("ENOENT: uv_cwd");
+      });
+
+      const result = await runBackupJob(job.id, "/app");
+
+      expect(result).toEqual({ ok: false, error: "ENOENT: uv_cwd" });
+      const finished = getJob(job.id)!;
+      expect(finished.status).toBe("failed");
+      expect(finished.error).toBe("ENOENT: uv_cwd");
+      // The slot is free again, so the next backup is actually attempted
+      // instead of being refused forever.
+      expect(createJob(1)).not.toBeNull();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("does not double-finish the job if both error and close fire", async () => {
     const job = createJob(1)!;
     const child = fakeChild();

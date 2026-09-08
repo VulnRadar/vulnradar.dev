@@ -12,8 +12,10 @@
  *
  * Cancellation is in-memory and per-process. It is not durable across a
  * restart, and a scan whose process dies mid-run is left at "running" with
- * no in-process timer left to rescue it — a documented limitation of a
+ * no in-process timer left to rescue it: a documented limitation of a
  * single, persistent Node process, not a bug within one process's lifetime.
+ * `sweepStaleScans` at the bottom of this file is the durable backstop, run
+ * at boot and on a timer by lib/scanner/stale-scan-sweep.ts.
  */
 
 import pool from "@/lib/database/db";
@@ -525,16 +527,16 @@ export async function markScanRunning(scanId: number): Promise<void> {
 }
 
 /**
- * Fail every scan_history row still `pending`/`running` from BEFORE this
- * process started. Called once at boot (see instrumentation.ts) as the
- * counterpart to the in-memory watchdog above: that watchdog dies with its
- * process, so a scan whose process was killed mid-run (a deploy, an OOM
- * kill, a crash) had nothing left to rescue it and stayed "running" forever
- * on the owner's dashboard until they manually noticed (AUDIT-010,
- * production-readiness #2). Every real completion path (finalizeScanSuccess/
- * finalizeScanFailure) already guards on `WHERE status IN ('pending',
- * 'running')`, so this can never race a scan that's genuinely still
- * in-flight in the CURRENT process.
+ * Fail every scan_history row still `pending`/`running` that is older than
+ * the grace window below. Run once at boot AND on a timer thereafter, both
+ * through lib/scanner/stale-scan-sweep.ts, as the counterpart to the
+ * in-memory watchdog above: that watchdog dies with its process, so a scan
+ * whose process was killed mid-run (a deploy, an OOM kill, a crash) had
+ * nothing left to rescue it and stayed "running" forever on the owner's
+ * dashboard until they manually noticed (AUDIT-010, production-readiness #2).
+ * Every real completion path (finalizeScanSuccess/finalizeScanFailure)
+ * already guards on `WHERE status IN ('pending', 'running')`, so this can
+ * never race a scan that's genuinely still in-flight in the CURRENT process.
  *
  * It CAN race another process, though, which is why the sweep is bounded by
  * an age guard rather than taking every non-terminal row. "There is no

@@ -23,23 +23,17 @@ export async function runBootSafetyNets(
  * Fails any scan left `pending`/`running` by a PREVIOUS process (killed by a
  * deploy, OOM, crash). See lib/scanner/scan-jobs.ts's sweepStaleScans for why
  * the in-memory watchdog alone cannot cover this case.
+ *
+ * The boot pass is no longer the only one: startBackgroundWorkers arms the
+ * same sweep on a timer (lib/scanner/stale-scan-sweep.ts), which is what
+ * catches a row that goes stale while this process is up. Both share the one
+ * reporting path so an operator gets the same alert either way.
  */
 async function sweepStaleScansOnce(appName: string): Promise<void> {
   try {
-    const { sweepStaleScans } = await import("@/lib/scanner/scan-jobs");
-    const swept = await sweepStaleScans();
-    if (swept > 0) {
-      console.error(
-        `[${appName}] Failed ${swept} scan(s) left running/pending by a previous process.`,
-      );
-      const { sendAdminAlert } = await import("@/lib/admin/alert-webhook");
-      void sendAdminAlert({
-        event: "stale_scans_swept",
-        severity: "warning",
-        message: `${swept} scan(s) were left running/pending by a previous process (an unclean restart) and have been marked failed.`,
-        context: { count: swept },
-      });
-    }
+    const { runStaleScanSweep } =
+      await import("@/lib/scanner/stale-scan-sweep");
+    await runStaleScanSweep("boot");
   } catch (err) {
     console.error(
       `[${appName}] Failed to sweep stale scans (non-fatal):`,

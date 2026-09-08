@@ -32,6 +32,14 @@ export interface ReverifyPassStats {
   checked: number;
   stillVerified: number;
   downgraded: number;
+  /**
+   * Domains whose DNS check threw, so the pass reached no verdict about them
+   * at all. Counted rather than only logged because the loop swallows these:
+   * without a number here a pass in which every single check threw returned
+   * the same all-zero-ish stats a pass with nothing due returns, and the
+   * timer below reported both as healthy.
+   */
+  failed: number;
 }
 
 interface DueDomainRow {
@@ -54,6 +62,7 @@ export async function runDomainReverifyPass(): Promise<ReverifyPassStats> {
     checked: 0,
     stillVerified: 0,
     downgraded: 0,
+    failed: 0,
   };
 
   const featureEnabled = await getSetting("FEATURE_DOMAIN_VERIFICATION");
@@ -78,6 +87,7 @@ export async function runDomainReverifyPass(): Promise<ReverifyPassStats> {
     try {
       result = await checkDnsVerification(row.domain, row.verification_token);
     } catch (err) {
+      stats.failed++;
       console.error(
         `[${APP_NAME}] domain reverify: DNS check threw for domain id ${row.id} (non-fatal, left unchanged this tick):`,
         err instanceof Error ? err.message : err,
@@ -128,12 +138,27 @@ export function schedulePeriodicDomainReverify(
   activeReverifyTimer = setInterval(async () => {
     try {
       const stats = await runDomainReverifyPass();
-      if (stats.downgraded > 0) {
+      if (stats.downgraded > 0 || stats.failed > 0) {
         console.log(
-          `[${APP_NAME}] Domain reverify worker: ${stats.downgraded} domain(s) downgraded to reverify_failed (${stats.checked} checked).`,
+          `[${APP_NAME}] Domain reverify worker: ${stats.downgraded} domain(s) downgraded to reverify_failed, ${stats.failed} check(s) threw (${stats.checked} checked).`,
         );
       }
-      escalator.recordSuccess();
+      // runDomainReverifyPass catches every per-domain DNS failure and moves
+      // on rather than rethrowing, so a pass in which 100% of the checks
+      // threw still returned normally and used to be recorded as a healthy
+      // pass. That reset the escalator's streak on every tick, so the "worker
+      // is failing" alert could never fire no matter how long the resolver
+      // had been unreachable, and the whole point of this worker is that a
+      // domain which changed hands loses its active-probes permission. A pass
+      // that checked domains and reached a verdict on none of them is a
+      // failed pass, the same rule the scheduled-scans worker uses.
+      if (stats.checked > 0 && stats.failed === stats.checked) {
+        escalator.recordFailure(
+          "Every domain re-verification check is failing -- domains that changed hands will keep the original account's active-probes permission indefinitely",
+        );
+      } else {
+        escalator.recordSuccess();
+      }
     } catch (err) {
       console.error(`[${APP_NAME}] Domain reverify worker pass failed:`, err);
       escalator.recordFailure(

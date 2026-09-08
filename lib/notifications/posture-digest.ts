@@ -351,7 +351,27 @@ export function schedulePeriodicPostureDigest(
           `[${APP_NAME}] Posture digest worker: ${formatStats(stats)}`,
         );
       }
-      escalator.recordSuccess();
+      // A pass only counts as a success if it accomplished something.
+      //
+      // sendWeeklyDigests catches per-user failures and counts them, so a pass
+      // in which every single send threw returned normally and landed here,
+      // resetting the consecutive-failure streak. The escalator's whole job is
+      // to notice a run of failures, and it could never see one: the alert
+      // written for "no weekly digest is going out" was unreachable for as
+      // long as the outage lasted, because the outage itself produced the
+      // successes that cleared it.
+      //
+      // Same rule the scheduled-scans worker uses: work was due, none of it
+      // landed, and something errored. A pass with nothing due is still a
+      // success, since there was nothing to fail at.
+      if (stats.candidates > 0 && stats.sent === 0 && stats.errors > 0) {
+        escalator.recordFailure(
+          "Every posture digest is failing -- no weekly digest email has been sent across consecutive worker passes",
+          { candidates: stats.candidates, errors: stats.errors },
+        );
+      } else {
+        escalator.recordSuccess();
+      }
     } catch (err) {
       console.error(`[${APP_NAME}] Posture digest worker pass failed:`, err);
       escalator.recordFailure(

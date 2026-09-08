@@ -49,6 +49,19 @@ vi.mock("@/lib/scanner/execute-scan", () => ({
   getProtocolType: () => "http",
 }));
 
+/**
+ * The worker closes out its own scan_history row when the dispatch throws
+ * before executeScan has armed the watchdog that would otherwise release it.
+ * Mocked here (finalizeScanFailure's SQL and its
+ * `WHERE status IN ('pending','running')` guard have their own suite in
+ * tests/lib/scanner/scan-jobs.test.ts) so these cases assert the contract this
+ * module is responsible for: that the row is closed at all.
+ */
+const mockFinalizeScanFailure = vi.fn();
+vi.mock("@/lib/scanner/scan-jobs", () => ({
+  finalizeScanFailure: (...args: unknown[]) => mockFinalizeScanFailure(...args),
+}));
+
 const mockUserMeetsScheduleFrequency = vi.fn();
 vi.mock("@/lib/billing/plan-limits", () => ({
   userMeetsScheduleFrequency: (...args: unknown[]) =>
@@ -143,6 +156,8 @@ vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
 
 const { claimDueSchedules, processSchedule, runInBatches, runDueSchedules } =
   await import("@/lib/scanner/scheduled-scans-worker");
+const { CONFIG_SCHEDULE_WORKER_CLAIM_BUFFER_MINUTES } =
+  await import("@/lib/config/config-values");
 
 function makeSchedule(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -167,6 +182,8 @@ beforeEach(() => {
   mockValidateScanTarget.mockResolvedValue({ safe: true });
   mockExecuteScan.mockReset();
   mockExecuteScan.mockResolvedValue(undefined);
+  mockFinalizeScanFailure.mockReset();
+  mockFinalizeScanFailure.mockResolvedValue(true);
   mockUserMeetsScheduleFrequency.mockReset();
   mockUserMeetsScheduleFrequency.mockResolvedValue(true);
   mockSendNotificationEmail.mockReset();
@@ -727,6 +744,64 @@ describe("processSchedule", () => {
     expect(result.outcome).toBe("error");
     expect(result.detail).toContain("scan blew up");
   });
+
+  // The row is inserted 'pending' before the scan starts, and executeScan only
+  // arms the watchdog that would eventually release it after its own settings
+  // read. A throw in between left the row 'pending' with nothing left in the
+  // process to touch it: it holds one of the owner's concurrent-scan slots
+  // until a restart, and their dashboard shows a scan that never finishes.
+  it("fails the scan_history row it created when the dispatch throws before the watchdog exists", async () => {
+    const schedule = makeSchedule({ id: 15 });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history")) {
+        return { rows: [{ id: 909 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    mockExecuteScan.mockRejectedValueOnce(
+      new Error("settings resolution failed"),
+    );
+
+    const result = await processSchedule(schedule);
+
+    expect(result.outcome).toBe("error");
+    expect(mockFinalizeScanFailure).toHaveBeenCalledWith(
+      909,
+      expect.stringContaining("settings resolution failed"),
+    );
+  });
+
+  it("fails the row when the quota charge throws after the row already exists", async () => {
+    const schedule = makeSchedule({ id: 16 });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history")) {
+        return { rows: [{ id: 910 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    mockIncrementDailyCountCapped.mockRejectedValueOnce(
+      new Error("connection terminated unexpectedly"),
+    );
+
+    const result = await processSchedule(schedule);
+
+    expect(result.outcome).toBe("error");
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+    expect(mockFinalizeScanFailure).toHaveBeenCalledWith(
+      910,
+      expect.any(String),
+    );
+  });
+
+  it("has no row to fail when the failure happened before one was created", async () => {
+    const schedule = makeSchedule({ id: 17 });
+    mockCheckAccessRules.mockRejectedValueOnce(new Error("blocklist read"));
+
+    const result = await processSchedule(schedule);
+
+    expect(result.outcome).toBe("error");
+    expect(mockFinalizeScanFailure).not.toHaveBeenCalled();
+  });
 });
 
 describe("runInBatches (bounded concurrency)", () => {
@@ -789,6 +864,33 @@ describe("runInBatches (bounded concurrency)", () => {
     const results = await runInBatches([], 5, worker);
     expect(results).toEqual([]);
     expect(worker).not.toHaveBeenCalled();
+  });
+
+  it("hands beforeBatch the not-yet-started items, and skips the first batch", async () => {
+    const seen: number[][] = [];
+    const worker = async (item: number) => item;
+    await runInBatches([1, 2, 3, 4, 5], 2, worker, async (pending) => {
+      seen.push([...pending]);
+    });
+    // The first batch's turn comes immediately after whatever the caller did
+    // to set the batch up, so only batches two and three get the callback.
+    expect(seen).toEqual([[3, 4, 5], [5]]);
+  });
+
+  it("runs beforeBatch before the batch it belongs to, not after", async () => {
+    const order: string[] = [];
+    await runInBatches(
+      [1, 2],
+      1,
+      async (item) => {
+        order.push(`work:${item}`);
+        return item;
+      },
+      async (pending) => {
+        order.push(`before:${pending.join(",")}`);
+      },
+    );
+    expect(order).toEqual(["work:1", "before:2", "work:2"]);
   });
 });
 
@@ -976,5 +1078,122 @@ describe("runDueSchedules (end to end: claim + bounded-concurrency processing)",
       errors: 0,
     });
     expect(mockExecuteScan).not.toHaveBeenCalled();
+  });
+
+  // The soft lock has to outlive the scan it covers. SCAN_TIMEOUT_SECONDS is
+  // an admin setting that goes up to an hour and the lock was a hardcoded 15
+  // minutes, so raising the scan budget past that gave the next polling tick a
+  // row that looked due again while its scan was still running: a second
+  // scan_history row for the same occurrence, and the owner's daily quota
+  // charged twice.
+  it("sizes the claim's soft lock from the live scan budget rather than a fixed 15 minutes", async () => {
+    mockGetSetting.mockImplementation(async (key: string) => {
+      if (key === "FEATURE_SCHEDULED_SCANS") return true;
+      if (key === "SCAN_TIMEOUT_SECONDS") return 3600;
+      return 5;
+    });
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+        return { rows: [makeSchedule({ id: 1 })] };
+      }
+      return { rows: [] };
+    });
+
+    await runDueSchedules();
+
+    const lockCall = mockClientQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("make_interval(mins"),
+    );
+    expect(lockCall).toBeDefined();
+    expect(lockCall![1][1]).toBe(120);
+  });
+
+  it("keeps the shipped floor when the configured scan budget is short", async () => {
+    mockGetSetting.mockImplementation(async (key: string) => {
+      if (key === "FEATURE_SCHEDULED_SCANS") return true;
+      if (key === "SCAN_TIMEOUT_SECONDS") return 60;
+      return 5;
+    });
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("FOR UPDATE SKIP LOCKED")) {
+        return { rows: [makeSchedule({ id: 1 })] };
+      }
+      return { rows: [] };
+    });
+
+    await runDueSchedules();
+
+    const lockCall = mockClientQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("make_interval(mins"),
+    );
+    expect(lockCall![1][1]).toBe(CONFIG_SCHEDULE_WORKER_CLAIM_BUFFER_MINUTES);
+  });
+
+  // One claim can be 200 rows run 5 at a time, so the last row waits behind
+  // roughly forty sequential scans. The lock was stamped once, at claim time,
+  // and sized for a single scan, so it expired long before those rows' turn:
+  // the next tick claimed them again while this pass still had them queued and
+  // every one of them ran twice.
+  it("renews the claim on the schedules still queued behind the running batch", async () => {
+    mockGetSetting.mockImplementation(async (key: string) => {
+      if (key === "FEATURE_SCHEDULED_SCANS") return true;
+      if (key === "SCAN_TIMEOUT_SECONDS") return 300;
+      return 2;
+    });
+    const claimed = [1, 2, 3, 4, 5].map((id) => makeSchedule({ id }));
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("FOR UPDATE SKIP LOCKED")) return { rows: claimed };
+      return { rows: [] };
+    });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history")) {
+        return { rows: [{ id: 1 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await runDueSchedules();
+
+    const renewals = mockPoolQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("make_interval(mins"),
+    );
+    // Concurrency 2 over 5 rows is three batches, and the first batch's lock
+    // is the one claimDueSchedules just stamped, so two renewals.
+    expect(renewals).toHaveLength(2);
+    expect(renewals[0][1][0]).toEqual([3, 4, 5]);
+    expect(renewals[1][1][0]).toEqual([5]);
+    // Renewed with the same lock length the claim used, and only for rows the
+    // owner has not since deactivated.
+    expect(renewals[0][1][1]).toBe(CONFIG_SCHEDULE_WORKER_CLAIM_BUFFER_MINUTES);
+    expect(String(renewals[0][0])).toContain("active = true");
+  });
+
+  it("finishes the pass when a claim renewal fails rather than abandoning the queued schedules", async () => {
+    mockGetSetting.mockImplementation(async (key: string) => {
+      if (key === "FEATURE_SCHEDULED_SCANS") return true;
+      if (key === "SCAN_TIMEOUT_SECONDS") return 300;
+      return 2;
+    });
+    const claimed = [1, 2, 3].map((id) => makeSchedule({ id }));
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("FOR UPDATE SKIP LOCKED")) return { rows: claimed };
+      return { rows: [] };
+    });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("make_interval(mins")) {
+        throw new Error("connection terminated unexpectedly");
+      }
+      if (sql.includes("INSERT INTO scan_history")) {
+        return { rows: [{ id: 1 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const stats = await runDueSchedules();
+
+    // Losing a lease risks a duplicate run; refusing to scan the rest of the
+    // batch guarantees a missed one.
+    expect(stats.processed).toBe(3);
+    expect(stats.scanned).toBe(3);
   });
 });

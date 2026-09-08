@@ -3439,7 +3439,9 @@ export const NEVER_CONFIGURABLE = {
   DB_HEALTHCHECK_TIMEOUT_MS:
     "Read once by the readiness endpoint's probe helper at call time from the constant, not from a re-readable source; deliberately short and not something an admin needs to tune live.",
   SCHEDULE_WORKER_CLAIM_BUFFER_MINUTES:
-    "Must stay comfortably above SCAN_TIMEOUT_SECONDS/CRAWL_SCAN_TIMEOUT_SECONDS or a long-running scan's claim can expire mid-run and let a second worker double-claim it; those two settings can be raised independently today with no way to raise this in step, so it stays a source-only edit rather than a silent footgun in the admin UI.",
+    "Only the floor for the claim's soft lock. The scheduled-scans worker now derives the real lock length from the live SCAN_TIMEOUT_SECONDS setting on every claim, so raising that setting raises the lock in step; exposing this as a second, independently editable number would only give an admin a way to set a lock shorter than the scan it has to cover.",
+  STALE_SCAN_SWEEP_INTERVAL_MS:
+    "Read once when the stale-scan sweep timer is registered, so a runtime change would not take effect.",
   SCANNER_ACTIVE_PROBE_MAX_FORMS:
     "The only check that submits real writes to a scanned target; raising it directly increases live traffic sent to someone else's site, so it warrants a deliberate code change and review rather than a runtime toggle.",
   DISCORD_OAUTH_STATE_TTL_SECONDS:

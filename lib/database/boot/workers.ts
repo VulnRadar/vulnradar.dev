@@ -46,6 +46,24 @@ export async function startBackgroundWorkers(appName: string): Promise<void> {
     );
   }
 
+  // Backstop for the in-process scan watchdog. The same sweep runs once from
+  // runBootSafetyNets, which only ever covered a scan orphaned by a PREVIOUS
+  // process; a row orphaned by this one (a dispatch that threw before the
+  // watchdog was armed, a watchdog whose own failure write was rejected) had
+  // nothing to release it, and it holds one of the owner's concurrent-scan
+  // slots for as long as it sits there. See lib/scanner/stale-scan-sweep.ts.
+  try {
+    const { schedulePeriodicStaleScanSweep } =
+      await import("@/lib/scanner/stale-scan-sweep");
+    schedulePeriodicStaleScanSweep();
+    console.log(`[${appName}] Scheduled the stale-scan sweep.`);
+  } catch (scheduleError) {
+    console.error(
+      `[${appName}] Failed to schedule the stale-scan sweep:`,
+      scheduleError,
+    );
+  }
+
   // Polls scheduled_scans for anything due every
   // CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS (2 min by default) rather than
   // trying to align exactly with each schedule's own frequency: the same "poll

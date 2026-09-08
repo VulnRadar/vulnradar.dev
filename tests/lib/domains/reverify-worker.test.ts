@@ -21,6 +21,15 @@ vi.mock("@/lib/domains/verification", () => ({
     mockCheckDnsVerification(...args),
 }));
 
+const mockRecordSuccess = vi.fn();
+const mockRecordFailure = vi.fn();
+vi.mock("@/lib/admin/failure-escalation", () => ({
+  createFailureEscalator: () => ({
+    recordSuccess: mockRecordSuccess,
+    recordFailure: mockRecordFailure,
+  }),
+}));
+
 const {
   runDomainReverifyPass,
   schedulePeriodicDomainReverify,
@@ -44,6 +53,8 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockGetSetting.mockReset();
   mockCheckDnsVerification.mockReset();
+  mockRecordSuccess.mockReset();
+  mockRecordFailure.mockReset();
   settings();
 });
 
@@ -51,14 +62,24 @@ describe("runDomainReverifyPass", () => {
   it("does nothing and queries nothing when FEATURE_DOMAIN_VERIFICATION is off", async () => {
     settings({ FEATURE_DOMAIN_VERIFICATION: false });
     const stats = await runDomainReverifyPass();
-    expect(stats).toEqual({ checked: 0, stillVerified: 0, downgraded: 0 });
+    expect(stats).toEqual({
+      checked: 0,
+      stillVerified: 0,
+      downgraded: 0,
+      failed: 0,
+    });
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("does nothing and queries nothing when DOMAIN_REVERIFY_ENABLED is off", async () => {
     settings({ DOMAIN_REVERIFY_ENABLED: false });
     const stats = await runDomainReverifyPass();
-    expect(stats).toEqual({ checked: 0, stillVerified: 0, downgraded: 0 });
+    expect(stats).toEqual({
+      checked: 0,
+      stillVerified: 0,
+      downgraded: 0,
+      failed: 0,
+    });
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
@@ -79,7 +100,12 @@ describe("runDomainReverifyPass", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
 
     const stats = await runDomainReverifyPass();
-    expect(stats).toEqual({ checked: 1, stillVerified: 1, downgraded: 0 });
+    expect(stats).toEqual({
+      checked: 1,
+      stillVerified: 1,
+      downgraded: 0,
+      failed: 0,
+    });
     expect(mockCheckDnsVerification).toHaveBeenCalledWith(
       "example.com",
       "tok-1",
@@ -103,7 +129,12 @@ describe("runDomainReverifyPass", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
 
     const stats = await runDomainReverifyPass();
-    expect(stats).toEqual({ checked: 1, stillVerified: 0, downgraded: 1 });
+    expect(stats).toEqual({
+      checked: 1,
+      stillVerified: 0,
+      downgraded: 1,
+      failed: 0,
+    });
     const [updateSql, updateParams] = mockQuery.mock.calls[1];
     expect(updateSql).toContain("status = 'reverify_failed'");
     expect(updateParams).toEqual([2, "No matching TXT record found."]);
@@ -136,7 +167,12 @@ describe("runDomainReverifyPass", () => {
     mockQuery.mockResolvedValue({ rows: [] }); // both UPDATEs
 
     const stats = await runDomainReverifyPass();
-    expect(stats).toEqual({ checked: 2, stillVerified: 1, downgraded: 1 });
+    expect(stats).toEqual({
+      checked: 2,
+      stillVerified: 1,
+      downgraded: 1,
+      failed: 0,
+    });
   });
 
   it("continues checking remaining domains when one DNS check throws", async () => {
@@ -152,15 +188,27 @@ describe("runDomainReverifyPass", () => {
     mockQuery.mockResolvedValue({ rows: [] });
 
     const stats = await runDomainReverifyPass();
-    // The thrown domain is counted as checked but neither still-verified
-    // nor downgraded -- it's left untouched for the next tick to retry.
-    expect(stats).toEqual({ checked: 2, stillVerified: 1, downgraded: 0 });
+    // The thrown domain is counted as checked and failed, but neither
+    // still-verified nor downgraded -- it's left untouched for the next tick
+    // to retry. `failed` is how the timer tells a pass that reached no verdict
+    // apart from a pass that had nothing to do.
+    expect(stats).toEqual({
+      checked: 2,
+      stillVerified: 1,
+      downgraded: 0,
+      failed: 1,
+    });
   });
 
   it("returns zero stats when no domains are due", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const stats = await runDomainReverifyPass();
-    expect(stats).toEqual({ checked: 0, stillVerified: 0, downgraded: 0 });
+    expect(stats).toEqual({
+      checked: 0,
+      stillVerified: 0,
+      downgraded: 0,
+      failed: 0,
+    });
     expect(mockCheckDnsVerification).not.toHaveBeenCalled();
   });
 });
@@ -191,6 +239,75 @@ describe("schedulePeriodicDomainReverify / stopPeriodicDomainReverify", () => {
     } finally {
       setSpy.mockRestore();
       clearSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  // The escalator is the only thing that ever pages anyone about this worker,
+  // and the loop swallows per-domain failures, so a pass that reached no
+  // verdict at all used to be reported as healthy: the streak reset on every
+  // tick and the alert could never fire however long DNS had been broken.
+  it("records a failed pass when every domain due for a recheck threw", async () => {
+    vi.useFakeTimers();
+    try {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          { id: 1, domain: "a.example.com", verification_token: "tok-1" },
+          { id: 2, domain: "b.example.com", verification_token: "tok-2" },
+        ],
+      });
+      mockCheckDnsVerification.mockRejectedValue(
+        new Error("DNS resolver timeout"),
+      );
+
+      schedulePeriodicDomainReverify(60_000);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(mockRecordFailure).toHaveBeenCalledTimes(1);
+      expect(mockRecordSuccess).not.toHaveBeenCalled();
+    } finally {
+      stopPeriodicDomainReverify();
+      vi.useRealTimers();
+    }
+  });
+
+  it("records a successful pass when at least one domain reached a verdict", async () => {
+    vi.useFakeTimers();
+    try {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          { id: 1, domain: "a.example.com", verification_token: "tok-1" },
+          { id: 2, domain: "b.example.com", verification_token: "tok-2" },
+        ],
+      });
+      mockCheckDnsVerification
+        .mockRejectedValueOnce(new Error("DNS resolver timeout"))
+        .mockResolvedValueOnce({ verified: true });
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      schedulePeriodicDomainReverify(60_000);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(mockRecordSuccess).toHaveBeenCalledTimes(1);
+      expect(mockRecordFailure).not.toHaveBeenCalled();
+    } finally {
+      stopPeriodicDomainReverify();
+      vi.useRealTimers();
+    }
+  });
+
+  it("records a successful pass when nothing was due, rather than an empty failure", async () => {
+    vi.useFakeTimers();
+    try {
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      schedulePeriodicDomainReverify(60_000);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(mockRecordSuccess).toHaveBeenCalledTimes(1);
+      expect(mockRecordFailure).not.toHaveBeenCalled();
+    } finally {
+      stopPeriodicDomainReverify();
       vi.useRealTimers();
     }
   });
