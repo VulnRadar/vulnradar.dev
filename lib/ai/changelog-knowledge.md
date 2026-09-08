@@ -18,10 +18,10 @@ and full description.
 
 ---
 
-## v3.8.6 - September 7, 2026
+## v3.9.0 - September 8, 2026 **(highlights)**
 **Things That Fail Without Saying So**
 
-A sweep for anything the app was getting wrong quietly. The AI chat was streaming correctly and arriving all at once, because nothing told the reverse proxy to leave it alone. A heading changed size halfway through email verification. Four pages had each grown their own copy of the same error box. An encrypted production backup was being copied into every Docker build. And a pass for hardcoded values found a database column with three different maximum lengths and an allowlist that would have locked every visitor out of the public pages on the next API version bump. And the scanner itself got the same treatment: a dozen checks that fired on ordinary sites, one that reported the opposite of the right advice, one that has never fired in its life, and a high-severity XSS check whose real implementation was sitting in the wrong file, never reached.
+Ninety-eight changes, and the thread running through nearly all of them is the same: something that failed without saying so. An alert that marked itself as sent before trying, and so went quiet for the rest of the outage. A weekly email that could arrive every six hours. A scan that answered with a full report it had never saved. Workers that recorded a healthy pass when every item in it had failed. A daily limit that stopped applying the moment the database struggled, and a scan that reported four sections as clear without running them. Seventeen of the entries are security: a share link that republished the address somebody else had typed, complete with the token in it; impersonation that could change an account's email and password and leave no trace; subscription events keyed on the customer rather than the subscription, so an abandoned plan could cancel a live one; and a data export that promised everything it held on you and named a third of it. The admin panel had a header that let rows paint through it, placeholders that drew a different shape from the thing arriving, and roles that could not use the permissions they were given. Every contact link on the site went to an error page, and the fix was to stop putting addresses in the page at all. Along the way the scanner learned fourteen new checks, our own accounts got short links on our own domain, and verified domains got a page of their own.
 
 ### Changes
 - [Bot] **[FIXED]** **The Chat Answer Arrived All At Once**
@@ -2305,5 +2305,5 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 - **Total releases:** 71
 - **Total changes documented:** 854
-- **Latest:** v3.8.6 (September 7, 2026) - Things That Fail Without Saying So
+- **Latest:** v3.9.0 (September 8, 2026) - Things That Fail Without Saying So
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
