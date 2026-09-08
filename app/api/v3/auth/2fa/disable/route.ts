@@ -8,12 +8,21 @@ import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
   }
+  // Staff impersonating a customer must not be able to switch off that
+  // customer's second factor. The admin panel has a recovery action for a
+  // genuinely locked-out user; it is password-gated and audited, this is not.
+  const refused = refuseWhileImpersonating(
+    session,
+    "Turning off two-factor authentication",
+  );
+  if (refused) return refused;
 
   // auth: rate-limit password verification so a stolen session cookie
   // cannot be used to brute-force the account password through this

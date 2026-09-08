@@ -523,9 +523,33 @@ describe("PATCH /api/v3/schedules", () => {
 
   /** Queue the initial `SELECT user_id, team_id` lookup PATCH always does
    *  first, before any access-check or update queries. */
-  function queueSchedule(ownerId: number, teamId: number | null = null) {
+  // The PATCH pre-read carries the timing fields too, because resuming a
+  // paused schedule recomputes next_run_at from them. Defaults describe an
+  // ACTIVE weekly schedule; pass active:false to model a paused one.
+  function queueSchedule(
+    ownerId: number,
+    teamId: number | null = null,
+    overrides: Partial<{
+      active: boolean;
+      frequency: string;
+      preferred_hour_utc: number;
+      preferred_day_of_week: number;
+      preferred_day_of_month: number;
+    }> = {},
+  ) {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ user_id: ownerId, team_id: teamId }],
+      rows: [
+        {
+          user_id: ownerId,
+          team_id: teamId,
+          active: true,
+          frequency: "weekly",
+          preferred_hour_utc: 9,
+          preferred_day_of_week: 1,
+          preferred_day_of_month: 1,
+          ...overrides,
+        },
+      ],
     });
   }
 
@@ -595,6 +619,47 @@ describe("PATCH /api/v3/schedules", () => {
 
     expect(res.status).toBe(200);
     expect(json.active).toBe(true);
+  });
+
+  it("recomputes the next run when a paused schedule is resumed", async () => {
+    // next_run_at keeps the value it had when the schedule was paused, and
+    // pausing does not stop time. A weekly scan paused for a month came back
+    // with a due date four weeks in the past, so the worker picked it up on
+    // its next two-minute tick: resuming scanned the site immediately and
+    // spent a scan from the daily allowance instead of waiting for the
+    // cadence the owner chose.
+    queueSchedule(42, null, { active: false });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, url: "https://example.com", active: true }],
+    });
+
+    const res = await PATCH(patchRequest({ id: 5, active: true }));
+    expect(res.status).toBe(200);
+
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("next_run_at = $2");
+    // A real timestamp, and in the future: the whole point is that it is no
+    // longer the stale one from before the pause.
+    const nextRunAt = new Date(params[1] as string);
+    expect(Number.isNaN(nextRunAt.getTime())).toBe(false);
+    expect(nextRunAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("does not push the next run out when an already-active schedule is re-enabled", async () => {
+    // Recomputing on every active:true would let a caller postpone a due
+    // schedule indefinitely by re-enabling one that was never off.
+    queueSchedule(42, null, { active: true });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, url: "https://example.com", active: true }],
+    });
+
+    const res = await PATCH(patchRequest({ id: 5, active: true }));
+    expect(res.status).toBe(200);
+
+    const [sql] = mockQuery.mock.calls[1];
+    // Asserted against the SET clause, not the whole statement: RETURNING
+    // lists next_run_at as one of the columns it hands back either way.
+    expect(sql).not.toMatch(/next_run_ats*=/);
   });
 
   it("returns 404 and never leaks another user's schedule id when it doesn't exist at all", async () => {

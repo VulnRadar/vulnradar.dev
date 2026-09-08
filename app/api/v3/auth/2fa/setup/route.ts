@@ -19,6 +19,7 @@ import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = [];
@@ -82,6 +83,14 @@ export const GET = withErrorHandling(async () => {
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+
+  // Enrolling a second factor binds the account to an authenticator the
+  // account holder does not have, which locks them out rather than helping.
+  const refused = refuseWhileImpersonating(
+    session,
+    "Enabling two-factor authentication",
+  );
+  if (refused) return refused;
 
   // auth: rate-limit password verification so a stolen session cookie
   // cannot be used to brute-force the account password through this

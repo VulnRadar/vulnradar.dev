@@ -660,6 +660,19 @@ const CHANGELOG: Release[] = [
         desc: "Every action on a user's admin page reports back with a sentence saying what it did. Five had no sentence written for them and fell back to a generic Action completed, including the two that delete every webhook or every scheduled scan on an account, where that message is the only confirmation of what was just destroyed. All five say what happened now, and the panel's own test fails if a card is added without one.",
         category: "fixed",
       },
+      {
+        icon: Fingerprint,
+        label:
+          "Impersonation Could Change The Password And Email Of The Account It Was Impersonating",
+        desc: "When staff sign in as a user to reproduce a problem, every part of the app below the admin panel sees an ordinary signed-in customer. That is the point of the feature, and it also meant six things were reachable that should never have been: changing the account's email, changing its password, turning its two-factor authentication off, enrolling a new second factor, regenerating its backup codes, and deleting it outright. None of those routes wrote so much as a log line, so there was no record either. Changing the email is the worst of them, because it redirects every future password reset, which is why the admin panel already asks for a password before doing it. All six now refuse inside an impersonation session and say which admin action to use instead, each of which asks for a password and is recorded. Cosmetic changes like the display name and avatar are deliberately still allowed, since staff reproducing a problem sometimes need them. A test reads every API route, finds the ones that write a credential, and fails the build unless each is either refused or written down with a reason.",
+        category: "security",
+      },
+      {
+        icon: CalendarClock,
+        label: "Resuming A Paused Scan Ran It Immediately",
+        desc: "A scheduled scan remembers when it is next due, and pausing it does not stop the clock. So a weekly scan paused for a month came back with a due date four weeks in the past, and the worker picked it up within two minutes: resuming a schedule scanned the site straight away and spent a scan from that day's allowance, instead of waiting for the next occurrence of the cadence you chose. Resuming now recalculates the next run from your frequency and preferred time. Re-enabling a schedule that was never off leaves it alone, so this cannot be used to push a due scan further out.",
+        category: "fixed",
+      },
     ],
   },
   {

@@ -28,6 +28,7 @@ import {
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { sendEmailVerification } from "@/lib/auth/email-verification";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 export async function PATCH(request: NextRequest) {
   const session = await getSession();
@@ -56,6 +57,24 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
     const { name, email, currentPassword, newPassword, avatarUrl } = body;
+
+    // Changing the email redirects every future password reset, which is
+    // account takeover in one step: the admin panel says so in as many words
+    // and puts it behind a password prompt. Through an impersonation session
+    // it needed no password and left no record, because this route writes no
+    // audit row at all. Neither it nor a password change belongs to a session
+    // staff opened to look at a bug. Name and avatar are deliberately not
+    // covered: they are cosmetic, and staff reproducing a problem should not
+    // be stopped from touching them.
+    if (email !== undefined || newPassword !== undefined) {
+      const refused = refuseWhileImpersonating(
+        session,
+        email !== undefined
+          ? "Changing the account's email address"
+          : "Changing the account's password",
+      );
+      if (refused) return refused;
+    }
 
     // auth: changing email or password requires re-authentication with the
     // current password. Without this, a stolen session cookie is enough to

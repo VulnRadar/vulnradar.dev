@@ -8,11 +8,20 @@ import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 // POST - Enable email 2FA
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+
+  // Same reasoning as the authenticator setup beside it: this changes which
+  // second factor guards the account.
+  const refused = refuseWhileImpersonating(
+    session,
+    "Changing the account's two-factor method",
+  );
+  if (refused) return refused;
 
   // auth: rate-limit password verification so a stolen session cookie
   // cannot be used to brute-force the account password through this
@@ -96,6 +105,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 export const DELETE = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+
+  // Same reasoning as the POST above: staff impersonating must not be able to
+  // remove the customer's second factor.
+  const refusedDisable = refuseWhileImpersonating(
+    session,
+    "Turning off two-factor authentication",
+  );
+  if (refusedDisable) return refusedDisable;
 
   // auth: same rate-limit cap as the POST (shared bucket so attempts on
   // either endpoint count toward the same window).

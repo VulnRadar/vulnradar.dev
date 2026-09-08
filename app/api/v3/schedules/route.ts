@@ -295,7 +295,17 @@ export async function PATCH(request: NextRequest) {
   const currentRes = await pool.query<{
     user_id: number;
     team_id: number | null;
-  }>("SELECT user_id, team_id FROM scheduled_scans WHERE id = $1", [id]);
+    active: boolean;
+    frequency: string;
+    preferred_hour_utc: number;
+    preferred_day_of_week: number;
+    preferred_day_of_month: number;
+  }>(
+    `SELECT user_id, team_id, active, frequency, preferred_hour_utc,
+            preferred_day_of_week, preferred_day_of_month
+       FROM scheduled_scans WHERE id = $1`,
+    [id],
+  );
   const schedule = currentRes.rows[0];
   if (!schedule) {
     return NextResponse.json({ error: "Schedule not found" }, { status: 404 });
@@ -343,6 +353,30 @@ export async function PATCH(request: NextRequest) {
   if (hasActive) {
     setClauses.push(`active = $${values.length + 1}`);
     values.push(active);
+  }
+
+  // Resuming recomputes when the next run is due.
+  //
+  // next_run_at keeps whatever value it had when the schedule was paused, and
+  // pausing does not stop time. A weekly scan paused for a month came back
+  // with a due date four weeks in the past, so the worker picked it up on its
+  // next two-minute tick: resuming a schedule scanned the site immediately and
+  // spent a scan from the daily allowance, rather than waiting for the next
+  // occurrence of the cadence the owner chose.
+  //
+  // Only on the false -> true edge. Recomputing whenever active:true is sent
+  // would let a caller postpone a due schedule indefinitely by re-enabling an
+  // already-enabled one.
+  if (hasActive && active === true && schedule.active === false) {
+    setClauses.push(`next_run_at = $${values.length + 1}`);
+    values.push(
+      computeNextRunAt(Number(id), {
+        frequency: schedule.frequency as ScheduleFrequency,
+        preferredHourUtc: schedule.preferred_hour_utc,
+        preferredDayOfWeek: schedule.preferred_day_of_week,
+        preferredDayOfMonth: schedule.preferred_day_of_month,
+      }).toISOString(),
+    );
   }
   if (hasTeamId) {
     setClauses.push(`team_id = $${values.length + 1}`);

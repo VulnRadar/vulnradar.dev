@@ -8,6 +8,7 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = [];
@@ -64,6 +65,13 @@ export async function POST(request: NextRequest) {
       { error: ERROR_MESSAGES.UNAUTHORIZED },
       { status: 401 },
     );
+  // Regenerating invalidates the codes the account holder wrote down, which
+  // is not something a session opened by staff should be able to do to them.
+  const refused = refuseWhileImpersonating(
+    session,
+    "Regenerating the account's backup codes",
+  );
+  if (refused) return refused;
 
   // auth: rate-limit password verification so a stolen session cookie
   // cannot be used to brute-force the account password through this

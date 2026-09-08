@@ -7,12 +7,18 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { deleteUserAccountData } from "@/lib/auth/account-deletion";
 import { sendEmail, accountDeletedEmail } from "@/lib/email/email";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 export const POST = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session) {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
   }
+  // Irreversible, and it erases the audit trail's subject along with
+  // everything else. Deleting a customer's account is an admin action with
+  // its own confirmation and its own log entry.
+  const refused = refuseWhileImpersonating(session, "Deleting the account");
+  if (refused) return refused;
 
   // auth: rate-limit password verification so a stolen session cookie
   // cannot be used to brute-force the account password through this
