@@ -386,6 +386,54 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
     expect(params[0]).toBe("free");
     expect(params[3]).toBe("incomplete");
   });
+
+  it("an unpaid session cannot downgrade a row already on another live subscription", async () => {
+    // The scenario: a subscriber on an active plan opens a second checkout to
+    // change plans and does not finish paying. Stripe still sends
+    // checkout.session.completed with payment_status "unpaid", and the write
+    // below is plan=free, status=incomplete, keyed on the metadata userId
+    // alone. Without a guard that wipes a live plan and repoints
+    // stripe_subscription_id at the abandoned subscription, from an event
+    // that reports itself as handled.
+    //
+    // The paid branch stays unguarded on purpose (the test above proves it
+    // still writes unconditionally): this handler is what grants the plan on
+    // the normal path and usually arrives before customer.subscription.updated.
+    withIdempotency("evt_checkout_unpaid_guard");
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // guard refused
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // email fallback, also refused
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_checkout_unpaid_guard",
+          type: "checkout.session.completed",
+          data: {
+            object: {
+              customer: "cus_1",
+              subscription: "sub_abandoned",
+              customer_email: "a@b.com",
+              payment_status: "unpaid",
+              metadata: { userId: "42", planId: "pro_supporter" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+
+    const [sql, params] = mockQuery.mock.calls[1];
+    // The ownership predicate, same rule the subscription handlers use: a row
+    // bound to a live subscription is only moved by that subscription's own
+    // events. A first-time buyer's row is NULL here, so a genuinely pending
+    // first checkout is still recorded.
+    expect(sql).toContain("stripe_subscription_id IS NULL");
+    expect(sql).toContain("stripe_subscription_id = $3");
+    expect(sql).toContain("subscription_status = ANY($6::text[])");
+    expect(params[5]).toEqual(
+      expect.arrayContaining(["active", "trialing", "canceling"]),
+    );
+  });
 });
 
 describe("POST /api/v3/webhooks/stripe: payment_intent.succeeded (AI credit purchase)", () => {

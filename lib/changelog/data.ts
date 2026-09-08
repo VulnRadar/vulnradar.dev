@@ -545,6 +545,13 @@ const CHANGELOG: Release[] = [
         desc: "A failed payment marked your whole account past due even when the invoice had nothing to do with your subscription: a one-off charge, the first invoice of a checkout nobody completed, or a retry against an account that had already cancelled. None of those has a later subscription payment to undo it, so the warning stayed on your billing page for good and you were emailed about a subscription you did not have. Past due is now set only when a renewal of the subscription you are actually on fails, and it clears when that renewal goes through. The same scoping fixed the mirror of it: a payment event no longer marks an account fully active again when you have already scheduled a cancellation, which used to make the pending cancellation vanish from the billing page with nothing to put it back.",
         category: "fixed",
       },
+      {
+        icon: CreditCard,
+        label:
+          "An Abandoned Checkout Could Cancel The Plan You Were Already On",
+        desc: "Opening a second checkout to change plans and then not finishing it still sends us a completion notice, marked unpaid. We recorded that notice against your account without checking which subscription your account was actually on, so it wrote your plan back to free, marked you incomplete and pointed your account at the checkout you had abandoned. The plan you were paying for was still live at Stripe the whole time. An unpaid checkout can no longer move an account that is on a different live subscription. A first purchase is unaffected, because there is nothing there yet to protect.",
+        category: "fixed",
+      },
     ],
   },
   {

@@ -37,7 +37,7 @@ import {
  * binds LIVE_SUBSCRIPTION_STATUSES to `liveStatusesParam`, and no literal here
  * is ever caller input.
  */
-function subscriptionOwnershipSql(
+export function subscriptionOwnershipSql(
   subscriptionIdParam: string,
   liveStatusesParam: string,
 ): string {

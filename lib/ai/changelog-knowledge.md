@@ -154,6 +154,8 @@ A sweep for anything the app was getting wrong quietly. The AI chat was streamin
   Looking up which plan a subscription belongs to swallowed any failure and answered with an empty value, which resolves to the free plan. One slow response from Stripe was therefore enough to drop a paying subscriber to free and revoke their supporter badge, on an event that reported itself as handled. The failure now travels, so the delivery is retried instead of being applied wrongly, and the difference between Stripe not having something and Stripe not being reachable is now something the code actually tests for.
 - [Wrench] **[FIXED]** **Payment Retries Left Accounts Stuck On Past Due**
   A failed payment marked your whole account past due even when the invoice had nothing to do with your subscription: a one-off charge, the first invoice of a checkout nobody completed, or a retry against an account that had already cancelled. None of those has a later subscription payment to undo it, so the warning stayed on your billing page for good and you were emailed about a subscription you did not have. Past due is now set only when a renewal of the subscription you are actually on fails, and it clears when that renewal goes through. The same scoping fixed the mirror of it: a payment event no longer marks an account fully active again when you have already scheduled a cancellation, which used to make the pending cancellation vanish from the billing page with nothing to put it back.
+- [CreditCard] **[FIXED]** **An Abandoned Checkout Could Cancel The Plan You Were Already On**
+  Opening a second checkout to change plans and then not finishing it still sends us a completion notice, marked unpaid. We recorded that notice against your account without checking which subscription your account was actually on, so it wrote your plan back to free, marked you incomplete and pointed your account at the checkout you had abandoned. The plan you were paying for was still live at Stripe the whole time. An unpaid checkout can no longer move an account that is on a different live subscription. A first purchase is unaffected, because there is nothing there yet to protect.
 
 ---
 
@@ -2238,6 +2240,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 71
-- **Total changes documented:** 821
+- **Total changes documented:** 822
 - **Latest:** v3.8.6 (September 7, 2026) - Things That Fail Without Saying So
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

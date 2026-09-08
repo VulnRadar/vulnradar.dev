@@ -16,6 +16,7 @@ import {
 } from "@/lib/email/email";
 import {
   ACTIVE_SUBSCRIPTION_STATUSES,
+  LIVE_SUBSCRIPTION_STATUSES,
   isLiveSubscriptionStatus,
 } from "@/lib/billing/subscription-status";
 import {
@@ -24,6 +25,7 @@ import {
   applySubscriptionUpdated,
   markSubscriptionPaid,
   markSubscriptionPastDue,
+  subscriptionOwnershipSql,
 } from "@/lib/billing/subscription-writes";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
@@ -352,6 +354,32 @@ export async function POST(req: NextRequest) {
           const planToWrite = plan && sessionIsPaid ? plan : "free";
           const statusToWrite = sessionIsPaid ? "active" : "incomplete";
 
+          // An unpaid checkout must not be able to downgrade a live plan.
+          //
+          // A session that completes with payment_status "unpaid" writes
+          // plan=free, status=incomplete and rebinds stripe_subscription_id,
+          // and it was keyed on the metadata userId alone with no regard for
+          // what subscription the row was already on. A subscriber who opened
+          // a second checkout to change plans and did not finish paying had
+          // their active plan wiped and their subscription id repointed at the
+          // abandoned one, from an event that reports itself as handled.
+          //
+          // The paid branch stays unconditional on purpose: this handler is
+          // what grants the plan on the normal path, and it commonly arrives
+          // before customer.subscription.updated. Delaying activation to close
+          // a downgrade would trade a rare wrong answer for a routine one.
+          //
+          // Same ownership rule the subscription handlers use: a row bound to
+          // a live subscription is only moved by that subscription's own
+          // events, and a row bound to nothing or to one that has ended is
+          // free to be claimed. So a first-time buyer whose checkout is still
+          // pending is still recorded, which is what makes the incomplete
+          // state useful at all.
+          const ownershipGuard = sessionIsPaid
+            ? ""
+            : ` AND ${subscriptionOwnershipSql("$3", "$6")}`;
+          const liveStatuses = LIVE_SUBSCRIPTION_STATUSES;
+
           // Primary: Update by userId if available (most reliable - ID never changes)
           if (userId) {
             result = await pool.query(
@@ -360,9 +388,24 @@ export async function POST(req: NextRequest) {
                 stripe_customer_id = $2,
                 stripe_subscription_id = $3,
                 subscription_status = $4
-              WHERE id = $5
+              WHERE id = $5${ownershipGuard}
               RETURNING id, email`,
-              [planToWrite, customerId, subscriptionId, statusToWrite, userId],
+              sessionIsPaid
+                ? [
+                    planToWrite,
+                    customerId,
+                    subscriptionId,
+                    statusToWrite,
+                    userId,
+                  ]
+                : [
+                    planToWrite,
+                    customerId,
+                    subscriptionId,
+                    statusToWrite,
+                    userId,
+                    liveStatuses,
+                  ],
             );
             if (result.rowCount && result.rowCount > 0) {
               console.log(
@@ -380,15 +423,24 @@ export async function POST(req: NextRequest) {
                 stripe_customer_id = $2,
                 stripe_subscription_id = $3,
                 subscription_status = $4
-              WHERE LOWER(email) = LOWER($5)
+              WHERE LOWER(email) = LOWER($5)${ownershipGuard}
               RETURNING id, email`,
-              [
-                planToWrite,
-                customerId,
-                subscriptionId,
-                statusToWrite,
-                customerEmail,
-              ],
+              sessionIsPaid
+                ? [
+                    planToWrite,
+                    customerId,
+                    subscriptionId,
+                    statusToWrite,
+                    customerEmail,
+                  ]
+                : [
+                    planToWrite,
+                    customerId,
+                    subscriptionId,
+                    statusToWrite,
+                    customerEmail,
+                    liveStatuses,
+                  ],
             );
             if (result.rowCount && result.rowCount > 0) {
               // log userId (already known from
