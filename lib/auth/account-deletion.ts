@@ -236,6 +236,23 @@ export async function deleteUserAccountData(
   const email = emailRow.rows[0]?.email;
   if (email) {
     await client.query("DELETE FROM email_logs WHERE recipient = $1", [email]);
+    // Contact-form submissions key on the address typed into the form, not on
+    // a session, because the landing form takes messages from people with no
+    // account at all. Same purge-by-recipient shape as email_logs directly
+    // above, and for the same reason: nothing links these rows to the account
+    // by a foreign key, so nothing would remove them.
+    await client.query("DELETE FROM contact_submissions WHERE email = $1", [
+      email,
+    ]);
+    // Staff invites addressed to this account. invited_by cascades, so an
+    // invite this person SENT goes with them; one sent TO them did not,
+    // because the recipient is an email address and not a foreign key. Two
+    // reasons to remove it: the row holds their address alongside the role we
+    // offered them, and an unaccepted invite is a live grant of that role to
+    // whoever holds the link, pointed at an account that no longer exists.
+    await client.query("DELETE FROM staff_invites WHERE LOWER(email) = $1", [
+      email.toLowerCase(),
+    ]);
   }
 
   // Finally, the user row itself. Every FK above either points at a row

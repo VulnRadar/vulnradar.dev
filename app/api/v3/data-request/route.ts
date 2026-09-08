@@ -209,6 +209,7 @@ export async function POST(_request: NextRequest) {
       webhookDeliveriesData,
       scanScreenshotsData,
       scanTeamSharesData,
+      contactSubmissionsData,
     ] = await runInBatches([
       // Core user data (excluding password_hash, totp_secret, backup_codes for security)
       () =>
@@ -765,6 +766,23 @@ export async function POST(_request: NextRequest) {
       `,
           [session.userId, EXPORT_MAX_ROWS],
         ),
+
+      // Messages you sent us through a contact form. Keyed on the address you
+      // typed rather than on an account, because the landing form takes
+      // messages from people who do not have one, which is also why it is
+      // matched the same way emailLog above is.
+      () =>
+        pool.query(
+          `
+        SELECT id, source, name, subject, category, message,
+               email_status, created_at
+        FROM contact_submissions
+        WHERE email = (SELECT email FROM users WHERE id = $1)
+        ORDER BY created_at DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
     ]);
 
     // Remove user_id from notification_preferences for cleaner export
@@ -838,6 +856,7 @@ export async function POST(_request: NextRequest) {
       // Mail we sent you
       broadcastsReceived: broadcastsReceivedData.rows,
       emailLog: emailLogData.rows,
+      contactSubmissions: contactSubmissionsData.rows,
 
       // Files stored against your account, described rather than embedded
       avatarUpload: avatarUploadData.rows[0] || null,

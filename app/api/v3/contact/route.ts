@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  recordContactSubmission,
+  recordContactEmailOutcome,
+} from "@/lib/support/contact-submissions";
+import {
   checkRateLimit,
   getClientIP,
   RATE_LIMITS,
@@ -149,6 +153,38 @@ export async function POST(request: NextRequest) {
       category: categoryLabel,
     });
 
+    // Stored before anything is sent, because the email WAS the record.
+    //
+    // The block below fires two emails and swallows any failure into a
+    // console.error, and this route then answers "we will get back to you
+    // soon". A DNS failure at the mail host, an expired SMTP credential, a
+    // bounce or a spam filter lost the message outright while telling the
+    // sender it had arrived, and one of the categories on this form is
+    // "Security Issue". Nothing else recorded it and nothing could.
+    let submissionId: number;
+    try {
+      submissionId = await recordContactSubmission({
+        source: "contact",
+        name,
+        email: normalizedEmail,
+        subject,
+        category,
+        message,
+        ipAddress: ip || null,
+      });
+    } catch (error) {
+      console.error("[Contact] Could not record the submission", error);
+      // Not thanked. At this point nothing holds their message, and the
+      // honest answer is the one that lets them try another way.
+      return NextResponse.json(
+        {
+          error:
+            "We could not record your message just now. Please try again, or email us directly.",
+        },
+        { status: 503 },
+      );
+    }
+
     const sendEmails = async () => {
       try {
         await Promise.all([
@@ -162,8 +198,13 @@ export async function POST(request: NextRequest) {
             ...confirmationPayload,
           }),
         ]);
+        await recordContactEmailOutcome(submissionId, { delivered: true });
       } catch (error) {
         console.error("Contact email send failed", error);
+        await recordContactEmailOutcome(submissionId, {
+          delivered: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     };
 

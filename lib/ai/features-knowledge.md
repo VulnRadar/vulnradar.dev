@@ -157,7 +157,6 @@ Paste a URL, get a security report in under 3 seconds: 905+ deterministic checks
 ### Pricing
 Route: /pricing
 Access: public, no account needed
-Page title: Pricing: Free Tier and Plans From $5/mo
 Heading on the page: There is nothing to pay for here
 In-app navigation label: Pricing
 Also known as: plans cost upgrade

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  recordContactSubmission,
+  recordContactEmailOutcome,
+} from "@/lib/support/contact-submissions";
+import {
   checkRateLimit,
   getClientIP,
   RATE_LIMITS,
@@ -105,6 +109,33 @@ export async function POST(request: NextRequest) {
     const adminEmail = landingContactEmail({ email: normalizedEmail, message });
     const userEmail = landingContactConfirmationEmail(message);
 
+    // Stored before anything is sent. Same reasoning as /api/v3/contact:
+    // the send below is fire-and-forget with its failure logged and dropped,
+    // so the email was the only record this message ever had. This form is
+    // also the one on the marketing page, so its sender usually has no
+    // account and no other way to reach us.
+    let submissionId: number;
+    try {
+      submissionId = await recordContactSubmission({
+        source: "landing",
+        name: normalizedEmail,
+        email: normalizedEmail,
+        subject: null,
+        category: "landing",
+        message,
+        ipAddress: ip || null,
+      });
+    } catch (error) {
+      console.error("[LandingContact] Could not record the submission", error);
+      return NextResponse.json(
+        {
+          error:
+            "We could not record your message just now. Please try again, or email us directly.",
+        },
+        { status: 503 },
+      );
+    }
+
     const sendEmails = async () => {
       try {
         await Promise.all([
@@ -120,8 +151,13 @@ export async function POST(request: NextRequest) {
             ...userEmail,
           }),
         ]);
+        await recordContactEmailOutcome(submissionId, { delivered: true });
       } catch (error) {
         console.error("Landing page contact email send failed", error);
+        await recordContactEmailOutcome(submissionId, {
+          delivered: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     };
 

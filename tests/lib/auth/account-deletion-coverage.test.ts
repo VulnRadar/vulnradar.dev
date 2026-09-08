@@ -21,9 +21,14 @@ import { join } from "node:path";
 
 const SCHEMA_DIR = join(process.cwd(), "lib/database/schema");
 const DELETION = join(process.cwd(), "lib/auth/account-deletion.ts");
+/** Two tables keep their DDL beside their own code, not in the schema dir. */
+const EXTRA_DDL = [
+  join(process.cwd(), "lib/database/audit-log-archive.ts"),
+  join(process.cwd(), "lib/admin/staff-invites.ts"),
+];
 
 const USER_LINKED_COLUMN =
-  /^(user_id|owner_id|author_user_id|dismissed_by_user_id|shared_with_user_id|shared_by_user_id|target_user_id|created_by|resolved_by|impersonated_by|updated_by|sent_by)$/;
+  /^(user_id|owner_id|author_user_id|dismissed_by_user_id|shared_with_user_id|shared_by_user_id|target_user_id|created_by|resolved_by|impersonated_by|updated_by|sent_by|email)$/;
 
 /**
  * Columns where leaving the row behind with a null person is the intended
@@ -75,10 +80,12 @@ const ANONYMISED_ON_PURPOSE = new Map<string, string>([
 ]);
 
 function schemaSource(): string {
-  return readdirSync(SCHEMA_DIR)
-    .filter((f) => f.endsWith(".mjs"))
-    .map((f) => readFileSync(join(SCHEMA_DIR, f), "utf8"))
-    .join("\n");
+  return [
+    ...readdirSync(SCHEMA_DIR)
+      .filter((f) => f.endsWith(".mjs"))
+      .map((f) => readFileSync(join(SCHEMA_DIR, f), "utf8")),
+    ...EXTRA_DDL.map((f) => readFileSync(f, "utf8")),
+  ].join("\n");
 }
 
 type Link = { table: string; column: string; onDelete: string };

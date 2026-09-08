@@ -140,11 +140,14 @@ describe("deleteUserAccountData", () => {
 
   it("scopes every statement to the given userId", async () => {
     await deleteUserAccountData(fakeClient, 42);
+    // Three tables have no user_id column at all, so their purge is keyed by
+    // the account's address instead: the mail we sent them, the contact forms
+    // they submitted (the landing form takes messages from people with no
+    // account), and staff invites addressed to them. Everything else must be
+    // scoped by the id, or the sequence could delete someone else's data.
+    const ADDRESS_KEYED = /email_logs|contact_submissions|staff_invites/;
     for (const [sql, params] of mockQuery.mock.calls) {
-      // email_logs is the one table with no user_id column at all, so its
-      // purge is keyed by the account's address instead. Everything else must
-      // be scoped by the id, or the sequence could delete someone else's data.
-      if (String(sql).includes("email_logs")) {
+      if (ADDRESS_KEYED.test(String(sql))) {
         expect(params).toEqual(["gone@example.com"]);
         continue;
       }

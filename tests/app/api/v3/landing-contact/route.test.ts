@@ -29,6 +29,19 @@ vi.mock("@/lib/rate-limiting/rate-limit", () => ({
   RATE_LIMITS: { api: { limit: "api", maxAttempts: 30, windowSeconds: 3600 } },
 }));
 
+// The submission is now stored before either email is attempted, because
+// the email WAS the record: the send is fire-and-forget with its failure
+// logged and dropped, so a mail outage lost the message while telling the
+// sender it had arrived. Mocked here at the same boundary as everything else.
+const mockRecordSubmission = vi.fn();
+const mockRecordEmailOutcome = vi.fn();
+vi.mock("@/lib/support/contact-submissions", () => ({
+  recordContactSubmission: (...args: unknown[]) =>
+    mockRecordSubmission(...args),
+  recordContactEmailOutcome: (...args: unknown[]) =>
+    mockRecordEmailOutcome(...args),
+}));
+
 const mockSendEmail = vi.fn();
 const mockLandingContactEmail = vi.fn();
 const mockLandingContactConfirmationEmail = vi.fn();
@@ -108,6 +121,10 @@ beforeEach(() => {
   mockCheckRateLimit.mockReset();
   mockGetClientIP.mockReset();
   mockSendEmail.mockReset();
+  mockRecordSubmission.mockReset();
+  mockRecordEmailOutcome.mockReset();
+  mockRecordSubmission.mockResolvedValue(7);
+  mockRecordEmailOutcome.mockResolvedValue(undefined);
   mockLandingContactEmail.mockReset();
   mockLandingContactConfirmationEmail.mockReset();
   mockFetch.mockClear();
@@ -250,5 +267,45 @@ describe("POST /api/v3/landing-contact", () => {
 
     expect(res.status).toBe(500);
     expect(json.error).toBe("Something went wrong.");
+  });
+
+  it("stores the message before attempting to send anything", async () => {
+    await POST(postRequest(VALID_BODY));
+
+    expect(mockRecordSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "landing",
+        email: "visitor@example.com",
+        message: "Do you support self-hosted Postgres?",
+      }),
+    );
+    expect(mockRecordSubmission).toHaveBeenCalledBefore(mockSendEmail);
+  });
+
+  it("records that the send failed, and still keeps the message", async () => {
+    // The sender of this one usually has no account and no other way to
+    // reach us, so losing it to a mail outage is worse here than anywhere.
+    mockSendEmail.mockRejectedValue(new Error("smtp: connection refused"));
+
+    const res = await POST(postRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    await flushMicrotasks();
+
+    expect(mockRecordSubmission).toHaveBeenCalledTimes(1);
+    expect(mockRecordEmailOutcome).toHaveBeenCalledWith(7, {
+      delivered: false,
+      error: "smtp: connection refused",
+    });
+  });
+
+  it("does not thank the sender when nothing could be stored", async () => {
+    mockRecordSubmission.mockRejectedValue(new Error("db down"));
+
+    const res = await POST(postRequest(VALID_BODY));
+    const json = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(json.error).toMatch(/could not record your message/i);
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 });

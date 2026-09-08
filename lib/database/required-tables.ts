@@ -48,4 +48,10 @@ export const REQUIRED_TABLES = [
   "browserbase_credit_purchases",
   "staff_invites",
   "admin_audit_log_archive",
+  // Both contact routes now refuse the submission with a 503 rather than
+  // thanking the sender for a message nothing kept, so without this table
+  // every contact form on the site silently stops accepting anything. Its
+  // boot step is onError "warn", which is exactly the failure this list is
+  // here to surface.
+  "contact_submissions",
 ] as const;

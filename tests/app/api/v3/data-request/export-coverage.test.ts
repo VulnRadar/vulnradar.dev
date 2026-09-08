@@ -21,7 +21,10 @@ import { join } from "node:path";
 
 const SCHEMA_DIR = join(process.cwd(), "lib/database/schema");
 /** One table's DDL lives outside the schema directory, beside its own code. */
-const EXTRA_DDL = [join(process.cwd(), "lib/database/audit-log-archive.ts")];
+const EXTRA_DDL = [
+  join(process.cwd(), "lib/database/audit-log-archive.ts"),
+  join(process.cwd(), "lib/admin/staff-invites.ts"),
+];
 const ROUTE = join(process.cwd(), "app/api/v3/data-request/route.ts");
 
 /**
@@ -30,7 +33,7 @@ const ROUTE = join(process.cwd(), "app/api/v3/data-request/route.ts");
  * was overlooked.
  */
 const USER_LINKED_COLUMN =
-  /^(user_id|owner_id|author_user_id|dismissed_by_user_id|shared_with_user_id|shared_by_user_id|target_user_id|recipient|created_by)$/;
+  /^(user_id|owner_id|author_user_id|dismissed_by_user_id|shared_with_user_id|shared_by_user_id|target_user_id|recipient|created_by|email)$/;
 
 /**
  * Not exported, each for a reason. Keep this in step with the comment at the
@@ -64,6 +67,10 @@ const DELIBERATELY_EXCLUDED = new Map<string, string>([
   [
     "rate_limits",
     "transient counter, derivable from the usage rows that are exported",
+  ],
+  [
+    "staff_invites",
+    "an invitation we sent to an address, not correspondence from the person; a staff invite naming a candidate is our hiring record and the invitee has no account yet",
   ],
 ]);
 
