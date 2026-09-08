@@ -33,9 +33,21 @@ vi.mock("@/lib/api/request-utils", async (importOriginal) => ({
 }));
 
 const mockSafeFetch = vi.fn();
-vi.mock("@/lib/scanner/safe-fetch", () => ({
-  safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
-}));
+// The comment below says the async checks run for real against the mocked
+// safeFetch. They did not: this mock replaced the whole module with a single
+// export, so every branch that also imports isPrivateHostname threw on the
+// missing export and was recorded as not-checked. Three of them (live-fetch,
+// osv-libraries, reputation) failed in every test here while the assertions
+// still passed, because nothing asserted on what those branches produced.
+// Passing the real predicate through keeps them running.
+vi.mock("@/lib/scanner/safe-fetch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/scanner/safe-fetch")>();
+  return {
+    ...actual,
+    safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
+  };
+});
 
 const mockCheckAccessRules = vi.fn();
 vi.mock("@/lib/scanner/access-rules", () => ({
@@ -220,6 +232,40 @@ describe("POST /api/v3/demo-scan - success shape", () => {
     expect(json.url).toBe(DEAD_HOST);
     expect(typeof json.duration).toBe("number");
     expect(typeof json.responseHeaders).toBe("object");
+    // Whatever the async phase could not finish has to be named. This is the
+    // demo, so the visitor's whole impression of the scanner is one result,
+    // and a phase that never ran used to be indistinguishable from one that
+    // ran and found nothing.
+    if (json.incomplete !== undefined) {
+      expect(Array.isArray(json.incomplete)).toBe(true);
+      for (const label of json.incomplete) {
+        expect(typeof label).toBe("string");
+        expect(label.length).toBeGreaterThan(0);
+      }
+    }
+  }, 20000);
+
+  it("names the branches that did not finish rather than reporting them clean", async () => {
+    // The bug: the race resolved [] on timeout and the catch swallowed a
+    // thrown branch the same way, so DNS, TLS, reputation and the exposed
+    // -file probes were reported as having run and found nothing. The same
+    // mistake was found and fixed in lib/scanner/execute-scan.ts; the demo
+    // was the sibling left behind, and it is the one an anonymous visitor
+    // sees. Driven here by making every outbound request fail, which is what
+    // a branch that cannot reach anything looks like from inside.
+    mockSafeFetch.mockRejectedValue(new Error("network unreachable"));
+
+    const res = await POST(postRequest({ url: DEAD_HOST }));
+
+    // 422 is the documented answer when the target itself is unreachable,
+    // so only assert the completeness contract when a report came back.
+    if (res.status !== 200) {
+      expect(res.status).toBe(422);
+      return;
+    }
+    const json = await res.json();
+    expect(Array.isArray(json.incomplete)).toBe(true);
+    expect(json.incomplete.length).toBeGreaterThan(0);
   }, 20000);
 
   it("redacts the target's credential-bearing headers, same as every stored scan", async () => {

@@ -564,6 +564,12 @@ const CHANGELOG: Release[] = [
         desc: "A site badge could be created and its scope changed, and the endpoint that stops one resolving has existed since the badge shipped, but nothing in the product called it. If you had embedded a badge on a site you no longer run, or simply wanted it gone, asking us was the only route. There is a Turn this badge off control on the Badge page now. It confirms first and says the part that is not obvious: you can generate a badge for that site again afterwards, but it gets a new address, so an embed you have already placed stays broken rather than quietly coming back.",
         category: "added",
       },
+      {
+        icon: ScanSearch,
+        label: "The Demo Scan Called Four Sections Clean Without Running Them",
+        desc: "A report marks the parts that did not finish so nothing reads as a clean bill of health it never earned. The demo on the front page, which is the only scan you can run without an account and therefore the whole of some visitors impression of the scanner, did not do this. Its network phase resolves to an empty list when it runs out of time, and a section that threw was treated the same way, so DNS, certificates, reputation and the exposed-file probes came back reported as run and clear. It was already calling the version of that phase whose own documentation says to use the other one when you show completeness to a person. It now uses the right one, which also names the individual sections that ran short rather than only whether the phase as a whole did. The same mistake was found and fixed in the ordinary scan path earlier in this release; this was the copy left behind.",
+        category: "fixed",
+      },
     ],
   },
   {
