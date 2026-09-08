@@ -199,8 +199,19 @@ export async function getDailyRequestCount(userId: number): Promise<number> {
     );
     return parseInt(result.rows[0]?.total || "0", 10);
   } catch (error) {
+    // Rethrow. Returning 0 here made the daily quota fail OPEN: canMakeRequest
+    // computes allowed = used < limit, so an unreadable count became
+    // "zero scans used today" and every gated entry point waved the request
+    // through. A quota that stops being enforced exactly when the database is
+    // struggling is the wrong way round, and the same file already has a
+    // fail-closed helper written for this reason whose comment says "if we
+    // can't talk to the DB, don't issue a permit".
+    //
+    // The caller decides what to do with it. A scan route surfacing a 5xx is
+    // honest: the count could not be read, so the scan could not have been
+    // recorded either.
     console.error("[DailyLimits] Error getting request count:", error);
-    return 0;
+    throw error;
   }
 }
 

@@ -242,10 +242,25 @@ describe("getDailyRequestCount", () => {
     expect(await getDailyRequestCount(1)).toBe(0);
   });
 
-  it("returns 0 on a DB error", async () => {
+  it("propagates a DB error instead of reporting zero used", async () => {
+    // This asserted `toBe(0)`, which is the fail-open the quota gate was
+    // built on: canMakeRequest computes allowed = used < limit, so an
+    // unreadable count became "nothing used today" and every gated entry
+    // point waved the request through. A quota that stops being enforced
+    // exactly when the database is struggling is the wrong way round, and
+    // the same module already carries a fail-closed helper whose comment
+    // says "if we can not talk to the DB, do not issue a permit".
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     mockQuery.mockRejectedValueOnce(new Error("boom"));
-    expect(await getDailyRequestCount(1)).toBe(0);
+    await expect(getDailyRequestCount(1)).rejects.toThrow("boom");
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
+  it("carries that failure through canMakeRequest rather than allowing", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockRejectedValue(new Error("boom"));
+    await expect(canMakeRequest(1)).rejects.toThrow();
     logged.mockRestore();
   });
 

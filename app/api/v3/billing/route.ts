@@ -58,7 +58,14 @@ export async function GET() {
     // through getDailyLimit -- reuse its numbers below instead of
     // recomputing them from the static PLAN_LIMITS fallback table, which
     // would silently drift from an admin's edits in /admin).
-    const usageInfo = await canMakeRequest(session.userId);
+    // Display only, so a failed count degrades rather than 500s: this route
+    // renders the billing page and gates nothing. The scan routes, which do
+    // gate, let the same failure surface, because a quota that cannot be read
+    // must not be assumed spent-free.
+    const usageInfo = await canMakeRequest(session.userId).catch((error) => {
+      console.error("[Billing] Could not resolve daily usage:", error);
+      return null;
+    });
     const billingEnabled = await getSetting("BILLING_ENABLED");
     // AI finding verification only -- see the aiUsage field's own doc
     // comment in components/profile/types.ts for why chat/summary aren't
@@ -273,13 +280,18 @@ export async function GET() {
             startedAt: giftedSubscription.created_at,
           }
         : null,
-      usage: {
-        used: usageInfo.used,
-        limit: usageInfo.limit,
-        remaining: usageInfo.remaining,
-        resetsAt: usageInfo.resetsAt,
-        unlimited: usageInfo.limit === -1 || !billingEnabled,
-      },
+      // null when the count could not be read. The page renders a dash
+      // rather than a fabricated zero, which would tell somebody they had
+      // used nothing today.
+      usage: usageInfo
+        ? {
+            used: usageInfo.used,
+            limit: usageInfo.limit,
+            remaining: usageInfo.remaining,
+            resetsAt: usageInfo.resetsAt,
+            unlimited: usageInfo.limit === -1 || !billingEnabled,
+          }
+        : null,
       limits: planDailyScanLimits,
       aiUsage: {
         used: aiQuota.usedTokens,
