@@ -24,8 +24,12 @@ import {
   getAssignableTeamIds,
 } from "@/lib/auth/team-resource-access";
 
+// user_id is in here because GET mixes the caller's own schedules with any
+// their teams share, and PATCH refuses a team change from anyone but the
+// owner. A client that cannot tell whose row it is holding has to either hide
+// the team control from the owner or offer everyone one that answers 403.
 const SCHEDULE_COLUMNS =
-  "id, url, frequency, active, last_run_at, next_run_at, created_at, team_id, " +
+  "id, url, frequency, active, last_run_at, next_run_at, created_at, user_id, team_id, " +
   "preferred_hour_utc, preferred_day_of_week, preferred_day_of_month";
 
 /** Clamp a request-supplied field to its valid range, falling back to a

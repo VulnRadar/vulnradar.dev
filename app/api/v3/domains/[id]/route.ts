@@ -11,10 +11,12 @@ import { getAssignableTeamIds } from "@/lib/auth/team-resource-access";
  * domains.team_id has existed since the column was added and GET
  * /api/v3/domains already reads it for team access, but nothing could ever
  * write it: there was no PATCH route, the INSERT omits the column, and the
- * profile UI hardcodes team_id: null, while the teams docs advertise
+ * profile UI hardcoded team_id: null, while the teams docs advertise
  * team-shared domains as a feature. So the read path, the access rule in
  * lib/domains/scope.ts, and the docs claim were all gated on a value that
- * could not exist (AUDIT-011#drift-22).
+ * could not exist (AUDIT-011#drift-22). This route closed the write side;
+ * the picker on each row of components/profile/tabs/developer/domains-section.tsx
+ * is what finally made it reachable without curl.
  *
  * Owner-only, matching the equivalent rule on webhooks: a team member with
  * write access may use a shared domain, but deciding which team a proof of
@@ -70,7 +72,7 @@ export async function PATCH(
   const result = await pool.query(
     `UPDATE domains SET team_id = $1
       WHERE id = $2 AND user_id = $3
-      RETURNING id, domain, team_id, status, verification_method, created_at,
+      RETURNING id, domain, user_id, team_id, status, verification_method, created_at,
                 verified_at, last_checked_at, last_check_error`,
     [teamId, id, session.userId],
   );

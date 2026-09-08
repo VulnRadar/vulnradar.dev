@@ -121,6 +121,13 @@ Heading on the page: Point it at us first.
 
 This runs the real scanner against VulnRadar's own deployment and shows you the whole report, including whatever we fail. Nothing is pre-rendered and nothing is filtered out to make us look better.
 
+### Domain
+Route: /domains/[id]
+Access: signed in (or a share token)
+Page title: Domain
+
+This page exists at /domains/[id]. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
+
 ### Donate
 Route: /donate
 Access: public, no account needed

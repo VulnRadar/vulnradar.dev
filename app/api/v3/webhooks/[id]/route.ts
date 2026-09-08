@@ -214,7 +214,7 @@ export async function PATCH(
   const result = await pool.query(
     `UPDATE webhooks SET ${setClauses.join(", ")}
      WHERE id = $${values.length}
-     RETURNING id, url, name, type, active, team_id, created_at`,
+     RETURNING id, url, name, type, active, user_id, team_id, created_at`,
     values,
   );
 

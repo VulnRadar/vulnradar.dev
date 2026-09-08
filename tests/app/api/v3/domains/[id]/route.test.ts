@@ -82,6 +82,10 @@ describe("PATCH /api/v3/domains/[id]", () => {
     expect(sql).toContain("UPDATE domains SET team_id");
     // Ownership is enforced in the statement itself, not only above it.
     expect(sql).toContain("user_id = $3");
+    // The row it hands back is the same shape GET returns, user_id included,
+    // so a client can drop it straight into its list without the team picker
+    // disappearing from a row it just changed.
+    expect(sql).toContain("RETURNING id, domain, user_id, team_id");
     expect(values).toEqual([7, 5, 42]);
   });
 

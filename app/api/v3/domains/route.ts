@@ -25,8 +25,12 @@ export async function GET() {
       { status: 401 },
     );
 
+  // user_id rides along because this list mixes the caller's own domains with
+  // ones a teammate verified and shared, and PATCH /domains/[id] is scoped to
+  // the owner (`WHERE id = $2 AND user_id = $3`, 404 for anyone else). The
+  // client needs to know which rows it may offer a team control on.
   const result = await pool.query(
-    `SELECT id, domain, team_id, status, verification_method,
+    `SELECT id, domain, user_id, team_id, status, verification_method,
             created_at, verified_at, last_checked_at, last_check_error
      FROM domains
      WHERE user_id = $1
@@ -104,7 +108,7 @@ export async function POST(request: NextRequest) {
   // kept alongside for one release so the existing optimistic insert keeps
   // working while it moves over.
   const existing = await pool.query(
-    `SELECT id, domain, team_id, status, verification_method, created_at,
+    `SELECT id, domain, user_id, team_id, status, verification_method, created_at,
             verified_at, last_checked_at, last_check_error, verification_token
      FROM domains WHERE user_id = $1 AND domain = $2`,
     [session.userId, normalized.domain],
@@ -127,7 +131,7 @@ export async function POST(request: NextRequest) {
   const result = await pool.query(
     `INSERT INTO domains (user_id, domain, status, verification_token)
      VALUES ($1, $2, 'pending', $3)
-     RETURNING id, domain, team_id, status, verification_method, created_at,
+     RETURNING id, domain, user_id, team_id, status, verification_method, created_at,
                verified_at, last_checked_at, last_check_error`,
     [session.userId, normalized.domain, token],
   );

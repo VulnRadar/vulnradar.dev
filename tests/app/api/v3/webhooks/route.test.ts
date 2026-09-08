@@ -138,6 +138,18 @@ describe("GET /api/v3/webhooks", () => {
     expect(sql).toContain("team_id IN (SELECT team_id FROM team_members");
     expect(params).toEqual([7]);
   });
+
+  it("selects user_id so a caller can tell their own webhook from a teammate's", async () => {
+    // Both kinds are in this list, and PATCH /webhooks/[id] answers 403 to a
+    // teammate who sends teamId. The profile UI needs the creator to decide
+    // which rows get a team picker at all.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await GET();
+
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("user_id, team_id");
+  });
 });
 
 describe("PATCH /api/v3/webhooks (send a test payload)", () => {

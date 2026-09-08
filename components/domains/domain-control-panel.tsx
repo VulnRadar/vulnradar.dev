@@ -58,10 +58,21 @@ type PendingAction = "unpublish" | "revoke-shares" | "block" | "unblock" | null;
 export function DomainControlPanel({
   domainId,
   domain,
+  className,
 }: {
   domainId: number;
   /** The verified name itself, for the link to its public host page. */
   domain: string;
+  /**
+   * Container chrome, replacing the default.
+   *
+   * The default draws this as the expanded lower half of a list row: a top
+   * border, a tinted ground and the row's own horizontal padding. That is
+   * right where it was born and wrong anywhere else, and on its own page it
+   * rendered as a grey slab with a stray border across the top. The panel's
+   * contents are unchanged either way; only the box around them moves.
+   */
+  className?: string;
 }) {
   const [scans, setScans] = useState<DomainScan[] | null>(null);
   const [block, setBlock] = useState<DomainBlock | null>(null);
@@ -178,7 +189,12 @@ export function DomainControlPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4 border-t border-border bg-muted/20 px-4 py-4">
+    <div
+      className={cn(
+        "flex flex-col gap-4",
+        className ?? "border-t border-border bg-muted/20 px-4 py-4",
+      )}
+    >
       {error && <InlineAlert tone="error">{error}</InlineAlert>}
       {notice && <InlineAlert tone="success">{notice}</InlineAlert>}
 

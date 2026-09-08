@@ -7,8 +7,6 @@ import {
   APP_VERSION,
   APP_NAME,
   APP_URL,
-  APP_REPO,
-  SUPPORT_EMAIL,
   ROUTES,
   BILLING_ENABLED,
 } from "@/lib/config/client-constants";
@@ -290,7 +288,9 @@ export function Footer() {
               Wraps because the registry can hold ten platforms. */}
           <div className="flex flex-wrap items-center justify-center gap-y-1 -mx-2.5 sm:justify-end">
             <a
-              href={`https://github.com/${APP_REPO}`}
+              // Our own short link, like every social icon beside it: an
+              // address that survives the repo being renamed or moved.
+              href="/github"
               target="_blank"
               rel="noopener noreferrer"
               className={iconLinkClass}
@@ -300,11 +300,26 @@ export function Footer() {
               <FaGithub className="h-4 w-4" aria-hidden="true" />
             </a>
             <SocialLinks className={iconLinkClass} iconClassName="h-4 w-4" />
+            {/* The contact page, not a mailto.
+
+                Cloudflare's Email Address Obfuscation rewrites any address in
+                the HTML into /cdn-cgi/l/email-protection#<hex> and injects
+                cloudflare-static/email-decode.min.js to put it back. That
+                script arrives with no nonce, and this app's CSP uses
+                'strict-dynamic', under which 'self' and every host source are
+                ignored and only nonced scripts run. So the decoder was blocked
+                on every page and this icon led to a Cloudflare error page
+                rather than a mail client.
+
+                A path of ours cannot be rewritten, and the form behind it
+                records the message instead of depending on mail reaching us.
+                The addresses on the legal pages are still real mailtos and
+                still need the Cloudflare setting turned off. */}
             <a
-              href={`mailto:${SUPPORT_EMAIL}`}
+              href={ROUTES.CONTACT}
               className={iconLinkClass}
-              aria-label="Email"
-              title="Email"
+              aria-label="Contact us"
+              title="Contact us"
             >
               <Mail className="h-4 w-4" aria-hidden="true" />
             </a>

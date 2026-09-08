@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,7 +17,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
-import { DomainControlPanel } from "@/components/domains/domain-control-panel";
+import { TeamAssignSelect } from "@/components/shared/team-assign-select";
+import { useAssignableTeams } from "@/lib/hooks/use-assignable-teams";
+import { useAuth } from "@/components/providers/auth-provider";
 import { API } from "@/lib/config/client-constants";
 import {
   Plus,
@@ -28,6 +31,8 @@ import {
   Copy,
   Check,
   ChevronDown,
+  ChevronRight,
+  Users,
 } from "lucide-react";
 
 type DomainStatus = "pending" | "verified" | "failed" | "reverify_failed";
@@ -35,6 +40,9 @@ type DomainStatus = "pending" | "verified" | "failed" | "reverify_failed";
 interface DomainItem {
   id: number;
   domain: string;
+  /** Who proved the domain. The list also carries domains a teammate shared,
+   *  and PATCH /api/v3/domains/[id] is scoped to the owner. */
+  user_id?: number;
   team_id: number | null;
   status: DomainStatus;
   verification_method: string;
@@ -105,6 +113,14 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DomainItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Team assignment. Owner-only server-side (the UPDATE is scoped `AND
+  // user_id = $3`), so the picker is only drawn on rows the caller proved.
+  const { me } = useAuth();
+  const teams = useAssignableTeams();
+  const [assigningTeamId, setAssigningTeamId] = useState<number | null>(null);
+
+  const teamLabel = (teamId: number) =>
+    teams.all.find((team) => team.id === teamId)?.name ?? "A team";
 
   useEffect(() => {
     let cancelled = false;
@@ -145,7 +161,8 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
             {
               id: data.id,
               domain: data.domain,
-              team_id: null,
+              user_id: data.user_id,
+              team_id: data.team_id ?? null,
               status: data.status,
               verification_method: "dns_txt",
               created_at: data.createdAt ?? new Date().toISOString(),
@@ -216,6 +233,40 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
     setVerifyingId(null);
   }
 
+  /** Share a verified domain with a team, or take it back. `null` unassigns,
+   *  which is the one value the route accepts without checking the caller's
+   *  teams. */
+  async function handleAssignTeam(domain: DomainItem, teamId: number | null) {
+    setAssigningTeamId(domain.id);
+    setError(null);
+    try {
+      const res = await fetch(`${API.DOMAINS}/${domain.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to change the domain's team.");
+        return;
+      }
+      setDomains((prev) =>
+        prev.map((d) =>
+          d.id === domain.id ? { ...d, team_id: data.team_id ?? null } : d,
+        ),
+      );
+      setSuccess(
+        teamId === null
+          ? `${domain.domain} is yours alone again.`
+          : `${domain.domain} is shared with ${teamLabel(teamId)}, who can now run Active Probing against it.`,
+      );
+    } catch {
+      setError("Failed to change the domain's team.");
+    } finally {
+      setAssigningTeamId(null);
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -255,6 +306,8 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
           domain covers every subdomain under it, and is required before Active
           Probing (real SQLi/XSS/SSTI canary payloads submitted to the target)
           can run against it.
+          {teams.assignable.length > 0 &&
+            " Assign one to a team and your teammates can probe it too, without each proving the domain themselves."}
         </p>
       </div>
 
@@ -347,6 +400,20 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                           >
                             {meta.label}
                           </Badge>
+                          {/* Names the team rather than just flagging "shared":
+                              this list also holds domains a teammate proved. */}
+                          {d.team_id != null && (
+                            <Badge
+                              variant="outline"
+                              className="gap-1 border-primary/20 bg-primary/10 px-1.5 py-0 text-[10px] text-primary"
+                            >
+                              <Users
+                                className="h-2.5 w-2.5"
+                                aria-hidden="true"
+                              />
+                              {teamLabel(d.team_id)}
+                            </Badge>
+                          )}
                         </div>
                         {d.status === "verified" && d.verified_at && (
                           <p className="text-xs text-muted-foreground">
@@ -356,32 +423,74 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                         )}
                       </div>
                       <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:shrink-0">
-                        {/* One disclosure, two contents. An unverified row
-                            opens the DNS record it still needs; a verified one
-                            opens what verification actually bought, which used
-                            to be nothing you could see: the scans of this
-                            domain anyone can read, and the switch that stops
-                            them being run at all. */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-11 sm:h-7 gap-1 text-xs"
-                          // a11y (SC 4.1.2): a rotating chevron was the only
-                          // signal that this expands the DNS record block.
-                          aria-expanded={isExpanded}
-                          onClick={() =>
-                            setExpandedId(isExpanded ? null : d.id)
-                          }
-                        >
-                          {needsRecord ? "DNS record" : "Manage"}
-                          <ChevronDown
-                            className={cn(
-                              "h-3.5 w-3.5 transition-transform",
-                              isExpanded && "rotate-180",
-                            )}
-                            aria-hidden="true"
-                          />
-                        </Button>
+                        {/* Owner only. PATCH /api/v3/domains/[id] scopes its
+                            UPDATE to `user_id = <caller>` and 404s otherwise,
+                            so a teammate reading a shared domain gets no
+                            picker rather than one that fails. */}
+                        {teams.loaded &&
+                          me?.userId != null &&
+                          d.user_id === me.userId && (
+                            <TeamAssignSelect
+                              className="mr-1"
+                              teams={teams.assignable}
+                              value={d.team_id}
+                              currentTeamName={
+                                d.team_id != null ? teamLabel(d.team_id) : null
+                              }
+                              busy={assigningTeamId === d.id}
+                              label={`Team for ${d.domain}`}
+                              onChange={(teamId) => handleAssignTeam(d, teamId)}
+                            />
+                          )}
+                        {/* Two different sizes of thing, so two affordances.
+                            An unverified row needs one TXT record, which is
+                            small and belongs to adding the domain, so it stays
+                            a disclosure right here. A verified one opens
+                            DomainControlPanel: every published scan of the
+                            domain, per-scan unpublish and share revocation, and
+                            the block switch. That is ~400 lines, and expanding
+                            it inside a row pushed everything below it down by
+                            the height of a page. It has its own page now. */}
+                        {needsRecord ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-11 sm:h-7 gap-1 text-xs"
+                            // a11y (SC 4.1.2): a rotating chevron was the only
+                            // signal that this expands the DNS record block.
+                            aria-expanded={isExpanded}
+                            onClick={() =>
+                              setExpandedId(isExpanded ? null : d.id)
+                            }
+                          >
+                            DNS record
+                            <ChevronDown
+                              className={cn(
+                                "h-3.5 w-3.5 transition-transform",
+                                isExpanded && "rotate-180",
+                              )}
+                              aria-hidden="true"
+                            />
+                          </Button>
+                        ) : (
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="sm"
+                            className="h-11 sm:h-7 gap-1 text-xs"
+                          >
+                            <Link
+                              href={`/domains/${d.id}`}
+                              aria-label={`Manage ${d.domain}`}
+                            >
+                              Manage
+                              <ChevronRight
+                                className="h-3.5 w-3.5"
+                                aria-hidden="true"
+                              />
+                            </Link>
+                          </Button>
+                        )}
                         {needsRecord && (
                           <Button
                             variant="ghost"
@@ -486,10 +595,6 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                           &quot;Verify now&quot; once it&apos;s live.
                         </p>
                       </div>
-                    )}
-
-                    {isExpanded && !needsRecord && (
-                      <DomainControlPanel domainId={d.id} domain={d.domain} />
                     )}
                   </div>
                 );

@@ -13,3 +13,4 @@ export {
   type PageActionItem,
   type PageActionEntry,
 } from "./page-actions-menu";
+export { TeamAssignSelect } from "./team-assign-select";

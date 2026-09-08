@@ -495,7 +495,9 @@ export default function ScheduledScansDocsPage() {
             to unshare). Only the owner can change the team, but pausing and
             resuming is open to any team member whose role grants scan
             management. <InlineCode>GET /schedules</InlineCode> returns your own
-            schedules plus every schedule on a team you belong to.
+            schedules plus every schedule on a team you belong to. Each row on
+            the Scheduled Scans page carries the same picker, so you do not have
+            to send the PATCH yourself.
           </p>
         </DocsSubSection>
       </DocsSection>

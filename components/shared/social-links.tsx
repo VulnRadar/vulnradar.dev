@@ -70,12 +70,15 @@ interface SocialLinksProps {
 export function SocialLinks({ className, iconClassName }: SocialLinksProps) {
   return (
     <>
-      {SOCIAL_LINKS.map(({ id, label, url }) => {
+      {SOCIAL_LINKS.map(({ id, label, url, path }) => {
         const Mark = MARKS[id];
         return (
           <a
             key={id}
-            href={url}
+            // Our own short link, not the profile URL: the address is then
+            // ours to print, paste and change. middleware.ts redirects it.
+            // Falls back to the real URL so a link never renders dead.
+            href={path ?? url}
             target="_blank"
             rel="noopener noreferrer"
             // The link has no text, so without this it announces as its own

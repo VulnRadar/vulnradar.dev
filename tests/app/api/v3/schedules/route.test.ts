@@ -182,6 +182,18 @@ describe("GET /api/v3/schedules", () => {
     expect(sql).toContain("preferred_day_of_month");
     expect(params).toEqual([42]);
   });
+
+  it("selects user_id so a caller can tell their own schedule from a teammate's", async () => {
+    // The list deliberately mixes both, and PATCH refuses a team change from
+    // anyone but the owner. Without this column the profile UI cannot decide
+    // who gets the team picker, which is how team sharing stayed curl-only.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await GET();
+
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("user_id, team_id");
+  });
 });
 
 describe("POST /api/v3/schedules", () => {

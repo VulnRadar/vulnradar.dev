@@ -14,6 +14,7 @@ import {
   Lock,
   Pause,
   Play,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { ROUTES, BILLING_ENABLED } from "@/lib/config/client-constants";
@@ -27,6 +28,8 @@ import {
 import { localHourLabel } from "./schedule-time-utils";
 import type { ScheduleItem } from "@/components/profile/types";
 import type { ConfirmAction } from "./types";
+import { TeamAssignSelect } from "@/components/shared/team-assign-select";
+import type { AssignableTeamsResult } from "@/lib/hooks/use-assignable-teams";
 
 const DAY_LABELS = [
   "Sunday",
@@ -71,6 +74,16 @@ interface SchedulesSectionProps {
   onToggleSchedule: (id: number, active: boolean) => void;
   /** Id of the schedule currently mid-toggle, for a per-row spinner. */
   togglingScheduleId: number | null;
+  /** Session user id, or null while /auth/me is in flight. The list also
+   *  carries schedules a teammate shared, and PATCH refuses a team change
+   *  from anyone but the schedule's owner. */
+  currentUserId: number | null;
+  /** The caller's teams, split into the ones they may assign to and the ones
+   *  they merely belong to. Nothing team-shaped is drawn until it is loaded,
+   *  so the picker does not appear a beat after the row it belongs to. */
+  teams: AssignableTeamsResult;
+  assigningTeamScheduleId: number | null;
+  onAssignScheduleTeam: (id: number, teamId: number | null) => void;
 }
 
 function formatScheduleTime(iso: string | null): string {
@@ -107,7 +120,13 @@ export function SchedulesSection({
   userPlan,
   onToggleSchedule,
   togglingScheduleId,
+  currentUserId,
+  teams,
+  assigningTeamScheduleId,
+  onAssignScheduleTeam,
 }: SchedulesSectionProps) {
+  const teamLabel = (teamId: number) =>
+    teams.all.find((team) => team.id === teamId)?.name ?? "A team";
   const freqDef = FREQUENCIES[scheduleFreq as ScheduleFrequency];
   const requiredPlan = freqDef?.minPlan;
   // Self-hosted with billing off: every frequency is unlocked, same as
@@ -134,6 +153,8 @@ export function SchedulesSection({
         </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
           Re-scan a URL on a schedule and get told when something regresses.
+          {teams.assignable.length > 0 &&
+            " Share one with a team and every co-member can see it and pause it."}
         </p>
       </div>
       <Card className="border-border/50 bg-card/50">
@@ -283,7 +304,11 @@ export function SchedulesSection({
                 return (
                   <div
                     key={sch.id}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
+                    // The controls take their own line below sm, same reasoning
+                    // as the webhook and domain rows: the team picker plus
+                    // pause and delete is more than a 320px screen can hold
+                    // beside a full URL.
+                    className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 hover:bg-muted/30 transition-colors"
                   >
                     <CalendarClock
                       className={cn(
@@ -311,6 +336,15 @@ export function SchedulesSection({
                             Paused
                           </Badge>
                         )}
+                        {sch.team_id != null && (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-primary/20 bg-primary/10 px-1.5 py-0 text-[10px] font-semibold uppercase text-primary"
+                          >
+                            <Users className="h-2.5 w-2.5" aria-hidden="true" />
+                            {teamLabel(sch.team_id)}
+                          </Badge>
+                        )}
                         {nextRun && (
                           <span>Next: {formatScheduleTime(nextRun)}</span>
                         )}
@@ -319,41 +353,65 @@ export function SchedulesSection({
                         )}
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground shrink-0"
-                      disabled={isToggling}
-                      onClick={() => onToggleSchedule(sch.id, !isPaused)}
-                      aria-label={
-                        isPaused
-                          ? `Resume scheduled scan for ${sch.url}`
-                          : `Pause scheduled scan for ${sch.url}`
-                      }
-                    >
-                      {isToggling ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : isPaused ? (
-                        <Play className="h-3.5 w-3.5" />
-                      ) : (
-                        <Pause className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
-                      onClick={() =>
-                        onRequestConfirm({
-                          kind: "delete-schedule",
-                          id: sch.id,
-                          label: sch.url,
-                        })
-                      }
-                      aria-label={`Delete scheduled scan for ${sch.url}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:shrink-0">
+                      {/* Owner only: PATCH /api/v3/schedules refuses a team
+                          change from a co-member, even one whose role lets
+                          them pause and delete the same schedule. */}
+                      {teams.loaded &&
+                        currentUserId !== null &&
+                        sch.user_id === currentUserId && (
+                          <TeamAssignSelect
+                            className="mr-1"
+                            teams={teams.assignable}
+                            value={sch.team_id ?? null}
+                            currentTeamName={
+                              sch.team_id != null
+                                ? teamLabel(sch.team_id)
+                                : null
+                            }
+                            busy={assigningTeamScheduleId === sch.id}
+                            label={`Team for the scheduled scan of ${sch.url}`}
+                            onChange={(teamId) =>
+                              onAssignScheduleTeam(sch.id, teamId)
+                            }
+                          />
+                        )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground shrink-0"
+                        disabled={isToggling}
+                        onClick={() => onToggleSchedule(sch.id, !isPaused)}
+                        aria-label={
+                          isPaused
+                            ? `Resume scheduled scan for ${sch.url}`
+                            : `Pause scheduled scan for ${sch.url}`
+                        }
+                      >
+                        {isToggling ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : isPaused ? (
+                          <Play className="h-3.5 w-3.5" />
+                        ) : (
+                          <Pause className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                        onClick={() =>
+                          onRequestConfirm({
+                            kind: "delete-schedule",
+                            id: sch.id,
+                            label: sch.url,
+                          })
+                        }
+                        aria-label={`Delete scheduled scan for ${sch.url}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 );
               })}

@@ -23,6 +23,7 @@ import {
 import { useQueryParam } from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
+import { useAssignableTeams } from "@/lib/hooks/use-assignable-teams";
 import {
   resolveDeveloperSection,
   visibleSurfaces,
@@ -315,6 +316,21 @@ export function ProfileDeveloperTab({
     null,
   );
 
+  // Team sharing for webhooks and schedules. Both PATCH routes take a teamId
+  // and both refuse one from anyone but the resource's creator, so the teams
+  // are resolved once here and the sections gate the control on ownership.
+  const teams = useAssignableTeams();
+  const [assigningWebhookTeamId, setAssigningWebhookTeamId] = useState<
+    number | null
+  >(null);
+  const [assigningScheduleTeamId, setAssigningScheduleTeamId] = useState<
+    number | null
+  >(null);
+
+  function teamName(teamId: number) {
+    return teams.all.find((team) => team.id === teamId)?.name ?? "that team";
+  }
+
   // Filter with null safety - ensure k exists and has expected properties
   const activeKeys = apiKeys.filter(
     (k) => k && typeof k === "object" && !k.revoked_at,
@@ -501,6 +517,37 @@ export function ProfileDeveloperTab({
     }
   }
 
+  /** Share a recurring scan with a team, or take it back. Owner-only on the
+   *  route, same as webhooks, so the row only offers this on the caller's own
+   *  schedules. */
+  async function handleAssignScheduleTeam(id: number, teamId: number | null) {
+    const label = schedules.find((s) => s.id === id)?.url ?? "That scan";
+    setAssigningScheduleTeamId(id);
+    setError(null);
+    try {
+      const res = await fetch(API.SCHEDULES, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, teamId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to change the schedule's team.");
+        return;
+      }
+      setSchedules((prev) => prev.map((s) => (s.id === id ? data : s)));
+      setSuccess(
+        teamId === null
+          ? `${label} is a personal schedule again.`
+          : `${label} is now shared with ${teamName(teamId)}, who can see and pause it.`,
+      );
+    } catch {
+      setError("Failed to change the schedule's team.");
+    } finally {
+      setAssigningScheduleTeamId(null);
+    }
+  }
+
   async function handleConfirmDestructive() {
     if (!confirmAction) return;
     setConfirmBusy(true);
@@ -614,6 +661,40 @@ export function ProfileDeveloperTab({
       setError("Failed to update webhook.");
     } finally {
       setTogglingWebhookId(null);
+    }
+  }
+
+  /** Hand a webhook to a team, or take it back. `null` unassigns, which is
+   *  the one value PATCH accepts without checking the caller's teams. */
+  async function handleAssignWebhookTeam(id: number, teamId: number | null) {
+    const label = webhooks.find((w) => w.id === id)?.name ?? "That webhook";
+    setAssigningWebhookTeamId(id);
+    setError(null);
+    try {
+      const res = await fetch(`${API.WEBHOOKS}/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to change the webhook's team.");
+        return;
+      }
+      setWebhooks((prev) =>
+        prev.map((w) =>
+          w.id === id ? { ...w, team_id: data.team_id ?? null } : w,
+        ),
+      );
+      setSuccess(
+        teamId === null
+          ? `"${label}" is personal again. Only scans you run post to it.`
+          : `"${label}" now posts for ${teamName(teamId)}, including scans your teammates run.`,
+      );
+    } catch {
+      setError("Failed to change the webhook's team.");
+    } finally {
+      setAssigningWebhookTeamId(null);
     }
   }
 
@@ -906,6 +987,10 @@ export function ProfileDeveloperTab({
           deliveries={deliveries}
           loadingDeliveries={loadingDeliveries}
           deliveriesError={deliveriesError}
+          currentUserId={me?.userId ?? null}
+          teams={teams}
+          assigningTeamWebhookId={assigningWebhookTeamId}
+          onAssignWebhookTeam={handleAssignWebhookTeam}
         />
       )}
 
@@ -956,6 +1041,10 @@ export function ProfileDeveloperTab({
           userPlan={planKnown ? effectivePlan : null}
           onToggleSchedule={handleToggleSchedule}
           togglingScheduleId={togglingScheduleId}
+          currentUserId={me?.userId ?? null}
+          teams={teams}
+          assigningTeamScheduleId={assigningScheduleTeamId}
+          onAssignScheduleTeam={handleAssignScheduleTeam}
         />
       )}
 

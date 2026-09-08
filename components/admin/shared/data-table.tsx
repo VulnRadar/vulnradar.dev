@@ -173,7 +173,8 @@ interface TableScrollAreaProps {
 /**
  * Wraps a <Table> with a bordered, rounded container that scrolls
  * horizontally on narrow screens and, once maxHeight is reached, vertically
- * with the header pinned via `sticky top-0` on <TableHeader>.
+ * with the header pinned via `sticky top-0` on the header CELLS (see the
+ * comment in the body: a sticky <thead> alone lets rows show through it).
  */
 export function TableScrollArea({
   children,
@@ -187,8 +188,24 @@ export function TableScrollArea({
     // always 0; `position: sticky` binds to the nearest scrolling ancestor, so
     // the sticky header was pinned to a box that never scrolled while this
     // outer div did the actual scrolling. Every admin sticky header was inert.
+    //
+    // The [&_thead_th] rules are the second half of that fix. Every admin table
+    // puts `sticky top-0 bg-muted` on <TableHeader>, which is the <thead> row
+    // GROUP, and the cells inside it are transparent. Under
+    // `border-collapse: collapse` Chrome does not reliably paint a sticky row
+    // group's background, so rows scrolling underneath showed THROUGH the
+    // pinned header: on the user directory you could read a scrolled-away
+    // account's email inside the header band. Cells always paint their own
+    // background and stick dependably, so the pin and the ground both move
+    // here. Solid on purpose: the three engine-feedback tables asked for
+    // `bg-muted/95` with a backdrop blur, and a translucent sticky header over
+    // moving rows is the same complaint by a different route.
     <div
-      className={cn("overflow-auto [&>div]:overflow-visible", className)}
+      className={cn(
+        "overflow-auto [&>div]:overflow-visible",
+        "[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-muted",
+        className,
+      )}
       style={{ maxHeight }}
     >
       {children}

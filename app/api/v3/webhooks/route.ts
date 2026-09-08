@@ -33,8 +33,13 @@ export async function GET() {
   // roles (owner/admin/member/viewer) grant "view_reports" (see
   // TEAM_ROLE_PERMISSIONS in lib/config/constants.ts), so this doesn't
   // need per-row role filtering, unlike write access.
+  // user_id is selected because the list mixes the caller's own webhooks with
+  // teammates', and only the creator may change a webhook's team (PATCH
+  // /webhooks/[id] answers 403 to anyone else). Without it the client cannot
+  // tell the two apart, so it would either hide the team control from owners
+  // or offer everyone a control that 403s.
   const result = await pool.query(
-    `SELECT id, url, name, type, active, team_id, created_at FROM webhooks
+    `SELECT id, url, name, type, active, user_id, team_id, created_at FROM webhooks
      WHERE user_id = $1
         OR team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
      ORDER BY created_at DESC`,
@@ -141,7 +146,7 @@ export async function POST(request: NextRequest) {
      SELECT $1, $2, $3, $4, $5
      WHERE $6::int IS NULL
         OR (SELECT COUNT(*) FROM webhooks WHERE user_id = $1) < $6::int
-     RETURNING id, url, name, type, active, created_at`,
+     RETURNING id, url, name, type, active, user_id, team_id, created_at`,
     [
       session.userId,
       url,

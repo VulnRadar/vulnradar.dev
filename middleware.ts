@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PUBLIC_PATHS } from "./lib/config/public-paths";
 import { AUTH_SESSION_COOKIE_NAME, ROUTES, API } from "./lib/config/constants";
+import { SOCIAL_REDIRECTS } from "./lib/config/client-constants";
 import {
   MAX_REQUEST_BODY_BYTES,
   BODY_CARRYING_METHODS,
@@ -515,6 +516,33 @@ export function middleware(request: NextRequest) {
         requestId,
       );
     }
+  }
+
+  // Our own short links for the social accounts: /discord, /youtube, /github
+  // and the rest, redirected to the real profile.
+  //
+  // Before the public-path check on purpose, and therefore before the auth
+  // gate. These are not pages, so listing them in PUBLIC_PATHS would be
+  // describing them as something they are not, and leaving them out of it (as
+  // the first version of this did) sent a signed-out visitor to /login instead
+  // of to the account they asked for. A redirect that behaves differently
+  // depending on whether you happen to be signed in is not a link you can
+  // print on a sticker.
+  //
+  // 307, not 308: the destination is somebody else's URL and an account can
+  // move. Browsers cache a permanent redirect indefinitely, which would
+  // outlive our ability to change it.
+  const socialPathname =
+    pathname.length > 1 && pathname.endsWith("/")
+      ? pathname.slice(0, -1)
+      : pathname;
+  const socialTarget = SOCIAL_REDIRECTS[socialPathname];
+  if (socialTarget) {
+    return applySecurityHeaders(
+      NextResponse.redirect(socialTarget, 307),
+      nonce,
+      requestId,
+    );
   }
 
   // Check if path is public (exact match for "/" and "/landing", startsWith for others)

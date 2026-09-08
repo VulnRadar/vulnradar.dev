@@ -20,11 +20,14 @@ import {
   Copy,
   History,
   RefreshCw,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
 import type { WebhookItem } from "@/components/profile/types";
 import type { ConfirmAction, WebhookDelivery } from "./types";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { TeamAssignSelect } from "@/components/shared/team-assign-select";
+import type { AssignableTeamsResult } from "@/lib/hooks/use-assignable-teams";
 
 interface WebhooksSectionProps {
   webhooks: WebhookItem[];
@@ -60,6 +63,16 @@ interface WebhooksSectionProps {
   deliveries: WebhookDelivery[];
   loadingDeliveries: boolean;
   deliveriesError: string | null;
+  /** Session user id, or null while /auth/me is in flight. The list mixes the
+   *  caller's own webhooks with ones a teammate shared, and only the creator
+   *  may change a webhook's team. */
+  currentUserId: number | null;
+  /** The caller's teams, split into the ones they may assign to and the ones
+   *  they merely belong to. Nothing team-shaped is drawn until it is loaded,
+   *  so the picker does not appear a beat after the row it belongs to. */
+  teams: AssignableTeamsResult;
+  assigningTeamWebhookId: number | null;
+  onAssignWebhookTeam: (id: number, teamId: number | null) => void;
 }
 
 /**
@@ -129,8 +142,16 @@ export function WebhooksSection({
   deliveries,
   loadingDeliveries,
   deliveriesError,
+  currentUserId,
+  teams,
+  assigningTeamWebhookId,
+  onAssignWebhookTeam,
 }: WebhooksSectionProps) {
   const [copiedSecret, setCopiedSecret] = useState(false);
+
+  function teamLabel(teamId: number) {
+    return teams.all.find((team) => team.id === teamId)?.name ?? "A team";
+  }
 
   async function handleCopySecret() {
     if (!newlyCreatedWebhookSecret) return;
@@ -150,6 +171,8 @@ export function WebhooksSection({
           Send finished scans to Discord, Slack, or any endpoint that accepts
           JSON. Every delivery is signed so you can verify it actually came from
           us.
+          {teams.assignable.length > 0 &&
+            " Hand one to a team and it fires on their scans too."}
         </p>
       </div>
 
@@ -372,6 +395,18 @@ export function WebhooksSection({
                               Paused
                             </span>
                           )}
+                          {/* Whose it is, not just that it is shared: the same
+                              list holds webhooks a teammate created, and those
+                              carry no controls beyond pause/test. */}
+                          {wh.team_id != null && (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                              <Users
+                                className="h-2.5 w-2.5"
+                                aria-hidden="true"
+                              />
+                              {teamLabel(wh.team_id)}
+                            </span>
+                          )}
                         </div>
                         <p
                           title={wh.url}
@@ -380,7 +415,29 @@ export function WebhooksSection({
                           {wh.url}
                         </p>
                       </div>
-                      <div className="flex w-full items-center gap-1 sm:w-auto sm:shrink-0">
+                      <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:shrink-0">
+                        {/* Only the creator: PATCH /webhooks/[id] answers 403
+                            to a teammate who sends teamId, even one whose role
+                            lets them edit and pause the same webhook. */}
+                        {teams.loaded &&
+                          currentUserId !== null &&
+                          wh.user_id === currentUserId && (
+                            <TeamAssignSelect
+                              className="mr-1"
+                              teams={teams.assignable}
+                              value={wh.team_id ?? null}
+                              currentTeamName={
+                                wh.team_id != null
+                                  ? teamLabel(wh.team_id)
+                                  : null
+                              }
+                              busy={assigningTeamWebhookId === wh.id}
+                              label={`Team for ${wh.name}`}
+                              onChange={(teamId) =>
+                                onAssignWebhookTeam(wh.id, teamId)
+                              }
+                            />
+                          )}
                         <Switch
                           checked={wh.active}
                           disabled={isToggling}

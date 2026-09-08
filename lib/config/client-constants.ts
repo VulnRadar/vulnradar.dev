@@ -602,6 +602,13 @@ export interface SocialLink {
   id: SocialPlatformId;
   /** Accessible name for the icon-only link, and its tooltip. */
   label: string;
+  /**
+   * The real profile URL. Two jobs, and only one of them is a link people
+   * click: it is what /discord and friends redirect TO, and it is what the
+   * JSON-LD Organization node publishes as sameAs. sameAs asserts "this
+   * account IS this organisation", so it has to name the platform's own URL;
+   * pointing it at our own redirect would assert that we are ourselves.
+   */
   url: string;
   /**
    * Whether this URL identifies the organisation, which is what schema.org's
@@ -609,6 +616,8 @@ export interface SocialLink {
    * site publishes is not an account that is the site.
    */
   identity: boolean;
+  /** Our own short link, e.g. "/discord". Set by SOCIAL_LINKS below. */
+  path?: string;
 }
 
 // Render order, most-used first. Discord reads DISCORD_INVITE_URL rather than
@@ -690,6 +699,36 @@ const DECLARED_SOCIAL_LINKS: SocialLink[] = [
  */
 export const SOCIAL_LINKS: SocialLink[] = DECLARED_SOCIAL_LINKS.filter((link) =>
   link.url.startsWith("https://"),
+).map((link) => ({ ...link, path: socialPath(link.id) }));
+
+/**
+ * Our own short link for a platform, e.g. "/discord".
+ *
+ * Every rendered social link points here rather than straight at the profile,
+ * so the address is ours: it can be printed on a sticker, pasted into a
+ * README or read out loud, and the destination can change without chasing
+ * every place the old one was written down. middleware.ts turns it back into
+ * the real URL.
+ */
+export function socialPath(id: SocialPlatformId): string {
+  return `/${id}`;
+}
+
+/**
+ * Short path to real URL, for the redirect in middleware.ts. Built from the
+ * same filtered list the UI renders, so a platform this deployment has not
+ * configured has no short link either and falls through to a 404 rather than
+ * redirecting somewhere empty.
+ */
+export const SOCIAL_REDIRECTS: Readonly<Record<string, string>> = Object.freeze(
+  {
+    ...Object.fromEntries(SOCIAL_LINKS.map((link) => [link.path, link.url])),
+    // The repository is not a social account (it is not in SOCIAL_PLATFORM_IDS
+    // and it stays out of sameAs), but it is the link asked for most often after
+    // Discord and the reason for a short one is the same: an address of ours
+    // that survives the repo being renamed or moved.
+    "/github": `https://github.com/${CONFIG_APP_REPO}`,
+  },
 );
 
 /**

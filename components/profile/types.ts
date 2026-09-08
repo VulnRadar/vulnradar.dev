@@ -186,6 +186,11 @@ export interface WebhookItem {
   type: string;
   active: boolean;
   created_at: string;
+  /** Who created it. The list also carries webhooks a teammate shared, and
+   *  only the creator may change a webhook's team. */
+  user_id?: number;
+  /** The team it fires for, or null when it is personal. */
+  team_id?: number | null;
 }
 
 export interface ScheduleItem {
@@ -202,6 +207,11 @@ export interface ScheduleItem {
   preferred_day_of_week?: number;
   /** UTC day of month (1-28). Only meaningful for a monthly schedule. */
   preferred_day_of_month?: number;
+  /** Who created it. The list also carries schedules a teammate shared, and
+   *  PATCH refuses a team change from anyone but the owner. */
+  user_id?: number;
+  /** The team it is shared with, or null when it is personal. */
+  team_id?: number | null;
 }
 
 export interface NotificationPrefs {

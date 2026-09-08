@@ -156,7 +156,9 @@ export default function WebhooksPage() {
           >
             Webhooks page
           </Link>
-          , as the rotate and history buttons on each row.
+          , as the rotate and history buttons on each row. The same rows carry
+          the team picker for <InlineCode>teamId</InlineCode>, so handing a
+          webhook to a team no longer needs a PATCH of your own.
         </p>
 
         <div className="space-y-6">

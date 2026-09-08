@@ -680,6 +680,30 @@ const CHANGELOG: Release[] = [
         desc: "Sending an announcement is protected: it only works on a draft, and sending consumes the draft, so it cannot happen twice. Resending an already-sent announcement was checked the same way, against a state that resending does not change, so the check passed every time and the route had no rate limit of its own. Every call delivered to every account again, which meant a double-clicked button sent the same email to everyone twice, and nothing but the sender noticing would stop a third. Resending now claims the announcement in the same statement that stamps it, with a minimum gap built into that statement, so two clicks arriving together cannot both win and a repeat inside the window is refused with a message saying when it was last sent.",
         category: "fixed",
       },
+      {
+        icon: Table2,
+        label: "Rows Showed Through The Pinned Header On Every Admin Table",
+        desc: "Admin tables pin their column headers so the meaning of each column survives a scroll. The background that makes that readable was set on the header as a group rather than on the individual header cells, which are transparent, and a browser does not reliably paint a pinned group's background. So rows sliding underneath were visible through the header band: on the user directory you could read a scrolled-away account's email address inside the row that says USER and ACTIVITY. The pin and the background now both sit on the cells, which always paint their own. Three tables that had asked for a translucent blurred header are solid for the same reason, since see-through is the whole complaint.",
+        category: "fixed",
+      },
+      {
+        icon: Globe,
+        label: "Every Social Link Is Now An Address Of Ours",
+        desc: "Our accounts were linked by pasting each platform's own URL wherever the link appeared. That works until an account moves or is renamed, at which point every copy of the old address is wrong and there is no list of where they all are. Each one now has a short link on our own domain, so the Discord invite is reachable at /discord, the repository at /github, and so on for every platform configured. They redirect, so they can be printed, put in a video description, or read out loud, and where they point is one setting rather than a search. The redirect is deliberately temporary rather than permanent, because a browser caches a permanent one indefinitely and that would outlive our ability to change it. The one thing that still names the real profile is the structured data that tells search engines which accounts are ours, because that is a statement of identity and pointing it at our own redirect would only assert that we are ourselves.",
+        category: "added",
+      },
+      {
+        icon: Mail,
+        label: "The Email Button In The Footer Went To A Cloudflare Error Page",
+        desc: "Clicking the mail icon in the footer led to an address at /cdn-cgi/l/email-protection instead of opening a mail client. Cloudflare has a feature that hides email addresses from scrapers: it rewrites any address in the page into that placeholder and adds a small script to turn it back into the real one in your browser. Our pages only run scripts that carry a per-request token, which is what stops an injected script from executing, and the script Cloudflare adds does not carry one. So it never ran, the address was never restored, and the link stayed pointing at the placeholder on every page. The mail icon now goes to our contact page, which cannot be rewritten and which records what you send rather than depending on mail reaching us. The addresses on the legal pages are still real ones.",
+        category: "fixed",
+      },
+      {
+        icon: Globe,
+        label: "Managing A Domain Is A Page Instead Of A Drawer",
+        desc: "Verifying a domain unlocks a set of controls over what other people's scans of it can show: every published scan of the domain, the ability to unpublish one or revoke its share link, and a switch that stops it being scanned at all. All of that opened inside the row it belonged to, so expanding it pushed everything below it down by the height of a page, and the controls that need the most deliberation were the ones hardest to read. Each verified domain has its own page now, reached by Manage. The unverified case is unchanged and still opens in place, because it is one DNS record and it belongs to adding the domain. A domain that is not yours, or an address that is not a domain at all, gets the same answer, so the page does not reveal which is which.",
+        category: "changed",
+      },
     ],
   },
   {
