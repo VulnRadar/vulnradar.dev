@@ -203,13 +203,13 @@ describeIntegration("credit ledgers", () => {
 
     // Cap is 100 tokens per window (set in beforeAll). 60 fits entirely in
     // the free allowance, so the purchased balance must not move.
-    await recordAiTokens(user.id, 60, windowStart);
+    await recordAiTokens(user.id, 60, windowStart, true);
     expect(await numericBalance(user.id)).toBe(1000);
 
     // 60 more: 40 finishes the free allowance, 20 spills onto credits. The
     // split is computed from the UPSERT's own RETURNING value, which is the
     // part that cannot be tested without executing the statement.
-    await recordAiTokens(user.id, 60, windowStart);
+    await recordAiTokens(user.id, 60, windowStart, true);
     expect(await numericBalance(user.id)).toBe(980);
 
     const { rows } = await pool.query<{ tokens_used: number }>(
@@ -229,7 +229,7 @@ describeIntegration("credit ledgers", () => {
     // believe they were the first past the ceiling and undercharge.
     await Promise.all(
       Array.from({ length: 10 }, () =>
-        recordAiTokens(user.id, 50, windowStart),
+        recordAiTokens(user.id, 50, windowStart, true),
       ),
     );
 

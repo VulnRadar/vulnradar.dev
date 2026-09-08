@@ -426,3 +426,158 @@ test("cli: an unknown flag with no command reports the flag, not bare usage", as
   assert.equal(code, 1);
   assert.match(stderr, /Unknown flag: --typo/);
 });
+
+/**
+ * A server whose behaviour changes per request, which the routes map above
+ * cannot express: every transient-failure case needs the second poll to
+ * answer differently from the first.
+ */
+function runCliWithHandler(args, handler, { env = {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const server = createServer(handler);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      const childEnv = { ...process.env };
+      delete childEnv.VULNRADAR_TOKEN;
+      delete childEnv.VULNRADAR_API_BASE;
+      execFile(
+        process.execPath,
+        [CLI, ...args, "--api-base", `http://127.0.0.1:${port}`],
+        { env: { ...childEnv, ...env } },
+        (err, stdout, stderr) => {
+          server.close();
+          if (err && typeof err.code !== "number") return reject(err);
+          resolve({ code: err ? err.code : 0, stdout, stderr });
+        },
+      );
+    });
+  });
+}
+
+test("--timeout actually bounds a connection that is accepted and never answered", async () => {
+  // Neither request carried an AbortSignal, so --timeout only decided how
+  // often the loop re-read the clock. A server that accepts the socket and
+  // never writes was never interrupted: the process sat there until the CI
+  // runner's own timeout killed the whole job, and --timeout was silently
+  // meaningless for the one failure it most needs to cover.
+  const started = Date.now();
+  const { code, stderr } = await runCliWithHandler(
+    ["scan", "https://target.example", "--api-key", "k", "--timeout", "3"],
+    () => {
+      /* accept, and never respond */
+    },
+  );
+  const elapsed = Date.now() - started;
+  assert.equal(code, 1);
+  // Generous, but far below the "forever" this replaces.
+  assert.ok(elapsed < 30_000, `took ${elapsed}ms, should give up near 3s`);
+  assert.match(stderr, /timed out|Timed out/i);
+});
+
+test("one transient poll failure does not fail a scan that then succeeds", async () => {
+  // A default scan polls roughly sixty times and a crawl closer to two
+  // hundred, so a single 502 from a proxy used to fail the build while the
+  // scan completed and landed in the user's history.
+  let polls = 0;
+  const { code, stdout } = await runCliWithHandler(
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--json",
+      "--poll-interval",
+      "0",
+    ],
+    (req, res) => {
+      if (req.url.startsWith("/scan/status/")) {
+        polls += 1;
+        if (polls === 1) {
+          res.writeHead(502, { "Content-Type": "text/html" });
+          res.end("<html>502 Bad Gateway</html>");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            status: "completed",
+            result: {
+              summary: { critical: 0, high: 0, medium: 0, low: 0, total: 0 },
+            },
+          }),
+        );
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ scanId: "abc" }));
+    },
+  );
+  assert.equal(code, 0, "a recovered poll must not fail the run");
+  assert.ok(polls >= 2, "the failed poll should have been retried");
+  assert.doesNotThrow(() => JSON.parse(stdout));
+});
+
+test("a 401 while polling is fatal rather than retried", async () => {
+  // The opposite case: a wrong key or somebody else's scan will not fix
+  // itself, and retrying it five times just delays the message.
+  let polls = 0;
+  const { code, stderr } = await runCliWithHandler(
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--poll-interval",
+      "0",
+    ],
+    (req, res) => {
+      if (req.url.startsWith("/scan/status/")) {
+        polls += 1;
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "nope" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ scanId: "abc" }));
+    },
+  );
+  assert.equal(code, 1);
+  assert.equal(polls, 1, "an auth failure must not be retried");
+  assert.match(stderr, /Not authorized/i);
+});
+
+test("--json writes a parseable document to stdout even when the run fails", async () => {
+  // stdout was written on the success path only, so
+  // `vulnradar scan $URL --json | jq '.summary.critical'` got empty stdin on
+  // every failure. jq exits 0 on empty input, so without pipefail the shell
+  // reported the pipeline as passing: the exit code, which is the whole
+  // reason the CLI exists in CI, was discarded exactly when it mattered.
+  const { code, stdout } = await runCli(
+    ["scan", "https://target.example", "--api-key", "k", "--json"],
+    { routes: { "/scan": { status: 500, body: { error: "boom" } } } },
+  );
+  assert.equal(code, 1);
+  const parsed = JSON.parse(stdout);
+  assert.equal(parsed.ok, false);
+  assert.ok(parsed.error.length > 0);
+});
+
+test("an HTML error page is reported as one, not as a JSON parser message", async () => {
+  // A captive portal or a WAF challenge is the likeliest real failure, and
+  // it used to surface as `Unexpected token '<', "<!doctype "...`, with no
+  // status, no URL and nothing to say the server had returned HTML.
+  const { code, stderr } = await runCli(
+    ["scan", "https://target.example", "--api-key", "k"],
+    {
+      routes: {
+        "/scan": {
+          status: 200,
+          body: "<!doctype html><title>Checking</title>",
+        },
+      },
+    },
+  );
+  assert.equal(code, 1);
+  assert.match(stderr, /not JSON/i);
+  assert.match(stderr, /doctype/i);
+});

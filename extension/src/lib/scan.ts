@@ -238,7 +238,6 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   // list was empty meant switching every family OFF in Options ran a full
   // scan, which is the exact inverse of what the screen said. Nothing to scan
   // is a client-side error now, before a request is made.
-  const narrowed = families.length < allFamilies.length;
   if (allFamilies.length > 0 && families.length === 0) {
     throw new ScanNoFamiliesError();
   }
@@ -247,9 +246,19 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   // settings panel per-service list as `probes: ["ssh:22", ...]`, which no
   // handler had read since the server replaced that array with this flag: an
   // extension user configured probes, saved, scanned, and nothing happened.
+  // Always the explicit list, never omitted.
+  //
+  // Omitting it when the user had ticked every family looked like a tidy
+  // optimisation and was the exact opposite. A missing `scanners` means "run
+  // the defaults" to the API, and the active-probe catalog reads a null
+  // selection as "run no active probes at all", so the maximal configuration
+  // was the one that scanned least: Options read 18 of 18, Active Probing was
+  // on, and it never ran. Un-ticking any unrelated family made it start
+  // working, which is the kind of behaviour nobody reports as a bug because
+  // nobody believes it.
   const body: ScanRequest = {
     url,
-    ...(narrowed ? { scanners: families } : {}),
+    scanners: families,
     ...(input.settings.portScan ? { portScan: true } : {}),
   };
 
