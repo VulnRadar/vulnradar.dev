@@ -477,7 +477,32 @@ function SectionAuth(): TemplateResult {
     ? currentAuth.apiKey.slice(0, 16) + "\u2026"
     : null;
 
-  if (me && authConnectionFailed) {
+  // The rejected-key branch goes FIRST, above both "connected" branches.
+  //
+  // It used to sit last, and `testConnection` sets testStatus without
+  // clearing the stored `me`, so an already-connected user who pasted a
+  // typo'd or revoked key hit the plain `me` branch every time: the button
+  // flickered "Testing...", the banner still read "Connected as ...", and
+  // nothing anywhere said the key had been rejected. The error branch was
+  // unreachable for exactly the person who needed it.
+  if (testStatus.kind === "error") {
+    banner = html`
+      <div class="status-banner error" role="alert">
+        <span aria-hidden="true">⚠</span>
+        <div>
+          <div>${testStatus.message}</div>
+          ${
+            me
+              ? html`<div style="font-size:11px;margin-top:2px">
+                  Still using the previously saved key for
+                  <strong>${me.email}</strong>.
+                </div>`
+              : null
+          }
+        </div>
+      </div>
+    `;
+  } else if (me && authConnectionFailed) {
     banner = html`
       <div class="status-banner error" role="alert">
         <span aria-hidden="true">⚠</span>
@@ -504,13 +529,6 @@ function SectionAuth(): TemplateResult {
           </div>
           ${keyPrefix ? html`<div style="font-size:11px;margin-top:2px;font-family:var(--vr-mono)">${keyPrefix}</div>` : null}
         </div>
-      </div>
-    `;
-  } else if (testStatus.kind === "error") {
-    banner = html`
-      <div class="status-banner error" role="alert">
-        <span aria-hidden="true">⚠</span>
-        <span>${testStatus.message}</span>
       </div>
     `;
   } else {

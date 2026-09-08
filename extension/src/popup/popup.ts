@@ -903,6 +903,28 @@ function truncateHostPath(url: string, max = 40): string {
 
 // ---- Actions ----
 
+/**
+ * A scan reply from the background, or an error saying it did not arrive.
+ *
+ * The background's message router answers a rejected handler with
+ * `sendResponse(undefined)`, and the popup read the reply outside the try
+ * that wrapped sendMessage. So `outcome.ok` on undefined threw a TypeError,
+ * which skipped the scheduleRender() at the end of the function and left the
+ * DOM on its last paint: spinner turning, button disabled, no error, nothing
+ * to recover it. The worst way in was the background's own
+ * `finally { await set("scanInProgress", null) }` rejecting, which turned a
+ * SUCCESSFUL scan into a hung popup with the result thrown away.
+ */
+function asScanOutcome(reply: unknown): ScanOutcome {
+  if (reply && typeof reply === "object" && "ok" in reply) {
+    return reply as ScanOutcome;
+  }
+  return {
+    ok: false,
+    error: "The scan did not report back. Try again.",
+  } as ScanOutcome;
+}
+
 function setMode(m: ScanMode) {
   state.mode = m;
   scheduleRender();
@@ -1044,15 +1066,16 @@ async function triggerScan(force = false) {
   }
 
   state.isScanning = false;
-  if (outcome.ok) {
-    state.result = outcome.result;
+  const settled = asScanOutcome(outcome);
+  if (settled.ok) {
+    state.result = settled.result;
     state.resultIsStale = false;
     // runScan() already wrote the new row to local cache; read from there.
     state.history = await getHistory();
     // Refresh rate limit info from storage (updated as a side effect of runScan)
     state.rateLimitInfo = await get("rateLimitInfo");
   } else {
-    state.error = outcome.error ?? "Scan failed";
+    state.error = settled.error ?? "Scan failed";
   }
   scheduleRender();
 }
@@ -1086,13 +1109,14 @@ async function rescanUrl(url: string) {
   }
 
   state.isScanning = false;
-  if (outcome.ok) {
-    state.result = outcome.result;
+  const settled = asScanOutcome(outcome);
+  if (settled.ok) {
+    state.result = settled.result;
     state.resultIsStale = false;
     state.history = await getHistory();
     state.rateLimitInfo = await get("rateLimitInfo");
   } else {
-    state.error = outcome.error ?? "Scan failed";
+    state.error = settled.error ?? "Scan failed";
   }
   scheduleRender();
 }

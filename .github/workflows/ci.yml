@@ -373,8 +373,31 @@ jobs:
         run: npm run format:check
         working-directory: extension
 
-      - name: Build extension (Chrome + Firefox)
-        run: npm run build:chrome && npm run build:firefox
+      - name: Build and package the extension
+        # `npm run build`, not build:chrome && build:firefox. Those two skip
+        # scripts/package.mjs and package-source.mjs, so the only step CI never
+        # ran was the one that produces the artifact actually uploaded to the
+        # Chrome Web Store and AMO -- and it was broken: archiver 8 dropped its
+        # default export, so the documented build command threw at module load
+        # while CI stayed green.
+        run: npm run build
+        working-directory: extension
+
+      - name: The packaged zips must exist and carry this version
+        # A build that emits no zip, or emits one labelled with a stale
+        # version, is a release that fails review rather than a red CI run.
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require("./package.json").version")
+          for target in chrome firefox; do
+            zip="vulnradar-${target}-v${VERSION}.zip"
+            test -f "$zip" || { echo "::error::missing $zip"; exit 1; }
+            manifest=$(node -p "require("./dist-${target}/manifest.json").version")
+            test "$manifest" = "$VERSION" || {
+              echo "::error::dist-${target} manifest says $manifest, package.json says $VERSION"
+              exit 1
+            }
+          done
         working-directory: extension
 
   build:

@@ -1,4 +1,15 @@
-import archiver from "archiver";
+// archiver 8 is ESM-native and exports named classes only: there is no
+// default export, so `import archiver from "archiver"` throws at module load
+// and `npm run build` -- the command the README documents -- died before it
+// packaged anything. CI never caught it because the extension job runs
+// build:chrome and build:firefox, the two scripts that skip packaging
+// entirely, so the only untested step was the one that produces the artifact
+// actually uploaded to the Chrome Web Store and AMO.
+//
+// ZipArchive carries the same directory/file/pipe/finalize/pointer surface
+// the callable factory did, so the call sites below are unchanged apart from
+// the construction.
+import { ZipArchive } from "archiver";
 import { createWriteStream, unlinkSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -37,7 +48,7 @@ for (const name of await readdir(root)) {
   }
 }
 const output = createWriteStream(outPath);
-const archive = archiver("zip", { zlib: { level: 9 } });
+const archive = new ZipArchive({ zlib: { level: 9 } });
 
 output.on("close", () => {
   console.log(`[package-source] wrote ${outPath} (${archive.pointer()} bytes)`);

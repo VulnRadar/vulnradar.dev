@@ -26,7 +26,19 @@ export default defineConfig({
     // needs a DOM environment (this config runs `node`), so such a file has
     // to opt in with a `// @vitest-environment` docblock once jsdom is
     // available; what it must never do is disappear without a word.
-    include: ["tests/**/*.test.{ts,tsx}", "tests/**/*.spec.{ts,tsx}"],
+    include: [
+      "tests/**/*.test.{ts,tsx}",
+      "tests/**/*.spec.{ts,tsx}",
+      // The extension ships 177 tests that nothing ran. extension/ has its own
+      // package.json with a "test": "vitest run" script, but vitest is in
+      // neither its dependencies nor its lockfile: it resolved only because
+      // the repo root happens to have a copy, so the script worked on a
+      // developer machine and would fail outright in CI, which installs only
+      // inside extension/. The CI extension job never called it either. They
+      // run here instead, on the root vitest that is already installed and
+      // already exercised by the Test job.
+      "extension/tests/**/*.test.{ts,tsx}",
+    ],
     // tests/integration/ is the one tier that talks to a real PostgreSQL. It
     // is excluded here so `npx vitest run` stays green for a contributor with
     // no database, and runs only through its own config:
