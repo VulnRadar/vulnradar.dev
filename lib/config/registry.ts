@@ -3456,6 +3456,8 @@ export const NEVER_CONFIGURABLE = {
     "The scanner reads the per-scan severity threshold, never this shipped default, so a runtime admin edit changes nothing at scan time.",
   POSTURE_DIGEST_WINDOW_DAYS:
     "Read directly from the shipped constant in lib/notifications/posture-digest.ts, so a runtime admin edit would not move the digest window.",
+  BROADCAST_RESEND_COOLDOWN_MINUTES:
+    "A safety interlock, not a preference: it is the only thing stopping a second click from mailing the entire user base the same announcement again, and it is enforced inside the claiming UPDATE so two concurrent clicks cannot both win. An admin control for it would be a control for switching it off, on the same screen as the button it protects. Change it in config-values.ts and rebuild.",
   // The seven below were runtime-tier entries in SETTINGS_REGISTRY, which
   // promises effect within the resolver's 30 second TTL. None of them had a
   // getSetting reader, so each was an admin control that saved successfully

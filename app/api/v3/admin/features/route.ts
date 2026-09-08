@@ -11,6 +11,7 @@ import {
   STAFF_PERMISSIONS,
 } from "@/lib/auth/permissions-client";
 import { STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
+import { CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES } from "@/lib/config/config-values";
 import { sendEmail } from "@/lib/email/email";
 import {
   isSettingKey,
@@ -816,24 +817,50 @@ export async function POST(req: NextRequest) {
       if (action === "resend") {
         const { id } = body;
 
-        // Get message and check if it's been sent
-        const check = await pool.query(
-          `SELECT id, title FROM broadcast_messages WHERE id = $1 AND status = 'sent'`,
-          [id],
+        // Claim the resend, rather than checking then writing.
+        //
+        // "send" is safe because status = 'draft' is consumed by the send
+        // itself. A resend leaves status = 'sent', so the old guard was
+        // satisfied every time and this route would mail the whole user base
+        // again on every call: a double-clicked button sent the same
+        // announcement to everyone twice, and there was no rate limit either.
+        //
+        // The cooldown lives in the UPDATE's WHERE, so two concurrent
+        // requests cannot both win it, and the row itself is the lock. A
+        // failed claim cannot tell "never sent" from "sent too recently" in
+        // one statement, so the reason is looked up only once the claim has
+        // already failed, where an extra read costs nothing.
+        const claimed = await pool.query<{ id: number; title: string }>(
+          `UPDATE broadcast_messages
+              SET sent_by = $1, sent_at = NOW()
+            WHERE id = $2
+              AND status = 'sent'
+              AND (sent_at IS NULL
+                   OR sent_at <= NOW() - make_interval(mins => $3))
+            RETURNING id, title`,
+          [user.id, id, CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES],
         );
-        if (check.rows.length === 0) {
+
+        if (claimed.rowCount === 0) {
+          const existing = await pool.query<{ status: string }>(
+            `SELECT status FROM broadcast_messages WHERE id = $1`,
+            [id],
+          );
+          if (existing.rows[0]?.status !== "sent") {
+            return NextResponse.json(
+              { error: "Can only resend sent broadcasts" },
+              { status: 400 },
+            );
+          }
           return NextResponse.json(
-            { error: "Can only resend sent broadcasts" },
-            { status: 400 },
+            {
+              error: `This broadcast was sent within the last ${CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES} minutes. Wait before sending it to everyone again.`,
+            },
+            { status: 429 },
           );
         }
-        const broadcastTitle = check.rows[0]?.title || "Unknown";
 
-        // Update sent_at and sent_by for audit trail
-        await pool.query(
-          `UPDATE broadcast_messages SET sent_by = $1, sent_at = NOW() WHERE id = $2`,
-          [user.id, id],
-        );
+        const broadcastTitle = claimed.rows[0]?.title || "Unknown";
 
         await logAction(
           user.id,

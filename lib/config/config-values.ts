@@ -1498,6 +1498,16 @@ export const CONFIG_POSTURE_DIGEST_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
 // many days have passed since users.last_digest_sent_at (or, for a user
 // who has never received one, since they opted in).
 export const CONFIG_POSTURE_DIGEST_WINDOW_DAYS = 7;
+// Minimum gap between two sends of the SAME broadcast.
+//
+// "send" is guarded by status = 'draft' and flips the row to 'sent', so it
+// cannot replay. "resend" was guarded by status = 'sent', which a resend
+// leaves unchanged, so it was infinitely repeatable: every call mails the
+// entire user base again. A double-clicked button was enough to send the
+// same announcement to everyone twice, and nothing rate-limited the route.
+// Enforced in the claiming UPDATE itself rather than by a separate check,
+// so two concurrent clicks cannot both pass it.
+export const CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES = 60;
 // Hard cap on individual findings itemized in one digest email -- the
 // summary counts (siteCount, newFindingsTotal, etc.) are never truncated,
 // only the itemized list.

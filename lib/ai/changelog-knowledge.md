@@ -194,6 +194,8 @@ A sweep for anything the app was getting wrong quietly. The AI chat was streamin
   When staff sign in as a user to reproduce a problem, every part of the app below the admin panel sees an ordinary signed-in customer. That is the point of the feature, and it also meant six things were reachable that should never have been: changing the account's email, changing its password, turning its two-factor authentication off, enrolling a new second factor, regenerating its backup codes, and deleting it outright. None of those routes wrote so much as a log line, so there was no record either. Changing the email is the worst of them, because it redirects every future password reset, which is why the admin panel already asks for a password before doing it. All six now refuse inside an impersonation session and say which admin action to use instead, each of which asks for a password and is recorded. Cosmetic changes like the display name and avatar are deliberately still allowed, since staff reproducing a problem sometimes need them. A test reads every API route, finds the ones that write a credential, and fails the build unless each is either refused or written down with a reason.
 - [CalendarClock] **[FIXED]** **Resuming A Paused Scan Ran It Immediately**
   A scheduled scan remembers when it is next due, and pausing it does not stop the clock. So a weekly scan paused for a month came back with a due date four weeks in the past, and the worker picked it up within two minutes: resuming a schedule scanned the site straight away and spent a scan from that day's allowance, instead of waiting for the next occurrence of the cadence you chose. Resuming now recalculates the next run from your frequency and preferred time. Re-enabling a schedule that was never off leaves it alone, so this cannot be used to push a due scan further out.
+- [Mail] **[FIXED]** **Resend Could Mail The Whole User Base Twice From One Double Click**
+  Sending an announcement is protected: it only works on a draft, and sending consumes the draft, so it cannot happen twice. Resending an already-sent announcement was checked the same way, against a state that resending does not change, so the check passed every time and the route had no rate limit of its own. Every call delivered to every account again, which meant a double-clicked button sent the same email to everyone twice, and nothing but the sender noticing would stop a third. Resending now claims the announcement in the same statement that stamps it, with a minimum gap built into that statement, so two clicks arriving together cannot both win and a repeat inside the window is refused with a message saying when it was last sent.
 
 ---
 
@@ -2278,6 +2280,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 71
-- **Total changes documented:** 841
+- **Total changes documented:** 842
 - **Latest:** v3.8.6 (September 7, 2026) - Things That Fail Without Saying So
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

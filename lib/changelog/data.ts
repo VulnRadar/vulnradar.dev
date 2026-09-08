@@ -673,6 +673,13 @@ const CHANGELOG: Release[] = [
         desc: "A scheduled scan remembers when it is next due, and pausing it does not stop the clock. So a weekly scan paused for a month came back with a due date four weeks in the past, and the worker picked it up within two minutes: resuming a schedule scanned the site straight away and spent a scan from that day's allowance, instead of waiting for the next occurrence of the cadence you chose. Resuming now recalculates the next run from your frequency and preferred time. Re-enabling a schedule that was never off leaves it alone, so this cannot be used to push a due scan further out.",
         category: "fixed",
       },
+      {
+        icon: Mail,
+        label:
+          "Resend Could Mail The Whole User Base Twice From One Double Click",
+        desc: "Sending an announcement is protected: it only works on a draft, and sending consumes the draft, so it cannot happen twice. Resending an already-sent announcement was checked the same way, against a state that resending does not change, so the check passed every time and the route had no rate limit of its own. Every call delivered to every account again, which meant a double-clicked button sent the same email to everyone twice, and nothing but the sender noticing would stop a third. Resending now claims the announcement in the same statement that stamps it, with a minimum gap built into that statement, so two clicks arriving together cannot both win and a repeat inside the window is refused with a message saying when it was last sent.",
+        category: "fixed",
+      },
     ],
   },
   {

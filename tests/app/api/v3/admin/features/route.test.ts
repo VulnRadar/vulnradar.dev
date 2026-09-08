@@ -14,6 +14,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES } from "@/lib/config/config-values";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -786,7 +787,9 @@ describe("POST /api/v3/admin/features — broadcast", () => {
 
   it("rejects resending a broadcast that was never sent", async () => {
     queueRole("admin");
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // check: not status='sent'
+    // The claiming UPDATE matches nothing, then the status read explains why.
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ status: "draft" }] });
     const res = await POST(
       postRequest({ section: "broadcast", action: "resend", id: 9 }),
     );
@@ -796,14 +799,36 @@ describe("POST /api/v3/admin/features — broadcast", () => {
     expect(mockLogAction).not.toHaveBeenCalled();
   });
 
+  it("refuses a second resend inside the cooldown instead of mailing everyone twice", async () => {
+    // The old guard was status = 'sent', which a resend leaves unchanged, so
+    // every call re-delivered to the whole user base: one double-clicked
+    // button was enough. The cooldown lives in the UPDATE's own WHERE, so two
+    // concurrent clicks cannot both win it.
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // claim lost
+    mockQuery.mockResolvedValueOnce({ rows: [{ status: "sent" }] });
+    const res = await POST(
+      postRequest({ section: "broadcast", action: "resend", id: 9 }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(429);
+    expect(json.error).toMatch(/within the last/i);
+    expect(mockLogAction).not.toHaveBeenCalled();
+
+    const [claimSql, claimParams] = mockQuery.mock.calls[1];
+    expect(claimSql).toContain("make_interval(mins => $3)");
+    expect(claimParams[2]).toBe(CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES);
+  });
+
   it("resends a broadcast: stamps sent_by/sent_at and audit-logs it, without 500ing on a column that never existed", async () => {
     vi.useFakeTimers();
     try {
       queueRole("admin");
+      // One statement now: the claim both checks and stamps.
       mockQuery.mockResolvedValueOnce({
+        rowCount: 1,
         rows: [{ id: 9, title: "Go live again" }],
-      }); // check status='sent'
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE sent_by/sent_at
+      });
       const res = await POST(
         postRequest({ section: "broadcast", action: "resend", id: 9 }),
       );
@@ -811,11 +836,14 @@ describe("POST /api/v3/admin/features — broadcast", () => {
       expect(res.status).toBe(200);
       expect(json.success).toBe(true);
 
-      const [updateSql, updateParams] = mockQuery.mock.calls[2];
-      expect(updateSql).toContain(
-        "UPDATE broadcast_messages SET sent_by = $1, sent_at = NOW()",
-      );
-      expect(updateParams).toEqual([1, 9]);
+      const [updateSql, updateParams] = mockQuery.mock.calls[1];
+      expect(updateSql).toContain("UPDATE broadcast_messages");
+      expect(updateSql).toContain("SET sent_by = $1, sent_at = NOW()");
+      expect(updateParams).toEqual([
+        1,
+        9,
+        CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES,
+      ]);
 
       expect(mockLogAction).toHaveBeenCalledWith(
         1,
