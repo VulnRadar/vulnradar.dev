@@ -209,25 +209,35 @@ export function TableScrollArea({
     // the sticky header was pinned to a box that never scrolled while this
     // outer div did the actual scrolling. Every admin sticky header was inert.
     //
-    // Two things were tried here for "rows show in a little line when you
-    // scroll" and BOTH are deliberately absent, because each was measured and
-    // neither was the problem:
+    // border-separate is what stops rows painting THROUGH the pinned header.
     //
-    //   - A background on the header CELLS, on the theory that a sticky
-    //     <thead> row group does not paint reliably under
-    //     `border-collapse: collapse`. It does: `elementFromPoint` returns the
-    //     <th> at every point inside the header box with the cells left
-    //     transparent, so nothing bleeds through and there was no
-    //     transparency to fix.
-    //   - `scroll-snap-type: y proximity` with `scroll-padding-top`, to stop
-    //     the header's edge cutting a row in half. It made it worse: three
-    //     different scroll targets all landed on the same offset, so it fought
-    //     the scroll, and it left MORE of a row hidden (48px, against 0.5px
-    //     unsnapped) rather than less.
+    // components/ui/table.tsx leaves the table at `border-collapse: collapse`,
+    // and Chrome does not apply the scroll container's clip correctly to a
+    // table that has a sticky <thead> under the collapsed border model: the
+    // bottom few pixels of the row that has just scrolled away keep painting
+    // in the band ABOVE the header, outside the scrollport entirely. It reads
+    // as a thin line of leftover text sitting on top of the header, and it was
+    // reported three times before it was pinned down.
     //
-    // Leave this alone without a measurement showing what is actually wrong.
+    // Established by elimination against the live page, not by reasoning:
+    // hiding <tbody> cleared the band (so it was real row content, not a
+    // screenshot artifact), `display: contents` on the wrapper did not help
+    // (so it was not the unclipped intermediate), and border-separate alone
+    // fixed it with the header cells still transparent. border-spacing-0 keeps
+    // the geometry identical to collapse, and the row rules come from
+    // divide-y/border-b on the rows themselves, so nothing doubles.
+    //
+    // Two earlier attempts are deliberately absent, both measured and both
+    // wrong: a background on the header cells (the row group already paints;
+    // `elementFromPoint` returns the <th> throughout even transparent), and
+    // scroll snapping (it fought the scroll and hid 48px of a row against
+    // 0.5px unsnapped).
     <div
-      className={cn("overflow-auto [&>div]:overflow-visible", className)}
+      className={cn(
+        "overflow-auto [&>div]:overflow-visible",
+        "[&_table]:border-separate [&_table]:border-spacing-0",
+        className,
+      )}
       style={{ maxHeight: `max(${maxHeight}, ${MIN_TABLE_CAP})` }}
     >
       {children}

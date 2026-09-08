@@ -17,6 +17,11 @@ import { cn } from "@/lib/ui/utils";
  * the hand-written nudge it replaced. Stating the line size here means the
  * result does not depend on what an ancestor five levels up happens to set.
  *
+ * Use `line="inherit"` when the flex row is itself the text element, which in
+ * practice means a <p>. Every <p> in this app carries leading-7 from the base
+ * layer whatever its font size, so naming a size there describes a line box the
+ * text does not have.
+ *
  * The default is the pairing the old `mt-0.5` was tuned for, so a call site
  * that was already correct stays pixel-identical. What changes is the two
  * cases it could never handle: text at a different size, and a row set to
@@ -24,6 +29,19 @@ import { cn } from "@/lib/ui/utils";
  * block instead of staying beside line one.
  */
 const LINE_BOX = {
+  /**
+   * Take the parent's own font-size and line-height.
+   *
+   * For the usual case the type is declared on the text CHILD, not on the flex
+   * row, which is why every other value here is stated rather than inherited.
+   * When the row IS the text element the opposite holds, and stating it is how
+   * this goes wrong: app/globals.css's base layer gives every <p> leading-7,
+   * and the theme defines no line-height for text-xs, so a
+   * `<p class="text-xs">` renders at 12px over a 28px line box. An icon told
+   * `line="xs"` builds a 16px box against that and lands 6px high, which is
+   * what the Updater's cosign warning did.
+   */
+  inherit: "text-[length:inherit] leading-[inherit]",
   /** 12px text, 16px line. Helper rows, captions, dense meta lines. */
   xs: "text-xs",
   /** 12px text, 19.5px line. A helper row set relaxed. */

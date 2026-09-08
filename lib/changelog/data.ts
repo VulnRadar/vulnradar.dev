@@ -734,6 +734,19 @@ const CHANGELOG: Release[] = [
         desc: "Between clicking a section and its content arriving, the admin panel announced nothing at all. Each placeholder now sits in a live region named after the destination in the navigation, read from the navigation itself rather than typed out again. The email preview also stopped pulsing for anyone whose system asks for reduced motion.",
         category: "fixed",
       },
+      {
+        icon: Table2,
+        label:
+          "Leftover Text Sat On Top Of The Pinned Header When You Scrolled An Admin Table",
+        desc: "Scrolling any table in the admin panel left a thin line of the row that had just gone past painting in the band above the pinned column headers, outside the area the table is supposed to be able to draw in at all. It is a browser fault in how a scrolling box is clipped when a table pins its header and uses the merged border model, and the fix is to switch that table to the separated one with the spacing set to zero, which keeps the layout identical and the row lines single. Found by elimination against the running page rather than by reasoning about it: hiding the rows cleared the band, which proved it was real content and not an artifact of the screenshot. Two earlier attempts at this, a background on the header cells and snapping rows to the header edge, were both measured, neither was the cause, and both were taken back out.",
+        category: "fixed",
+      },
+      {
+        icon: Wrench,
+        label: "A Warning Icon Sat Six Pixels Above Its Own Sentence",
+        desc: "The cosign notice on the Updater page had its warning triangle floating above the line of text it belongs to. Every paragraph in the app is given a fixed line spacing regardless of its text size, and the small print on that notice sets no spacing of its own, so it runs twelve pixel text over a twenty-eight pixel line while the icon beside it was told to line up against a sixteen pixel one. Icons can now be told to take the spacing of the text they sit next to instead of being given a size, which is the right answer whenever the line of text is itself the thing holding the icon.",
+        category: "fixed",
+      },
     ],
   },
   {

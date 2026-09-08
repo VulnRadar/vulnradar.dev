@@ -214,6 +214,10 @@ A sweep for anything the app was getting wrong quietly. The AI chat was streamin
   The health list reserved six rows while the panel actually produces eight, so the card grew each time the metrics arrived, and the placeholder shown before the page loaded disagreed with the card's own. The row count is now computed by running the same function that builds the list, so adding a health check moves both at once instead of leaving them to drift.
 - [Bell] **[FIXED]** **Screen Readers Were Told Nothing While An Admin Section Loaded**
   Between clicking a section and its content arriving, the admin panel announced nothing at all. Each placeholder now sits in a live region named after the destination in the navigation, read from the navigation itself rather than typed out again. The email preview also stopped pulsing for anyone whose system asks for reduced motion.
+- [Table2] **[FIXED]** **Leftover Text Sat On Top Of The Pinned Header When You Scrolled An Admin Table**
+  Scrolling any table in the admin panel left a thin line of the row that had just gone past painting in the band above the pinned column headers, outside the area the table is supposed to be able to draw in at all. It is a browser fault in how a scrolling box is clipped when a table pins its header and uses the merged border model, and the fix is to switch that table to the separated one with the spacing set to zero, which keeps the layout identical and the row lines single. Found by elimination against the running page rather than by reasoning about it: hiding the rows cleared the band, which proved it was real content and not an artifact of the screenshot. Two earlier attempts at this, a background on the header cells and snapping rows to the header edge, were both measured, neither was the cause, and both were taken back out.
+- [Wrench] **[FIXED]** **A Warning Icon Sat Six Pixels Above Its Own Sentence**
+  The cosign notice on the Updater page had its warning triangle floating above the line of text it belongs to. Every paragraph in the app is given a fixed line spacing regardless of its text size, and the small print on that notice sets no spacing of its own, so it runs twelve pixel text over a twenty-eight pixel line while the icon beside it was told to line up against a sixteen pixel one. Icons can now be told to take the spacing of the text they sit next to instead of being given a size, which is the right answer whenever the line of text is itself the thing holding the icon.
 
 ---
 
@@ -2298,6 +2302,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 71
-- **Total changes documented:** 851
+- **Total changes documented:** 853
 - **Latest:** v3.8.6 (September 7, 2026) - Things That Fail Without Saying So
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

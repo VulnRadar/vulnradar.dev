@@ -55,10 +55,21 @@ describe("TableScrollArea height cap", () => {
     expect(SOURCE).toContain("${maxHeight}");
   });
 
+  it("uses the separated border model, which is what stops the bleed", () => {
+    // Under border-collapse: collapse, Chrome does not apply the scroll
+    // containers clip correctly to a table with a sticky <thead>: the bottom
+    // few pixels of the row that just scrolled away keep painting in the band
+    // ABOVE the header. Established by elimination on the live page, and
+    // border-separate alone fixes it with the header cells still transparent.
+    expect(SOURCE).toContain("[&_table]:border-separate");
+    // Spacing zeroed so the geometry matches collapse and no rule doubles.
+    expect(SOURCE).toContain("[&_table]:border-spacing-0");
+  });
+
   it("records the two fixes that were tried and did not work", () => {
     // Both were shipped and reverted. The comment is what stops a third
     // attempt at the same two things.
     expect(SOURCE).toMatch(/elementFromPoint/);
-    expect(SOURCE).toMatch(/scroll-snap-type/);
+    expect(SOURCE).toMatch(/scroll snapping/);
   });
 });

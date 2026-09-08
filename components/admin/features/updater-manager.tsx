@@ -423,7 +423,11 @@ export function UpdaterManager() {
 
           {status && !status.cosignAvailable && (
             <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-              <LeadingIcon icon={AlertTriangle} line="xs" size="sm" />
+              {/* inherit, not "xs": this <p> sets no leading of its own, so
+                  it takes the base layer's leading-7 and runs 12px text over
+                  a 28px line box. An icon told "xs" builds a 16px box against
+                  that and sits 6px high. */}
+              <LeadingIcon icon={AlertTriangle} line="inherit" size="sm" />
               cosign isn&apos;t installed on this host. The update will still be
               checksum-verified, but its cosign signature won&apos;t be checked.
             </p>
