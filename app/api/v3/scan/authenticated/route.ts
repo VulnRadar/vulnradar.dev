@@ -578,6 +578,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     };
 
     let scanHistoryId: number | null = null;
+    /** Set when the one INSERT this route performs did not land. */
+    let persistError: string | null = null;
     try {
       // Never a credential_id column, never any credential material: only
       // the boolean fact that this scan ran authenticated.
@@ -613,6 +615,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         "[scan/authenticated] Failed to save scan history:",
         err instanceof Error ? err.message : err,
       );
+      // Remembered, because the response has to admit it.
+      //
+      // This INSERT is the only persistence this route performs, and
+      // swallowing it left scanHistoryId null while the route still returned
+      // 200 with the full body. Two guards further down then read that null
+      // and silently skipped the auto-tags AND the entire notifyScanComplete
+      // tail: no scan-complete email, no critical-findings alert, no webhook
+      // delivery. A CI consumer keyed on that webhook saw silence, which
+      // reads as "nothing to report" rather than "the scan was never saved".
+      persistError = err instanceof Error ? err.message : "could not be saved";
     }
 
     // Host-level reputation cache for the browser extension's popup and the
@@ -690,6 +702,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     return ApiResponse.success({
       scanHistoryId,
+      // Explicit rather than inferred from a null id: a caller reading this
+      // response can tell "saved" from "ran, but nothing was written and no
+      // notification will follow", which used to be indistinguishable.
+      persisted: scanHistoryId !== null,
+      ...(persistError ? { persistError } : {}),
       url,
       scannedAt: new Date().toISOString(),
       duration,

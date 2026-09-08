@@ -158,6 +158,21 @@ export const PUBLIC_PATHS = [
   // (Postman, Insomnia, an explorer). Without this it 307'd to /login and
   // those tools got the login page back instead of the JSON spec.
   v("/openapi.json"),
+  // Two routes whose own headers say they need no auth, which was true of the
+  // handlers and not of the middleware in front of them. Both were absent
+  // here, so an anonymous request 307d to /login, fetch followed the
+  // redirect, res.ok was true on the login HTML, res.json() threw, and both
+  // hooks swallowed it. That is the same shape this file records having
+  // fixed four times already.
+  //
+  // The consequences were anonymous-only and therefore invisible while
+  // signed in. /pricing quoted the compiled catalogue instead of the
+  // admin-edited BILLING_* values, defeating the point of resolving them at
+  // runtime. And the demo page gates on the client config having loaded, so
+  // switching FEATURE_DEMO_MODE off did not hide the demo from logged-out
+  // visitors, which is the only audience it is shown to.
+  v("/billing/plan-limits"),
+  v("/config/client"),
   // security.txt: public per RFC 9116, must be reachable without
   // auth so security researchers + scanners can find our disclosure
   // contact. The middleware sees the request URL BEFORE the rewrite,
