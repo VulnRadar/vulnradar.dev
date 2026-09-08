@@ -35,11 +35,41 @@ describe("createFailureEscalator", () => {
     expect(mockSendAdminAlert).not.toHaveBeenCalled();
   });
 
-  it("alerts exactly once when the streak reaches the threshold, not again on further failures", () => {
+  it("keeps trying when the alert was not delivered", async () => {
+    // The defect this covers: the flag was set and persisted BEFORE the send,
+    // and the send result was discarded with a void. sendAdminAlert reports
+    // delivered:false for a typo'd webhook URL, a revoked one, an SSRF
+    // refusal or an HTTP 500, so the first transient failure at exactly the
+    // moment the threshold was crossed disarmed alerting for the rest of the
+    // outage: only a later success reset it, and a worker in an outage
+    // produces no successes.
+    mockSendAdminAlert.mockResolvedValue({
+      delivered: false,
+      reason: "webhook returned 500",
+    });
+    const escalator = createFailureEscalator("test_worker_undelivered", 2);
+    escalator.recordFailure("1");
+    escalator.recordFailure("2");
+    await Promise.resolve();
+    await Promise.resolve();
+    escalator.recordFailure("3");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockSendAdminAlert.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("alerts exactly once when the streak reaches the threshold, not again on further failures", async () => {
+    // The send is awaited internally now, so the flag that suppresses
+    // repeats is only set once delivery has come back successful. The mock
+    // therefore has to report a delivery; before, it returned undefined and
+    // the escalator correctly read that as "not delivered, try again".
+    mockSendAdminAlert.mockResolvedValue({ delivered: true, status: 204 });
     const escalator = createFailureEscalator("test_worker_failing", 3);
     escalator.recordFailure("1");
     escalator.recordFailure("2");
     escalator.recordFailure("3");
+    await Promise.resolve();
+    await Promise.resolve();
     escalator.recordFailure("4");
     escalator.recordFailure("5");
     expect(mockSendAdminAlert).toHaveBeenCalledTimes(1);

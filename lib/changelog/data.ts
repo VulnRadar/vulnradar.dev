@@ -411,6 +411,24 @@ const CHANGELOG: Release[] = [
         desc: "Counting how many scans an account had used today swallowed any database error and answered zero. Whether a scan is allowed is decided by comparing that number against the plan's limit, so an unreadable count meant nobody had used anything and every entry point let the request through: ordinary scans, authenticated scans, bulk, crawl and the scheduled worker alike. A limit that stops applying exactly when the database is under strain is the wrong way round, and the same file already contained a version written to fail the other way, with a comment saying that if it cannot reach the database it must not issue a permit, which nothing had ever called. The failure now travels. On a scan that means an honest error rather than a free pass, since a count that could not be read belongs to a database that could not have recorded the scan either. The billing page is the one place that only displays the number, so it shows nothing rather than a zero that would tell you that you had used none of your allowance.",
         category: "fixed",
       },
+      {
+        icon: BellRing,
+        label: "The Alarm Switched Itself Off At The Moment It Went Off",
+        desc: "Each background worker keeps a count of consecutive failures and raises an alert once that count crosses its threshold, then stays quiet so one outage does not send an alert every minute. It marked itself as having alerted before it tried to send, and threw the send's result away. That result reports whether the alert was actually delivered, and it can come back undelivered for an ordinary reason: a webhook URL with a typo in it, one that has since been revoked, or the receiving end returning an error. So if the very first attempt failed, the worker recorded that it had alerted, and sent nothing further for the rest of the outage. The count only resets on a success, and a worker that is failing does not produce one. All five workers shared the behaviour. An alert now counts only when it was delivered, so a failed send leaves the alarm armed and the next failure tries again, with the reason logged.",
+        category: "fixed",
+      },
+      {
+        icon: MailOpen,
+        label: "The Weekly Summary Could Arrive Every Six Hours",
+        desc: "The security posture digest records the send date afterwards, in a separate write. Anything that went wrong between the email leaving and that write landing left the account still marked as due, and the job runs four times a day, so the same person received the same weekly summary again on the next pass, and again, for as long as that write kept failing. Nothing else writes that date, so nothing corrected it. Two copies of the app on the same schedule had the same outcome by a different route: both selected the same accounts and both sent. The date is now claimed before the email is sent, in a single statement that re-checks the account is genuinely due, so exactly one pass can win it. A failure after that point costs one skipped week rather than an unbounded run of duplicates, which is the right direction for email to fail in.",
+        category: "fixed",
+      },
+      {
+        icon: Database,
+        label: "A Scan That Was Never Saved Still Answered With A Report",
+        desc: "The authenticated scan endpoint writes one row, and a failure on that write was logged and then dropped. The response still came back with the full report and a 200, but with no record ID, and two guards further along read that missing ID and quietly skipped everything downstream: the auto-tagging, the scan-complete email, the critical-findings alert and the webhook delivery. A pipeline listening on that webhook saw nothing at all, which reads as nothing to report rather than nothing was recorded. The response now states outright whether the scan was persisted, and carries the reason when it was not.",
+        category: "fixed",
+      },
     ],
   },
   {

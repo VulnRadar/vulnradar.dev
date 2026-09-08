@@ -91,16 +91,50 @@ export function createFailureEscalator(
       touched = true;
       consecutiveFailures++;
       const shouldAlert = consecutiveFailures >= threshold && !alerted;
-      if (shouldAlert) alerted = true;
-      persistState(event, consecutiveFailures, alerted);
-      if (shouldAlert) {
-        void sendAdminAlert({
-          event,
-          severity: "warning",
-          message: `${message} (failed ${consecutiveFailures} times in a row).`,
-          context,
-        });
+      if (!shouldAlert) {
+        persistState(event, consecutiveFailures, alerted);
+        return;
       }
+
+      // "Alerted" means an alert was DELIVERED, not that one was attempted.
+      //
+      // This used to set and persist the flag before the send, and discard
+      // sendAdminAlert's result with a void. That result explicitly reports
+      // {delivered:false} for a typo'd webhook URL, a revoked one, an SSRF
+      // refusal or an HTTP 500 from the receiving end, so the first transient
+      // failure at exactly the moment the threshold was crossed marked the
+      // event as alerted and nothing else was sent for the rest of the
+      // outage. Only a later success reset it, and a worker in an outage
+      // produces no successes. The escalator disarmed itself precisely when
+      // it was needed, across all five workers.
+      //
+      // Awaited, so the delivery result is known before it is recorded. The
+      // failure count is persisted either way; the flag only advances on a
+      // delivery that happened, so the next tick tries again.
+      persistState(event, consecutiveFailures, alerted);
+      void (async () => {
+        try {
+          const result = await sendAdminAlert({
+            event,
+            severity: "warning",
+            message: `${message} (failed ${consecutiveFailures} times in a row).`,
+            context,
+          });
+          if (result?.delivered) {
+            alerted = true;
+            persistState(event, consecutiveFailures, true);
+          } else {
+            console.error(
+              `[FailureEscalation] ${event}: alert not delivered${result?.reason ? `: ${result.reason}` : ""}. Will retry on the next failure.`,
+            );
+          }
+        } catch (err) {
+          console.error(
+            `[FailureEscalation] ${event}: alert threw:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      })();
     },
   };
 }

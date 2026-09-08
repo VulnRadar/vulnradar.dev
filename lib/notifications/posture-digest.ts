@@ -259,6 +259,36 @@ export async function sendWeeklyDigests(): Promise<SendWeeklyDigestsStats> {
         );
       const digest = await buildDigestForUser(user.id, windowStart);
 
+      // Claim BEFORE sending, and only send if this pass won the claim.
+      //
+      // The stamp used to be a separate write after the send, so any failure
+      // in between left the user still due: pool exhaustion on the update, a
+      // connection reset, the process killed mid-loop. The tick runs every
+      // six hours, so the same person received the same weekly digest again
+      // on the next tick, and again, for as long as the write kept failing.
+      // Nothing compensates, because this is the only place that column is
+      // written. Two app instances on the same schedule had the same problem
+      // for a different reason: both selected the same rows and both sent.
+      //
+      // The guarded UPDATE is the claim. Its WHERE repeats the due-ness test
+      // from the candidate query, so exactly one caller can win it, and a
+      // failure after this point costs the user one skipped week rather than
+      // an unbounded number of duplicates. For email that is the right
+      // direction to fail.
+      const claimed = await pool.query(
+        `UPDATE users SET last_digest_sent_at = $1
+          WHERE id = $2
+            AND (last_digest_sent_at IS NULL
+                 OR last_digest_sent_at <= NOW() - make_interval(days => $3))
+          RETURNING id`,
+        [now, user.id, CONFIG_POSTURE_DIGEST_WINDOW_DAYS],
+      );
+      if (claimed.rowCount === 0) {
+        // Another pass, or another instance, already took this one.
+        stats.skippedNoSites++;
+        continue;
+      }
+
       if (digest) {
         await sendNotificationEmail({
           userId: user.id,
@@ -270,11 +300,6 @@ export async function sendWeeklyDigests(): Promise<SendWeeklyDigestsStats> {
       } else {
         stats.skippedNoSites++;
       }
-
-      await pool.query(
-        `UPDATE users SET last_digest_sent_at = $1 WHERE id = $2`,
-        [now, user.id],
-      );
     } catch (err) {
       stats.errors++;
       console.error(
