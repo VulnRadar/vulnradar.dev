@@ -173,8 +173,7 @@ interface TableScrollAreaProps {
 /**
  * Wraps a <Table> with a bordered, rounded container that scrolls
  * horizontally on narrow screens and, once maxHeight is reached, vertically
- * with the header pinned via `sticky top-0` on the header CELLS (see the
- * comment in the body: a sticky <thead> alone lets rows show through it).
+ * with the header pinned via `sticky top-0` on <TableHeader>.
  */
 export function TableScrollArea({
   children,
@@ -189,23 +188,25 @@ export function TableScrollArea({
     // the sticky header was pinned to a box that never scrolled while this
     // outer div did the actual scrolling. Every admin sticky header was inert.
     //
-    // The [&_thead_th] rules are the second half of that fix. Every admin table
-    // puts `sticky top-0 bg-muted` on <TableHeader>, which is the <thead> row
-    // GROUP, and the cells inside it are transparent. Under
-    // `border-collapse: collapse` Chrome does not reliably paint a sticky row
-    // group's background, so rows scrolling underneath showed THROUGH the
-    // pinned header: on the user directory you could read a scrolled-away
-    // account's email inside the header band. Cells always paint their own
-    // background and stick dependably, so the pin and the ground both move
-    // here. Solid on purpose: the three engine-feedback tables asked for
-    // `bg-muted/95` with a backdrop blur, and a translucent sticky header over
-    // moving rows is the same complaint by a different route.
+    // Two things were tried here for "rows show in a little line when you
+    // scroll" and BOTH are deliberately absent, because each was measured and
+    // neither was the problem:
+    //
+    //   - A background on the header CELLS, on the theory that a sticky
+    //     <thead> row group does not paint reliably under
+    //     `border-collapse: collapse`. It does: `elementFromPoint` returns the
+    //     <th> at every point inside the header box with the cells left
+    //     transparent, so nothing bleeds through and there was no
+    //     transparency to fix.
+    //   - `scroll-snap-type: y proximity` with `scroll-padding-top`, to stop
+    //     the header's edge cutting a row in half. It made it worse: three
+    //     different scroll targets all landed on the same offset, so it fought
+    //     the scroll, and it left MORE of a row hidden (48px, against 0.5px
+    //     unsnapped) rather than less.
+    //
+    // Leave this alone without a measurement showing what is actually wrong.
     <div
-      className={cn(
-        "overflow-auto [&>div]:overflow-visible",
-        "[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-muted",
-        className,
-      )}
+      className={cn("overflow-auto [&>div]:overflow-visible", className)}
       style={{ maxHeight }}
     >
       {children}

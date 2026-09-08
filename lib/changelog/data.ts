@@ -681,12 +681,6 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
-        icon: Table2,
-        label: "Rows Showed Through The Pinned Header On Every Admin Table",
-        desc: "Admin tables pin their column headers so the meaning of each column survives a scroll. The background that makes that readable was set on the header as a group rather than on the individual header cells, which are transparent, and a browser does not reliably paint a pinned group's background. So rows sliding underneath were visible through the header band: on the user directory you could read a scrolled-away account's email address inside the row that says USER and ACTIVITY. The pin and the background now both sit on the cells, which always paint their own. Three tables that had asked for a translucent blurred header are solid for the same reason, since see-through is the whole complaint.",
-        category: "fixed",
-      },
-      {
         icon: Globe,
         label: "Every Social Link Is Now An Address Of Ours",
         desc: "Our accounts were linked by pasting each platform's own URL wherever the link appeared. That works until an account moves or is renamed, at which point every copy of the old address is wrong and there is no list of where they all are. Each one now has a short link on our own domain, so the Discord invite is reachable at /discord, the repository at /github, and so on for every platform configured. They redirect, so they can be printed, put in a video description, or read out loud, and where they point is one setting rather than a search. The redirect is deliberately temporary rather than permanent, because a browser caches a permanent one indefinitely and that would outlive our ability to change it. The one thing that still names the real profile is the structured data that tells search engines which accounts are ours, because that is a statement of identity and pointing it at our own redirect would only assert that we are ourselves.",
