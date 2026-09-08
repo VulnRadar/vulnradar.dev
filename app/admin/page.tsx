@@ -395,6 +395,15 @@ function AdminContent() {
     }[]
   >([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
+  /**
+   * Why the list is empty, when it is empty for a reason.
+   *
+   * The tab opens for moderator and above; the route needs VIEW_ALL_TEAMS,
+   * which moderators do not hold. The 403 was swallowed and the panel said
+   * "No teams yet", which is a claim about the product rather than about the
+   * request.
+   */
+  const [teamsError, setTeamsError] = useState<string | null>(null);
   const [teamsPage, setTeamsPage] = useState(1);
   const [teamsTotalPages, setTeamsTotalPages] = useState(1);
   const [teamsPageSize, setTeamsPageSize] = useState(10);
@@ -537,6 +546,18 @@ function AdminContent() {
           `${API.ADMIN}?section=audit&page=${p}&limit=${limit}`,
         );
         const data: AdminAuditResponse = await res.json();
+        // res.ok, and an array check on what came back.
+        //
+        // Without them an error body (403, 500) left data.logs undefined,
+        // which the AuditEntry[] type let through unchallenged, and the audit
+        // component then called .filter on it during render. That throws a
+        // TypeError to the route error boundary, so the WHOLE admin panel
+        // went down, not the tab: one endpoint returning an error body took
+        // out users, teams, settings and everything else with it.
+        if (!res.ok || !Array.isArray(data.logs)) {
+          setAuditLogs([]);
+          return;
+        }
         setAuditLogs(data.logs);
         setAuditPage(data.page);
         setAuditTotalPages(data.totalPages);
@@ -553,7 +574,15 @@ function AdminContent() {
     try {
       const res = await fetch(`${API.ADMIN}?section=active-admins`);
       const data: AdminStaffResponse = await res.json();
-      setActiveAdmins(data.admins || []);
+      // `|| []` on its own turns a permission denial into the confident claim
+      // that this deployment has no staff. Distinguishing them is the point:
+      // an empty list means there is nobody, a failure means we could not
+      // ask.
+      if (!res.ok) {
+        setActiveAdmins([]);
+        return;
+      }
+      setActiveAdmins(Array.isArray(data.admins) ? data.admins : []);
     } catch (error) {
       console.error("Failed to fetch active admins", error);
     }
@@ -574,9 +603,27 @@ function AdminContent() {
         });
         const searchTerm = search !== undefined ? search : teamsSearch;
         if (searchTerm.trim()) params.set("search", searchTerm.trim());
+        // API.ADMIN_TEAMS rather than the literal, and a res.ok branch.
+        //
+        // The tab is opened by anyone at moderator or above, and the route
+        // needs VIEW_ALL_TEAMS, which moderators do not hold. The 403 was
+        // discarded by `|| []`, so every moderator who opened Teams was told
+        // "No teams yet: teams created by users will appear here", which is a
+        // confident factual claim about the product manufactured out of a
+        // permission denial.
         const res = await fetch(`/api/v3/admin/teams?${params}`);
         const data: AdminTeamsResponse = await res.json();
-        setTeams(data.teams || []);
+        if (!res.ok) {
+          setTeams([]);
+          setTeamsError(
+            res.status === 403
+              ? "Your role cannot view teams."
+              : "Couldn't load teams.",
+          );
+          return;
+        }
+        setTeamsError(null);
+        setTeams(Array.isArray(data.teams) ? data.teams : []);
         setTeamsPage(data.page || 1);
         setTeamsTotalPages(data.totalPages || 1);
       } catch {
@@ -1461,6 +1508,7 @@ function AdminContent() {
               <TeamsList
                 teams={teams}
                 teamsLoading={teamsLoading}
+                teamsError={teamsError}
                 teamsSearch={teamsSearch}
                 setTeamsSearch={setTeamsSearch}
                 fetchTeams={fetchTeams}

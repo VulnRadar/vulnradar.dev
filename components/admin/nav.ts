@@ -182,7 +182,14 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         key: "teams",
         label: "Teams",
         icon: UsersRound,
-        minHierarchy: STAFF_ROLE_HIERARCHY.moderator,
+        // The permission the route actually requires, not a rank.
+        //
+        // This was minHierarchy: moderator, and GET /api/v3/admin/teams needs
+        // VIEW_ALL_TEAMS, which is admin-only and which its own comment says
+        // moderators do not hold. So the tab opened for a role the route
+        // refuses, and the 403 was discarded into an empty list: every
+        // moderator who clicked Teams was told this deployment had none.
+        permission: STAFF_PERMISSIONS.VIEW_ALL_TEAMS,
       },
       {
         key: "admins",

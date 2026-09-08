@@ -67,6 +67,15 @@ interface TeamMember {
 interface TeamsListProps {
   teams: Team[];
   teamsLoading: boolean;
+  /**
+   * Why the list is empty, when it is empty for a reason.
+   *
+   * "No teams yet" is a claim about the product. A permission denial or a
+   * failed request is a claim about the request, and rendering the first when
+   * the second happened is how a moderator concluded this deployment had no
+   * teams: the tab opens for their role and the route refuses it.
+   */
+  teamsError?: string | null;
   teamsSearch: string;
   setTeamsSearch: (search: string) => void;
   fetchTeams: (page?: number, search?: string, pageSize?: number) => void;
@@ -89,6 +98,7 @@ interface TeamsListProps {
 export function TeamsList({
   teams,
   teamsLoading,
+  teamsError = null,
   teamsSearch,
   setTeamsSearch,
   fetchTeams,
@@ -270,6 +280,12 @@ export function TeamsList({
               <div className="p-4 sm:p-5">
                 <DataTableSkeleton rows={6} />
               </div>
+            ) : teamsError ? (
+              <EmptyState
+                icon={UsersRound}
+                title="Couldn't load teams"
+                description={teamsError}
+              />
             ) : teams.length === 0 ? (
               <EmptyState
                 icon={UsersRound}

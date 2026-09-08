@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
 import {
   ADMIN_NAV_GROUPS,
   ALL_ADMIN_NAV_ITEMS,
@@ -68,9 +69,20 @@ describe("canSeeAdminNavItem", () => {
   const permissionGated: AdminNavItem = ALL_ADMIN_NAV_ITEMS.find(
     (item) => item.key === "users",
   )!;
-  const hierarchyGated: AdminNavItem = ALL_ADMIN_NAV_ITEMS.find(
-    (item) => item.key === "teams",
-  )!;
+  // Synthetic, not a real tab.
+  //
+  // This used to pick the Teams item, which was the only one gated on a rank.
+  // Teams moved to a permission, because gating a tab on a rank while its
+  // route gates on a grant is how moderators ended up opening a tab the API
+  // refuses and being told the deployment had no teams. Nothing is gated on a
+  // rank now, so the test builds its own item: it is here to prove the
+  // mechanism works, not to record which tab happens to use it.
+  const hierarchyGated: AdminNavItem = {
+    key: "synthetic-hierarchy-gated" as AdminNavItem["key"],
+    label: "Synthetic",
+    icon: ALL_ADMIN_NAV_ITEMS[0].icon,
+    minHierarchy: STAFF_ROLE_HIERARCHY.moderator,
+  };
 
   it("shows an ungated item to every role that reached the panel", () => {
     expect(canSeeAdminNavItem(ungated, "support", hasStaffPermission)).toBe(
