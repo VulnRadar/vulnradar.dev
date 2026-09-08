@@ -249,8 +249,41 @@ describe("recordAiTokens", () => {
       aiTokensPerWindow: 20_000,
     });
     mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 600 }] }); // previousTotal 100 + 500
-    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"));
+    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"), true);
     expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("records without charging unless the caller asks to charge", async () => {
+    // The default used to be to charge, and two features documented in their
+    // own files as free and unmetered spent the user's purchased balance
+    // simply by omitting the argument. One of them, the auto-tag guess, runs
+    // on its own after a scan with nothing on screen to say it happened.
+    // Defaulting to false is what makes that class of mistake impossible
+    // rather than merely fixed.
+    mockGetUserPlanLimits.mockResolvedValueOnce({
+      dailyScans: 25,
+      apiKeys: 1,
+      apiRequestsPerDay: 25,
+      teams: 0,
+      teamMembers: 0,
+      webhooks: 0,
+      scheduledScans: 0,
+      bulkScanUrls: 0,
+      githubReviewTokensPerWindow: 0,
+      aiTokensPerWindow: 20_000,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 20_500 }] });
+
+    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"));
+
+    // The usage row is still written, which is what the free features want
+    // it for: admin cost visibility.
+    const statements = mockQuery.mock.calls.map((c) => String(c[0]));
+    expect(statements.some((q) => q.includes("INSERT INTO ai_usage"))).toBe(
+      true,
+    );
+    // The balance is not touched.
+    expect(statements.some((q) => q.includes("ai_credit_balance"))).toBe(false);
   });
 
   it("spends the whole call from credits once the window is already past the limit", async () => {
@@ -270,7 +303,7 @@ describe("recordAiTokens", () => {
     // call adds is overflow.
     mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 20_500 }] });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // credit UPDATE
-    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"));
+    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"), true);
     expect(mockQuery).toHaveBeenCalledTimes(2);
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toMatch(
@@ -296,7 +329,7 @@ describe("recordAiTokens", () => {
     // land inside the free ceiling, the remaining 300 are overflow.
     mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 20_300 }] });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // credit UPDATE
-    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"));
+    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"), true);
     expect(mockQuery).toHaveBeenCalledTimes(2);
     const [, params] = mockQuery.mock.calls[1];
     expect(params).toEqual([1, 300]);
@@ -316,14 +349,14 @@ describe("recordAiTokens", () => {
       aiTokensPerWindow: -1,
     });
     mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 999_999 }] });
-    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"));
+    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"), true);
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
   it("never touches credits when billing is disabled (getUserPlanLimits returns null)", async () => {
     mockGetUserPlanLimits.mockResolvedValueOnce(null);
     mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 999_999 }] });
-    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"));
+    await recordAiTokens(1, 500, new Date("2026-03-15T05:00:00.000Z"), true);
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });

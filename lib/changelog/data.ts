@@ -330,6 +330,25 @@ const CHANGELOG: Release[] = [
         desc: "Everything on the login surface is careful not to confirm whether an address is registered: one identical answer for no such account and for a wrong password, a decoy password check so the two take the same time, a fixed response from signup and from forgot-password. Then the per-account lockout, which only a real account could ever trigger, said too many failed attempts for this account. Twenty-six requests from two addresses turned that into a yes or no about any email somebody cared to test, which is worth something to whoever is assembling a list. The counter is keyed on a hash of the submitted address now instead of on the account behind it, so an address that has never been registered produces the same lockout, at the same point, with the same wording.",
         category: "security",
       },
+      {
+        icon: CreditCard,
+        label: "Two Ways To Pay Us And Get Nothing",
+        desc: "Buying GitHub review credits or Browserbase minutes went through a client-side confirmation, with a webhook as the backup for the case where the tab closes or the connection drops before that confirmation lands. The backup was unreachable. All three credit types share one webhook branch, and it opened by reading the AI credit key and returning early when it was absent, which it always is for the other two: each purchase stamps exactly one key, never two. So a purchase whose tab closed took the money and granted nothing, wrote no row, sent no receipt and logged no error. The comment three lines below the early return already said the branches were meant to be independent. Separately, and worse in a quiet way, two features documented in their own files as free and unmetered were spending the user's purchased balance. The function that records token usage took a fourth argument deciding whether to charge, and it defaulted to charging, so a scan summary and a background auto-tag guess both billed against credits bought for verification simply by not passing it. The tag guess is the one that stings: it runs on its own after a scan, with nothing on screen to say it happened. The default is now to record without charging, so a caller has to write down that it wants to spend somebody's money.",
+        category: "fixed",
+      },
+      {
+        icon: Database,
+        label: "A Backup That Restored With Duplicate Rows",
+        desc: "The database dump pages through each table by keyset, which is correct, and every column is selected cast to text, which is also correct. Together they were not. A cast keeps the column's own name as the output name, and an unqualified ORDER BY resolves against the output list before the real columns, so the query ordered by the text rendering of the id while the cursor that fetched the next page compared it as an integer. Text order runs 1, 10, 100, 1000, 2. On any table bigger than one page the two disagreed, so the dump skipped rows it never emitted and repeated rows it already had. It surfaced as a restore failing on a duplicate key, which reads as bad data rather than a bad dump, and a backup that is quietly wrong is the worst thing this code can produce. The selected columns are aliased away from their own names now, so both clauses mean the column.",
+        category: "fixed",
+      },
+      {
+        icon: Timer,
+        label:
+          "A Check We Shipped This Morning Could Be Hung By The Page It Read",
+        desc: "One of the new credential checks matched an Azure storage URL with two open-ended runs of URL characters and a question mark between them, and a question mark is itself a URL character, so on a page repeating that parameter the engine tried every possible split: nine seconds on a quarter-megabyte page. On a scanner, which exists to fetch documents chosen by somebody else, that is not slowness, it is a denial of service with the target holding the trigger. It passed every fixture, because a fixture is a well-formed example and this only appears on input nobody would write by hand. The check now finds the URL in one pass and tests the parameters separately, and there is a guard that runs every page check against twenty-three deliberately hostile shapes and fails if any one of them takes far longer than its peers. It is measured as a ratio rather than a stopwatch, because a busy machine slows everything equally and a test that fails when the runner is loaded teaches people to re-run CI instead of reading it.",
+        category: "fixed",
+      },
     ],
   },
   {

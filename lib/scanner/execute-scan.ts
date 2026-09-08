@@ -212,11 +212,18 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     SCANNER_MAX_RESPONSE_BODY_BYTES: MAX_BODY_SIZE,
     SCANNER_ASYNC_BRANCH_TIMEOUT_MS: asyncBranchTimeoutMs,
     SCAN_ASYNC_CHECKS_TIMEOUT_MS: asyncChecksTimeoutMs,
+    // The page fetch's own deadline. It was a literal 15000 at both fetch
+    // sites below, which silently overrode safeFetch's configurable default,
+    // so SCAN_FETCH_TIMEOUT_MS moved the demo and authenticated routes and did
+    // nothing at all on the path that runs almost every scan: an admin raising
+    // it for a slow target watched the setting take no effect.
+    SCAN_FETCH_TIMEOUT_MS: fetchTimeoutMs,
   } = await getSettings([
     "SCAN_TIMEOUT_SECONDS",
     "SCANNER_MAX_RESPONSE_BODY_BYTES",
     "SCANNER_ASYNC_BRANCH_TIMEOUT_MS",
     "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
+    "SCAN_FETCH_TIMEOUT_MS",
   ] as const);
   const watchdog = startWatchdog(
     scanId,
@@ -315,7 +322,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           method: "GET",
           headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
           redirect: "follow",
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(fetchTimeoutMs),
         });
         responseBody = await safeReadBody(response, MAX_BODY_SIZE);
         headers = response.headers;
@@ -440,7 +447,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
               "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
             },
             redirect: "follow",
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(fetchTimeoutMs),
           });
           responseBody = await safeReadBody(response, MAX_BODY_SIZE);
 

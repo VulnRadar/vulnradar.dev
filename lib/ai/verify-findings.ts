@@ -558,7 +558,10 @@ async function recordVerifyTokens(
 ): Promise<void> {
   if (!userId || usingOwnAi || totalTokens <= 0) return;
   try {
-    await recordAiTokens(userId, totalTokens);
+    // The one AI feature that is metered: verification is what the credit
+    // tiers are sold for. Explicit now that recordAiTokens defaults to
+    // recording without charging.
+    await recordAiTokens(userId, totalTokens, undefined, true);
   } catch (err) {
     console.error(
       "[AI-VERIFY] Failed to record token usage (non-fatal):",

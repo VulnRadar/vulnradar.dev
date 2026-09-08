@@ -48,7 +48,7 @@ import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { recordAiTokens } from "@/lib/billing/ai-usage";
 
-const SUMMARY_SYSTEM_PROMPT = `You are ${APP_NAME}'s scan summarizer. You are given the results of one completed vulnerability scan: a safety rating, a 1-10 danger score, an SSL/TLS letter grade (A+ to F, or n/a for HTTP-only targets), severity counts, and the titles of its highest-severity findings (not the full finding list).
+const SUMMARY_SYSTEM_PROMPT = `You are ${APP_NAME}'s scan summarizer. You are given the results of one completed vulnerability scan: a safety rating, a 0-10 danger score, an SSL/TLS letter grade (A+ to F, or n/a for HTTP-only targets), severity counts, and the titles of its highest-severity findings (not the full finding list).
 
 Write a 3 to 5 sentence plain-English summary a non-technical stakeholder could paste directly into a report. Cover, in prose (no headings, no bullet points):
 1. The overall risk posture, stated plainly (e.g. what a critical/high finding actually means for the site, not just "there are N findings").
@@ -269,6 +269,9 @@ export async function generateScanSummary(
     );
     if (tokensUsed > 0 && !usingOwnAi) {
       try {
+        // Recorded for admin cost visibility, never charged: the summary is
+        // free and unmetered, which is what this file and the route above it
+        // have always said. Omitting the argument used to mean the opposite.
         await recordAiTokens(userId, tokensUsed);
       } catch (err) {
         console.error(

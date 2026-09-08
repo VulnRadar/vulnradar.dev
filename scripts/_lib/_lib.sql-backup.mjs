@@ -410,8 +410,25 @@ export function buildPageQuery({
     throw new Error(`Page limit must be a positive integer, got ${limit}`);
   }
   const byCtid = keyColumns.length === 0;
-  const selected = columns.map((c) => `${quoteIdent(c)}::text`);
-  if (byCtid) selected.push("ctid::text");
+  // Aliased away from the column's own name, deliberately.
+  //
+  // `"id"::text` keeps `id` as its OUTPUT column name, and an unqualified
+  // ORDER BY resolves against the output list before the input columns. So
+  // `ORDER BY "id"` sorted by the TEXT rendering while `WHERE "id" > $1`,
+  // which cannot see output names, filtered numerically. On any table larger
+  // than one page the two disagreed: text order runs 1, 10, 100, 1000, 2, and
+  // a numeric cursor taken from the end of that page both skipped rows it had
+  // never emitted and re-emitted rows it already had.
+  //
+  // A silently wrong backup is the worst failure this file can have, and it
+  // presented as one: the dump restored with a duplicate-key error on a
+  // unique index, blaming the data rather than the dump. The `c_` prefix
+  // makes the output names unable to collide with the input ones, so both
+  // clauses now mean the column.
+  const selected = columns.map(
+    (c, i) => `${quoteIdent(c)}::text AS ${quoteIdent(`c_${i}`)}`,
+  );
+  if (byCtid) selected.push(`ctid::text AS ${quoteIdent("c_ctid")}`);
 
   let where = "";
   if (hasCursor) {

@@ -419,6 +419,9 @@ export async function generateAutoTagSuggestions(
       );
       if (tokensUsed > 0 && !usingOwnAi) {
         try {
+          // Recorded for admin cost visibility, never charged. This runs on its
+          // own after a scan with no user action, so charging for it took money
+          // for something the user did not ask for and could not see.
           await recordAiTokens(userId, tokensUsed);
         } catch (err) {
           console.error(

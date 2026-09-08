@@ -321,7 +321,7 @@ const endpoints: Endpoint[] = [
       "findings[] is hard-capped by the AI_VERIFY_BATCH_MAX_FINDINGS admin setting, which ships at 50. Unlike /scan/verify, which only ever processes findings already stored on one of your own scans, this route accepts an arbitrary array, so the cap is what stops one request forcing unbounded AI spend. Over the cap is a 400 naming the limit.",
       "Bounded by the account's AI token quota per plan; a BYOK account (its own AI provider key configured) bypasses that cap entirely.",
       "Bearer callers need scan:write, not scan:read: this is treated as part of the active scanning workflow it enriches.",
-      "Long-running. maxDuration is 720 seconds, so set a generous client timeout for a large array.",
+      "Long-running. maxDuration is 1140 seconds, so set a generous client timeout for a large array.",
     ],
     errors: [
       {

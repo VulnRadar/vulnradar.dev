@@ -92,6 +92,16 @@ async function scanSingleUrl(
    * no knob at all.
    */
   fetchTimeoutMs: number,
+  /**
+   * SCAN_ASYNC_CHECKS_TIMEOUT_MS, for the same reason as the parameter above.
+   *
+   * The identical race in execute-scan.ts resolves this setting, and its
+   * comment records that raising the value "moved three routes and left the
+   * fourth on a literal". This was that fourth: the crawl's own getSettings
+   * block resolved four keys and omitted this one, so the crawl's async
+   * checks sat on a hardcoded 15000 whatever an admin set.
+   */
+  asyncChecksTimeoutMs: number,
   scanners?: string[] | null,
   onProgress?: ScanProgressHook,
   cancelSignal?: AbortSignal,
@@ -228,7 +238,7 @@ async function scanSingleUrl(
         // back reading as clean. ref: AUDIT-014#state-03
         asyncTimeoutHandle = setTimeout(
           () => resolve({ findings: [], incomplete: plannedBranches }),
-          15000,
+          asyncChecksTimeoutMs,
         );
       }),
     ]);
@@ -374,11 +384,13 @@ export async function executeCrawlScan(
     CRAWL_SCAN_MAX_PAGES: maxPagesCeiling,
     CRAWL_PAGE_FETCH_TIMEOUT_MS: fetchTimeoutMs,
     SCANNER_MAX_RESPONSE_BODY_BYTES: maxBodySize,
+    SCAN_ASYNC_CHECKS_TIMEOUT_MS: asyncChecksTimeoutMs,
   } = await getSettings([
     "CRAWL_SCAN_TIMEOUT_SECONDS",
     "CRAWL_SCAN_MAX_PAGES",
     "CRAWL_PAGE_FETCH_TIMEOUT_MS",
     "SCANNER_MAX_RESPONSE_BODY_BYTES",
+    "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
   ] as const);
   // The shipped ceiling (CRAWL_SCAN_MAX_PAGES) is a hard upper bound; the real
   // per-user governor is the plan's page-selection cap. min() of the two so a
@@ -579,6 +591,7 @@ export async function executeCrawlScan(
           pagesToScan[index],
           maxBodySize,
           fetchTimeoutMs,
+          asyncChecksTimeoutMs,
           scanners,
           onProgress,
           cancelSignal,

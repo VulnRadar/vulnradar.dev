@@ -245,7 +245,22 @@ export async function recordAiTokens(
   userId: number,
   tokens: number,
   windowStart?: Date,
-  chargeCredits = true,
+  /**
+   * Whether the overspill comes out of the user's purchased balance.
+   *
+   * Defaults to false, and used to default to true. Two features documented
+   * in their own files as free and unmetered simply omitted the argument, so
+   * a scan summary and a background auto-tag guess both spent credit the user
+   * had bought to verify findings with. The tag suggestion is the worse of
+   * the two: it runs on its own after a scan, with no user action and nothing
+   * on screen to say it happened.
+   *
+   * Defaulting to false is what makes that class of mistake impossible rather
+   * than merely fixed: a new caller that forgets the argument records usage
+   * for cost visibility, which is the harmless half, and charging is a thing
+   * somebody had to write down.
+   */
+  chargeCredits = false,
 ): Promise<void> {
   if (tokens <= 0) return;
   const start = windowStart ?? (await resolveCurrentWindow()).windowStart;

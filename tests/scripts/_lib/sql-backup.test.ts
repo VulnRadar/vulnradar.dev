@@ -238,8 +238,46 @@ describe("buildPageQuery", () => {
 
   it("selects every column as text, which is what makes the round trip the type's own", () => {
     const sql = buildPageQuery({ ...base, hasCursor: false, limit: 25 });
-    expect(sql).toContain('"id"::text');
-    expect(sql).toContain('"url"::text');
+    expect(sql).toContain('"id"::text AS "c_0"');
+    expect(sql).toContain('"url"::text AS "c_1"');
+  });
+
+  it("never lets a selected column shadow the one ORDER BY sorts on", () => {
+    // The bug this pins produced a silently corrupt backup, which is the
+    // worst thing this file can do.
+    //
+    // Every column is selected as ::text, and a cast keeps the column's own
+    // name as the OUTPUT name. An unqualified ORDER BY resolves against the
+    // output list before the input columns, so ordering by "id" sorted the
+    // TEXT rendering while the WHERE clause, which cannot see output names,
+    // filtered numerically. Text order runs 1, 10, 100, 1000, 2, so on any
+    // table larger than one page the cursor taken from the end of a page both
+    // skipped rows never emitted and re-emitted rows already written. It
+    // surfaced as a restore failing on a duplicate key, which blamed the data
+    // rather than the dump.
+    const sql = buildPageQuery({ ...base, hasCursor: true, limit: 25 });
+    expect(sql).toMatch(/"id"::text AS "c_\d+"/);
+    expect(sql).toMatch(/"url"::text AS "c_\d+"/);
+    // No cast reaches the output list under its own name.
+    expect(sql).not.toContain('"id"::text,');
+    expect(sql).not.toContain('"url"::text FROM');
+  });
+
+  it("aliases the ctid cursor away from its own name too", () => {
+    // Same defect, same fix: ctid::text would otherwise name its output
+    // column ctid, and ordering by ctid would sort physical addresses as
+    // text while the cursor compared them as tid.
+    const sql = buildPageQuery({
+      table: "legacy_rows",
+      columns: ["payload"],
+      keyColumns: [],
+      keyTypes: [],
+      hasCursor: true,
+      limit: 25,
+    });
+    expect(sql).toContain('ctid::text AS "c_ctid"');
+    expect(sql).toContain("WHERE ctid > $1::tid");
+    expect(sql).toContain("ORDER BY ctid ASC");
   });
 
   it("uses keyset pagination, never OFFSET", () => {

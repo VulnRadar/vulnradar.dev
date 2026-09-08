@@ -28,7 +28,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
-import { API, ROUTES, APP_NAME, APP_SLUG } from "@/lib/config/client-constants";
+import {
+  API,
+  ROUTES,
+  APP_NAME,
+  APP_SLUG,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/config/client-constants";
 import { downloadBlob } from "@/lib/ui/download";
 import {
   refreshAuthCache,
@@ -356,9 +362,16 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       );
       return;
     }
-    if (newPassword.length < 8) {
+    // The constant, not an 8 typed here. The server resolves
+    // PASSWORD_MIN_LENGTH, which is 12, so a 9-character password passed this
+    // gate and was then rejected by the API: the user was told the rule, met
+    // it, and was refused anyway. config-values.ts records that this same
+    // 8-versus-12 split was already found and fixed once; this was the third
+    // site it survived in, and the three sibling forms (signup, reset,
+    // staff-invite) all read the constant correctly.
+    if (newPassword.length < PASSWORD_MIN_LENGTH) {
       setPasswordError(
-        "Your new password needs at least 8 characters. Add a few more.",
+        `Your new password needs at least ${PASSWORD_MIN_LENGTH} characters. Add a few more.`,
       );
       return;
     }
@@ -639,7 +652,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                   id="sec-new-pw-hint"
                   className="text-xs text-muted-foreground"
                 >
-                  At least 8 characters.
+                  At least {PASSWORD_MIN_LENGTH} characters.
                 </p>
               </div>
               <div className="flex flex-col gap-2">

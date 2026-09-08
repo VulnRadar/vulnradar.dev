@@ -3,6 +3,7 @@ import {
   APP_VERSION,
   AUTH_SESSION_COOKIE_NAME,
 } from "@/lib/config/constants";
+import { CONFIG_SUBDOMAIN_CACHE_TTL_HOURS } from "@/lib/config/config-values";
 
 /**
  * A machine-readable OpenAPI 3.1 description of the core public v3 API: the
@@ -648,8 +649,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
         post: {
           tags: ["Scans"],
           summary: "Discover subdomains",
-          description:
-            "Enumerate subdomains for a domain from passive sources plus a prefix DNS brute-force. Results are cached per domain for 24 hours. Scan-triggering work, so it needs the scan:write scope.",
+          description: `Enumerate subdomains for a domain from passive sources plus a prefix DNS brute-force. Results are cached per domain for ${CONFIG_SUBDOMAIN_CACHE_TTL_HOURS} hours. Scan-triggering work, so it needs the scan:write scope.`,
           security: [{ apiKey: ["scan:write"] }],
           requestBody: {
             required: true,

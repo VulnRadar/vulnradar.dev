@@ -914,17 +914,25 @@ export async function POST(req: NextRequest) {
 
         // Every PaymentIntent Stripe has ever created fires this event,
         // including a subscription's own invoice PaymentIntent (see
-        // createSubscription above) -- those never carry aiCreditTierId, so
-        // this is the normal, silent no-op path for anything that isn't an
-        // AI credit purchase, not an error.
-        if (!tierId) break;
-
-        const tier = getAiCreditTier(tierId);
+        // createSubscription above). One that carries none of the three
+        // credit keys is the normal, silent no-op, not an error.
+        //
+        // This used to be `if (!tierId) break;`, and the break left the
+        // GitHub and Browserbase branches below it unreachable. Each
+        // create*PaymentIntent stamps exactly one key, never two, so a
+        // GitHub or Browserbase purchase always has no aiCreditTierId and
+        // always exited here. That is the backup path for a purchase whose
+        // tab closed before the client could confirm, so the money was taken
+        // and nothing was granted, with no row written, no receipt sent and
+        // nothing logged. The comment below the GitHub branch already said
+        // the branches were meant to be independent.
+        const tier = tierId ? getAiCreditTier(tierId) : null;
         const purchaserId = paymentIntent.metadata?.userId
           ? parseInt(paymentIntent.metadata.userId, 10)
           : null;
 
         if (
+          tierId &&
           tier &&
           purchaserId &&
           creditAmountMatches(
@@ -954,12 +962,14 @@ export async function POST(req: NextRequest) {
               }),
             );
           }
-        } else {
+        } else if (tierId) {
           // Stamped with an aiCreditTierId but we can't resolve the tier or
           // the purchaser -- should never happen for a PaymentIntent this
           // app created (both are always stamped into metadata by
           // createAiCreditPaymentIntent), but don't silently drop a real
-          // payment without a trace.
+          // payment without a trace. Gated on tierId so a GitHub or
+          // Browserbase intent, which legitimately has none, does not log an
+          // error on its way to the branch that handles it.
           console.error(
             `[Stripe] payment_intent.succeeded has aiCreditTierId but missing/invalid userId or an unknown tier (event ${event.id})`,
           );

@@ -185,9 +185,30 @@ export const leakedSecretChecks: PageCheck[] = [
       "https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview",
     ],
     run(ctx) {
-      const m = ctx.body.match(
-        /https?:\/\/[a-z0-9-]+\.(?:blob|file|queue|table|dfs)\.core\.windows\.net\/[^\s"'<>]*[?&]sv=\d{4}-\d{2}-\d{2}[^\s"'<>]*[?&]sig=[A-Za-z0-9%+/=]{40,}/i,
-      );
+      // Two passes, not one pattern, and the reason is backtracking.
+      //
+      // The single pattern this replaces had two unbounded [^\s"'<>]* runs
+      // with a [?&] between them, and ? and & are both inside that class. So
+      // on a body of repeated "?sv=2020-01-01" the engine tried every split
+      // point between the two runs: a crafted 256KB page took 9.2 seconds in
+      // one check, against a scanner whose whole job is to fetch pages chosen
+      // by somebody else. That is a denial of service with the target holding
+      // the trigger.
+      //
+      // Finding the candidate URL is one bounded greedy class with nothing
+      // ambiguous after it, so it is linear. The two required parameters are
+      // then tested against that candidate on their own, where neither can
+      // interact with the other.
+      let m: RegExpMatchArray | null = null;
+      for (const candidate of ctx.body.matchAll(
+        /https?:\/\/[a-z0-9-]{3,63}\.(?:blob|file|queue|table|dfs)\.core\.windows\.net\/[^\s"'<>]{0,2048}/gi,
+      )) {
+        const url = candidate[0];
+        if (!/[?&]sv=\d{4}-\d{2}-\d{2}/i.test(url)) continue;
+        if (!/[?&]sig=[A-Za-z0-9%+/=]{40,}/i.test(url)) continue;
+        m = candidate;
+        break;
+      }
       if (!m) return null;
       const permissions = m[0].match(/[?&]sp=([a-z]+)/i)?.[1] ?? "";
       const writable = /[wdac]/i.test(permissions);

@@ -755,7 +755,11 @@ describe("verifyFindingsBatch / runAiVerification: unified AI usage token accoun
     await verifyFindingsBatch("https://example.com", findings, 42, false);
 
     expect(mockRecordAiTokens).toHaveBeenCalledTimes(1);
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 300); // (100+50) * 2 findings
+    // The fourth argument is the charge flag, and it is explicit here
+    // because recordAiTokens defaults to recording WITHOUT charging now:
+    // two features documented as free were spending purchased credit
+    // simply by omitting it. Verification is the metered one.
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 300, undefined, true); // (100+50) * 2 findings
   });
 
   it("extracts real usage from the native Anthropic adapter's response too", async () => {
@@ -785,7 +789,7 @@ describe("verifyFindingsBatch / runAiVerification: unified AI usage token accoun
       false,
     );
 
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 230);
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 230, undefined, true);
   });
 
   it("does not record usage when the caller is using their own AI key", async () => {
@@ -841,6 +845,6 @@ describe("verifyFindingsBatch / runAiVerification: unified AI usage token accoun
       false,
     );
 
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(7, 50);
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(7, 50, undefined, true);
   });
 });
