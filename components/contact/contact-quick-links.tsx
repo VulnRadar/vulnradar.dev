@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cn } from "@/lib/ui/utils";
 import { focus } from "@/lib/ui/animations";
 import { ROUTES, SUPPORT_EMAIL } from "@/lib/config/constants";
+import { EmailLink } from "@/components/shared/email-link";
 
 const INLINE_LINK = cn(
   "text-primary rounded-sm hover:underline underline-offset-4",
@@ -39,9 +40,9 @@ export function ContactQuickLinks() {
       </p>
       <p className="text-xs text-muted-foreground mt-2">
         If a form is not how you want to do this, write to{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`} className={INLINE_LINK}>
-          {SUPPORT_EMAIL}
-        </a>
+        <EmailLink address={SUPPORT_EMAIL} reveal className={INLINE_LINK}>
+          our support team
+        </EmailLink>
         .
       </p>
     </section>

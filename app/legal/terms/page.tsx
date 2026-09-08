@@ -7,6 +7,7 @@ import {
   LegalList,
   LegalToc,
 } from "@/components/legal";
+import { EmailLink } from "@/components/shared/email-link";
 
 const SECTIONS = [
   { id: "description-of-service", label: "1. Description of Service" },
@@ -286,12 +287,13 @@ export default async function TermsPage() {
       <LegalSection id="contact" title="15. Contact">
         <p>
           For questions about these Terms, please contact us at{" "}
-          <a
-            href={`mailto:${legalEmail}`}
+          <EmailLink
+            address={legalEmail}
+            reveal
             className="text-primary hover:underline"
           >
-            {legalEmail}
-          </a>
+            our legal team
+          </EmailLink>
           .
         </p>
       </LegalSection>

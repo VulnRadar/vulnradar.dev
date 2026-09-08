@@ -3,6 +3,7 @@
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SUPPORT_EMAIL } from "@/lib/config/client-constants";
+import { EmailLink } from "@/components/shared/email-link";
 
 interface DemoErrorProps {
   error: string;
@@ -42,12 +43,13 @@ export function DemoError({ error, details, onRetry }: DemoErrorProps) {
         {isBlocked && (
           <p className="text-sm text-muted-foreground mt-6">
             If you think this target should be allowed, mail{" "}
-            <a
-              href={`mailto:${SUPPORT_EMAIL}`}
+            <EmailLink
+              address={SUPPORT_EMAIL}
+              reveal
               className="text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {SUPPORT_EMAIL}
-            </a>
+              our support team
+            </EmailLink>
             .
           </p>
         )}

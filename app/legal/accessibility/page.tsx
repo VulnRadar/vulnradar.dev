@@ -7,6 +7,7 @@ import {
   LegalList,
   LegalToc,
 } from "@/components/legal";
+import { EmailLink } from "@/components/shared/email-link";
 
 const SECTIONS = [
   { id: "conformance", label: "1. Conformance Status" },
@@ -114,12 +115,14 @@ export default async function AccessibilityPage() {
               <strong>Third-party content:</strong> Some integrations (such as
               CAPTCHA) may have limitations. If unable to complete a CAPTCHA
               challenge, please contact us at{" "}
-              <a
-                href={`mailto:${supportEmail}?subject=Accessibility%20CAPTCHA%20Issue`}
+              <EmailLink
+                address={supportEmail}
+                subject="Accessibility CAPTCHA Issue"
+                reveal
                 className="text-primary hover:underline"
               >
-                {supportEmail}
-              </a>
+                our support team
+              </EmailLink>
               .
             </>,
             <>
@@ -144,12 +147,14 @@ export default async function AccessibilityPage() {
           items={[
             <>
               <strong>Email:</strong>{" "}
-              <a
-                href={`mailto:${supportEmail}?subject=Accessibility%20Feedback`}
+              <EmailLink
+                address={supportEmail}
+                subject="Accessibility Feedback"
+                reveal
                 className="text-primary hover:underline"
               >
-                {supportEmail}
-              </a>
+                our support team
+              </EmailLink>
             </>,
             <>
               <strong>Contact Form:</strong>{" "}

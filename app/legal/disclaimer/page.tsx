@@ -7,6 +7,7 @@ import {
   LegalCallout,
   LegalToc,
 } from "@/components/legal";
+import { EmailLink } from "@/components/shared/email-link";
 
 const SECTIONS = [
   { id: "no-warranty", label: "1. No Warranty" },
@@ -197,12 +198,13 @@ export default async function DisclaimerPage() {
       <LegalSection id="contact" title="9. Contact">
         <p>
           For questions about this Disclaimer, please contact us at{" "}
-          <a
-            href={`mailto:${legalEmail}`}
+          <EmailLink
+            address={legalEmail}
+            reveal
             className="text-primary hover:underline"
           >
-            {legalEmail}
-          </a>
+            our legal team
+          </EmailLink>
           .
         </p>
         <p className="mt-2">

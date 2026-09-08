@@ -8,6 +8,7 @@ import {
   LegalCallout,
   LegalToc,
 } from "@/components/legal";
+import { EmailLink } from "@/components/shared/email-link";
 
 const SECTIONS = [
   { id: "reporting", label: "1. Reporting Copyright Infringement" },
@@ -62,12 +63,14 @@ export default async function DMCAPage() {
         <LegalCallout variant="info" title="Contact Information">
           <p>
             <strong>Email:</strong>{" "}
-            <a
-              href={`mailto:${legalEmail}?subject=DMCA%20Notice`}
+            <EmailLink
+              address={legalEmail}
+              subject="DMCA Notice"
+              reveal
               className="text-primary hover:underline"
             >
-              {legalEmail}
-            </a>
+              our legal team
+            </EmailLink>
           </p>
           <p className="mt-1">
             <strong>Subject Line:</strong> DMCA Takedown Notice
@@ -125,12 +128,13 @@ export default async function DMCAPage() {
             Terms of Service
           </Link>{" "}
           or contact us at{" "}
-          <a
-            href={`mailto:${legalEmail}`}
+          <EmailLink
+            address={legalEmail}
+            reveal
             className="text-primary hover:underline"
           >
-            {legalEmail}
-          </a>
+            our legal team
+          </EmailLink>
           .
         </p>
       </div>

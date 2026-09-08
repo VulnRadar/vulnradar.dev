@@ -168,7 +168,7 @@ Terms.
 ### 15. Contact
 For questions about these Terms, please contact us at
 
-the support email address listed on this page
+our legal team
 
 .
 
@@ -529,7 +529,7 @@ Profile settings
 
 or email us at
 
-the support email address listed on this page
+our legal team
 
 .
 
@@ -566,7 +566,7 @@ the Service or by sending you an email.
 ### 13. Contact
 For questions about this Privacy Policy, please contact us at
 
-the support email address listed on this page
+our legal team
 
 .
 
@@ -672,11 +672,11 @@ Violations of this Acceptable Use Policy may result in:
 If you believe VulnRadar is being used in violation of this policy,
 please report it to
 
-the security contact email listed on this page
+our security team
 
 . For general legal inquiries, contact
 
-the support email address listed on this page
+our legal team
 
 .
 
@@ -772,7 +772,7 @@ exclusive jurisdiction of the courts located in Missouri.
 ### 9. Contact
 For questions about this Disclaimer, please contact us at
 
-the support email address listed on this page
+our legal team
 
 .
 
@@ -800,7 +800,7 @@ Please send DMCA notices to our designated agent:
 
 Email:
 
-the support email address listed on this page
+our legal team
 
 Subject Line: DMCA Takedown Notice
 
@@ -880,7 +880,7 @@ Despite our best efforts, there may be some limitations:
 CAPTCHA) may have limitations. If unable to complete a CAPTCHA
 challenge, please contact us at
 
-the support email address listed on this page
+our support team
 
 .
 - Complex data visualizations: Some security scan
@@ -895,7 +895,7 @@ let us know if you encounter barriers:
 
 - Email:
 
-the support email address listed on this page
+our support team
 - Contact Form:
 
 {APP_URL.replace(/^https?:\/\//, "")}/contact

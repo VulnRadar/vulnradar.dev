@@ -6,6 +6,7 @@ import {
   SUPPORT_EMAIL,
   TURNSTILE_ENABLED,
 } from "@/lib/config/client-constants";
+import { EmailLink } from "@/components/shared/email-link";
 
 /**
  * How long to wait for challenges.cloudflare.com before telling the user it is
@@ -133,12 +134,13 @@ export function TurnstileWidget({
         >
           Verification could not load, so we cannot check this form. Refresh the
           page to try again, or email{" "}
-          <a
-            href={`mailto:${SUPPORT_EMAIL}`}
+          <EmailLink
+            address={SUPPORT_EMAIL}
+            reveal
             className="text-primary hover:underline"
           >
-            {SUPPORT_EMAIL}
-          </a>{" "}
+            our support team
+          </EmailLink>{" "}
           and we will help from there.
         </p>
       )}

@@ -7,6 +7,7 @@ import {
   LegalList,
   LegalToc,
 } from "@/components/legal";
+import { EmailLink } from "@/components/shared/email-link";
 
 const SECTIONS = [
   { id: "information-we-collect", label: "1. Information We Collect" },
@@ -643,12 +644,13 @@ export default async function PrivacyPage() {
             Profile settings
           </a>{" "}
           or email us at{" "}
-          <a
-            href={`mailto:${legalEmail}`}
+          <EmailLink
+            address={legalEmail}
+            reveal
             className="text-primary hover:underline"
           >
-            {legalEmail}
-          </a>
+            our legal team
+          </EmailLink>
           .
         </p>
       </LegalSection>
@@ -711,12 +713,13 @@ export default async function PrivacyPage() {
       <LegalSection id="contact" title="13. Contact">
         <p>
           For questions about this Privacy Policy, please contact us at{" "}
-          <a
-            href={`mailto:${legalEmail}`}
+          <EmailLink
+            address={legalEmail}
+            reveal
             className="text-primary hover:underline"
           >
-            {legalEmail}
-          </a>
+            our legal team
+          </EmailLink>
           .
         </p>
       </LegalSection>

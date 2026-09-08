@@ -8,6 +8,7 @@ import {
   LegalCallout,
   LegalToc,
 } from "@/components/legal";
+import { EmailLink } from "@/components/shared/email-link";
 
 const SECTIONS = [
   { id: "report", label: "Reporting a vulnerability" },
@@ -74,12 +75,14 @@ export default async function SecurityPage() {
         >
           <p>
             Send your report to{" "}
-            <a
-              href={`mailto:${securityEmail}?subject=${reportSubject}`}
+            <EmailLink
+              address={securityEmail}
+              subject={reportSubject}
+              reveal
               className="font-medium text-primary hover:underline"
             >
-              {securityEmail}
-            </a>
+              our security team
+            </EmailLink>
             . Start the subject line with{" "}
             <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
               [SECURITY]
@@ -103,12 +106,14 @@ export default async function SecurityPage() {
         <LegalSection id="report" title="Reporting a vulnerability">
           <p>
             Email{" "}
-            <a
-              href={`mailto:${securityEmail}?subject=${reportSubject}`}
+            <EmailLink
+              address={securityEmail}
+              subject={reportSubject}
+              reveal
               className="text-primary hover:underline"
             >
-              {securityEmail}
-            </a>{" "}
+              our security team
+            </EmailLink>{" "}
             with enough detail for us to reproduce the problem. If you would
             rather not email, the{" "}
             <Link

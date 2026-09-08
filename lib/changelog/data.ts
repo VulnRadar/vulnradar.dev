@@ -747,6 +747,13 @@ const CHANGELOG: Release[] = [
         desc: "The cosign notice on the Updater page had its warning triangle floating above the line of text it belongs to. Every paragraph in the app is given a fixed line spacing regardless of its text size, and the small print on that notice sets no spacing of its own, so it runs twelve pixel text over a twenty-eight pixel line while the icon beside it was told to line up against a sixteen pixel one. Icons can now be told to take the spacing of the text they sit next to instead of being given a size, which is the right answer whenever the line of text is itself the thing holding the icon.",
         category: "fixed",
       },
+      {
+        icon: Mail,
+        label:
+          "Every Email Link On The Site Works Again, And The Addresses Are Better Hidden Than Before",
+        desc: "Sixteen contact links, on the legal pages, the security reporting page, the contact page and several error screens, all led to a Cloudflare error page instead of opening a mail client. Cloudflare has a feature that hides addresses from scrapers by replacing them and adding a small script to put them back, and that script is blocked here: our pages only run scripts carrying a per-request token, which is what stops an injected script from executing, and the one Cloudflare adds does not carry one. Cloudflare offers no way to give it one, so the choice was to weaken the protection that blocks injected scripts, or to stop relying on their feature. We wrote our own instead, and it is a simpler idea: rather than hide the address and decode it, do not put it in the page at all. The link is delivered pointing at our contact form and becomes a real email link once the page loads. Anything reading the raw page, which is what an address harvester does, finds a contact form and no address anywhere, which is stronger than the scrambling it replaces. With scripts turned off the link still works and still goes to the contact form, rather than being dead as it was.",
+        category: "fixed",
+      },
     ],
   },
   {

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { BILLING_ENABLED, SUPPORT_EMAIL } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { EmailLink } from "@/components/shared/email-link";
 
 interface DashboardErrorStateProps {
   error: string;
@@ -355,12 +356,14 @@ export function DashboardErrorState({
               Back to scanner
             </Button>
             {(kind === "blocked" || kind === "server") && (
-              <a
-                href={`mailto:${SUPPORT_EMAIL}`}
+              <EmailLink
+                address={SUPPORT_EMAIL}
                 className="ml-auto rounded-sm text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
-                Think this is wrong? Mail {SUPPORT_EMAIL}
-              </a>
+                {/* No `reveal`: the address was spelled out mid-sentence here,
+                    which is the one shape that cannot be swapped in cleanly. */}
+                Think this is wrong? Mail us
+              </EmailLink>
             )}
           </div>
         </div>

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ROUTES, APP_NAME, SUPPORT_EMAIL } from "@/lib/config/client-constants";
 import { useVerifySubscription } from "@/hooks/use-verify-subscription";
 import { CheckoutMessage } from "@/components/billing/checkout-message";
+import { EmailLink } from "@/components/shared/email-link";
 
 /** Credit top-up labels, keyed by the ?kind= the checkout components send. */
 const CREDIT_KINDS: Record<string, string> = {
@@ -19,12 +20,13 @@ const CREDIT_KINDS: Record<string, string> = {
 const SupportFootnote = (
   <>
     Need help? Contact us at{" "}
-    <a
-      href={`mailto:${SUPPORT_EMAIL}`}
+    <EmailLink
+      address={SUPPORT_EMAIL}
+      reveal
       className="underline hover:text-foreground"
     >
-      {SUPPORT_EMAIL}
-    </a>
+      our support team
+    </EmailLink>
   </>
 );
 

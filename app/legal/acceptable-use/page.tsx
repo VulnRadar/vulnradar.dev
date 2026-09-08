@@ -8,6 +8,7 @@ import {
   LegalCallout,
   LegalToc,
 } from "@/components/legal";
+import { EmailLink } from "@/components/shared/email-link";
 
 const SECTIONS = [
   { id: "permitted-uses", label: "1. Permitted Uses" },
@@ -210,19 +211,21 @@ export default async function AcceptableUsePage() {
         <p>
           If you believe {APP_NAME} is being used in violation of this policy,
           please report it to{" "}
-          <a
-            href={`mailto:${securityEmail}`}
+          <EmailLink
+            address={securityEmail}
+            reveal
             className="text-primary hover:underline"
           >
-            {securityEmail}
-          </a>
+            our security team
+          </EmailLink>
           . For general legal inquiries, contact{" "}
-          <a
-            href={`mailto:${legalEmail}`}
+          <EmailLink
+            address={legalEmail}
+            reveal
             className="text-primary hover:underline"
           >
-            {legalEmail}
-          </a>
+            our legal team
+          </EmailLink>
           .
         </p>
       </LegalSection>

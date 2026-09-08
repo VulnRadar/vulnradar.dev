@@ -218,6 +218,8 @@ A sweep for anything the app was getting wrong quietly. The AI chat was streamin
   Scrolling any table in the admin panel left a thin line of the row that had just gone past painting in the band above the pinned column headers, outside the area the table is supposed to be able to draw in at all. It is a browser fault in how a scrolling box is clipped when a table pins its header and uses the merged border model, and the fix is to switch that table to the separated one with the spacing set to zero, which keeps the layout identical and the row lines single. Found by elimination against the running page rather than by reasoning about it: hiding the rows cleared the band, which proved it was real content and not an artifact of the screenshot. Two earlier attempts at this, a background on the header cells and snapping rows to the header edge, were both measured, neither was the cause, and both were taken back out.
 - [Wrench] **[FIXED]** **A Warning Icon Sat Six Pixels Above Its Own Sentence**
   The cosign notice on the Updater page had its warning triangle floating above the line of text it belongs to. Every paragraph in the app is given a fixed line spacing regardless of its text size, and the small print on that notice sets no spacing of its own, so it runs twelve pixel text over a twenty-eight pixel line while the icon beside it was told to line up against a sixteen pixel one. Icons can now be told to take the spacing of the text they sit next to instead of being given a size, which is the right answer whenever the line of text is itself the thing holding the icon.
+- [Mail] **[FIXED]** **Every Email Link On The Site Works Again, And The Addresses Are Better Hidden Than Before**
+  Sixteen contact links, on the legal pages, the security reporting page, the contact page and several error screens, all led to a Cloudflare error page instead of opening a mail client. Cloudflare has a feature that hides addresses from scrapers by replacing them and adding a small script to put them back, and that script is blocked here: our pages only run scripts carrying a per-request token, which is what stops an injected script from executing, and the one Cloudflare adds does not carry one. Cloudflare offers no way to give it one, so the choice was to weaken the protection that blocks injected scripts, or to stop relying on their feature. We wrote our own instead, and it is a simpler idea: rather than hide the address and decode it, do not put it in the page at all. The link is delivered pointing at our contact form and becomes a real email link once the page loads. Anything reading the raw page, which is what an address harvester does, finds a contact form and no address anywhere, which is stronger than the scrambling it replaces. With scripts turned off the link still works and still goes to the contact form, rather than being dead as it was.
 
 ---
 
@@ -2302,6 +2304,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 71
-- **Total changes documented:** 853
+- **Total changes documented:** 854
 - **Latest:** v3.8.6 (September 7, 2026) - Things That Fail Without Saying So
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
