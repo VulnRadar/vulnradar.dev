@@ -240,6 +240,17 @@ export type ProfileTab =
 export interface PendingChanges {
   name?: string;
   email?: string;
+  /**
+   * Re-authentication for a pending email change.
+   *
+   * PATCH /api/v3/auth/update treats an address change as a sensitive change
+   * and refuses one without the current password, and no field collected it:
+   * the email input accepted typing, showed an Unsaved badge, and returned
+   * 403 every time for any account with a password. Kept here rather than in
+   * the tab component so the page saves it through the same path as every
+   * other pending edit, and discarding clears it with them.
+   */
+  emailPassword?: string;
   notifications?: Partial<NotificationPrefs>;
   /** Pending edit to the account-level "scans are private by default"
    *  setting (Privacy tab). See PUT /api/v3/account/privacy. */

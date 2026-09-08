@@ -95,6 +95,19 @@ export default function HistoryPage() {
     1,
   );
   const [pageSize, setPageSize] = useState(10);
+  /**
+   * Whether the server said there are rows after the ones we hold.
+   *
+   * The fetch below never sent limit or offset, so it always got page one of
+   * a hundred and the pagination underneath it walked that window in tens.
+   * A scan at position 101 was therefore unreachable from the product
+   * entirely, and the notice shown in its place told the reader to "narrow
+   * the search to reach the older ones", which does not reach them either:
+   * the cap applies to the filtered set too. The response has carried a
+   * truncated flag for exactly this all along.
+   */
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [rescanning, setRescanning] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
@@ -329,44 +342,57 @@ export default function HistoryPage() {
   const serverTag = query.tag;
   const serverFiltering = serverSearch !== "" || serverTag !== null;
 
-  const fetchHistory = useCallback(async () => {
-    try {
-      // Search and tag run in SQL over the whole retention window. They used to
-      // run in the browser over the capped page this endpoint returns, so a
-      // scan still inside retention could not be found once it had scrolled
-      // past that page. ref: AUDIT-014#qolf-01
-      const params = new URLSearchParams();
-      if (serverSearch) params.set("q", serverSearch);
-      if (serverTag) params.set("tag", serverTag);
-      const qs = params.toString();
-      const res = await fetch(qs ? `${API.HISTORY}?${qs}` : API.HISTORY);
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          router.push("/login");
+  const fetchHistory = useCallback(
+    async (appendFrom?: number) => {
+      try {
+        // Search and tag run in SQL over the whole retention window. They used to
+        // run in the browser over the capped page this endpoint returns, so a
+        // scan still inside retention could not be found once it had scrolled
+        // past that page. ref: AUDIT-014#qolf-01
+        const params = new URLSearchParams();
+        if (serverSearch) params.set("q", serverSearch);
+        if (serverTag) params.set("tag", serverTag);
+        if (appendFrom !== undefined) params.set("offset", String(appendFrom));
+        const qs = params.toString();
+        const res = await fetch(qs ? `${API.HISTORY}?${qs}` : API.HISTORY);
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            router.push("/login");
+            return;
+          }
+          setListError("Couldn't load your history.");
           return;
         }
-        setListError("Couldn't load your history.");
-        return;
+        const data = await res.json();
+        const rows = Array.isArray(data.scans) ? data.scans : [];
+        setListError(null);
+        // Appending rather than replacing keeps every client-side filter
+        // working the way it already does: severity and date have no server
+        // side and read whatever is loaded, so growing that set is what makes
+        // them able to see an older scan at all.
+        setScans((prev) =>
+          appendFrom === undefined ? rows : [...prev, ...rows],
+        );
+        setHasOlder(data.truncated === true);
+        setTotalScans(
+          typeof data.total === "number" ? data.total : rows.length,
+        );
+        // Older responses (a cached deploy mid-rollout) have no `matched`, so
+        // fall back to the account total rather than to 0, which would render
+        // the "showing N of 0" line over a full list.
+        setMatchedScans(
+          typeof data.matched === "number"
+            ? data.matched
+            : typeof data.total === "number"
+              ? data.total
+              : rows.length,
+        );
+      } catch {
+        setListError("Couldn't reach the server to load your history.");
       }
-      const data = await res.json();
-      const rows = Array.isArray(data.scans) ? data.scans : [];
-      setListError(null);
-      setScans(rows);
-      setTotalScans(typeof data.total === "number" ? data.total : rows.length);
-      // Older responses (a cached deploy mid-rollout) have no `matched`, so
-      // fall back to the account total rather than to 0, which would render
-      // the "showing N of 0" line over a full list.
-      setMatchedScans(
-        typeof data.matched === "number"
-          ? data.matched
-          : typeof data.total === "number"
-            ? data.total
-            : rows.length,
-      );
-    } catch {
-      setListError("Couldn't reach the server to load your history.");
-    }
-  }, [router, serverSearch, serverTag]);
+    },
+    [router, serverSearch, serverTag],
+  );
 
   // A failure here is silent on purpose: the tag filter is one control in a
   // row of four and its absence says everything it needs to.
@@ -957,10 +983,35 @@ export default function HistoryPage() {
                 look at the loaded rows, and the second notice is the old
                 warning kept for exactly that case. */}
               {serverFiltering && scans.length < matchedScans && (
-                <p className="rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-2.5 text-xs text-muted-foreground">
-                  {matchedScans} scans match. Showing the {scans.length} most
-                  recent of them: narrow the search to reach the older ones.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-2.5 text-xs text-muted-foreground">
+                  <span>
+                    {matchedScans} scans match. Showing the {scans.length} most
+                    recent of them.
+                  </span>
+                  {/* A button, where the copy used to say "narrow the search
+                      to reach the older ones". That advice could not work:
+                      the row cap applies to the filtered set too, so an
+                      older scan stayed out of reach however precise the
+                      search got. */}
+                  {hasOlder && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 shrink-0 text-xs"
+                      disabled={loadingOlder}
+                      onClick={async () => {
+                        setLoadingOlder(true);
+                        try {
+                          await fetchHistory(scans.length);
+                        } finally {
+                          setLoadingOlder(false);
+                        }
+                      }}
+                    >
+                      {loadingOlder ? "Loading..." : "Load older scans"}
+                    </Button>
+                  )}
+                </div>
               )}
               {!serverFiltering && hasFilters && scans.length < totalScans && (
                 <p className="rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-2.5 text-xs text-muted-foreground">

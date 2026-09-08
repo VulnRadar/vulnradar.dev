@@ -406,6 +406,20 @@ export function ScanForm({
   const [specNote, setSpecNote] = useState("");
   const specInputRef = useRef<HTMLInputElement>(null);
   const [authValue, setAuthValue] = useState<InlineAuthValue | null>(null);
+  /**
+   * A single-page scan with a login goes to a different endpoint, and that
+   * endpoint's schema does not take a screenshot or a port sweep.
+   *
+   * app/dashboard/scan-request.ts already knows this and correctly omits both
+   * from that payload. What it could not do is tell the person looking at the
+   * form: the two switches rendered exactly as usual, flipped on, wrote
+   * themselves into the shareable URL, and were then dropped in silence. The
+   * port one was worse than useless, because it also sent people off to
+   * verify a domain for a sweep that was never going to run. A metered
+   * feature that appears to be on and is not is the kind of thing a user
+   * discovers by checking their bill.
+   */
+  const authScanDropsExtras = !!authValue && mode !== "deep";
   const authFormRef = useRef<InlineAuthFormHandle>(null);
 
   // "Keep this scan private" -- seeded from the account default, but once
@@ -470,7 +484,11 @@ export function ScanForm({
   // Only claim the target is NOT covered once there is something to be sure
   // about: a domain list that has arrived, and a host to test it against.
   const portScanBlocked =
-    !!me?.userId && verified.loaded && !!portScanHost && !portScanAllowed;
+    (!!me?.userId && verified.loaded && !!portScanHost && !portScanAllowed) ||
+    // A single-page scan that signs in first goes to an endpoint whose schema
+    // has no port sweep, so the switch was not just inert there: it also sent
+    // people off to verify a domain for a sweep that could never run.
+    authScanDropsExtras;
 
   // Turning the switch on and then editing the URL to an unverified host would
   // otherwise leave it armed, and the submit would be refused for a reason the
@@ -1162,13 +1180,15 @@ export function ScanForm({
               Capture page screenshot
             </label>
             <span className="hidden text-[11px] text-muted-foreground sm:block">
-              Opens a real browser once. Uses your live-browser minutes.
+              {authScanDropsExtras
+                ? "Not available on a scan that signs in first."
+                : "Opens a real browser once. Uses your live-browser minutes."}
             </span>
             <Switch
               id="scan-capture-screenshot"
-              checked={captureScreenshot}
+              checked={captureScreenshot && !authScanDropsExtras}
               onCheckedChange={setCaptureScreenshot}
-              disabled={isScanning}
+              disabled={isScanning || authScanDropsExtras}
               aria-label="Capture page screenshot"
               className="ml-auto"
             />
@@ -1195,7 +1215,12 @@ export function ScanForm({
               Scan common ports
             </label>
             <span className="hidden min-w-0 text-[11px] text-muted-foreground sm:block">
-              {portScanBlocked ? (
+              {authScanDropsExtras ? (
+                // Two different reasons the switch is off, and telling
+                // somebody to verify a domain when the real problem is the
+                // login would send them to do work that changes nothing.
+                <>Not available on a scan that signs in first.</>
+              ) : portScanBlocked ? (
                 <>
                   <span className="font-mono">{portScanHost}</span> is not a
                   domain you have verified.{" "}

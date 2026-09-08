@@ -47,6 +47,15 @@ export function ProfileGeneralTab({
   const [profileEditMode, setProfileEditMode] = useState(false);
   const [nameInput, setNameInput] = useState(user?.name || "");
   const [emailInput, setEmailInput] = useState(user?.email || "");
+  // Held in pendingChanges rather than in local state so the page's own save
+  // handler can read it without a second channel, and so discarding changes
+  // clears it along with everything else.
+  const emailPassword =
+    typeof pendingChanges.emailPassword === "string"
+      ? pendingChanges.emailPassword
+      : "";
+  const emailIsChanging =
+    pendingChanges.email !== undefined && pendingChanges.email !== user?.email;
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [replayingTour, setReplayingTour] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -416,6 +425,44 @@ export function ProfileGeneralTab({
                     autoComplete="email"
                   />
                 </div>
+                {/* The address is the account's recovery route, so changing it
+                    is a sensitive change and the API has always required the
+                    current password for one. No field collected it, so the
+                    input above accepted typing, showed an Unsaved badge, and
+                    then failed with 403 every single time for anyone who has
+                    a password: a control that looked completely alive and
+                    could never work. The route's own comment recorded the
+                    gap. Shown only when the address is actually being
+                    changed, and only for an account that has a password to
+                    re-enter, matching the condition the route applies. */}
+                {emailIsChanging && user?.hasPassword !== false && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label
+                      htmlFor="email-change-password"
+                      className="text-xs font-medium text-muted-foreground"
+                    >
+                      Current password
+                    </Label>
+                    <Input
+                      id="email-change-password"
+                      type="password"
+                      value={emailPassword}
+                      onChange={(e) =>
+                        setPendingChanges((prev) => ({
+                          ...prev,
+                          emailPassword: e.target.value,
+                        }))
+                      }
+                      className="bg-card h-10"
+                      placeholder="Confirm it is you"
+                      autoComplete="current-password"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Required to change the address your account recovers
+                      through.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

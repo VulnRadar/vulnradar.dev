@@ -349,6 +349,31 @@ const CHANGELOG: Release[] = [
         desc: "One of the new credential checks matched an Azure storage URL with two open-ended runs of URL characters and a question mark between them, and a question mark is itself a URL character, so on a page repeating that parameter the engine tried every possible split: nine seconds on a quarter-megabyte page. On a scanner, which exists to fetch documents chosen by somebody else, that is not slowness, it is a denial of service with the target holding the trigger. It passed every fixture, because a fixture is a well-formed example and this only appears on input nobody would write by hand. The check now finds the URL in one pass and tests the parameters separately, and there is a guard that runs every page check against twenty-three deliberately hostile shapes and fails if any one of them takes far longer than its peers. It is measured as a ratio rather than a stopwatch, because a busy machine slows everything equally and a test that fails when the runner is loaded teaches people to re-run CI instead of reading it.",
         category: "fixed",
       },
+      {
+        icon: Puzzle,
+        label:
+          "The Extension's Most Complete Setting Was The One That Scanned Least",
+        desc: "Ticking every check family switched Active Probing off. The scan builder omitted the family list whenever all of them were selected, on the reasoning that sending everything is the same as sending nothing, and it is not: the API reads a missing list as run the defaults, and the active-probe catalog reads no selection as run no active probes at all. So the Options screen read 18 of 18, Active Probing was on, and it never ran. Un-ticking any unrelated family made it start working, which is the sort of behaviour nobody reports because nobody believes it. Two more in the same surface: the popup could be left on a spinner that never cleared, because a rejected background handler answers with nothing and the reply was read outside the guard, so a successful scan whose bookkeeping failed hung the window and threw the result away. And a rejected API key was invisible to the person who needed to see it: the banner checked for a saved account before it checked for a failed test, so pasting a revoked key still read Connected as, with nothing anywhere saying it had been refused.",
+        category: "fixed",
+      },
+      {
+        icon: Timer,
+        label: "The CLI Could Not Be Stopped, And Gave Up Too Easily",
+        desc: "Neither the create call nor the status polls carried a cancellation signal, and the deadline was only consulted between polls, so a connection that was accepted and never answered was never interrupted: the timeout flag decided nothing and the process sat there until the CI runner killed the whole job. At the same time it was fatally impatient in the other direction, exiting on the first non-ok poll, and a normal scan polls about sixty times while a crawl polls closer to two hundred. One blip from a proxy failed a build for a scan that was succeeding and landing in the user's history. Transient failures are retried now; a wrong key still fails immediately, because that does not fix itself. Two more things that only bite in a pipeline: JSON mode wrote to standard output on success only, and jq exits zero on empty input, so a failed run piped into jq reported as passing unless the shell had pipefail set, which is the exact opposite of what a CI gate is for. And a captive portal or a firewall challenge page surfaced as a raw parser complaint about an unexpected angle bracket rather than as what it was.",
+        category: "fixed",
+      },
+      {
+        icon: GitMerge,
+        label: "The Extension Build Was Broken And CI Ran Around It",
+        desc: "The documented build command threw before it packaged anything: the zip library moved to named exports and the import still expected a default. CI stayed green the whole time because the extension job ran the two per-target build scripts, which skip packaging entirely, so the only step never exercised was the one that produces the file uploaded to the Chrome Web Store and to Mozilla. CI now runs the real build and then checks what came out of it: both archives present, both manifests carrying the current version. Without that second half, building one target and packaging would have zipped the other target's week-old output under today's version number, which an add-on review rejects as a duplicate. The extension's own 177 tests also ran nowhere. Its package declares a test script, but the test runner is in neither its dependencies nor its lockfile: it resolved only because the repository root happens to have a copy, so the script worked on a developer's machine and would have failed outright in CI. They are part of the main suite now, which goes from 15,064 tests to 15,241.",
+        category: "fixed",
+      },
+      {
+        icon: List,
+        label: "Your Hundred And First Scan",
+        desc: "History fetched one page of a hundred and paginated that page ten at a time, so a scan at position 101 could not be reached from the product at all. The page noticed and gave advice that could not work, telling the reader to narrow the search, when the same cap applies to the filtered set: a more precise search does not reach an older scan either. There is a button now, and it appends rather than replaces, so the severity and date filters keep working the way they do today over a set that grows. Two dead controls went with it. Changing your email address returned a permission error every time for anyone with a password, because the API has always required the current password for a change to the address an account recovers through and no field ever collected it, so the input accepted typing, showed an Unsaved badge, and failed on save. And on a scan that signs in first, the screenshot and port-sweep switches rendered normally, wrote themselves into the shareable link, and were dropped in silence, because that scan goes to an endpoint whose schema does not take them. The port one also sent people off to verify a domain for a sweep that was never going to run.",
+        category: "fixed",
+      },
     ],
   },
   {

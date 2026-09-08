@@ -503,7 +503,14 @@ function ProfileContent() {
         const res = await fetch(API.AUTH.UPDATE, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: pendingChanges.email }),
+          // currentPassword too: the route treats an address change as a
+          // sensitive change and refuses one without it, so sending the
+          // address alone was a guaranteed 403 for every account with a
+          // password.
+          body: JSON.stringify({
+            email: pendingChanges.email,
+            currentPassword: pendingChanges.emailPassword ?? "",
+          }),
         });
         const data = await res.json();
         if (res.ok) {
