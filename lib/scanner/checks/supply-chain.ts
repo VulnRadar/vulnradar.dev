@@ -634,16 +634,32 @@ const rawDetectors: Record<string, DetectFn> = {
   "supply-chain-ci-workflow-exposed": (_url, _headers, body) => {
     if (body.indexOf("runs-on:") === -1) return null;
     if (!/^jobs:\s*$/m.test(body)) return null;
-    if (!/^\s{2,}runs-on:\s*\S/m.test(body)) return null;
-    const steps = (body.match(/^\s*-\s+uses:\s*\S/gm) || []).length;
+    // [ \t], never \s, and bounded.
+    //
+    // Under /m the ^ anchor matches at every newline and \s matches a newline
+    // too, so ^\s* on a run of newlines gives one start position per line and
+    // one way to consume per line from each: quadratic here, and cubic in the
+    // sibling below where a second \s* follows. A body of "jobs:\nruns-on:\n"
+    // plus newlines took half an hour at the 1 MiB body cap, in one
+    // synchronous match with no await in it, so the watchdog, the branch
+    // races and the yield points never got a turn. The whole Node process
+    // serving every user stops, not the one scan, and the anonymous demo
+    // endpoint reaches this code.
+    if (!/^[ \t]{1,40}runs-on:[ \t]{0,20}\S/m.test(body)) return null;
+    const steps = (
+      body.match(/^[ \t]{0,40}-[ \t]{1,20}uses:[ \t]{0,20}\S/gm) || []
+    ).length;
     return `A CI workflow definition is served from this URL (a jobs block with ${steps} action step(s)), exposing the build pipeline: runner labels, triggers, referenced actions, and the names of every secret the pipeline reads.`;
   },
 
   "supply-chain-github-action-unpinned-tag": (_url, _headers, body) => {
     if (body.indexOf("uses:") === -1) return null;
     if (!/^jobs:\s*$/m.test(body)) return null;
+    // Two adjacent \s* runs with an optional - between them, under /m: the
+    // cubic case. Measured at 38 seconds on a 4,000-byte body, from an
+    // endpoint that needs no account. Bounded [ \t] runs make it linear.
     const usesRe =
-      /^\s*-?\s*uses:\s*["']?([\w.-]{1,60}\/[\w.-]{1,80}(?:\/[\w.-]{1,80})?)@([\w.-]{1,60})/gm;
+      /^[ \t]{0,40}-?[ \t]{0,40}uses:[ \t]{0,20}["']?([\w.-]{1,60}\/[\w.-]{1,80}(?:\/[\w.-]{1,80})?)@([\w.-]{1,60})/gm;
     let m: RegExpExecArray | null;
     while ((m = usesRe.exec(body)) !== null) {
       if (/^[0-9a-f]{40}$/i.test(m[2])) continue;

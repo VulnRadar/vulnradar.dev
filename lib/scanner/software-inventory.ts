@@ -45,6 +45,7 @@
  */
 
 import { isIP } from "net";
+import { tagsWith } from "./checks/_tag-scan";
 import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { generateId, getHeader } from "./_helpers";
@@ -422,10 +423,28 @@ const COOKIE_MARKERS: CookieMarker[] = [
 // (e.g. "1.1.1f"), which are a DISTINCT release from the bare "1.1.1" and
 // so matter for an accurate version-to-CVE match.
 const NAME_VERSION_RE = /([A-Za-z][A-Za-z0-9._+-]*)\/(\d+(?:\.\d+)*[a-z]?)/g;
-const META_GENERATOR_RE =
-  /<meta\b[^>]*\bname=["']generator["'][^>]*\bcontent=["']([^"']+)["'][^>]*>/i;
-const META_GENERATOR_RE_ALT =
-  /<meta\b[^>]*\bcontent=["']([^"']+)["'][^>]*\bname=["']generator["'][^>]*>/i;
+/**
+ * The generator meta tag's content, or null.
+ *
+ * This was two `<meta\b[^>]*ATTR[^>]*ATTR[^>]*>` regexes, one per attribute
+ * order. That is exactly the splice shape checks/_tag-scan.ts was written to
+ * remove, and these two had their runs left unbounded, so on markup that
+ * never closes a tag the first run backtracks to every offset where the
+ * attribute matches and the second scans to the end of the document from each
+ * one. A 32KB body of unterminated <meta name="generator" took 36 seconds,
+ * and this module is not in allChecks, so the perf-budget suite that exists
+ * for precisely this never measured it.
+ *
+ * Scanning for the tags and reading their attributes is linear, and it stops
+ * caring about attribute order, which is what needed two patterns.
+ */
+function readGeneratorMeta(body: string): string | null {
+  for (const tag of tagsWith(body, "meta", /name\s*=\s*["']generator["']/i)) {
+    const content = /\bcontent\s*=\s*["']([^"']+)["']/i.exec(tag);
+    if (content) return content[1];
+  }
+  return null;
+}
 
 function pushItem(
   out: SoftwareItem[],
@@ -585,9 +604,8 @@ export function fingerprintSoftware(
   }
 
   if (body) {
-    const genMatch =
-      body.match(META_GENERATOR_RE) ?? body.match(META_GENERATOR_RE_ALT);
-    if (genMatch) parseGenerator(genMatch[1], "meta generator", out, seen);
+    const generator = readGeneratorMeta(body);
+    if (generator) parseGenerator(generator, "meta generator", out, seen);
 
     if (/\/wp-(?:content|includes)\//i.test(body)) {
       pushItem(out, seen, {

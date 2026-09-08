@@ -1674,17 +1674,39 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "force_logout_all": {
-      // Delete all sessions and revoke all tokens
-      await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
-      await pool.query(
-        "UPDATE api_keys SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
-        [userId],
+      // Two capabilities behind one permission, so the second one is checked
+      // separately.
+      //
+      // This action is registered under REVOKE_USER_SESSIONS, which moderator
+      // holds. It also revoked every API key, which is REVOKE_USER_API_KEYS,
+      // which moderator deliberately does NOT hold: the comment above the
+      // permission map says why, that revoking keys destroys a user's
+      // integrations rather than moderating content. So a moderator refused
+      // "Revoke API Keys" could click the card directly beside it and destroy
+      // the customer's CI integration anyway, and the card's own description
+      // spelled the capability out.
+      //
+      // Ending sessions is what the action is named for and stays on the
+      // sessions grant. The key revocation now needs the grant that owns it,
+      // and the response says which half ran so the panel is not guessing.
+      const mayRevokeKeys = hasStaffPermission(
+        session.role,
+        STAFF_PERMISSIONS.REVOKE_USER_API_KEYS,
       );
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
+      if (mayRevokeKeys) {
+        await pool.query(
+          "UPDATE api_keys SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+          [userId],
+        );
+      }
       await logAction(
         session.userId,
         userId,
         "force_logout_all",
-        `Force logged out ${targetUser.email} and revoked all API keys`,
+        mayRevokeKeys
+          ? `Force logged out ${targetUser.email} and revoked all API keys`
+          : `Force logged out ${targetUser.email} (API keys left in place: caller cannot revoke them)`,
         ip,
       );
 
@@ -1702,7 +1724,19 @@ export async function PATCH(request: NextRequest) {
             oldValue: "All sessions",
             newValue: "Revoked",
           },
-          { field: "API Keys", oldValue: "All keys", newValue: "Revoked" },
+          // Claimed only when it happened. This list was unconditional, so a
+          // moderator, who cannot revoke keys, sent the account an email
+          // saying their API keys had been revoked while the keys kept
+          // working.
+          ...(mayRevokeKeys
+            ? [
+                {
+                  field: "API Keys",
+                  oldValue: "All keys",
+                  newValue: "Revoked",
+                },
+              ]
+            : []),
         ],
         timestamp: new Date(),
       });
@@ -1713,7 +1747,10 @@ export async function PATCH(request: NextRequest) {
         targetUser.unsubscribe_token,
       );
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({
+        success: true,
+        apiKeysRevoked: mayRevokeKeys,
+      });
     }
 
     // "set_scan_limit" used to live here. It wrote users.daily_scan_limit

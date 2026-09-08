@@ -21,6 +21,7 @@
  */
 
 import { isPrivateHostname, safeFetch } from "./safe-fetch";
+import { openTags } from "./checks/_tag-scan";
 import { generateId } from "./_helpers";
 import { getCheckDef } from "./registry";
 import { computeCvssBaseScore, type CvssMetrics } from "./cvss";
@@ -132,7 +133,15 @@ const LIBRARY_FINGERPRINTS: LibraryFingerprint[] = [
   },
 ];
 
-const SCRIPT_SRC_RE = /<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+/**
+ * The src of every script tag, in document order.
+ *
+ * Was `<script\b[^>]*\bsrc=...[^>]*>`, the same unbounded splice shape
+ * checks/_tag-scan.ts replaced everywhere else: on a body of unterminated
+ * <script src=" it took 88 seconds at 32KB. This module is not in allChecks
+ * either, so nothing measured it.
+ */
+const SCRIPT_SRC_ATTR = /\bsrc\s*=\s*["']([^"']+)["']/i;
 
 interface DetectedLibrary {
   name: string;
@@ -152,11 +161,13 @@ export function extractDetectedLibraries(
   const seen = new Set<string>();
   const detected: DetectedLibrary[] = [];
 
-  for (const m of html.matchAll(SCRIPT_SRC_RE)) {
+  for (const tag of openTags(html, "script")) {
     if (detected.length >= MAX_LIBRARIES_TO_CHECK) break;
+    const srcAttr = SCRIPT_SRC_ATTR.exec(tag);
+    if (!srcAttr) continue;
     let resolved: URL;
     try {
-      resolved = new URL(m[1], baseUrl);
+      resolved = new URL(srcAttr[1], baseUrl);
     } catch {
       continue;
     }
