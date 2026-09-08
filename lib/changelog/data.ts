@@ -710,6 +710,30 @@ const CHANGELOG: Release[] = [
         desc: "The webhooks list mixes the ones you made with any a teammate shared into a team you are in, and it drew every control on all of them. Someone whose team role is view-only was shown pause, edit, send test, rotate secret and delete on a webhook they cannot change, and each one answered with a refusal. Rotating the signing secret was offered even to teammates who genuinely can edit the webhook, because that one is restricted to whoever created it. Each row now shows only what the server will actually accept from you: the controls that need write access appear for the owner and for teammates whose role allows it, rotating stays with the owner, and the delivery history stays visible to everyone who can see the row, since reading what was sent is not a change. Scheduled scans and verified domains had the same gap and got the same treatment, so pausing or deleting a shared schedule, and verifying or removing a shared domain, are offered only to the people who can actually do them.",
         category: "fixed",
       },
+      {
+        icon: Layout,
+        label: "Deep Links Into The Admin Panel Loaded The Wrong Section First",
+        desc: "Opening a link straight to a section other than the overview drew the overview's health list first and then swapped it for whatever you had actually asked for, because the loading placeholder was fixed to one section no matter which was on its way. Every admin section now describes its own shape in one table, and the placeholder reads the section from the address, so what you see for that first moment is the thing that arrives. The one placeholder that genuinely cannot know which section is coming, the one shown before the page's own code has loaded, now draws only the header every section shares rather than guessing.",
+        category: "fixed",
+      },
+      {
+        icon: Table2,
+        label: "Admin Panels Jumped When Their Data Landed",
+        desc: "Eleven panels drew their loading table inside a padded box with a border of its own, while the table that actually arrives sits flush against the panel header with no border. Four more drew a table, complete with a header bar and a round avatar on every row, on the way to a list that has neither of those things. Broadcasts, security alerts, site notices and blocked rules were all in that group. Every placeholder is now the shape of the thing it stands in for, several panels that drew one card now draw the number they really have, and the option to draw a bordered table has been removed rather than documented, so it cannot be picked again. The panel header also stacks on a phone the way the real one does, instead of shifting everything down by a row on arrival.",
+        category: "fixed",
+      },
+      {
+        icon: Activity,
+        label: "The System Health Card Grew Two Rows Every Time It Loaded",
+        desc: "The health list reserved six rows while the panel actually produces eight, so the card grew each time the metrics arrived, and the placeholder shown before the page loaded disagreed with the card's own. The row count is now computed by running the same function that builds the list, so adding a health check moves both at once instead of leaving them to drift.",
+        category: "fixed",
+      },
+      {
+        icon: Bell,
+        label: "Screen Readers Were Told Nothing While An Admin Section Loaded",
+        desc: "Between clicking a section and its content arriving, the admin panel announced nothing at all. Each placeholder now sits in a live region named after the destination in the navigation, read from the navigation itself rather than typed out again. The email preview also stopped pulsing for anyone whose system asks for reduced motion.",
+        category: "fixed",
+      },
     ],
   },
   {

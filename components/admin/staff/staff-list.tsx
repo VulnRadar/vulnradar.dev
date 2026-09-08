@@ -42,6 +42,7 @@ import {
   usePagination,
 } from "@/components/ui/pagination-control";
 import {
+  SkeletonRegion,
   UserAvatar,
   ActionBadge,
   StatBar,
@@ -50,6 +51,7 @@ import {
   SortableHeader,
   nextSortDirection,
   DataTableSkeleton,
+  RowListSkeleton,
   StatBarSkeleton,
   AdminPasswordConfirmDialog,
   AdminPanelHeader,
@@ -763,10 +765,12 @@ export function StaffList({
             </div>
 
             {invitesLoading && pendingInvites.length === 0 ? (
-              <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                Loading pending invites...
-              </div>
+              // The invite rows' own shape. A centred spinner over one line of
+              // text says nothing about what is coming and collapses to a
+              // third of the height the list arrives at.
+              <SkeletonRegion label="Loading pending invites">
+                <RowListSkeleton rows={2} lead="none" lines={1} boxed />
+              </SkeletonRegion>
             ) : pendingInvites.length === 0 ? (
               <p className="py-3 text-sm text-muted-foreground">
                 No invites are waiting to be accepted.
@@ -970,9 +974,9 @@ export function StaffList({
           />
           <CardContent className="p-0">
             {adminsLoading ? (
-              <div className="p-4 sm:p-5">
+              <SkeletonRegion label="Loading staff directory">
                 <DataTableSkeleton rows={6} />
-              </div>
+              </SkeletonRegion>
             ) : activeAdmins.length === 0 ? (
               <EmptyState
                 icon={Shield}

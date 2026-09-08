@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { VALID_TABS } from "@/components/admin/nav";
+import {
+  HEALTH_CHECK_KEYS,
+  HEALTH_ROW_COUNT,
+} from "@/components/admin/features/health-overview-utils";
 
 /**
  * Pins the loading-state invariants that keep drifting back.
@@ -31,6 +36,18 @@ function code(rel: string): string {
   return read(rel)
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+/** Every .tsx under a directory, repo-relative with forward slashes. */
+function walkTsx(rel: string): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(path.join(ROOT, rel))) {
+    const next = `${rel}/${entry}`;
+    if (fs.statSync(path.join(ROOT, next)).isDirectory())
+      out.push(...walkTsx(next));
+    else if (entry.endsWith(".tsx")) out.push(next);
+  }
+  return out;
 }
 
 /**
@@ -129,6 +146,270 @@ describe("the admin skeleton derives its nav from the real nav table", () => {
     const src = code("components/admin/admin-skeleton.tsx");
     expect(src).toContain("ADMIN_NAV_GROUPS");
     expect(src).not.toMatch(/\[6,\s*4,\s*2,\s*4\]/);
+  });
+
+  // The panel body used to be HealthCardSkeleton unconditionally. /admin picks
+  // its section from ?tab=, so every deep link but Overview drew a status list
+  // and then replaced it with a different section: /admin?tab=users showed
+  // health rows, then a stat strip over a user table.
+  it("draws the section the URL asked for rather than always Overview", () => {
+    const src = code("components/admin/admin-skeleton.tsx");
+    expect(src).toMatch(/AdminDataSkeleton\(\{\s*tab/);
+    expect(src).toContain("ADMIN_PANEL_SHAPES[tab]");
+    expect(code("app/admin/page.tsx")).toContain(
+      "<AdminDataSkeleton tab={activeTab} />",
+    );
+  });
+});
+
+/**
+ * The admin panel's per-section placeholders, checked against the sections.
+ *
+ * These are the numbers that go stale, so none of them is typed twice. The
+ * shape table (components/admin/shared/panel-skeleton.tsx) is the one place
+ * that describes a tab, and each assertion below reads the real panel's source
+ * and asks whether the table still matches it.
+ */
+describe("every admin section reserves the shape it arrives in", () => {
+  const SHAPES_SRC = code("components/admin/shared/panel-skeleton.tsx");
+  const PAGE = code("app/admin/page.tsx");
+
+  /** `key: { ... }` entries of ADMIN_PANEL_SHAPES, sliced at matching braces. */
+  function shapeEntries(): Map<string, string> {
+    const start = SHAPES_SRC.indexOf("ADMIN_PANEL_SHAPES");
+    const body = SHAPES_SRC.slice(SHAPES_SRC.indexOf("{", start));
+    const out = new Map<string, string>();
+    const re = /(?:^|\n)\s{2}"?([a-z-]+)"?:\s*\{/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(body)) !== null) {
+      let depth = 0;
+      let i = m.index + m[0].length - 1;
+      for (; i < body.length; i++) {
+        if (body[i] === "{") depth++;
+        else if (body[i] === "}" && --depth === 0) break;
+      }
+      out.set(m[1], body.slice(m.index, i + 1));
+    }
+    return out;
+  }
+
+  /**
+   * Which source file each tab's panel actually lives in, read off the
+   * dynamic() calls in app/admin/page.tsx rather than listed here. A tab whose
+   * panel moves takes its assertions with it.
+   */
+  function panelFiles(): Map<string, string> {
+    const out = new Map<string, string>();
+    const add = (tab: string, spec: string) => {
+      let rel = spec.replace(/^@\//, "");
+      if (!fs.existsSync(path.join(ROOT, `${rel}.tsx`))) {
+        const barrel = path.join(ROOT, rel, "index.ts");
+        if (!fs.existsSync(barrel)) return;
+        const first = /export \* from "\.\/([\w-]+)"/.exec(
+          fs.readFileSync(barrel, "utf8"),
+        );
+        if (!first) return;
+        rel = `${rel}/${first[1]}`;
+      }
+      out.set(tab, `${rel}.tsx`);
+    };
+    for (const m of PAGE.matchAll(
+      /panel\("([^"]+)",\s*\(\)\s*=>\s*import\("([^"]+)"/g,
+    )) {
+      add(m[1], m[2]);
+    }
+    // The six panels that take props keep their own dynamic() call. The
+    // import specifier is the last one before the fallback names its tab.
+    for (const m of PAGE.matchAll(/AdminPanelSkeleton tab="([^"]+)"/g)) {
+      const spec = [
+        ...PAGE.slice(0, m.index).matchAll(
+          /import\("(@\/components\/admin[^"]+)"\)/g,
+        ),
+      ].pop();
+      if (spec) add(m[1], spec[1]);
+    }
+    return out;
+  }
+
+  const SHAPES = shapeEntries();
+  const FILES = panelFiles();
+
+  it("has a shape for every routable destination", () => {
+    // Record<AdminTabKey, PanelShape> already makes a missing key a type
+    // error. This catches the other half: a key here that VALID_TABS dropped.
+    expect([...SHAPES.keys()].sort()).toEqual([...VALID_TABS].sort());
+  });
+
+  it("found the panel file behind every tab", () => {
+    // If this shrinks, the two assertions below stopped checking anything.
+    expect(FILES.size).toBe(VALID_TABS.length);
+  });
+
+  /** Cells in each `<StatBar items={[...]} />` the panel renders, in order. */
+  function realStripCells(src: string): number[] {
+    const out: number[] = [];
+    for (const m of src.matchAll(/<StatBar\b/g)) {
+      const from = src.indexOf("items={[", m.index);
+      if (from === -1) continue;
+      let depth = 0;
+      let i = from + "items={".length;
+      for (; i < src.length; i++) {
+        if (src[i] === "[") depth++;
+        else if (src[i] === "]" && --depth === 0) break;
+      }
+      // \blabel: rather than a line-anchored match: the first cell of several
+      // strips is written inline as `{ label: "Total", value: ... }`.
+      out.push((src.slice(from, i).match(/\blabel:/g) ?? []).length);
+    }
+    return out;
+  }
+
+  /** Cells the shape reserves, in order. */
+  function shapedStripCells(shape: string): number[] {
+    const m = /stats:\s*(\[[^\]]*\]|\d+)/.exec(shape);
+    const cells = !m
+      ? []
+      : m[1].startsWith("[")
+        ? m[1]
+            .slice(1, -1)
+            .split(",")
+            .map((n) => Number(n.trim()))
+        : [Number(m[1])];
+    // Scanner Queue is the one panel whose strip sits inside the card body
+    // rather than above it, so it is a body kind rather than a `stats` count.
+    // QueueBodySkeleton draws four cells; the panel renders four.
+    if (/body:\s*"queue"/.test(shape)) cells.push(4);
+    return cells;
+  }
+
+  it.each([...FILES.keys()])(
+    "%s reserves the stat strip the panel renders",
+    (tab) => {
+      const src = code(FILES.get(tab)!);
+      expect(shapedStripCells(SHAPES.get(tab)!)).toEqual(realStripCells(src));
+    },
+  );
+
+  // A panel whose second card the placeholder never heard of grows by roughly
+  // 130px of header the moment its chunk lands. Five panels stack two cards
+  // and Engine Feedback stacks three; the old one-shape-fits-all fallback drew
+  // one for all of them.
+  const CONDITIONAL_HEADERS: Record<string, number> = {
+    // The install-log card only exists while a job is running, so it is not
+    // part of the shape this panel rests at.
+    updater: 1,
+  };
+
+  it.each([...FILES.keys()])("%s reserves one card per panel header", (tab) => {
+    const src = code(FILES.get(tab)!);
+    const real =
+      (src.match(/<AdminPanelHeader\b/g) ?? []).length -
+      (CONDITIONAL_HEADERS[tab] ?? 0);
+    const shape = SHAPES.get(tab)!;
+    // A fact panel (Backups, Updater) draws its own header, as does the
+    // System Health card.
+    const cards = [
+      ...shape.matchAll(/\{\s*(?:header|filterRows|body)[^}]*\}/g),
+    ];
+    const reserved =
+      cards.filter((c) => !/header:\s*"(none|plain)"/.test(c[0])).length +
+      (/facts:/.test(shape) ? 1 : 0);
+    expect(reserved).toBe(real);
+  });
+});
+
+describe("the health list reserves the rows buildHealthRows emits", () => {
+  // The skeleton's own comment said eight while HealthOverview passed six, so
+  // the route drew eight rows, the card redrew six, and the list arrived at
+  // eight. The count is computed from the builder now.
+  it("HEALTH_ROW_COUNT comes from the builder, not a literal", () => {
+    const src = code("components/admin/features/health-overview-utils.ts");
+    expect(src).toMatch(/HEALTH_ROW_COUNT\s*=\s*buildHealthRows\(/);
+    expect(HEALTH_ROW_COUNT).toBeGreaterThan(1);
+  });
+
+  it("covers every metric guard the builder reads", () => {
+    // The probe object is what makes the count right. If a check is added to
+    // buildHealthRows and not to HEALTH_CHECK_KEYS, the count silently stops
+    // reserving a row for it.
+    const src = code("components/admin/features/health-overview-utils.ts");
+    const guards = new Set(
+      [...src.matchAll(/metrics\.(\w+)\s*!==\s*undefined/g)].map((m) => m[1]),
+    );
+    expect([...guards].sort()).toEqual([...HEALTH_CHECK_KEYS].sort());
+  });
+
+  it("neither caller of the list types its own row count", () => {
+    expect(code("components/admin/features/health-overview.tsx")).not.toMatch(
+      /HealthListSkeleton rows=/,
+    );
+    expect(code("components/admin/shared/skeleton.tsx")).toContain(
+      "rows = HEALTH_ROW_COUNT",
+    );
+  });
+});
+
+describe("admin placeholders draw what the panel draws", () => {
+  const ADMIN_FILES = walkTsx("components/admin");
+
+  it("no table placeholder sits in a padded, bordered box", () => {
+    // Eleven panels wrapped DataTableSkeleton in their own `p-4 sm:p-5` div
+    // while the table that arrives is flush inside a CardContent at p-0, and
+    // the skeleton drew a border the card already had. The option to do it is
+    // gone, so this pins that it stays gone.
+    const src = code("components/admin/shared/skeleton.tsx");
+    expect(src).not.toMatch(/bordered/);
+    for (const file of ADMIN_FILES) {
+      expect(
+        code(file),
+        `${file} re-adds a bordered table placeholder`,
+      ).not.toMatch(/<DataTableSkeleton[^/]*bordered/);
+    }
+  });
+
+  it("the panel header placeholder stacks the way the real header does", () => {
+    // AdminPanelHeader is `flex flex-col gap-3 sm:flex-row`. Side by side at
+    // every width, the placeholder was one row where the real header is two on
+    // a phone.
+    const src = code("components/admin/shared/skeleton.tsx");
+    const start = src.indexOf("export function PanelHeaderSkeleton");
+    const header = src.slice(start, src.indexOf("export function", start + 1));
+    expect(header).toContain("sm:flex-row");
+  });
+
+  it("nothing in the admin panel pulses through a reduced-motion setting", () => {
+    // Every placeholder goes through components/ui/skeleton.tsx, which pairs
+    // animate-pulse with motion-reduce:animate-none. A hand-rolled one does
+    // not, and the email preview's 600px block was exactly that.
+    const offenders = ADMIN_FILES.filter((file) =>
+      [...code(file).matchAll(/animate-pulse/g)].some((m) => {
+        const line = code(file).slice(
+          code(file).lastIndexOf("\n", m.index) + 1,
+          code(file).indexOf("\n", m.index),
+        );
+        // A live status dot is not a placeholder; a placeholder is.
+        return (
+          /Skeleton|skeleton|placeholder/.test(line) ||
+          (/rounded|bg-muted/.test(line) && !line.includes("motion-reduce"))
+        );
+      }),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it("every panel that draws a body placeholder names its live region", () => {
+    // A screen reader was told nothing at all between clicking a section and
+    // its content arriving.
+    const BODY_SHAPES =
+      /<(DataTable|RowList|LogList|HealthList|SettingsFields|FactPanel|QueueBody)Skeleton/;
+    const unnamed = ADMIN_FILES.filter((file) => {
+      if (file.includes("shared/") || file.includes("admin-skeleton"))
+        return false;
+      const src = code(file);
+      if (!BODY_SHAPES.test(src)) return false;
+      return !/SkeletonRegion|AdminPanelSkeleton/.test(src);
+    });
+    expect(unnamed).toEqual([]);
   });
 });
 

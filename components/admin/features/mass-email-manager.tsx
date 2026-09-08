@@ -36,9 +36,10 @@ import {
 import { getPaidPlans } from "@/lib/billing/catalog";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
 import {
+  SkeletonRegion,
   AdminPanelHeader,
   EmptyState,
-  DataTableSkeleton,
+  RowListSkeleton,
   StatBar,
   StatusPill,
   Toast,
@@ -562,9 +563,12 @@ export function MassEmailManager() {
         />
 
         {loading && messages.length === 0 ? (
-          <div className="p-4 sm:p-5">
-            <DataTableSkeleton rows={5} />
-          </div>
+          // A divided list of broadcast rows, each an icon tile beside a few
+          // lines of text. DataTableSkeleton's table header bar and round
+          // avatar belong to a shape this panel never renders.
+          <SkeletonRegion label="Loading broadcasts">
+            <RowListSkeleton rows={5} />
+          </SkeletonRegion>
         ) : messages.length === 0 ? (
           <EmptyState
             icon={MailOpen}

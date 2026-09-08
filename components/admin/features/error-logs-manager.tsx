@@ -15,6 +15,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import {
+  SkeletonRegion,
   AdminPanelHeader,
   EmptyState,
   LogListSkeleton,
@@ -213,7 +214,9 @@ export function ErrorLogsManager() {
             // The list's own shape, not DataTableSkeleton: this panel has no
             // table header and no avatar column, so that skeleton drew a
             // layout the loaded panel never shows.
-            <LogListSkeleton rows={6} />
+            <SkeletonRegion label="Loading error logs">
+              <LogListSkeleton rows={pageSize} />
+            </SkeletonRegion>
           ) : logs.length === 0 ? (
             <EmptyState
               icon={Bug}

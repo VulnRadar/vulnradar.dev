@@ -29,11 +29,13 @@ import { pluralize } from "@/lib/ui/plural";
 import { ROLE_COLORS } from "@/components/teams/teams-types";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
+  SkeletonRegion,
   UserAvatar,
   ConfirmDialog,
   EmptyState,
   TableScrollArea,
   DataTableSkeleton,
+  RowListSkeleton,
   SortableHeader,
   AdminPanelHeader,
   type SortDirection,
@@ -191,7 +193,13 @@ export function TeamsList({
           }
         >
           {teamMembersLoading ? (
-            <DataTableSkeleton rows={4} />
+            // The modal lists members as separately bordered rows in a gap
+            // stack: an avatar, a name over an address, and a role badge.
+            // DataTableSkeleton drew one bordered block with a table header
+            // bar across the top, which is not a shape this modal has.
+            <SkeletonRegion label="Loading team members">
+              <RowListSkeleton rows={4} lead="avatar" lines={1} boxed />
+            </SkeletonRegion>
           ) : (
             <div className="space-y-2">
               {(teamMembers?.members ?? []).map((member) => (
@@ -277,9 +285,12 @@ export function TeamsList({
           </AdminPanelHeader>
           <CardContent className="p-0">
             {teamsLoading ? (
-              <div className="p-4 sm:p-5">
-                <DataTableSkeleton rows={6} />
-              </div>
+              // teamsPageSize, not a literal six: the page size is a control
+              // the operator can set to 25, and the placeholder then drew six
+              // rows on the way to twenty-five.
+              <SkeletonRegion label="Loading teams">
+                <DataTableSkeleton rows={teamsPageSize} />
+              </SkeletonRegion>
             ) : teamsError ? (
               <EmptyState
                 icon={UsersRound}

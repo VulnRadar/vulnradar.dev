@@ -6,6 +6,7 @@ export * from "./stat-card";
 export * from "./user-avatar";
 export * from "./action-badge";
 export * from "./skeleton";
+export * from "./panel-skeleton";
 export * from "./action-card";
 export * from "./status-pill";
 export * from "./panel-header";

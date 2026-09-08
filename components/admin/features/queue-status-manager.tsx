@@ -5,9 +5,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ListOrdered, RefreshCw, AlertTriangle, Clock } from "lucide-react";
 import {
+  SkeletonRegion,
   AdminPanelHeader,
   StatBar,
-  StatBarSkeleton,
+  QueueBodySkeleton,
   StatusPill,
   StatusValue,
   Toast,
@@ -147,7 +148,13 @@ export function QueueStatusManager() {
               </p>
             </div>
           ) : loading || !data ? (
-            <StatBarSkeleton segments={4} />
+            // The strip AND the two age cells below it. Drawing the strip
+            // alone meant the card grew by a whole fact row the moment the
+            // counts landed, and the ages are the sharper diagnostic of the
+            // two.
+            <SkeletonRegion label="Loading scanner queue">
+              <QueueBodySkeleton />
+            </SkeletonRegion>
           ) : (
             <>
               <StatBar

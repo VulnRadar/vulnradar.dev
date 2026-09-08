@@ -11,7 +11,7 @@ import {
   ServerCrash,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { HealthListSkeleton } from "@/components/admin/shared";
+import { HealthListSkeleton, SkeletonRegion } from "@/components/admin/shared";
 import {
   buildHealthRows,
   formatGeneratedAt,
@@ -155,7 +155,11 @@ export function HealthOverview({
           // The same row shape the list below renders, not a stat strip: this
           // panel stopped being a row of counters when it became the health
           // list, and a strip here made the card change shape twice on load.
-          <HealthListSkeleton rows={6} />
+          // No row count either: it said six against the eight buildHealthRows
+          // emits, so the card grew by two rows as the metrics landed.
+          <SkeletonRegion label="Loading health checks">
+            <HealthListSkeleton />
+          </SkeletonRegion>
         ) : loadFailed && rows.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
             <ServerCrash

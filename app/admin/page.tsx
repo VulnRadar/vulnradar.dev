@@ -27,18 +27,14 @@ import {
   setQueryParams,
 } from "@/lib/ui/url-state";
 import {
-  StatBarSkeleton,
-  DataTableSkeleton,
-  FactPanelSkeleton,
-  HealthCardSkeleton,
-  LogListSkeleton,
-  PanelCardSkeleton,
-  SettingsFieldsSkeleton,
+  AdminPanelSkeleton,
+  PanelSkeleton,
   AdminMobileToc,
   AdminMobileSectionTrigger,
   type AdminTocItem,
   type SortDirection,
 } from "@/components/admin/shared";
+import { SkeletonRegion } from "@/components/shared/skeleton-shapes";
 import { AdminDataSkeleton } from "@/components/admin/admin-skeleton";
 import { ACTION_LABELS } from "@/components/admin/config";
 import { hasStaffPermission, isStaffRole } from "@/lib/auth/permissions-client";
@@ -99,196 +95,133 @@ import type {
 // different cell count, and the five that own a purpose-built skeleton showed
 // three different shapes on the way to their content. Each panel now names its
 // own shape.
+// The shape each fallback draws comes from ADMIN_PANEL_SHAPES
+// (components/admin/shared/panel-skeleton.tsx), keyed by the same AdminTabKey
+// this file switches on, so the fallback, app/admin/loading.tsx and the panel's
+// own pre-fetch state cannot describe one tab three different ways. Passing the
+// key here rather than a shape object is what makes that true.
 const panel = (
+  tab: AdminTabKey,
   load: () => Promise<{ default: React.ComponentType }>,
-  shape: PanelShape = {},
 ): React.ComponentType =>
-  dynamic(load, { ssr: false, loading: () => <PanelSkeleton {...shape} /> });
+  dynamic(load, {
+    ssr: false,
+    loading: () => <AdminPanelSkeleton tab={tab} />,
+  });
 
-interface PanelShape {
-  /** Cells in the panel's stat strip, or one entry per strip for the panels
-   *  that stack two (the user directory does). Omitted means no strip. */
-  stats?: number | number[];
-  /** The panel's header carries a search field or filter row. */
-  filterRow?: boolean;
-  /** Body below the strip. Defaults to the six-row data table. */
-  body?: "table" | "settings" | "logs" | "none";
-  /** Panels that open with a fact grid (Backups, Updater). Set, this renders
-   *  the exact skeleton those panels show once mounted, so the sequence is one
-   *  shape rather than a table on the way to a fact grid. */
-  facts?: number;
-}
-
-function PanelSkeleton({
-  stats,
-  filterRow,
-  body = "table",
-  facts,
-}: PanelShape) {
-  // A fact grid is a whole panel shape rather than a body variant, so it
-  // replaces everything below rather than sitting inside the Card.
-  return facts !== undefined ? (
-    <FactPanelSkeleton facts={facts} />
-  ) : (
-    <div className="space-y-4">
-      {/* The strip sits above the Card, which is where every panel that has
-          one puts it (see components/admin/users/users-tab.tsx). */}
-      {stats !== undefined && (
-        <div className="space-y-3">
-          {(Array.isArray(stats) ? stats : [stats]).map((segments, i) => (
-            <StatBarSkeleton key={i} segments={segments} />
-          ))}
-        </div>
-      )}
-      <PanelCardSkeleton withFilterRow={filterRow}>
-        {body === "table" && <DataTableSkeleton rows={6} bordered={false} />}
-        {body === "settings" && (
-          <div className="p-4 sm:p-5">
-            <SettingsFieldsSkeleton />
-          </div>
-        )}
-        {body === "logs" && <LogListSkeleton />}
-      </PanelCardSkeleton>
-    </div>
-  );
-}
-
-const IPRulesManager = panel(
-  () =>
-    import("@/components/admin/features/ip-rules-manager").then((m) => ({
-      default: m.IPRulesManager,
-    })),
-  { stats: 4, filterRow: true },
+const IPRulesManager = panel("access-rules", () =>
+  import("@/components/admin/features/ip-rules-manager").then((m) => ({
+    default: m.IPRulesManager,
+  })),
 );
-const BlockedDataManager = panel(
-  () =>
-    import("@/components/admin/features/blocked-data-manager").then((m) => ({
-      default: m.BlockedDataManager,
-    })),
-  { stats: 3, filterRow: true },
+const BlockedDataManager = panel("blocked-data", () =>
+  import("@/components/admin/features/blocked-data-manager").then((m) => ({
+    default: m.BlockedDataManager,
+  })),
 );
-const ContentManager = panel(
-  () =>
-    import("@/components/admin/features/content-manager").then((m) => ({
-      default: m.ContentManager,
-    })),
-  { filterRow: true },
+const ContentManager = panel("content", () =>
+  import("@/components/admin/features/content-manager").then((m) => ({
+    default: m.ContentManager,
+  })),
 );
-const SecurityAlertsManager = panel(
-  () =>
-    import("@/components/admin/features/security-alerts-manager").then((m) => ({
-      default: m.SecurityAlertsManager,
-    })),
-  { stats: 5 },
+const SecurityAlertsManager = panel("security-alerts", () =>
+  import("@/components/admin/features/security-alerts-manager").then((m) => ({
+    default: m.SecurityAlertsManager,
+  })),
 );
-const SystemSettingsManager = panel(
-  () =>
-    import("@/components/admin/features/system-settings-manager").then((m) => ({
-      default: m.SystemSettingsManager,
-    })),
-  { body: "settings", filterRow: true },
+const SystemSettingsManager = panel("settings", () =>
+  import("@/components/admin/features/system-settings-manager").then((m) => ({
+    default: m.SystemSettingsManager,
+  })),
 );
-const MassEmailManager = panel(
-  () =>
-    import("@/components/admin/features/mass-email-manager").then((m) => ({
-      default: m.MassEmailManager,
-    })),
-  { stats: 3 },
+const MassEmailManager = panel("broadcast", () =>
+  import("@/components/admin/features/mass-email-manager").then((m) => ({
+    default: m.MassEmailManager,
+  })),
 );
-const AIChatsManager = panel(
-  () =>
-    import("@/components/admin/features/ai-chats-manager").then((m) => ({
-      default: m.AIChatsManager,
-    })),
-  { stats: 4, filterRow: true },
+const AIChatsManager = panel("ai-chats", () =>
+  import("@/components/admin/features/ai-chats-manager").then((m) => ({
+    default: m.AIChatsManager,
+  })),
 );
-// Its own two-pane layout, so nothing below the header is a table.
-const SupportInbox = panel(
-  () =>
-    import("@/components/admin/features/support-inbox").then((m) => ({
-      default: m.SupportInbox,
-    })),
-  { body: "none" },
+const SupportInbox = panel("support-tickets", () =>
+  import("@/components/admin/features/support-inbox").then((m) => ({
+    default: m.SupportInbox,
+  })),
 );
 // Updater and Backups open with a fact grid, and each already renders its own
 // FactPanelSkeleton once mounted. Drawing a stat strip over a table here made
 // the load sequence three shapes deep; the same fact grid makes it one.
-const UpdaterManager = panel(
-  () =>
-    import("@/components/admin/features/updater-manager").then((m) => ({
-      default: m.UpdaterManager,
-    })),
-  { facts: 4 },
+const UpdaterManager = panel("updater", () =>
+  import("@/components/admin/features/updater-manager").then((m) => ({
+    default: m.UpdaterManager,
+  })),
 );
-const BackupManager = panel(
-  () =>
-    import("@/components/admin/features/backup-manager").then((m) => ({
-      default: m.BackupManager,
-    })),
-  { facts: 3 },
+const BackupManager = panel("backup", () =>
+  import("@/components/admin/features/backup-manager").then((m) => ({
+    default: m.BackupManager,
+  })),
 );
-const ErrorLogsManager = panel(
-  () =>
-    import("@/components/admin/features/error-logs-manager").then((m) => ({
-      default: m.ErrorLogsManager,
-    })),
-  { body: "logs", filterRow: true },
+const ErrorLogsManager = panel("error-logs", () =>
+  import("@/components/admin/features/error-logs-manager").then((m) => ({
+    default: m.ErrorLogsManager,
+  })),
 );
-const EmailLogsManager = panel(
-  () =>
-    import("@/components/admin/features/email-logs-manager").then((m) => ({
-      default: m.EmailLogsManager,
-    })),
-  { body: "logs", filterRow: true },
+const EmailLogsManager = panel("email-logs", () =>
+  import("@/components/admin/features/email-logs-manager").then((m) => ({
+    default: m.EmailLogsManager,
+  })),
 );
-const EngineFeedbackManager = panel(() =>
+const EngineFeedbackManager = panel("engine-feedback", () =>
   import("@/components/admin/features/engine-feedback-manager").then((m) => ({
     default: m.EngineFeedbackManager,
   })),
 );
-const QueueStatusManager = panel(
-  () =>
-    import("@/components/admin/features/queue-status-manager").then((m) => ({
-      default: m.QueueStatusManager,
-    })),
-  { stats: 4, body: "none" },
+const QueueStatusManager = panel("queue-status", () =>
+  import("@/components/admin/features/queue-status-manager").then((m) => ({
+    default: m.QueueStatusManager,
+  })),
 );
-const BillingOverviewManager = panel(
-  () =>
-    import("@/components/admin/features/billing-overview-manager").then(
-      (m) => ({
-        default: m.BillingOverviewManager,
-      }),
-    ),
-  { stats: 5 },
+const BillingOverviewManager = panel("billing-overview", () =>
+  import("@/components/admin/features/billing-overview-manager").then((m) => ({
+    default: m.BillingOverviewManager,
+  })),
 );
 const HealthOverview = dynamic(
   () =>
     import("@/components/admin/features/health-overview").then((m) => ({
       default: m.HealthOverview,
     })),
-  // Overview is the tab the panel lands on, so this fallback is the first
-  // thing anyone opening /admin sees. PanelSkeleton (a stat strip over a
-  // table) is the shape of the tab this one replaced, so the load sequence
-  // drew counters and a table on the way to a status list.
-  { ssr: false, loading: () => <HealthCardSkeleton /> },
+  { ssr: false, loading: () => <AdminPanelSkeleton tab="overview" /> },
 );
 
-// These four take props, so they keep their own typed dynamic() calls rather
-// than going through the prop-less `panel` helper above.
+// These six take props, so they keep their own typed dynamic() calls rather
+// than going through the prop-less `panel` helper above. The shape still comes
+// from the same table.
 const NotificationsManager = dynamic(
   () =>
     import("@/components/admin/notifications").then((m) => ({
       default: m.NotificationsManager,
     })),
-  { ssr: false, loading: () => <PanelSkeleton {...{ stats: 4 }} /> },
+  { ssr: false, loading: () => <AdminPanelSkeleton tab="notifications" /> },
 );
 const UserDetailPanel = dynamic(
   () =>
     import("@/components/admin/users").then((m) => ({
       default: m.UserDetailPanel,
     })),
-  { ssr: false, loading: () => <PanelSkeleton {...{ body: "none" }} /> },
+  {
+    ssr: false,
+    // Not a tab of its own: it opens above the user directory, and it is one
+    // Card whose body is a stat strip and a stack of sections the placeholder
+    // has no way to predict. A header and nothing under it is the honest
+    // reservation.
+    loading: () => (
+      <SkeletonRegion label="Loading account">
+        <PanelSkeleton cards={[{ body: "none" }]} />
+      </SkeletonRegion>
+    ),
+  },
 );
 // Imported from its own path rather than the components/admin/users barrel:
 // the barrel would pull the 2,900-line user-detail-panel into the same chunk
@@ -299,28 +232,22 @@ const UsersTab = dynamic(
     import("@/components/admin/users/users-tab").then((m) => ({
       default: m.UsersTab,
     })),
-  {
-    ssr: false,
-    loading: () => <PanelSkeleton {...{ stats: [5, 5], filterRow: true }} />,
-  },
+  { ssr: false, loading: () => <AdminPanelSkeleton tab="users" /> },
 );
 const AuditLog = dynamic(
   () =>
     import("@/components/admin/audit").then((m) => ({ default: m.AuditLog })),
-  {
-    ssr: false,
-    loading: () => <PanelSkeleton {...{ stats: 4, filterRow: true }} />,
-  },
+  { ssr: false, loading: () => <AdminPanelSkeleton tab="audit" /> },
 );
 const StaffList = dynamic(
   () =>
     import("@/components/admin/staff").then((m) => ({ default: m.StaffList })),
-  { ssr: false, loading: () => <PanelSkeleton {...{ stats: 5 }} /> },
+  { ssr: false, loading: () => <AdminPanelSkeleton tab="admins" /> },
 );
 const TeamsList = dynamic(
   () =>
     import("@/components/admin/teams").then((m) => ({ default: m.TeamsList })),
-  { ssr: false, loading: () => <PanelSkeleton {...{ filterRow: true }} /> },
+  { ssr: false, loading: () => <AdminPanelSkeleton tab="teams" /> },
 );
 
 // Derived from VALID_TABS in components/admin/nav.ts rather than hand-
@@ -1266,7 +1193,11 @@ function AdminContent() {
       </div>
 
       {panelLoading ? (
-        <AdminDataSkeleton />
+        // The tab is already known here: handleQueryChange reads ?tab= off the
+        // URL on mount, well before the admin data request resolves. This is
+        // the placeholder that is on screen for the whole fetch, so it is the
+        // one that has to be the right section rather than always Overview.
+        <AdminDataSkeleton tab={activeTab} />
       ) : (
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Sidebar */}

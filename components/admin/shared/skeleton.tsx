@@ -1,6 +1,8 @@
 import { cn } from "@/lib/ui/utils";
 import { StatStripSkeleton } from "@/components/shared/stat-strip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SkeletonRegion } from "@/components/shared/skeleton-shapes";
+import { HEALTH_ROW_COUNT } from "@/components/admin/features/health-overview-utils";
 
 /**
  * Re-exported, not redefined. This file used to declare a second base
@@ -8,8 +10,14 @@ import { Skeleton } from "@/components/ui/skeleton";
  * the app-wide one in components/ui/skeleton.tsx (`rounded-md`, 6px), so every
  * admin placeholder sat a rung below every other placeholder in the product.
  * Two primitives is the drift vector itself: there is one now.
+ *
+ * SkeletonRegion comes through here for the same reason: every shape below is
+ * a body that sits inside a panel whose header is already on screen, so the
+ * live region has to be declared at the call site that knows what is loading.
+ * Re-exporting it keeps that one import line rather than sending twenty panels
+ * to a second path for one component.
  */
-export { Skeleton };
+export { Skeleton, SkeletonRegion };
 
 // The five bespoke per-section skeletons that used to sit here
 // (UsersListSkeleton, AuditLogSkeleton, UserDetailSkeleton, StaffListSkeleton,
@@ -39,11 +47,17 @@ export function StatBarSkeleton({ segments = 5 }: { segments?: number }) {
  * panel drew a stat strip and then a user table on the way to a status list,
  * so nothing that flashed resembled what arrived.
  *
- * Eight rows, not six: buildHealthRows (features/health-overview-utils.ts)
- * emits scan queue (two), backup, error logs, email, security alerts, support
- * tickets and staff invites, plus a ninth when an update is available.
+ * The row count comes from buildHealthRows itself (HEALTH_ROW_COUNT), not from
+ * a number typed here. The two used to disagree in exactly the way a hand-typed
+ * count does: this file's comment said eight while HealthOverview passed six,
+ * so the route drew eight rows, the card redrew six, and the list then arrived
+ * at eight.
  */
-export function HealthListSkeleton({ rows = 8 }: { rows?: number }) {
+export function HealthListSkeleton({
+  rows = HEALTH_ROW_COUNT,
+}: {
+  rows?: number;
+}) {
   return (
     <ul className="divide-y divide-border/50 border-t border-border/50">
       {Array.from({ length: rows }).map((_, i) => (
@@ -93,15 +107,20 @@ export function HealthCardSkeleton() {
  * appeared on top of every tab the moment its chunk landed.
  */
 export function PanelHeaderSkeleton({
-  /** Panels whose header carries a search field or filter row below the
-   *  heading (users, audit, blocked data, and friends). */
-  withFilterRow = false,
+  /** Control rows below the heading. Most panels that have any have one, a
+   *  search field; the audit log has two, a wrapping chip row over its search
+   *  box, and drew one. */
+  filterRows = 0,
 }: {
-  withFilterRow?: boolean;
+  filterRows?: number;
 }) {
   return (
     <div className="border-b border-border/50 px-4 sm:px-5 pt-5 pb-4 space-y-4">
-      <div className="flex items-start justify-between gap-3">
+      {/* Stacks below sm, because AdminPanelHeader does. Drawn side by side at
+          every width, the placeholder was one row where the real header is two
+          on a phone, so the whole panel jumped up by an action row's height the
+          moment the header rendered. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3 min-w-0">
           {/* p-2 around a 16px glyph is a 32px tile at rounded-md. */}
           <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
@@ -112,30 +131,9 @@ export function PanelHeaderSkeleton({
         </div>
         <Skeleton className="h-9 w-24 shrink-0 rounded-md" />
       </div>
-      {withFilterRow && <Skeleton className="h-9 w-full rounded-md" />}
-    </div>
-  );
-}
-
-/**
- * The Card an admin tab loads into: the panel header over its body, at the
- * geometry every panel actually uses (a rounded-lg Card whose CardContent is
- * p-0, so the body's own rows sit flush against the header). The dynamic()
- * fallback in app/admin/page.tsx used to wrap DataTableSkeleton, which carries
- * its own border, in a second bordered rounded-xl box: a nested double border
- * one rung too large, around a body no panel has.
- */
-export function PanelCardSkeleton({
-  children,
-  withFilterRow = false,
-}: {
-  children: React.ReactNode;
-  withFilterRow?: boolean;
-}) {
-  return (
-    <div className="rounded-lg border border-border/50 bg-card/50 overflow-hidden">
-      <PanelHeaderSkeleton withFilterRow={withFilterRow} />
-      {children}
+      {Array.from({ length: filterRows }).map((_, i) => (
+        <Skeleton key={i} className="h-9 w-full rounded-md" />
+      ))}
     </div>
   );
 }
@@ -234,26 +232,114 @@ export function FactPanelSkeleton({
 }
 
 /**
- * Skeleton for a data table: header bar + N rows, matches the
- * TableScrollArea + Table pattern used across the admin panel.
+ * Skeleton for a divided list of tall rows: a square tile, a couple of text
+ * lines and a trailing control. Broadcasts, Security Alerts, Site
+ * Notifications and Blocked Rules all render this and all four drew
+ * DataTableSkeleton on the way to it, which put a 40px table header bar and a
+ * round avatar into a panel that has neither.
+ *
+ * `boxed` is the modal variant (Team Members): separately bordered rows in a
+ * gap stack rather than dividers inside a card.
  */
-export function DataTableSkeleton({
-  rows = 6,
-  bordered = true,
+export function RowListSkeleton({
+  rows = 5,
+  lead = "tile",
+  lines = 2,
+  trailing = true,
+  boxed = false,
 }: {
   rows?: number;
-  /** Off when the table sits inside PanelCardSkeleton, which already draws the
-   *  Card border. The real panels put the table in a CardContent at p-0, with
-   *  no border of its own. */
-  bordered?: boolean;
+  /** The row's leading element: a 40px rounded-lg icon tile, a round avatar,
+   *  or nothing. */
+  lead?: "tile" | "avatar" | "none";
+  /** Text lines in the row body, below the title line. */
+  lines?: number;
+  trailing?: boolean;
+  boxed?: boolean;
 }) {
   return (
-    <div
-      className={cn(
-        "overflow-hidden",
-        bordered && "rounded-lg border border-border/50",
-      )}
-    >
+    // No border-t, unlike LogListSkeleton: the four panels that render this
+    // shape (Broadcasts, Security Alerts, Site Notifications, Blocked Rules)
+    // put the list in a plain `divide-y` container under a header that already
+    // draws the line, where the log panels' own list carries one.
+    <div className={cn(boxed ? "space-y-2" : "divide-y divide-border/40")}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className={cn(
+            "flex items-start gap-3",
+            boxed
+              ? "rounded-lg border border-border/50 bg-muted/30 p-3"
+              : "px-4 sm:px-5 py-4",
+          )}
+        >
+          {lead !== "none" && (
+            <Skeleton
+              className={cn(
+                "shrink-0",
+                lead === "avatar" ? "h-8 w-8 rounded-full" : "h-10 w-10",
+              )}
+            />
+          )}
+          <div className="flex-1 min-w-0 space-y-2">
+            <Skeleton className="h-4 w-1/3" />
+            {Array.from({ length: lines }).map((_, j) => (
+              <Skeleton
+                key={j}
+                className={cn("h-3", j === lines - 1 ? "w-1/2" : "w-full")}
+              />
+            ))}
+          </div>
+          {trailing && (
+            <Skeleton className="h-5 w-16 rounded-full shrink-0 mt-0.5" />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The Scanner Queue card's body: the count strip and the two age cells, inside
+ * the card's own padding. The strip is the only admin stat strip that lives
+ * INSIDE its card rather than above it, which is why this is a body shape
+ * rather than the `stats` option every other panel uses. The panel drew the
+ * strip alone while it waited, so the age grid dropped in underneath it.
+ */
+export function QueueBodySkeleton() {
+  return (
+    <div className="space-y-4">
+      <StatBarSkeleton segments={4} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {[0, 1].map((i) => (
+          <div
+            key={i}
+            className="rounded-md border border-border/40 bg-muted/20 px-3 py-2.5 space-y-1.5"
+          >
+            <Skeleton className="h-2.5 w-24" />
+            <Skeleton className="h-5 w-16" />
+            <Skeleton className="h-3 w-full max-w-[34ch]" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Skeleton for a data table: header bar + N rows, matches the
+ * TableScrollArea + Table pattern used across the admin panel.
+ *
+ * No border and no padding of its own, because there is nowhere in the panel
+ * where a table has either: every one sits in a CardContent at p-0 inside a
+ * card that draws the border. The `bordered` option this used to carry made
+ * the wrong thing the default, and eleven call sites took it, each wrapping
+ * the result in its own `p-4 sm:p-5` box on top. A double border, inset from
+ * a header the real table sits flush against.
+ */
+export function DataTableSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="overflow-hidden">
       <div className="h-10 bg-muted/30 border-b border-border/50" />
       <div className="divide-y divide-border/40">
         {Array.from({ length: rows }).map((_, i) => (

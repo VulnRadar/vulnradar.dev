@@ -33,9 +33,11 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import {
+  SkeletonRegion,
   AdminPanelHeader,
   EmptyState,
   DataTableSkeleton,
+  Skeleton,
   TableScrollArea,
   SortableHeader,
   StatusPill,
@@ -751,9 +753,9 @@ export function EngineFeedbackManager() {
         </AdminPanelHeader>
         <div>
           {loading ? (
-            <div className="p-4">
+            <SkeletonRegion label="Loading check accuracy">
               <DataTableSkeleton rows={6} />
-            </div>
+            </SkeletonRegion>
           ) : filteredChecks.length === 0 ? (
             <EmptyState
               icon={Gauge}
@@ -1078,9 +1080,9 @@ export function EngineFeedbackManager() {
         />
         <div>
           {loading ? (
-            <div className="p-4">
+            <SkeletonRegion label="Loading auto-tag dismissals">
               <DataTableSkeleton rows={4} />
-            </div>
+            </SkeletonRegion>
           ) : filteredTags.length === 0 ? (
             <EmptyState
               icon={Sparkles}
@@ -1231,9 +1233,9 @@ export function EngineFeedbackManager() {
         />
         <div>
           {loading ? (
-            <div className="p-4">
+            <SkeletonRegion label="Loading AI tag candidates">
               <DataTableSkeleton rows={3} />
-            </div>
+            </SkeletonRegion>
           ) : aiCandidates.length === 0 ? (
             <EmptyState
               icon={ArrowUpCircle}
@@ -1409,8 +1411,23 @@ function VerdictDetail({
 }) {
   if (loading || !rows) {
     return (
-      <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
-        Loading submitted verdicts...
+      <div
+        role="status"
+        aria-live="polite"
+        aria-label="Loading submitted verdicts"
+        className="rounded-lg border border-border/50 bg-muted/30 p-3"
+      >
+        {/* The divided verdict rows, not a line of text: one sentence stood in
+            for a list several rows tall, so the expanded row grew as it
+            arrived and pushed the rest of the table down. */}
+        <ul className="divide-y divide-border/40">
+          {[0, 1, 2].map((i) => (
+            <li key={i} className="py-2 first:pt-0 last:pb-0 space-y-1.5">
+              <Skeleton className="h-3 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }

@@ -25,6 +25,8 @@ import {
   ImageOff,
 } from "lucide-react";
 import {
+  Skeleton,
+  SkeletonRegion,
   AdminPanelHeader,
   EmptyState,
   LogListSkeleton,
@@ -382,7 +384,9 @@ export function EmailLogsManager() {
           {loading ? (
             // Matches the divided list below rather than DataTableSkeleton's
             // table header and avatar column, neither of which this panel has.
-            <LogListSkeleton rows={6} />
+            <SkeletonRegion label="Loading email logs">
+              <LogListSkeleton rows={pageSize} />
+            </SkeletonRegion>
           ) : logs.length === 0 ? (
             <EmptyState
               icon={Mail}
@@ -613,7 +617,12 @@ export function EmailLogsManager() {
                   </div>
 
                   {detailLoading ? (
-                    <div className="h-[600px] rounded-lg border border-border/50 bg-muted/20 animate-pulse" />
+                    // The shared primitive, not a hand-rolled pulsing div:
+                    // this one carried a bare animate-pulse, so a 600px block
+                    // throbbed on a machine that had asked for less motion.
+                    <SkeletonRegion label="Loading message preview">
+                      <Skeleton className="h-[600px] w-full rounded-lg border border-border/50 bg-muted/20" />
+                    </SkeletonRegion>
                   ) : detailError ? (
                     <div className="rounded-lg border border-border/50 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
                       Could not load this message.

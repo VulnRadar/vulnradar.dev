@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  SkeletonRegion,
   AdminPanelHeader,
   AdminPasswordConfirmDialog,
   FactPanelSkeleton,
@@ -260,7 +261,11 @@ export function UpdaterManager() {
     // Same reason as the Backups panel: the old centred spinner in a p-8 box
     // was a fraction of the height of the loaded card, so the tab resized
     // under the cursor when the status landed.
-    return <FactPanelSkeleton facts={4} />;
+    return (
+      <SkeletonRegion label="Loading updater status">
+        <FactPanelSkeleton facts={4} />
+      </SkeletonRegion>
+    );
   }
 
   const behind = status?.status === "behind";

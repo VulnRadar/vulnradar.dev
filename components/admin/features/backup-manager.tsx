@@ -21,6 +21,7 @@ import {
   formatRelativeTime,
 } from "@/components/admin/utils";
 import {
+  SkeletonRegion,
   AdminPanelHeader,
   FactPanelSkeleton,
   StatusPill,
@@ -204,7 +205,11 @@ export function BackupManager() {
     // The card's own shape, not a centred spinner in a p-8 box: that version
     // was about a third of the height of the loaded panel, so the whole tab
     // jumped the moment the status arrived.
-    return <FactPanelSkeleton facts={3} />;
+    return (
+      <SkeletonRegion label="Loading backup status">
+        <FactPanelSkeleton facts={3} />
+      </SkeletonRegion>
+    );
   }
 
   const job = status?.job ?? null;

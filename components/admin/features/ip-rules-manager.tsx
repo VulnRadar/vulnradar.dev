@@ -34,6 +34,7 @@ import {
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
 import {
+  SkeletonRegion,
   EmptyState,
   TableScrollArea,
   SortableHeader,
@@ -854,9 +855,9 @@ export function IPRulesManager() {
 
           <CardContent className="p-0">
             {loading && rules.length === 0 ? (
-              <div className="p-4">
+              <SkeletonRegion label="Loading access rules">
                 <DataTableSkeleton rows={6} />
-              </div>
+              </SkeletonRegion>
             ) : fetchError ? (
               <EmptyState
                 icon={AlertTriangle}

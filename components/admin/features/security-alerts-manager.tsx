@@ -16,9 +16,10 @@ import {
 } from "lucide-react";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
 import {
+  SkeletonRegion,
   StatBar,
   EmptyState,
-  DataTableSkeleton,
+  RowListSkeleton,
   AdminPanelHeader,
   StatusPill,
 } from "@/components/admin/shared";
@@ -345,9 +346,11 @@ export function SecurityAlertsManager() {
         {/* Alerts List */}
         <div className="divide-y divide-border/40">
           {loading && alerts.length === 0 ? (
-            <div className="p-4 sm:p-5">
-              <DataTableSkeleton rows={4} />
-            </div>
+            // Alert rows, not table rows: an icon tile, a title and two lines
+            // of detail. The container above already draws the dividers.
+            <SkeletonRegion label="Loading security alerts">
+              <RowListSkeleton rows={4} />
+            </SkeletonRegion>
           ) : fetchError ? (
             <EmptyState
               icon={AlertTriangle}

@@ -40,6 +40,7 @@ import { downloadBlob } from "@/lib/ui/download";
 import { APP_SLUG } from "@/lib/config/client-constants";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
+  SkeletonRegion,
   UserAvatar,
   ActionBadge,
   StatBar,
@@ -374,9 +375,11 @@ export function AuditLog({
         className="border-border/50 bg-card/50 overflow-hidden"
       >
         {isInitialLoad ? (
-          <div className="p-4 sm:p-5">
-            <DataTableSkeleton rows={6} />
-          </div>
+          // auditPageSize, not a literal six: this panel's page size is a
+          // control, so a fixed six was wrong for every setting but one.
+          <SkeletonRegion label="Loading audit log">
+            <DataTableSkeleton rows={auditPageSize} />
+          </SkeletonRegion>
         ) : filteredLogs.length === 0 ? (
           <EmptyState
             icon={History}

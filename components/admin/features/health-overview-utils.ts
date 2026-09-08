@@ -433,6 +433,38 @@ export function buildHealthRows(
     .map((entry) => entry.row);
 }
 
+/**
+ * Every optional metric key buildHealthRows reads. The permission filter on
+ * the route decides which of them a given role actually receives, so this is
+ * the ceiling rather than the count any one operator sees.
+ */
+export const HEALTH_CHECK_KEYS = [
+  "scanQueue",
+  "backup",
+  "errorLogs",
+  "email",
+  "securityAlerts",
+  "supportTickets",
+  "staffInvites",
+] as const;
+
+/**
+ * How many rows the health list reserves while it is waiting.
+ *
+ * Run through buildHealthRows rather than typed next to it: the skeleton in
+ * components/admin/shared/skeleton.tsx said eight in a comment while the card's
+ * own pre-fetch state passed six, so the route drew eight rows, the card
+ * redrew six, and the real list then arrived at eight again. scanQueue emits
+ * two rows on its own, which is exactly the sort of detail a hand-typed count
+ * gets wrong. `updateAvailable` is left off: a ninth row only exists on a
+ * deployment with a pending release, so reserving it would be wrong far more
+ * often than right.
+ */
+const ALL_CHECKS_UNKNOWN: HealthMetrics = { generatedAt: "" };
+for (const key of HEALTH_CHECK_KEYS) ALL_CHECKS_UNKNOWN[key] = null;
+
+export const HEALTH_ROW_COUNT = buildHealthRows(ALL_CHECKS_UNKNOWN).length;
+
 /** "2 minutes ago" for the "as of" line under the list. */
 export function formatGeneratedAt(iso: string | null): string {
   if (!iso) return "";

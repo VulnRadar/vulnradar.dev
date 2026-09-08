@@ -26,6 +26,7 @@ import { PaginationControl } from "@/components/ui/pagination-control";
 import { cn } from "@/lib/ui/utils";
 import { pluralize } from "@/lib/ui/plural";
 import {
+  SkeletonRegion,
   AdminPanelHeader,
   DataTableSkeleton,
   EmptyState,
@@ -257,9 +258,12 @@ export function AIChatsManager() {
 
         <div>
           {loading ? (
-            <div className="p-4 sm:p-5">
+            // Flush and unbordered: the table that arrives sits directly under
+            // the header inside a p-0 body, so the padded, separately bordered
+            // copy drew an inset and a second border the panel does not have.
+            <SkeletonRegion label="Loading conversations">
               <DataTableSkeleton rows={6} />
-            </div>
+            </SkeletonRegion>
           ) : conversations.length === 0 ? (
             <EmptyState
               icon={MessageCircle}

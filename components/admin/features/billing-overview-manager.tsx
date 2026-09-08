@@ -23,6 +23,7 @@ import {
 // same grey box with a different sentence in it.
 import { EmptyState } from "@/components/shared/empty-state";
 import {
+  SkeletonRegion,
   StatBar,
   StatBarSkeleton,
   StatusPill,
@@ -257,9 +258,9 @@ export function BillingOverviewManager() {
         </div>
         <div>
           {loading ? (
-            <div className="p-4 sm:p-5">
+            <SkeletonRegion label="Loading plan mix">
               <DataTableSkeleton rows={4} />
-            </div>
+            </SkeletonRegion>
           ) : !data ? (
             // Without this the failed fetch rendered a header-only table,
             // which reads as "no plans" rather than "nothing loaded". The
@@ -392,9 +393,9 @@ export function BillingOverviewManager() {
         </div>
         <div>
           {loading ? (
-            <div className="p-4 sm:p-5">
+            <SkeletonRegion label="Loading failed payments">
               <DataTableSkeleton rows={3} />
-            </div>
+            </SkeletonRegion>
           ) : !data ? (
             <EmptyState
               variant="inline"

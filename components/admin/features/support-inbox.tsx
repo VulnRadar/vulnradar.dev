@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   Inbox,
-  Loader2,
   MessageSquare,
   RefreshCw,
   Send,
@@ -13,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SkeletonRegion } from "@/components/shared/skeleton-shapes";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InlineAlert } from "@/components/shared/inline-alert";
@@ -350,11 +350,18 @@ export function SupportInbox() {
               // time, requester, the clamped last message, then the meta line.
               // A single centred spinner told the reader nothing about the
               // shape of what was coming.
-              <div role="status" aria-label="Loading tickets">
+              // SkeletonRegion rather than a bare role="status": it carries
+              // aria-live too, which this had lost, so a screen reader was
+              // told the region's name only if focus happened to land in it.
+              // gap-0 because these rows are their own dividers.
+              <SkeletonRegion label="Loading tickets" className="gap-0">
                 {[0, 1, 2].map((i) => (
                   <div
                     key={i}
-                    className="flex flex-col gap-1.5 border-b border-border/40 px-4 py-3 pl-5 last:border-b-0"
+                    // gap-1, matching the row. gap-1.5 put an extra 6px
+                    // between four bands, so three rows of placeholder stood
+                    // 18px taller than three rows of ticket.
+                    className="flex flex-col gap-1 border-b border-border/40 px-4 py-3 pl-5 last:border-b-0"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <Skeleton className="h-3.5 w-1/2" />
@@ -365,7 +372,7 @@ export function SupportInbox() {
                     <Skeleton className="mt-0.5 h-3 w-1/3" />
                   </div>
                 ))}
-              </div>
+              </SkeletonRegion>
             ) : tickets.length === 0 ? (
               <EmptyState
                 variant="inline"
@@ -452,10 +459,27 @@ export function SupportInbox() {
               className="my-auto"
             />
           ) : threadLoading ? (
-            <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Loading conversation...
-            </div>
+            // The thread's own shape: the subject bar the pane pins to the
+            // top, then message blocks. A centred spinner was 60px of nothing
+            // where a header and a transcript arrive, and on a phone (where
+            // this pane is not the fixed 38rem it is on desktop) the pane grew
+            // to several screens the moment the fetch landed.
+            <SkeletonRegion label="Loading conversation" className="gap-0">
+              <div className="shrink-0 border-b border-border/60 px-4 py-3 space-y-2">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-3 w-2/3" />
+              </div>
+              <div className="space-y-4 p-4">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className={cn("flex", i % 2 === 0 ? "" : "justify-end")}
+                  >
+                    <Skeleton className="h-16 w-full max-w-[85%] rounded-lg" />
+                  </div>
+                ))}
+              </div>
+            </SkeletonRegion>
           ) : thread ? (
             <>
               <div className="shrink-0 border-b border-border/60 px-4 py-3">

@@ -25,6 +25,7 @@ import {
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
 import {
+  SkeletonRegion,
   AdminPanelHeader,
   EmptyState,
   StatusPill,
@@ -334,9 +335,9 @@ export function ContentManager() {
 
           <div>
             {loading ? (
-              <div className="p-4">
+              <SkeletonRegion label="Loading hosts and shares">
                 <DataTableSkeleton rows={6} />
-              </div>
+              </SkeletonRegion>
             ) : tab === "hosts" ? (
               hosts.length === 0 ? (
                 <EmptyState

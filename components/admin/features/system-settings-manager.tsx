@@ -31,6 +31,7 @@ import {
 import { downloadBlob } from "@/lib/ui/download";
 import { APP_SLUG } from "@/lib/config/client-constants";
 import {
+  SkeletonRegion,
   AdminPanelHeader,
   ConfirmDialog,
   StatusPill,
@@ -645,7 +646,9 @@ export function SystemSettingsManager() {
                     </div>
                   )}
                   {loading ? (
-                    <SettingsFieldsSkeleton />
+                    <SkeletonRegion label="Loading system settings">
+                      <SettingsFieldsSkeleton />
+                    </SkeletonRegion>
                   ) : (
                     <div className="rounded-lg border border-border/40 overflow-hidden">
                       {(() => {

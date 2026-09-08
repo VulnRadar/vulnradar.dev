@@ -1,8 +1,8 @@
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { SkeletonRegion } from "@/components/shared/skeleton-shapes";
 import { Skeleton } from "@/components/ui/skeleton";
-import { HealthCardSkeleton } from "@/components/admin/shared";
-import { ADMIN_NAV_GROUPS } from "@/components/admin/nav";
+import { ADMIN_PANEL_SHAPES, PanelSkeleton } from "@/components/admin/shared";
+import { ADMIN_NAV_GROUPS, type AdminTabKey } from "@/components/admin/nav";
 
 /**
  * Two exports over one shape, because a skeleton has two callers that want
@@ -15,9 +15,9 @@ import { ADMIN_NAV_GROUPS } from "@/components/admin/nav";
  * the region, and the shape below them is written once.
  *
  * What waits here is the sidebar and the panel. The sidebar is filtered by
- * callerRole, which arrives with the admin data request, and the panel is the
- * System Health card the tab lands on. The title block is not waiting on
- * anything, so it is real text on the first frame in both callers.
+ * callerRole, which arrives with the admin data request, and the panel is
+ * whichever section ?tab= names. The title block is not waiting on anything,
+ * so it is real text on the first frame in both callers.
  *
  * The body used to be two stat bars over an eight-row user table. That was
  * the shape of the old landing tab: Overview has been the landing tab since
@@ -25,7 +25,7 @@ import { ADMIN_NAV_GROUPS } from "@/components/admin/nav";
  * list arrived in their place. The width was stale for the same reason,
  * max-w-7xl against the page's max-w-6xl, so the content edge jumped too.
  */
-export function AdminDataSkeleton() {
+export function AdminDataSkeleton({ tab }: { tab?: AdminTabKey }) {
   return (
     <SkeletonRegion label="Loading admin panel" className="lg:flex-row gap-6">
       <aside className="w-full min-w-0 lg:w-52 shrink-0">
@@ -58,12 +58,39 @@ export function AdminDataSkeleton() {
         </div>
       </aside>
 
-      {/* Overview: the System Health card, header over a status list */}
       <div className="flex-1 min-w-0 flex flex-col gap-6">
-        <HealthCardSkeleton />
+        {/* The section the URL asked for, when the caller knows it. Without
+            `tab` this was always the Overview health card, so every deep link
+            (/admin?tab=users and the twenty others) drew a status list and
+            then replaced it with a stat strip over a table: a different
+            section, not a rougher version of the same one. */}
+        {tab ? (
+          <PanelSkeleton {...ADMIN_PANEL_SHAPES[tab]} />
+        ) : (
+          <ChromeOnlyPanelSkeleton />
+        )}
       </div>
     </SkeletonRegion>
   );
+}
+
+/**
+ * What a caller that cannot know the section draws instead.
+ *
+ * app/admin/loading.tsx is a route fallback, and Next gives loading.tsx no
+ * searchParams, so from there the tab is genuinely unknown. Reading it would
+ * mean making the fallback a client component that touches the query string,
+ * which is a hydration mismatch waiting to happen for the sake of a
+ * placeholder that is on screen only until the page chunk lands.
+ *
+ * So this draws the one element every section's first card has, a panel
+ * header, and stops. Under-reserving is the lesser error: the alternative is
+ * to guess a body, and a guessed body is wrong for twenty of the twenty-one
+ * destinations. AdminContent takes over within a frame of mounting and it
+ * does know the tab.
+ */
+function ChromeOnlyPanelSkeleton() {
+  return <PanelSkeleton cards={[{ body: "none" }]} />;
 }
 
 export function AdminSkeleton() {

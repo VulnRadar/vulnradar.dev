@@ -21,9 +21,8 @@ import { EmptyState } from "@/components/shared/empty-state";
 import {
   AdminPanelHeader,
   StatBar,
-  StatBarSkeleton,
+  AdminPanelSkeleton,
   StatusPill,
-  DataTableSkeleton,
 } from "@/components/admin/shared";
 import {
   Bell,
@@ -432,14 +431,12 @@ export function NotificationsManager() {
   });
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <StatBarSkeleton segments={4} />
-        <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50 p-4 sm:p-5">
-          <DataTableSkeleton rows={5} />
-        </div>
-      </div>
-    );
+    // The tab's own entry in ADMIN_PANEL_SHAPES, so this and the dynamic()
+    // fallback that precedes it are the same picture rather than two guesses.
+    // This branch replaces the panel header too, which the hand-rolled version
+    // left out entirely: a stat strip over a padded, double-bordered table,
+    // and then a header appeared above it all.
+    return <AdminPanelSkeleton tab="notifications" />;
   }
 
   return (

@@ -32,9 +32,10 @@ import {
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
 import {
+  SkeletonRegion,
   EmptyState,
   TableScrollArea,
-  DataTableSkeleton,
+  RowListSkeleton,
   StatBar,
   Toast,
   AdminPanelHeader,
@@ -771,9 +772,12 @@ export function BlockedDataManager() {
 
           <CardContent className="p-0">
             {loading ? (
-              <div className="p-4">
-                <DataTableSkeleton rows={5} />
-              </div>
+              // A divided list of rule rows arrives here, not a table: the
+              // panel has no header row and no avatar column, so
+              // DataTableSkeleton drew both on the way to neither.
+              <SkeletonRegion label="Loading blocked rules">
+                <RowListSkeleton rows={5} />
+              </SkeletonRegion>
             ) : fetchError ? (
               <EmptyState
                 icon={AlertTriangle}
