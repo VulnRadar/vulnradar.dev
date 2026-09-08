@@ -653,6 +653,13 @@ const CHANGELOG: Release[] = [
         desc: "When you open a site, the extension asks us whether it has been scanned before. That lookup can answer about the exact page or fall back to the host, and the server has preferred the exact page since it was built, with a note saying the extension always sends the page address because it knows the current tab. It never sent it. So a scan of a single repository on GitHub, or one article on a large site, was reported as the standing of every other page there. The exact address is sent now, and a result about one page is remembered against that page rather than against the whole host, so the offline fallback cannot show one page's findings for another.",
         category: "fixed",
       },
+      {
+        icon: MessageSquare,
+        label:
+          "Five Admin Actions Confirmed Themselves With Nothing In Particular",
+        desc: "Every action on a user's admin page reports back with a sentence saying what it did. Five had no sentence written for them and fell back to a generic Action completed, including the two that delete every webhook or every scheduled scan on an account, where that message is the only confirmation of what was just destroyed. All five say what happened now, and the panel's own test fails if a card is added without one.",
+        category: "fixed",
+      },
     ],
   },
   {
