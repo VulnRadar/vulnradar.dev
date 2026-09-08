@@ -16,6 +16,27 @@ import { detectors } from "@/lib/scanner/checks/api";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "api-openapi-security-scheme-weak": [
+    {
+      // It used to return "OpenAPI document reachable" at high severity for
+      // the URL alone, having found no weak scheme in it. Publishing a spec
+      // is what a spec is for, so every site that serves one, this product
+      // included, got a high finding for doing so.
+      description:
+        "regression: a reachable spec with correct schemes is not a high finding",
+      url: "https://example.com/api/v3/openapi.json",
+      body: '{"openapi":"3.1.0","components":{"securitySchemes":{"bearerAuth":{"type":"http","scheme":"bearer"}}}}',
+      expect: "skip",
+    },
+    {
+      description: "a spec that really does declare basic auth still fires",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.1.0","components":{"securitySchemes":{"legacy":{"type":"http","scheme":"basic"}}}}',
+      expect: "fire",
+      evidenceIncludes: "weak security scheme",
+    },
+  ],
+
   // graphql-endpoint-exposed, swagger-docs-exposed, debug-endpoint, admin-endpoint
   // — moved to content.ts; tested in content.test.ts
 

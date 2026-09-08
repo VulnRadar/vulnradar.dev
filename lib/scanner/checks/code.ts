@@ -11,7 +11,9 @@
 import {
   getSetCookies,
   stripExampleContent,
+  stripDocBlocks,
   type EvidenceFn as DetectFn,
+  extractScriptContents,
 } from "../_helpers";
 import { openTags, hasTagWith, tagsWith } from "./_tag-scan";
 
@@ -26,28 +28,16 @@ function splitAtLineBreak(text: string): string {
   return end === -1 ? text : text.slice(0, end);
 }
 
+/**
+ * The authored inline script on the page, as one string.
+ *
+ * This used to carry its own copy of the RSC-and-Cloudflare filter, which is
+ * why every other module that wanted inline script kept reading Next.js flight
+ * payloads as source: the fix lived here and nowhere else. It is in
+ * extractScriptContents now, so there is one walk and one filter.
+ */
 function inlineScriptContent(body: string): string {
-  const matches = body.matchAll(
-    /<script(?![^>]{0,2000}\bsrc\s*=)(?![^>]{0,2000}\btype\s*=\s*["']application\/(?:json|ld\+json)["'])[^>]{0,2000}>([\s\S]*?)<\/script>/gi,
-  );
-  // Next.js's RSC streaming pushes (self.__next_f.push(...)) carry
-  // arbitrary serialized page text as a JS string literal -- not an
-  // authored inline script -- and can spuriously contain innerHTML=/
-  // eval(/document.write( substrings from unrelated page copy.
-  //
-  // __CF$cv$params is Cloudflare's own bot/challenge-platform bootstrap
-  // script, injected verbatim at the edge into the HTML response of any
-  // site with that Cloudflare feature enabled -- after the origin server
-  // has already responded. The site owner didn't author it and can't
-  // sanitize it from application code, so it's excluded the same way.
-  return [...matches]
-    .map((m) => m[1])
-    .filter(
-      (content) =>
-        !/self\.__next_f\.push\s*\(/.test(content) &&
-        !/__CF\$cv\$params/.test(content),
-    )
-    .join("\n");
+  return extractScriptContents(body).join("\n");
 }
 
 // ── Hardcoded-secrets pattern tiers ─────────────────────────────────────
@@ -257,18 +247,26 @@ const LOW_RISK_SECRET_PATTERNS: SecretPattern[] = [
 ];
 
 /**
- * A response body that reads like API documentation showing example
- * secrets ("documentation" + "example" + "api" all present) suppresses
- * every hardcoded-secrets tier — those are demonstration values, not
- * leaked credentials.
+ * A secret-shaped string that is being shown rather than leaked.
+ *
+ * The test used to be whether the body contained the words "documentation",
+ * "example" and "api" anywhere at all, and any page that did had all four
+ * hardcoded-secrets tiers switched off, one of them critical. That is not a
+ * description of a documentation page; it is a description of most websites.
+ * A footer carrying a Documentation link and an API link, beside any sentence
+ * using the word example, was enough to make a genuinely leaked key on that
+ * page invisible. This product's own pages were in exactly that state, which
+ * is how it was found.
+ *
+ * What actually separates the two cases is where the string sits, not what
+ * vocabulary surrounds it, so the question is asked per match: a value that
+ * appears only inside <code>, <pre>, <kbd> or <samp> is being demonstrated.
+ * The same value anywhere else on the page is a finding, whatever else the
+ * page says, and a page full of examples that also leaks one real key now
+ * reports the real one.
  */
-function isSecretsDocPage(body: string): boolean {
-  const lowerBody = body.toLowerCase();
-  return (
-    lowerBody.includes("documentation") &&
-    lowerBody.includes("example") &&
-    lowerBody.includes("api")
-  );
+function isDemonstratedSecret(match: string, bodyOutsideDocBlocks: string) {
+  return !bodyOutsideDocBlocks.includes(match);
 }
 
 /** Redact a matched secret to `prefix****suffix`, same shape for every tier. */
@@ -287,9 +285,14 @@ function matchSecretPatterns(
   body: string,
   patterns: SecretPattern[],
 ): string[] {
+  // Stripped once for the whole call rather than once per pattern. The strip
+  // itself is memoised on the body (see _helpers.ts), so across the four
+  // tiers this costs one pass per scan.
+  const outsideDocBlocks = stripDocBlocks(body);
   const found: string[] = [];
   for (const { name, pattern, requireNearby } of patterns) {
     const occurrences = [...body.matchAll(pattern)].filter((m) => {
+      if (isDemonstratedSecret(m[0], outsideDocBlocks)) return false;
       const lower = m[0].toLowerCase();
       if (
         lower.includes("example") ||
@@ -512,10 +515,13 @@ export const detectors: Record<string, DetectFn> = {
   // ── Eval / function / setTimeout strings ────────────────────────────────
 
   "eval-in-scripts": (_url, _headers, body) => {
-    const scripts =
-      body.match(/<script[^>]{0,2000}>[\s\S]*?<\/script[^>]{0,2000}>/gi) || [];
-    for (const s of scripts) {
-      if (/\beval\s*\(/.test(s) && !s.includes("JSON.parse")) {
+    // Its own raw <script> scan until now, which is how a check living in the
+    // same file as the RSC filter still read Next.js flight payloads as
+    // authored script: a page that merely wrote about eval( in a paragraph
+    // was reported as calling it, and every documentation page and security
+    // blog on the internet does that. extractScriptContents is the one walk.
+    for (const script of extractScriptContents(body)) {
+      if (/\beval\s*\(/.test(script) && !script.includes("JSON.parse")) {
         return "eval() usage detected in inline scripts.";
       }
     }
@@ -1144,33 +1150,24 @@ export const detectors: Record<string, DetectFn> = {
   // it "critical" — that mismatch is what drove a scan of a normal site to
   // "unsafe".
 
-  "hardcoded-secrets": (_url, _headers, body) => {
-    if (isSecretsDocPage(body)) return null;
-    return formatSecretFindings(
-      matchSecretPatterns(body, CRITICAL_SECRET_PATTERNS),
-    );
-  },
+  // The doc-page gate that used to stand in front of all four of these has
+  // moved inside matchSecretPatterns, where it judges each match instead of
+  // switching the whole tier off for the page.
+  "hardcoded-secrets": (_url, _headers, body) =>
+    formatSecretFindings(matchSecretPatterns(body, CRITICAL_SECRET_PATTERNS)),
 
-  "hardcoded-secrets-high-risk": (_url, _headers, body) => {
-    if (isSecretsDocPage(body)) return null;
-    return formatSecretFindings(
+  "hardcoded-secrets-high-risk": (_url, _headers, body) =>
+    formatSecretFindings(
       matchSecretPatterns(body, ELEVATED_RISK_SECRET_PATTERNS),
-    );
-  },
+    ),
 
-  "hardcoded-secrets-client-exposed": (_url, _headers, body) => {
-    if (isSecretsDocPage(body)) return null;
-    return formatSecretFindings(
+  "hardcoded-secrets-client-exposed": (_url, _headers, body) =>
+    formatSecretFindings(
       matchSecretPatterns(body, CLIENT_EXPOSED_SECRET_PATTERNS),
-    );
-  },
+    ),
 
-  "hardcoded-secrets-low-risk": (_url, _headers, body) => {
-    if (isSecretsDocPage(body)) return null;
-    return formatSecretFindings(
-      matchSecretPatterns(body, LOW_RISK_SECRET_PATTERNS),
-    );
-  },
+  "hardcoded-secrets-low-risk": (_url, _headers, body) =>
+    formatSecretFindings(matchSecretPatterns(body, LOW_RISK_SECRET_PATTERNS)),
 
   // ── Geo / clipboard / media APIs ────────────────────────────────────────
 

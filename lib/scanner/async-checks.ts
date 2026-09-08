@@ -3097,6 +3097,22 @@ async function checkExposedFiles(
   const envPattern =
     /(?:DATABASE_URL|SECRET|API_KEY|PASSWORD|TOKEN|PRIVATE_KEY|ACCESS_KEY|AUTH_)\s*=/i;
 
+  /**
+   * An .env file is not HTML.
+   *
+   * Every other probe in this table verifies a content signature that only
+   * the real file has, which is what keeps them quiet against a single-page
+   * app that answers 200 with its shell for any unknown path. The two .env
+   * probes verified a word list that ordinary markup satisfies: a login page
+   * whose form has name="password" and an input with API_KEY in a data
+   * attribute is enough. On a catch-all SPA, which is most of them, that was
+   * a critical finding reported against every path that does not exist.
+   */
+  const looksLikeEnvFile = (body: string, contentType: string): boolean =>
+    !/text\/html/i.test(contentType) &&
+    !/^\s*<(?:!doctype|html|\?xml)/i.test(body) &&
+    envPattern.test(body);
+
   interface FileProbe {
     path: string;
     verify: (status: number, body: string, ct: string) => string | null;
@@ -3207,8 +3223,8 @@ async function checkExposedFiles(
     },
     {
       path: "/.env",
-      verify: (status, body) => {
-        if (status !== 200 || !envPattern.test(body)) return null;
+      verify: (status, body, ct) => {
+        if (status !== 200 || !looksLikeEnvFile(body, ct)) return null;
         return body
           .slice(0, 500)
           .replace(/=([^\n]+)/g, "=[MASKED]")
@@ -3228,8 +3244,8 @@ async function checkExposedFiles(
     },
     {
       path: "/.env.local",
-      verify: (status, body) => {
-        if (status !== 200 || !envPattern.test(body)) return null;
+      verify: (status, body, ct) => {
+        if (status !== 200 || !looksLikeEnvFile(body, ct)) return null;
         return body
           .slice(0, 500)
           .replace(/=([^\n]+)/g, "=[MASKED]")

@@ -15,11 +15,30 @@ import { getSetting } from "@/lib/config/runtime-config";
 // "PGP"/"GPG"/".asc" reference). Do not add one until a maintainer
 // actually generates a keypair and publishes the public key somewhere
 // verifiable -- a fabricated key would be worse than no key at all.
+/**
+ * RFC 9116 requires Expires and says a file past it should not be used, so a
+ * date written into the source is a promise that every deployment eventually
+ * breaks: the file keeps being served, researchers are told to distrust it,
+ * and nothing anywhere reports that the disclosure channel has closed. This
+ * one was 2027-06-30, which would have quietly invalidated the security.txt
+ * of every self-hosted copy on the same day.
+ *
+ * Computed per request instead, a year out, which is the longest the RFC's
+ * own guidance suggests. The response is cached for a day, so the value moves
+ * forward daily and is never within a day of lapsing.
+ */
+function expiresOneYearFromNow(): string {
+  const d = new Date();
+  d.setUTCFullYear(d.getUTCFullYear() + 1);
+  d.setUTCMilliseconds(0);
+  return d.toISOString();
+}
+
 export async function GET() {
   const securityEmail = await getSetting("SECURITY_EMAIL");
   const body = `Contact: mailto:${securityEmail}
 Contact: ${APP_URL}${ROUTES.CONTACT}
-Expires: 2027-06-30T00:00:00.000Z
+Expires: ${expiresOneYearFromNow()}
 Preferred-Languages: en
 Canonical: ${APP_URL}/.well-known/security.txt
 Policy: ${SEO_GITHUB_URL}/blob/main/SECURITY.md

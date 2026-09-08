@@ -51,6 +51,11 @@ const DnsRecordsPanel = dynamic(
     import("./dns-records-panel").then((m) => ({ default: m.DnsRecordsPanel })),
   { loading: PanelRowFallback },
 );
+const ThirdPartyLookupsPanel = dynamic(() =>
+  import("./third-party-lookups-panel").then((m) => ({
+    default: m.ThirdPartyLookupsPanel,
+  })),
+);
 const PortScanPanel = dynamic(
   () => import("./port-scan-panel").then((m) => ({ default: m.PortScanPanel })),
   { loading: PanelRowFallback },
@@ -311,6 +316,13 @@ export function ScanResultDetail({
         <SoftwareInventoryPanel softwareInventory={result.softwareInventory} />
 
         {subdomain}
+
+        {/* Last in the section, because it is the one panel that answers a
+            question this scan did not: everything above is what we found, and
+            this is where to go next. Every entry is a link the reader's own
+            browser follows, so nothing here costs a request or stores a
+            verdict. */}
+        <ThirdPartyLookupsPanel url={result.url} />
 
         {panelFooter}
       </div>

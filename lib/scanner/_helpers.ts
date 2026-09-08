@@ -260,14 +260,50 @@ export function withDocBlocksStripped(
 }
 
 /**
- * Extract the inner text of every `<script>` element in a response body.
+ * A `<script>` element that holds data rather than code.
  *
- * Used by detectors that need to inspect JS source specifically (e.g.
- * eval() usage inside inline scripts) rather than exclude it from
- * matching.
+ * JSON-LD is structured metadata a search engine reads, and a site's own
+ * description text routinely ends up inside it. Speculation rules are a JSON
+ * document too. Neither is source the site executes.
+ */
+const DATA_SCRIPT_TYPE =
+  /\btype\s*=\s*["']?(?:application\/(?:ld\+)?json|speculationrules|text\/template|text\/x-template)["']?/i;
+
+/**
+ * Every authored inline `<script>` element in a response body.
+ *
+ * "Authored" is the whole point, and it is what this used to get wrong. It was
+ * a bare tagElementContents(input, ["script"]), so three kinds of non-source
+ * reached every detector that called it.
+ *
+ * Next.js streams a server-rendered page back as RSC flight data through
+ * self.__next_f.push(...), which carries the page's own prose serialized as a
+ * JavaScript string literal. Any page that so much as mentions eval( in a
+ * paragraph therefore contains eval( inside a <script> tag, and roughly twenty
+ * detectors read that as the site calling eval. This product's own check
+ * reference pages are the clearest case, since their entire purpose is to
+ * quote dangerous code, but it applies to every documentation page, security
+ * blog and framework tutorial on the internet: writing about a vulnerability
+ * scored as having one.
+ *
+ * Cloudflare's __CF$cv$params bootstrap is injected at the edge after the
+ * origin has already responded, so the site owner did not write it and cannot
+ * remove it from application code.
+ *
+ * checks/code.ts has carried exactly this filter privately, as
+ * inlineScriptContent, since those false positives were first traced there.
+ * Everything else calling this helper was still reading flight payloads as
+ * authored script, which is the shape of bug this codebase keeps finding: one
+ * file fixed, its siblings left on the old behaviour.
  */
 export function extractScriptContents(input: string): string[] {
-  return tagElementContents(input, ["script"]);
+  return tagElementContents(input, ["script"], (openingTag) => {
+    return !DATA_SCRIPT_TYPE.test(openingTag) && !/\bsrc\s*=/i.test(openingTag);
+  }).filter(
+    (content) =>
+      !/self\.__next_f\.push\s*\(/.test(content) &&
+      !/__CF\$cv\$params/.test(content),
+  );
 }
 
 /**

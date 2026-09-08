@@ -10,6 +10,35 @@ import { detectors } from "@/lib/scanner/checks/cookies";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "cookie-maxage-expires-conflict": [
+    {
+      // Dead code from the day it was written. The Expires class was
+      // [^;,]+ and every RFC 1123 cookie date has a comma in it
+      // ("Wed, 09 Jun 2027 10:18:14 GMT"), so the capture stopped at "Wed"
+      // and Date.parse rejected it. The same mistake had already been fixed
+      // twice in this file.
+      description:
+        "regression: a comma in the cookie date no longer ends the capture",
+      cookies: [
+        "sid=abc; Max-Age=60; Expires=Wed, 09 Jun 2027 10:18:14 GMT; Path=/",
+      ],
+      expect: "fire",
+      evidenceIncludes: "Max-Age",
+    },
+    {
+      description: "Max-Age and Expires that agree do not fire",
+      cookies: [
+        `sid=abc; Max-Age=3600; Expires=${new Date(Date.now() + 3600_000).toUTCString()}; Path=/`,
+      ],
+      expect: "skip",
+    },
+    {
+      description: "a cookie with only one of the two says nothing",
+      cookies: ["sid=abc; Max-Age=3600; Path=/"],
+      expect: "skip",
+    },
+  ],
+
   // ── Flag presence ───────────────────────────────────────────────────
 
   // "cookie-security" is deliberately absent here: its live implementation is

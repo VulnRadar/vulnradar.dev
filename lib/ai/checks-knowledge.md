@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Knowledge
 
-_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-09-07._
+_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-09-08._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific scanner checks:
@@ -7170,7 +7170,7 @@ export default {
 ### `nextjs-dev-mode-exposed` [configuration / medium / body-pattern]
 **Next.js Development Build Running in Production**
 
-The response contains Next.js development-mode build artifacts ('/_next/static/development/' paths or a 'development' buildId), indicating the app is running 'next dev' instead of a production build.
+The response contains Next.js development-mode build artifacts ('development-mode _next/static paths' paths or a 'development' buildId), indicating the app is running 'next dev' instead of a production build.
 
 **Risk:** Dev-mode Next.js ships unminified source, verbose error overlays with stack traces and source snippets, and disables several production hardening defaults, all reachable by anyone who can reach the URL.
 
@@ -18252,7 +18252,7 @@ await fetch(
 ### `nginx-version-404-disclosure` [information-disclosure / low / body-pattern]
 **nginx version disclosed in 404 / error pages**
 
-Default nginx error pages and the Server response header expose the exact nginx version (e.g., 'nginx/1.18.0'). Knowing the version lets attackers search CVE databases for targeted exploits without any active scanning.
+Default nginx error pages and the Server response header expose the exact nginx version (e.g., 'nginx/X.Y.Z'). Knowing the version lets attackers search CVE databases for targeted exploits without any active scanning.
 
 **Risk:** An attacker who knows the exact nginx version can immediately search CVE databases for matching vulnerabilities and known exploits. Version disclosure eliminates the reconnaissance phase and allows a targeted attack without additional probing.
 
@@ -18787,7 +18787,7 @@ app.use((err, req, res, next) => {
 ### `flask-debug-page-exposure` [information-disclosure / critical / body-pattern]
 **Flask debug mode enabled in production**
 
-The Flask Werkzeug debugger is accessible, indicating DEBUG=True in a production environment.
+The Flask interactive debugger (Werkzeug) is accessible, indicating DEBUG=True in a production environment.
 
 **Risk:** The Flask Werkzeug interactive debugger allows arbitrary Python code execution in the browser. Any visitor can run any Python command on your server. This is a complete server compromise.
 

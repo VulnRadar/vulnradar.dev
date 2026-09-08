@@ -536,7 +536,12 @@ export const detectors: Record<string, DetectFn> = {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       const maxAgeMatch = c.match(/max-age\s*=\s*(\d+)/i);
-      const expiresMatch = c.match(/expires\s*=\s*([^;,]+)/i);
+      // Not [^;,]+. Every RFC 1123 cookie date has a comma in it
+      // ("Wed, 09 Jun 2027 10:18:14 GMT"), so the old class stopped at the
+      // third character and Date.parse rejected "Wed" as invalid, which made
+      // this check dead code from the day it was written. The same mistake
+      // has already been fixed twice in this file.
+      const expiresMatch = c.match(/expires\s*=\s*([^;]+)/i);
       if (!maxAgeMatch || !expiresMatch) continue;
       const maxAgeSecs = parseInt(maxAgeMatch[1], 10);
       const expiresDate = new Date(expiresMatch[1].trim());

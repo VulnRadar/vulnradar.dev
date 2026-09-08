@@ -53,7 +53,10 @@ describeIntegration("ai_conversations upsert ownership", () => {
   afterEach(async () => {
     if (created.length === 0) return;
     await pool.query(
-      `DELETE FROM ai_conversations WHERE session_id = ANY($1::text[])`,
+      // ::uuid[], not ::text[]. The column is UUID, and Postgres has no
+      // uuid = text operator, so the text cast made the cleanup throw and
+      // took the whole suite down with it.
+      `DELETE FROM ai_conversations WHERE session_id = ANY($1::uuid[])`,
       [created.splice(0)],
     );
   });

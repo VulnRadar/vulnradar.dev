@@ -164,6 +164,21 @@ export const PUBLIC_PATHS = [
   // so list both public source paths here (not the internal route).
   "/.well-known/security.txt",
   "/security.txt",
+  // Everything below is the same bug this file has now fixed four times: a
+  // path meant for a machine, served from the app, that the middleware
+  // matcher does not exempt, so an anonymous request is answered with a 307
+  // to /login and the machine reads the login page as the document.
+  //
+  // The PWA manifest, which means no logged-out visitor can install the app
+  // and every Lighthouse run scores it as having no manifest.
+  "/manifest.webmanifest",
+  // The MTA-STS policy. RFC 8461 puts it at mta-sts.<domain>, so this path
+  // matters on a deployment that points that subdomain at the app itself,
+  // which is the arrangement a self-hoster running one server will have.
+  "/.well-known/mta-sts.txt",
+  // The GitLab CI template. The docs tell people to reference it with
+  // "include: - remote:", and GitLab fetched the login page instead.
+  "/gitlab",
 
   // ─── Stripe Webhooks (must be public for Stripe to call) ───────
   v("/webhooks/stripe"),

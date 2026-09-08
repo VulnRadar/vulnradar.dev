@@ -16,6 +16,42 @@ import { detectors } from "@/lib/scanner/checks/code";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "eval-in-scripts": [
+    {
+      // The false positive that made this product fail its own scan. Next.js
+      // streams a server-rendered page back through self.__next_f.push(...),
+      // which carries the page's own prose as a JavaScript string literal, so
+      // any page that so much as mentions eval( in a paragraph contains
+      // eval( inside a <script> tag. Every documentation page and security
+      // blog on the internet does that.
+      description: "regression: an RSC flight payload is not authored script",
+      body: '<script>self.__next_f.push([1,"7:[\\"$\\",\\"p\\",null,{\\"children\\":\\"Never call eval() on user input.\\"}]"])</script>',
+      expect: "skip",
+    },
+    {
+      description: "regression: JSON-LD is data, not source",
+      body: '<script type="application/ld+json">{"@type":"Article","description":"How eval() leads to XSS"}</script>',
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: Cloudflare's edge-injected bootstrap is not the site's code",
+      body: "<script>window.__CF$cv$params={r:'abc',t:'MTc'};eval(atob(x));</script>",
+      expect: "skip",
+    },
+    {
+      description: "a real inline eval still fires",
+      body: "<script>const out = eval(userInput);</script>",
+      expect: "fire",
+      evidenceIncludes: "eval()",
+    },
+    {
+      description: "JSON.parse callers are excluded, as before",
+      body: "<script>const data = JSON.parse(raw); eval(data.code);</script>",
+      expect: "skip",
+    },
+  ],
+
   // ── Detectors whose patterns were rewritten for the DoS sweep ────────────
   // Each of these had two runs competing for the same characters. The
   // rewrite is only correct if the detector still fires on a genuine
@@ -379,6 +415,24 @@ const fixtures: DetectorFixtures = {
   ],
 
   "hardcoded-secrets-client-exposed": [
+    {
+      // All four tiers, one of them critical, used to switch off for the
+      // whole page when the body contained the words "documentation",
+      // "example" and "api" anywhere at all. A footer with a Documentation
+      // link and an API link was enough, so a genuinely leaked key on such a
+      // page was never reported.
+      description:
+        "regression: a real key still fires on a page whose footer says documentation and api",
+      body: '<footer><a href="/docs">Documentation</a> <a href="/api">API</a> <p>For example, see the guide.</p></footer><script>mapboxgl.accessToken = "pk.eyJhbGciOiJIUzI1NiJ9.aBcDeFgHiJkLmN123";</script>',
+      expect: "fire",
+      evidenceIncludes: "Mapbox Public Token",
+    },
+    {
+      description:
+        "a key shown only inside a code block is being demonstrated, not leaked",
+      body: '<p>Set your key:</p><pre><code>mapboxgl.accessToken = "pk.eyJhbGciOiJIUzI1NiJ9.aBcDeFgHiJkLmN123";</code></pre>',
+      expect: "skip",
+    },
     {
       description:
         "Mapbox public token (pk. prefix is Mapbox's own client-safe convention) — medium, matches this codebase's Google-key precedent",

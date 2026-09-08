@@ -543,7 +543,7 @@
     "title": "Next.js Development Build Running in Production",
     "category": "configuration",
     "severity": "medium",
-    "description": "The response contains Next.js development-mode build artifacts ('/_next/static/development/' paths or a 'development' buildId), indicating the app is running 'next dev' instead of a production build.",
+    "description": "The response contains Next.js development-mode build artifacts ('development-mode _next/static paths' paths or a 'development' buildId), indicating the app is running 'next dev' instead of a production build.",
     "evidence": "Next.js development build artifacts detected in response.",
     "riskImpact": "Dev-mode Next.js ships unminified source, verbose error overlays with stack traces and source snippets, and disables several production hardening defaults, all reachable by anyone who can reach the URL.",
     "explanation": "'next dev' is meant for local development only: it compiles on demand, keeps source maps and readable module names in the client bundle, and renders full error overlays instead of generic error pages. Running it as the production server (instead of 'next build' + 'next start') leaks internal implementation detail with every request.",

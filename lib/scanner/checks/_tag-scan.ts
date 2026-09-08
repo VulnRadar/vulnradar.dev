@@ -310,10 +310,20 @@ export function stripTagElements(
 export function tagElementContents(
   body: string,
   tags: readonly string[],
+  /**
+   * Decide per element, from its opening tag, whether to include it. Callers
+   * that need to tell an authored <script> from a JSON-LD block or an
+   * external reference cannot do that from the content alone, and rebuilding
+   * the scan with a regex to get at the attributes is how two divergent copies
+   * of this walk came to exist.
+   */
+  keep?: (openingTag: string) => boolean,
 ): string[] {
-  return tagRegions(body, tags, Infinity).map((r) =>
-    body.slice(r.contentStart, r.contentEnd),
-  );
+  const regions = tagRegions(body, tags, Infinity);
+  const kept = keep
+    ? regions.filter((r) => keep(body.slice(r.start, r.contentStart)))
+    : regions;
+  return kept.map((r) => body.slice(r.contentStart, r.contentEnd));
 }
 
 /** The opening tag of an element returned by {@link tagElements}. */

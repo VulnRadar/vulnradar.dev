@@ -516,15 +516,15 @@ const rawDetectors: Record<string, DetectFn> = {
     ) {
       return "OpenAPI document declares weak security scheme (basic auth or apiKey in query).";
     }
-    // Only flag as reachable when the URL is an API schema endpoint —
-    // not when "openapi" merely appears in page body (docs, code examples).
-    if (
-      /\/openapi(?:\.json|\.yaml)?|\/swagger(?:\.json|\.yaml)?|\/api-docs/i.test(
-        url,
-      )
-    ) {
-      return "OpenAPI document reachable - review declared securitySchemes.";
-    }
+    // The URL branch that used to sit here reported "OpenAPI document
+    // reachable" at high severity for the URL alone, having found no weak
+    // scheme in it. Publishing a spec is what a spec is for, and this check's
+    // whole subject is the securitySchemes it declares, so a spec whose
+    // schemes are correct was scored the same as one using basic auth. Every
+    // site that serves an OpenAPI document, which this product does, got a
+    // high finding for doing so. swagger-docs-exposed already reports a
+    // reachable spec, at medium, which is the right severity for a fact
+    // about discoverability.
     return null;
   },
 
