@@ -1,4 +1,5 @@
 import { describe } from "vitest";
+import { randomBytes } from "node:crypto";
 import pool from "@/lib/database/db";
 import { invalidateSettingsCache } from "@/lib/config/runtime-config";
 import type { SettingKey } from "@/lib/config/registry";
@@ -25,10 +26,26 @@ export const describeIntegration = describe.skipIf(!hasIntegrationDatabase);
 
 let counter = 0;
 
-/** A value unique within this run, for columns with a UNIQUE constraint. */
+/**
+ * A value unique within this run, for columns with a UNIQUE constraint.
+ *
+ * The random suffix is what makes that claim true. This was pid, millisecond
+ * and a module-level counter, and neither of the first two separates two test
+ * FILES: vitest runs them in the same process, each with its own instance of
+ * this module, so both counters start at 1 and two createUser() calls in the
+ * same millisecond produce the same address. Rare enough to pass for a long
+ * time and then fail as a duplicate-key error in whichever suite happened to
+ * lose, with nothing in that suite to point at.
+ *
+ * It surfaced in CI as a backup that would not import: two users really did
+ * share an email, the unique index could not be rebuilt from the dump, and
+ * the failure was reported against the backup rather than against the fixture
+ * that wrote the row.
+ */
 export function unique(prefix: string): string {
   counter += 1;
-  return `${prefix}-${process.pid}-${Date.now().toString(36)}-${counter}`;
+  const salt = randomBytes(4).toString("hex");
+  return `${prefix}-${process.pid}-${Date.now().toString(36)}-${counter}-${salt}`;
 }
 
 export interface TestUser {

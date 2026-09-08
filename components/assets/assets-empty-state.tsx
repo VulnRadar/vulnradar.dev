@@ -8,12 +8,23 @@ import { ROUTES } from "@/lib/config/client-constants";
 interface AssetsEmptyStateProps {
   hasAssets: boolean;
   hasFilter: boolean;
+  /**
+   * Whether the active filter actually matched anything.
+   *
+   * hasFilter alone only means the box is non-empty, never that it matched
+   * nothing, so typing a hostname fragment that DOES match stacked the
+   * "Nothing matches that search" panel directly above the table listing the
+   * matches. components/history/history-empty-state.tsx carries this same
+   * prop, added for this same reason; the assets page never got it.
+   */
+  hasResults: boolean;
   onClearFilter: () => void;
 }
 
 export function AssetsEmptyState({
   hasAssets,
   hasFilter,
+  hasResults,
   onClearFilter,
 }: AssetsEmptyStateProps) {
   if (!hasAssets) {
@@ -34,7 +45,7 @@ export function AssetsEmptyState({
     );
   }
 
-  if (hasFilter) {
+  if (hasFilter && !hasResults) {
     return (
       <EmptyState
         icon={Search}

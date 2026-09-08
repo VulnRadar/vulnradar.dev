@@ -291,6 +291,7 @@ export default function AssetsPage() {
         <AssetsEmptyState
           hasAssets={assets.length > 0}
           hasFilter={Boolean(filter)}
+          hasResults={filtered.length > 0}
           onClearFilter={() => setFilter("")}
         />
       )}

@@ -84,9 +84,19 @@ export function GithubProfileModal() {
         return;
       }
 
-      handleClose();
-      router.refresh();
-      window.location.reload();
+      // router.replace() is a React transition that has not committed when a
+      // synchronous window.location.reload() runs on the same stack, so the
+      // browser reloaded a URL still carrying the query parameters that open
+      // this dialog. The sync succeeded and the "select what to sync" prompt
+      // came straight back, forever; the only way out was Skip. Stripping the
+      // parameters here and navigating to the cleaned URL does the reload and
+      // the cleanup in one step, with nothing left to race.
+      setOpen(false);
+      const cleaned = new URL(window.location.href);
+      cleaned.searchParams.delete("github_connected");
+      cleaned.searchParams.delete("github_username");
+      cleaned.searchParams.delete("github_avatar");
+      window.location.replace(cleaned.pathname + cleaned.search);
     } catch {
       setError("Failed to update profile");
     } finally {
