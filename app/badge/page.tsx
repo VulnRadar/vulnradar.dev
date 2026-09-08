@@ -89,6 +89,19 @@ export default function BadgePage() {
     }
   }
 
+  function handleRevoked(scanId: number) {
+    // Drop the token locally rather than refetching: the list already holds
+    // everything else about the scan, and the preview keys off the token, so
+    // clearing it puts the panel straight back into its "generate one" state
+    // without a round trip that shows a spinner over a page that is correct.
+    setSelected((prev) =>
+      prev && prev.id === scanId ? { ...prev, site_badge_token: null } : prev,
+    );
+    setScans((prev) =>
+      prev.map((s) => (s.id === scanId ? { ...s, site_badge_token: null } : s)),
+    );
+  }
+
   function handleScopeChange(scope: "user" | "global") {
     setSelected((prev) => (prev ? { ...prev, site_badge_scope: scope } : prev));
     setScans((prev) =>
@@ -133,6 +146,7 @@ export default function BadgePage() {
             token={selected?.site_badge_token ?? null}
             generating={generating}
             onScopeChange={handleScopeChange}
+            onRevoked={handleRevoked}
           />
         </div>
       )}

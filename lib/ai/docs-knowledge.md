@@ -1697,9 +1697,9 @@ default:
 (plan) =>
 on ,
 ).join(", ")}
-. Every key is checked
-against your live plan on each request, so a change of plan applies
-to keys you already hold with nothing to rotate or recreate.
+. Every key is checked against your live plan on each request, so a
+change of plan applies to keys you already hold with nothing to
+rotate or recreate.
 
 > **INFO: Staff accounts scan on a plan**
 > A user whose role is one of

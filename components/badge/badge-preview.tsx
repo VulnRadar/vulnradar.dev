@@ -19,12 +19,83 @@ import { copyToClipboard as copyTextToClipboard } from "@/lib/ui/clipboard";
 import { UrlDisplay } from "@/components/shared/url-display";
 import type { ScanEntry } from "./badge-types";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 interface BadgePreviewProps {
   selected: ScanEntry | null;
   token: string | null;
   generating: boolean;
   onScopeChange?: (scope: "user" | "global") => void;
+  /** Called after a successful revoke so the page can drop the dead token. */
+  onRevoked?: (scanId: number) => void;
+}
+
+/**
+ * Turning a placed badge off.
+ *
+ * DELETE /api/v3/badge/site has existed since the badge shipped and had no
+ * control anywhere, so the only way to stop a badge you had embedded on a
+ * site you no longer own was to ask us. It is behind a confirmation because
+ * regenerating afterwards issues a NEW token: the old embed does not come
+ * back, it stays broken, which is the point but is not obvious from a button.
+ */
+function RevokeBadge({
+  scanId,
+  onRevoked,
+}: {
+  scanId: number;
+  onRevoked?: (scanId: number) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function revoke() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API.BADGE_SITE}?scanId=${scanId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error || "Could not turn this badge off. Try again.");
+        return;
+      }
+      setConfirming(false);
+      onRevoked?.(scanId);
+    } catch {
+      setError("Could not turn this badge off. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setError(null);
+          setConfirming(true);
+        }}
+        className="self-start text-xs text-muted-foreground hover:text-destructive rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Turn this badge off
+      </button>
+      <ConfirmDialog
+        open={confirming}
+        title="Turn this badge off?"
+        description="The image stops loading anywhere you have embedded it, and the share link it points at stops resolving. You can generate a badge for this site again afterwards, but it gets a new address, so any embed you have already placed stays broken."
+        confirmLabel="Turn it off"
+        danger
+        busy={busy}
+        error={error}
+        onConfirm={revoke}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
+  );
 }
 
 function ScopeToggle({
@@ -186,6 +257,7 @@ export function BadgePreview({
   token,
   generating,
   onScopeChange,
+  onRevoked,
 }: BadgePreviewProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -326,6 +398,8 @@ export function BadgePreview({
         scope={selected.site_badge_scope ?? "user"}
         onScopeChange={onScopeChange}
       />
+
+      <RevokeBadge scanId={selected.id} onRevoked={onRevoked} />
     </div>
   );
 }

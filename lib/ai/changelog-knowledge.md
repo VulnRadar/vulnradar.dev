@@ -158,6 +158,8 @@ A sweep for anything the app was getting wrong quietly. The AI chat was streamin
   Opening a second checkout to change plans and then not finishing it still sends us a completion notice, marked unpaid. We recorded that notice against your account without checking which subscription your account was actually on, so it wrote your plan back to free, marked you incomplete and pointed your account at the checkout you had abandoned. The plan you were paying for was still live at Stripe the whole time. An unpaid checkout can no longer move an account that is on a different live subscription. A first purchase is unaffected, because there is nothing there yet to protect.
 - [LifeBuoy] **[FIXED]** **A Message Sent Through The Contact Form Could Vanish**
   Both contact forms built two emails, sent them without waiting, logged any failure to the server console and then told you we would get back to you soon. The email was the only record the message ever had. So a mail server that could not be reached, an expired password on our end, a bounce or a spam filter lost the message outright, with you told it had arrived and nobody here aware it existed. One of the categories on that form is Security Issue, and the form on the front page is used mostly by people who have no account and no other way to reach us. Submissions are now written down before anything is sent, and the send reports back whether it worked, so a mail outage costs a notification rather than the message. If we cannot record it at all you are told that plainly instead of being thanked, so you can try again or email us directly. Deleting your account removes everything you sent through either form, along with any staff invitation addressed to you, which was a live grant of a role to whoever held the link.
+- [ShieldCheck] **[ADDED]** **There Was No Way To Turn A Badge Off**
+  A site badge could be created and its scope changed, and the endpoint that stops one resolving has existed since the badge shipped, but nothing in the product called it. If you had embedded a badge on a site you no longer run, or simply wanted it gone, asking us was the only route. There is a Turn this badge off control on the Badge page now. It confirms first and says the part that is not obvious: you can generate a badge for that site again afterwards, but it gets a new address, so an embed you have already placed stays broken rather than quietly coming back.
 
 ---
 
@@ -2242,6 +2244,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 71
-- **Total changes documented:** 823
+- **Total changes documented:** 824
 - **Latest:** v3.8.6 (September 7, 2026) - Things That Fail Without Saying So
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
