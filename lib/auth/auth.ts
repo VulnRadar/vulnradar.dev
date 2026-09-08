@@ -275,6 +275,35 @@ async function notifySessionIpMismatch(params: {
   }
 }
 
+/**
+ * Evict every session and trusted device for a user except the caller's own.
+ *
+ * Turning 2FA ON is a privilege change, and it was the only one that left
+ * existing sessions standing: password change, password reset, email change
+ * and 2FA *disable* all clear both tables. So the most common reaction to a
+ * suspected compromise, switching 2FA on, left the attacker's stolen session
+ * alive for its full remaining lifetime while the account displayed "2FA
+ * enabled". A planted device_trust row is the same defect one layer down: it
+ * skips the 2FA prompt the user has just turned on, on exactly the machine
+ * that mattered.
+ *
+ * The caller's own session survives, because logging someone out in the
+ * middle of enrolling in 2FA is how people end up locked out of an account
+ * they have just added a second factor to.
+ */
+export async function revokeOtherSessions(userId: number): Promise<void> {
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get(SESSION_COOKIE)?.value;
+  const keep = sessionToken ? hashSessionId(sessionToken) : null;
+  await pool.query(
+    keep
+      ? "DELETE FROM sessions WHERE user_id = $1 AND id <> $2"
+      : "DELETE FROM sessions WHERE user_id = $1",
+    keep ? [userId, keep] : [userId],
+  );
+  await pool.query("DELETE FROM device_trust WHERE user_id = $1", [userId]);
+}
+
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(SESSION_COOKIE)?.value;

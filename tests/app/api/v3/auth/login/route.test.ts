@@ -1,4 +1,17 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
+import { createHash } from "node:crypto";
+
+/**
+ * The per-account lockout key.
+ *
+ * Keyed on a hash of the submitted address rather than on users.id, because
+ * only a real account could ever have a counter under an id: the "Too many
+ * failed attempts for this account" message was therefore proof the address
+ * exists, which made it an enumeration oracle on a surface that is otherwise
+ * scrupulously non-enumerating.
+ */
+const accountKey = (email: string) =>
+  `login-fail:${createHash("sha256").update(email.trim().toLowerCase()).digest("hex")}`;
 
 /**
  * Route-level tests for POST /api/v3/auth/login.
@@ -233,7 +246,9 @@ describe("POST /api/v3/auth/login", () => {
         q.sql.startsWith("DELETE FROM rate_limits WHERE key = $1") &&
         q.params.length === 1,
     );
-    expect(resets.map((q) => q.params[0])).toContain("login-fail:1");
+    expect(resets.map((q) => q.params[0])).toContain(
+      accountKey("user@example.com"),
+    );
     // The per-IP bucket is deliberately NOT cleared: it throttles the source
     // address, so a valid login must not reset one address's own quota.
     expect(resets.map((q) => q.params[0])).not.toContain("login:unknown");
@@ -254,7 +269,7 @@ describe("POST /api/v3/auth/login", () => {
     const accountPeek = queries.find(
       (q) =>
         q.sql.startsWith('SELECT "count" FROM rate_limits') &&
-        q.params[0] === "login-fail:1",
+        q.params[0] === accountKey("user@example.com"),
     );
     expect(accountPeek).toBeDefined();
     const accountBucket = (accountPeek!.params[1] as Date).getTime();

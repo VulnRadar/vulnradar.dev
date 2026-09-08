@@ -126,6 +126,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     await client.query("DELETE FROM device_trust WHERE user_id = $1", [
       resetToken.user_id,
     ]);
+    // An API key outlives every credential the two statements above clear.
+    // It is minted from a session, carries no cookie, and validateApiKey
+    // checks only revoked_at and the account's disabled_at, so an attacker
+    // who reached a session long enough to POST /api/v3/keys keeps the scan
+    // API, the full history and DELETE on it after the victim has done the
+    // one thing the product tells them to do. Bearer requests are exempt from
+    // the CSRF check and carry no Origin, so nothing browser-side would ever
+    // show it. This is the statement the admin panel's force_logout_all
+    // already runs; the account's own recovery path just never called it.
+    await client.query(
+      "UPDATE api_keys SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+      [resetToken.user_id],
+    );
 
     await client.query("COMMIT");
 

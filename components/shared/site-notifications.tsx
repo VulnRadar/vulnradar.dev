@@ -400,10 +400,16 @@ export function SiteToast({
     }, 150);
   }, [notification.cookie_id, notification.dismiss_duration_hours, onDismiss]);
 
-  // Auto-dismiss with progress bar
+  // Auto-dismiss with progress bar.
+  //
+  // Not gated on is_dismissible, which it used to be. That flag decides
+  // whether closing writes a cookie that keeps the notice away on later
+  // visits; it was never meant to decide whether a toast in the corner of the
+  // screen ever goes away. Gated, a non-dismissible toast had no timer AND no
+  // close button, so it was permanent furniture on every page for the rest of
+  // the session. It reappears on the next visit either way, which is what the
+  // flag is for.
   useEffect(() => {
-    if (!notification.is_dismissible) return;
-
     const duration = 6000;
     const interval = 50;
     const decrement = (interval / duration) * 100;
@@ -504,7 +510,9 @@ export function SiteToast({
               </div>
             )}
           </div>
-          {notification.is_dismissible && (
+          {/* Always rendered, for the same reason: a reader must be able to
+              clear something covering the corner of the page they are on. */}
+          {
             <button
               onClick={handleDismiss}
               // a11y (SC 2.5.8): p-1 around a 14px icon is a 22x22 target.
@@ -515,7 +523,7 @@ export function SiteToast({
             >
               <X className="h-3.5 w-3.5" />
             </button>
-          )}
+          }
         </div>
       </div>
     </div>
@@ -568,12 +576,32 @@ export function SiteNotifications({
     };
   }, [banners.length]);
 
-  // Show the highest priority modal that hasn't been dismissed
+  /**
+   * Which modals this page view has already shown.
+   *
+   * The effect below used to ask only whether a modal was in `modals`, and
+   * `modals` is rebuilt every render from the dismissal cookie. A
+   * notification published with is_dismissible false writes no cookie, so
+   * closing one set activeModal to null and the effect put the same modal
+   * straight back on the next render. Every exit routes through handleClose,
+   * the close chip, Escape and the scrim alike, so the reader was sealed in
+   * front of it on every route in the app: SiteNotificationsWrapper mounts in
+   * the root layout, and is_dismissible is a live admin toggle.
+   *
+   * The comment on SiteModal describes the intended behaviour, that a
+   * non-dismissible notice returns on the next load. A ref is what makes that
+   * true: it lasts for this page view and dies with a reload, so the notice
+   * is seen again on the next visit without being unclosable on this one.
+   */
+  const shownModals = React.useRef<Set<number>>(new Set());
+
   useEffect(() => {
-    if (modals.length > 0 && !activeModal) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- derives which modal to show from the modals prop; self-limiting, only fires while none is active
-      setActiveModal(modals[0]);
-    }
+    if (activeModal) return;
+    const next = modals.find((m) => !shownModals.current.has(m.id));
+    if (!next) return;
+    shownModals.current.add(next.id);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- derives which modal to show from the modals prop; self-limiting, each modal is shown at most once per page view
+    setActiveModal(next);
   }, [modals, activeModal]);
 
   // Initialize toast queue

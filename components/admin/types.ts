@@ -102,7 +102,16 @@ export interface UserDetail {
   webhooks: {
     id: number;
     name: string;
-    url: string;
+    /**
+     * The host only, never the path.
+     *
+     * For a Slack or Discord hook the path segments ARE the credential: a
+     * URL like https://hooks.slack.com/services/T.../B.../... lets whoever
+     * holds it post into that customer's channel. The panel needs to say
+     * which service a hook points at, which the host answers, and has no
+     * reason to hold the secret that would let staff use it.
+     */
+    url_host: string;
     type: string;
     active: boolean;
   }[];

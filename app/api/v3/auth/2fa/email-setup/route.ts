@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, revokeOtherSessions } from "@/lib/auth";
 import { verifyReauthPassword } from "@/lib/auth/reauth";
 import { email2FAEnabledEmail, email2FADisabledEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -66,6 +66,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     "UPDATE users SET totp_enabled = true, two_factor_method = 'email' WHERE id = $1",
     [session.userId],
   );
+
+  // Same reasoning as the authenticator-app path: enabling a second factor is
+  // a privilege change, and it was the one privilege change that left the
+  // sessions and trusted devices from before it standing.
+  await revokeOtherSessions(session.userId);
 
   // Non-blocking notification email
   const ua = await getUserAgent();

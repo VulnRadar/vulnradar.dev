@@ -3,6 +3,7 @@
 import { useId, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, ExternalLink, Globe } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 import { focus } from "@/lib/ui/animations";
 import {
   resolveLookups,
@@ -142,9 +143,14 @@ function LookupLink({ service }: { service: ResolvedLookup }) {
             {service.description}
           </span>
         </span>
-        <ExternalLink
-          aria-hidden
-          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground"
+        {/* <LeadingIcon>, not a hand-written mt-0.5. 2px is right for exactly
+            one icon-and-text pairing and this is not it; the component
+            computes the offset from the line box instead. */}
+        <LeadingIcon
+          icon={ExternalLink}
+          size="sm"
+          line="sm"
+          className="text-muted-foreground"
         />
       </a>
     </li>

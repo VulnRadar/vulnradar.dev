@@ -81,7 +81,11 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-hidden focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-destructive-foreground/70 hover:group-[.destructive]:text-destructive-foreground focus:group-[.destructive]:ring-destructive-foreground/40 focus:group-[.destructive]:ring-offset-destructive",
+      // Visible by default, hover-revealed only from sm up. A touch device
+      // never produces hover, so opacity-0 left the close button unreachable
+      // on every phone: the toast simply looked like it could not be closed.
+      // components/ai-chat/chat-widget.tsx documents the same fix.
+      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-100 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-hidden focus:ring-2 sm:opacity-0 sm:group-hover:opacity-100 group-[.destructive]:text-destructive-foreground/70 hover:group-[.destructive]:text-destructive-foreground focus:group-[.destructive]:ring-destructive-foreground/40 focus:group-[.destructive]:ring-offset-destructive",
       className,
     )}
     toast-close=""

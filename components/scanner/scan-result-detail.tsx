@@ -51,10 +51,17 @@ const DnsRecordsPanel = dynamic(
     import("./dns-records-panel").then((m) => ({ default: m.DnsRecordsPanel })),
   { loading: PanelRowFallback },
 );
-const ThirdPartyLookupsPanel = dynamic(() =>
-  import("./third-party-lookups-panel").then((m) => ({
-    default: m.ThirdPartyLookupsPanel,
-  })),
+const ThirdPartyLookupsPanel = dynamic(
+  () =>
+    import("./third-party-lookups-panel").then((m) => ({
+      default: m.ThirdPartyLookupsPanel,
+    })),
+  // Every sibling here passes one. Without it next/dynamic gives the chunk no
+  // Suspense boundary of its own, so it suspends the route instead and the
+  // page replays its whole skeleton over content that had already arrived.
+  // This panel is one collapsed row at the end of the section, so there is no
+  // shape worth reserving and the right fallback is nothing.
+  { loading: () => null },
 );
 const PortScanPanel = dynamic(
   () => import("./port-scan-panel").then((m) => ({ default: m.PortScanPanel })),

@@ -183,8 +183,21 @@ describe("buildOpenApiSpec", () => {
     const missing: string[] = [];
     let keyRoutes = 0;
     for (const file of routeFiles) {
-      const source = readFileSync(file, "utf8");
-      if (!source.includes("validateApiKey")) continue;
+      // Comments stripped first. This was a bare substring test against the
+      // raw file, so a route that merely NAMED validateApiKey in a comment
+      // counted as authenticating with one, and the fix was to reword the
+      // prose. Two auth routes explaining why they revoke API keys tripped it
+      // that way. What the test means is a call, so it looks for one.
+      // Comments stripped first. This was a bare substring test against the
+      // raw file, so a route that merely NAMED validateApiKey in a comment
+      // counted as authenticating with one, and the only way to pass was to
+      // reword the prose. Two auth routes explaining why they now revoke API
+      // keys tripped it exactly that way. What the test means is a call, so
+      // it looks for a call.
+      const source = readFileSync(file, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      if (!/\bvalidateApiKey\s*\(/.test(source)) continue;
       keyRoutes++;
       const specPath = file
         .slice(root.length)

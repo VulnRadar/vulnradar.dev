@@ -329,7 +329,12 @@ export const PASSWORD_GATED_ACTIONS = new Set([
   "update_password",
   "disable",
   "reset_password",
+  // All three names for the same destructive handler. The route only
+  // answers to "delete" now, and these are here so that reintroducing a
+  // synonym cannot reintroduce an ungated path to it.
   "delete",
+  "delete_user",
+  "delete_account",
   "revoke_sessions",
   "revoke_api_keys",
   "reset_2fa",

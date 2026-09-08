@@ -300,6 +300,36 @@ const CHANGELOG: Release[] = [
         desc: "It asked whether the response was a 200 and returned. RFC 9116 makes Expires a required field precisely so the contact details cannot rot unnoticed, and it tells researchers not to rely on an expired file, so a stale date closes the disclosure channel from their side while the file is still being served: somebody who found something in your site is now looking for another way to report it. Both cases are reported now, expired and absent, and neither costs a request, because the body was already in hand and being thrown away. Four more outdated-library ranges landed alongside, including DOMPurify, which deserved its own entry rather than another row: it is the sanitizer this product's own remediation steps recommend, so an outdated one undermines the advice attached to every XSS finding in the same report. While in that file, the Moment.js pattern was a bare match on the word and also fired on momentum.js, a different library that has never had the CVE.",
         category: "added",
       },
+      {
+        icon: Radar,
+        label: "VulnRadar Scanned By VulnRadar",
+        desc: "The homepage passes all 852 checks. Our own reference pages, the seven hundred and fifty that exist to explain each check by showing the vulnerable code, did not, and the reason turned out to be a bug that affects every customer with a documentation page. Next.js streams a server-rendered page back as data carrying the page's own prose as a JavaScript string, so any page that so much as mentions eval in a paragraph contains that text inside a script tag, and about twenty checks read it as the site calling eval. Writing about a vulnerability scored as having one. One file had carried the right filter privately for months while its siblings kept the old behaviour, which is the shape of bug this codebase keeps finding. Worse was a suppression rule meant for API documentation: it switched off all four leaked-secret checks, one of them critical, whenever a page contained the words documentation, example and api anywhere at all. That is not a documentation page, it is most websites, and a footer with two links was enough. A genuinely leaked key on such a page would never have been reported. It now asks the question per match instead of per page: a key shown inside a code block is being demonstrated, and the same key anywhere else is still a finding.",
+        category: "fixed",
+      },
+      {
+        icon: Globe,
+        label: "Look This Up Somewhere Else",
+        desc: "A scan result now carries links to fourteen third-party services for the same target: VirusTotal, urlscan, Google Safe Browsing and Cloudflare Radar for whether anyone has already flagged it; Shodan, crt.sh, DNSViz and BGP.tools for what is behind it; SSL Labs, Mozilla Observatory, Hardenize and MXToolbox for a second opinion that grades its own test; and the Wayback Machine and SecurityTrails for what the address used to be. Every one is a link and nothing else, which is the entire design rather than a shortcut around it. An API integration would mean paying per lookup for other people's targets, submitting those targets to a third party under our account with nobody having agreed to that, and caching an opinion about somebody's site that goes stale and then gets served as though it were current. A link has none of those properties and is honest about where the answer came from. Services that fetch the target themselves are marked, because opening one puts a visit in somebody else's logs that you caused. A private or internal target gets no links at all: sending an internal address to a third party as a side effect of a click that could not have answered anything is not a trade worth making.",
+        category: "added",
+      },
+      {
+        icon: ShieldAlert,
+        label: "An Admin Delete That Answered To Three Names And Checked One",
+        desc: "The admin panel asks for the administrator's password again before permanently deleting an account, which is the control that contains a hijacked admin session. The handler accepted three different action names for that delete and the password gate knew only one of them, so anyone holding a stolen admin session but not the password could send a synonym and purge an account with the prompt never appearing. The suite had an exclusion list recording that those synonyms existed and that nothing sends them, which is exactly how it survived review. The handler answers to one name now, and the other two are refused before anything runs. Alongside it: enabling two-factor authentication was the one privilege change that left existing sessions standing, so the most common reaction to a suspected compromise left the attacker logged in while the account displayed 2FA enabled. And an API key minted from a stolen session outlived every credential a password reset clears, so the one thing the product tells a compromised user to do left the attacker with full API access. Both now end when they should.",
+        category: "security",
+      },
+      {
+        icon: Eye,
+        label: "Support Staff Could Read Every Customer's Webhook Secrets",
+        desc: "Opening a user in the admin panel returned their webhooks in full, and for a Slack or Discord hook the URL is the credential: whoever holds it can post into that customer's channel. The neighbouring cards on that same panel had each been narrowed to their own permission in an earlier pass, with a comment explaining that scan rows are somebody's browsing history and key rows name live credentials, and the webhook and scheduled-scan reads were simply left behind on the general may-look-at-accounts permission. So the lowest staff tier, one that holds no ability to change anything at all, could walk the user list and collect the whole customer base's incoming-webhook secrets. The panel shows the host now, which is what it needed in order to say which service a hook points at, and the rest of the URL stays where it belongs.",
+        category: "security",
+      },
+      {
+        icon: Lock,
+        label: "The Lockout Message Told You Whether An Account Existed",
+        desc: "Everything on the login surface is careful not to confirm whether an address is registered: one identical answer for no such account and for a wrong password, a decoy password check so the two take the same time, a fixed response from signup and from forgot-password. Then the per-account lockout, which only a real account could ever trigger, said too many failed attempts for this account. Twenty-six requests from two addresses turned that into a yes or no about any email somebody cared to test, which is worth something to whoever is assembling a list. The counter is keyed on a hash of the submitted address now instead of on the account behind it, so an address that has never been registered produces the same lockout, at the same point, with the same wording.",
+        category: "security",
+      },
     ],
   },
   {

@@ -10,6 +10,7 @@ export {
   getUserByEmail,
   cleanupExpiredSessions,
   deleteAllSessions,
+  revokeOtherSessions,
   hashSessionId,
   listUserSessions,
   findUserSessionByHash,

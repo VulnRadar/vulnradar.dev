@@ -101,6 +101,22 @@ export const POST = withErrorHandling(async (request: Request) => {
     );
   }
 
+  // Keyed on the submitted address, hashed, rather than on users.id.
+  //
+  // The id keying was an account-existence oracle, and an unusually reliable
+  // one: only a real account could ever have a login-fail counter, so the
+  // "Too many failed attempts for this account" message was proof the address
+  // exists. Everything else on this surface is scrupulously non-enumerating
+  // (one 401 for both no-user and wrong-password, a dummy scrypt to equalise
+  // the timing, a fixed string from signup and forgot-password), and this one
+  // message undid all of it for the price of filling the account bucket.
+  //
+  // Hashed so the rate-limit table does not become a list of every address
+  // anyone has tried to sign in as.
+  const accountKey = createHash("sha256")
+    .update(email.trim().toLowerCase())
+    .digest("hex");
+
   const user = await getUserByEmail(email);
 
   if (!user || !user.password_hash) {
@@ -114,7 +130,7 @@ export const POST = withErrorHandling(async (request: Request) => {
   }
 
   // Per-account lockout gate. The failed-password branch below records
-  // login-fail:${user.id} across IPs; once that counter is exhausted the
+  // login-fail:<address> across IPs; once that counter is exhausted the
   // account is temporarily locked here, before the expensive scrypt verify,
   // so a distributed brute-force spread across many IPs is actually
   // throttled (the IP gate above alone would miss it) and stops burning CPU
@@ -132,7 +148,7 @@ export const POST = withErrorHandling(async (request: Request) => {
   // what a genuine distributed attempt looks like.
   const accountLockLimit = await resolveAccountLockLimit();
   const accountLock = await peekRateLimit({
-    key: `login-fail:${user.id}`,
+    key: `login-fail:${accountKey}`,
     ...accountLockLimit,
   });
   if (!accountLock.allowed) {
@@ -154,12 +170,12 @@ export const POST = withErrorHandling(async (request: Request) => {
     // mail/DB failure here must never change the 401 the caller receives.
     try {
       const fail = await checkRateLimit({
-        key: `login-fail:${user.id}`,
+        key: `login-fail:${accountKey}`,
         ...accountLockLimit,
       });
       if (!fail.allowed) {
         const alertGate = await checkRateLimit({
-          key: `login-fail-alert:${user.id}`,
+          key: `login-fail-alert:${accountKey}`,
           maxAttempts: 1,
           windowSeconds: 3600,
         });
@@ -195,7 +211,7 @@ export const POST = withErrorHandling(async (request: Request) => {
   // deliberately NOT cleared: that one throttles the source address, not
   // the account, and clearing it would let one address reset its own quota
   // by interleaving a valid login.
-  await resetRateLimit(`login-fail:${user.id}`);
+  await resetRateLimit(`login-fail:${accountKey}`);
 
   // Check if account is disabled or email not verified
   // `role` rides along for the PAUSE_LOGINS check below rather than costing a

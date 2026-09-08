@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
-import { getSession, hashPassword } from "@/lib/auth";
+import { getSession, hashPassword, revokeOtherSessions } from "@/lib/auth";
 import { verifyReauthPassword } from "@/lib/auth/reauth";
 import {
   encryptApiKey,
@@ -186,6 +186,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     "UPDATE users SET totp_enabled = true, two_factor_method = 'app', backup_codes = $1, totp_last_counter = $2 WHERE id = $3",
     [JSON.stringify(hashedCodes), setupStepCounter, session.userId],
   );
+
+  // Someone switching 2FA on has usually just decided the account might be
+  // compromised, and until now that action left every other session, and
+  // every trusted device, exactly as it was.
+  await revokeOtherSessions(session.userId);
 
   // Send 2FA change notification email (don't await)
   const userAgent = await getUserAgent();

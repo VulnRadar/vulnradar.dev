@@ -300,13 +300,14 @@ describe("ADMIN_ACTIONS stays in sync with app/api/v3/admin/route.ts", () => {
       [...routeSource.matchAll(/case "([a-z0-9_]+)":/g)].map((m) => m[1]),
     ),
   ];
-  // Case labels that exist only as fallthrough aliases onto another,
-  // already-covered case (e.g. `case "enable": case "enable_user": {`) --
-  // nothing in this codebase actually sends these alternate strings, only
-  // the primary label does, so they're intentionally excluded rather than
-  // requiring their own ADMIN_ACTIONS entry.
-  const aliasIds = new Set(["enable_user", "delete_user", "delete_account"]);
-  const realActionIds = caseIds.filter((id) => !aliasIds.has(id));
+  // There are no alias cases left, and the exclusion list that used to sit
+  // here is why: it recorded that "delete_user" and "delete_account" fell
+  // through onto the delete handler, noted nothing sends them, and let them
+  // stay. But PASSWORD_GATED_ACTIONS held only "delete", so an attacker with
+  // a stolen admin session and no password sent one of the synonyms and
+  // purged an account with the re-auth prompt never running. Every case
+  // label the route answers to is now a real, registered action.
+  const realActionIds = caseIds;
 
   it("found a non-trivial number of real action cases in the route (sanity check the extraction itself)", () => {
     expect(realActionIds.length).toBeGreaterThan(20);

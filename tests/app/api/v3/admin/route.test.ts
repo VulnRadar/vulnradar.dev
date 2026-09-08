@@ -893,6 +893,28 @@ describe("PATCH /api/v3/admin — update_email is admin-only (AUDIT-002#auth-01)
   }, 20000);
 });
 
+describe("PATCH /api/v3/admin — the delete handler answers to one name", () => {
+  it("refuses a synonym that used to reach the handler ungated", async () => {
+    // PASSWORD_GATED_ACTIONS held "delete", and the switch accepted
+    // "delete_user" and "delete_account" as fallthrough labels onto the same
+    // permanent purge. So an attacker holding a stolen admin session but not
+    // the admin's password sent a synonym and the re-auth prompt never ran.
+    // The test suite's own alias-exclusion list is what let it sit there.
+    for (const action of ["delete_user", "delete_account"]) {
+      mockGetSession.mockResolvedValue({ userId: 1, role: "admin" });
+      const res = await PATCH(patchRequest({ action, userId: 5 }));
+      // Refused, and which refusal does not matter: with no ADMIN_ACTIONS
+      // entry the permission check answers 403 before the switch is reached,
+      // and an unrecognised label would fall to default and answer 400.
+      // What matters is that neither one is the handler running.
+      expect([400, 403], `${action} must not reach a handler`).toContain(
+        res.status,
+      );
+      expect(mockConnect).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe("PATCH /api/v3/admin — delete_account transaction", () => {
   it("runs the delete inside BEGIN/COMMIT and audit-logs it", async () => {
     queueRole("admin");
@@ -905,7 +927,7 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
     queueAdminPassword(adminHash);
     const res = await PATCH(
       patchRequest({
-        action: "delete_account",
+        action: "delete",
         userId: 5,
         currentAdminPassword: ADMIN_PASSWORD,
       }),
@@ -945,7 +967,7 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
     queueAdminPassword(adminHash);
     await PATCH(
       patchRequest({
-        action: "delete_account",
+        action: "delete",
         userId: 5,
         currentAdminPassword: ADMIN_PASSWORD,
       }),
@@ -964,7 +986,7 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
     queueAdminPassword(adminHash);
     await PATCH(
       patchRequest({
-        action: "delete_account",
+        action: "delete",
         userId: 5,
         currentAdminPassword: ADMIN_PASSWORD,
       }),
@@ -1003,7 +1025,7 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
     await expect(
       PATCH(
         patchRequest({
-          action: "delete_account",
+          action: "delete",
           userId: 5,
           currentAdminPassword: ADMIN_PASSWORD,
         }),

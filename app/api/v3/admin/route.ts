@@ -183,6 +183,19 @@ export async function GET(request: NextRequest) {
       session.role,
       STAFF_PERMISSIONS.VIEW_USER_API_KEYS,
     );
+    // The same reasoning as the three above, applied to the two reads that
+    // were left on the bare VIEW_USERS check when those were narrowed. For a
+    // Slack or Discord webhook the URL IS the credential: anyone holding
+    // https://hooks.slack.com/services/T.../B.../... can post into that
+    // customer's channel. So every staff tier down to support, which holds no
+    // mutation permission at all, could read the whole customer base's
+    // incoming-webhook secrets by walking userId. Scheduled-scan URLs are the
+    // same class of data VIEW_ALL_SCANS exists to protect, and billing and
+    // content_manager hold VIEW_USERS without it.
+    const canSeeWebhooks = hasStaffPermission(
+      session.role,
+      STAFF_PERMISSIONS.DELETE_USER_WEBHOOKS,
+    );
     const userId = searchParams.get("userId");
     if (!userId)
       return NextResponse.json({ error: "userId required" }, { status: 400 });
@@ -242,14 +255,21 @@ export async function GET(request: NextRequest) {
             [userId],
           )
         : Promise.resolve({ rows: [] as unknown[] }),
-      pool.query(
-        "SELECT id, name, url, type, active FROM webhooks WHERE user_id = $1",
-        [userId],
-      ),
-      pool.query(
-        "SELECT id, url, frequency, active, last_run_at, next_run_at FROM scheduled_scans WHERE user_id = $1",
-        [userId],
-      ),
+      canSeeWebhooks
+        ? pool.query(
+            // The host, not the path. Identifying which service a hook points
+            // at is what the panel is for; the path segments are the bearer
+            // token, and staff have no reason to hold one.
+            "SELECT id, name, split_part(url, '/', 3) AS url_host, type, active FROM webhooks WHERE user_id = $1",
+            [userId],
+          )
+        : Promise.resolve({ rows: [] as unknown[] }),
+      canSeeScans
+        ? pool.query(
+            "SELECT id, url, frequency, active, last_run_at, next_run_at FROM scheduled_scans WHERE user_id = $1",
+            [userId],
+          )
+        : Promise.resolve({ rows: [] as unknown[] }),
       // Session rows carry the target's last-known IPs, so they ride on
       // VIEW_USER_SESSIONS rather than VIEW_USERS. billing and
       // content_manager hold the latter but not the former.
@@ -1104,8 +1124,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    case "enable":
-    case "enable_user": {
+    // Same alias hazard, no security consequence here, removed for the same
+    // reason: an action string that reaches a handler without passing the
+    // gates written for it is a trap regardless of what the handler does.
+    case "enable": {
       await pool.query("UPDATE users SET disabled_at = NULL WHERE id = $1", [
         userId,
       ]);
@@ -2154,9 +2176,15 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    case "delete":
-    case "delete_user":
-    case "delete_account": {
+    // One name, not three. PASSWORD_GATED_ACTIONS holds "delete" and the
+    // switch accepted two synonyms for it, so an attacker holding a stolen
+    // admin session but not the admin's password could send
+    // {"action":"delete_account"} and permanently purge an account with the
+    // re-auth prompt never running. The panel only ever sends "delete"; the
+    // other two strings in components/admin/config.ts are audit-log display
+    // labels, not payloads. An unrecognised action now falls to default and
+    // is answered 400 rather than executing ungated.
+    case "delete": {
       // This permanently deletes a user account - use with caution!
       const userEmail = targetUser.email;
       const userName = targetUser.name || userEmail;

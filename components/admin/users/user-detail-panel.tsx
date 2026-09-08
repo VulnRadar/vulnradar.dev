@@ -2940,7 +2940,7 @@ export function UserDetailPanel({
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium">{webhook.name}</p>
                         <p className="text-[10px] text-muted-foreground font-mono truncate">
-                          {webhook.url}
+                          {webhook.url_host}
                         </p>
                       </div>
                       {/* This was the loudest badge on the whole panel, a
