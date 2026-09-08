@@ -150,11 +150,24 @@ const SCAN_KEEPALIVE_ALARM = "vulnradar-scan-keepalive";
  * auto-scan, and the on-page "Scan now" card - benefits uniformly from a
  * single call site instead of duplicating alarm setup per caller.
  */
+/**
+ * How many status polls may fail in a row before the scan is abandoned.
+ *
+ * Not one, which is what "no try/catch" amounted to. A crawl polls a few
+ * hundred times across its budget, so a single blip failed a scan that was
+ * succeeding.
+ */
+const MAX_CONSECUTIVE_POLL_FAILURES = 5;
+
 async function withScanKeepAlive<T>(fn: () => Promise<T>): Promise<T> {
   try {
-    // 1 minute is the shortest period Chrome allows for a repeating alarm
-    // in a packaged extension; well under the ~30s idle-suspend window.
-    await browser.alarms.create(SCAN_KEEPALIVE_ALARM, { periodInMinutes: 1 });
+    // 30 seconds, and the comment this replaces had the arithmetic
+    // backwards: it said one minute was "well under the ~30s idle-suspend
+    // window", when it is double it. An alarm at t=60s wakes a fresh worker
+    // and cannot resurrect the scan closure evicted at t=30s, which is what
+    // all the stale-scan recovery machinery in scan-lifecycle.ts exists to
+    // clean up after. 0.5 has been the MV3 minimum since Chrome 120.
+    await browser.alarms.create(SCAN_KEEPALIVE_ALARM, { periodInMinutes: 0.5 });
   } catch {
     // alarms API unavailable in this context - proceed without it rather
     // than fail the scan over a keep-alive nicety.
@@ -198,13 +211,44 @@ async function pollScanUntilDone(
   scanId: number,
   timeoutMs: number,
   timeoutMessage: string,
+  /** The start response's rate-limit headers; the status poll sends none. */
+  startRateLimit?: FetchResult<unknown>["rateLimit"],
 ): Promise<FetchResult<ScanResult>> {
   const deadline = Date.now() + timeoutMs;
+  let consecutiveFailures = 0;
   while (Date.now() < deadline) {
-    const poll = await api.scanStatus(apiKey, scanId);
+    let poll: Awaited<ReturnType<typeof api.scanStatus>>;
+    try {
+      poll = await api.scanStatus(apiKey, scanId);
+    } catch (err) {
+      // A crawl polls a few hundred times over its budget, so treating one
+      // dropped connection or one 502 from a proxy as fatal threw the whole
+      // scan out to the popup's error banner while it completed server-side
+      // and landed in the user's history. The same defect was in the CLI.
+      consecutiveFailures += 1;
+      if (consecutiveFailures > MAX_CONSECUTIVE_POLL_FAILURES) throw err;
+      await new Promise((resolve) =>
+        setTimeout(resolve, SCAN_POLL_INTERVAL_MS),
+      );
+      continue;
+    }
+    consecutiveFailures = 0;
     const status = poll.body;
     if (status.status === "completed" && status.result) {
-      return { ...poll, body: status.result };
+      // rateLimit from the START response, not from this poll.
+      //
+      // This returned `{ ...poll, body: status.result }`, so the rate-limit
+      // fields came from GET /scan/status, which emits no X-RateLimit headers
+      // at all: it deliberately never charges quota. The response that does
+      // carry them is the POST that started the scan, and it was discarded.
+      // So remaining was always null, the cache was never written, and the
+      // popup's "N remaining today" block and "Unlimited scans" pill have
+      // never rendered for anyone.
+      return {
+        ...poll,
+        rateLimit: startRateLimit ?? poll.rateLimit,
+        body: status.result,
+      };
     }
     if (status.status === "failed") {
       throw new Error(status.error || "The scan failed.");
@@ -270,6 +314,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
         started.body.scanId,
         VULNRADAR.crawlTimeoutMs,
         "The crawl scan is taking longer than expected. Check History on the VulnRadar site shortly for the result.",
+        started.rateLimit,
       );
     }
     const started = await api.scan(apiKey, body);
@@ -278,6 +323,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
       started.body.scanId,
       VULNRADAR.scanTimeoutMs,
       "The scan is taking longer than expected. Check History on the VulnRadar site shortly for the result.",
+      started.rateLimit,
     );
   });
 

@@ -78,7 +78,19 @@ function parseRateLimit(headers: Record<string, string>) {
   return {
     limit: num("X-RateLimit-Limit"),
     remaining: num("X-RateLimit-Remaining"),
-    reset: num("X-RateLimit-Reset"),
+    // Date.parse, not Number. The server sends an ISO-8601 string here
+    // (resetsAt in lib/rate-limiting/daily-limits.ts), so Number() gave NaN
+    // and this was always null. It went unnoticed because the caller read
+    // rate limits off the wrong response entirely, so nothing downstream ever
+    // saw a value; fixing that would have surfaced this as a wrong one.
+    reset: (() => {
+      const raw = headers["x-ratelimit-reset"];
+      if (raw == null) return null;
+      const asNumber = Number(raw);
+      if (Number.isFinite(asNumber)) return asNumber;
+      const parsed = Date.parse(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    })(),
   };
 }
 
