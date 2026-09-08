@@ -392,6 +392,25 @@ const CHANGELOG: Release[] = [
         desc: "Eleven of the action cards on a user's admin page checked whether your role could use them before offering them, and eight did not. For a moderator that meant five buttons that were always going to fail, four of which asked for the administrator password first: you typed it in, and only then were told you did not have permission. The wasted step is the smaller half. The larger half is what it teaches, because a re-authentication prompt only works if it means something, and one that appears before failures becomes noise people click through. Checking in nineteen separate places is what let eight of them drift, so the check moved into the card itself, reading the same registry the server reads. A card and the route behind it can no longer disagree, and a new card cannot be added without one, because the compiler now requires it. Separately, a whole endpoint returning an error used to take the entire panel down rather than the tab: the audit list did not check whether its request succeeded, so an error response left it holding nothing where an array belonged, and the first thing that counted the entries threw. And three lists reported a permission denial as a fact about the product, the worst being Teams, which opened for a role the API refuses and then said this deployment had no teams.",
         category: "fixed",
       },
+      {
+        icon: ShieldAlert,
+        label: "A Scan That Ran Out Of Time Said Three Checks Came Back Clean",
+        desc: "When the network phase of a scan hits its ceiling, the report marks the parts that did not finish so nothing reads as a clean bill of health it never earned. That list named three sections and there are six, so the three it left out, including active probing, were reported as having run and found nothing. Active probing is the worst of them to be wrong about, because it is the slowest section and therefore the usual reason the ceiling was reached at all: the moment it gets cut short is exactly the moment the report claimed it was clear. The same mistake existed in the crawl and was fixed there some time ago, citing the audit that found it; the fix never reached the ordinary scan path, which is the one nearly every scan takes. There was a second version of it one step further along, where a failure in that phase produced an empty not-finished list, which says the same thing. Both now name every section that was planned.",
+        category: "fixed",
+      },
+      {
+        icon: Eye,
+        label: "A Public Page Could Publish The Link You Actually Scanned",
+        desc: "The public host report copied the whole of a scan's metadata into its response rather than listing the fields it meant to publish. One of those fields records the address before any redirect, and since a scan that redirects stores the destination as its URL, that record is the only surviving copy of what was typed in. So scanning an invitation or password-reset link that bounces to a sign-in page published the original link, query string and token included, from a page that needs no account. Nothing on screen changes, because the page has always picked its fields by name: the extra ones were visible only to somebody reading the API directly. The same class of exposure was already refused for signed-in callers elsewhere in the app, with a comment naming magic-login links as the reason.",
+        category: "security",
+      },
+      {
+        icon: Gauge,
+        label:
+          "The Daily Scan Limit Stopped Being Enforced When The Database Struggled",
+        desc: "Counting how many scans an account had used today swallowed any database error and answered zero. Whether a scan is allowed is decided by comparing that number against the plan's limit, so an unreadable count meant nobody had used anything and every entry point let the request through: ordinary scans, authenticated scans, bulk, crawl and the scheduled worker alike. A limit that stops applying exactly when the database is under strain is the wrong way round, and the same file already contained a version written to fail the other way, with a comment saying that if it cannot reach the database it must not issue a permit, which nothing had ever called. The failure now travels. On a scan that means an honest error rather than a free pass, since a count that could not be read belongs to a database that could not have recorded the scan either. The billing page is the one place that only displays the number, so it shows nothing rather than a zero that would tell you that you had used none of your allowance.",
+        category: "fixed",
+      },
     ],
   },
   {
