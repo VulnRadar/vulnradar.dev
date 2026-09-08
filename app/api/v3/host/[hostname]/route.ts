@@ -183,7 +183,47 @@ export async function GET(
     }
 
     // Live meta overrides the snapshot but never drops a field the snapshot had.
-    const meta = { ...(row.result_meta || {}), ...(liveMeta || {}) };
+    const meta: Record<string, unknown> = {
+      ...(row.result_meta || {}),
+      ...(liveMeta || {}),
+    };
+
+    /**
+     * An explicit list, because a spread is not an allowlist.
+     *
+     * This endpoint is anonymous, and `...meta` handed every key
+     * result_meta happens to carry to whoever asked. One of them is
+     * `redirect`, which holds { requestedUrl, finalUrl } verbatim, and
+     * scan-jobs.ts rewrites scan_history.url to the redirect target, so
+     * requestedUrl is the only surviving copy of what the user actually
+     * submitted. Scan https://app.example.com/invite?token=SECRET, let it
+     * bounce to /login, and the token came back from a public URL. Also
+     * spread out were crawl.pages[].scanHistoryId and the authenticated-scan
+     * report.
+     *
+     * This is the same exposure app/api/v3/assets/route.ts already refuses
+     * for AUTHENTICATED callers, naming magic-login links and presigned URLs.
+     * The page picks its fields by name, so nothing on screen changes: the
+     * extra keys were only ever visible to somebody reading the API.
+     */
+    const PUBLIC_META_KEYS = [
+      "checksRun",
+      "engineConfidence",
+      "incomplete",
+      "aiSummary",
+      "sslGrade",
+      "siteGrade",
+      "threatIntel",
+      "softwareInventory",
+      "dnsRecords",
+      "portScan",
+      "subdomains",
+    ] as const;
+    const publicMeta: Record<string, unknown> = {};
+    for (const key of PUBLIC_META_KEYS) {
+      if (meta[key] !== undefined) publicMeta[key] = meta[key];
+    }
+
     const body: HostReportData = {
       known: true,
       host,
@@ -194,7 +234,7 @@ export async function GET(
       lastScannedAt: new Date(row.last_scanned_at).toISOString(),
       authenticated: row.authenticated || false,
       autoTags: row.auto_tags || [],
-      ...meta,
+      ...publicMeta,
     };
     return NextResponse.json(body);
   } catch (error) {

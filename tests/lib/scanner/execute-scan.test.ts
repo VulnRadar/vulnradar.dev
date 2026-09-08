@@ -46,6 +46,12 @@ const mockRunAsyncChecksDetailed = vi.fn();
 vi.mock("@/lib/scanner/async-checks", () => ({
   runAsyncChecksDetailed: (...args: unknown[]) =>
     mockRunAsyncChecksDetailed(...args),
+  // The branches this scan planned. executeScan reads it so a cut-off or
+  // rejected async phase can report every branch that did not finish, rather
+  // than the three that used to be hardcoded: naming only dns, tls and
+  // live-fetch told the reader that active probing, the dependency lookup and
+  // the reputation check had run and found nothing.
+  getPlannedAsyncBranches: () => ["dns", "tls", "live-fetch"],
 }));
 
 vi.mock("@/lib/scanner/protocols", () => ({

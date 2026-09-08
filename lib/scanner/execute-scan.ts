@@ -10,7 +10,11 @@
  */
 
 import { runSyncChecksYielding } from "./engine";
-import { runAsyncChecksDetailed, type AsyncCheckResult } from "./async-checks";
+import {
+  runAsyncChecksDetailed,
+  getPlannedAsyncBranches,
+  type AsyncCheckResult,
+} from "./async-checks";
 import { classifyRedirect } from "./scan-target-classify";
 import { readSslGrade } from "./ssl-grade";
 import { readThreatIntel } from "./reputation-lookup";
@@ -498,6 +502,13 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // 12s ceiling, so this outer 15s race is a safety net rather than the
     // primary mechanism; when it does fire, incomplete[] below lists every
     // branch as not completed rather than silently returning no findings.
+    // Every branch this scan actually planned, from the same builder
+    // runAsyncChecksDetailed uses, so the two cannot disagree about what was
+    // supposed to run.
+    const plannedAsyncBranches = getPlannedAsyncBranches(
+      normalizedUrl,
+      selectedScanners,
+    );
     const asyncPromise = runAsyncChecksDetailed(
       normalizedUrl,
       selectedScanners,
@@ -522,7 +533,19 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     const asyncTimeout = new Promise<AsyncCheckResult>((resolve) => {
       asyncTimeoutHandle = setTimeout(() => {
         asyncTimedOut = true;
-        resolve({ findings: [], incomplete: ["dns", "tls", "live-fetch"] });
+        // Every planned branch, not a hardcoded three.
+        //
+        // buildBranches produces six labels: dns, tls, live-fetch,
+        // reputation, osv-libraries and active-probes. Naming only the first
+        // three meant a scan that blew this ceiling told the reader that
+        // active probing, the dependency lookup and the reputation check had
+        // RUN AND FOUND NOTHING. Active probing is the ownership-gated
+        // injection battery and the slowest branch, so it is the one most
+        // likely to be cut off and the one whose false all-clear matters
+        // most. The comment above this promise already claimed the list named
+        // every branch. execute-crawl-scan.ts fixed exactly this and the fix
+        // never reached the main pipeline, which runs almost every scan.
+        resolve({ findings: [], incomplete: plannedAsyncBranches });
         // The setting that names this exact ceiling. It reached the demo,
         // bulk and authenticated routes and not the main pipeline, which is
         // the one that runs almost every scan, so raising it moved three
@@ -609,11 +632,17 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     sourceMapPromise.catch(() => {});
 
     // Await async checks (already running in parallel with sync)
-    let asyncResult: AsyncCheckResult = { findings: [], incomplete: [] };
+    // Seeded with every planned branch rather than with an empty list: if the
+    // race rejects, nothing below reassigns this, and an empty incomplete[]
+    // is the same claim as "all of them ran and found nothing".
+    let asyncResult: AsyncCheckResult = {
+      findings: [],
+      incomplete: plannedAsyncBranches,
+    };
     try {
       asyncResult = await Promise.race([asyncPromise, asyncTimeout]);
     } catch {
-      /* non-fatal */
+      /* non-fatal: asyncResult keeps its seeded not-completed list */
     } finally {
       // Race settled: cancel the timeout so it can't fire late and wrongly mark
       // an already-complete scan as timed out.
