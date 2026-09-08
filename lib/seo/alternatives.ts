@@ -1,4 +1,21 @@
 import { APP_NAME } from "@/lib/config/constants";
+import { getPaidPlans } from "@/lib/billing/plans";
+
+// Our own prices, from the catalog checkout charges against. They were typed in
+// three times on these pages ("$5, $10, or $20 a month", "$5-20/mo paid tiers",
+// "paid plans from $5 a month"), which is exactly the ground rule at the top of
+// this file applied to everyone except us: a comparison page that gets its own
+// price wrong is the one error a competitor will screenshot.
+const PAID_PRICES = getPaidPlans().map((plan) => plan.priceInCents / 100);
+const CHEAPEST_PAID = Math.min(...PAID_PRICES);
+const DEAREST_PAID = Math.max(...PAID_PRICES);
+/** "$5, $10, or $20" for three tiers; degrades correctly for any other count. */
+const PAID_PRICE_LIST =
+  PAID_PRICES.length > 1
+    ? `${PAID_PRICES.slice(0, -1)
+        .map((price) => `$${price}`)
+        .join(", ")}, or $${DEAREST_PAID}`
+    : `$${CHEAPEST_PAID}`;
 
 // Honest, factual comparison data for the /alternatives pages.
 //
@@ -58,8 +75,7 @@ export interface Alternative {
 const VR = {
   licensing: "Open source, GPL-3.0. Read the detection engine in the repo.",
   hosting: "Hosted SaaS or self-host it yourself with no plan limits.",
-  pricing:
-    "Free tier, then $5, $10, or $20 a month. Same engine on every tier.",
+  pricing: `Free tier, then ${PAID_PRICE_LIST} a month. Same engine on every tier.`,
   onboarding: "Paste a URL. No agent, no appliance, no sales call.",
   engine: "One detection engine, identical on free and paid down to check IDs.",
   // Both of these ship today and neither was stated anywhere on the site:
@@ -153,7 +169,7 @@ const COMPETITORS: Alternative[] = [
     faq: [
       {
         question: `Is ${APP_NAME} a cheaper Detectify alternative?`,
-        answer: `${APP_NAME} is open source with a free tier and paid plans from $5 a month, so for an individual or small team it is dramatically cheaper than an enterprise EASM subscription. It targets a different job: fast, transparent scanning you can self-host, rather than managed attack-surface monitoring at scale.`,
+        answer: `${APP_NAME} is open source with a free tier and paid plans from $${CHEAPEST_PAID} a month, so for an individual or small team it is dramatically cheaper than an enterprise EASM subscription. It targets a different job: fast, transparent scanning you can self-host, rather than managed attack-surface monitoring at scale.`,
       },
       {
         question: `Does ${APP_NAME} do continuous monitoring?`,
@@ -270,7 +286,7 @@ const COMPETITORS: Alternative[] = [
     ],
     differentiators: [
       "Open source and self-hostable, so scanning can stay entirely inside your own infrastructure.",
-      "Free tier and $5-20/mo paid tiers instead of per-target enterprise pricing.",
+      `Free tier and $${CHEAPEST_PAID}-${DEAREST_PAID}/mo paid tiers instead of per-target enterprise pricing.`,
       "The full check set is public, each with fix steps and copyable code.",
     ],
     faq: [

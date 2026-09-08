@@ -107,6 +107,11 @@ vi.mock("@/lib/email/email", () => ({
     text: "t",
     html: "<p>h</p>",
   })),
+  twoFactorRecoveryCodeEmail: vi.fn((code: string) => ({
+    subject: "s",
+    text: `code ${code}`,
+    html: "<p>h</p>",
+  })),
 }));
 
 // Mocked at this module boundary (not the filesystem below it): the
@@ -1535,6 +1540,183 @@ describe("PATCH /api/v3/admin — reset_2fa is permanently disabled (account-tak
     expect(res.status).toBe(400);
     expect(json.error).toMatch(/disabled/i);
     expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+});
+
+/**
+ * The route back for an account that lost its authenticator, and the thing
+ * reset_2fa above points at. It must never be a way to turn the second factor
+ * off: it issues ONE backup code, mails it to the account's own verified
+ * address, and never returns it to the caller.
+ */
+describe("PATCH /api/v3/admin — issue_2fa_recovery_code", () => {
+  function queueRecoverableTarget(over: Record<string, unknown> = {}) {
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      totp_enabled: true,
+      two_factor_method: "app",
+      email_verified_at: "2026-01-01T00:00:00.000Z",
+      unsubscribe_token: null,
+      ...over,
+    });
+  }
+
+  it("mails one code to the target and never returns it to the caller", async () => {
+    queueRole("admin");
+    queueRecoverableTarget();
+    queueAdminPassword(adminHash);
+
+    const res = await PATCH(
+      patchRequest({
+        action: "issue_2fa_recovery_code",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    // The whole design: the mailbox is the proof of ownership, so the code
+    // must not reach the staff member who asked for it.
+    expect(JSON.stringify(json)).not.toMatch(/[0-9A-F]{5}-[0-9A-F]{5}/);
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail.mock.calls[0][0].to).toBe("t@example.com");
+
+    const update = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("UPDATE users SET backup_codes"),
+    );
+    expect(update).toBeDefined();
+    // Exactly one hash replaces whatever was there: one code exists after
+    // this, and none once it is spent.
+    expect(JSON.parse(update![1][0] as string)).toHaveLength(1);
+    expect(update![1][1]).toBe(5);
+    // Never touches the factor itself.
+    expect(mockQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining("totp_enabled = false"),
+      expect.anything(),
+    );
+  }, 20000);
+
+  it("audit-logs the issue", async () => {
+    queueRole("admin");
+    queueRecoverableTarget();
+    queueAdminPassword(adminHash);
+
+    await PATCH(
+      patchRequest({
+        action: "issue_2fa_recovery_code",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "issue_2fa_recovery_code",
+      expect.stringContaining("recovery code"),
+      "127.0.0.1",
+    );
+  }, 20000);
+
+  it("refuses a target that has no second factor to recover", async () => {
+    queueRole("admin");
+    queueRecoverableTarget({ totp_enabled: false });
+    queueAdminPassword(adminHash);
+
+    const res = await PATCH(
+      patchRequest({
+        action: "issue_2fa_recovery_code",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+
+  // app/api/v3/auth/2fa/verify only accepts a backup code when the method is
+  // "app", so a code issued to an email-2FA account would not open anything.
+  it("refuses an email-2FA target, whose codes already go to that address", async () => {
+    queueRole("admin");
+    queueRecoverableTarget({ two_factor_method: "email" });
+    queueAdminPassword(adminHash);
+
+    const res = await PATCH(
+      patchRequest({
+        action: "issue_2fa_recovery_code",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("refuses when the target's address was never verified", async () => {
+    queueRole("admin");
+    queueRecoverableTarget({ email_verified_at: null });
+    queueAdminPassword(adminHash);
+
+    const res = await PATCH(
+      patchRequest({
+        action: "issue_2fa_recovery_code",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("requires the caller's own password", async () => {
+    queueRole("admin");
+    queueRecoverableTarget();
+    queueAdminPassword(adminHash);
+
+    const res = await PATCH(
+      patchRequest({ action: "issue_2fa_recovery_code", userId: 5 }),
+    );
+    expect(res.status).toBe(403);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("refuses a support-tier caller, who holds no 2FA permission", async () => {
+    queueRole("support");
+    const res = await PATCH(
+      patchRequest({
+        action: "issue_2fa_recovery_code",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  }, 20000);
+
+  // Send first, store second. The other order wipes the codes an already
+  // locked-out account still had and then discovers SMTP is down.
+  it("does not replace the stored codes when the email cannot be sent", async () => {
+    queueRole("admin");
+    queueRecoverableTarget();
+    queueAdminPassword(adminHash);
+    mockSendEmail.mockRejectedValueOnce(new Error("smtp down"));
+
+    await PATCH(
+      patchRequest({
+        action: "issue_2fa_recovery_code",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    ).catch(() => undefined);
+
+    expect(
+      mockQuery.mock.calls.find(([sql]) =>
+        String(sql).includes("UPDATE users SET backup_codes"),
+      ),
+    ).toBeUndefined();
   }, 20000);
 });
 

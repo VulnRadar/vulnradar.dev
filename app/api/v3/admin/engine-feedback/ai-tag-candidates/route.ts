@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { CONFIG_MAX_TAG_LENGTH } from "@/lib/config/config-values";
-import { requirePermission } from "@/lib/auth/authorization";
+import { logAction, requirePermission } from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
+import { getClientIp } from "@/lib/api/request-utils";
 import {
   invalidatePromotedRulesCache,
   RESERVED_AUTO_TAG_NAMES,
@@ -365,6 +366,31 @@ export async function POST(request: NextRequest) {
     // So the very next scan already sees this rule, instead of waiting out
     // lib/tags/auto-tags.ts's DB_RULES_CACHE_TTL_MS.
     invalidatePromotedRulesCache();
+
+    // Promoting a tag changes what the scanner labels every future scan
+    // with, for every user, and the ON CONFLICT above silently rewrites an
+    // existing rule. promoted_auto_tag_rules.created_by keeps the original
+    // author and is not touched on an update, so without this row the
+    // second person to edit a rule left no trace at all. A target user id
+    // would be meaningless: the change is site-wide, not about one account.
+    //
+    // Written after the rule and best-effort, the same shape the backup
+    // route uses: the promotion has already committed by this point, so a
+    // failed audit write must not be reported as a failed promotion.
+    try {
+      await logAction(
+        admin.id,
+        null,
+        "promote_ai_tag",
+        `Promoted the AI tag "${tag}" to an auto-tag rule (min severity ${minSeverity}, min count ${minCount}, CWEs: ${cwes.join(", ") || "none"}, categories: ${categories.join(", ") || "none"})`,
+        await getClientIp(),
+      );
+    } catch (err) {
+      console.error(
+        "[admin/engine-feedback/ai-tag-candidates] Failed to write audit log for promote_ai_tag (non-fatal):",
+        err,
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

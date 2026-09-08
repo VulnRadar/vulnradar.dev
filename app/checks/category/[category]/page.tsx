@@ -12,6 +12,7 @@ import {
   SeverityPill,
   Breadcrumbs,
   ScanCta,
+  SeoFaq,
 } from "@/lib/seo/seo-ui";
 import {
   SEO_CATEGORIES,
@@ -109,8 +110,14 @@ export default async function CategoryPage({
     },
     {
       question: `Do I need to install anything to run the ${label.toLowerCase()} checks?`,
+      // Was "the scanner runs from the browser or the REST API. There is no
+      // agent, appliance, or extension to install." Both halves were wrong in a
+      // way the landing FAQ already gets right: the scan runs on our servers,
+      // not in the visitor's browser, which is the whole point of the product,
+      // and a browser extension does exist. It is optional, which is a
+      // different claim from it not existing.
       answer:
-        "No. Paste a URL and the scanner runs from the browser or the REST API. There is no agent, appliance, or extension to install.",
+        "No. Paste a URL in the browser or call the REST API, and the scan itself runs from our servers against that URL. There is no agent and no appliance to deploy alongside your application. A browser extension exists if you want to scan the page you are looking at, but nothing has to be installed to use this.",
     },
   ];
 
@@ -192,6 +199,8 @@ export default async function CategoryPage({
             </div>
           ))}
         </section>
+
+        <SeoFaq items={faq} heading={`About the ${label} checks`} />
 
         <p className="mt-10 text-sm">
           <Link href="/checks" className="text-primary hover:underline">

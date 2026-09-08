@@ -30,7 +30,7 @@ export interface PublicRoute {
  * per-category, per-competitor) are appended below, generated from the same
  * data the pages render so the sitemap can never drift out of sync with them.
  */
-const STATIC_PUBLIC_ROUTES: readonly PublicRoute[] = [
+export const STATIC_PUBLIC_ROUTES: readonly PublicRoute[] = [
   // The ROOT, not /landing. / permanently redirects to /landing, so both
   // serve the same page, and app/landing/page.tsx now declares "/" as its
   // canonical. A sitemap listing /landing while the page canonicalises to /
@@ -134,24 +134,27 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
  */
 export const DISALLOWED_PATHS: readonly string[] = [
   "/api/",
-  // app/admin/layout.tsx serves privatePageMetadata("Admin", "/admin") and
-  // says the point is to save crawl budget, but the noindex meta tag only
-  // stops indexing AFTER the fetch. Without the Disallow, a crawler still
-  // spends a fetch on /admin and lands on the /login?redirect=/admin
-  // duplicate the QUERY_DISALLOW rule in app/robots.ts exists to stop.
-  // Prefix matching covers /admin/ai-chats/<id> (AUDIT-014#seo-15).
-  // Auth-gated: redirects anon visitors (Googlebot included) to
-  // /login?redirect=/compare, so an indexed copy is a thin duplicate of the
-  // login page and it kept generating a duplicate /login?redirect= URL in
-  // Search Console. Not a public marketing page.
+  // Tokenised or per-entity report URLs. Not enumerable, so there is no fixed
+  // list to publish a sitemap entry or a canonical for. Both carry a noindex of
+  // their own, and app/robots.ts re-allows the link-preview fetchers back into
+  // these two so a pasted report still unfurls.
+  //
+  // The two comment blocks that used to sit here described "/admin" and
+  // "/compare" entries. Both were removed by the auth-gated-routes rule at the
+  // bottom of this list; the comments stayed behind and read as if they
+  // explained "/shared/".
   "/shared/",
   "/host/",
   "/browser/",
-  // Auth-gated, same as /compare above. The badge BUILDER reads the caller's
-  // own scan history and is out of PUBLIC_PATHS, so a crawl of it lands on
-  // /login?redirect=/badge. The badge IMAGE it produces lives under /api/ and
-  // is disallowed by the first entry in this list, which is right too: it is
-  // an image embedded on someone else's page, not a page of ours to index.
+  // Auth-gated. The badge BUILDER reads the caller's own scan history and is
+  // out of PUBLIC_PATHS, so a crawl of it lands on /login?redirect=/badge. The
+  // badge IMAGE it produces lives under /api/ and is disallowed by the first
+  // entry in this list, which is right too: it is an image embedded on someone
+  // else's page, not a page of ours to index.
+  //
+  // This is the one auth-gated path still listed, against the rule at the
+  // bottom of this list, and tests/lib/seo/routes.test.ts exempts it by name so
+  // the exception is deliberate rather than an oversight.
   "/badge",
   "/verify-email",
   "/reset-password",

@@ -329,13 +329,15 @@ export const CONFIG_SEO_OG_IMAGE_HEIGHT = 630;
 
 // Social handles. Leave a value empty to omit that tag entirely.
 //
-// Empty here is deliberate, not an oversight: lib/seo/metadata.ts and
-// app/layout.tsx both drop the `twitter:site` tag rather than emit an empty
-// one, so an unset handle publishes nothing instead of publishing something
-// broken. The cost of leaving it unset is that X cards carry no "@handle"
-// attribution line and no account for a resharer to follow. Set it here (with
-// the leading @) or via NEXT_PUBLIC_SEO_TWITTER_HANDLE once the deployment
-// has an account.
+// Empty here is not the same as no tag. lib/config/constants.ts falls back to
+// the handle in CONFIG_SOCIAL_X_URL when this is blank, so a deployment with an
+// X account gets the attribution line without stating the account twice, and
+// one with no X account still publishes nothing rather than an empty tag
+// (lib/seo/metadata.ts and app/layout.tsx both drop `twitter:site` when the
+// resolved value is empty).
+//
+// Set this, with the leading @, only to publish a handle that differs from the
+// social profile, or via NEXT_PUBLIC_SEO_TWITTER_HANDLE.
 export const CONFIG_SEO_TWITTER_HANDLE = "";
 export const CONFIG_SEO_GITHUB_URL = `https://github.com/${CONFIG_APP_REPO}`;
 

@@ -7,7 +7,7 @@ import {
   FaqStructuredData,
   SoftwareStructuredData,
 } from "@/components/seo/structured-data";
-import { SeoPageShell, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
+import { SeoPageShell, Breadcrumbs, ScanCta, SeoFaq } from "@/lib/seo/seo-ui";
 import { APP_NAME } from "@/lib/config/constants";
 
 export const metadata: Metadata = pageMetadata({
@@ -247,6 +247,8 @@ export default async function LinkCheckerPage() {
           </Link>
           .
         </p>
+
+        <SeoFaq items={FAQ} heading="Checking a link, answered" />
       </div>
 
       <ScanCta

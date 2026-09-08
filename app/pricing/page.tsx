@@ -7,7 +7,6 @@ import {
   APP_NAME,
   ROUTES,
   BILLING_ENABLED,
-  BILLING_HISTORY_RETENTION,
   TOTAL_CHECKS_LABEL,
   API,
 } from "@/lib/config/client-constants";
@@ -21,6 +20,14 @@ import { PricingCards } from "@/components/pricing/pricing-cards";
 import { PricingFeatures } from "@/components/pricing/pricing-features";
 import { PricingFaq } from "@/components/pricing/pricing-faq";
 import { PricingCta } from "@/components/pricing/pricing-cta";
+// Retention is a per-plan config value that happens to be -1 (unlimited) on
+// every tier here. Claimed only while that is actually true: the card copy this
+// replaced hard-coded "30-day" and "90-day" retention that had not been real
+// for months (AUDIT-014#mkt-08).
+import {
+  EVERY_PLAN_KEEPS_HISTORY,
+  WHAT_PAYING_BUYS,
+} from "@/components/pricing/what-paying-buys";
 import { PRICING_MODEL_FAQ } from "./pricing-model-faq";
 
 // Generate pricing page plans from centralized config.
@@ -49,17 +56,6 @@ const POSITIONING: Record<string, string> = {
   pro_supporter: "Enough to gate a pipeline, with a team reading the output.",
   elite_supporter: "For an agency, or the portfolio nobody has counted lately.",
 };
-
-// Retention is a per-plan config value that happens to be -1 (unlimited) on
-// every tier here. Claimed only while that is actually true: the card copy
-// this replaced hard-coded "30-day" and "90-day" retention that had not been
-// real for months (AUDIT-014#mkt-08).
-const EVERY_PLAN_KEEPS_HISTORY = LIB_PLANS.every(
-  (p) =>
-    BILLING_HISTORY_RETENTION[
-      p.id as keyof typeof BILLING_HISTORY_RETENTION
-    ] === -1,
-);
 
 // Everything that is identical on all four tiers, stated once here so the
 // comparison table below can be nothing but differences. Rows whose cells were
@@ -205,9 +201,8 @@ export default function PricingPage() {
           <p className="text-muted-foreground leading-relaxed mb-6 max-w-2xl">
             For reference, the hosted {APP_NAME} service is priced by scan
             volume rather than per target. Vulnerability assessment pricing
-            stays simple: a free tier, then paid plans that raise daily scan
-            quotas and history retention. The same detection engine runs on
-            every plan.
+            stays simple: a free tier, then paid plans that buy{" "}
+            {WHAT_PAYING_BUYS}. The same detection engine runs on every plan.
           </p>
           <ul className="divide-y divide-border/50 border-y border-border/50 mb-10">
             {PLANS.map((plan) => (

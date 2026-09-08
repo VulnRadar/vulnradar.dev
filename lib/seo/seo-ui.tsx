@@ -100,6 +100,59 @@ export function Breadcrumbs({
 }
 
 /**
+ * The FAQ section, and the reason it exists as a shared component.
+ *
+ * Five SEO page families built an FAQ array, handed it to FaqStructuredData,
+ * and then never rendered it: /checks, every /checks/<id>, every
+ * /checks/category/<c>, /tools/api-scanner and /tools/link-checker. That is
+ * roughly 770 pages publishing an FAQPage entity whose questions appear
+ * nowhere on the page. Google's structured-data policy is explicit that FAQ
+ * content has to be visible to the reader, and this repo already says so
+ * twice: app/pricing/layout.tsx switches which FAQ it marks up so the JSON-LD
+ * matches whichever branch rendered, and HowToStructuredData's own doc comment
+ * warns against claiming a procedure the reader cannot see. /alternatives/<x>
+ * was the only one of the six that actually rendered its questions.
+ *
+ * A `<dl>` under a plain heading, matching the landing and pricing FAQs rather
+ * than inventing a third treatment, and deliberately not an accordion: content
+ * hidden behind a disclosure is still in the DOM, but the point here is that a
+ * reader can see the answer.
+ */
+export function SeoFaq({
+  items,
+  heading = "Questions",
+  id = "faq",
+}: {
+  items: { question: string; answer: string }[];
+  heading?: string;
+  id?: string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className="mt-10" aria-labelledby={id}>
+      <h2
+        id={id}
+        className="text-lg sm:text-xl font-semibold tracking-tight mb-4"
+      >
+        {heading}
+      </h2>
+      <dl className="divide-y divide-border/50 border-t border-border/50">
+        {items.map((item) => (
+          <div key={item.question} className="py-5">
+            <dt className="font-medium text-foreground mb-1.5 text-balance">
+              {item.question}
+            </dt>
+            <dd className="text-sm text-muted-foreground leading-relaxed">
+              {item.answer}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/**
  * Closing call-to-action used across the SEO pages. Links to the live demo
  * scanner so a reader who came in on a long-tail query can act immediately.
  */

@@ -12,6 +12,7 @@ import {
   SeverityPill,
   Breadcrumbs,
   ScanCta,
+  SeoFaq,
 } from "@/lib/seo/seo-ui";
 import { getChecksInCategory } from "@/lib/seo/checks-content";
 import { APP_NAME } from "@/lib/config/constants";
@@ -35,7 +36,10 @@ export const metadata: Metadata = pageMetadata({
 const FAQ = [
   {
     question: "Can I scan an API without installing anything?",
-    answer: `Yes. Paste the API URL and ${APP_NAME} runs the checks from the browser or the REST API. There is no agent, proxy, or Postman collection to import.`,
+    // "runs the checks from the browser" said the opposite of what the product
+    // does, and what it does is the selling point: the request leaves our
+    // servers, so what comes back is what an unauthenticated stranger sees.
+    answer: `Yes. Paste the API URL, or call the REST API, and the checks run from our servers against that URL. There is no agent, proxy, or Postman collection to import.`,
   },
   {
     question: "What kinds of API issues does it find?",
@@ -143,6 +147,8 @@ export default async function ApiScannerPage() {
             ))}
           </ul>
         </section>
+
+        <SeoFaq items={FAQ} heading="Scanning an API, answered" />
       </div>
 
       <ScanCta

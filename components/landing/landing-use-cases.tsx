@@ -1,3 +1,5 @@
+import { BULK_URLS_FREE, BULK_URLS_TOP } from "./plan-facts";
+
 const USE_CASES = [
   {
     audience: "Developers",
@@ -10,8 +12,7 @@ const USE_CASES = [
     audience: "Security teams",
     situation:
       "You are responsible for every property the company owns, including the four nobody remembers.",
-    detail:
-      "Bulk scan up to 100 URLs in one request, schedule recurring runs with webhook alerts, and hand out share links that a non-engineer can read without a walkthrough.",
+    detail: `Bulk scan a batch of URLs in one request, ${BULK_URLS_FREE} at a time on the free tier and up to ${BULK_URLS_TOP} on the top plan, schedule recurring runs with webhook alerts, and hand out share links that a non-engineer can read without a walkthrough.`,
   },
   {
     audience: "Platform and DevOps",

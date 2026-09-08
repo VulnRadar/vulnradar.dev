@@ -1045,6 +1045,38 @@ export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
   };
 }
 
+/**
+ * The one code a support agent can issue to an account that has lost its
+ * authenticator. It goes to the account's own verified address and nowhere
+ * else, so the staff member who issued it never sees it: the proof of
+ * ownership is the mailbox, exactly as it is for a password reset, with the
+ * staff decision on top.
+ */
+export function twoFactorRecoveryCodeEmail(code: string, issuedBy: string) {
+  const safeIssuedBy = escapeHtml(issuedBy);
+  return {
+    preheader:
+      "Use it once at the two-factor prompt, then generate a fresh set of backup codes.",
+    subject: `Your ${APP_NAME} two-factor recovery code`,
+    text: `${issuedBy} issued a one-time two-factor recovery code for your ${APP_NAME} account, because you asked for help getting back in.\n\nYour recovery code is ${code}\n\nSign in with your password as usual. At the two-factor prompt, choose "Use a backup code" and enter this one. It works once, and any backup codes you had before it no longer work.\n\nAs soon as you are back in, go to Profile > Security and generate a new set of backup codes, and re-enrol your authenticator app.\n\nIf you did not ask for this, your account may be targeted: change your password and contact ${SUPPORT_EMAIL} right away.`,
+    html: `
+      ${emailHeading("Your two-factor recovery code")}
+      ${emailLead(`${emailStrong(safeIssuedBy)} issued a one-time recovery code for your ${APP_NAME} account, because you asked for help getting back in.`)}
+      ${emailCodeBlock(code)}
+      ${emailParagraph(
+        'Sign in with your password as usual. At the two-factor prompt, choose "Use a backup code" and enter this one. It works once, and any backup codes you had before it no longer work.',
+      )}
+      ${emailParagraph(
+        "As soon as you are back in, go to Profile &gt; Security, generate a new set of backup codes, and re-enrol your authenticator app.",
+      )}
+      ${emailNote(
+        `If you did not ask for this, your account may be targeted: change your password and contact ${SUPPORT_EMAIL} right away.`,
+        "warn",
+      )}
+    `,
+  };
+}
+
 // API Key emails
 export function apiKeyCreatedEmail(
   keyName: string,

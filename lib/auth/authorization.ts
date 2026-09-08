@@ -213,6 +213,56 @@ export function redactEmailsInDetails(
 }
 
 /**
+ * Who is really driving this request.
+ *
+ * An impersonation session (lib/auth/impersonation.ts) is a real sessions
+ * row whose user_id is the TARGET and whose impersonated_by is the staff
+ * member; the cookie lives in the staff member's browser and nobody else
+ * can present it. Every caller of logAuditAction passes the session's own
+ * userId as the actor, so an action taken through such a session was
+ * recorded against the person it was taken on behalf of, and the staff
+ * member who took it appeared nowhere: the audit trail said the user did
+ * it to themselves. The impersonation start row names the admin, but a
+ * matching stop row only exists if they click "Stop impersonating" rather
+ * than closing the tab, so there was often nothing to bracket the window
+ * with either.
+ *
+ * sessions.impersonated_by has carried the answer since the feature
+ * shipped and getSession() has surfaced it as `impersonatedBy`; only
+ * /api/v3/auth/impersonation-stop ever read it, and it did exactly this by
+ * hand. Doing it here instead means a route cannot forget: admin_id becomes
+ * the staff member, target_user_id stays whoever the action was about, and
+ * the details string says the action came through impersonation so the row
+ * is never mistaken for the staff member acting directly.
+ *
+ * Only rewrites when the caller passed the session's own user id. A caller
+ * that already resolved the real actor (impersonation-stop passes
+ * `impersonatedBy` itself) is left alone. Falls back to the id it was given
+ * if there is no request context to read a session from, which is the case
+ * for the boot-time and worker call paths.
+ *
+ * Costs one extra session lookup per audit row. That is one query on a path
+ * that already writes one, on requests a human makes a few of a minute, and
+ * the alternative is asking every present and future call site to remember.
+ */
+async function resolveActingAdmin(
+  adminId: number,
+): Promise<{ adminId: number; suffix: string }> {
+  try {
+    const session = await getSession();
+    if (session?.impersonatedBy && session.userId === adminId) {
+      return {
+        adminId: session.impersonatedBy,
+        suffix: ` [while impersonating user #${adminId}]`,
+      };
+    }
+  } catch {
+    // No request scope: nothing to resolve, keep the id the caller gave.
+  }
+  return { adminId, suffix: "" };
+}
+
+/**
  * R3/D1: Audit-log helper — replaces the ~5 local `logAction` copies
  * scattered across admin route files. Callers should use this for any
  * state-changing admin action so the admin_audit_log stays consistent.
@@ -224,11 +274,20 @@ export async function logAuditAction(
   details?: string,
   ip?: string,
 ): Promise<void> {
+  const actor = await resolveActingAdmin(adminId);
   // audit-log: mask any emails embedded in the details string
-  // before persisting.
+  // before persisting. The impersonation suffix is appended after the
+  // redaction pass because it carries an id, never an address.
+  const redacted = redactEmailsInDetails(details);
   await pool.query(
     "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
-    [adminId, targetUserId, action, redactEmailsInDetails(details), ip || null],
+    [
+      actor.adminId,
+      targetUserId,
+      action,
+      redacted === null ? actor.suffix.trim() || null : redacted + actor.suffix,
+      ip || null,
+    ],
   );
 }
 

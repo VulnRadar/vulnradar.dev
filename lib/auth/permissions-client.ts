@@ -447,6 +447,21 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     requiresConfirmation: true,
   },
   {
+    // What reset_2fa above refuses to be. It leaves the second factor on and
+    // mails ONE fresh backup code to the account's own verified address, so
+    // the caller never learns it. Same permission, because this is the
+    // capability RESET_USER_2FA was minted for and the only one that still
+    // exists behind it.
+    id: "issue_2fa_recovery_code",
+    label: "Issue 2FA Recovery Code",
+    description: "Email the user a one-time backup code",
+    permission: STAFF_PERMISSIONS.RESET_USER_2FA,
+    category: "security",
+    icon: "Smartphone",
+    dangerous: true,
+    requiresConfirmation: true,
+  },
+  {
     // Renamed from "delete_user" to match "delete", the only string
     // anything actually sends (components/admin/users/user-detail-panel.tsx's
     // "Delete Account" button, components/admin/config.ts's

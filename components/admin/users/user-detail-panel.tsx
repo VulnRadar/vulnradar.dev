@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useId } from "react";
+import { useState, useEffect, useId, useMemo } from "react";
 import {
   Key,
   ShieldCheck,
@@ -42,6 +42,7 @@ import {
   Save,
   Bell,
   Gauge,
+  Smartphone,
   Sparkles,
 } from "lucide-react";
 import { FaGithub, FaDiscord } from "react-icons/fa";
@@ -81,7 +82,11 @@ import {
 } from "@/components/shared/save-confirmation-modal";
 import type { UserDetail, BadgeDef } from "@/components/admin/types";
 import { formatRelativeTime } from "@/components/admin/utils";
-import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
+import {
+  DANGER_ZONE_ACTIONS,
+  PASSWORD_GATED_ACTIONS,
+  SUPPORT_CARD_ACTIONS,
+} from "@/components/admin/config";
 import {
   UserAvatar,
   ActionCard,
@@ -185,6 +190,14 @@ export function UserDetailPanel({
 }: UserDetailPanelProps) {
   const u = detail.user;
   const perms = useAdminPermissions(callerRole);
+  const canRunSupportActions = useMemo(
+    () => SUPPORT_CARD_ACTIONS.some((a) => canPerformAction(callerRole, a)),
+    [callerRole],
+  );
+  const canRunDangerZoneActions = useMemo(
+    () => DANGER_ZONE_ACTIONS.some((a) => canPerformAction(callerRole, a)),
+    [callerRole],
+  );
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`;
   const [showBadgePicker, setShowBadgePicker] = useState(false);
   const [showCreateBadge, setShowCreateBadge] = useState(false);
@@ -625,8 +638,10 @@ export function UserDetailPanel({
     { id: "support-actions", label: "Support Actions" },
     // The jump list stopped at Support Actions, so the one section a phone
     // could not reach without scrolling the whole panel was the destructive
-    // one. It renders under the same permission the card does.
-    ...(perms.canBanUsers ? [{ id: "danger-zone", label: "Danger Zone" }] : []),
+    // one. It renders under the same condition the card does.
+    ...(canRunDangerZoneActions
+      ? [{ id: "danger-zone", label: "Danger Zone" }]
+      : []),
   ];
 
   return (
@@ -2131,12 +2146,14 @@ export function UserDetailPanel({
             <div className="flex items-center gap-2">
               <UserCog className="h-4 w-4 text-primary" aria-hidden="true" />
               <p className="text-sm font-medium">
-                {!perms.canBanUsers ? "Account Information" : "Support Actions"}
+                {!canRunSupportActions
+                  ? "Account Information"
+                  : "Support Actions"}
               </p>
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            {!perms.canBanUsers ? (
+            {!canRunSupportActions ? (
               <p className="text-xs text-muted-foreground">
                 You have view-only access. Contact an admin or moderator to
                 perform actions on this user.
@@ -2211,6 +2228,35 @@ export function UserDetailPanel({
                             "reset_password",
                             "Reset Password",
                             `Send a password reset link to ${u.name || u.email}. They set their own new password, so you never see it.`,
+                          )
+                        }
+                      />
+                    )}
+                    {hasStaffPermission(
+                      callerRole,
+                      STAFF_PERMISSIONS.RESET_USER_2FA,
+                    ) && (
+                      <GatedActionCard
+                        icon={Smartphone}
+                        label="Issue 2FA Recovery Code"
+                        description={
+                          !u.totp_enabled
+                            ? "Unavailable: 2FA is off"
+                            : "Email a one-time backup code"
+                        }
+                        color="text-[hsl(var(--warning))]"
+                        bg="bg-[hsl(var(--warning))]/10"
+                        variant="danger"
+                        disabled={!u.totp_enabled}
+                        loading={isLoading("issue_2fa_recovery_code")}
+                        action="issue_2fa_recovery_code"
+                        callerRole={callerRole}
+                        onClick={() =>
+                          queueSupportAction(
+                            "issue_2fa_recovery_code",
+                            "Issue 2FA Recovery Code",
+                            `Email ${u.name || u.email} one backup code at their own verified address. You never see it, their existing backup codes stop working, and two-factor authentication stays on.`,
+                            "destructive",
                           )
                         }
                       />
@@ -2682,7 +2728,7 @@ export function UserDetailPanel({
           Two of these cards undo a dangerous state rather than causing one
           (re-enable, unban), which is why they keep the success variant: they
           belong beside the action they reverse, not in a separate group. */}
-      {!detailLoading && perms.canBanUsers && (
+      {!detailLoading && canRunDangerZoneActions && (
         <Card
           id="danger-zone"
           className="border-destructive/30 bg-destructive/[0.03]"

@@ -6,7 +6,8 @@ import {
   isSuperAdminRole,
 } from "@/lib/auth/authorization";
 import { getClientIp } from "@/lib/api/request-utils";
-import { verifyPassword } from "@/lib/auth/password-hash";
+import { verifyReauthPassword } from "@/lib/auth/reauth";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { sendEmail, staffInviteEmail } from "@/lib/email/email";
 import {
   ApiResponse,
@@ -76,32 +77,46 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.badRequest("Invalid staff role.");
   }
 
+  // rate-limit: the same adminReauth bucket PATCH /api/v3/admin puts in
+  // front of its own re-auth gate, and for the same two reasons. This
+  // endpoint was the one privileged admin surface with no throttle at all:
+  // the password check below could be guessed at without limit, and every
+  // attempt that got past it emailed an attacker-chosen address a link that
+  // grants a staff role, admin included. Keyed per admin and IP, and placed
+  // before the password check so a wrong password costs an attempt.
+  const ip = (await getClientIp()) || undefined;
+  const inviteRl = await checkRateLimit({
+    key: `staff-invite:${admin.id}:${ip || "unknown"}`,
+    ...RATE_LIMITS.adminReauth,
+  });
+  if (!inviteRl.allowed) {
+    return ApiResponse.tooManyRequests(
+      `Too many staff invite attempts. Try again in ${Math.ceil(inviteRl.retryAfterSeconds / 60)} minute(s).`,
+      inviteRl.retryAfterSeconds,
+    );
+  }
+
   // Password re-auth, the same gate PATCH /api/v3/admin applies to set_role
   // and make_admin (PASSWORD_GATED_ACTIONS in components/admin/config.ts,
   // which now lists send_staff_invite). This route hands the same privilege
   // to an arbitrary email address, so it cannot stay the cheap path to it.
   // Runs after body validation so a malformed request never touches the DB.
-  const currentAdminPassword = parsed.data.currentAdminPassword;
-  if (
-    typeof currentAdminPassword !== "string" ||
-    currentAdminPassword.length === 0
-  ) {
-    return ApiResponse.forbidden(
-      "Re-enter your password to confirm this action.",
-    );
-  }
-  const adminPwRow = await pool.query<{ password_hash: string }>(
-    "SELECT password_hash FROM users WHERE id = $1",
-    [admin.id],
+  //
+  // verifyReauthPassword rather than a fourth hand-rolled password_hash read:
+  // the inline version this replaces treated a NULL hash as a wrong password,
+  // so an admin created through Google/GitHub/Discord could never send an
+  // invite and was told their password was incorrect. Same helper, same rule,
+  // as the admin PATCH route.
+  const reauth = await verifyReauthPassword(
+    admin.id,
+    parsed.data.currentAdminPassword,
+    {
+      missing: "Re-enter your password to confirm this action.",
+      wrong: "Password is incorrect.",
+    },
   );
-  if (
-    !adminPwRow.rows[0] ||
-    !(await verifyPassword(
-      currentAdminPassword,
-      adminPwRow.rows[0].password_hash,
-    ))
-  ) {
-    return ApiResponse.forbidden("Password is incorrect.");
+  if (!reauth.ok) {
+    return ApiResponse.forbidden(reauth.error);
   }
 
   const existingUser = await pool.query<{ id: number; role: string }>(
@@ -145,8 +160,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
   const inviteId = insertRes.rows[0].id;
 
-  // audit-log: trusted client IP only.
-  const ip = (await getClientIp()) || undefined;
+  // audit-log: trusted client IP only, resolved once above for the rate-limit
+  // key.
   await logAction(
     admin.id,
     existingUser.rows[0]?.id ?? null,

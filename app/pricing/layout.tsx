@@ -19,7 +19,12 @@ const CHEAPEST_PAID =
   Math.min(...getPaidPlans().map((p) => p.priceInCents)) / 100;
 
 export const metadata: Metadata = pageMetadata({
-  title: "Pricing: Free Tier and Plans From $5/mo",
+  // The price in the title is derived for the same reason the one in the
+  // description below it is: a title is the single most-read string this page
+  // publishes, and it read "From $5/mo" as a literal while the sentence under
+  // it computed the same figure from the catalog. Two renderings of one number,
+  // one of which cannot follow a price change.
+  title: `Pricing: Free Tier and Plans From $${CHEAPEST_PAID}/mo`,
   description: `${APP_NAME} pricing: a free tier with ${BILLING_PLAN_LIMITS.free} scans a day and no card, then paid plans from $${CHEAPEST_PAID} a month. The same detection engine on every plan.`,
   path: "/pricing",
   keywords: [

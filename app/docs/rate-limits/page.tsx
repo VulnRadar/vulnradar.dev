@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { STAFF_ROLES } from "@/lib/rate-limiting/daily-limits";
+import { PLANS } from "@/lib/billing/plans";
 import { cn } from "@/lib/ui/utils";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
@@ -24,33 +25,30 @@ const tocItems: TocItem[] = [
   { id: "best-practices", label: "Best Practices" },
 ];
 
-const dailyQuotas = [
-  {
-    plan: "Free",
-    scans: "25",
-    api: "25",
-    color: "text-muted-foreground",
-  },
-  {
-    plan: "Core",
-    scans: "100",
-    api: "100",
-    color: "text-[hsl(var(--severity-low))]",
-  },
-  {
-    plan: "Pro",
-    scans: "150",
-    api: "5,000",
-    color: "text-[hsl(var(--warning))]",
-  },
-  {
-    plan: "Elite",
-    scans: "500",
-    api: "Unlimited",
-    color: "text-primary",
-    highlight: true,
-  },
-];
+/** -1 is the unlimited sentinel, the same one lib/rate-limiting/daily-limits.ts
+ *  checks for before it stops counting. */
+function quota(value: number): string {
+  return value === -1 ? "Unlimited" : value.toLocaleString();
+}
+
+// Presentation only, keyed by plan id. The NUMBERS come from the catalog
+// below, never from this table: this page's whole callout says the quotas are
+// defined in lib/billing/catalog.ts, and it used to say so above four rows of
+// hand-typed figures that nothing stopped drifting from it.
+const QUOTA_TONE: Record<string, string> = {
+  free: "text-muted-foreground",
+  core_supporter: "text-[hsl(var(--severity-low))]",
+  pro_supporter: "text-[hsl(var(--warning))]",
+  elite_supporter: "text-primary",
+};
+
+const dailyQuotas = PLANS.map((plan, i) => ({
+  plan: plan.name.replace(" Supporter", ""),
+  scans: quota(plan.limits.dailyScans),
+  api: quota(plan.limits.apiRequestsPerDay),
+  color: QUOTA_TONE[plan.id] ?? "text-muted-foreground",
+  highlight: i === PLANS.length - 1,
+}));
 
 export default function RateLimitsPage() {
   return (
@@ -152,10 +150,14 @@ export default function RateLimitsPage() {
             <InlineCode>apiRequestsPerDay</InlineCode>). A new key&rsquo;s{" "}
             <InlineCode>daily_limit</InlineCode> is your plan&rsquo;s{" "}
             <InlineCode>apiRequestsPerDay</InlineCode>, not a separate per-key
-            default: 25 on Free, 100 on Core Supporter, 5,000 on Pro Supporter,
-            effectively unlimited on Elite Supporter. Every key is checked
-            against your live plan on each request, so a change of plan applies
-            to keys you already hold with nothing to rotate or recreate.
+            default:{" "}
+            {PLANS.map(
+              (plan) =>
+                `${quota(plan.limits.apiRequestsPerDay).toLowerCase()} on ${plan.name}`,
+            ).join(", ")}
+            . Every key is checked against your live plan on each request, so a
+            change of plan applies to keys you already hold with nothing to
+            rotate or recreate.
           </p>
         </DocsCallout>
 

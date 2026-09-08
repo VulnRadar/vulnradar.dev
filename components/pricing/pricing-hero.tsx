@@ -3,6 +3,7 @@
 import { cn } from "@/lib/ui/utils";
 import { focus } from "@/lib/ui/animations";
 import { PRICING_HERO_SECTION } from "./pricing-sections";
+import { WHAT_PAYING_BUYS } from "./what-paying-buys";
 
 interface PricingHeroProps {
   billing: "monthly" | "yearly";
@@ -23,10 +24,14 @@ export function PricingHero({ billing, onBillingChange }: PricingHeroProps) {
             <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance">
               Free until the free tier runs out.
             </h1>
+            {/* This sentence used to offer a bigger retention window as one of
+                the things paying gets you. Retention is unlimited on every
+                plan including free, so it named a thing paying does not buy;
+                WHAT_PAYING_BUYS reads the config instead of restating it. */}
             <p className="text-base sm:text-lg text-muted-foreground text-pretty leading-relaxed">
               Every plan runs the same detection engine on the same checks. Pay
-              only when you want more scans per day or a longer history. Nothing
-              is held back behind a tier.
+              only when you want {WHAT_PAYING_BUYS}. Nothing is held back behind
+              a tier.
             </p>
           </div>
 

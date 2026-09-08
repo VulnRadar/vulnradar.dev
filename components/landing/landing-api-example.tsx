@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { APP_URL, ROUTES } from "@/lib/config/client-constants";
 import { EXACT_CHECK_COUNT } from "@/lib/config/check-stats.generated";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { BULK_URLS_FREE, BULK_URLS_TOP } from "./plan-facts";
 
 const API_BASE = APP_URL.replace(/\/$/, "");
 
@@ -116,7 +117,10 @@ export function LandingApiExample({ checkCount }: LandingApiExampleProps) {
                   "Auth",
                   "Bearer tokens with scan:write, scan:read, and scan:delete scopes per key, encrypted at rest",
                 ],
-                ["Bulk", "/api/v3/scan/bulk takes up to 100 URLs per request"],
+                [
+                  "Bulk",
+                  `/api/v3/scan/bulk takes ${BULK_URLS_FREE} URLs per request on the free tier, ${BULK_URLS_TOP} on the top plan`,
+                ],
                 [
                   "Webhooks",
                   "Fire on completion into Slack, Discord, or your own handler",

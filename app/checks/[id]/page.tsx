@@ -16,6 +16,7 @@ import {
   SeverityPill,
   Breadcrumbs,
   ScanCta,
+  SeoFaq,
   ContributeCheckCta,
 } from "@/lib/seo/seo-ui";
 import {
@@ -342,6 +343,12 @@ export default async function CheckPage({
             </p>
           </section>
         )}
+
+        {/* Rendered, not just marked up. buildFaq deliberately holds only
+            questions whose answers are NOT elsewhere on the page, which is
+            what makes this section worth reading and what made publishing it
+            as invisible FAQPage markup wrong. */}
+        <SeoFaq items={faq} />
 
         <ContributeCheckCta className="mt-12" />
       </article>

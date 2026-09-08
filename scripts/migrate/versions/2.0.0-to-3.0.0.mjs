@@ -657,6 +657,35 @@ const DOMAINS_SQL = `
   CREATE INDEX IF NOT EXISTS idx_domains_domain_verified ON domains(domain) WHERE status = 'verified';
 `;
 
+// Contact-form submissions. No FK at all: the landing form takes messages
+// from people with no account, so the address is the only handle, and the
+// erasure path purges by recipient the way it does for email_logs.
+const CONTACT_SUBMISSIONS_SQL = `
+  CREATE TABLE IF NOT EXISTS contact_submissions (
+    id SERIAL PRIMARY KEY,
+    source VARCHAR(20) NOT NULL DEFAULT 'contact'
+      CHECK (source IN ('contact', 'landing')),
+    name VARCHAR(120) NOT NULL,
+    email VARCHAR(254) NOT NULL,
+    subject VARCHAR(200),
+    category VARCHAR(40) NOT NULL DEFAULT 'other',
+    message TEXT NOT NULL,
+    ip_address VARCHAR(64),
+    email_status VARCHAR(20) NOT NULL DEFAULT 'pending'
+      CHECK (email_status IN ('pending', 'sent', 'failed')),
+    email_error TEXT,
+    handled_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_contact_submissions_created
+    ON contact_submissions(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_contact_submissions_unhandled
+    ON contact_submissions(created_at DESC) WHERE handled_at IS NULL;
+  CREATE INDEX IF NOT EXISTS idx_contact_submissions_email
+    ON contact_submissions(email);
+`;
+
 // In-app support tickets. Parent first: the two tables below reference it.
 const SUPPORT_TICKETS_SQL = `
   CREATE TABLE IF NOT EXISTS support_tickets (
@@ -872,6 +901,7 @@ export const upgrade = {
     },
     { name: "worker_failure_state", sql: WORKER_FAILURE_STATE_SQL },
     { name: "domains", sql: DOMAINS_SQL },
+    { name: "contact_submissions", sql: CONTACT_SUBMISSIONS_SQL },
     { name: "support_tickets", sql: SUPPORT_TICKETS_SQL },
     { name: "support_ticket_messages", sql: SUPPORT_TICKET_MESSAGES_SQL },
     { name: "support_ticket_shares", sql: SUPPORT_TICKET_SHARES_SQL },
@@ -2099,6 +2129,7 @@ export const downgrade = {
     // AUDIT-013 migrate-01 / migrate-19: the 13 tables the upgrade now
     // creates. Children before parents so a plain DROP is enough even if
     // the planner's CASCADE were ever removed.
+    "contact_submissions",
     "support_ticket_shares",
     "support_ticket_messages",
     "support_tickets",

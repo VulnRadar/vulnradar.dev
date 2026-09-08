@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import pool from "@/lib/database/db";
 import {
   requireAdmin,
   isSuperAdminRole,
   logAction,
 } from "@/lib/auth/authorization";
-import { verifyPassword } from "@/lib/auth/auth";
+import { verifyReauthPassword } from "@/lib/auth/reauth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
 import { parseBody } from "@/lib/api/api-utils";
@@ -93,28 +92,21 @@ export async function POST(request: NextRequest) {
   }
   const { currentAdminPassword, targetVersion } = parsed.data;
 
-  if (
-    typeof currentAdminPassword !== "string" ||
-    currentAdminPassword.length === 0
-  ) {
-    return NextResponse.json(
-      { error: "Re-enter your password to confirm this action." },
-      { status: 403 },
-    );
-  }
-
-  const pwRow = await pool.query<{ password_hash: string }>(
-    "SELECT password_hash FROM users WHERE id = $1",
-    [admin.userId],
+  // The shared helper, not a third hand-rolled password_hash read. The
+  // inline version this replaces treated a NULL hash as a wrong password, so
+  // a super_admin created through Google/GitHub/Discord could never apply an
+  // update and was told their password was incorrect. Both failure cases stay
+  // 403, which is what this route has always returned.
+  const reauth = await verifyReauthPassword(
+    admin.userId,
+    currentAdminPassword,
+    {
+      missing: "Re-enter your password to confirm this action.",
+      wrong: "Password is incorrect.",
+    },
   );
-  if (
-    !pwRow.rows[0] ||
-    !(await verifyPassword(currentAdminPassword, pwRow.rows[0].password_hash))
-  ) {
-    return NextResponse.json(
-      { error: "Password is incorrect." },
-      { status: 403 },
-    );
+  if (!reauth.ok) {
+    return NextResponse.json({ error: reauth.error }, { status: 403 });
   }
 
   const version =

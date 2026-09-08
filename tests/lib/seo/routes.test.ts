@@ -8,7 +8,12 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { DISALLOWED_PATHS, PUBLIC_ROUTES } from "@/lib/seo/routes";
+import {
+  DISALLOWED_PATHS,
+  PUBLIC_ROUTES,
+  STATIC_PUBLIC_ROUTES,
+} from "@/lib/seo/routes";
+import { APP_URL } from "@/lib/config/constants";
 import { CHECK_CATEGORY_LAST_MODIFIED } from "@/lib/config/check-stats.generated";
 import { getAllChecks, SEO_CATEGORIES } from "@/lib/seo/checks-content";
 import { DOCS_PAGES } from "@/components/docs/docs-nav";
@@ -130,6 +135,70 @@ describe("DOCS_NAV", () => {
       return !existsSync(join(dir, "page.tsx"));
     }).map((page) => page.href);
     expect(missing).toEqual([]);
+  });
+});
+
+/**
+ * A sitemap is a list of URLs we are asking a crawler to spend fetches on, so
+ * an entry with no page behind it is worse than no entry at all: it burns crawl
+ * budget on a 404 and, in enough quantity, is what makes Google stop trusting
+ * the file. The docs half of that already has its own guard above; this is the
+ * hand-listed half, which is the half a person edits.
+ */
+describe("sitemap coverage", () => {
+  it("has a real page file behind every hand-listed route", () => {
+    const missing = STATIC_PUBLIC_ROUTES.filter((route) => {
+      // "/" is the one entry with no page.tsx of its own on purpose: it
+      // permanently redirects to /landing, which canonicalises back to "/".
+      // The three-way agreement between those is asserted below.
+      if (route.path === "/") return false;
+      const dir = join(APP_DIR, ...route.path.slice(1).split("/"));
+      return !existsSync(join(dir, "page.tsx"));
+    }).map((route) => route.path);
+    expect(missing).toEqual([]);
+  });
+
+  it("has a dynamic page file behind every generated route family", () => {
+    for (const segments of [
+      ["checks", "[id]"],
+      ["checks", "category", "[category]"],
+      ["alternatives", "[competitor]"],
+    ]) {
+      expect(
+        existsSync(join(APP_DIR, ...segments, "page.tsx")),
+        segments.join("/"),
+      ).toBe(true);
+    }
+  });
+
+  it("publishes each URL exactly once", () => {
+    const paths = PUBLIC_ROUTES.map((route) => route.path);
+    expect(paths.length).toBe(new Set(paths).size);
+  });
+});
+
+/**
+ * The homepage is reachable at two URLs and only one of them may be indexed.
+ *
+ * "/" permanently redirects to /landing (app/page.tsx and middleware.ts), the
+ * page served there declares "/" as its canonical, and the sitemap lists "/" to
+ * match. Any two of those three changing without the third is a self-
+ * contradicting signal, which is exactly the state that had Search Console
+ * reporting /landing as "Duplicate without user-selected canonical" before
+ * 1e87119d. Nothing else in the repo pins them together, so this does.
+ */
+describe("homepage canonicalisation", () => {
+  const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
+
+  it("redirects / to the page that claims / as its canonical", () => {
+    expect(read("app/page.tsx")).toContain("permanentRedirect(ROUTES.LANDING)");
+    expect(read("app/landing/page.tsx")).toMatch(/path:\s*"\/",/);
+  });
+
+  it("lists that same URL in the sitemap, and not the one it renders at", () => {
+    const urls = sitemap().map((entry) => entry.url);
+    expect(urls).toContain(`${APP_URL}/`);
+    expect(urls).not.toContain(`${APP_URL}/landing`);
   });
 });
 

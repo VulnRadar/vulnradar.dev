@@ -11,7 +11,13 @@ import {
 // Content moderation (purge cached host reputation, unlist/revoke public
 // shares) -- gated by MODERATE_CONTENT so the content_manager and
 // security_analyst specialist roles reach it, not just admin.
-async function requireAdmin() {
+//
+// Named for what it checks. It was called requireAdmin(), which is also the
+// name of the real admin-tier gate this file does NOT use, so both call sites
+// below read as admin-only while accepting two roles that sit well under
+// admin. Its sibling blocked-data/route.ts keeps a local wrapper by that name
+// and genuinely is admin-only, which is exactly how the pair misleads.
+async function requireContentModerator() {
   return requirePermission(STAFF_PERMISSIONS.MODERATE_CONTENT);
 }
 
@@ -43,7 +49,7 @@ function parsePagination(searchParams: URLSearchParams) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const user = await requireAdmin();
+    const user = await requireContentModerator();
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -117,7 +123,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAdmin();
+    const user = await requireContentModerator();
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

@@ -21,6 +21,24 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+// Promoting a tag rewrites what the scanner labels every future scan with,
+// so the route audit-logs it. logAction is mocked rather than left to write
+// through the pool fake, which would otherwise consume a slot in the
+// call-sequence assertions below.
+const mockLogAction = vi.fn();
+vi.mock("@/lib/auth/authorization", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/auth/authorization")>();
+  return {
+    ...actual,
+    logAction: (...args: unknown[]) => mockLogAction(...args),
+  };
+});
+
+vi.mock("@/lib/api/request-utils", () => ({
+  getClientIp: vi.fn(async () => "127.0.0.1"),
+}));
+
 const { GET, POST } =
   await import("@/app/api/v3/admin/engine-feedback/ai-tag-candidates/route");
 
@@ -51,6 +69,7 @@ function postRequest(body: unknown): NextRequest {
 beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
+  mockLogAction.mockReset();
 });
 
 describe("GET /api/v3/admin/engine-feedback/ai-tag-candidates", () => {
@@ -267,6 +286,44 @@ describe("POST /api/v3/admin/engine-feedback/ai-tag-candidates (promote)", () =>
       postRequest({ tag: "Some Tag", cwes: ["CWE-79"], minSeverity: "high" }),
     );
     expect(res.status).toBe(500);
+  });
+
+  it("audit-logs the promotion, naming the promoter and the rule", async () => {
+    withAdmin(9);
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT
+
+    await POST(
+      postRequest({
+        tag: "DNS Email Hygiene Gaps",
+        cwes: ["CWE-350"],
+        categories: ["dns"],
+        minSeverity: "high",
+        minCount: 2,
+      }),
+    );
+
+    expect(mockLogAction).toHaveBeenCalledTimes(1);
+    const [adminId, targetUserId, action, details, ip] =
+      mockLogAction.mock.calls[0];
+    expect(adminId).toBe(9);
+    // Site-wide: this rule applies to everyone's scans, not one account's.
+    expect(targetUserId).toBeNull();
+    expect(action).toBe("promote_ai_tag");
+    expect(details).toContain("DNS Email Hygiene Gaps");
+    expect(details).toContain("CWE-350");
+    expect(details).toContain("high");
+    expect(ip).toBe("127.0.0.1");
+  });
+
+  it("still reports success when the audit write fails, since the rule is already saved", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT
+    mockLogAction.mockRejectedValueOnce(new Error("audit table missing"));
+
+    const res = await POST(
+      postRequest({ tag: "Some Tag", cwes: ["CWE-79"], minSeverity: "high" }),
+    );
+    expect(res.status).toBe(200);
   });
 
   it("rejects an unparseable request body", async () => {

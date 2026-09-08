@@ -238,6 +238,7 @@ export const VERSIONS = [
         "browser_sessions",
         "browserbase_credit_purchases",
         "browserbase_usage",
+        "contact_submissions",
         "cve_kev_cache",
         "data_requests",
         "device_trust",

@@ -11,6 +11,7 @@ import {
   SeverityPill,
   Breadcrumbs,
   ScanCta,
+  SeoFaq,
   ContributeCheckCta,
 } from "@/lib/seo/seo-ui";
 import { ChecksFilter } from "./checks-filter";
@@ -20,13 +21,11 @@ import {
   getSeoCategoryCounts,
   getCategoryLabel,
   getCategoryBlurb,
-  getAllChecks,
 } from "@/lib/seo/checks-content";
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 import { EXACT_CHECK_CATEGORY_COUNT } from "@/lib/config/check-stats.generated";
 
 const TITLE = "Every Web Vulnerability Check, With Fixes";
-const TOTAL = getAllChecks().length;
 // Deliberately NO second count. This page used to print its own rounded
 // figure for "checks with a fix guide", which put a third number in front of
 // the reader next to the headline count and the category count. The
@@ -224,7 +223,13 @@ export default async function ChecksIndexPage() {
           </ChecksFilter>
         </section>
 
-        <ContributeCheckCta />
+        <SeoFaq
+          items={FAQ}
+          heading={`How the ${APP_NAME} check set works`}
+          id="checks-faq"
+        />
+
+        <ContributeCheckCta className="mt-12" />
       </div>
 
       <ScanCta

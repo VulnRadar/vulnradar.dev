@@ -116,7 +116,12 @@ import {
 } from "./config-values";
 // Imported for local use below (LOGO_URL, TOTP_ISSUER, VERSION_CHECK_URL);
 // the same names are re-exported wholesale at the bottom of this file.
-import { APP_NAME, APP_URL, APP_REPO } from "@/lib/config/client-constants";
+import {
+  APP_NAME,
+  APP_URL,
+  APP_REPO,
+  SOCIAL_LINKS,
+} from "@/lib/config/client-constants";
 
 export const DATA_EXPORT_COOLDOWN_DAYS = CONFIG_DATA_EXPORT_COOLDOWN_DAYS;
 export const AI_CHAT_MAX_TOKENS = CONFIG_AI_CHAT_MAX_TOKENS;
@@ -172,8 +177,33 @@ export const SEO_KEYWORDS = CONFIG_SEO_KEYWORDS;
 export const SEO_OG_IMAGE = CONFIG_SEO_OG_IMAGE;
 export const SEO_OG_IMAGE_WIDTH = CONFIG_SEO_OG_IMAGE_WIDTH;
 export const SEO_OG_IMAGE_HEIGHT = CONFIG_SEO_OG_IMAGE_HEIGHT;
+/**
+ * `twitter:site`, the "@handle" attribution line on an X card.
+ *
+ * The last fallback reads the configured X profile rather than leaving the tag
+ * off. CONFIG_SEO_TWITTER_HANDLE ships empty with a comment saying to set it
+ * "once the deployment has an account", and this deployment has had one the
+ * whole time: CONFIG_SOCIAL_X_URL is a real profile that already appears in the
+ * footer, on the landing page, and in the JSON-LD Organization node's sameAs.
+ * So every page on the site published an X card with no attribution while the
+ * account it would have attributed to was asserted three other ways.
+ *
+ * Deriving it (rather than typing a second copy of the handle into
+ * config-values.ts) keeps the two from disagreeing, and keeps a fork honest: a
+ * deployment that blanks its X URL, or points it at its own profile, gets the
+ * matching handle or no tag at all, never ours.
+ */
+function handleFromXProfile(): string {
+  const profile = SOCIAL_LINKS.find((link) => link.id === "x");
+  if (!profile) return "";
+  const handle = new URL(profile.url).pathname.split("/").filter(Boolean)[0];
+  return handle ? `@${handle}` : "";
+}
+
 export const SEO_TWITTER_HANDLE =
-  process.env.NEXT_PUBLIC_SEO_TWITTER_HANDLE || CONFIG_SEO_TWITTER_HANDLE;
+  process.env.NEXT_PUBLIC_SEO_TWITTER_HANDLE ||
+  CONFIG_SEO_TWITTER_HANDLE ||
+  handleFromXProfile();
 export const SEO_GITHUB_URL = CONFIG_SEO_GITHUB_URL;
 // Verification tokens are per-deployment, so env wins over the checked-in
 // default. A self-hoster sets these without touching the source.

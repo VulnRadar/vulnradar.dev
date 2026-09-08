@@ -344,6 +344,72 @@ describe("logAuditAction (and its logAction alias)", () => {
     );
     expect(insert?.params).toEqual([1, null, "login", null, "203.0.113.5"]);
   });
+
+  // An impersonation session belongs to the staff member driving it: its
+  // cookie is in their browser and its sessions row names them in
+  // impersonated_by. Every caller passes the session's own userId, so an
+  // action taken through one used to be filed against the person it was taken
+  // on behalf of, and the staff member appeared nowhere.
+  it("files an action taken through an impersonation session against the staff member", async () => {
+    mockSession = { userId: 42, impersonatedBy: 7 };
+    await logAuditAction(42, 42, "delete_scan", "Deleted scan #9", "10.0.0.1");
+    const insert = queries.find((q) =>
+      q.sql.includes("INSERT INTO admin_audit_log"),
+    );
+    expect(insert?.params).toEqual([
+      7,
+      42,
+      "delete_scan",
+      "Deleted scan #9 [while impersonating user #42]",
+      "10.0.0.1",
+    ]);
+  });
+
+  it("notes the impersonation even when the caller logged no details", async () => {
+    mockSession = { userId: 42, impersonatedBy: 7 };
+    await logAuditAction(42, null, "export_data");
+    const insert = queries.find((q) =>
+      q.sql.includes("INSERT INTO admin_audit_log"),
+    );
+    expect(insert?.params).toEqual([
+      7,
+      null,
+      "export_data",
+      "[while impersonating user #42]",
+      null,
+    ]);
+  });
+
+  it("leaves a caller that already resolved the real actor alone", async () => {
+    // /api/v3/auth/impersonation-stop passes impersonatedBy itself.
+    mockSession = { userId: 42, impersonatedBy: 7 };
+    await logAuditAction(7, 42, "stop_impersonate", "Ended the session");
+    const insert = queries.find((q) =>
+      q.sql.includes("INSERT INTO admin_audit_log"),
+    );
+    expect(insert?.params).toEqual([
+      7,
+      42,
+      "stop_impersonate",
+      "Ended the session",
+      null,
+    ]);
+  });
+
+  it("records an ordinary staff action unchanged", async () => {
+    mockSession = { userId: 3 };
+    await logAuditAction(3, 42, "disable", "Disabled the account");
+    const insert = queries.find((q) =>
+      q.sql.includes("INSERT INTO admin_audit_log"),
+    );
+    expect(insert?.params).toEqual([
+      3,
+      42,
+      "disable",
+      "Disabled the account",
+      null,
+    ]);
+  });
 });
 
 describe("verifyOwnership", () => {

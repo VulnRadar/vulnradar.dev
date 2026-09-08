@@ -141,6 +141,18 @@ export default defineConfig({
         // different and much larger piece of work than a floor. Add new
         // entries below as tests land instead.
         perFile: true,
+        // 100 / 100 / 100 / 100 actual: a pure data module (action ids,
+        // toast labels, the password gate, the two card manifests) that
+        // tests/components/admin/config.test.ts walks entry by entry. The
+        // floors sit under that so adding a row does not fail the build
+        // before its assertion lands, and the functions floor still notices
+        // if real logic ever moves in here uncovered.
+        "components/admin/config.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 90,
+          branches: 90,
+        },
         "lib/auth/crypto.ts": {
           lines: 100,
           statements: 100,

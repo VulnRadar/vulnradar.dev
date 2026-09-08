@@ -8,7 +8,7 @@ import { cn } from "@/lib/ui/utils";
 /**
  * The one category this table calls out with colour: it is the product's
  * named differentiator (see the FAQ and hero copy), not an arbitrary pick,
- * so it earns the accent the other fifteen rows deliberately don't get.
+ * so it earns the accent every other row deliberately doesn't get.
  */
 const FLAGSHIP_CATEGORY: Category = "vibe-code";
 

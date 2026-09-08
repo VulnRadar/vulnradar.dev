@@ -1,4 +1,5 @@
 import { APP_NAME } from "@/lib/config/constants";
+import { WHAT_PAYING_BUYS } from "@/components/pricing/what-paying-buys";
 
 // Honest, always-present pricing explainer shown on the billing-off branch of
 // the pricing page (app/pricing/page.tsx). Data-only (no next/headers, not a
@@ -16,8 +17,11 @@ export const PRICING_MODEL_FAQ: { question: string; answer: string }[] = [
   },
   {
     question: `What does the hosted ${APP_NAME} vulnerability assessment cost?`,
-    answer:
-      "The hosted service is priced by scan volume, not per target: a free tier, then paid tiers that only raise daily scan quotas and history retention. The detection engine is identical on every tier.",
+    // This answer is published as FAQPage JSON-LD by app/pricing/layout.tsx, so
+    // a claim that has drifted from the config is wrong in the search result as
+    // well as on the page. It used to promise "history retention" as something
+    // paid tiers raise, which no plan does.
+    answer: `The hosted service is priced by scan volume, not per target: a free tier, then paid tiers that only buy ${WHAT_PAYING_BUYS}. The detection engine is identical on every tier.`,
   },
   {
     question: "Do paid plans detect more vulnerabilities?",

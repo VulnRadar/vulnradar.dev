@@ -261,10 +261,19 @@ export const api = {
   historyDetail: (apiKey: string, id: number) =>
     call<ScanResult>("GET", `/api/v3/history/${id}`, undefined, apiKey),
 
-  reputation: (apiKey: string, host: string) =>
+  // `url` is optional in the signature and always sent in practice. The
+  // endpoint checks for an exact-page record first and only falls back to the
+  // host-level one, and its own comment says "the caller passes url ... the
+  // extension does since it always knows the current tab's exact URL". It did
+  // not: this call only ever sent host, so the exact-page branch never ran
+  // from the extension and a scan of one page on a big shared host (one repo
+  // on github.com, one doc on a wiki) was reported as the reputation of every
+  // other page there.
+  reputation: (apiKey: string, host: string, url?: string) =>
     call<ReputationResponse>(
       "GET",
-      `/api/v3/scan/reputation?host=${encodeURIComponent(host)}`,
+      `/api/v3/scan/reputation?host=${encodeURIComponent(host)}` +
+        (url ? `&url=${encodeURIComponent(url)}` : ""),
       undefined,
       apiKey,
     ),

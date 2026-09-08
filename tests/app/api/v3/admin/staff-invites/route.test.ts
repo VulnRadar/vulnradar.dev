@@ -43,6 +43,20 @@ vi.mock("@/lib/api/request-utils", () => ({
   getClientIp: vi.fn(async () => "127.0.0.1"),
 }));
 
+// The throttle in front of the re-auth gate. Mocked so it doesn't spend
+// entries in the pool-query sequence every case below depends on; the
+// "throttles" case drives it directly.
+const mockCheckRateLimit = vi.fn(async () => ({
+  allowed: true,
+  remaining: 9,
+  retryAfterSeconds: 0,
+}));
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
+  return { ...actual, checkRateLimit: () => mockCheckRateLimit() };
+});
+
 // Sending an invite is password-gated (send_staff_invite in
 // PASSWORD_GATED_ACTIONS): it grants the same privilege PATCH
 // /api/v3/admin's set_role does, so it requires the same re-auth. Only the
@@ -108,6 +122,12 @@ beforeEach(() => {
   mockLogAction.mockReset();
   mockSendEmail.mockReset();
   mockVerifyPassword.mockClear();
+  mockCheckRateLimit.mockClear();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 9,
+    retryAfterSeconds: 0,
+  });
   mockGetSession.mockResolvedValue({ userId: 1 });
 });
 
@@ -164,6 +184,7 @@ describe("POST /api/v3/admin/staff-invites — authorization", () => {
   // to grant it on requireAdmin() alone.
   it("rejects an invite sent without the admin's own password", async () => {
     queueRole("admin");
+    queueAdminPassword();
     const res = await POST(
       new NextRequest("http://localhost/api/v3/admin/staff-invites", {
         method: "POST",
@@ -174,8 +195,10 @@ describe("POST /api/v3/admin/staff-invites — authorization", () => {
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error).toMatch(/re-enter your password/i);
-    // Only requireAdmin's lookup ran: nothing was written.
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    // requireAdmin's lookup plus verifyReauthPassword's own hash read, which
+    // it does before deciding whether a password was supplied at all (it has
+    // to know whether the account HAS one). Nothing was written.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
     expect(mockSendEmail).not.toHaveBeenCalled();
     expect(mockLogAction).not.toHaveBeenCalled();
   });
@@ -193,6 +216,53 @@ describe("POST /api/v3/admin/staff-invites — authorization", () => {
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error).toMatch(/password is incorrect/i);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  // An admin created through Google/GitHub/Discord has password_hash NULL,
+  // and the hand-rolled check this route used to run read that column
+  // directly and called a null hash a wrong password. Such an admin could
+  // never send an invite, and was told their own password was incorrect.
+  it("lets an OAuth-created admin with no password send an invite", async () => {
+    queueRole("admin", 1);
+    mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: null }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingUser
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingInvite
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 77 }] }); // INSERT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // inviterRes
+
+    const res = await POST(
+      new NextRequest("http://localhost/api/v3/admin/staff-invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "new@example.com", role: "support" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockVerifyPassword).not.toHaveBeenCalled();
+  });
+
+  // This endpoint mails an attacker-chosen address a link that grants a staff
+  // role, admin included, and its password check was the only thing in front
+  // of it. It was the one privileged admin surface with no throttle at all.
+  it("throttles repeated attempts before the password is even checked", async () => {
+    queueRole("admin");
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 300,
+    });
+
+    const res = await POST(
+      postRequest({ email: "new@example.com", role: "admin" }),
+    );
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("300");
+    // requireAdmin's lookup and nothing more: no password read, no INSERT.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockVerifyPassword).not.toHaveBeenCalled();
     expect(mockSendEmail).not.toHaveBeenCalled();
     expect(mockLogAction).not.toHaveBeenCalled();
   });

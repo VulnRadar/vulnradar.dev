@@ -55,8 +55,15 @@ export async function noteReputationChecked(
  */
 export async function getCachedReputation(
   host: string,
+  url?: string,
 ): Promise<ReputationResponse | null> {
   const cache = (await get("reputationCache")) ?? {};
+  // The exact-page entry for this URL wins, then the host-level one. Keeping
+  // the two apart matters now that the endpoint can answer about a single
+  // page: storing an exact-page result under its host would show one repo's
+  // findings as the reputation of every page on github.com, which is the
+  // confusion the exact-match branch exists to remove.
+  if (url && cache[url]) return cache[url].data;
   return cache[host]?.data ?? null;
 }
 
@@ -64,6 +71,7 @@ export async function cacheReputation(
   host: string,
   data: ReputationResponse,
   now: number = Date.now(),
+  url?: string,
 ): Promise<void> {
   const cache: Record<string, CachedReputation> = {
     ...((await get("reputationCache")) ?? {}),
@@ -74,7 +82,13 @@ export async function cacheReputation(
   for (const [h, entry] of Object.entries(cache)) {
     if (now - entry.cachedAt >= maxAgeMs) delete cache[h];
   }
-  cache[host] = { data, cachedAt: now };
+  // An exact-page answer is filed under the page, not the host, for the
+  // reason in getCachedReputation above. Everything else is host-level and
+  // keyed as it always was.
+  cache[data.known && data.matchType === "exact" && url ? url : host] = {
+    data,
+    cachedAt: now,
+  };
   await set("reputationCache", cache);
 }
 
@@ -182,9 +196,10 @@ export async function cacheReputationFromScan(
 export async function checkReputation(
   apiKey: string,
   host: string,
+  url?: string,
 ): Promise<ReputationResponse | null> {
   try {
-    const res = await api.reputation(apiKey, host);
+    const res = await api.reputation(apiKey, host, url);
     return res.body;
   } catch {
     return null;

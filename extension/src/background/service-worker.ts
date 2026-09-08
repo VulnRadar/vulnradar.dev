@@ -341,7 +341,10 @@ async function maybeShowReputationFromSender(
 
   let rep: ReputationResponse | null;
   if (await canCheckReputationNow(host)) {
-    rep = await checkReputation(storage.auth.apiKey, host);
+    // The exact URL, not just its host: the endpoint prefers a record for
+    // this specific page and only falls back to the host, which is what
+    // stops one scanned repo standing in for the whole of github.com.
+    rep = await checkReputation(storage.auth.apiKey, host, url);
     // Only consume the throttle window / update the cache once a check
     // actually completed. If checkReputation() failed (network error,
     // non-2xx, bad auth), marking the host "checked" here would silence
@@ -351,7 +354,7 @@ async function maybeShowReputationFromSender(
     // once. Let a genuine failure retry on the very next visit instead.
     if (!rep) return;
     await noteReputationChecked(host);
-    await cacheReputation(host, rep);
+    await cacheReputation(host, rep, Date.now(), url);
   } else {
     // Throttled: a fresh network check would spam the endpoint on every
     // reload/renavigation within the window, but returning here with
@@ -360,7 +363,7 @@ async function maybeShowReputationFromSender(
     // Fall back to the last-known result for this host instead of going
     // silent - only skip entirely if we've never learned anything about
     // it yet.
-    rep = await getCachedReputation(host);
+    rep = await getCachedReputation(host, url);
     if (!rep) return;
   }
 

@@ -61,6 +61,12 @@ export const ACTION_META: Record<string, ActionMeta> = {
     icon: "smartphone",
     cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
   },
+  issue_2fa_recovery_code: {
+    label: "2FA Recovery Code Issued",
+    verb: "emailed a one-time two-factor recovery code to",
+    icon: "smartphone",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
+  },
   force_logout_all: {
     label: "Force Logout",
     verb: "force logged out",
@@ -221,6 +227,20 @@ export const ACTION_META: Record<string, ActionMeta> = {
     icon: "gauge",
     cls: "bg-muted text-foreground border-border",
   },
+  // Site-wide, not about one account: both leave target_user_id null, so
+  // getActionSentence renders the verb on its own.
+  promote_ai_tag: {
+    label: "Auto-Tag Rule Promoted",
+    verb: "promoted an AI tag to an auto-tag rule",
+    icon: "tag",
+    cls: "bg-primary/10 text-primary border-primary/20",
+  },
+  database_cleanup_run: {
+    label: "Cleanup Run",
+    verb: "ran the database cleanup",
+    icon: "trash-2",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
+  },
   add_note: {
     label: "Note Added",
     verb: "added a note about",
@@ -286,6 +306,8 @@ export const ACTION_LABELS: Record<string, string> = {
   update_plan: "Plan updated.",
   notify_account_changes: "Account change email sent to user.",
   reset_2fa: "Two-factor authentication reset.",
+  issue_2fa_recovery_code:
+    "Recovery code emailed to the user. It replaces any backup codes they had.",
   delete_scans: "All scans deleted.",
   clear_rate_limits: "Rate limits cleared.",
   gift_subscription: "Subscription gifted successfully.",
@@ -300,6 +322,15 @@ export const ACTION_LABELS: Record<string, string> = {
   // (tests/lib/auth/permissions-client.test.ts flags it as a known stale id),
   // and removing one half without the other just moves the inconsistency.
   send_email: "Email sent.",
+  // Five cards in the user detail panel had no entry here and fell back to
+  // the generic "Action completed.", including the two that delete a user's
+  // integrations outright, where the toast is the only confirmation of what
+  // was removed.
+  force_logout_all: "Every session ended and every API key revoked.",
+  impersonate: "Impersonation session started.",
+  clear_avatar: "Profile picture removed.",
+  delete_webhooks: "All webhooks deleted.",
+  delete_schedules: "All scheduled scans deleted.",
   reset_daily_limit: "Daily scan count reset.",
   reset_ai_usage: "AI usage window reset.",
   reset_github_review_usage: "GitHub review usage window reset.",
@@ -338,6 +369,9 @@ export const PASSWORD_GATED_ACTIONS = new Set([
   "revoke_sessions",
   "revoke_api_keys",
   "reset_2fa",
+  // Hands whoever reads the target's mailbox a working second factor, so it
+  // sits with the account-mutation set rather than with the harmless resets.
+  "issue_2fa_recovery_code",
   "force_logout_all",
   "toggle_ai_ban",
   "delete_scans",
@@ -353,6 +387,56 @@ export const PASSWORD_GATED_ACTIONS = new Set([
   // Enforced in that route's own handler.
   "send_staff_invite",
 ]);
+
+/**
+ * Every action id the user detail panel's two action cards render:
+ * components/admin/users/user-detail-panel.tsx's "Support Actions" card and
+ * its "Danger zone" card.
+ *
+ * A card shows when the caller can run at least one of the actions inside it.
+ * Both used to be gated on DISABLE_USER instead, a permission none of the
+ * cards in either one requires, so a role holding a grant the server would
+ * have accepted was still shown "You have view-only access": billing could not
+ * reach gift_subscription or revoke_gift, the two actions that role exists
+ * for; security_analyst could not reach revoke_sessions or force_logout_all;
+ * content_manager could not reach send_notification or toggle_ai_ban. The
+ * server never refused any of them, so the capability was reachable by
+ * hand-writing the PATCH and no other way.
+ *
+ * Here rather than beside the JSX so tests/components/admin/config.test.ts can
+ * hold every id to one that ADMIN_ACTIONS actually defines. An id that drifts
+ * out of that registry is not a visible break: canPerformAction returns false
+ * for an unknown action, so the card simply renders permanently disabled with
+ * "Your role cannot perform this action", which reads like a permission
+ * problem rather than a typo.
+ */
+export const SUPPORT_CARD_ACTIONS = [
+  "revoke_sessions",
+  "revoke_api_keys",
+  "reset_password",
+  "issue_2fa_recovery_code",
+  "clear_rate_limits",
+  "force_logout_all",
+  "impersonate",
+  "reset_daily_limit",
+  "reset_ai_usage",
+  "reset_github_review_usage",
+  "reset_free_github_trial",
+  "verify_email",
+  "unverify_email",
+  "clear_avatar",
+  "send_notification",
+  "gift_subscription",
+  "revoke_gift",
+] as const;
+
+export const DANGER_ZONE_ACTIONS = [
+  "toggle_ai_ban",
+  "delete_scans",
+  "delete_webhooks",
+  "delete_schedules",
+  "delete",
+] as const;
 
 // Default pagination sizes
 export const DEFAULT_PAGE_SIZE = 10;

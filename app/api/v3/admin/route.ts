@@ -43,6 +43,7 @@ import {
   adminAccountChangeEmail,
   passwordResetEmail,
   passwordChangedEmail,
+  twoFactorRecoveryCodeEmail,
 } from "@/lib/email/email";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
@@ -672,7 +673,7 @@ export async function PATCH(request: NextRequest) {
 
   // Get target user for logging
   const targetRes = await pool.query(
-    "SELECT email, totp_enabled, role, plan, name, unsubscribe_token, ai_chat_banned FROM users WHERE id = $1",
+    "SELECT email, totp_enabled, two_factor_method, email_verified_at, role, plan, name, unsubscribe_token, ai_chat_banned FROM users WHERE id = $1",
     [userId],
   );
   if (!targetRes.rows[0])
@@ -1328,10 +1329,103 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Admin-initiated 2FA reset is disabled. The user must use their own backup codes or their own account recovery flow.",
+            "Admin-initiated 2FA reset is disabled. Issue a one-time recovery code instead, which only the account owner can receive.",
         },
         { status: 400 },
       );
+    }
+
+    /**
+     * The route back for an account that has lost its authenticator, and the
+     * thing "reset_2fa" above used to point at when it told operators to send
+     * the user to "their own account recovery flow". There was no such flow:
+     * every door off 2FA (2fa/disable, 2fa/email-setup DELETE,
+     * 2fa/backup-codes) calls getSession(), a user stopped at the 2FA prompt
+     * has no session, and reset_password refuses outright for a 2FA account.
+     * The documented recovery was an UPDATE against the production database,
+     * which is a fine answer for a self-hoster and no answer at all for a
+     * hosted user.
+     *
+     * This does NOT weaken the second factor: it does not turn 2FA off, it
+     * mints ONE fresh backup code, and app/api/v3/auth/2fa/verify already
+     * accepts a backup code at the prompt. The code goes to the account's own
+     * verified address and is never returned to the caller, so what it costs
+     * an attacker is a staff decision on top of the mailbox that a plain
+     * password reset already needs. Compare the alternative an operator
+     * otherwise reaches for, which is turning the factor off entirely.
+     *
+     * Replaces the stored set rather than appending to it. One code exists
+     * afterwards and none once it is used, so a mailbox compromised later
+     * finds nothing reusable, and the email tells the owner to generate a
+     * fresh set as soon as they are back in.
+     */
+    case "issue_2fa_recovery_code": {
+      if (!targetUser.totp_enabled) {
+        return NextResponse.json(
+          {
+            error:
+              "This account does not have two-factor authentication enabled, so there is nothing to recover.",
+          },
+          { status: 400 },
+        );
+      }
+      // app/api/v3/auth/2fa/verify only accepts a backup code when the
+      // account's method is "app": an email-2FA account has never had backup
+      // codes, and a code mailed to an address the owner cannot read would not
+      // help them anyway, since that address IS their second factor.
+      if (targetUser.two_factor_method === "email") {
+        return NextResponse.json(
+          {
+            error:
+              "This account uses email two-factor authentication. Its codes already go to the address below, so there is nothing a recovery code would unlock.",
+          },
+          { status: 400 },
+        );
+      }
+      // The mailbox is the whole proof of ownership here, so an unverified
+      // address is not one. Password reset is looser about this; a route off
+      // the second factor must not be.
+      if (!targetUser.email_verified_at) {
+        return NextResponse.json(
+          {
+            error:
+              "This account's email address has never been verified, so a recovery code cannot be sent to it.",
+          },
+          { status: 400 },
+        );
+      }
+
+      // 80 bits, formatted the same way app/api/v3/auth/2fa/backup-codes
+      // formats its set, because 2fa/verify strips the dashes and upper-cases
+      // before comparing against exactly this hash.
+      const recoveryRaw = randomBytes(10).toString("hex").toUpperCase();
+      const recoveryCode = `${recoveryRaw.slice(0, 5)}-${recoveryRaw.slice(5, 10)}-${recoveryRaw.slice(10, 15)}-${recoveryRaw.slice(15, 20)}`;
+
+      // Send before storing. The other order destroys whatever codes the
+      // account still had and then discovers SMTP is down, leaving an already
+      // locked-out user with strictly less than they started with.
+      const adminIssuer = await getAdminName(session.userId);
+      await sendEmail({
+        to: targetUser.email,
+        ...twoFactorRecoveryCodeEmail(recoveryCode, adminIssuer),
+      });
+
+      await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [
+        JSON.stringify([
+          await hashPassword(recoveryCode.replace(/-/g, "").toUpperCase()),
+        ]),
+        userId,
+      ]);
+
+      await logAction(
+        session.userId,
+        userId,
+        "issue_2fa_recovery_code",
+        `Issued a one-time two-factor recovery code to ${targetUser.email} and replaced its backup codes`,
+        ip,
+      );
+
+      return NextResponse.json({ success: true });
     }
 
     case "delete_scans": {

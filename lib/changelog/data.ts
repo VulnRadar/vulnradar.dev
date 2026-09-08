@@ -570,6 +570,83 @@ const CHANGELOG: Release[] = [
         desc: "A report marks the parts that did not finish so nothing reads as a clean bill of health it never earned. The demo on the front page, which is the only scan you can run without an account and therefore the whole of some visitors impression of the scanner, did not do this. Its network phase resolves to an empty list when it runs out of time, and a section that threw was treated the same way, so DNS, certificates, reputation and the exposed-file probes came back reported as run and clear. It was already calling the version of that phase whose own documentation says to use the other one when you show completeness to a person. It now uses the right one, which also names the individual sections that ran short rather than only whether the phase as a whole did. The same mistake was found and fixed in the ordinary scan path earlier in this release; this was the copy left behind.",
         category: "fixed",
       },
+      {
+        icon: CreditCard,
+        label: "The Pricing Page Sold A Longer History That No Plan Buys",
+        desc: "Three places on the pricing page told you paid tiers raise history retention: the hero, the billing-off explainer, and the pricing-model FAQ, which also ships as structured data and so put the claim in the search result too. Scan history is unlimited on every plan including free, so none of it was true. The same mistake was removed from the plan cards in an earlier release and three siblings survived that fix. All of them now read the retention setting rather than restating it, the way the cards and the comparison table already did.",
+        category: "fixed",
+      },
+      {
+        icon: Layers,
+        label: "The Landing Page Quoted The Top Plan's Bulk Limit To Everyone",
+        desc: "The API section and the security-teams use case both advertised up to 100 URLs in one bulk request. That is the top plan's cap, and a free account is capped at five, so following either sentence produced a refusal rather than a scan. Both now name the free number and the ceiling, read from the same catalogue the API enforces against.",
+        category: "fixed",
+      },
+      {
+        icon: FileSearch,
+        label: "Around 770 Pages Published FAQ Markup You Could Not Read",
+        desc: "The checks index, every per-check fix guide, every category page and the two tool pages emitted FAQ structured data for questions that appeared nowhere on the page. Search engines require that content to be visible, and one page family here already did it correctly. On the per-check pages it was worse than an oversight: the questions had been deliberately written to hold only answers that were not on the page, which guaranteed they could never be seen. The questions are now rendered on all of them, so the severity rationale and the standards mapping are readable rather than only machine-readable.",
+        category: "fixed",
+      },
+      {
+        icon: Wrench,
+        label:
+          "Prices And Quotas Typed Into Copy Instead Of Read From The Catalogue",
+        desc: "The pricing page title, the four competitor comparison pages and the rate-limit documentation each wrote plan prices and daily quotas out by hand, in several cases directly beside a sentence explaining that those numbers come from the billing catalogue. Every one of them now reads it, so a price or quota change cannot leave a page advertising the old figure.",
+        category: "fixed",
+      },
+      {
+        icon: Share2,
+        label: "Link Previews Carried No Account Attribution",
+        desc: "The X card handle shipped empty with a note to fill it in once the project had an account, and the account had existed the whole time: it is already in the footer, on the landing page and in the site's structured data. The handle is derived from that same profile now, so the card, the footer and the structured data cannot name different identities, and a self-hosted copy that changes or removes its own account gets its own answer rather than ours.",
+        category: "fixed",
+      },
+      {
+        icon: Globe,
+        label: "Two Pages Claimed Scans Run In Your Browser",
+        desc: "The category pages and the API scanner page said the scanner runs from the browser and that there is no extension to install. The scan runs from our servers, which is the whole reason the result matches what a stranger on the internet sees, and there is an optional browser extension. Both now say what actually happens.",
+        category: "fixed",
+      },
+      {
+        icon: UserCog,
+        label:
+          "Billing And Specialist Staff Roles Could Not Use Their Own Permissions",
+        desc: "The user detail panel decided whether to show its Support Actions and Danger Zone cards by asking whether the caller could disable an account, which is not a permission any card in either group actually needs. A billing account was shown you have view-only access on the one screen holding the gift and revoke actions the role exists for, and the same check hid session revocation from a security analyst and notifications and AI chat bans from a content manager. The server had always accepted all of those, so the capability was reachable by hand-crafting an API call and no other way. Each card now shows when the caller can run at least one action inside it, and every individual card stays gated on its own permission, so a role that holds one action sees the rest disabled rather than live.",
+        category: "fixed",
+      },
+      {
+        icon: Key,
+        label: "Two-Factor Lockout Had No Way Back",
+        desc: "An account that lost its authenticator and its backup codes was locked out permanently. Every route that can turn two-factor authentication off needs a signed-in session, and someone stopped at the two-factor prompt does not have one yet; admin-initiated resets are refused on purpose, and password reset is refused outright for a two-factor account. The error text told operators to send the user to an account recovery flow that had never been built, and the only real answer was editing the production database by hand. Staff can now issue a one-time recovery code from the user's admin page. It does not switch the second factor off: it mints a single backup code, emails it to the account's own verified address, and never shows it to the staff member who issued it, so getting in still needs the password, the mailbox and a staff decision. It replaces any codes the account had, it is refused for an account whose address was never verified, and it is recorded in the audit log.",
+        category: "added",
+      },
+      {
+        icon: Fingerprint,
+        label:
+          "Staff Actions Taken While Impersonating Were Filed Against The User",
+        desc: "When a staff member signed in as a user to reproduce a problem, anything they did during that session was recorded in the audit log as the user acting on their own account. The staff member appeared nowhere, and the only way to guess at it was to line the timestamps up against the start of the impersonation, which failed whenever they closed the tab instead of clicking Stop. The session row had always known who was driving it. The audit log now reads that, so an action taken through an impersonation session is filed against the staff member and says which account it was performed on behalf of.",
+        category: "security",
+      },
+      {
+        icon: FileText,
+        label:
+          "Two Admin Actions Changed Everyone's Data Without Leaving A Record",
+        desc: "Promoting an AI tag suggestion into a permanent scanner rule changes what every future scan gets labelled with, for every user, and wrote nothing to the audit log. Re-promoting an existing tag quietly rewrote it while leaving the original author's name on the row, so the second person to edit a rule left no trace at all. Forcing a database cleanup run had the same gap while deleting rows across roughly fifteen tables, including the audit log itself. Both now record who ran them and what changed, and both keep working if the audit write fails, since the work is already done by that point.",
+        category: "security",
+      },
+      {
+        icon: Lock,
+        label: "Staff Invites Could Be Sent Without Limit",
+        desc: "The endpoint that emails someone an invitation to a staff role, admin included, had no rate limit of any kind. The password it asks the sending admin to re-enter could be guessed at indefinitely, and every attempt that got through mailed a role-granting link to whatever address was in the request. It now uses the same per-admin throttle the rest of the admin panel puts in front of a password prompt, checked before the password so a wrong guess costs an attempt.",
+        category: "security",
+      },
+      {
+        icon: UserCheck,
+        label:
+          "Admins Who Signed Up With Google, GitHub Or Discord Were Told Their Password Was Wrong",
+        desc: "Two admin actions, sending a staff invite and applying an update, each carried their own copy of the re-enter your password check, and both read the stored password directly. An account created through a social login has no stored password, which those copies read as a wrong one, so those admins could never send an invite or install an update and were told their own password was incorrect every time. Both now use the shared check the rest of the app already uses, which treats a signed-in session as the confirmation when there is no password to re-enter.",
+        category: "fixed",
+      },
     ],
   },
   {

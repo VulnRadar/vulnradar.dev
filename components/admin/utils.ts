@@ -35,6 +35,7 @@ export const AUDIT_FILTER_CATEGORIES = [
       "revoke_sessions",
       "revoke_api_keys",
       "reset_2fa",
+      "issue_2fa_recovery_code",
       "force_logout_all",
       "impersonate",
       "verify_email",
@@ -98,6 +99,8 @@ export const AUDIT_FILTER_CATEGORIES = [
       "access_rule_deleted",
       "access_rule_updated",
       "security_alert_resolved",
+      "promote_ai_tag",
+      "database_cleanup_run",
     ],
   },
   {
