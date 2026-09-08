@@ -70,6 +70,7 @@ import {
 import { PLANS, getPlanById } from "@/lib/billing/catalog";
 import {
   hasStaffPermission,
+  canPerformAction,
   hasGodMode,
   STAFF_PERMISSIONS,
 } from "@/lib/auth/permissions-client";
@@ -132,6 +133,45 @@ const UNCONFIRMED_SUPPORT_ACTIONS = new Set([
   "reset_github_review_usage",
   "reset_free_github_trial",
 ]);
+
+/**
+ * An ActionCard that knows whether this role may run its action.
+ *
+ * Eleven of the cards in this panel are permission-gated at their render site
+ * and eight are not, so for a moderator five of them were guaranteed 403s:
+ * revoke keys, verify email, send notification, delete webhooks, delete
+ * schedules. Four of those are password-gated, so the operator was asked to
+ * type their admin password into a dialog and THEN told they lacked
+ * permission. Beyond the wasted step, that is exactly the conditioning that
+ * makes a re-auth prompt worthless: it teaches people the prompt is noise
+ * that appears before a failure.
+ *
+ * Gating here rather than at nineteen render sites is what stops the next
+ * card drifting. canPerformAction reads the same ADMIN_ACTIONS registry the
+ * server consults, so a card and its route cannot disagree about what a role
+ * may do. The server still decides; this only stops the panel asking a
+ * question whose answer is already known.
+ */
+function GatedActionCard({
+  action,
+  callerRole,
+  description,
+  ...rest
+}: React.ComponentProps<typeof ActionCard> & {
+  action: string;
+  callerRole: string;
+}) {
+  const allowed = canPerformAction(callerRole, action);
+  return (
+    <ActionCard
+      {...rest}
+      description={
+        allowed ? description : "Your role cannot perform this action."
+      }
+      disabled={rest.disabled || !allowed}
+    />
+  );
+}
 
 export function UserDetailPanel({
   detail,
@@ -2109,13 +2149,15 @@ export function UserDetailPanel({
                     Session &amp; Security
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    <ActionCard
+                    <GatedActionCard
                       icon={LogOut}
                       label="Force Logout"
                       description={`Revoke all ${pluralize(u.session_count, "active session")}`}
                       color="text-primary"
                       bg="bg-primary/10"
                       loading={isLoading("revoke_sessions")}
+                      action="revoke_sessions"
+                      callerRole={callerRole}
                       onClick={() =>
                         queueSupportAction(
                           "revoke_sessions",
@@ -2124,7 +2166,7 @@ export function UserDetailPanel({
                         )
                       }
                     />
-                    <ActionCard
+                    <GatedActionCard
                       icon={Key}
                       label="Revoke API Keys"
                       description={`Invalidate all ${u.api_key_count} API key${u.api_key_count === 1 ? "" : "s"}. They cannot be recovered.`}
@@ -2136,6 +2178,8 @@ export function UserDetailPanel({
                       // "Reset AI Usage".
                       variant="danger"
                       loading={isLoading("revoke_api_keys")}
+                      action="revoke_api_keys"
+                      callerRole={callerRole}
                       onClick={() =>
                         queueSupportAction(
                           "revoke_api_keys",
@@ -2148,7 +2192,7 @@ export function UserDetailPanel({
                       callerRole,
                       STAFF_PERMISSIONS.RESET_USER_PASSWORD,
                     ) && (
-                      <ActionCard
+                      <GatedActionCard
                         icon={KeyRound}
                         label="Reset Password"
                         description={
@@ -2160,6 +2204,8 @@ export function UserDetailPanel({
                         bg="bg-[hsl(var(--warning))]/10"
                         disabled={u.totp_enabled}
                         loading={isLoading("reset_password")}
+                        action="reset_password"
+                        callerRole={callerRole}
                         onClick={() =>
                           queueSupportAction(
                             "reset_password",
@@ -2173,13 +2219,15 @@ export function UserDetailPanel({
                       callerRole,
                       STAFF_PERMISSIONS.MANAGE_RATE_LIMITS,
                     ) && (
-                      <ActionCard
+                      <GatedActionCard
                         icon={RefreshCw}
                         label="Clear Rate Limits"
                         description="Reset rate limit counters"
                         color="text-primary"
                         bg="bg-primary/10"
                         loading={isLoading("clear_rate_limits")}
+                        action="clear_rate_limits"
+                        callerRole={callerRole}
                         onClick={() =>
                           queueSupportAction(
                             "clear_rate_limits",
@@ -2189,7 +2237,7 @@ export function UserDetailPanel({
                         }
                       />
                     )}
-                    <ActionCard
+                    <GatedActionCard
                       icon={UserX}
                       label="Force Logout All"
                       description="Ends every session and revokes every API key"
@@ -2197,6 +2245,8 @@ export function UserDetailPanel({
                       bg="bg-destructive/10"
                       variant="danger"
                       loading={isLoading("force_logout_all")}
+                      action="force_logout_all"
+                      callerRole={callerRole}
                       onClick={() =>
                         queueSupportAction(
                           "force_logout_all",
@@ -2209,7 +2259,7 @@ export function UserDetailPanel({
                       callerRole,
                       STAFF_PERMISSIONS.IMPERSONATE_USER,
                     ) && (
-                      <ActionCard
+                      <GatedActionCard
                         icon={UserCog}
                         label="Impersonate"
                         description={
@@ -2229,6 +2279,8 @@ export function UserDetailPanel({
                           (STAFF_ROLE_HIERARCHY[u.role || "user"] ?? 0) > 0
                         }
                         loading={isLoading("impersonate")}
+                        action="impersonate"
+                        callerRole={callerRole}
                         onClick={() =>
                           queueSupportAction(
                             "impersonate",
@@ -2278,13 +2330,15 @@ export function UserDetailPanel({
                       callerRole,
                       STAFF_PERMISSIONS.RESET_USER_DAILY_LIMIT,
                     ) && (
-                      <ActionCard
+                      <GatedActionCard
                         icon={Gauge}
                         label="Reset Daily Scan Limit"
                         description="Zero today's scan count"
                         color="text-primary"
                         bg="bg-primary/10"
                         loading={isLoading("reset_daily_limit")}
+                        action="reset_daily_limit"
+                        callerRole={callerRole}
                         onClick={() =>
                           queueSupportAction(
                             "reset_daily_limit",
@@ -2298,13 +2352,15 @@ export function UserDetailPanel({
                       callerRole,
                       STAFF_PERMISSIONS.RESET_USER_AI_USAGE,
                     ) && (
-                      <ActionCard
+                      <GatedActionCard
                         icon={Sparkles}
                         label="Reset AI Usage"
                         description="Zero the current AI usage window"
                         color="text-primary"
                         bg="bg-primary/10"
                         loading={isLoading("reset_ai_usage")}
+                        action="reset_ai_usage"
+                        callerRole={callerRole}
                         onClick={() =>
                           queueSupportAction(
                             "reset_ai_usage",
@@ -2318,13 +2374,15 @@ export function UserDetailPanel({
                       callerRole,
                       STAFF_PERMISSIONS.RESET_USER_GITHUB_REVIEW_USAGE,
                     ) && (
-                      <ActionCard
+                      <GatedActionCard
                         icon={FaGithub}
                         label="Reset GitHub Review Usage"
                         description="Zero the current GitHub review window"
                         color="text-primary"
                         bg="bg-primary/10"
                         loading={isLoading("reset_github_review_usage")}
+                        action="reset_github_review_usage"
+                        callerRole={callerRole}
                         onClick={() =>
                           queueSupportAction(
                             "reset_github_review_usage",
@@ -2338,13 +2396,15 @@ export function UserDetailPanel({
                       callerRole,
                       STAFF_PERMISSIONS.RESET_USER_FREE_GITHUB_TRIAL,
                     ) && (
-                      <ActionCard
+                      <GatedActionCard
                         icon={Clock}
                         label="Reset Free GitHub Trial"
                         description="Let today's free review run again now"
                         color="text-primary"
                         bg="bg-primary/10"
                         loading={isLoading("reset_free_github_trial")}
+                        action="reset_free_github_trial"
+                        callerRole={callerRole}
                         onClick={() =>
                           queueSupportAction(
                             "reset_free_github_trial",
@@ -2367,7 +2427,11 @@ export function UserDetailPanel({
                     Account State
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    <ActionCard
+                    <GatedActionCard
+                      action={
+                        u.email_verified_at ? "unverify_email" : "verify_email"
+                      }
+                      callerRole={callerRole}
                       icon={u.email_verified_at ? MailX : MailCheck}
                       label={
                         u.email_verified_at ? "Unverify Email" : "Verify Email"
@@ -2404,13 +2468,15 @@ export function UserDetailPanel({
                         )
                       }
                     />
-                    <ActionCard
+                    <GatedActionCard
                       icon={ImageOff}
                       label="Clear Avatar"
                       description="Remove profile picture"
                       color="text-muted-foreground"
                       bg="bg-muted/50"
                       loading={isLoading("clear_avatar")}
+                      action="clear_avatar"
+                      callerRole={callerRole}
                       onClick={() =>
                         queueSupportAction(
                           "clear_avatar",
@@ -2419,7 +2485,9 @@ export function UserDetailPanel({
                         )
                       }
                     />
-                    <ActionCard
+                    <GatedActionCard
+                      action="send_notification"
+                      callerRole={callerRole}
                       icon={Bell}
                       label="Send Notification"
                       description="Send an email notification"
@@ -2527,7 +2595,9 @@ export function UserDetailPanel({
                     {u.gifted_plan &&
                     u.gift_end_date &&
                     new Date(u.gift_end_date) > new Date() ? (
-                      <ActionCard
+                      <GatedActionCard
+                        action="gift_subscription"
+                        callerRole={callerRole}
                         icon={CrownIcon}
                         label="Edit Gift Subscription"
                         description={`${getPlanById(u.gifted_plan)?.name || u.gifted_plan} · expires ${new Date(u.gift_end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
@@ -2540,7 +2610,9 @@ export function UserDetailPanel({
                         onClick={() => setShowGiftModal(true)}
                       />
                     ) : (
-                      <ActionCard
+                      <GatedActionCard
+                        action="gift_subscription"
+                        callerRole={callerRole}
                         icon={CrownIcon}
                         label="Gift a Subscription"
                         description={
@@ -2636,7 +2708,7 @@ export function UserDetailPanel({
                   header, next to the badge that reports the state it toggles.
                   What is left in this card is the set of things nobody can
                   take back. */}
-              <ActionCard
+              <GatedActionCard
                 icon={BotOff}
                 label={
                   u.ai_chat_banned ? "Unban from AI Chat" : "Ban from AI Chat"
@@ -2658,6 +2730,8 @@ export function UserDetailPanel({
                 }
                 variant={u.ai_chat_banned ? "success" : "danger"}
                 loading={isLoading("toggle_ai_ban")}
+                action="toggle_ai_ban"
+                callerRole={callerRole}
                 onClick={() =>
                   queueSupportAction(
                     "toggle_ai_ban",
@@ -2675,7 +2749,7 @@ export function UserDetailPanel({
                 callerRole,
                 STAFF_PERMISSIONS.DELETE_ANY_SCAN,
               ) && (
-                <ActionCard
+                <GatedActionCard
                   icon={Activity}
                   label="Delete All Scans"
                   description={`Remove all ${pluralize(u.scan_count, "scan")}`}
@@ -2683,6 +2757,8 @@ export function UserDetailPanel({
                   bg="bg-destructive/10"
                   variant="danger"
                   loading={isLoading("delete_scans")}
+                  action="delete_scans"
+                  callerRole={callerRole}
                   onClick={() =>
                     queueSupportAction(
                       "delete_scans",
@@ -2693,7 +2769,7 @@ export function UserDetailPanel({
                   }
                 />
               )}
-              <ActionCard
+              <GatedActionCard
                 icon={Webhook}
                 label="Delete Webhooks"
                 description="Remove all webhooks"
@@ -2701,6 +2777,8 @@ export function UserDetailPanel({
                 bg="bg-destructive/10"
                 variant="danger"
                 loading={isLoading("delete_webhooks")}
+                action="delete_webhooks"
+                callerRole={callerRole}
                 onClick={() =>
                   queueSupportAction(
                     "delete_webhooks",
@@ -2710,7 +2788,7 @@ export function UserDetailPanel({
                   )
                 }
               />
-              <ActionCard
+              <GatedActionCard
                 icon={CalendarOff}
                 label="Delete Schedules"
                 description="Remove scheduled scans"
@@ -2718,6 +2796,8 @@ export function UserDetailPanel({
                 bg="bg-destructive/10"
                 variant="danger"
                 loading={isLoading("delete_schedules")}
+                action="delete_schedules"
+                callerRole={callerRole}
                 onClick={() =>
                   queueSupportAction(
                     "delete_schedules",
@@ -2728,13 +2808,23 @@ export function UserDetailPanel({
                 }
               />
               {perms.canDeleteUsers && (
-                <ActionCard
+                <GatedActionCard
                   icon={Trash2}
                   label="Delete Account"
                   description="Permanently remove user"
                   color="text-destructive"
                   bg="bg-destructive/10"
                   variant="danger"
+                  // The only destructive card here without one, while its
+                  // three neighbours all pass it. The delete runs a
+                  // transaction across roughly thirty tables, and the button
+                  // stayed live throughout: a second click fired a second
+                  // request, which 404s "User not found" once the first
+                  // commits, so the operator saw a red error for a deletion
+                  // that had fully succeeded.
+                  loading={isLoading("delete")}
+                  action="delete"
+                  callerRole={callerRole}
                   onClick={() =>
                     queueSupportAction(
                       "delete",
