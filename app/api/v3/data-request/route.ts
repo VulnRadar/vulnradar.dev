@@ -36,6 +36,14 @@ const EXPORT_QUERY_CONCURRENCY = 4;
  * actually matters for a subject-access export.
  */
 const EXPORT_MAX_SCANS = 10000;
+/**
+ * Ceiling for the per-row logs below (deliveries, email, usage windows,
+ * audit entries). Scans get their own, larger ceiling because they are the
+ * thing people actually come here for; these are supporting records, and an
+ * account that has generated more than this many of one of them would
+ * otherwise be able to build a file too large to serialise.
+ */
+const EXPORT_MAX_ROWS = 5000;
 
 /** Run thunks in fixed-size batches, preserving input order in the result. */
 async function runInBatches<T>(
@@ -131,11 +139,30 @@ export async function POST(_request: NextRequest) {
   }
 
   try {
-    // Gather ALL user data from every table. host_reputation is
-    // deliberately never queried here: it is a host-keyed cache (no
-    // user_id column at all) of the latest scan result per host, feeding
-    // the browser extension's popup. It holds no personal identifier for
-    // this or any other user to export.
+    // Gather ALL user data from every table.
+    //
+    // Never queried here, and each for a stated reason rather than because
+    // nobody got to it:
+    //
+    // - host_reputation is a host-keyed cache (no user_id column at all) of
+    //   the latest scan result per host, feeding the browser extension's
+    //   popup. It holds no personal identifier for anyone to export.
+    // - password_reset_tokens, email_verification_tokens and
+    //   billing_verification_codes hold live credentials. Handing them back
+    //   in a downloadable file is the opposite of a privacy measure, and it
+    //   is the same reason password_hash, totp_secret and backup_codes are
+    //   excluded from the users row below.
+    // - admin_notifications, access_rules, promoted_auto_tag_rules and
+    //   broadcast_messages record staff actions by created_by. What a staff
+    //   member did is exported as staffActivity and adminActionsOnYourAccount
+    //   instead; the rules and notices themselves are the service's records,
+    //   not the account holder's data.
+    // - rate_limits and the various caches are transient and hold nothing a
+    //   person could not derive from their own usage rows.
+    //
+    // Anything else that gains a user_id belongs in this list. It did not
+    // used to say that, and twenty-one user-keyed tables accumulated outside
+    // it, support correspondence and purchase records among them.
     const [
       userData,
       sessionsData,
@@ -162,6 +189,26 @@ export async function POST(_request: NextRequest) {
       aiConversationsData,
       githubConnectionData,
       securityAlertsData,
+      supportTicketsData,
+      supportTicketMessagesData,
+      supportTicketSharesData,
+      domainsData,
+      hostBadgesData,
+      findingRemediationData,
+      autoTagDismissalsData,
+      aiUsageData,
+      githubReviewUsageData,
+      browserbaseUsageData,
+      creditPurchasesData,
+      broadcastsReceivedData,
+      emailLogData,
+      avatarUploadData,
+      staffActivityData,
+      adminActionsData,
+      exportHistoryData,
+      webhookDeliveriesData,
+      scanScreenshotsData,
+      scanTeamSharesData,
     ] = await runInBatches([
       // Core user data (excluding password_hash, totp_secret, backup_codes for security)
       () =>
@@ -447,6 +494,277 @@ export async function POST(_request: NextRequest) {
       `,
           [session.userId],
         ),
+
+      // Support tickets you opened. Correspondence with us is personal data
+      // and was missing from every export until now, along with the twenty
+      // other user-keyed tables below: the export named 25 of the schema's
+      // 65 tables, and the omissions were not a considered exclusion list.
+      // They were tables added after this route was written, never wired in.
+      () =>
+        pool.query(
+          `
+        SELECT id, subject, category, status, created_at, updated_at, last_message_at
+        FROM support_tickets WHERE user_id = $1 ORDER BY created_at DESC
+      `,
+          [session.userId],
+        ),
+
+      // Messages on those tickets, yours and ours. is_staff distinguishes the
+      // two; the individual staff member is not named, matching how the
+      // ticket UI attributes our replies to Support rather than to a person.
+      () =>
+        pool.query(
+          `
+        SELECT m.id, m.ticket_id, m.is_staff, m.body, m.created_at
+        FROM support_ticket_messages m
+        JOIN support_tickets t ON m.ticket_id = t.id
+        WHERE t.user_id = $1
+        ORDER BY m.created_at DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // Tickets shared with you, or by you with a teammate.
+      () =>
+        pool.query(
+          `
+        SELECT s.ticket_id, s.created_at, t.subject,
+               sw.email as shared_with_email, sb.email as shared_by_email
+        FROM support_ticket_shares s
+        JOIN support_tickets t ON s.ticket_id = t.id
+        LEFT JOIN users sw ON s.shared_with_user_id = sw.id
+        LEFT JOIN users sb ON s.shared_by_user_id = sb.id
+        WHERE s.shared_with_user_id = $1 OR s.shared_by_user_id = $1
+        ORDER BY s.created_at DESC
+      `,
+          [session.userId],
+        ),
+
+      // Verified domains. verification_token is withheld on the same grounds
+      // as the OAuth tokens above: it proves control of the domain, and an
+      // export file travels further than the settings page that shows it.
+      () =>
+        pool.query(
+          `
+        SELECT d.id, d.domain, d.status, d.verification_method, d.created_at,
+               d.verified_at, d.last_checked_at, d.last_check_error,
+               t.name as team_name
+        FROM domains d
+        LEFT JOIN teams t ON d.team_id = t.id
+        WHERE d.user_id = $1 ORDER BY d.created_at DESC
+      `,
+          [session.userId],
+        ),
+
+      // Badges you generated for your own hosts. badge_token appears in the
+      // public badge URL, so it is not withheld.
+      () =>
+        pool.query(
+          `
+        SELECT id, url, badge_token, created_at, revoked_at
+        FROM host_badges WHERE user_id = $1 ORDER BY created_at DESC
+      `,
+          [session.userId],
+        ),
+
+      // Remediation notes and assignments you wrote against findings.
+      () =>
+        pool.query(
+          `
+        SELECT id, finding_id, finding_url, status, note, assignee,
+               due_at, created_at, updated_at
+        FROM finding_remediation WHERE user_id = $1 ORDER BY created_at DESC
+      `,
+          [session.userId],
+        ),
+
+      // Auto-tags you dismissed.
+      () =>
+        pool.query(
+          `
+        SELECT id, scan_id, tag, dismissed_at
+        FROM auto_tag_dismissals WHERE dismissed_by_user_id = $1
+        ORDER BY dismissed_at DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // AI token usage per window.
+      () =>
+        pool.query(
+          `
+        SELECT window_start, tokens_used, updated_at
+        FROM ai_usage WHERE user_id = $1 ORDER BY window_start DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // GitHub review token usage per window.
+      () =>
+        pool.query(
+          `
+        SELECT window_start, tokens_used, updated_at
+        FROM github_review_usage WHERE user_id = $1 ORDER BY window_start DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // Browser-automation seconds used per period.
+      () =>
+        pool.query(
+          `
+        SELECT period_start, seconds_used, updated_at
+        FROM browserbase_usage WHERE user_id = $1 ORDER BY period_start DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // Credit top-ups. These are purchases and belong beside billingHistory,
+      // which only ever covered subscription invoices. Three tables, one
+      // shape, so they arrive as one list with a kind column.
+      () =>
+        pool.query(
+          `
+        SELECT 'ai_tokens' as kind, payment_intent_id, tokens as quantity, credited_at
+        FROM ai_credit_purchases WHERE user_id = $1
+        UNION ALL
+        SELECT 'github_review_tokens' as kind, payment_intent_id, tokens as quantity, credited_at
+        FROM github_credit_purchases WHERE user_id = $1
+        UNION ALL
+        SELECT 'browser_seconds' as kind, payment_intent_id, seconds as quantity, credited_at
+        FROM browserbase_credit_purchases WHERE user_id = $1
+        ORDER BY credited_at DESC
+      `,
+          [session.userId],
+        ),
+
+      // Announcement emails addressed to you, and whether they were sent.
+      () =>
+        pool.query(
+          `
+        SELECT r.id, r.status, r.created_at,
+               m.title, m.message_type, m.sent_at
+        FROM broadcast_recipients r
+        JOIN broadcast_messages m ON r.message_id = m.id
+        WHERE r.user_id = $1 ORDER BY r.created_at DESC
+      `,
+          [session.userId],
+        ),
+
+      // The delivery log for mail we sent you. redacted_preview is the stored
+      // body with links, codes and tokens already stripped, which is why it
+      // is safe to hand back; redacted_html is the same content again and is
+      // left out so the file does not double in size for no new information.
+      () =>
+        pool.query(
+          `
+        SELECT id, subject, status, error_message, redacted_preview, created_at
+        FROM email_logs
+        WHERE recipient = (SELECT email FROM users WHERE id = $1)
+        ORDER BY created_at DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // Uploaded avatar, described rather than embedded: the image bytes
+      // would dominate the file, and the account section already carries the
+      // URL that serves them.
+      () =>
+        pool.query(
+          `
+        SELECT content_type, octet_length(image_data) as bytes, updated_at
+        FROM user_avatars WHERE user_id = $1
+      `,
+          [session.userId],
+        ),
+
+      // Admin-panel presence, which only exists for staff accounts.
+      () =>
+        pool.query(
+          `
+        SELECT current_section, ip_address, user_agent, last_heartbeat, created_at
+        FROM staff_activity WHERE user_id = $1 ORDER BY last_heartbeat DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // Actions staff took on your account, for the same transparency reason
+      // adminNotesAboutYou is exported. The details column is withheld: it is
+      // free-form and, on team and ticket actions, names other people.
+      () =>
+        pool.query(
+          `
+        SELECT action, created_at
+        FROM admin_audit_log WHERE target_user_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // Previous exports. The stored payload is deliberately not included:
+      // every export would then nest the one before it.
+      () =>
+        pool.query(
+          `
+        SELECT id, status, requested_at, downloaded_at
+        FROM data_requests WHERE user_id = $1 ORDER BY requested_at DESC
+      `,
+          [session.userId],
+        ),
+
+      // What we sent to your webhook endpoints and what came back.
+      () =>
+        pool.query(
+          `
+        SELECT d.id, d.event_type, d.http_status, d.response_snippet,
+               d.attempted_at, w.name as webhook_name, w.url as webhook_url
+        FROM webhook_deliveries d
+        JOIN webhooks w ON d.webhook_id = w.id
+        WHERE w.user_id = $1
+        ORDER BY d.attempted_at DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // Screenshots captured during your scans, described rather than
+      // embedded for the same reason as the avatar.
+      () =>
+        pool.query(
+          `
+        SELECT s.scan_id, s.content_type, s.width, s.height, s.captured_at,
+               octet_length(s.image_data) as bytes, h.url
+        FROM scan_screenshots s
+        JOIN scan_history h ON s.scan_id = h.id
+        WHERE h.user_id = $1
+        ORDER BY s.captured_at DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // Which of your scans you shared into which team.
+      () =>
+        pool.query(
+          `
+        SELECT st.scan_id, st.created_at, t.name as team_name, h.url
+        FROM scan_history_teams st
+        JOIN scan_history h ON st.scan_id = h.id
+        LEFT JOIN teams t ON st.team_id = t.id
+        WHERE h.user_id = $1
+        ORDER BY st.created_at DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
     ]);
 
     // Remove user_id from notification_preferences for cleaner export
@@ -498,8 +816,46 @@ export async function POST(_request: NextRequest) {
       // AI (excludes any encrypted API key you configured)
       aiConfig: aiConfigData.rows[0] || null,
 
-      // Admin Notes (transparency)
+      // Support
+      supportTickets: supportTicketsData.rows,
+      supportTicketMessages: supportTicketMessagesData.rows,
+      supportTicketShares: supportTicketSharesData.rows,
+
+      // Domains and Badges
+      domains: domainsData.rows,
+      hostBadges: hostBadgesData.rows,
+
+      // Findings you acted on
+      findingRemediation: findingRemediationData.rows,
+      autoTagDismissals: autoTagDismissalsData.rows,
+
+      // Metered usage and credit top-ups
+      aiUsage: aiUsageData.rows,
+      githubReviewUsage: githubReviewUsageData.rows,
+      browserAutomationUsage: browserbaseUsageData.rows,
+      creditPurchases: creditPurchasesData.rows,
+
+      // Mail we sent you
+      broadcastsReceived: broadcastsReceivedData.rows,
+      emailLog: emailLogData.rows,
+
+      // Files stored against your account, described rather than embedded
+      avatarUpload: avatarUploadData.rows[0] || null,
+      scanScreenshots: scanScreenshotsData.rows,
+
+      // Webhook deliveries and team sharing
+      webhookDeliveries: webhookDeliveriesData.rows,
+      scanTeamShares: scanTeamSharesData.rows,
+
+      // Staff-only, empty for an ordinary account
+      staffActivity: staffActivityData.rows,
+
+      // Admin Notes and actions (transparency)
       adminNotesAboutYou: adminNotesOnUserData.rows,
+      adminActionsOnYourAccount: adminActionsData.rows,
+
+      // Previous exports (metadata only, never the nested payload)
+      exportHistory: exportHistoryData.rows,
 
       // Scan History and AI Chat History (placed last: potentially large)
       scanHistory: scanHistoryData.rows,

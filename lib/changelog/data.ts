@@ -429,6 +429,18 @@ const CHANGELOG: Release[] = [
         desc: "The authenticated scan endpoint writes one row, and a failure on that write was logged and then dropped. The response still came back with the full report and a 200, but with no record ID, and two guards further along read that missing ID and quietly skipped everything downstream: the auto-tagging, the scan-complete email, the critical-findings alert and the webhook delivery. A pipeline listening on that webhook saw nothing at all, which reads as nothing to report rather than nothing was recorded. The response now states outright whether the scan was persisted, and carries the reason when it was not.",
         category: "fixed",
       },
+      {
+        icon: FileDown,
+        label: "Download My Data Left Out Two Thirds Of Your Data",
+        desc: "The export gathers your account from every table that holds it, and its own comment said so, but it named 25 of the 65 tables in the database. The other twenty-one were not a considered exclusion list: they were tables added in the two years after the export was written, by people with no reason to know that file existed. Missing were your entire support correspondence with us, your credit top-up purchases, your verified domains, the badges you generated, your remediation notes, every metered usage record, the delivery log for webhooks you configured, and the log of mail we had sent you. All of them are in it now, along with the actions staff have taken on your account and your own export history, and the file says what is deliberately left out and why: live password-reset and verification tokens, because handing a credential back in a downloadable file is the opposite of a privacy measure, and the service's own operational records, which are not yours. A test now reads the database schema, finds every table with a column naming a person, and fails the build unless each one is either exported or written down with a reason, because the version of this fix that only listed today's tables would have been wrong again by the next release.",
+        category: "fixed",
+      },
+      {
+        icon: Trash2,
+        label: "A Reply On A Shared Ticket Outlived The Account That Wrote It",
+        desc: "Deleting your account runs a list of erasures, and the ones written out by hand exist for a specific reason: where the database is set to null the account reference rather than remove the row, whatever you typed stays behind with only your name taken off it. That was found and fixed once, for the notes you leave on individual findings. The same shape was still live on support tickets. A ticket you opened goes with you, but a reply you wrote on a ticket somebody shared with you hung off their ticket, so the message survived your deletion on a thread its owner could still open and read, along with any access you had granted on your own tickets. Both are removed now, and the same kind of test as above reads the schema and fails when a new column pointing at a person is neither cleaned up nor written down as deliberately anonymised.",
+        category: "security",
+      },
     ],
   },
   {

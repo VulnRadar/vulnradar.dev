@@ -22,10 +22,19 @@ import type { PoolClient } from "pg";
  * back). This function itself only ever runs SQL, ending with the
  * `users` row itself so every FK above it is already gone or nulled.
  *
- * Two tables need explicit handling because nothing links them to the account
+ * Four tables need explicit handling because nothing links them to the account
  * by a cascading FK: scan_finding_feedback (ON DELETE SET NULL, so the URL and
- * free-text notes would outlive the account with only user_id nulled) and
- * email_logs (no user_id at all, keyed only by the recipient address).
+ * free-text notes would outlive the account with only user_id nulled),
+ * email_logs (no user_id at all, keyed only by the recipient address),
+ * support_ticket_messages (SET NULL on author_user_id, so a message written on
+ * a ticket shared with this account survives on a thread its owner can still
+ * read) and support_ticket_shares (SET NULL on shared_by_user_id, leaving a
+ * live access grant nobody is accountable for).
+ *
+ * tests/lib/auth/account-deletion-coverage.test.ts reads the boot schema and
+ * fails when a new user-linked column is neither cascading nor handled here,
+ * because the three additions above were all found the same way: by asking
+ * where else the shape already fixed once still existed.
  *
  * Two known non-cascading FK columns (both nullable, no ON DELETE clause)
  * are nulled out here rather than relying on a schema-level ON DELETE
@@ -139,6 +148,28 @@ export async function deleteUserAccountData(
   await client.query("DELETE FROM scan_finding_feedback WHERE user_id = $1", [
     userId,
   ]);
+
+  // Support messages written on somebody else's ticket. A ticket the user
+  // opened goes with them, because support_tickets.user_id cascades and the
+  // messages hang off ticket_id. A message they wrote on a ticket that was
+  // shared with them does not: support_ticket_messages.author_user_id is ON
+  // DELETE SET NULL, so the body they typed survives with the authorship
+  // stripped, on a thread the ticket's owner can still read. That is the same
+  // shape as scan_finding_feedback directly above, found by asking where else
+  // a nulled author leaves free text behind.
+  await client.query(
+    "DELETE FROM support_ticket_messages WHERE author_user_id = $1",
+    [userId],
+  );
+
+  // Access this account granted on its own tickets. shared_with_user_id
+  // cascades, so shares pointing AT them are already gone; shared_by_user_id
+  // is SET NULL, which would leave a live grant with nobody accountable for
+  // having made it.
+  await client.query(
+    "DELETE FROM support_ticket_shares WHERE shared_by_user_id = $1",
+    [userId],
+  );
 
   // Badges
   await client.query("DELETE FROM user_badges WHERE user_id = $1", [userId]);

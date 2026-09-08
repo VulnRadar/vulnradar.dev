@@ -273,4 +273,63 @@ describeIntegration("account deletion", () => {
 
     await pool.query("DELETE FROM system_settings");
   });
+
+  it("removes what the account wrote on someone else's support ticket", async () => {
+    // support_ticket_messages.author_user_id is ON DELETE SET NULL. A ticket
+    // the account opened goes with it, because support_tickets.user_id
+    // cascades and the messages hang off ticket_id. A reply written on a
+    // ticket that was SHARED with the account hangs off somebody else's
+    // ticket, so before the explicit DELETE the body survived with only the
+    // authorship stripped, on a thread its owner could still open and read.
+    // Same shape as scan_finding_feedback, which was fixed for exactly this
+    // reason; this is the sibling that was left behind.
+    const owner = await createUser();
+    const guest = await createUser();
+
+    const ticket = await pool.query<{ id: number }>(
+      `INSERT INTO support_tickets (user_id, subject, category, status)
+       VALUES ($1, $2, 'other', 'open') RETURNING id`,
+      [owner.id, unique("shared ticket")],
+    );
+    const ticketId = ticket.rows[0].id;
+
+    await pool.query(
+      `INSERT INTO support_ticket_shares (ticket_id, shared_with_user_id, shared_by_user_id)
+       VALUES ($1, $2, $3)`,
+      [ticketId, guest.id, owner.id],
+    );
+    await pool.query(
+      `INSERT INTO support_ticket_messages (ticket_id, author_user_id, is_staff, body)
+       VALUES ($1, $2, false, 'the token is hunter2 and the staging host is 10.0.0.4')`,
+      [ticketId, guest.id],
+    );
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await deleteUserAccountData(client, guest.id);
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const left = await pool.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM support_ticket_messages WHERE ticket_id = $1",
+      [ticketId],
+    );
+    expect(left.rows[0].n).toBe(0);
+
+    // The owner's ticket itself is untouched: erasing the guest must not
+    // delete a thread that belongs to somebody else.
+    const stillThere = await pool.query(
+      "SELECT 1 FROM support_tickets WHERE id = $1",
+      [ticketId],
+    );
+    expect(stillThere.rowCount).toBe(1);
+
+    await pool.query("DELETE FROM support_tickets WHERE id = $1", [ticketId]);
+  });
 });
