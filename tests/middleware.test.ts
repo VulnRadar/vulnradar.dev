@@ -131,6 +131,30 @@ describe("middleware: security headers", () => {
     expect(res.headers.get("Cross-Origin-Embedder-Policy")).toBe("unsafe-none");
   });
 
+  it("keeps CORP at same-origin for an ordinary page", () => {
+    const res = middleware(makeRequest("/landing"));
+    expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
+  });
+
+  it("relaxes CORP to cross-origin for the embeddable badge image", () => {
+    // The badge exists to be an <img> on somebody else's site. CORP is
+    // enforced on exactly that no-cors subresource load, so same-origin here
+    // meant the browser fetched the SVG and threw it away.
+    const res = middleware(makeRequest(`/api/v3/badge/${"a".repeat(64)}`));
+    expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe(
+      "cross-origin",
+    );
+  });
+
+  it("does not relax CORP for the session-authenticated routes under the same badge prefix", () => {
+    for (const path of ["/api/v3/badge/scans", "/api/v3/badge/site"]) {
+      const res = middleware(makeRequest(path));
+      expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe(
+        "same-origin",
+      );
+    }
+  });
+
   it("does not set the deprecated X-XSS-Protection header", () => {
     const res = middleware(makeRequest("/landing"));
     expect(res.headers.get("X-XSS-Protection")).toBeNull();

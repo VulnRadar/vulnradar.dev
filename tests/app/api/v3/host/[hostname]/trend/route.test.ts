@@ -15,6 +15,25 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+// Rate limiter mocked at the module boundary, same arrangement as the
+// sibling suite for GET /api/v3/host/[hostname]: the real one reads the
+// client IP through next/headers and writes to the pool, neither of which
+// this suite wires up.
+const mockRateLimit = vi.fn(async () => ({
+  allowed: true,
+  remaining: 10,
+  retryAfterSeconds: 0,
+}));
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...a: unknown[]) =>
+    mockRateLimit(...(a as Parameters<typeof mockRateLimit>)),
+  RATE_LIMITS: { publicScans: { limit: "publicScans" } },
+}));
+vi.mock("@/lib/api/request-utils", () => ({
+  getClientIp: async () => "203.0.113.9",
+  rateLimitIpKey: (ip: string) => ip,
+}));
+
 const { GET } = await import("@/app/api/v3/host/[hostname]/trend/route");
 
 function getRequest(hostname: string) {
@@ -51,12 +70,48 @@ function findingRow(overrides: {
 beforeEach(() => {
   mockQuery.mockReset();
   mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+  mockRateLimit.mockReset();
+  mockRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 10,
+    retryAfterSeconds: 0,
+  });
 });
 
 describe("GET /api/v3/host/[hostname]/trend", () => {
   it("requires no auth at all -- no session or API key mock is even wired up", async () => {
     const res = await GET(getRequest("example.com"), params("example.com"));
     expect(res.status).toBe(200);
+  });
+
+  it("rate limits per IP and runs no regex scan when the cap is hit", async () => {
+    // The query this guards is `url ~* $1` over every public completed scan,
+    // with no index to seek within. Anonymous and unthrottled, that is a
+    // table walk per request against the busiest table in the schema.
+    mockRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 42,
+    });
+
+    const res = await GET(getRequest("example.com"), params("example.com"));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("42");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("spends its own rate-limit budget, not the host report's", async () => {
+    // The public host page fetches this route and its parent together, so a
+    // shared key would charge a single page view twice against one bucket.
+    await GET(getRequest("example.com"), params("example.com"));
+
+    expect(mockRateLimit).toHaveBeenCalledTimes(1);
+    const [args] = mockRateLimit.mock.calls[0] as unknown as [
+      { key: string; limit: string },
+    ];
+    expect(args.key).toBe("host-trend:203.0.113.9");
+    expect(args.limit).toBe("publicScans");
   });
 
   it("400s for a raw-IP hostname", async () => {

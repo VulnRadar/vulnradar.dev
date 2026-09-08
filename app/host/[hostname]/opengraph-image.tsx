@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { APP_NAME } from "@/lib/config/constants";
 import { OgCard, OG_SIZE, OG_CONTENT_TYPE, severityRow } from "@/app/_og/card";
+import { OG_LIVE_DATA_HEADERS } from "@/app/_og/cache";
 import { getHostSummary, decodeHostParam } from "./host-summary";
 
 export const alt = `Host security report on ${APP_NAME}`;
@@ -14,6 +15,10 @@ export default async function OpengraphImage({
 }) {
   const { hostname } = await params;
   const summary = await getHostSummary(hostname);
+  // Bounded cache, not next/og's default year of `immutable`: see
+  // OG_LIVE_DATA_HEADERS. The row behind this card is deleted the moment the
+  // scan that sourced it is made private, and the card has to follow.
+  const options = { ...size, headers: OG_LIVE_DATA_HEADERS };
 
   if (!summary) {
     return new ImageResponse(
@@ -22,7 +27,7 @@ export default async function OpengraphImage({
         headline={decodeHostParam(hostname)}
         subline="No public scan on record for this host yet."
       />,
-      size,
+      options,
     );
   }
 
@@ -41,6 +46,6 @@ export default async function OpengraphImage({
       }${scanned ? `, last scanned ${scanned}` : ""}`}
       severities={severityRow(summary)}
     />,
-    size,
+    options,
   );
 }

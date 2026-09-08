@@ -483,6 +483,231 @@ describe("GET /api/v3/shared/[token]", () => {
     expect(json.tags).toEqual([]);
   });
 
+  it("publishes result_meta by name, dropping the keys the report does not render", async () => {
+    // The response used to be `...meta`, which is not an allowlist: whatever
+    // result_meta happened to carry reached anyone holding the link.
+    const token = "a1".padEnd(64, "0");
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 120,
+            url: "https://example.com/login",
+            scanned_at: "2026-04-01T00:00:00.000Z",
+            duration: 400,
+            summary: {},
+            findings: [],
+            findings_count: 0,
+            response_headers: null,
+            notes: null,
+            user_id: 8,
+            authenticated: false,
+            result_meta: {
+              checksRun: 310,
+              dangerScore: 4,
+              sslGrade: "A",
+              // Not part of the report: an operator signal, the login
+              // outcome of an authenticated run, and a live-progress
+              // leftover.
+              checksErrored: 2,
+              authReport: { status: "lost", method: "form", reason: "why" },
+              partialFindings: [{ severity: "high", title: "mid-scan" }],
+            },
+            scanned_by: "Alice",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // badges
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const res = await callGet(token);
+    const json = await res.json();
+
+    expect(json.checksRun).toBe(310);
+    expect(json.dangerScore).toBe(4);
+    expect(json.sslGrade).toBe("A");
+    expect(json).not.toHaveProperty("checksErrored");
+    expect(json).not.toHaveProperty("authReport");
+    expect(json).not.toHaveProperty("partialFindings");
+  });
+
+  it("strips the internal per-page scan ids out of a shared crawl result", async () => {
+    // crawl.pages[].scanHistoryId is the primary key of the owner's other
+    // scan_history rows. components/scanner/crawl-pages-info.tsx never reads
+    // it; it only ever reached the response because the object was spread.
+    const token = "a2".padEnd(64, "0");
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 130,
+            url: "https://example.com",
+            scanned_at: "2026-04-02T00:00:00.000Z",
+            duration: 9000,
+            summary: {},
+            findings: [],
+            findings_count: 0,
+            response_headers: null,
+            notes: null,
+            user_id: 8,
+            authenticated: false,
+            result_meta: {
+              crawl: {
+                pagesDiscovered: 2,
+                pagesScanned: 2,
+                pagesSkipped: 0,
+                pages: [
+                  {
+                    url: "https://example.com/",
+                    scanHistoryId: 4411,
+                    findings: [],
+                    findings_count: 0,
+                    summary: { total: 0 },
+                    duration: 500,
+                  },
+                  {
+                    url: "https://example.com/about",
+                    scanHistoryId: 4412,
+                    findings: [{ severity: "low", title: "z" }],
+                    findings_count: 1,
+                    summary: { total: 1 },
+                    duration: 600,
+                  },
+                ],
+              },
+            },
+            scanned_by: "Alice",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // badges
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const res = await callGet(token);
+    const json = await res.json();
+
+    expect(json.crawl.pagesDiscovered).toBe(2);
+    expect(json.crawl.pages).toHaveLength(2);
+    for (const page of json.crawl.pages) {
+      expect(page).not.toHaveProperty("scanHistoryId");
+    }
+    // The fields the panel actually renders survive intact.
+    expect(json.crawl.pages[1]).toEqual({
+      url: "https://example.com/about",
+      findings: [{ severity: "low", title: "z" }],
+      findings_count: 1,
+      summary: { total: 1 },
+      duration: 600,
+    });
+  });
+
+  it("keeps the redirect warning on the owner's own share link", async () => {
+    // scan-result-detail.tsx renders this banner, and the owner saw it on
+    // their own report before choosing to share the scan.
+    const token = "a3".padEnd(64, "0");
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 140,
+            url: "https://app.example.com/login",
+            scanned_at: "2026-04-03T00:00:00.000Z",
+            duration: 400,
+            summary: {},
+            findings: [],
+            findings_count: 0,
+            response_headers: null,
+            notes: null,
+            user_id: 8,
+            authenticated: false,
+            result_meta: {
+              redirect: {
+                requestedUrl: "https://app.example.com/invite?token=SECRET",
+                finalUrl: "https://app.example.com/login",
+                kind: "login",
+                reason: "redirected to a login page",
+              },
+            },
+            scanned_by: "Alice",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // badges
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const res = await callGet(token);
+    const json = await res.json();
+
+    expect(json.redirect.requestedUrl).toBe(
+      "https://app.example.com/invite?token=SECRET",
+    );
+  });
+
+  it("drops the redirect warning for a foreign scan pulled in by a global badge", async () => {
+    // scan_history.url is rewritten to the redirect target, so
+    // redirect.requestedUrl is the only surviving copy of what that other
+    // user typed -- an invite or password-reset link with its token still
+    // attached. They never consented to a stranger's badge republishing it.
+    const token = "a4".padEnd(64, "0");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // share_token_hash miss
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 150,
+            url: "https://app.example.com/login",
+            scanned_at: "2026-04-04T00:00:00.000Z",
+            duration: 400,
+            summary: {},
+            findings: [{ severity: "high", title: "y" }],
+            findings_count: 1,
+            response_headers: null,
+            notes: "internal",
+            user_id: 99, // the scan belongs to user 99...
+            authenticated: false,
+            result_meta: {
+              checksRun: 310,
+              redirect: {
+                requestedUrl: "https://app.example.com/invite?token=SECRET",
+                finalUrl: "https://app.example.com/login",
+                kind: "login",
+                reason: "redirected to a login page",
+              },
+            },
+            scanned_by: "Stranger",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+            badge_owner_id: 42, // ...but the badge belongs to user 42
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const res = await callGet(token);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).not.toHaveProperty("redirect");
+    expect(JSON.stringify(json)).not.toContain("SECRET");
+    // The findings, which are the whole point of the badge, still show.
+    expect(json.checksRun).toBe(310);
+    expect(json.findings).toEqual([{ severity: "high", title: "y" }]);
+  });
+
   it("returns a 500 through withErrorHandling when the database query throws", async () => {
     const token = "f".repeat(64);
     mockQuery.mockRejectedValueOnce(new Error("db down"));

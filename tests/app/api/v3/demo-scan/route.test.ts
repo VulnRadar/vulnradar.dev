@@ -221,6 +221,33 @@ describe("POST /api/v3/demo-scan - success shape", () => {
     expect(typeof json.duration).toBe("number");
     expect(typeof json.responseHeaders).toBe("object");
   }, 20000);
+
+  it("redacts the target's credential-bearing headers, same as every stored scan", async () => {
+    // The demo was the one scan path that echoed a target's Set-Cookie and
+    // WWW-Authenticate back verbatim, and it is the only one an anonymous
+    // caller can reach.
+    mockSafeFetch.mockImplementation(
+      async () =>
+        new Response("<html><head></head><body>ok</body></html>", {
+          status: 200,
+          headers: {
+            "content-type": "text/html",
+            "set-cookie": "session=super-secret; Path=/",
+            "www-authenticate": 'Basic realm="internal-admin"',
+            "x-frame-options": "DENY",
+          },
+        }),
+    );
+
+    const res = await POST(postRequest({ url: DEAD_HOST }));
+    const json = await res.json();
+
+    expect(json.responseHeaders["set-cookie"]).toBe("[redacted]");
+    expect(json.responseHeaders["www-authenticate"]).toBe("[redacted]");
+    expect(JSON.stringify(json.responseHeaders)).not.toContain("super-secret");
+    // Everything else is still evidence and still reported.
+    expect(json.responseHeaders["x-frame-options"]).toBe("DENY");
+  }, 20000);
 });
 
 describe("POST /api/v3/demo-scan - IP rate limiting (real checkRateLimit against a mocked pool)", () => {

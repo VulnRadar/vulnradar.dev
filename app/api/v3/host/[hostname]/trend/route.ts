@@ -3,6 +3,8 @@ import pool from "@/lib/database/db";
 import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
 import { getDangerScore } from "@/lib/scanner/safety-rating";
 import { APP_NAME } from "@/lib/config/constants";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import type { Vulnerability } from "@/lib/scanner/types";
 
 /**
@@ -62,6 +64,32 @@ export async function GET(
   { params }: { params: Promise<{ hostname: string }> },
 ) {
   try {
+    // abuse: the sibling route this one sits beside has been rate limited
+    // since it shipped, and this one never was, even though it is the more
+    // expensive of the two by a wide margin. `url ~* $1` is not b-tree
+    // indexable (see the header comment), so every call walks every public
+    // completed scan in the table and runs a regex over each url, and the
+    // hostname it matches on is whatever the caller put in the path. An
+    // anonymous client could hold the pool open with one cheap request after
+    // another, against the one table every list, dashboard and public page
+    // reads from. Same publicScans budget the host report uses, under its own
+    // key so a normal page load (which fetches both) spends one from each
+    // rather than two from one.
+    const ip = await getClientIp();
+    const rl = await checkRateLimit({
+      key: `host-trend:${rateLimitIpKey(ip)}`,
+      ...RATE_LIMITS.publicScans,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please slow down." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfterSeconds) },
+        },
+      );
+    }
+
     const { hostname: rawHostname } = await params;
     let decoded: string;
     try {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PUBLIC_PATHS } from "./lib/config/public-paths";
-import { AUTH_SESSION_COOKIE_NAME, ROUTES } from "./lib/config/constants";
+import { AUTH_SESSION_COOKIE_NAME, ROUTES, API } from "./lib/config/constants";
 import {
   MAX_REQUEST_BODY_BYTES,
   BODY_CARRYING_METHODS,
@@ -308,6 +308,35 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
   };
 }
 
+/**
+ * The one response in this app whose entire job is to be loaded by a browser
+ * on somebody else's origin: GET /api/v3/badge/[token], the "Secured by
+ * VulnRadar" SVG that app/docs/sharing hands people an `<img src>` for.
+ *
+ * applySecurityHeaders sends Cross-Origin-Resource-Policy: same-origin on
+ * every response, and CORP is enforced on exactly the no-cors subresource
+ * loads an `<img>` makes, so a badge pasted onto the user's own site was
+ * fetched and then discarded by the browser before it painted. README badges
+ * hid it: GitHub proxies images through camo, a server-side fetch that has no
+ * origin to compare against and never applies CORP, so the surface everyone
+ * checks kept working while the one the docs show HTML for did not.
+ *
+ * Narrow on purpose: a single path segment under the badge prefix, which is
+ * the token route and not /badge/scans or /badge/site, both of which are
+ * session-authenticated JSON that has no business being embeddable.
+ */
+function isEmbeddableBadgeImage(pathname: string): boolean {
+  const prefix = `${API.BADGE}/`;
+  if (!pathname.startsWith(prefix)) return false;
+  const segment = pathname.slice(prefix.length);
+  return (
+    segment.length > 0 &&
+    !segment.includes("/") &&
+    segment !== "scans" &&
+    segment !== "site"
+  );
+}
+
 function applySecurityHeaders(
   response: NextResponse,
   nonce: string,
@@ -560,7 +589,18 @@ export function middleware(request: NextRequest) {
         requestId,
       );
     }
-    return applySecurityHeaders(nextWithNonce(), nonce, requestId);
+    const publicResponse = applySecurityHeaders(
+      nextWithNonce(),
+      nonce,
+      requestId,
+    );
+    if (isEmbeddableBadgeImage(pathname)) {
+      publicResponse.headers.set(
+        "Cross-Origin-Resource-Policy",
+        "cross-origin",
+      );
+    }
+    return publicResponse;
   }
 
   // Bearer token requests bypass the session-cookie redirect only —

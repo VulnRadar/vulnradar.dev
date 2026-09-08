@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { APP_NAME } from "@/lib/config/constants";
 import { OgCard, OG_SIZE, OG_CONTENT_TYPE, severityRow } from "@/app/_og/card";
+import { OG_LIVE_DATA_HEADERS } from "@/app/_og/cache";
 import { getShareSummary } from "./share-summary";
 
 export const alt = `Shared security scan report on ${APP_NAME}`;
@@ -18,6 +19,9 @@ export default async function OpengraphImage({
 }) {
   const { token } = await params;
   const summary = await getShareSummary(token);
+  // Bounded cache, not next/og's default year of `immutable`: see
+  // OG_LIVE_DATA_HEADERS. A revoked link must stop unfurling.
+  const options = { ...size, headers: OG_LIVE_DATA_HEADERS };
 
   if (!summary) {
     // Revoked, expired, or never valid: say nothing about which.
@@ -28,7 +32,7 @@ export default async function OpengraphImage({
         accentTail="no longer available"
         subline="The link has expired or been revoked by whoever shared it."
       />,
-      size,
+      options,
     );
   }
 
@@ -43,6 +47,6 @@ export default async function OpengraphImage({
       subline={`${summary.total} findings${scanned ? `, scanned ${scanned}` : ""}`}
       severities={severityRow(summary)}
     />,
-    size,
+    options,
   );
 }

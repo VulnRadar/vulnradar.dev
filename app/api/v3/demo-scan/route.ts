@@ -12,6 +12,7 @@ import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
+import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 import {
   autoDiscoverSubdomains,
   readSubdomains,
@@ -186,11 +187,18 @@ export async function POST(request: NextRequest) {
     const responseBody = await safeReadBody(response, MAX_BODY_SIZE);
     const headers = response.headers;
 
-    // Capture response headers as a plain object for evidence
+    // Capture response headers as a plain object for evidence. Redacted the
+    // same way every stored scan's are (lib/scanner/response-headers.ts): the
+    // demo was the one scan path that echoed a target's Set-Cookie,
+    // Authorization and WWW-Authenticate back verbatim, and it is the only
+    // one an anonymous caller can reach. The findings are computed from the
+    // real `headers` above, not from this copy, so nothing a check reads
+    // changes.
     const capturedHeaders: Record<string, string> = {};
     headers.forEach((value, key) => {
       capturedHeaders[key] = value;
     });
+    const reportedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
     // Capped at the SAME resolved setting the body was READ with, rather
     // than at a second hardcoded literal. This used to re-cap at 1,000,000
@@ -292,7 +300,7 @@ export async function POST(request: NextRequest) {
       duration,
       findings,
       summary,
-      responseHeaders: capturedHeaders,
+      responseHeaders: reportedHeaders,
       ...(subdomains ? { subdomains } : {}),
     };
 

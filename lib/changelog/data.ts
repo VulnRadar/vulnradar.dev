@@ -447,6 +447,36 @@ const CHANGELOG: Release[] = [
         desc: "The landing page has an invitation to follow the project, and it is deliberately the least intrusive version of that we could build. It is not a modal: nothing is blocked, nothing traps your keyboard, and scrolling past it costs nothing. It waits until you are nearly halfway down the page, so it arrives after you have seen what the scanner does rather than before. Escape closes it, the close button has a real name for a screen reader, it does not animate if your system asks for less motion, and once you dismiss it your browser remembers, so a second visit is clean. It sits above the cookie bar rather than underneath it, using the height that bar already publishes for the purpose. A self-hosted copy with no social accounts configured renders nothing at all instead of an empty box.",
         category: "added",
       },
+      {
+        icon: Share2,
+        label: "A Shared Report Published More Than The Report",
+        desc: "A share link returned the scan's whole internal metadata record rather than the fields the report is made of. Most of what rode along was harmless, but not all of it: when a scanned URL redirects, we keep the address you originally typed so the report can warn you it scanned the page it landed on instead. Combine that with a site badge set to track whoever scanned a URL last, and the badge could republish the URL somebody else had typed, which for an invite or a password-reset link means the token in it. The response is now built from a named list of fields, the per-page records inside a crawl no longer carry our internal row numbers, and a report reached through somebody else's badge no longer carries the original address at all, for the same reason it already hides that person's notes and name.",
+        category: "security",
+      },
+      {
+        icon: BarChart3,
+        label: "Anyone Could Make The Host Score Chart Read Every Public Scan",
+        desc: "The risk-score history on a public host page is matched with a text pattern rather than an indexed lookup, so answering it means reading every public scan on record. The report page beside it has been capped per visitor since it shipped and this one never was, so a single anonymous client could issue that read as fast as it liked against the busiest table we have. It now shares the same allowance, counted separately so loading a host page once costs one request against each rather than two against one.",
+        category: "security",
+      },
+      {
+        icon: ShieldCheck,
+        label: "Badges Did Not Load Outside GitHub",
+        desc: "Every response we send carries a header telling browsers not to load it from another site, which is right for pages and wrong for the one thing built to be embedded. A badge in a README kept working because GitHub fetches images through its own proxy, so the case everyone tested was the case that did not go through a browser at all. Pasted onto your own site, the badge was downloaded and then thrown away before it drew. The badge image now says it may be loaded from anywhere. The two badge endpoints that need your account still do not.",
+        category: "fixed",
+      },
+      {
+        icon: Link2,
+        label: "Revoked Share Links Kept Unfurling In Chat",
+        desc: "The preview card that appears when a report link is pasted into Slack or Discord was sent with instructions to cache it for a year and never check again. Revoking the link stopped the report immediately, and then the card kept showing the hostname and the count of findings anywhere the card had already been seen. A host report card had the same problem after the scan behind it was made private. Both now expire in five minutes, which still absorbs the burst of previews a freshly pasted link causes.",
+        category: "fixed",
+      },
+      {
+        icon: Eye,
+        label: "The Demo Scanner Handed Back A Site's Own Cookies",
+        desc: "Scans that get saved strip the response headers that carry credentials before storing them, because a scan record outlives the scan. The demo scanner, which is the only one you can run without an account, skipped that step and returned the target's Set-Cookie and authentication headers word for word. It now redacts the same headers as every other scan. The checks still read the real headers, so nothing we detect changes.",
+        category: "security",
+      },
     ],
   },
   {

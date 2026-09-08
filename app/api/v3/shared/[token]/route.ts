@@ -4,6 +4,69 @@ import pool from "@/lib/database/db";
 import { withErrorHandling } from "@/lib/api/api-utils";
 import { getCachedSubdomainSnapshot } from "@/lib/scanner/subdomain-cache";
 
+/**
+ * The result_meta keys a share link is allowed to publish, spelled out
+ * because a spread is not an allowlist.
+ *
+ * Anyone holding the token reads this response, and `...meta` handed them
+ * every key result_meta happened to carry. Three of those are not part of
+ * the report: `crawl.pages[].scanHistoryId` (internal primary keys of the
+ * owner's other scan rows, which the crawl panel never reads), `authReport`
+ * (the login outcome of an authenticated run, which nothing on the shared
+ * page renders), and `checksErrored` (an operator signal that a detector
+ * threw). A key added to result_meta later would have joined them
+ * automatically. This is the same fix already applied to the anonymous host
+ * report at app/api/v3/host/[hostname]/route.ts.
+ *
+ * `redirect` and `crawl` are handled separately below: both are rendered by
+ * the page, and both need more than a copy.
+ */
+const PUBLIC_META_KEYS = [
+  "checksRun",
+  "dangerScore",
+  "engineConfidence",
+  "incomplete",
+  "aiSummary",
+  "sslGrade",
+  "siteGrade",
+  "threatIntel",
+  "softwareInventory",
+  "dnsRecords",
+  "portScan",
+  "subdomains",
+  "screenshot",
+] as const;
+
+/**
+ * The crawl summary minus the per-page `scanHistoryId`.
+ *
+ * components/scanner/crawl-pages-info.tsx declares the five fields it reads
+ * (url, findings, findings_count, summary, duration) and scanHistoryId is
+ * not among them: it rode along only because the whole object was spread.
+ * Rebuilt by name for the same reason PUBLIC_META_KEYS exists, so a field
+ * added to the crawl record at scan time is not published by default.
+ */
+function publicCrawl(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const crawl = raw as Record<string, unknown>;
+  const pages = Array.isArray(crawl.pages) ? crawl.pages : [];
+  return {
+    pagesDiscovered: crawl.pagesDiscovered,
+    pagesScanned: crawl.pagesScanned,
+    pagesSkipped: crawl.pagesSkipped,
+    pages: pages.map((entry) => {
+      const page = (entry ?? {}) as Record<string, unknown>;
+      return {
+        url: page.url,
+        findings: page.findings ?? [],
+        findings_count: page.findings_count ?? 0,
+        summary: page.summary ?? {},
+        duration: page.duration ?? 0,
+      };
+    }),
+  };
+}
+
 export const GET = withErrorHandling(
   async (
     _request: NextRequest,
@@ -89,8 +152,28 @@ export const GET = withErrorHandling(
     // checksRun, dangerScore, engineConfidence, incomplete and (for crawl
     // scans) crawl all live in here -- same source app/api/v3/history/[id]/route.ts
     // reads it from, kept in parity so a shared scan shows the same detail
-    // an owner sees on their own history/dashboard pages.
-    const meta = row.result_meta || {};
+    // an owner sees on their own history/dashboard pages. Republished by
+    // name, never spread: see PUBLIC_META_KEYS.
+    const meta: Record<string, unknown> = row.result_meta || {};
+    const publicMeta: Record<string, unknown> = {};
+    for (const key of PUBLIC_META_KEYS) {
+      if (meta[key] !== undefined) publicMeta[key] = meta[key];
+    }
+    // `redirect` holds { requestedUrl, finalUrl } verbatim, and scan-jobs.ts
+    // rewrites scan_history.url to the redirect target, so requestedUrl is
+    // the only surviving copy of what was actually submitted: scan
+    // https://app.example.com/invite?token=SECRET, let it bounce to /login,
+    // and the token lives here. The owner's own share link keeps it, because
+    // components/scanner/scan-result-detail.tsx renders that warning and the
+    // owner saw it on their own report before choosing to share. A foreign
+    // scan pulled in by a global-scope badge does not: its owner never
+    // consented to a stranger's badge republishing the URL they typed, the
+    // same reason their notes and identity are redacted above.
+    if (!isForeignScan && meta.redirect !== undefined) {
+      publicMeta.redirect = meta.redirect;
+    }
+    const crawl = publicCrawl(meta.crawl);
+    if (crawl) publicMeta.crawl = crawl;
 
     // Get user badges and any already-cached subdomain-discovery snapshot
     // for this scan's host in parallel -- independent reads. The cache
@@ -142,7 +225,7 @@ export const GET = withErrorHandling(
       scannedByBadges: badgesResult.rows,
       subdomainCache,
       tags: tagsResult.rows,
-      ...meta,
+      ...publicMeta,
     });
   },
 );
