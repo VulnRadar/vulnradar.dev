@@ -18,10 +18,12 @@ import {
   X,
   KeyRound,
   Copy,
+  History,
+  RefreshCw,
 } from "lucide-react";
 import { useState } from "react";
 import type { WebhookItem } from "@/components/profile/types";
-import type { ConfirmAction } from "./types";
+import type { ConfirmAction, WebhookDelivery } from "./types";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface WebhooksSectionProps {
@@ -50,6 +52,14 @@ interface WebhooksSectionProps {
   onStartEditWebhook: (webhook: WebhookItem) => void;
   onCancelEditWebhook: () => void;
   onSaveWebhookEdit: () => void;
+  rotatingWebhookId: number | null;
+  /** The secret is shown once, in the panel above, exactly as on create. */
+  onRotateWebhookSecret: (webhook: WebhookItem) => void;
+  openDeliveriesId: number | null;
+  onToggleDeliveries: (id: number) => void;
+  deliveries: WebhookDelivery[];
+  loadingDeliveries: boolean;
+  deliveriesError: string | null;
 }
 
 /**
@@ -58,6 +68,36 @@ interface WebhooksSectionProps {
  * update the same webhooks list without this section needing its own copy
  * of it.
  */
+/**
+ * How a delivery attempt reads at a glance. A null status is not a failure
+ * code, it is the absence of a response: DNS did not resolve, the connection
+ * was refused, or the request timed out. Rendering that as "0" or lumping it
+ * in with 500 hides the difference between "your endpoint is wrong" and
+ * "your endpoint was not there".
+ */
+function deliveryTone(status: number | null): {
+  label: string;
+  className: string;
+} {
+  if (status === null) {
+    return {
+      label: "No response",
+      className:
+        "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
+    };
+  }
+  if (status >= 200 && status < 300) {
+    return {
+      label: String(status),
+      className: "bg-primary/10 text-primary border-primary/20",
+    };
+  }
+  return {
+    label: String(status),
+    className: "bg-destructive/10 text-destructive border-destructive/20",
+  };
+}
+
 export function WebhooksSection({
   webhooks,
   webhookName,
@@ -82,6 +122,13 @@ export function WebhooksSection({
   onStartEditWebhook,
   onCancelEditWebhook,
   onSaveWebhookEdit,
+  rotatingWebhookId,
+  onRotateWebhookSecret,
+  openDeliveriesId,
+  onToggleDeliveries,
+  deliveries,
+  loadingDeliveries,
+  deliveriesError,
 }: WebhooksSectionProps) {
   const [copiedSecret, setCopiedSecret] = useState(false);
 
@@ -267,125 +314,230 @@ export function WebhooksSection({
                   );
                 }
 
+                const showingDeliveries = openDeliveriesId === wh.id;
+
                 return (
-                  <div
-                    key={wh.id}
-                    className={cn(
-                      // The controls take their own line below sm. That
-                      // cluster is shrink-0 and runs to about 160px (a switch
-                      // plus three buttons), which left roughly 88px on a
-                      // 320px screen for the webhook's name and its whole
-                      // endpoint URL. w-full on the cluster rather than
-                      // flex-col on the row, so the type glyph stays on the
-                      // name's line instead of sitting alone above it.
-                      "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/30",
-                      !wh.active && "opacity-60",
-                    )}
-                  >
-                    {wh.type === "discord" ? (
-                      <svg
-                        className="h-4 w-4 text-[#5865F2] shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-                      </svg>
-                    ) : wh.type === "slack" ? (
-                      <svg
-                        className="h-4 w-4 text-[#E01E5A] shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M5.042 15.165a2.528 2.528 0 01-2.52 2.523A2.528 2.528 0 010 15.165a2.527 2.527 0 012.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 012.521-2.52 2.527 2.527 0 012.521 2.52v6.313A2.528 2.528 0 018.834 24a2.528 2.528 0 01-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 01-2.521-2.52A2.528 2.528 0 018.834 0a2.528 2.528 0 012.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 012.521 2.521 2.528 2.528 0 01-2.521 2.521H2.522A2.528 2.528 0 010 8.834a2.528 2.528 0 012.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 012.522-2.521A2.528 2.528 0 0124 8.834a2.528 2.528 0 01-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 01-2.523 2.521 2.527 2.527 0 01-2.52-2.521V2.522A2.527 2.527 0 0115.165 0a2.528 2.528 0 012.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 012.523 2.522A2.528 2.528 0 0115.165 24a2.527 2.527 0 01-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 01-2.52-2.523 2.526 2.526 0 012.52-2.52h6.313A2.527 2.527 0 0124 15.165a2.528 2.528 0 01-2.522 2.523h-6.313z" />
-                      </svg>
-                    ) : (
-                      <Globe className="h-4 w-4 text-primary shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="min-w-0 text-sm font-medium text-foreground truncate">
-                          {wh.name}
-                        </p>
-                        <span
-                          className={cn(
-                            "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border shrink-0",
-                            wh.type === "discord"
-                              ? "bg-[#5865F2]/10 text-[#5865F2] border-[#5865F2]/20"
-                              : wh.type === "slack"
-                                ? "bg-[#E01E5A]/10 text-[#E01E5A] border-[#E01E5A]/20"
-                                : "bg-muted text-muted-foreground border-border",
-                          )}
+                  <div key={wh.id}>
+                    <div
+                      className={cn(
+                        // The controls take their own line below sm. That
+                        // cluster is shrink-0 and runs to about 160px (a switch
+                        // plus three buttons), which left roughly 88px on a
+                        // 320px screen for the webhook's name and its whole
+                        // endpoint URL. w-full on the cluster rather than
+                        // flex-col on the row, so the type glyph stays on the
+                        // name's line instead of sitting alone above it.
+                        "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/30",
+                        !wh.active && "opacity-60",
+                      )}
+                    >
+                      {wh.type === "discord" ? (
+                        <svg
+                          className="h-4 w-4 text-[#5865F2] shrink-0"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
                         >
-                          {wh.type}
-                        </span>
-                        {!wh.active && (
-                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border border-border bg-muted text-muted-foreground shrink-0">
-                            Paused
+                          <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                        </svg>
+                      ) : wh.type === "slack" ? (
+                        <svg
+                          className="h-4 w-4 text-[#E01E5A] shrink-0"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                        >
+                          <path d="M5.042 15.165a2.528 2.528 0 01-2.52 2.523A2.528 2.528 0 010 15.165a2.527 2.527 0 012.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 012.521-2.52 2.527 2.527 0 012.521 2.52v6.313A2.528 2.528 0 018.834 24a2.528 2.528 0 01-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 01-2.521-2.52A2.528 2.528 0 018.834 0a2.528 2.528 0 012.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 012.521 2.521 2.528 2.528 0 01-2.521 2.521H2.522A2.528 2.528 0 010 8.834a2.528 2.528 0 012.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 012.522-2.521A2.528 2.528 0 0124 8.834a2.528 2.528 0 01-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 01-2.523 2.521 2.527 2.527 0 01-2.52-2.521V2.522A2.527 2.527 0 0115.165 0a2.528 2.528 0 012.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 012.523 2.522A2.528 2.528 0 0115.165 24a2.527 2.527 0 01-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 01-2.52-2.523 2.526 2.526 0 012.52-2.52h6.313A2.527 2.527 0 0124 15.165a2.528 2.528 0 01-2.522 2.523h-6.313z" />
+                        </svg>
+                      ) : (
+                        <Globe className="h-4 w-4 text-primary shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="min-w-0 text-sm font-medium text-foreground truncate">
+                            {wh.name}
+                          </p>
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border shrink-0",
+                              wh.type === "discord"
+                                ? "bg-[#5865F2]/10 text-[#5865F2] border-[#5865F2]/20"
+                                : wh.type === "slack"
+                                  ? "bg-[#E01E5A]/10 text-[#E01E5A] border-[#E01E5A]/20"
+                                  : "bg-muted text-muted-foreground border-border",
+                            )}
+                          >
+                            {wh.type}
                           </span>
+                          {!wh.active && (
+                            <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border border-border bg-muted text-muted-foreground shrink-0">
+                              Paused
+                            </span>
+                          )}
+                        </div>
+                        <p
+                          title={wh.url}
+                          className="text-xs text-muted-foreground truncate font-mono"
+                        >
+                          {wh.url}
+                        </p>
+                      </div>
+                      <div className="flex w-full items-center gap-1 sm:w-auto sm:shrink-0">
+                        <Switch
+                          checked={wh.active}
+                          disabled={isToggling}
+                          onCheckedChange={(checked) =>
+                            onToggleWebhookActive(wh.id, checked)
+                          }
+                          aria-label={
+                            wh.active ? `Pause ${wh.name}` : `Resume ${wh.name}`
+                          }
+                          title={wh.active ? "Pause webhook" : "Resume webhook"}
+                          className="mr-1"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => onStartEditWebhook(wh)}
+                          title="Edit webhook"
+                          aria-label={`Edit webhook ${wh.name}`}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-11 w-11 sm:h-7 sm:w-7 text-primary hover:text-primary hover:bg-primary/10"
+                          disabled={testingWebhookId === wh.id}
+                          onClick={() => onTestWebhook(wh.id)}
+                          title="Send test webhook"
+                          aria-label={`Send test webhook to ${wh.name}`}
+                        >
+                          {testingWebhookId === wh.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Play className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground",
+                            showingDeliveries && "bg-muted text-foreground",
+                          )}
+                          onClick={() => onToggleDeliveries(wh.id)}
+                          title="Recent deliveries"
+                          aria-expanded={showingDeliveries}
+                          aria-label={`${showingDeliveries ? "Hide" : "Show"} recent deliveries for ${wh.name}`}
+                        >
+                          <History className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
+                          disabled={rotatingWebhookId === wh.id}
+                          onClick={() => onRotateWebhookSecret(wh)}
+                          title="Rotate signing secret"
+                          aria-label={`Rotate the signing secret for ${wh.name}`}
+                        >
+                          {rotatingWebhookId === wh.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() =>
+                            onRequestConfirm({
+                              kind: "delete-webhook",
+                              id: wh.id,
+                              label: wh.name,
+                            })
+                          }
+                          title="Delete webhook"
+                          aria-label={`Delete webhook ${wh.name}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {showingDeliveries && (
+                      <div className="border-t border-border/60 bg-muted/20 px-4 py-3">
+                        {loadingDeliveries ? (
+                          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Loading recent deliveries
+                          </p>
+                        ) : deliveriesError ? (
+                          <p className="text-sm text-destructive">
+                            {deliveriesError}
+                          </p>
+                        ) : deliveries.length === 0 ? (
+                          <p className="text-sm text-muted-foreground max-w-prose leading-relaxed">
+                            Nothing has been delivered here yet. Finished scans
+                            post automatically, or use the play button to send a
+                            test.
+                          </p>
+                        ) : (
+                          <>
+                            <p className="text-xs text-muted-foreground mb-2">
+                              Most recent first. We keep the last{" "}
+                              {deliveries.length}{" "}
+                              {deliveries.length === 1 ? "attempt" : "attempts"}
+                              .
+                            </p>
+                            {/* Its own scroller: a long log must not make the
+                              page scroll sideways on a phone. */}
+                            <div className="overflow-x-auto">
+                              <ul className="min-w-[22rem] divide-y divide-border/50">
+                                {deliveries.map((d) => {
+                                  const tone = deliveryTone(d.http_status);
+                                  return (
+                                    <li
+                                      key={d.id}
+                                      className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-1.5"
+                                    >
+                                      <span
+                                        className={cn(
+                                          "inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                                          tone.className,
+                                        )}
+                                      >
+                                        {tone.label}
+                                      </span>
+                                      <span className="text-sm text-foreground">
+                                        {d.event_type}
+                                      </span>
+                                      <time
+                                        dateTime={d.attempted_at}
+                                        className="text-xs text-muted-foreground"
+                                      >
+                                        {new Date(
+                                          d.attempted_at,
+                                        ).toLocaleString()}
+                                      </time>
+                                      {d.response_snippet && (
+                                        <span
+                                          title={d.response_snippet}
+                                          className="w-full truncate font-mono text-xs text-muted-foreground"
+                                        >
+                                          {d.response_snippet}
+                                        </span>
+                                      )}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                          </>
                         )}
                       </div>
-                      <p
-                        title={wh.url}
-                        className="text-xs text-muted-foreground truncate font-mono"
-                      >
-                        {wh.url}
-                      </p>
-                    </div>
-                    <div className="flex w-full items-center gap-1 sm:w-auto sm:shrink-0">
-                      <Switch
-                        checked={wh.active}
-                        disabled={isToggling}
-                        onCheckedChange={(checked) =>
-                          onToggleWebhookActive(wh.id, checked)
-                        }
-                        aria-label={
-                          wh.active ? `Pause ${wh.name}` : `Resume ${wh.name}`
-                        }
-                        title={wh.active ? "Pause webhook" : "Resume webhook"}
-                        className="mr-1"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
-                        onClick={() => onStartEditWebhook(wh)}
-                        title="Edit webhook"
-                        aria-label={`Edit webhook ${wh.name}`}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11 sm:h-7 sm:w-7 text-primary hover:text-primary hover:bg-primary/10"
-                        disabled={testingWebhookId === wh.id}
-                        onClick={() => onTestWebhook(wh.id)}
-                        title="Send test webhook"
-                        aria-label={`Send test webhook to ${wh.name}`}
-                      >
-                        {testingWebhookId === wh.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Play className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() =>
-                          onRequestConfirm({
-                            kind: "delete-webhook",
-                            id: wh.id,
-                            label: wh.name,
-                          })
-                        }
-                        title="Delete webhook"
-                        aria-label={`Delete webhook ${wh.name}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                    )}
                   </div>
                 );
               })}

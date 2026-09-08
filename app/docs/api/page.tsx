@@ -1477,7 +1477,7 @@ format=json       -> application/json            vulnradar-example.com.json`,
   "secret": "<64 hex chars, shown once>"
 }`,
     notes: [
-      "secret is returned exactly once, in this response. Store it now: nothing else ever returns it, and the only way to get a new one is POST /webhooks/{id}/rotate-secret.",
+      "secret is returned exactly once, in this response. Store it now: nothing else ever returns it. The only way to get a new one is to rotate, either with POST /webhooks/{id}/rotate-secret or with the rotate button on the Webhooks page.",
       "Sign-check every delivery against it. That is the only thing separating a real delivery from anyone who learned your endpoint URL.",
       'type is "auto" (or omitted) to detect the payload format from the URL, or one of "discord", "slack", "generic" to force it.',
       "https only, and the URL is checked against the same private-address guard the scanner uses, so localhost, link-local and private-range targets are refused.",

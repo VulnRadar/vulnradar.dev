@@ -15,7 +15,22 @@ export type ConfirmAction =
   | { kind: "rotate-key"; id: number; label: string }
   | { kind: "revoke-key"; id: number; label: string }
   | { kind: "delete-webhook"; id: number; label: string }
+  | { kind: "rotate-webhook-secret"; id: number; label: string }
   | { kind: "delete-schedule"; id: number; label: string };
+
+/**
+ * One row of GET /api/v3/webhooks/{id}/deliveries. http_status is null when
+ * the request never got a response at all (DNS failure, connection refused,
+ * timeout), which is a different answer from "the endpoint said 500" and the
+ * panel renders it as such.
+ */
+export interface WebhookDelivery {
+  id: number;
+  event_type: string;
+  http_status: number | null;
+  response_snippet: string | null;
+  attempted_at: string;
+}
 
 export type DeveloperSection =
   "api-keys" | "webhooks" | "schedules" | "domains";

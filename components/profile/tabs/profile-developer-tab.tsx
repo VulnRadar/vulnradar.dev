@@ -44,7 +44,11 @@ import type {
   WebhookItem,
   ScheduleItem,
 } from "../types";
-import type { ConfirmAction, DeveloperSection } from "./developer/types";
+import type {
+  ConfirmAction,
+  DeveloperSection,
+  WebhookDelivery,
+} from "./developer/types";
 import { ApiKeysSection } from "./developer/api-keys-section";
 import { WebhooksSection } from "./developer/webhooks-section";
 import { SchedulesSection } from "./developer/schedules-section";
@@ -130,6 +134,14 @@ function getConfirmCopy(action: ConfirmAction) {
         description:
           "Finished scans stop posting here right away. You can add the same URL again later if you change your mind.",
         confirmLabel: "Delete webhook",
+        destructive: true,
+      };
+    case "rotate-webhook-secret":
+      return {
+        title: `Rotate the signing secret for "${action.label}"?`,
+        description:
+          "Every receiver checking signatures starts rejecting deliveries the moment you confirm, until you paste the new secret into it. You will see the new one once, on this page.",
+        confirmLabel: "Rotate secret",
         destructive: true,
       };
     case "delete-schedule":
@@ -270,6 +282,16 @@ export function ProfileDeveloperTab({
   const [editWebhookName, setEditWebhookName] = useState("");
   const [editWebhookUrl, setEditWebhookUrl] = useState("");
   const [savingWebhookEdit, setSavingWebhookEdit] = useState(false);
+  const [rotatingWebhookId, setRotatingWebhookId] = useState<number | null>(
+    null,
+  );
+  // Which webhook's delivery log is open, and what it holds. Fetched on
+  // demand rather than with the list: most visits to this tab are not about
+  // debugging a webhook, and the log is up to 50 rows per webhook.
+  const [openDeliveriesId, setOpenDeliveriesId] = useState<number | null>(null);
+  const [deliveries, setDeliveries] = useState<WebhookDelivery[]>([]);
+  const [loadingDeliveries, setLoadingDeliveries] = useState(false);
+  const [deliveriesError, setDeliveriesError] = useState<string | null>(null);
 
   // Schedules state. Hour/day-of-week/day-of-month are held in the user's
   // own local time (see components/profile/tabs/developer/schedule-time-utils.ts
@@ -493,6 +515,9 @@ export function ProfileDeveloperTab({
         case "delete-webhook":
           await handleDeleteWebhook(confirmAction.id, confirmAction.label);
           break;
+        case "rotate-webhook-secret":
+          await handleRotateWebhookSecret(confirmAction.id);
+          break;
         case "delete-schedule":
           await handleDeleteSchedule(confirmAction.id);
           break;
@@ -589,6 +614,56 @@ export function ProfileDeveloperTab({
       setError("Failed to update webhook.");
     } finally {
       setTogglingWebhookId(null);
+    }
+  }
+
+  async function handleRotateWebhookSecret(id: number) {
+    setRotatingWebhookId(id);
+    setError(null);
+    try {
+      const res = await fetch(`${API.WEBHOOKS}/${id}/rotate-secret`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to rotate the signing secret.");
+        return;
+      }
+      // Same one-time reveal panel the create response uses. The plaintext
+      // secret is never stored in the webhooks list: the column holds
+      // ciphertext and nothing reads it back.
+      setNewlyCreatedWebhookSecret(data.secret ?? null);
+      setSuccess(
+        "Signing secret rotated. Paste the new one into your receiver before the next scan finishes.",
+      );
+    } catch {
+      setError("Failed to rotate the signing secret.");
+    } finally {
+      setRotatingWebhookId(null);
+    }
+  }
+
+  async function handleToggleDeliveries(id: number) {
+    if (openDeliveriesId === id) {
+      setOpenDeliveriesId(null);
+      return;
+    }
+    setOpenDeliveriesId(id);
+    setDeliveries([]);
+    setDeliveriesError(null);
+    setLoadingDeliveries(true);
+    try {
+      const res = await fetch(`${API.WEBHOOKS}/${id}/deliveries`);
+      const data = await res.json();
+      if (!res.ok) {
+        setDeliveriesError(data.error || "Could not load recent deliveries.");
+        return;
+      }
+      setDeliveries(Array.isArray(data.deliveries) ? data.deliveries : []);
+    } catch {
+      setDeliveriesError("Could not load recent deliveries.");
+    } finally {
+      setLoadingDeliveries(false);
     }
   }
 
@@ -818,6 +893,19 @@ export function ProfileDeveloperTab({
           onStartEditWebhook={handleStartEditWebhook}
           onCancelEditWebhook={handleCancelEditWebhook}
           onSaveWebhookEdit={handleSaveWebhookEdit}
+          rotatingWebhookId={rotatingWebhookId}
+          onRotateWebhookSecret={(webhook) =>
+            setConfirmAction({
+              kind: "rotate-webhook-secret",
+              id: webhook.id,
+              label: webhook.name,
+            })
+          }
+          openDeliveriesId={openDeliveriesId}
+          onToggleDeliveries={handleToggleDeliveries}
+          deliveries={deliveries}
+          loadingDeliveries={loadingDeliveries}
+          deliveriesError={deliveriesError}
         />
       )}
 

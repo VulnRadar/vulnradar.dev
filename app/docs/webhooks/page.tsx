@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, ROUTES } from "@/lib/config/constants";
 import { PLANS } from "@/lib/billing/catalog";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
@@ -149,7 +149,14 @@ export default function WebhooksPage() {
           : <InlineCode>POST /webhooks/{"{id}"}/rotate-secret</InlineCode>{" "}
           (issue a new signing secret in place, owner only) and{" "}
           <InlineCode>GET /webhooks/{"{id}"}/deliveries</InlineCode> (the 50
-          most recent delivery attempts with their status).
+          most recent delivery attempts with their status). Both are also on the{" "}
+          <Link
+            href={`${ROUTES.PROFILE}?tab=developer&dtab=webhooks`}
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Webhooks page
+          </Link>
+          , as the rotate and history buttons on each row.
         </p>
 
         <div className="space-y-6">
