@@ -352,6 +352,25 @@ export async function PATCH(
   // (AUDIT-011#drift-21). `closed` stays terminal for the owner on purpose:
   // that state is signposted as final ("Open a new ticket to continue") and
   // POST refuses to reply to it, so only staff bring one back.
+  // Terminal means terminal, which the guard below could not express.
+  //
+  // It branched only on the REQUESTED status, never the current one, so
+  // PATCH {"status":"resolved"} on a closed ticket walked straight past it:
+  // "resolved" is not "resolved"? false, so the whole condition collapsed and
+  // the write went through. The reply box then renders again and POST accepts
+  // it, landing the thread back in the staff queue. Closing is how staff end
+  // an abusive thread, so the owner reopening it is the case the comment
+  // above says only staff may do.
+  if (!access.isStaff && ticket.status === "closed") {
+    return NextResponse.json(
+      {
+        error:
+          "This ticket is closed. Open a new ticket to continue the conversation.",
+      },
+      { status: 403 },
+    );
+  }
+
   const ownerMayReopen =
     ticket.status === "resolved" && status === "awaiting_staff";
   if (

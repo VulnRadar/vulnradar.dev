@@ -361,6 +361,35 @@ describe("PATCH /api/v3/support-tickets/[id] (status)", () => {
     expect(await res.json()).toEqual({ status: "awaiting_staff" });
   });
 
+  it("does not let the owner un-close a closed ticket by resolving it", async () => {
+    // The gap the sibling test below could not see. The guard branched only
+    // on the REQUESTED status, so asking for "resolved" on a closed ticket
+    // collapsed the whole condition: not-resolved was false, no 403, and the
+    // write went through. The reply box then renders again and POST accepts
+    // it, landing the thread back in the staff queue. Closing is how staff
+    // end an abusive thread, which is why only they may undo it.
+    asUser(7, "user");
+    mockQuery.mockResolvedValueOnce({
+      rows: [ticketRow({ status: "closed" })],
+    });
+    const res = await PATCH(req("PATCH", { status: "resolved" }), params);
+    expect(res.status).toBe(403);
+    // And nothing was written on the way to the refusal.
+    const writes = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("UPDATE support_tickets"),
+    );
+    expect(writes).toEqual([]);
+  });
+
+  it("lets staff reopen a closed ticket", async () => {
+    asUser(9, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow({ status: "closed" })] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(req("PATCH", { status: "awaiting_staff" }), params);
+    expect(res.status).toBe(200);
+  });
+
   it("does not let the owner reopen a CLOSED ticket", async () => {
     // `closed` stays terminal for the owner: the UI signposts it as final and
     // POST refuses to reply to it, so only staff bring one back.

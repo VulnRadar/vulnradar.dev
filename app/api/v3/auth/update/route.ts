@@ -370,6 +370,17 @@ export async function PATCH(request: NextRequest) {
         "UPDATE api_keys SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
         [session.userId],
       );
+      // A password-reset token outlives the password it was issued against.
+      // Those rows reference no hash, and nothing here cleared them, so an
+      // unclicked emailed link stayed live after a voluntary change. The
+      // realistic path is the one the comments above already describe: a user
+      // rotates their password BECAUSE they suspect compromise, and the link
+      // sitting in their mailbox resets it again. Every other path that needs
+      // to already does this (account deletion, the admin reset, and
+      // forgot-password on re-issue).
+      await pool.query("DELETE FROM password_reset_tokens WHERE user_id = $1", [
+        session.userId,
+      ]);
       const uaForSession = await getUserAgent();
       const newSessionId = await createSession(
         session.userId,

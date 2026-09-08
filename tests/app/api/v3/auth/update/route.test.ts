@@ -586,6 +586,29 @@ describe("PATCH /api/v3/auth/update", () => {
       expect(setCookie).toContain(AUTH_SESSION_COOKIE_NAME);
     }, 15_000);
 
+    it("invalidates any outstanding password-reset link", async () => {
+      // Those rows reference no password hash, so changing the password did
+      // not invalidate them and an unclicked emailed link stayed live. The
+      // realistic path is the one the surrounding code is written for: a user
+      // rotates their password BECAUSE they suspect compromise, and the link
+      // sitting in their mailbox resets it again. Every other path that needs
+      // to already clears them.
+      logIn();
+      await PATCH(
+        updateRequest({
+          newPassword: "A-strong-new-passphrase-42!",
+          currentPassword: CURRENT_PASSWORD,
+        }),
+      );
+      expect(
+        queries.some(
+          (q) =>
+            q.sql.startsWith("DELETE FROM password_reset_tokens") &&
+            q.params[0] === 7,
+        ),
+      ).toBe(true);
+    });
+
     it("sends a password-changed notification in the background", async () => {
       logIn();
       await PATCH(
