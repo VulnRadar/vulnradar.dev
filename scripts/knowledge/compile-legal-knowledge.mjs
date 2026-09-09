@@ -340,11 +340,10 @@ function build() {
     rendered.push(renderPage(page, lastUpdated, sections));
   }
 
-  const now = new Date();
   const out = [
     "# VulnRadar Legal Pages: AI Knowledge",
     "",
-    `_Auto-compiled from \`app/legal/*/page.tsx\` on ${now.toISOString().slice(0, 10)}._`,
+    `_Auto-compiled from \`app/legal/*/page.tsx\`._`,
     "",
     "This file is consumed by the AI system prompt at runtime (via the",
     "/legal slash command) so the assistant can answer questions about",

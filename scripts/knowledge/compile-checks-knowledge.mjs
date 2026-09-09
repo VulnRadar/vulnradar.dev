@@ -307,11 +307,10 @@ async function build() {
     ? statSync(OUTPUT).mtimeMs
     : null;
 
-  const now = new Date();
   const out = [
     "# VulnRadar Scanner Checks: AI Knowledge",
     "",
-    `_Auto-compiled from \`lib/scanner/checks-data/*.json\` on ${now.toISOString().slice(0, 10)}._`,
+    `_Auto-compiled from \`lib/scanner/checks-data/*.json\`._`,
     "",
     "This file is consumed by the AI system prompt at runtime so the",
     "assistant can answer questions about specific scanner checks:",
@@ -363,7 +362,7 @@ async function build() {
   const indexLines = [
     "# VulnRadar Scanner Checks: AI Index (compact)",
     "",
-    `_Compact index auto-compiled from \`lib/scanner/checks-data/*.json\` on ${now.toISOString().slice(0, 10)}._`,
+    `_Compact index auto-compiled from \`lib/scanner/checks-data/*.json\`._`,
     "",
     "One line per check. Format: `[severity] check-id - title`.",
     "Full details (fix steps, code examples, references) live in",

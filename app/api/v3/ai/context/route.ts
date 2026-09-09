@@ -78,7 +78,17 @@ async function handleContext(
     }
 
     case "changelog": {
-      const content = readKnowledgeFile("lib", "ai", "changelog-knowledge.md");
+      // Index first, same as "checks" below. The full file is 3.5x this and
+      // was ~107k tokens by the 3.9.0 release: enough on its own to crowd out
+      // any other loaded command and push it past the chat route's context
+      // budget, which is how /changelog came to be "forgotten" right after
+      // being loaded. The index carries every release that has ever shipped,
+      // with full descriptions for the recent ones, and the full file stays
+      // the retrieval corpus so an older release still arrives in full when a
+      // question matches it (lib/ai/knowledge-retrieval.ts).
+      let content = readKnowledgeFile("lib", "ai", "changelog-index.md");
+      if (!content)
+        content = readKnowledgeFile("lib", "ai", "changelog-knowledge.md");
       result = {
         cmd,
         label: "Changelog",

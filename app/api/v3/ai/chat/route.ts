@@ -188,10 +188,19 @@ export async function POST(req: Request) {
   // in front of it already spent the turn budget.
   const MAX_CONVERSATION_MESSAGES = 60;
   const MAX_CONVERSATION_CHARS = Math.max(maxInputLength, 20_000) * 6; // ~120k
-  // Comfortably fits every context loader that can be open at once
-  // (changelog ~250k + docs ~100k + checks index ~72k + legal ~35k), with
-  // margin, while still capping a caller who wraps an abusive payload in a
-  // <context> tag to defeat the turn budget.
+  // Sized to fit every context loader that can be open at once, with margin,
+  // while still capping a caller who wraps an abusive payload in a <context>
+  // tag to defeat the turn budget.
+  //
+  // This number goes stale on its own: the loaders read generated knowledge
+  // files that grow with every release, and by 3.9.0 the changelog alone had
+  // reached 506k of a budget whose comment still claimed it was 250k, so all
+  // the loaders together no longer fit and the oldest block was being dropped
+  // from requests that had just asked for it. Serving /changelog from an
+  // index (see the route) brought it back under, and
+  // tests/lib/ai/context-budget.test.ts now measures the real files against
+  // this constant so the next file to outgrow it fails a build instead of
+  // quietly costing someone the context they loaded.
   const MAX_CONTEXT_CHARS = 700_000;
 
   // security: this used to be `content.startsWith("<context")`, which any

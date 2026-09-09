@@ -52,7 +52,7 @@ export const messageMarkdownComponents: Components = {
   // light theme these were the two least readable elements in the widget.
   pre: ({ node: _node, ...props }) => (
     <pre
-      className="bg-muted/60 text-foreground border border-border/60 rounded-md p-2.5 my-2 text-[11px] font-mono overflow-x-auto whitespace-pre"
+      className="bg-muted/60 text-foreground border border-border/60 rounded-md p-2.5 my-2 text-xs sm:text-[11px] font-mono overflow-x-auto whitespace-pre"
       {...props}
     />
   ),
@@ -106,7 +106,7 @@ export const messageMarkdownComponents: Components = {
   // shape components/ui/table.tsx and DocsTable already use.
   table: ({ node: _node, ...props }) => (
     <div className="my-2 overflow-x-auto">
-      <table className="text-[11px] border-collapse w-full" {...props} />
+      <table className="text-xs sm:text-[11px] border-collapse w-full" {...props} />
     </div>
   ),
   // scope="col" (SC 1.3.1): markdown tables from the assistant only ever have
@@ -145,11 +145,11 @@ export function MarkdownContent({ content }: { content: string }) {
 export function ThinkBlock({ content }: { content: string }) {
   return (
     <details className="group/thk mb-2">
-      <summary className="flex items-center gap-1.5 cursor-pointer text-[10px] text-muted-foreground/50 hover:text-muted-foreground/70 transition-colors list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden select-none">
+      <summary className="flex items-center gap-1.5 cursor-pointer text-[11px] sm:text-[10px] text-muted-foreground/50 hover:text-muted-foreground/70 transition-colors list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden select-none">
         <ChevronDown className="h-2.5 w-2.5 transition-transform duration-150 group-open/thk:rotate-180" />
         <span className="font-mono">View reasoning</span>
       </summary>
-      <div className="mt-1.5 pl-3 border-l border-border/40 text-[10px] text-muted-foreground/50 leading-relaxed whitespace-pre-wrap font-mono">
+      <div className="mt-1.5 pl-3 border-l border-border/40 text-[11px] sm:text-[10px] text-muted-foreground/50 leading-relaxed whitespace-pre-wrap font-mono">
         {content}
       </div>
     </details>

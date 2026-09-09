@@ -605,11 +605,10 @@ function build() {
       orderOf(a.route) - orderOf(b.route) || a.route.localeCompare(b.route),
   );
 
-  const now = new Date();
   const out = [
     "# VulnRadar Public Docs: AI Knowledge",
     "",
-    `_Auto-compiled from \`app/docs/*/page.tsx\` on ${now.toISOString().slice(0, 10)}._`,
+    `_Auto-compiled from \`app/docs/*/page.tsx\`._`,
     "",
     "This file is consumed by the AI system prompt at runtime so the",
     "assistant can answer questions about every public docs page. Edit",

@@ -280,11 +280,17 @@ function build() {
     process.exit(1);
   }
 
-  // No build date in here, unlike the .md files above it. This is one long
-  // JSON line, so a date field could not be excluded by the CI drift gate's
-  // --ignore-matching-lines the way "_Auto-compiled ... on <date>_" is, and
-  // the gate would fail on every run made on a different day. Nothing needs
-  // the date: the index is a pure function of the files it indexes.
+  // No build date in here. This is one long JSON line, so a date could not be
+  // excluded by the CI drift gate's --ignore-matching-lines the way a line of
+  // its own can be, and the gate would fail on every run made on a different
+  // day than the commit.
+  //
+  // Adding no date field was not enough, because this indexes the .md files
+  // and those each opened with "_Auto-compiled ... on <date>_": the date came
+  // in as indexed TEXT, inside the same unsplittable line, which is exactly
+  // the failure the ignore rule was there to prevent. The compilers no longer
+  // stamp a date at all, so the index really is what this comment always
+  // claimed: a pure function of the files it indexes.
   const index = {
     version: 1,
     // BM25's length normalisation needs the mean document length; storing it

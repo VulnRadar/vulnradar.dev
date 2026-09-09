@@ -25,6 +25,30 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = pathResolve(__dirname, "..", "..");
 const CHANGELOG_SRC = join(ROOT, "lib", "changelog", "data.ts");
 const OUTPUT = join(ROOT, "lib", "ai", "changelog-knowledge.md");
+const OUTPUT_INDEX = join(ROOT, "lib", "ai", "changelog-index.md");
+
+// The full file is the retrieval corpus (lib/ai/knowledge-retrieval.ts indexes
+// it section by section, so a question about v2.3.0 still gets the whole v2.3.0
+// entry). The index is what /changelog HANDS the model in one go, and that is a
+// different job with a hard constraint: it has to stay a sane fraction of a
+// context window forever, while the full file grows by every release we ship.
+//
+// It had reached 506 KB, about 107k tokens measured against the provider, for a
+// single slash command. Nothing rejected it outright, which is why it went
+// unnoticed: it just crowded out everything else, and one more loaded command
+// pushed a block past the route's context budget and got it dropped.
+//
+// So: newest releases in full until FULL_BUDGET, then labels without
+// descriptions until LABEL_BUDGET, then one line per release. Every release
+// the app has ever shipped still appears, so the model always knows what
+// exists and can say so; the detail thins out with age, which is the same
+// order anyone actually asks about them in.
+const FULL_BUDGET = 110_000;
+const LABEL_BUDGET = 45_000;
+// A single release with 98 changes is 90 KB on its own, so a budget alone
+// could spend everything on one entry. At least this many always render in
+// full, and the budget only decides how many MORE than this we can afford.
+const MIN_FULL_RELEASES = 2;
 
 class Parser {
   constructor(source) {
@@ -317,6 +341,137 @@ function renderRelease(release) {
   return lines.join("\n");
 }
 
+/** Same heading, change labels only: the "what" without the "why". */
+function renderReleaseLabels(release) {
+  const tag = release.highlights ? " **(highlights)**" : "";
+  const lines = [
+    `## v${release.version} - ${release.date}${tag}`,
+    `**${release.title}**`,
+  ];
+  if (release.changes.length) {
+    lines.push("");
+    for (const c of release.changes) {
+      const cat = c.category ? `[${c.category.toUpperCase()}] ` : "";
+      lines.push(`- ${cat}${c.label}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function countByCategory(changes) {
+  const counts = new Map();
+  for (const c of changes) {
+    const key = c.category || "other";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([cat, n]) => `${n} ${cat}`)
+    .join(", ");
+}
+
+function buildIndex(releases) {
+  const out = [
+    "# VulnRadar Changelog: AI Index",
+    "",
+    // No build date in this line, in any of the six compilers. CI regenerates
+    // every knowledge file and fails on `git diff --exit-code`, so anything in
+    // the output that is not derived from the input is a scheduled failure:
+    // a new Date() stamp in UTC means every commit made near midnight is one
+    // CI run away from a diff nobody introduced. The date was decoration
+    // anyway; the newest release is named in Quick reference below.
+    `_Auto-compiled from \`lib/changelog/data.ts\`._`,
+    "",
+    "Every release VulnRadar has shipped is listed here, newest first. Recent",
+    "releases carry every change with its full description; older ones thin out",
+    "to change titles and then to a single line, because the whole history with",
+    "full descriptions is far too large to hand over at once.",
+    "",
+    "If someone asks about a release that only appears as a title or a line,",
+    "say what you can see and answer from the detail that gets retrieved",
+    "alongside their question: the complete entry for every release is indexed",
+    "in `lib/ai/changelog-knowledge.md` and pulled in automatically when a",
+    "question matches it. Never say a release does not exist because its",
+    "detail is not in front of you.",
+    "",
+    "Versioning: major.minor.patch. The engine version (scanner rules) and the",
+    "app version (UI/backend) are tracked separately in the config (see",
+    "`lib/config/config-values.ts`).",
+    "",
+    "---",
+    "",
+  ];
+
+  let spent = 0;
+  let mode = "full";
+  const tallies = { full: 0, labels: 0, line: 0 };
+  let labelsHeaderWritten = false;
+  let lineHeaderWritten = false;
+
+  releases.forEach((r, i) => {
+    if (mode === "full") {
+      const body = renderRelease(r);
+      if (i < MIN_FULL_RELEASES || spent + body.length <= FULL_BUDGET) {
+        out.push(body, "", "---", "");
+        spent += body.length;
+        tallies.full++;
+        return;
+      }
+      mode = "labels";
+      spent = 0;
+    }
+    if (mode === "labels") {
+      const body = renderReleaseLabels(r);
+      if (spent + body.length <= LABEL_BUDGET) {
+        if (!labelsHeaderWritten) {
+          out.push(
+            "## Earlier releases: change titles",
+            "",
+            "Descriptions omitted. Ask about any of these by version and the full",
+            "entry is retrieved.",
+            "",
+            "---",
+            "",
+          );
+          labelsHeaderWritten = true;
+        }
+        out.push(body, "", "---", "");
+        spent += body.length;
+        tallies.labels++;
+        return;
+      }
+      mode = "line";
+    }
+    if (!lineHeaderWritten) {
+      out.push("## Earlier releases: one line each", "");
+      lineHeaderWritten = true;
+    }
+    const counts = countByCategory(r.changes);
+    out.push(
+      `- **v${r.version}** (${r.date}) ${r.title}: ${r.changes.length} changes${
+        counts ? ` (${counts})` : ""
+      }`,
+    );
+    tallies.line++;
+  });
+
+  const totalChanges = releases.reduce((n, r) => n + r.changes.length, 0);
+  const first = releases[0];
+  const last = releases[releases.length - 1];
+  out.push("");
+  out.push("---");
+  out.push("");
+  out.push("## Quick reference");
+  out.push("");
+  out.push(`- **Total releases:** ${releases.length}`);
+  out.push(`- **Total changes documented:** ${totalChanges}`);
+  out.push(`- **Latest:** v${first.version} (${first.date}) - ${first.title}`);
+  out.push(`- **Earliest:** v${last.version} (${last.date}) - ${last.title}`);
+  out.push("");
+
+  return { text: out.join("\n"), tallies };
+}
+
 function build() {
   if (!existsSync(CHANGELOG_SRC)) {
     console.error("[compile-changelog-knowledge] not found:", CHANGELOG_SRC);
@@ -341,11 +496,10 @@ function build() {
   const releases = raw.map(releaseToObject);
   const totalChanges = releases.reduce((n, r) => n + r.changes.length, 0);
 
-  const now = new Date();
   const out = [
     "# VulnRadar Changelog - AI Knowledge",
     "",
-    `_Auto-compiled from \`lib/changelog/data.ts\` on ${now.toISOString().slice(0, 10)}._`,
+    `_Auto-compiled from \`lib/changelog/data.ts\`._`,
     "",
     "This file is consumed by the AI system prompt at runtime so the",
     "assistant can answer questions about specific versions, release",
@@ -387,6 +541,12 @@ function build() {
   writeFileSync(OUTPUT, out.join("\n"), "utf8");
   console.log(
     `[compile-changelog-knowledge] wrote ${OUTPUT.replace(ROOT + "\\", "")} (${releases.length} releases, ${totalChanges} changes)`,
+  );
+
+  const { text: indexText, tallies } = buildIndex(releases);
+  writeFileSync(OUTPUT_INDEX, indexText, "utf8");
+  console.log(
+    `[compile-changelog-knowledge] wrote ${OUTPUT_INDEX.replace(ROOT + "\\", "")} (${Math.round(indexText.length / 1024)} KB: ${tallies.full} full, ${tallies.labels} titles-only, ${tallies.line} one-line)`,
   );
 
   if (existsSync(OUTPUT)) {

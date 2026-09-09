@@ -1,6 +1,6 @@
 # VulnRadar Changelog - AI Knowledge
 
-_Auto-compiled from `lib/changelog/data.ts` on 2026-09-08._
+_Auto-compiled from `lib/changelog/data.ts`._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific versions, release
@@ -15,6 +15,25 @@ config (see `lib/config/config-values.ts`).
 Each release entry shows: version, date, title, summary, and every
 change with its category tag (added/changed/fixed/security/performance)
 and full description.
+
+---
+
+## v3.9.1 - September 8, 2026
+**Handed the Whole Book, Remembering None of It**
+
+The assistant kept forgetting the changelog seconds after being handed it, and the reason was that we were handing it too much. Loading /changelog sent the complete release history, every description of every change since the first version, in a single message: half a megabyte, about 107,000 tokens, for one slash command. Nothing rejected it, which is why it went unnoticed for two releases. It simply crowded out everything else, and the request went out twice because a stale copy of the previous load was still in the array beside the fresh one. That command now sends a compact index instead, with the recent releases in full and every older one still listed, and the full history stays behind the retrieval that pulls in whatever an actual question matches. A test now measures the real files against the real budget, so the next one to outgrow it fails a build rather than quietly costing somebody the context they just loaded. The chat sheet on a phone also stopped being a desktop panel stretched to fit.
+
+### Changes
+- [Bot] **[FIXED]** **The Assistant Forgot the Changelog Seconds After Being Handed It**
+  Typing /changelog loaded the entire release history into the conversation: every change of every version, 506 KB, about 107,000 tokens measured against the model, in one message. It had grown there one release at a time, and the last one added ninety-eight entries. Nothing errored. The request was accepted, the reply came back, and the assistant answered as though it had never seen a changelog, which is the worst way for this to fail because there is nothing to look at. The command now sends an index: the newest releases with every description intact, then change titles for the ones behind them, then a line each for the rest, so every release we have ever shipped is still named and the recent detail is still there in full. The complete history stays on disk as the retrieval corpus, so asking about a release from six months ago still pulls that entire entry in beside the question. Same trick /checks has used since it outgrew a single message, applied to the file that outgrew it next.
+- [Layers] **[FIXED]** **Every Loaded Command Was Sent Twice**
+  Both places that build the message list for the AI appended the freshly loaded context by hand, because React had not yet applied the state update that put it there, and neither removed the previous copy sitting in the array they were appending to. So each loaded command went over the wire twice. There was a deduplication step meant to prevent exactly this, and it tested a field that nothing in the codebase ever sets: a leftover from a context pill that was removed when commands were made to load silently, still read in six places, always undefined, so the guard that asks whether a command is already loaded always answered no and reloaded it. With the changelog at half a megabyte that made a request over a megabyte, which is also the default body limit of nginx, and the chat route then dropped one of the two for exceeding its context budget. Both send paths now go through one function that keeps the newest block per command, and the dead field and the pill it belonged to are gone.
+- [Gauge] **[ADDED]** **A Budget Whose Comment Was Two Releases Out of Date**
+  The chat route splits its input allowance between conversation turns and the knowledge the slash commands load, and it skips anything over the larger budget. The number was chosen to fit every command loaded at once, and the comment beside it listed their sizes: changelog around 250k, docs around 100k. The changelog was 506k by then, and the five of them together no longer fit, so loading a second command silently cost you the first. The sizes were in a comment because nothing measured them. Now a test does, against the constant itself, and it fails with the actual file sizes and the instruction to serve the biggest one from an index rather than to raise the number. It also fails if a single command ever exceeds 200 KB on its own, and if either command with an index is ever changed to read the full file first.
+- [Smartphone] **[FIXED]** **The Chat Sheet on a Phone Was a Desktop Panel Stretched to Fit**
+  The panel is a 420-pixel widget beside the page on a desktop and a full-screen sheet on a phone, and every size in it was picked for the first one. Replies were 14px, smaller than any other body text in the app, on a surface that on a phone is the whole screen. Code blocks and tables inside those replies were 11px, and the reasoning block 10px. The three context shortcuts under the greeting, the first thing the assistant shows anyone, were 10px type in a chip twenty pixels tall: too small to read and under half the width a thumb reliably hits. The send and slash buttons were 36px squares. All of it now steps up below the desktop breakpoint and is untouched above it, the two composer buttons grow their touch target past the box rather than growing the box, and the disclaimer strip folds away while the keyboard is up, which is exactly when the sheet has no room to spare and the reply being waited on is what should be on screen.
+- [CalendarClock] **[FIXED]** **A Generated File Recorded the Day It Was Generated**
+  All six knowledge compilers stamped the build date into their output, and CI regenerates every one of them and fails on any difference. That was survivable for the markdown, because the drift check ignores lines matching "compiled from" and the date sat on such a line. It was not survivable for the search index built from those files: that is one unsplittable line of JSON, the ignore rule cannot reach inside it, and the date came in anyway as indexed text. So any commit made near midnight UTC was one CI run away from failing on a diff nobody wrote, and the comment in that file already claimed it was a pure function of its inputs. The date is gone from all six. Running the compilers twice now produces byte-identical output, which is the only property the check was ever asking for.
 
 ---
 
@@ -2303,7 +2322,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 71
-- **Total changes documented:** 854
-- **Latest:** v3.9.0 (September 8, 2026) - Things That Fail Without Saying So
+- **Total releases:** 72
+- **Total changes documented:** 859
+- **Latest:** v3.9.1 (September 8, 2026) - Handed the Whole Book, Remembering None of It
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

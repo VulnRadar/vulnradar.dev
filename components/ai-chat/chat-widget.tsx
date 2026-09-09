@@ -60,9 +60,17 @@ type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  cmdPill?: string;
-  cmdState?: "loading" | "loaded" | "error";
+  /** Which slash command this message belongs to. Everything carrying one is
+   *  plumbing rather than transcript (the loaded knowledge, and the synthetic
+   *  prompt that tells the model it arrived), so the message list hides it and
+   *  loading the same command again replaces it. `help` is the exception: it
+   *  is output the user asked to see. */
   contextCmd?: string;
+  /** Set only on the `<context cmd="...">` message itself, never on the
+   *  synthetic prompt beside it. Both carry `contextCmd`, so anything that
+   *  means "the knowledge for /changelog is already loaded" has to test this
+   *  as well or it matches the prompt and concludes the wrong thing. */
+  isContextBlock?: boolean;
   /** Set when the bubble holds a failure rather than a reply, so it can be
    *  rendered as one instead of passing for an answer. */
   failed?: boolean;
@@ -265,6 +273,40 @@ function persistConversation(sessionId: string, messages: ChatMessage[]) {
   }).catch(() => {});
 }
 
+/**
+ * The exact array of messages sent to /api/v3/ai/chat.
+ *
+ * Both send paths build this and both have the same trap: `messages` is the
+ * value React handed this render, and handleCommand's setMessages has not
+ * flushed yet, so the freshly loaded block is appended by hand while a STALE
+ * copy of the previous block for that same command is still sitting in
+ * `messages`. Every loaded command therefore went over the wire twice. With
+ * the changelog at half a megabyte that was a request over a megabyte, which
+ * is also the default body limit of the reverse proxy in front of us, and the
+ * chat route then dropped one of them for exceeding its context budget. Both
+ * of those look identical from the outside: the assistant does not know what
+ * it was just handed.
+ *
+ * Keeping only the newest block per command is what handleCommand's own
+ * filter intends and cannot achieve from a stale array.
+ */
+function buildAiMessages(
+  history: ChatMessage[],
+): { role: string; content: string }[] {
+  const seen = new Set<string>();
+  return [...history]
+    .filter((m) => m.id !== "welcome")
+    .reverse()
+    .filter((m) => {
+      if (!m.isContextBlock || !m.contextCmd) return true;
+      if (seen.has(m.contextCmd)) return false;
+      seen.add(m.contextCmd);
+      return true;
+    })
+    .reverse()
+    .map((m) => ({ role: m.role, content: m.content }));
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(async () => {
@@ -294,48 +336,6 @@ function CopyButton({ text }: { text: string }) {
         <Copy className="h-2.5 w-2.5" />
       )}
     </button>
-  );
-}
-
-function ContextPill({
-  label,
-  state,
-}: {
-  label: string;
-  state: "loading" | "loaded" | "error";
-}) {
-  return (
-    <div className="flex items-center gap-1.5 py-1.5 px-1">
-      <span
-        className={cn(
-          "inline-flex items-center gap-1 font-mono border rounded-md px-2 py-0.5 text-[10px]",
-          state === "error"
-            ? "bg-destructive/8 border-destructive/20 text-destructive/70 opacity-70"
-            : "bg-primary/8 border-primary/20 text-primary/70",
-          state === "loading" && "opacity-60",
-        )}
-      >
-        {state === "loading" && (
-          <Loader2 className="h-2.5 w-2.5 animate-spin" />
-        )}
-        {state === "error" && <AlertCircle className="h-2.5 w-2.5" />}
-        {label}
-      </span>
-      <span
-        className={cn(
-          "text-[10px]",
-          state === "error"
-            ? "text-destructive/40"
-            : "text-muted-foreground/40",
-        )}
-      >
-        {state === "loading"
-          ? "loading..."
-          : state === "error"
-            ? "failed to load"
-            : "context loaded"}
-      </span>
-    </div>
   );
 }
 
@@ -383,15 +383,11 @@ function useTypewriter(raw: string, active: boolean): string {
 function MessageBubble({
   content,
   role,
-  cmdPill,
-  cmdState,
   isTyping = false,
   failed = false,
 }: {
   content: string;
   role: "user" | "assistant";
-  cmdPill?: string;
-  cmdState?: "loading" | "loaded" | "error";
   isTyping?: boolean;
   failed?: boolean;
 }) {
@@ -401,17 +397,13 @@ function MessageBubble({
     [displayContent, role],
   );
 
-  if (cmdPill !== undefined) {
-    return <ContextPill label={cmdPill} state={cmdState ?? "loading"} />;
-  }
-
   const isUser = role === "user";
 
   if (failed) {
     return (
       <div
         role="alert"
-        className="flex items-start gap-2 max-w-[92%] mr-auto rounded-lg px-3 py-2 bg-destructive/8 border border-destructive/25 text-sm leading-relaxed text-destructive"
+        className="flex items-start gap-2 max-w-[92%] mr-auto rounded-lg px-3 py-2 bg-destructive/8 border border-destructive/25 text-[15px] sm:text-sm leading-relaxed text-destructive"
       >
         <LeadingIcon icon={AlertCircle} line="relaxed" />
         <span>{content}</span>
@@ -422,7 +414,11 @@ function MessageBubble({
   return (
     <div
       className={cn(
-        "group relative text-sm leading-relaxed wrap-break-word",
+        // 15px on a phone, 14px in the desktop panel. The panel is ~420px of a
+        // 1900px screen and reads as a widget beside the page, where 14px is
+        // right; the same sheet on a phone IS the page, filling the screen, and
+        // 14px of prose there is smaller than every other body text in the app.
+        "group relative text-[15px] sm:text-sm leading-relaxed wrap-break-word",
         isUser
           ? // rounded-lg, not rounded-2xl: the radius ladder puts a card at lg
             // and the panel these sit inside is itself sm:rounded-lg, so the
@@ -480,7 +476,7 @@ function ConversationStarters({
             key={p}
             type="button"
             onClick={() => onSelect(p)}
-            className="group/starter w-full flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2 text-left text-xs leading-snug text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground transition-colors"
+            className="group/starter w-full flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2.5 sm:py-2 text-left text-sm sm:text-xs leading-snug text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground transition-colors"
           >
             <span className="min-w-0 flex-1">{p}</span>
             <ArrowUpRight
@@ -490,8 +486,13 @@ function ConversationStarters({
           </button>
         ))}
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[10px] text-muted-foreground/60">
+      {/* These were 10px type in a 20px-tall chip. That is a fine density for
+          a chip you glance at with a mouse, and on a phone it is the first
+          thing the assistant shows: unreadable, and under half the size a
+          thumb can reliably hit. Sized for the touch target below sm and left
+          exactly as it was above it. */}
+      <div className="flex flex-wrap items-center gap-2 sm:gap-1.5">
+        <span className="text-[11px] sm:text-[10px] text-muted-foreground/60">
           Or load context:
         </span>
         {STARTER_COMMANDS.map((c) => (
@@ -499,12 +500,12 @@ function ConversationStarters({
             key={c}
             type="button"
             onClick={() => onCommand(c)}
-            className="rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 font-mono text-[10px] text-primary/80 hover:bg-primary/10 hover:text-primary transition-colors"
+            className="rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1.5 sm:px-1.5 sm:py-0.5 font-mono text-xs sm:text-[10px] text-primary/80 hover:bg-primary/10 hover:text-primary transition-colors touch-manipulation"
           >
             /{c}
           </button>
         ))}
-        <span className="text-[10px] text-muted-foreground/40">
+        <span className="text-[11px] sm:text-[10px] text-muted-foreground/40">
           type / for the rest
         </span>
       </div>
@@ -1216,6 +1217,7 @@ export function ChatWidget() {
         role: "user",
         content: `<context cmd="${data.cmd}">\n${data.content}\n</context>`,
         contextCmd: cmd,
+        isContextBlock: true,
       };
 
       // Replace any stale context for this command, then append fresh one
@@ -1315,11 +1317,10 @@ export function ChatWidget() {
       setIsStreaming(true);
       setStreamingMsgId(aiMsgId);
       try {
-        const aiMessages = [...messages, ...cmdCtx, triggerMsg]
-          .filter((m) => m.id !== "welcome")
-          .filter((m) => m.cmdPill === undefined || m.cmdState === "loaded")
-          .map((m) => ({ role: m.role, content: m.content }));
-        await streamToMessage(aiMessages, aiMsgId);
+        await streamToMessage(
+          buildAiMessages([...messages, ...cmdCtx, triggerMsg]),
+          aiMsgId,
+        );
       } catch {
         setMessages((prev) =>
           prev.map((m) =>
@@ -1348,9 +1349,12 @@ export function ChatWidget() {
     const lower = trimmed.toLowerCase();
     for (const trigger of CONTEXT_TRIGGERS) {
       if (trigger.keywords.some((k) => lower.includes(k))) {
+        // Tested on isContextBlock, not contextCmd alone: the synthetic
+        // "the context loaded" prompt carries the same contextCmd, so the
+        // looser test would report a command as loaded when only its prompt
+        // was there.
         const alreadyLoaded = messages.some(
-          (m) =>
-            m.cmdPill?.startsWith(`/${trigger.cmd}`) && m.cmdState === "loaded",
+          (m) => m.isContextBlock && m.contextCmd === trigger.cmd,
         );
         if (!alreadyLoaded) {
           autoCtx = await handleCommand(`/${trigger.cmd}`);
@@ -1375,33 +1379,12 @@ export function ChatWidget() {
     setStreamingMsgId(aiMsgId);
 
     try {
-      // Build messages for AI, including context pills (they carry the <context> content)
-      // but skip loading/error placeholders. autoCtx is appended explicitly because React
-      // state hasn't flushed the setMessages calls from handleCommand yet.
-      // Deduplicate context slots: when the same command was loaded twice, keep only the latest.
-      const history = [...messages, ...autoCtx, userMsg];
-      const filteredHistory = history
-        .filter((m) => m.id !== "welcome")
-        .filter((m) => m.cmdPill === undefined || m.cmdState === "loaded");
-
-      const seenCtx = new Set<string>();
-      const dedupedHistory = [...filteredHistory]
-        .reverse()
-        .filter((m) => {
-          if (m.contextCmd && m.cmdPill) {
-            if (seenCtx.has(m.contextCmd)) return false;
-            seenCtx.add(m.contextCmd);
-          }
-          return true;
-        })
-        .reverse();
-
-      const aiMessages = dedupedHistory.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-      await streamToMessage(aiMessages, aiMsgId);
+      // autoCtx is appended by hand because React state has not flushed the
+      // setMessages calls handleCommand just made.
+      await streamToMessage(
+        buildAiMessages([...messages, ...autoCtx, userMsg]),
+        aiMsgId,
+      );
     } catch {
       setMessages((prev) =>
         prev.map((m) =>
@@ -1664,7 +1647,7 @@ export function ChatWidget() {
                   aria-relevant="additions text"
                   aria-busy={isStreaming}
                   aria-label={`Conversation with ${BOT_NAME}`}
-                  className="h-full overflow-y-auto overscroll-contain px-3 py-4 space-y-3"
+                  className="h-full overflow-y-auto overscroll-contain px-4 sm:px-3 py-4 space-y-4 sm:space-y-3"
                   style={
                     { WebkitOverflowScrolling: "touch" } as React.CSSProperties
                   }
@@ -1676,11 +1659,7 @@ export function ChatWidget() {
                         key={m.id}
                         className={cn(
                           "flex flex-col",
-                          m.cmdPill !== undefined
-                            ? "items-start"
-                            : m.role === "user"
-                              ? "items-end"
-                              : "items-start",
+                          m.role === "user" ? "items-end" : "items-start",
                         )}
                       >
                         {(() => {
@@ -1700,7 +1679,6 @@ export function ChatWidget() {
                             : 0;
                           const showDots =
                             m.role === "assistant" &&
-                            m.cmdPill === undefined &&
                             !m.failed &&
                             (m.content === "" ||
                               (m.id === streamingMsgId && responseWords < 6));
@@ -1710,8 +1688,6 @@ export function ChatWidget() {
                             <MessageBubble
                               content={m.content}
                               role={m.role}
-                              cmdPill={m.cmdPill}
-                              cmdState={m.cmdState}
                               isTyping={m.id === streamingMsgId}
                               failed={m.failed}
                             />
@@ -1819,7 +1795,11 @@ export function ChatWidget() {
                       disabled={isStreaming || isLoadingCmd}
                       title="Slash commands"
                       aria-label="Show slash commands"
-                      className="h-9 w-9 shrink-0 rounded-md border border-border/40 bg-muted/40 font-mono text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 touch-manipulation"
+                      // Same trick the message copy button uses: a 36px control
+                      // next to a 36px composer looks right and is well under a
+                      // thumb's reach, so the target is grown past the box with
+                      // a pseudo-element instead of growing the box.
+                      className="relative h-9 w-9 shrink-0 rounded-md border border-border/40 bg-muted/40 font-mono text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 touch-manipulation after:absolute after:-inset-1.5 sm:after:hidden"
                     >
                       /
                     </button>
@@ -1867,7 +1847,7 @@ export function ChatWidget() {
                       type="submit"
                       size="sm"
                       disabled={!canSend}
-                      className="h-9 w-9 p-0 shrink-0 rounded-md touch-manipulation"
+                      className="relative h-9 w-9 p-0 shrink-0 rounded-md touch-manipulation after:absolute after:-inset-1.5 sm:after:hidden"
                       aria-label="Send"
                     >
                       {isStreaming || isLoadingCmd ? (
@@ -1896,19 +1876,27 @@ export function ChatWidget() {
                   in the header: a self-hoster can point this at any provider,
                   so which one answered is worth showing, but "MiniMax" on its
                   own beside the assistant's name read as a second brand. */}
-              <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/20 shrink-0">
-                <p className="min-w-0 text-[10px] text-muted-foreground/40 leading-snug">
-                  AI can be wrong. Verify anything critical yourself.
-                </p>
-                {providerLabel && (
-                  <span
-                    className="ml-auto shrink-0 max-w-[45%] truncate text-[10px] text-muted-foreground/40"
-                    title={`Replies are generated by ${providerLabel}`}
-                  >
-                    via {providerLabel}
-                  </span>
-                )}
-              </div>
+              {/* Folded away while the on-screen keyboard is up. The sheet is
+                  already sized to the visual viewport, so with a keyboard
+                  covering half the screen this row was spending a fifth of
+                  what was left on a standing disclaimer, pushing the reply the
+                  user is waiting on off the top. It comes back the moment the
+                  keyboard does, which is when there is room to read it. */}
+              {kbOffset > 0 ? null : (
+                <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/20 shrink-0">
+                  <p className="min-w-0 text-[11px] sm:text-[10px] text-muted-foreground/40 leading-snug">
+                    AI can be wrong. Verify anything critical yourself.
+                  </p>
+                  {providerLabel && (
+                    <span
+                      className="ml-auto shrink-0 max-w-[45%] truncate text-[11px] sm:text-[10px] text-muted-foreground/40"
+                      title={`Replies are generated by ${providerLabel}`}
+                    >
+                      via {providerLabel}
+                    </span>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

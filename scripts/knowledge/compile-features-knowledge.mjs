@@ -618,11 +618,10 @@ function build() {
     ...[...byGroup.keys()].filter((h) => h !== DEFAULT_GROUP).sort(),
   ].filter((h) => byGroup.has(h));
 
-  const now = new Date();
   const out = [
     "# VulnRadar Product Features: AI Knowledge",
     "",
-    `_Auto-compiled from the routes under \`app/\` on ${now.toISOString().slice(0, 10)}._`,
+    `_Auto-compiled from the routes under \`app/\`._`,
     "",
     "Every user-facing page this deployment ships, with the purpose read out",
     "of the page's own metadata, heading and subtitle. If a feature is not",
