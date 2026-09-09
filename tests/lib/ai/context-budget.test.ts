@@ -127,6 +127,29 @@ describe("AI context budget", () => {
     }
   });
 
+  it("truncates anything oversized rather than letting it be dropped downstream", () => {
+    const m = /const MAX_CONTEXT_RESPONSE_CHARS = ([0-9_]+)/.exec(
+      CONTEXT_ROUTE,
+    );
+    expect(m, "the context route has no response size cap").not.toBeNull();
+    const cap = Number(m![1].replace(/_/g, ""));
+
+    // Above every real payload, so the cap is a backstop and not something
+    // normal operation runs into: the per-command test above is what keeps the
+    // files small, this only catches a missing index falling back to a full
+    // corpus.
+    const largest = Math.max(
+      ...Object.values(COMMAND_PAYLOADS).map(
+        (rel) => fs.statSync(path.join(ROOT, rel)).size,
+      ),
+    );
+    expect(cap).toBeGreaterThan(largest);
+    expect(cap).toBeLessThanOrEqual(budget);
+    // And it says so in the content, so the model reports a gap instead of
+    // answering confidently from half a file.
+    expect(CONTEXT_ROUTE).toContain("was truncated because it exceeded");
+  });
+
   it("still counts context blocks separately from conversation turns", () => {
     // The two budgets exist because counting a loaded command against the turn
     // budget is what dropped the context the first time this broke.

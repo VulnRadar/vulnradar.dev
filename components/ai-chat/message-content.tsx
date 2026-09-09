@@ -106,7 +106,10 @@ export const messageMarkdownComponents: Components = {
   // shape components/ui/table.tsx and DocsTable already use.
   table: ({ node: _node, ...props }) => (
     <div className="my-2 overflow-x-auto">
-      <table className="text-xs sm:text-[11px] border-collapse w-full" {...props} />
+      <table
+        className="text-xs sm:text-[11px] border-collapse w-full"
+        {...props}
+      />
     </div>
   ),
   // scope="col" (SC 1.3.1): markdown tables from the assistant only ever have

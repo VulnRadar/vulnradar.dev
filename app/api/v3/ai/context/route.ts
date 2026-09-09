@@ -401,5 +401,29 @@ async function handleContext(
       );
   }
 
+  // Last line of defence on size, applied to every command rather than to the
+  // two that have needed it. The chat route skips a context block over its
+  // budget, silently, and the symptom is the assistant not knowing what it was
+  // just handed: /changelog reached 506 KB that way and nobody could see why.
+  // tests/lib/ai/context-budget.test.ts keeps normal operation far under this,
+  // so reaching it means either a knowledge file grew past what that test
+  // allows or an index is missing and a command fell back to its full corpus
+  // (checks-knowledge.md alone is 1.2 MB). Cutting it here at least says so in
+  // the content the model reads, which beats the block vanishing on the way.
+  const MAX_CONTEXT_RESPONSE_CHARS = 250_000;
+  if (result.content.length > MAX_CONTEXT_RESPONSE_CHARS) {
+    console.error(
+      `[ai/context] ${result.cmd} returned ${result.content.length} chars, truncating to ${MAX_CONTEXT_RESPONSE_CHARS}`,
+    );
+    result = {
+      ...result,
+      content:
+        result.content.slice(0, MAX_CONTEXT_RESPONSE_CHARS) +
+        "\n\n[This context was truncated because it exceeded the size one " +
+        "message can carry. Say so if the answer needs something past this " +
+        "point rather than answering as though nothing is missing.]",
+    };
+  }
+
   return NextResponse.json(result);
 }
