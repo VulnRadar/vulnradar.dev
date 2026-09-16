@@ -190,8 +190,11 @@ const rawDetectors: Record<string, DetectFn> = {
     // JSON object/array at the start of the body) rather than a bare
     // "callback=" substring, which also appears in OAuth redirect URLs and
     // third-party widget script tags that have nothing to do with JSONP.
-    const jsonpResponseShape = /^\s*[\w$.]{1,80}\(\s*[\{\[]/;
-    if (jsonpResponseShape.test(body)) {
+    const jsonpResponseShape = /^\s*([\w$.]{1,80})\(\s*[\{\[]/;
+    const call = jsonpResponseShape.exec(body);
+    // An AMD module (RequireJS define/require) opens with the same shape and
+    // is a script, not a data response wrapped for another origin.
+    if (call && !/^(?:define|require|requirejs)$/.test(call[1])) {
       return "JSONP callback pattern detected — any website can load this endpoint and read the response data.";
     }
     return null;

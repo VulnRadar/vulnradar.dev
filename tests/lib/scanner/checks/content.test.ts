@@ -34,6 +34,63 @@ const DOCKER_OAT = ["dckr", "oat", "AbCdEfGhIjKlMnOpQrStUvWxYz012345"].join(
 );
 
 const fixtures: DetectorFixtures = {
+  "sensitive-files": [
+    {
+      description: "a same-origin link to a database dump",
+      url: "https://example.com/",
+      body: '<a href="/backups/site.sql">db</a>',
+      expect: "fire",
+    },
+    {
+      description: "regression: a GitHub clone URL is not this site's file",
+      url: "https://example.com/",
+      body: '<a href="https://github.com/example/app.git">Clone</a>',
+      expect: "skip",
+    },
+    {
+      description: "regression: a release archive is a download",
+      url: "https://example.com/",
+      body: '<a href="/downloads/app-1.2.0.zip">Download</a>',
+      expect: "skip",
+    },
+  ],
+  "base-tag-insecure": [
+    {
+      description: "an http: base on an HTTPS page",
+      url: "https://example.com/",
+      body: '<html><head><base href="http://cdn.example.com/"></head></html>',
+      expect: "fire",
+    },
+    {
+      description:
+        "regression: the same tag on a page already served over HTTP",
+      url: "http://example.com/",
+      body: '<html><head><base href="http://cdn.example.com/"></head></html>',
+      expect: "skip",
+    },
+  ],
+  "readonly-sensitive-field": [
+    {
+      description: "a readonly card number rendered with its value",
+      body: '<input name="card_number" value="4111 1111 1111 1111" readonly>',
+      expect: "fire",
+    },
+    {
+      description: "regression: a readonly tax rate on a checkout",
+      body: '<input name="tax_rate" value="8.25" readonly>',
+      expect: "skip",
+    },
+    {
+      description: "regression: a code editor's syntax field",
+      body: '<input id="syntax-mode" value="javascript" readonly>',
+      expect: "skip",
+    },
+    {
+      description: "an empty readonly field shows no data",
+      body: '<input name="ssn" value="" readonly>',
+      expect: "skip",
+    },
+  ],
   "hidden-password-field": [
     {
       description: "the hidden attribute fires",

@@ -51,6 +51,7 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   // postMessage with a wildcard target origin.
   "postmessage-star-origin": "postmessage-wildcard",
   "postmessage-wildcard": "postmessage-wildcard",
+  "cs-postmessage-wildcard-origin": "postmessage-wildcard",
 
   // Source map references shipped to production.
   "sourcemap-reference": "source-map-exposed",

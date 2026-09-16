@@ -1627,15 +1627,37 @@ const rawDetectors: Record<string, DetectFn> = {
   // probe shape (e.g. URL hints, response Content-Type) so the finding stays
   // actionable for real audits.
 
-  "sensitive-files": (_url, _headers, body) => {
+  "sensitive-files": (url, _headers, body) => {
     // Only flag when a sensitive extension appears inside an actual href/src/action
     // attribute — not in body text, code examples, or the scanner's own JS bundle.
     const attrValues = [
       ...body.matchAll(/(?:href|src|action|data-src)=["']([^"'#?]+)["']/gi),
     ].map((m) => m[1]);
+    // Same origin only: this is about files this site serves. A link to
+    // https://github.com/org/repo.git is a clone URL for a public repository,
+    // and a release archive on a CDN is a download, and both were reported as
+    // a sensitive file on the page. .zip and .crt are gone for the same
+    // reason: an archive link is how software is distributed, and a
+    // certificate is public by definition.
+    let origin: string | null = null;
+    try {
+      origin = new URL(url).origin;
+    } catch {
+      /* no base to resolve against */
+    }
+    const sameOrigin = (value: string): boolean => {
+      if (!origin) return !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(value);
+      try {
+        return new URL(value, url).origin === origin;
+      } catch {
+        return false;
+      }
+    };
     const sensitiveExt =
-      /\.(bak|sql|zip|log|env|git|swp|old|backup|pem|key|crt|p12|pfx|dump)(\?|$)/i;
-    const found = attrValues.filter((a) => sensitiveExt.test(a));
+      /\.(bak|sql|log|env|git|swp|old|backup|pem|key|p12|pfx|dump)(\?|$)/i;
+    const found = attrValues.filter(
+      (a) => sensitiveExt.test(a) && sameOrigin(a),
+    );
     if (found.length > 0)
       return `Sensitive file reference(s) in page links: ${found.slice(0, 3).join(", ")}`;
     return null;
@@ -1643,18 +1665,12 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "base-tag-insecure": (url, _headers, body) => {
     const m = body.match(/<base[^>]{1,2000}href\s*=\s*["']([^"']+)["']/i);
-    if (
-      m &&
-      /^https?:\/\//i.test(m[1]) &&
-      m[1].toLowerCase().startsWith("http:")
-    ) {
+    // Only a downgrade on an HTTPS page. On a page already served over HTTP
+    // an http: base changes nothing. The second branch that followed this
+    // one repeated the same test and could never be reached.
+    if (!/^https:/i.test(url)) return null;
+    if (m && /^http:\/\//i.test(m[1])) {
       return `Insecure <base> tag with href="${m[1]}"`;
-    }
-    if (/<html/i.test(body) && /<base/i.test(body)) {
-      const href = body.match(/<base[^>]{1,2000}href\s*=\s*["']([^"']+)["']/i);
-      if (href && href[1] && href[1].toLowerCase().startsWith("http:")) {
-        return `<base> tag uses insecure href: ${href[1]}`;
-      }
     }
     return null;
   },
@@ -2159,12 +2175,18 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "readonly-sensitive-field": (url, _headers, body) => {
     const fields = body.match(/<input[^>]{0,2000}>/gi) || [];
+    // The field name has to BE a sensitive identifier, as a whole word
+    // between separators, and the field has to carry a value: the finding is
+    // that the data was rendered into the page. The substring test it
+    // replaced matched "syntax", "taxonomy", "scorecard" and a readonly
+    // "tax_rate" on every checkout.
+    const SENSITIVE_NAME =
+      /(?:name|id)\s*=\s*["'](?:[^"']*[_\-.[])?(?:ssn|cvv|cvc|card[_-]?number|cc[_-]?(?:num|number)|credit[_-]?card|tax[_-]?id|tin)(?:[_\-.\]][^"']*)?["']/i;
     const bad = fields.filter(
       (f) =>
         /\breadonly\b/i.test(f) &&
-        /(?:name|id)\s*=\s*["'][^"']*(?:ssn|credit|card|cvv|tax)[^"']*["']/i.test(
-          f,
-        ),
+        SENSITIVE_NAME.test(f) &&
+        /\bvalue\s*=\s*["'][^"']*\w[^"']*["']/i.test(f),
     );
     if (bad.length > 0)
       return `Found ${bad.length} sensitive field(s) rendered as readonly.`;

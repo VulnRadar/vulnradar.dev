@@ -13,6 +13,18 @@ import { detectors } from "@/lib/scanner/checks/client-side";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "jsonp-callback-endpoint": [
+    {
+      description: "a JSONP response wrapping data in a callback",
+      body: 'jQuery3510123_1700000000({"user":"alice","email":"a@example.com"})',
+      expect: "fire",
+    },
+    {
+      description: "regression: a RequireJS module is not JSONP",
+      body: 'define({ "greeting": "hello" });',
+      expect: "skip",
+    },
+  ],
   // The port run and the trailing URL run both matched digits, so a value
   // that never closed its quote traded characters between them at every
   // split: 18.9 seconds on a 128 KB body. Both are bounded now, so the

@@ -435,6 +435,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Filter,
+        label: "Four Page Checks Stop Flagging Ordinary Pages",
+        desc: "A link to clone a project from GitHub, or to download a release archive, was reported as a sensitive file on the page; the check now looks only at files this site itself serves, and no longer counts archive downloads or public certificates. A read-only field was reported as exposing sensitive data whenever its name contained letters like tax or card anywhere, which matched syntax highlighters, taxonomies and the tax rate on every checkout; it now needs a real card, social security or tax ID field with a value actually rendered into it. A RequireJS module was reported as a JSONP endpoint. An insecure base URL was reported as high on pages already served over plain HTTP, where it changes nothing, and half of that check could never run. Separately, one postMessage call sent to every origin could still produce two findings, and now produces one.",
+        category: "engine",
+      },
+      {
         icon: CheckCheck,
         label: "Wrong Verdicts Corrected",
         desc: "Sites enforcing Trusted Types were told they were not, because the check searched the policy for the JavaScript API's name instead of the directive. Algolia's public search key, which Algolia's own documentation names ApiKey, was reported as a leaked admin key at critical. One check stated that jsonwebtoken accepts any algorithm when none is specified, which version 9 does not, and reported every verify call without one as critical; only an explicit none is reported now. Hardening guides that mention /.git/config were reported as exposing it. In the other direction: postMessage calls with a transfer list were missed, one Secure cookie hid every insecure cookie in the same response, a library pinned as jquery@1.12.4 the way jsDelivr and unpkg load it was never matched, Docker Hub organization tokens were not recognised, and neither was the /swagger-ui path.",
