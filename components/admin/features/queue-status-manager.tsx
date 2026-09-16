@@ -22,6 +22,7 @@ import {
 } from "@/components/admin/shared";
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
+import { API } from "@/lib/config/client-constants";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import {
   formatAgeMs,
@@ -70,7 +71,7 @@ export function QueueStatusManager() {
   const fetchFailures = useCallback(async () => {
     setFailuresLoading(true);
     try {
-      const res = await fetch("/api/v3/admin/queue-status?failures=1");
+      const res = await fetch(`${API.ADMIN_QUEUE_STATUS}?failures=1`);
       if (res.ok) {
         const json: QueueStatusResponse = await res.json();
         setFailures(json.failures ?? []);
@@ -100,7 +101,7 @@ export function QueueStatusManager() {
     if (isInitial) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await fetch("/api/v3/admin/queue-status");
+      const res = await fetch(API.ADMIN_QUEUE_STATUS);
       if (res.ok) {
         setData(await res.json());
         setLoadFailed(false);
@@ -129,7 +130,7 @@ export function QueueStatusManager() {
   const sweepStale = useCallback(async () => {
     setSweeping(true);
     try {
-      const res = await fetch("/api/v3/admin/queue-status", {
+      const res = await fetch(API.ADMIN_QUEUE_STATUS, {
         method: "POST",
       });
       if (res.ok) {

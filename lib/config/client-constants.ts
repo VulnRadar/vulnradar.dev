@@ -317,6 +317,9 @@ export const API = {
     `/api/${API_VERSION}/support-tickets/${id}/shares`,
   /** Staff inbox listing every user's ticket (MANAGE_SUPPORT_TICKETS). */
   ADMIN_SUPPORT_TICKETS: `/api/${API_VERSION}/admin/support-tickets`,
+  /** Scanner queue counts (GET, VIEW_SYSTEM_STATS; ?failures=1 adds the
+   *  failed rows) and failing stuck scans (POST, admin). */
+  ADMIN_QUEUE_STATUS: `/api/${API_VERSION}/admin/queue-status`,
   ADMIN: `/api/${API_VERSION}/admin`,
   BADGE: `/api/${API_VERSION}/badge`,
   BADGE_SCANS: `/api/${API_VERSION}/badge/scans`,
