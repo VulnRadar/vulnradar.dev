@@ -13,6 +13,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { ZoomIn, ZoomOut, RotateCcw, Loader2 } from "lucide-react";
+import { cn } from "@/lib/ui/utils";
+import { focus } from "@/lib/ui/animations";
+
+/** Pixels an arrow key moves the image, and with Shift held. */
+const NUDGE = 8;
+const NUDGE_FAST = 32;
 
 interface ImageCropDialogProps {
   open: boolean;
@@ -110,17 +116,25 @@ export function ImageCropDialog({
     };
   }, [zoom]);
 
+  /** Holds an offset inside the bounds getMaxOffset allows. */
+  const clampOffset = useCallback(
+    (next: { x: number; y: number }) => {
+      const max = getMaxOffset();
+      return {
+        x: Math.min(max.x, Math.max(-max.x, next.x)),
+        y: Math.min(max.y, Math.max(-max.y, next.y)),
+      };
+    },
+    [getMaxOffset],
+  );
+
   // Re-clamp whenever zoom changes: an offset that was in-bounds at a
   // higher zoom can leave a gap once the image shrinks back down.
   useEffect(() => {
     if (!imageLoaded) return;
-    const max = getMaxOffset();
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-clamps offset when zoom changes (via getMaxOffset), gated by imageLoaded/that dependency, not run on every render
-    setOffset((prev) => ({
-      x: Math.min(max.x, Math.max(-max.x, prev.x)),
-      y: Math.min(max.y, Math.max(-max.y, prev.y)),
-    }));
-  }, [zoom, imageLoaded, getMaxOffset]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-clamps offset when zoom changes (via clampOffset), gated by imageLoaded/that dependency, not run on every render
+    setOffset(clampOffset);
+  }, [zoom, imageLoaded, clampOffset]);
 
   // Mouse / touch drag handlers
   const handlePointerDown = useCallback(
@@ -138,18 +152,53 @@ export function ImageCropDialog({
       if (!dragging) return;
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
-      const max = getMaxOffset();
-      setOffset({
-        x: Math.min(max.x, Math.max(-max.x, offsetStart.current.x + dx)),
-        y: Math.min(max.y, Math.max(-max.y, offsetStart.current.y + dy)),
-      });
+      setOffset(
+        clampOffset({
+          x: offsetStart.current.x + dx,
+          y: offsetStart.current.y + dy,
+        }),
+      );
     },
-    [dragging, getMaxOffset],
+    [dragging, clampOffset],
   );
 
   const handlePointerUp = useCallback(() => {
     setDragging(false);
   }, []);
+
+  /**
+   * Repositioning from the keyboard.
+   *
+   * Dragging was the only way to move the image, so a keyboard user could
+   * zoom (the slider is a real slider) and reset (a real button) and could
+   * not do the one thing this dialog exists for. app/legal/accessibility
+   * tells the public that "all interactive elements can be accessed using
+   * keyboard navigation", and this was the counterexample.
+   *
+   * Arrow keys move the image the same way a drag does, so the two agree:
+   * ArrowRight shows more of the left of the photo, exactly as dragging
+   * right does. They share the clamp, so a nudge can no more pull the edge
+   * inside the crop circle than a drag can, and at zoom 1 on the tighter
+   * axis they both correctly do nothing.
+   */
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const step = e.shiftKey ? NUDGE_FAST : NUDGE;
+      const delta = {
+        ArrowLeft: { x: -step, y: 0 },
+        ArrowRight: { x: step, y: 0 },
+        ArrowUp: { x: 0, y: -step },
+        ArrowDown: { x: 0, y: step },
+      }[e.key];
+      if (!delta) return;
+      // Otherwise the arrow scrolls the dialog body instead.
+      e.preventDefault();
+      setOffset((prev) =>
+        clampOffset({ x: prev.x + delta.x, y: prev.y + delta.y }),
+      );
+    },
+    [clampOffset],
+  );
 
   const handleReset = () => {
     setZoom(1);
@@ -198,8 +247,8 @@ export function ImageCropDialog({
         <DialogHeader>
           <DialogTitle>Edit Profile Picture</DialogTitle>
           <DialogDescription>
-            Drag to reposition and use the slider to zoom. Your picture will be
-            cropped to a circle.
+            Drag or use the arrow keys to reposition, and the slider to zoom.
+            Your picture will be cropped to a circle.
           </DialogDescription>
         </DialogHeader>
 
@@ -207,17 +256,25 @@ export function ImageCropDialog({
           {/* Canvas preview */}
           <div
             ref={containerRef}
-            role="img"
-            aria-label="Photo preview. Drag to reposition, use the zoom slider below to resize."
+            // A group rather than an img: it draws a preview, but it is also
+            // the control that positions the crop, and a focusable element
+            // announced as an image says nothing about being operable.
+            role="group"
+            aria-label="Photo position. Use the arrow keys to move the photo, holding Shift to move further."
+            tabIndex={0}
             // a11y (SC 1.4.10): the crop circle was a hard 280px square
             // inside a dialog that adds its own horizontal padding, so at a
             // 320px viewport the panel overflowed sideways. min() lets it
             // shrink to whatever is available and aspect-square keeps it
             // round; nothing changes above 280px.
-            className="relative w-[min(280px,100%)] aspect-square sm:w-[min(300px,100%)] rounded-full overflow-hidden border-2 border-border bg-secondary/20 cursor-grab active:cursor-grabbing touch-none"
+            className={cn(
+              "relative w-[min(280px,100%)] aspect-square sm:w-[min(300px,100%)] rounded-full overflow-hidden border-2 border-border bg-secondary/20 cursor-grab active:cursor-grabbing touch-none",
+              focus.ring,
+            )}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
+            onKeyDown={handleKeyDown}
           >
             <canvas
               ref={canvasRef}

@@ -25,6 +25,7 @@ import {
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
+import { focus } from "@/lib/ui/animations";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
   AI_BOT_NAME,
@@ -96,6 +97,9 @@ const PANEL_MIN_HEIGHT = 300;
 const PANEL_MAX_HEIGHT = 900;
 const PANEL_DEFAULT_WIDTH = 420;
 const PANEL_DEFAULT_HEIGHT = 640;
+/** Pixels an arrow key resizes the panel by, and with Shift held. */
+const PANEL_RESIZE_STEP = 24;
+const PANEL_RESIZE_STEP_FAST = 96;
 // The panel is anchored `sm:right-5 sm:bottom-20`, so what actually bounds it
 // is the launcher underneath plus a margin on the other three sides.
 const PANEL_GUTTER_X = 40;
@@ -864,6 +868,54 @@ export function ChatWidget() {
     window.addEventListener("mouseup", onUp);
   }
 
+  /**
+   * Resizing from the keyboard.
+   *
+   * Both handles were bare divs carrying an onMouseDown and nothing else: no
+   * role, no accessible name, no focus stop, no key handler, and a one-pixel
+   * hit area. Resizing the panel was mouse-only, and
+   * app/legal/accessibility/page.tsx tells the public that every interactive
+   * element can be reached from the keyboard.
+   *
+   * They are window splitters, so they take the splitter role and the keys it
+   * implies. The direction matches the drag rather than the arrow: the panel
+   * is anchored bottom-right and these are its left and top edges, so pulling
+   * the left edge leftwards is what makes it wider, and ArrowLeft does the
+   * same. Both read the same live ceiling the drag does, so neither can leave
+   * a size the next render clamps away.
+   */
+  function onWidthResizeKey(e: React.KeyboardEvent) {
+    const step = e.shiftKey ? PANEL_RESIZE_STEP_FAST : PANEL_RESIZE_STEP;
+    const ceiling = Math.min(PANEL_MAX_WIDTH, availablePanelSize().width);
+    const next = {
+      ArrowLeft: panelWidth + step,
+      ArrowRight: panelWidth - step,
+      Home: PANEL_MIN_WIDTH,
+      End: ceiling,
+    }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    const w = clamp(next, PANEL_MIN_WIDTH, ceiling);
+    setPanelWidth(w);
+    savePanelSize(w, currentSizeRef.current.h);
+  }
+
+  function onHeightResizeKey(e: React.KeyboardEvent) {
+    const step = e.shiftKey ? PANEL_RESIZE_STEP_FAST : PANEL_RESIZE_STEP;
+    const ceiling = Math.min(PANEL_MAX_HEIGHT, availablePanelSize().height);
+    const next = {
+      ArrowUp: panelHeight + step,
+      ArrowDown: panelHeight - step,
+      Home: PANEL_MIN_HEIGHT,
+      End: ceiling,
+    }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    const h = clamp(next, PANEL_MIN_HEIGHT, ceiling);
+    setPanelHeight(h);
+    savePanelSize(currentSizeRef.current.w, h);
+  }
+
   useEffect(() => {
     saveHistory(sessionId, messages);
   }, [sessionId, messages]);
@@ -1503,17 +1555,39 @@ export function ChatWidget() {
           tabIndex={-1}
           {...tourAnchor("chatPanel")}
         >
-          {/* Resize handle, desktop only: drag the left edge for width */}
+          {/* Resize handle, desktop only: the left edge sets width */}
           <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize panel width"
+            aria-valuenow={Math.round(appliedWidth)}
+            aria-valuemin={PANEL_MIN_WIDTH}
+            aria-valuemax={PANEL_MAX_WIDTH}
+            tabIndex={0}
             onMouseDown={onWidthResizeStart}
-            className="hidden sm:block absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-primary/20 transition-colors rounded-l-lg"
-            title="Drag to resize width"
+            onKeyDown={onWidthResizeKey}
+            className={cn(
+              "hidden sm:block absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-primary/20 transition-colors rounded-l-lg",
+              focus.ring,
+            )}
+            title="Drag, or focus and press the arrow keys, to resize width"
           />
-          {/* Resize handle, desktop only: drag the top edge for height */}
+          {/* Resize handle, desktop only: the top edge sets height */}
           <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize panel height"
+            aria-valuenow={Math.round(appliedHeight)}
+            aria-valuemin={PANEL_MIN_HEIGHT}
+            aria-valuemax={PANEL_MAX_HEIGHT}
+            tabIndex={0}
             onMouseDown={onHeightResizeStart}
-            className="hidden sm:block absolute top-0 left-0 right-0 h-1 cursor-row-resize z-10 hover:bg-primary/20 transition-colors rounded-t-lg"
-            title="Drag to resize height"
+            onKeyDown={onHeightResizeKey}
+            className={cn(
+              "hidden sm:block absolute top-0 left-0 right-0 h-1 cursor-row-resize z-10 hover:bg-primary/20 transition-colors rounded-t-lg",
+              focus.ring,
+            )}
+            title="Drag, or focus and press the arrow keys, to resize height"
           />
           {/* Header. Top padding grows for the notch/status bar now that the
               mobile sheet reaches the very top edge of the screen. */}
