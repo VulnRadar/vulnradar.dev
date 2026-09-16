@@ -595,22 +595,39 @@ export async function markScanRunning(scanId: number): Promise<void> {
  */
 const STALE_SCAN_MIN_GRACE_SECONDS = 15 * 60;
 
-export async function sweepStaleScans(): Promise<number> {
+/**
+ * How old a pending or running scan must be before the sweep may fail it.
+ *
+ * Twice the longest budget an admin has configured, so the in-process
+ * watchdog always gets to fail its own scan first and this stays the safety
+ * net it is documented as. The floor covers a deployment that has set every
+ * budget very low.
+ *
+ * The bulk budget counts too, and did not. A bulk batch writes every row as
+ * 'pending' at admission, stamped with that moment, and drains them one at a
+ * time for up to BULK_SCAN_TIMEOUT_SECONDS. With only the single and crawl
+ * budgets in the guard, an operator who raised the bulk budget had the rows
+ * near the end of a long batch failed as "interrupted by a server restart"
+ * while they were still legitimately queued.
+ */
+export async function staleScanGraceSeconds(): Promise<number> {
   const {
     SCAN_TIMEOUT_SECONDS: scanTimeoutSeconds,
     CRAWL_SCAN_TIMEOUT_SECONDS: crawlTimeoutSeconds,
+    BULK_SCAN_TIMEOUT_SECONDS: bulkTimeoutSeconds,
   } = await getSettings([
     "SCAN_TIMEOUT_SECONDS",
     "CRAWL_SCAN_TIMEOUT_SECONDS",
+    "BULK_SCAN_TIMEOUT_SECONDS",
   ] as const);
-  // Twice the longest budget an admin has configured, so the in-process
-  // watchdog always gets to fail its own scan first and this stays the safety
-  // net it is documented as. The floor covers a deployment that has set both
-  // budgets very low.
-  const graceSeconds = Math.max(
+  return Math.max(
     STALE_SCAN_MIN_GRACE_SECONDS,
-    Math.max(scanTimeoutSeconds, crawlTimeoutSeconds) * 2,
+    Math.max(scanTimeoutSeconds, crawlTimeoutSeconds, bulkTimeoutSeconds) * 2,
   );
+}
+
+export async function sweepStaleScans(): Promise<number> {
+  const graceSeconds = await staleScanGraceSeconds();
   const result = await pool.query(
     `UPDATE scan_history
      SET status = 'failed',

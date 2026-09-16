@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { requirePermission } from "@/lib/auth/authorization";
+import {
+  logAction,
+  requireAdmin,
+  requirePermission,
+} from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
+import { getClientIp } from "@/lib/api/request-utils";
+import {
+  staleScanGraceSeconds,
+  sweepStaleScans,
+} from "@/lib/scanner/scan-jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -185,6 +194,58 @@ export async function GET(request: Request) {
     );
     return NextResponse.json(
       { error: "Failed to fetch scanner queue status." },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * POST /api/v3/admin/queue-status
+ *
+ * Fails the pending and running scans that are past the stale-scan grace
+ * period, on demand. The card above flags a stuck scan, and clearing one used
+ * to mean waiting for the sweep timer or a restart, or editing scan_history by
+ * hand. This runs that same sweep, so it can never fail a scan the timer
+ * would have left alone: only rows older than staleScanGraceSeconds, which is
+ * twice the longest configured scan budget.
+ *
+ * Admin only, like the database cleanup beside it: it ends other users'
+ * scans. CSRF middleware applies (same-origin POST). Audit-logged
+ * best-effort, since the sweep has already run.
+ */
+export async function POST() {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Admin access required." },
+      { status: 403 },
+    );
+  }
+
+  try {
+    const [swept, graceSeconds] = await Promise.all([
+      sweepStaleScans(),
+      staleScanGraceSeconds(),
+    ]);
+    try {
+      await logAction(
+        admin.id,
+        null,
+        "sweep_stale_scans",
+        `Failed ${swept} stale scan(s) older than ${graceSeconds}s on demand`,
+        await getClientIp(),
+      );
+    } catch (auditErr) {
+      console.error(
+        "[admin/queue-status] Failed to write audit log for sweep_stale_scans (non-fatal):",
+        auditErr,
+      );
+    }
+    return NextResponse.json({ swept, graceSeconds });
+  } catch (error) {
+    console.error("[admin/queue-status] Stale scan sweep failed:", error);
+    return NextResponse.json(
+      { error: "Failed to clear stale scans." },
       { status: 500 },
     );
   }

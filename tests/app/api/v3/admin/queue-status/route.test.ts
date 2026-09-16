@@ -18,7 +18,17 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
-const { GET } = await import("@/app/api/v3/admin/queue-status/route");
+const mockSweepStaleScans = vi.fn();
+const mockStaleScanGraceSeconds = vi.fn();
+vi.mock("@/lib/scanner/scan-jobs", () => ({
+  sweepStaleScans: () => mockSweepStaleScans(),
+  staleScanGraceSeconds: () => mockStaleScanGraceSeconds(),
+}));
+vi.mock("@/lib/api/request-utils", () => ({
+  getClientIp: async () => "127.0.0.1",
+}));
+
+const { GET, POST } = await import("@/app/api/v3/admin/queue-status/route");
 
 /**
  * The route reads `?failures=1` off request.url, so it needs a real Request
@@ -267,5 +277,46 @@ describe("GET /api/v3/admin/queue-status?failures=1", () => {
     const json = await (await GET(req("?failures=1"))).json();
 
     expect(json.failures[0].ranForMs).toBeNull();
+  });
+});
+
+describe("POST /api/v3/admin/queue-status (fail stuck scans)", () => {
+  it("requires an admin", async () => {
+    mockGetSession.mockResolvedValue(null);
+    const res = await POST();
+    expect(res.status).toBe(403);
+    expect(mockSweepStaleScans).not.toHaveBeenCalled();
+  });
+
+  it("refuses support-tier staff: it ends other users' scans", async () => {
+    withAdmin(7, "support");
+    const res = await POST();
+    expect(res.status).toBe(403);
+    expect(mockSweepStaleScans).not.toHaveBeenCalled();
+  });
+
+  it("runs the stale-scan sweep and reports what it cleared and the grace period", async () => {
+    withAdmin();
+    mockSweepStaleScans.mockResolvedValue(2);
+    mockStaleScanGraceSeconds.mockResolvedValue(3600);
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 1 }); // audit insert
+    const res = await POST();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ swept: 2, graceSeconds: 3600 });
+    expect(mockSweepStaleScans).toHaveBeenCalledTimes(1);
+    const audit = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("admin_audit_log"),
+    );
+    expect(audit?.[1]).toEqual(expect.arrayContaining(["sweep_stale_scans"]));
+  });
+
+  it("returns a 500 when the sweep fails", async () => {
+    withAdmin();
+    mockSweepStaleScans.mockRejectedValue(new Error("db down"));
+    mockStaleScanGraceSeconds.mockResolvedValue(3600);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await POST();
+    expect(res.status).toBe(500);
+    errSpy.mockRestore();
   });
 });

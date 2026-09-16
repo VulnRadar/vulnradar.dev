@@ -85,6 +85,7 @@ beforeEach(() => {
   mockGetSettings.mockResolvedValue({
     SCAN_TIMEOUT_SECONDS: 300,
     CRAWL_SCAN_TIMEOUT_SECONDS: 900,
+    BULK_SCAN_TIMEOUT_SECONDS: 600,
   });
   mockQuery.mockReset();
   mockQuery.mockResolvedValue({ rows: [{ id: 1 }], rowCount: 1 });
@@ -673,6 +674,7 @@ describe("sweepStaleScans", () => {
     mockGetSettings.mockResolvedValue({
       SCAN_TIMEOUT_SECONDS: 1800,
       CRAWL_SCAN_TIMEOUT_SECONDS: 600,
+      BULK_SCAN_TIMEOUT_SECONDS: 900,
     });
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
@@ -686,6 +688,7 @@ describe("sweepStaleScans", () => {
     mockGetSettings.mockResolvedValue({
       SCAN_TIMEOUT_SECONDS: 30,
       CRAWL_SCAN_TIMEOUT_SECONDS: 60,
+      BULK_SCAN_TIMEOUT_SECONDS: 90,
     });
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
@@ -693,6 +696,22 @@ describe("sweepStaleScans", () => {
 
     // 60 * 2 = 120s would sweep a scan a healthy instance is still running
     expect(mockQuery.mock.calls[0][1]).toEqual([String(15 * 60)]);
+  });
+
+  // A bulk batch writes all its rows 'pending' up front and drains them for
+  // up to its own budget; a guard that ignored that budget failed the tail of
+  // a long batch as "interrupted by a server restart".
+  it("counts the bulk budget, which can be the longest", async () => {
+    mockGetSettings.mockResolvedValue({
+      SCAN_TIMEOUT_SECONDS: 300,
+      CRAWL_SCAN_TIMEOUT_SECONDS: 900,
+      BULK_SCAN_TIMEOUT_SECONDS: 3600,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await sweepStaleScans();
+
+    expect(mockQuery.mock.calls[0][1]).toEqual([String(3600 * 2)]);
   });
 
   it("returns 0 when nothing was stale", async () => {

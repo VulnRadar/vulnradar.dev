@@ -65,6 +65,7 @@ export function QueueStatusManager() {
   const [failuresTruncated, setFailuresTruncated] = useState(false);
   const [failuresOpen, setFailuresOpen] = useState(false);
   const [failuresLoading, setFailuresLoading] = useState(false);
+  const [sweeping, setSweeping] = useState(false);
 
   const fetchFailures = useCallback(async () => {
     setFailuresLoading(true);
@@ -120,6 +121,36 @@ export function QueueStatusManager() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  // Runs the same stale-scan sweep the timer runs, so it only ever fails rows
+  // past the grace period. The card calls a scan stuck at the longest scan
+  // timeout, and the grace period is twice that, so "nothing old enough" is a
+  // real answer here and says so rather than reporting a silent success.
+  const sweepStale = useCallback(async () => {
+    setSweeping(true);
+    try {
+      const res = await fetch("/api/v3/admin/queue-status", {
+        method: "POST",
+      });
+      if (res.ok) {
+        const json: { swept: number; graceSeconds: number } = await res.json();
+        const minutes = Math.round(json.graceSeconds / 60);
+        setToast({
+          message:
+            json.swept > 0
+              ? `Marked ${json.swept} stuck scan${json.swept === 1 ? "" : "s"} as failed.`
+              : `Nothing was old enough to clear. Scans are cleared once they pass ${minutes} minutes.`,
+          type: "success",
+        });
+        await fetchStatus(false);
+      } else {
+        setToast({ message: "Failed to clear stuck scans.", type: "error" });
+      }
+    } catch {
+      setToast({ message: "Failed to clear stuck scans.", type: "error" });
+    }
+    setSweeping(false);
+  }, [fetchStatus]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
@@ -295,6 +326,18 @@ export function QueueStatusManager() {
                           ? "Past every configured scan timeout. It is stuck, not slow."
                           : "Running inside the configured scan timeout."}
                       </p>
+                      {runningStuck && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 mt-2 gap-1.5"
+                          onClick={sweepStale}
+                          disabled={sweeping}
+                        >
+                          <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                          {sweeping ? "Clearing..." : "Fail stuck scans"}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>

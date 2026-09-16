@@ -112,6 +112,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   ALLOW_INSECURE_HTTP=1 is the documented way to run with no TLS on a trusted network, and signing in never worked with it. The session cookie, and every other sign-in cookie, was marked Secure whenever the app ran in production, and a browser discards a Secure cookie that arrives over plain HTTP. Eleven places set those cookies and decided the attribute in two different ways, neither of which read the flag. They share one rule now, with a test that fails if a cookie option decides it on its own again.
 - [Activity] **[SELFHOST]** **An Incomplete Test Run Cannot Pass Quietly**
   The guard that fails a test run when a worker never started counted only the main test folder, so a run that lost the browser extension's suites still matched the number on disk. It now counts every folder the runner collects.
+- [Activity] **[ADMIN]** **Clear Stuck Scans From the Admin Panel**
+  The scanner queue card already flagged a scan stuck past every timeout, and clearing it still meant waiting for the background sweep, restarting the server, or editing the database. An admin can now fail stuck scans from the card. It runs the same sweep the timer runs, so it only touches scans old enough that no healthy run could still own them, and it says so when nothing qualifies. That sweep also ignored the bulk scan budget: an operator who raised it had the tail of a long bulk batch marked as interrupted by a restart while those scans were still waiting their turn. The budget now counts.
 - [Mail] **[ADMIN]** **Resend a Verification Email From the Admin Panel**
   When someone never received their verification email, staff could only mark the address verified without knowing it worked, or ask the user to find the resend link themselves. The user's page in the admin panel now has Resend Verification, which sends the same fresh single-use link as the public resend flow to the address already on the account. It is audit-logged, uses the same permission as manual verification, and refuses an address that is already verified.
 - [ShieldAlert] **[ADMIN]** **The Updater Will Not Downgrade You**
@@ -1198,6 +1200,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 912
+- **Total changes documented:** 913
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release
