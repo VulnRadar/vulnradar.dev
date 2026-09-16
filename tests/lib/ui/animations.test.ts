@@ -1,53 +1,33 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { cn, getStaggerDelay, toggles } from "@/lib/ui/animations";
+import { toggles } from "@/lib/ui/animations";
 
 /**
- * Most of lib/ui/animations.ts (durations, easings, transitions, hovers,
- * focus, animations, interactive, backdrops, effects, stagger) is static
- * Tailwind class-string configuration with no branching or computation -
- * testing those would just assert string literals back at themselves, so
- * they're skipped as hollow. cn() and getStaggerDelay() are the only two
- * exports with actual logic, and are covered below.
+ * lib/ui/animations.ts is static Tailwind class-string configuration with no
+ * branching, so asserting its values back at themselves would be hollow. The
+ * one thing here that can actually break silently is whether those class
+ * strings survive Tailwind's extractor, and that is what this file tests.
  *
- * Note: this file also exports a `cn` helper, distinct from the
- * clsx + tailwind-merge `cn` in lib/ui/utils.ts referenced by
- * CLAUDE.md's import conventions. This one is a plain
- * `.filter(Boolean).join(" ")`, with no class-conflict resolution.
+ * It used to also cover a `cn` and a `getStaggerDelay` exported from that
+ * module. Both are gone, and neither was reachable from the product:
+ *
+ *   `cn` was a second cn - a plain `.filter(Boolean).join(" ")` with no
+ *   class-conflict resolution - sitting beside the clsx + tailwind-merge one
+ *   in lib/ui/utils.ts that CLAUDE.md names as the import convention. Every
+ *   call site in the app used the real one. A same-named helper that silently
+ *   does less is worse than no helper.
+ *
+ *   `getStaggerDelay` returned `[animation-delay:Nms]` as a standalone
+ *   arbitrary-property class. components/shared/response-readout.tsx
+ *   documents at length why that exact shape does not work: Tailwind does not
+ *   preserve source order between arbitrary-property utilities, and the
+ *   `animation` shorthand resets animation-delay for every sub-property it
+ *   does not list, which collapsed a staggered list to 0ms. That file now
+ *   ships pre-combined static classes instead. So the helper was not merely
+ *   unused, it was a working implementation of a bug someone had already
+ *   fixed, kept alive by this test alone.
  */
-
-describe("cn", () => {
-  it("joins truthy class strings with a space", () => {
-    expect(cn("a", "b", "c")).toBe("a b c");
-  });
-
-  it("filters out false and undefined", () => {
-    expect(cn("a", false, undefined, "b")).toBe("a b");
-  });
-
-  it("returns an empty string when given nothing truthy", () => {
-    expect(cn(false, undefined)).toBe("");
-    expect(cn()).toBe("");
-  });
-
-  it("filters out an empty-string class the same as other falsy input", () => {
-    expect(cn("a", "", "b")).toBe("a b");
-  });
-});
-
-describe("getStaggerDelay", () => {
-  it("multiplies index by the default 50ms base delay", () => {
-    expect(getStaggerDelay(0)).toBe("[animation-delay:0ms]");
-    expect(getStaggerDelay(1)).toBe("[animation-delay:50ms]");
-    expect(getStaggerDelay(3)).toBe("[animation-delay:150ms]");
-  });
-
-  it("honors a custom base delay", () => {
-    expect(getStaggerDelay(2, 100)).toBe("[animation-delay:200ms]");
-    expect(getStaggerDelay(0, 100)).toBe("[animation-delay:0ms]");
-  });
-});
 
 /**
  * The one assertion about a class string in this file that is not hollow.
