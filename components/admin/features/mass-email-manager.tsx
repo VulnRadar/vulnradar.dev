@@ -19,6 +19,7 @@ import {
   Trash2,
   RefreshCw,
   Loader2,
+  MailCheck,
   FileEdit,
   CheckCircle2,
   Clock,
@@ -102,6 +103,7 @@ export function MassEmailManager() {
   const [specificEmail, setSpecificEmail] = useState("");
   const [category, setCategory] = useState("none");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<"all" | "draft" | "sent">(
     "all",
   );
@@ -134,6 +136,54 @@ export function MassEmailManager() {
       console.error("Error fetching messages:", err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  /**
+   * Send the composed message to the admin's own address and nowhere else.
+   *
+   * The preview above renders the real shell in a sandboxed iframe, which is
+   * the right thing for checking layout and the wrong thing for checking what
+   * an actual mail client does with it. Until now the only way to find that
+   * out was to send the broadcast for real.
+   *
+   * Sends the live composer state rather than a saved draft id, so a body
+   * being iterated on does not have to be committed to the history first, and
+   * writes nothing: no draft, no recipient rows, no entry in the list below.
+   */
+  async function handleTestSend() {
+    if (!title || !content) return;
+    setTesting(true);
+    try {
+      const res = await fetch("/api/v3/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "test",
+          section: "broadcast",
+          title,
+          content,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({
+          message: data.error || "The test could not be sent.",
+          type: "error",
+        });
+        return;
+      }
+      setToast({
+        message: data.sentTo
+          ? `Test sent to ${data.sentTo}. The subject is prefixed [TEST]; everything else is exactly what recipients get.`
+          : "Test sent.",
+        type: "success",
+      });
+    } catch (err) {
+      console.error("Error sending test:", err);
+      setToast({ message: "The test could not be sent.", type: "error" });
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -518,6 +568,20 @@ export function MassEmailManager() {
                 </DialogBody>
               </DialogContent>
             </Dialog>
+
+            <Button
+              variant="outline"
+              className="gap-2 border-border/40"
+              onClick={handleTestSend}
+              disabled={testing || !title || !content}
+            >
+              {testing ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <MailCheck className="h-4 w-4" aria-hidden="true" />
+              )}
+              Send test to me
+            </Button>
 
             <Button
               onClick={handleCreate}

@@ -12,7 +12,8 @@ import {
 } from "@/lib/auth/permissions-client";
 import { STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
 import { CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES } from "@/lib/config/config-values";
-import { sendEmail } from "@/lib/email/email";
+import { sendEmail, isEmailConfigured } from "@/lib/email/email";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   isSettingKey,
   validateSettingValue,
@@ -695,6 +696,124 @@ export async function POST(req: NextRequest) {
         );
 
         return NextResponse.json({ message: result.rows[0], success: true });
+      }
+
+      /**
+       * Send the composed broadcast to the admin composing it, and to nobody
+       * else.
+       *
+       * There was no way to do this. An admin could preview the body in a
+       * sandboxed iframe, which shows the shared shell but cannot show what
+       * Gmail, Outlook or Apple Mail will actually do with it, and then the
+       * only remaining button sent it to everyone. The nearest workaround was
+       * to pick the "specific address" segment, type your own email, and press
+       * the real Send, which creates a broadcast row, marks it sent, and
+       * leaves a delivered broadcast in the history that was never meant to be
+       * one.
+       *
+       * So this deliberately writes nothing. No broadcast_messages row, no
+       * broadcast_recipients claim, no status. It takes the composer's live
+       * title and content rather than an id, which is the point: the draft
+       * being tested does not have to be saved first.
+       *
+       * It does go through the same sendEmail with the same layout and the
+       * admin's own unsubscribe token, so the footer button is the real one
+       * and the List-Unsubscribe header is present. What a recipient gets and
+       * what arrives here differ in exactly one way, the subject prefix, which
+       * is worth the fidelity: without it a test of a promotional send is
+       * indistinguishable in the admin's own inbox from the real thing.
+       */
+      if (action === "test") {
+        const { title, content } = body;
+        if (typeof title !== "string" || !title.trim()) {
+          return NextResponse.json(
+            { error: "A subject is required to send a test." },
+            { status: 400 },
+          );
+        }
+        if (typeof content !== "string" || !content.trim()) {
+          return NextResponse.json(
+            { error: "There is no content to send." },
+            { status: 400 },
+          );
+        }
+        if (!isEmailConfigured()) {
+          return NextResponse.json(
+            {
+              error:
+                "Email is not configured on this deployment, so nothing can be sent.",
+            },
+            { status: 503 },
+          );
+        }
+
+        // Reuses the admin re-auth budget under its own key rather than
+        // introducing a second number nobody would ever tune separately. This
+        // is an unauthenticated-by-content mail sender reachable by an admin,
+        // and a held-down button should not be able to flood the transport.
+        const testRl = await checkRateLimit({
+          key: `broadcast-test:${user.id}:${ip || "unknown"}`,
+          ...RATE_LIMITS.adminReauth,
+        });
+        if (!testRl.allowed) {
+          return NextResponse.json(
+            {
+              error: `Too many test sends. Try again in ${Math.ceil(
+                testRl.retryAfterSeconds / 60,
+              )} minute(s).`,
+            },
+            {
+              status: 429,
+              headers: { "Retry-After": String(testRl.retryAfterSeconds) },
+            },
+          );
+        }
+
+        const me = await pool.query<{
+          email: string;
+          unsubscribe_token: string | null;
+        }>("SELECT email, unsubscribe_token FROM users WHERE id = $1", [
+          user.id,
+        ]);
+        const recipient = me.rows[0];
+        if (!recipient?.email) {
+          return NextResponse.json(
+            { error: "Your account has no email address to send to." },
+            { status: 400 },
+          );
+        }
+
+        try {
+          await sendEmail({
+            to: recipient.email,
+            subject: `[TEST] ${title}`,
+            text: stripHtmlTags(content),
+            html: content,
+            unsubscribeToken: recipient.unsubscribe_token ?? undefined,
+          });
+        } catch (err) {
+          console.error("[Broadcast] test send failed:", err);
+          return NextResponse.json(
+            {
+              error:
+                "The transport rejected the message. Check the mail settings and the error log.",
+            },
+            { status: 502 },
+          );
+        }
+
+        // Logged like any other staff action that sends mail, even though it
+        // reaches one inbox: "who was testing what, and when" is the question
+        // asked after a broadcast goes out wrong.
+        await logAction(
+          user.id,
+          null,
+          "broadcast_tested",
+          `Sent a test of "${title}" to themselves`,
+          ip,
+        );
+
+        return NextResponse.json({ success: true, sentTo: recipient.email });
       }
 
       if (action === "list") {

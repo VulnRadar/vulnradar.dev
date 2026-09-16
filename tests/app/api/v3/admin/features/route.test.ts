@@ -41,9 +41,24 @@ vi.mock("@/lib/api/request-utils", () => ({
 }));
 
 const mockSendEmail = vi.fn();
+const mockIsEmailConfigured = vi.fn();
 vi.mock("@/lib/email/email", () => ({
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
+  isEmailConfigured: () => mockIsEmailConfigured(),
 }));
+
+// The rate limiter reads and writes the same mocked pool, and its queries
+// would eat responses queued for the route's own. Mocked so each test controls
+// exactly one thing.
+const mockCheckRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  };
+});
 
 const mockInvalidateSettingsCache = vi.fn();
 const mockGetSettings = vi.fn();
@@ -77,6 +92,14 @@ beforeEach(() => {
   mockLogAction.mockReset();
   mockSendEmail.mockReset();
   mockSendEmail.mockResolvedValue(undefined);
+  mockIsEmailConfigured.mockReset();
+  mockIsEmailConfigured.mockReturnValue(true);
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 9,
+    retryAfterSeconds: 0,
+  });
   mockInvalidateSettingsCache.mockReset();
   mockGetSession.mockResolvedValue({ userId: 1 });
 });
@@ -899,5 +922,146 @@ describe("POST /api/v3/admin/features — routing", () => {
     const json = await res.json();
     expect(res.status).toBe(400);
     expect(json.error).toBe("Unknown section");
+  });
+});
+
+/**
+ * The test send: one message, to the admin composing it, writing nothing.
+ *
+ * Before it existed an admin could preview the body in a sandboxed iframe,
+ * which shows the shared shell and cannot show what a real mail client does
+ * with it, and then the only remaining button sent to the whole audience. The
+ * nearest workaround left a delivered broadcast in the history that was never
+ * meant to be one, so the thing these tests guard hardest is that this path
+ * writes nothing at all.
+ */
+describe("POST /api/v3/admin/features — broadcast test send", () => {
+  const compose = {
+    section: "broadcast",
+    action: "test",
+    title: "October release",
+    content: "<p>Hello</p>",
+  };
+
+  /** The admin's own row, which is the only lookup this action makes. */
+  function queueMe(email: string | null, token: string | null = "unsub-tok") {
+    mockQuery.mockResolvedValueOnce({
+      rows: email ? [{ email, unsubscribe_token: token }] : [],
+    });
+  }
+
+  it("sends to the admin and nobody else", async () => {
+    queueRole("admin");
+    queueMe("admin@example.com");
+    const res = await POST(postRequest(compose));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      success: true,
+      sentTo: "admin@example.com",
+    });
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
+      to: "admin@example.com",
+      html: "<p>Hello</p>",
+      unsubscribeToken: "unsub-tok",
+    });
+  });
+
+  it("prefixes the subject so it cannot be mistaken for the real send", async () => {
+    queueRole("admin");
+    queueMe("admin@example.com");
+    await POST(postRequest(compose));
+    expect(mockSendEmail.mock.calls[0][0].subject).toBe(
+      "[TEST] October release",
+    );
+  });
+
+  it("omits the unsubscribe token when the account has none", async () => {
+    // The real send passes `?? undefined` for the same reason: a null here
+    // would reach sendEmail as a token and produce a footer link to nowhere.
+    // The token-present case is asserted in the first test above, which is
+    // what makes the test send show the same footer recipients get.
+    queueRole("admin");
+    queueMe("admin@example.com", null);
+    await POST(postRequest(compose));
+    expect(mockSendEmail.mock.calls[0][0].unsubscribeToken).toBeUndefined();
+  });
+
+  it("writes nothing: no draft, no recipient claim, no status", async () => {
+    queueRole("admin");
+    queueMe("admin@example.com");
+    await POST(postRequest(compose));
+    const sql = mockQuery.mock.calls.map((c) => String(c[0]));
+    expect(sql.some((q) => /INSERT INTO broadcast_messages/i.test(q))).toBe(
+      false,
+    );
+    expect(sql.some((q) => /broadcast_recipients/i.test(q))).toBe(false);
+    expect(sql.some((q) => /UPDATE\s+broadcast_messages/i.test(q))).toBe(false);
+  });
+
+  it("audit-logs who tested what", async () => {
+    queueRole("admin");
+    queueMe("admin@example.com");
+    await POST(postRequest(compose));
+    expect(mockLogAction).toHaveBeenCalledWith(
+      1,
+      null,
+      "broadcast_tested",
+      expect.stringContaining("October release"),
+      "127.0.0.1",
+    );
+  });
+
+  it("refuses an empty subject or an empty body", async () => {
+    queueRole("admin");
+    const noSubject = await POST(postRequest({ ...compose, title: "   " }));
+    expect(noSubject.status).toBe(400);
+    queueRole("admin");
+    const noBody = await POST(postRequest({ ...compose, content: "" }));
+    expect(noBody.status).toBe(400);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("says so when the deployment has no mail transport", async () => {
+    // Otherwise the admin gets a generic failure and cannot tell "my HTML is
+    // broken" from "this install was never wired to SMTP".
+    queueRole("admin");
+    mockIsEmailConfigured.mockReturnValue(false);
+    const res = await POST(postRequest(compose));
+    expect(res.status).toBe(503);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("is rate limited, and says how long for", async () => {
+    queueRole("admin");
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 120,
+    });
+    const res = await POST(postRequest(compose));
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("120");
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("reports a transport rejection without leaking it", async () => {
+    queueRole("admin");
+    queueMe("admin@example.com");
+    mockSendEmail.mockRejectedValue(new Error("535 auth failed for user bob"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await POST(postRequest(compose));
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).not.toContain("535");
+    expect(body.error).not.toContain("bob");
+    spy.mockRestore();
+  });
+
+  it("is closed to a staff role below admin, like every other action here", async () => {
+    queueRole("support");
+    const res = await POST(postRequest(compose));
+    expect(res.status).toBe(401);
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 });
