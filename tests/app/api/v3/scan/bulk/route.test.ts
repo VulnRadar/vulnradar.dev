@@ -131,9 +131,23 @@ vi.mock("@/lib/scanner/scan-jobs", () => ({
 // transaction. Here the caller's insertRows runs against a fake client, so the
 // INSERTs are inspectable without a real pool, and a refusal is drivable.
 let nextScanId = 0;
-const mockInsertQuery = vi.fn(async (_sql: string, _params: unknown[]) => ({
-  rows: [{ id: ++nextScanId }],
-}));
+/** Columns per row in the batch INSERT, in the route's own order. */
+const INSERT_COLUMNS = 7;
+/** Offset of `url` within one row's parameters. */
+const URL_OFFSET = 1;
+// The route now issues ONE multi-row INSERT rather than one per URL, and pairs
+// the returned ids back to its input by url. So the fake has to behave like the
+// real statement: a row per tuple, each carrying the url it was inserted with.
+// Returning a single anonymous {id} was fine for the old per-URL loop and would
+// silently hand every index the same id now.
+const mockInsertQuery = vi.fn(async (sql: string, params: unknown[]) => {
+  if (!String(sql).includes("INSERT INTO scan_history")) return { rows: [] };
+  const rows: { id: number; url: string }[] = [];
+  for (let i = 0; i + URL_OFFSET < params.length; i += INSERT_COLUMNS) {
+    rows.push({ id: ++nextScanId, url: params[i + URL_OFFSET] as string });
+  }
+  return { rows };
+});
 type BatchReservation =
   | { ok: true; scanIds: number[] }
   | { ok: false; check: Record<string, unknown> };
@@ -187,11 +201,29 @@ function postRequest(body: unknown, headers: Record<string, string> = {}) {
   });
 }
 
-/** Every scan_history INSERT the batch's reservation transaction issued. */
-function insertedRows() {
-  return mockInsertQuery.mock.calls.filter(([sql]) =>
-    String(sql).includes("INSERT INTO scan_history"),
-  );
+/**
+ * Every scan_history ROW the batch's reservation transaction inserted, as
+ * [sql, rowParams] so a caller can index one row's parameters directly.
+ *
+ * This used to return the calls, which was the same thing while the route
+ * inserted one row per call. It issues a single multi-row INSERT now, so the
+ * call list would report 1 for a batch of 50 and every `toHaveLength(n)`
+ * assertion here would quietly start measuring round trips instead of rows.
+ * Chunking the parameters keeps them measuring what they were written to
+ * measure.
+ */
+function insertedRows(): [string, unknown[]][] {
+  const out: [string, unknown[]][] = [];
+  for (const [sql, params] of mockInsertQuery.mock.calls) {
+    if (!String(sql).includes("INSERT INTO scan_history")) continue;
+    for (let i = 0; i < (params as unknown[]).length; i += INSERT_COLUMNS) {
+      out.push([
+        String(sql),
+        (params as unknown[]).slice(i, i + INSERT_COLUMNS),
+      ]);
+    }
+  }
+  return out;
 }
 
 beforeEach(() => {
@@ -819,6 +851,57 @@ describe("POST /api/v3/scan/bulk - daily quota", () => {
     // and the concurrency refusal without reading the copy.
     expect(json.statusCode).toBe("DAILY_LIMIT");
     expect(insertedRows()).toHaveLength(0);
+  });
+
+  // The reservation transaction used to run one INSERT per admitted URL while
+  // holding the concurrency lock - up to the bulk cap, which an admin can
+  // raise to 1000 - so a batch paid that many serialized round trips before
+  // any scanning started. execute-crawl-scan.ts already batched the identical
+  // shape for crawl pages; this is the same fix for the bulk admission loop.
+  it("inserts the whole batch in one round trip", async () => {
+    const res = await POST(
+      postRequest({
+        urls: [
+          "https://a.example.com",
+          "https://b.example.com",
+          "https://c.example.com",
+        ],
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    // Three rows, one statement.
+    expect(insertedRows()).toHaveLength(3);
+    const statements = mockInsertQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(statements).toHaveLength(1);
+  });
+
+  // The subtle half. Ids must come back in `admissible` order because the
+  // queueing loop pairs reservation.scanIds[i] with admissible[i], Postgres
+  // does not promise RETURNING follows insertion order, and the batch is not
+  // deduplicated - so the same URL can legitimately appear twice and a plain
+  // url->id map would hand both indexes the same row.
+  it("gives every entry its own scan id when a url is submitted twice", async () => {
+    const res = await POST(
+      postRequest({
+        urls: [
+          "https://dup.example.com",
+          "https://other.example.com",
+          "https://dup.example.com",
+        ],
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const ids = json.results
+      .filter((r: { success: boolean }) => r.success)
+      .map((r: { scanId: number }) => r.scanId);
+
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
   });
 
   it("queues only as many URLs as remain in the daily quota and marks the rest skipped", async () => {

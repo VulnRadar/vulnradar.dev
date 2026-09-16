@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { VALUE_SET_CHECKS } from "@/lib/database/schema/04-constraints.mjs";
 
 /**
  * The guard that makes `npm run db:create` and the boot path structurally
@@ -168,8 +169,12 @@ describe("one schema, two consumers", () => {
         name,
       ).toBe(1);
     }
-    // Six value-set CHECK constraints.
-    expect(count(/ADD CONSTRAINT \w+_check CHECK \(.*\) NOT VALID/i)).toBe(6);
+    // One statement per value-set CHECK, counted from the array rather than
+    // written down: this said 6, and adding a seventh (scan_history.status)
+    // failed here on the number instead of on anything about the schema.
+    expect(count(/ADD CONSTRAINT \w+_check CHECK \(.*\) NOT VALID/i)).toBe(
+      VALUE_SET_CHECKS.length,
+    );
     // The trigger function and its seven triggers.
     expect(count(/CREATE OR REPLACE FUNCTION vulnradar_set_updated_at/i)).toBe(
       1,

@@ -443,28 +443,63 @@ export async function POST(request: NextRequest) {
     reservation = await reserveConcurrentScanBatch(
       authedUserId!,
       async (client: PoolClient) => {
-        const ids: number[] = [];
+        // One multi-row INSERT, not one per URL.
+        //
+        // This was a sequential loop running inside the transaction that holds
+        // the concurrency reservation, so a batch paid one serialized round
+        // trip per admitted URL - up to the bulk cap, which an admin can raise
+        // to 1000 - while holding that lock. execute-crawl-scan.ts already
+        // fixed exactly this shape for crawl pages (ref: AUDIT-012#perf-26);
+        // the bulk admission loop never got the same treatment.
+        //
+        // The ids must come back in `admissible` order, because the loop
+        // further down pairs reservation.scanIds[i] with admissible[i]. Two
+        // things make that non-obvious: Postgres does not promise RETURNING
+        // follows insertion order, and `admissible` is not deduplicated, so a
+        // batch may legitimately contain the same URL twice.
+        //
+        // Keying by URL to a QUEUE of ids handles both. A URL submitted twice
+        // gets two rows back and each index takes the next one; the rows are
+        // identical apart from their id, so which of the two an index receives
+        // does not matter, only that every index receives exactly one.
+        const tuples: string[] = [];
+        const params: unknown[] = [];
         for (const target of admissible) {
-          const inserted = await client.query(
-            `INSERT INTO scan_history
-               (user_id, url, source, notes, status, started_at, categories_total, is_public, team_id)
-             VALUES ($1, $2, $3, $4, 'pending', NOW(), $5, $6, $7)
-             RETURNING id`,
-            [
-              authedUserId,
-              target.url,
-              isApiKeyAuth ? "api" : "web",
-              DEFAULT_SCAN_NOTE,
-              target.categoriesTotal,
-              requestedIsPublic,
-              teamAssignment.primaryTeamId,
-            ],
+          const base = params.length;
+          tuples.push(
+            `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, 'pending', NOW(), $${base + 5}, $${base + 6}, $${base + 7})`,
           );
-          const insertedId = inserted.rows[0]?.id;
-          if (!insertedId) throw new Error("Insert returned no id");
-          ids.push(insertedId as number);
+          params.push(
+            authedUserId,
+            target.url,
+            isApiKeyAuth ? "api" : "web",
+            DEFAULT_SCAN_NOTE,
+            target.categoriesTotal,
+            requestedIsPublic,
+            teamAssignment.primaryTeamId,
+          );
         }
-        return ids;
+
+        const inserted = await client.query<{ id: number; url: string }>(
+          `INSERT INTO scan_history
+             (user_id, url, source, notes, status, started_at, categories_total, is_public, team_id)
+           VALUES ${tuples.join(", ")}
+           RETURNING id, url`,
+          params,
+        );
+
+        const idsByUrl = new Map<string, number[]>();
+        for (const row of inserted.rows) {
+          const queue = idsByUrl.get(row.url);
+          if (queue) queue.push(row.id);
+          else idsByUrl.set(row.url, [row.id]);
+        }
+
+        return admissible.map((target) => {
+          const id = idsByUrl.get(target.url)?.shift();
+          if (id === undefined) throw new Error("Insert returned no id");
+          return id;
+        });
       },
     );
   } catch (err) {
