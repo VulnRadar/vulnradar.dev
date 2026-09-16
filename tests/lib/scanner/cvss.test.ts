@@ -9,6 +9,8 @@ import {
   formatCvssVector,
   cvssForFinding,
   attachCvssScores,
+  parseCvssVector,
+  severityFromCvssScore,
   CVSS_SEVERITY_BAND,
   type CvssMetrics,
   type CvssFindingContext,
@@ -336,5 +338,63 @@ describe("attachCvssScores", () => {
 
   it("returns an empty array for an empty input", () => {
     expect(attachCvssScores([])).toEqual([]);
+  });
+});
+
+describe("parseCvssVector", () => {
+  it("reads a published CVSS 3.1 vector", () => {
+    const m = parseCvssVector("CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:L/A:N");
+    expect(m).toEqual({
+      av: "N",
+      ac: "H",
+      pr: "N",
+      ui: "R",
+      scope: "C",
+      c: "H",
+      i: "L",
+      a: "N",
+    });
+    // GHSA-gxr4-xjj5-5px2 (CVE-2020-11022), as OSV.dev publishes it.
+    expect(computeCvssBaseScore(m!)).toBe(6.9);
+  });
+
+  it("accepts a vector without the CVSS:3.x prefix and ignores temporal metrics", () => {
+    // OSV.dev publishes GHSA-jpcq-cgw6-v4j6 with a trailing E:H.
+    expect(
+      parseCvssVector("AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:L/A:N/E:H"),
+    ).not.toBeNull();
+  });
+
+  it("refuses a vector with a missing or unknown base metric rather than guessing", () => {
+    expect(
+      parseCvssVector("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H"),
+    ).toBeNull();
+    expect(
+      parseCvssVector("CVSS:3.1/AV:X/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+    ).toBeNull();
+    expect(parseCvssVector("")).toBeNull();
+  });
+});
+
+describe("severityFromCvssScore", () => {
+  it.each([
+    [10.0, "critical"],
+    [9.0, "critical"],
+    [8.9, "high"],
+    [7.0, "high"],
+    [6.9, "medium"],
+    [4.0, "medium"],
+    [3.9, "low"],
+    [0.1, "low"],
+    [0, "info"],
+  ] as const)("puts %d in the %s band", (score, severity) => {
+    expect(severityFromCvssScore(score)).toBe(severity);
+  });
+
+  it("agrees with CVSS_SEVERITY_BAND at every band edge", () => {
+    for (const [severity, [min, max]] of Object.entries(CVSS_SEVERITY_BAND)) {
+      expect(severityFromCvssScore(min)).toBe(severity);
+      expect(severityFromCvssScore(max)).toBe(severity);
+    }
   });
 });
