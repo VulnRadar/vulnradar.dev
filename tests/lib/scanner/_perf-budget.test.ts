@@ -37,6 +37,7 @@ import {
   extractScriptContents,
   stripDocBlocks,
   stripExampleContent,
+  stripProse,
   withDocBlocksStripped,
 } from "@/lib/scanner/_helpers";
 
@@ -575,6 +576,8 @@ describe("response-body strippers", () => {
     ["stripDocBlocks", () => stripDocBlocks(codeRun)],
     ["stripExampleContent", () => stripExampleContent(codeRun)],
     ["extractScriptContents", () => extractScriptContents(scriptRun)],
+    ["stripProse on unclosed code", () => stripProse(`<html>${codeRun}`)],
+    ["stripProse on unclosed script", () => stripProse(`<html>${scriptRun}`)],
   ];
 
   for (const [name, run] of cases) {

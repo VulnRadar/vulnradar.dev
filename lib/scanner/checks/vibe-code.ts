@@ -12,6 +12,7 @@
 
 import {
   withDocBlocksStripped,
+  withProseStripped,
   extractScriptContents,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
@@ -728,16 +729,30 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 };
 
-// Every pattern above targets code that would realistically only appear in
-// a genuinely leaked/shipped script -- but none of them are scoped to
-// actual <script> content, so a page that merely *talks about* one of
-// these patterns as a documentation/tutorial example self-triggers the
-// same detector. This product's own /docs pages render every check's
-// "Bad (AI-generated)" code sample (eval(), SQL string concatenation,
-// hardcoded credential comparisons, etc.) as literal text in <pre>/<code>
-// blocks, which would otherwise light up nearly this entire category on
-// our own site. Strip those documentation-rendering regions (but not real
-// <script> tags -- several detectors need to see genuine script content)
-// before any pattern runs.
-export const detectors: Record<string, DetectFn> =
-  withDocBlocksStripped(rawDetectors);
+/**
+ * Detectors whose evidence is text or data on the page rather than code in it:
+ * a stack trace printed into the response, and a debug flag serialized into a
+ * JSON data block such as __NEXT_DATA__, which the prose view removes along
+ * with every other data script.
+ */
+const READS_PAGE_TEXT = new Set([
+  "vibe-expose-stacktrace",
+  "vibe-debug-endpoint",
+]);
+
+// Every other pattern here targets code that would only appear in a shipped
+// script, and none of them was scoped to it, so a page that merely talks
+// about one self-triggered. Stripping <pre>/<code> examples was not enough:
+// this product's own check catalog still raised Math.random, JSON.parse and
+// CORS wildcards at high from headings, link text and data attributes. These
+// read stripProse's view instead: tags, behavioural attributes and authored
+// script, without the prose.
+const withoutProse = withProseStripped(rawDetectors);
+const withoutExamples = withDocBlocksStripped(rawDetectors);
+
+export const detectors: Record<string, DetectFn> = Object.fromEntries(
+  Object.keys(rawDetectors).map((id) => [
+    id,
+    READS_PAGE_TEXT.has(id) ? withoutExamples[id] : withoutProse[id],
+  ]),
+);

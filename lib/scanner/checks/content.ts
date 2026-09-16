@@ -10,6 +10,7 @@
 import {
   stripExampleContent,
   stripDocBlocks,
+  withProseStripped,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 import { safeFetch } from "../safe-fetch";
@@ -110,7 +111,7 @@ const FORM_PROCESSOR_HOSTS = [
   "google.com",
 ];
 
-export const detectors: Record<string, DetectFn> = {
+const rawDetectors: Record<string, DetectFn> = {
   // ── iframes ──────────────────────────────────────────────────────────────
 
   "insecure-iframes": (url, _headers, body) => {
@@ -2449,6 +2450,52 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 };
+
+/**
+ * The detectors in this file that look for a client-side code pattern rather
+ * than for something printed into the page. They searched the whole response,
+ * so a page naming navigator.clipboard, document.cookie or getUserMedia in its
+ * own text reported the site as calling it: this product's check catalog was
+ * told it reads session cookies, accesses the camera and writes to the
+ * clipboard. They read stripProse's view instead, which keeps every tag, its
+ * behavioural attributes and authored script, and drops the prose. Everything
+ * else here (error pages, disclosure, secrets, markup structure) needs the
+ * page as served and keeps it.
+ */
+const READS_CODE = new Set([
+  "service-worker-scope",
+  "dangerous-inline-js",
+  "inline-event-handlers",
+  "dangerous-html-attrs",
+  "unencrypted-connections",
+  "websocket-unencrypted",
+  "cross-site-websocket",
+  "postmessage-star-origin",
+  "dom-xss-sinks",
+  "window-opener-abuse",
+  "document-domain-usage",
+  "storage-api-usage",
+  "document-cookie-access",
+  "geolocation-usage",
+  "clipboard-access",
+  "webcam-microphone-access",
+  "reflected-input",
+  "open-redirect",
+  "sw-insecure",
+  "weak-crypto",
+  "ssrf-vectors",
+  "document-write-usage",
+  "clipboard-hijack-pattern",
+]);
+
+const withoutProse = withProseStripped(rawDetectors);
+
+export const detectors: Record<string, DetectFn> = Object.fromEntries(
+  Object.entries(rawDetectors).map(([id, fn]) => [
+    id,
+    READS_CODE.has(id) ? withoutProse[id] : fn,
+  ]),
+);
 
 // ── Source map sourcesContent confirmation (async follow-up fetch) ────────
 //

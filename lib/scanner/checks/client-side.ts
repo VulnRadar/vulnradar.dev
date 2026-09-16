@@ -10,6 +10,7 @@ import {
   escapeRegExp,
   extractScriptContents,
   getHeader,
+  withProseStripped,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 import { tagsWith } from "./_tag-scan";
@@ -60,7 +61,7 @@ function isPlausibleApiKeyValue(value: string): boolean {
   return true;
 }
 
-export const detectors: Record<string, DetectFn> = {
+const rawDetectors: Record<string, DetectFn> = {
   "cs-csp-unsafe-inline-script": (_url, headers) => {
     const csp = getHeader(headers, "content-security-policy");
     if (!csp) return null;
@@ -477,3 +478,24 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 };
+
+/**
+ * debug-info-in-page-js reads serialized configuration in a JSON data block
+ * (__NEXT_DATA__), which the prose view removes with every other data script.
+ */
+const READS_PAGE_DATA = new Set(["debug-info-in-page-js"]);
+
+/**
+ * Every other detector here looks for a client-side code pattern, and several
+ * searched the whole response, so a page naming postMessage, location.hash or
+ * localStorage.setItem in its text reported the site as calling it. They read
+ * stripProse's view: tags, behavioural attributes and authored script.
+ */
+const withoutProse = withProseStripped(rawDetectors);
+
+export const detectors: Record<string, DetectFn> = Object.fromEntries(
+  Object.entries(rawDetectors).map(([id, fn]) => [
+    id,
+    READS_PAGE_DATA.has(id) ? fn : withoutProse[id],
+  ]),
+);

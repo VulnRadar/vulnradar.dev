@@ -13,6 +13,7 @@ import {
   getSetCookies,
   stripDocBlocks,
   withDocBlocksStripped,
+  withProseStripped,
   type EvidenceFn as DetectFn,
   extractScriptContents,
 } from "../_helpers";
@@ -1925,20 +1926,44 @@ const JUDGES_DOC_BLOCKS_ITSELF = new Set([
 ]);
 
 /**
- * Every other detector here looks for a source-code pattern (string-built SQL,
- * exec with a shell, unsafe deserialisation, an SSRF-shaped fetch) and had no
- * guard at all against finding that pattern in a page ABOUT it. A security
- * tutorial showing `pool.query("SELECT ... " + req.body.email)` in a <pre>
- * block was reported as a critical SQL injection in the site itself, and this
- * product's own docs render exactly such examples. api.ts, supply-chain.ts and
- * vibe-code.ts already wrap their maps this way; the strip is memoised, so it
- * costs one pass per body however many modules use it.
+ * Detectors whose evidence is text on the page rather than code in it, so they
+ * read the body with only the example blocks removed. A default credential
+ * pair or an SSTI probe's echo is printed into the page as text; an XML
+ * DOCTYPE and a meta-delivered CSP live in markup the prose view blanks; a
+ * publishable key is as often in a data-* attribute as in a script.
  */
-const stripped = withDocBlocksStripped(rawDetectors);
+const READS_PAGE_TEXT = new Set([
+  "default-credentials",
+  "ssti-indicators",
+  "path-traversal-indicators",
+  "ldap-injection-indicators",
+  "insecure-auth",
+  "xml-external-entity",
+  "code-stripe-publishable-key",
+  "code-csp-missing-trusted-types",
+]);
+
+/**
+ * Every other detector here looks for a source-code pattern (string-built SQL,
+ * exec with a shell, unsafe deserialisation, an SSRF-shaped fetch), and reads
+ * the page as stripProse leaves it: tags, behavioural attributes and authored
+ * script, without the prose. Removing only the <pre> and <code> examples was
+ * not enough, because a page about a vulnerability names the vulnerable call
+ * in its headings, link text and data attributes too: this product's check
+ * catalog alone raised create_function() at critical and HMAC === at high. Both
+ * strips are memoised, so each costs one pass per body however many detectors
+ * and modules read it.
+ */
+const withoutProse = withProseStripped(rawDetectors);
+const withoutExamples = withDocBlocksStripped(rawDetectors);
 
 export const detectors: Record<string, DetectFn> = Object.fromEntries(
   Object.entries(rawDetectors).map(([id, fn]) => [
     id,
-    JUDGES_DOC_BLOCKS_ITSELF.has(id) ? fn : stripped[id],
+    JUDGES_DOC_BLOCKS_ITSELF.has(id)
+      ? fn
+      : READS_PAGE_TEXT.has(id)
+        ? withoutExamples[id]
+        : withoutProse[id],
   ]),
 );

@@ -299,10 +299,155 @@ const DATA_SCRIPT_TYPE =
 export function extractScriptContents(input: string): string[] {
   return tagElementContents(input, ["script"], (openingTag) => {
     return !DATA_SCRIPT_TYPE.test(openingTag) && !/\bsrc\s*=/i.test(openingTag);
-  }).filter(
-    (content) =>
-      !/self\.__next_f\.push\s*\(/.test(content) &&
-      !/__CF\$cv\$params/.test(content),
+  }).filter(isAuthoredScriptContent);
+}
+
+function isAuthoredScriptContent(content: string): boolean {
+  return (
+    !/self\.__next_f\.push\s*\(/.test(content) &&
+    !/__CF\$cv\$params/.test(content)
+  );
+}
+
+/**
+ * Attributes whose value is written for a reader rather than a browser to
+ * act on. `data-src` and `data-href` are exempt because lazy loaders put a
+ * real URL there. `value` is included: on a form it is prefilled text.
+ */
+const PROSE_ATTRIBUTE =
+  /(\s)(title|alt|placeholder|content|label|summary|value|aria-[\w-]+|data-(?!src\b|href\b)[\w-]+)(\s*=\s*)("[^"]*"|'[^']*'|[^\s"'>]+)/gi;
+
+/** Regions whose content is displayed as text: examples, and form text. */
+const TEXT_REGION_TAGS = [...DOC_BLOCK_TAGS, "template", "textarea"] as const;
+
+function isTagStartCode(code: number): boolean {
+  return (
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122) ||
+    code === 47 || // `</`
+    code === 33 // `<!doctype`
+  );
+}
+
+/**
+ * A page reduced to what a browser would execute or act on: every tag with
+ * its behavioural attributes, authored inline scripts and style blocks, and
+ * nothing written for a reader.
+ *
+ * Detectors that look for a code pattern (eval(, document.write(, an HMAC
+ * compared with ===, a PHP create_function() call) used to search the whole
+ * response, so they matched the pattern wherever it was written down. On a
+ * page ABOUT that pattern it is written down everywhere: in the headings, the
+ * paragraphs, link text, a `data-*` attribute used for filtering, the page's
+ * meta description, and, on a Next.js site, a second time inside the flight
+ * payload that carries the page's text to the client. Stripping `<pre>` and
+ * `<code>` removed only the examples. Measured on this product's own public
+ * pages, over 120 checks still fired, a dozen of them at critical, on pages
+ * that contain no script of their own at all, and every security blog,
+ * documentation site and OWASP cheat sheet on the internet reads the same way.
+ *
+ * What is removed: text between tags, HTML comments, the example and text
+ * regions (pre, code, kbd, samp, template, textarea), script elements that
+ * hold data or somebody else's code (JSON-LD, speculation rules, templates,
+ * Next.js flight payloads, Cloudflare's edge bootstrap), and the values of
+ * prose attributes (title, alt, placeholder, content, label, value, aria-*,
+ * data-*). What is kept, unchanged: every tag and its remaining attributes,
+ * which is where inline event handlers, javascript: URLs, form actions and
+ * script sources live, authored inline script, and style.
+ *
+ * A response that is not markup (a JavaScript file, JSON, a served source
+ * file) is returned as it is, because all of it is the code.
+ *
+ * Detectors that need page text (error pages, stack traces, debug output,
+ * secrets printed into the page) must NOT read this view: for them the text is
+ * the evidence. Each module states which of its detectors those are.
+ *
+ * One forward pass whose cursors never move back, the same rule as
+ * checks/_tag-scan.ts, so a hostile page costs linear time.
+ */
+export function stripProse(body: string): string {
+  if (!body || !/^\s*</.test(body.slice(0, 512))) return body;
+  const input = stripTagElements(body, TEXT_REGION_TAGS);
+  const out: string[] = [];
+  const closers: Record<string, RegExp> = {
+    script: /<\/script\s*>/gi,
+    style: /<\/style\s*>/gi,
+  };
+  let i = 0;
+  let gt = -1;
+
+  while (i < input.length) {
+    const lt = input.indexOf("<", i);
+    if (lt === -1) break;
+    if (input.startsWith("<!--", lt)) {
+      const end = input.indexOf("-->", lt + 4);
+      if (end === -1) break;
+      i = end + 3;
+      continue;
+    }
+    if (!isTagStartCode(input.charCodeAt(lt + 1))) {
+      i = lt + 1;
+      continue;
+    }
+    if (gt <= lt) {
+      gt = input.indexOf(">", lt);
+      if (gt === -1) break;
+    }
+    const tag = input.slice(lt, gt + 1);
+    i = gt + 1;
+
+    const raw = /^<(script|style)\b/i.exec(tag);
+    if (raw) {
+      const name = raw[1].toLowerCase();
+      const closer = closers[name];
+      closer.lastIndex = i;
+      const close = closer.exec(input);
+      const contentEnd = close ? close.index : input.length;
+      const content = input.slice(i, contentEnd);
+      i = close ? close.index + close[0].length : input.length;
+      // One piece per element, so the element reads exactly as it was served.
+      if (name === "style") {
+        out.push(`${tag}${content}</style>`);
+      } else if (/\bsrc\s*=/i.test(tag)) {
+        out.push(`${tag}</script>`);
+      } else if (
+        !DATA_SCRIPT_TYPE.test(tag) &&
+        isAuthoredScriptContent(content)
+      ) {
+        out.push(`${tag}${content}</script>`);
+      }
+      continue;
+    }
+
+    PROSE_ATTRIBUTE.lastIndex = 0;
+    out.push(tag.replace(PROSE_ATTRIBUTE, '$1$2$3""'));
+  }
+
+  return out.join("\n");
+}
+
+let lastProseInput: string | null = null;
+let lastProseOutput = "";
+
+/**
+ * Wrap a raw detector map so every detector sees {@link stripProse}'s view of
+ * the body, computed once per body however many detectors read it. Same
+ * one-entry memo, and the same reasoning, as {@link withDocBlocksStripped}.
+ */
+export function withProseStripped(
+  raw: Record<string, EvidenceFn>,
+): Record<string, EvidenceFn> {
+  return Object.fromEntries(
+    Object.entries(raw).map(([id, fn]) => [
+      id,
+      ((url, headers, body) => {
+        if (body !== lastProseInput) {
+          lastProseOutput = stripProse(body);
+          lastProseInput = body;
+        }
+        return fn(url, headers, lastProseOutput);
+      }) as EvidenceFn,
+    ]),
   );
 }
 
