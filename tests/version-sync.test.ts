@@ -47,6 +47,12 @@ describe("app version is the same fact everywhere it is written", () => {
     expect(CONFIG_APP_VERSION).toBe(packageVersion);
   });
 
+  // The pin once sat at v3.8.0 while v3.8.1 was the published release, so
+  // everyone who followed our compose file installed the previous version with
+  // nothing to notice: the pull succeeds and the app starts. It is compared to
+  // this tree's version, not to the newest GitHub release, because the file
+  // has to describe the tree it is in. (This was also asserted a second time,
+  // word for word, in tests/lib/config/compose-image-pin.test.ts.)
   it("the docker-compose image tag matches package.json", () => {
     const compose = readFileSync(path.join(ROOT, "docker-compose.yml"), "utf8");
 

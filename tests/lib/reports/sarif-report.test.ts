@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateSarifReport } from "@/lib/reports/sarif-report";
+import { APP_VERSION } from "@/lib/config/client-constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 
 /**
@@ -95,6 +96,9 @@ describe("generateSarifReport", () => {
     const run = sarif.runs[0];
     // Required fields for a runs[0] object per the spec.
     expect(run.tool.driver.name).toBeTruthy();
+    // Code-scanning platforms group and compare results by tool version, so a
+    // stale or hard-coded one makes every upload look like the same release.
+    expect(run.tool.driver.version).toBe(APP_VERSION);
     expect(Array.isArray(run.tool.driver.rules)).toBe(true);
     expect(Array.isArray(run.results)).toBe(true);
 
