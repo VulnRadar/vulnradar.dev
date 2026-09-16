@@ -9,6 +9,7 @@
  */
 
 import {
+  getEffectiveCsp,
   getSetCookies,
   stripExampleContent,
   stripDocBlocks,
@@ -1208,7 +1209,8 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "postmessage-wildcard": (_url, _headers, body) => {
-    if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*\)/.test(body)) {
+    // [,)]: a third, transfer-list argument does not change the target origin.
+    if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*[,)]/.test(body)) {
       return "postMessage() called with wildcard '*' target origin.";
     }
     // Removed: "postMessage listener found - verify origin is not wildcard."
@@ -1869,8 +1871,16 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "code-csp-missing-trusted-types": (_url, headers, body) => {
-    const csp = headers.get("content-security-policy") || "";
-    if (!csp || /trustedTypes/i.test(csp)) return null;
+    const csp = getEffectiveCsp(headers, body);
+    // The CSP directives are require-trusted-types-for and trusted-types.
+    // This matched /trustedTypes/, the JavaScript API's camelCase name, which
+    // no CSP ever contains, so every site that had correctly enforced Trusted
+    // Types was still told it had not.
+    if (
+      !csp ||
+      /require-trusted-types-for|(?:^|;)\s*trusted-types\b/i.test(csp)
+    )
+      return null;
     const scripts = inlineScriptContent(body);
     if (/innerHTML\s*=|document\.write\s*\(/i.test(scripts)) {
       return "Page renders dynamic HTML without Trusted Types enforcement.";
@@ -1933,11 +1943,13 @@ const rawDetectors: Record<string, DetectFn> = {
     ) {
       return "document.cookie write missing Secure flag - cookie can travel over HTTP.";
     }
-    if (
-      headers.has("set-cookie") &&
-      !/;\s*Secure/i.test(headers.get("set-cookie") || "")
-    ) {
-      return "Set-Cookie header lacks Secure flag - sent on plaintext connections.";
+    // Per cookie. headers.get("set-cookie") comma-joins every Set-Cookie, so
+    // one Secure cookie anywhere in the response hid every insecure one next
+    // to it. code-cookie-samesite-none-http already made this fix.
+    for (const cookie of getSetCookies(headers)) {
+      if (!/;\s*Secure(?:\s*;|\s*$)/i.test(cookie)) {
+        return `Set-Cookie for '${cookie.split("=")[0]?.trim()}' lacks the Secure flag - sent on plaintext connections.`;
+      }
     }
     return null;
   },

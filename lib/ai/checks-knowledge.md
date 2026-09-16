@@ -21,9 +21,9 @@ in this file and quote the title, description, and fix steps.
 - **Total checks:** 854
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 238
+  - medium: 234
   - high: 206
-  - low: 191
+  - low: 195
   - info: 121
   - critical: 98
 - **By type:**
@@ -607,12 +607,14 @@ location /api/items {
 }
 ```
 
-### `api-graphql-introspection-enabled` [api / medium / combined]
+### `api-graphql-introspection-enabled` [api / low / combined]
 **GraphQL introspection enabled in production**
 
-__schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.
+Introspection query text (__schema, __type or IntrospectionQuery) appears in a response from a /graphql endpoint. This is a keyword match; it does not show that the server answers introspection.
 
 **Risk:** Introspection in production gives attackers a complete blueprint of your data model: every type, field, mutation, and subscription, eliminating the recon phase and exposing internal-only operations that untrusted clients should never call.
+
+**Why it matters:** __schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.
 
 **References:**
 - https://graphql.org/learn/introspection/
@@ -1278,14 +1280,14 @@ add_filter('xmlrpc_methods', function($methods) {
 });
 ```
 
-### `trace-method-enabled` [api / medium / header]
+### `trace-method-enabled` [api / low / header]
 **HTTP TRACE method enabled**
 
-HTTP TRACE method is enabled on the server. TRACE reflects the full request including headers, enabling Cross-Site Tracing (XST) attacks.
+The server's Allow header lists TRACE. This is a passive observation from a header the server advertises, not a confirmed TRACE response.
 
 **Risk:** Cross-Site Tracing (XST) exploits TRACE to reflect the victim's cookies and Authorization headers, including HttpOnly cookies that JavaScript cannot read, back through the browser in a cross-origin context, enabling session theft even when HttpOnly is correctly set.
 
-**Why it matters:** HTTP TRACE is intended for diagnostic loop-back testing but is rarely needed in production. When enabled, it can be exploited via XST to steal credentials from authenticated users.
+**Why it matters:** Cross-Site Tracing needs the server to actually echo a TRACE request, and modern browsers refuse to send TRACE from script at all, which removes the classic exploitation path. Advertising the method is still worth removing. The active HTTP method probe confirms whether TRACE really reflects a request and reports that separately, at a higher severity.
 
 **References:**
 - https://owasp.org/www-community/attacks/Cross_Site_Tracing
@@ -8335,14 +8337,14 @@ export async function POST(req: Request) {
 }
 ```
 
-### `swagger-docs-exposed` [content / medium / body-pattern]
+### `swagger-docs-exposed` [content / low / body-pattern]
 **API Documentation Publicly Accessible**
 
-Swagger/OpenAPI documentation endpoints referenced.
+The page references Swagger or OpenAPI documentation, which is often published intentionally.
 
-**Risk:** API docs reveal all endpoints, parameters, and data models.
+**Risk:** Published API documentation shortens reconnaissance by listing endpoints, parameters and models. That matters when the spec includes internal or admin operations that were never meant to be public; a spec for a public API is usually published on purpose.
 
-**Why it matters:** Public API documentation helps attackers understand your API surface.
+**Why it matters:** Reachable documentation is not a vulnerability by itself. Confirm the spec lists only operations you intend to expose. The OpenAPI content checks in the API category look inside the spec for the concrete problems: weak or missing security schemes, server URLs that leak internal hosts, and plain-HTTP servers.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -13970,14 +13972,14 @@ app.onAfterHandle(({ set }) => {
 });
 ```
 
-### `cors-wildcard` [headers / medium / combined]
+### `cors-wildcard` [headers / low / combined]
 **Wildcard CORS Policy**
 
-The Access-Control-Allow-Origin header is set to '*', allowing any origin to make cross-origin requests.
+The Access-Control-Allow-Origin header is set to '*', so any origin can read this response with a script, but only without credentials.
 
-**Risk:** Any website can make requests to your API, potentially stealing sensitive data.
+**Risk:** Browsers never send cookies or HTTP authentication with a request answered by a literal '*', so this exposes only what an anonymous visitor could already fetch. It becomes a problem when the response carries data that depends on something other than a cookie, such as the caller's network position (an internal service reachable from the victim's browser) or an API key embedded in the page.
 
-**Why it matters:** CORS controls which external domains can access your API. A wildcard '*' means any website can make requests.
+**Why it matters:** A wildcard is the normal configuration for a public, read-only API or a CDN asset. The dangerous shapes are different checks: a reflected Origin together with Access-Control-Allow-Credentials: true, and a wildcard alongside a credentials header. Review this one only if the endpoint returns anything a stranger should not read.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -23949,11 +23951,11 @@ if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
 ### `vibe-jwt-none-alg` [vibe-code / critical / body-pattern]
 **JWT 'none' Algorithm Accepted**
 
-The response body contains patterns suggesting JWT tokens with the 'none' algorithm may be accepted, or the JWT library is used without explicit algorithm restriction.
+The response body contains JWT verification code that explicitly allows the 'none' algorithm.
 
 **Risk:** The JWT 'none' algorithm attack allows an attacker to forge any JWT payload without knowing the signing key. By setting alg: 'none' and removing the signature, an attacker can impersonate any user including admins.
 
-**Why it matters:** AI-generated JWT verification code often omits the algorithms whitelist parameter. Libraries like jsonwebtoken default to accepting any algorithm unless explicitly restricted. The 'none' algorithm means the token is unsigned and trivially forgeable.
+**Why it matters:** A token signed with alg 'none' has no signature, so any server that accepts it will trust whatever payload the client writes. Modern libraries refuse 'none' unless it is listed explicitly, which is exactly what this pattern shows. Omitting the algorithms option is a separate, weaker concern: jsonwebtoken 9 and later infer the allowed algorithms from the key, but pinning them explicitly is still the safer habit.
 
 **References:**
 - https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/

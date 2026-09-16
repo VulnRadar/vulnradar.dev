@@ -14,6 +14,29 @@ import { detectors } from "@/lib/scanner/checks/secrets-extended";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "secret-algolia-admin-key": [
+    {
+      // Inline script used to be invisible to every detector in this file:
+      // the example-stripping helper removed <script> along with <pre>.
+      description:
+        "regression: a value labelled as the admin key in an inline script fires",
+      body: `<script>const ALGOLIA_ADMIN_KEY = "9f3kQ2mZ7xLp4vR8tY1wB6nC0dH5jS2e";</script>`,
+      expect: "fire",
+    },
+    {
+      // Algolia's own docs name the public search-only key algoliaApiKey.
+      description:
+        "regression: the same text inside a Next.js RSC payload is page prose, not code",
+      body: `<script>self.__next_f.push([1,"ALGOLIA_ADMIN_KEY = 9f3kQ2mZ7xLp4vR8tY1wB6nC0dH5jS2e"])</script>`,
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: the search-only key named ApiKey is public by design",
+      body: `<script>var algoliaApiKey = "9f3kQ2mZ7xLp4vR8tY1wB6nC0dH5jS2e";</script>`,
+      expect: "skip",
+    },
+  ],
   // ssn-pattern requires ≥3 SSN-shaped values, easier to verify by reading
   // the regex than by hand-crafting a fixture. Smoke-only.
 

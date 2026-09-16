@@ -34,7 +34,7 @@ remediation documentation in the docs.
 - [info    ] `api-rest-allow-methods-put-no-auth` [header] - PUT method listed in Allow header
 - [info    ] `api-rest-allow-methods-patch-no-auth` [header] - PATCH method listed in Allow header
 - [low     ] `api-rest-allow-methods-options-exposed` [header] - OPTIONS response exposes full method allowlist
-- [medium  ] `api-graphql-introspection-enabled` [combined] - GraphQL introspection enabled in production
+- [low     ] `api-graphql-introspection-enabled` [combined] - GraphQL introspection enabled in production
 - [medium  ] `api-graphql-batch-queries` [combined] - GraphQL batch (array) queries accepted
 - [medium  ] `api-graphql-error-stack-trace` [combined] - GraphQL error response leaks stack trace
 - [high    ] `api-openapi-security-scheme-weak` [combined] - OpenAPI security scheme is weak or missing
@@ -52,7 +52,7 @@ remediation documentation in the docs.
 - [info    ] `options-method-exposed` [header] - OPTIONS response exposes state-changing HTTP methods
 - [info    ] `soap-endpoint` [body-pattern] - SOAP endpoint detected
 - [low     ] `xml-rpc` [body-pattern] - XML-RPC endpoint referenced
-- [medium  ] `trace-method-enabled` [header] - HTTP TRACE method enabled
+- [low     ] `trace-method-enabled` [header] - HTTP TRACE method enabled
 - [medium  ] `api-jwt-jku-x5u-header-claim` [combined] - JWT header declares a jku or x5u key-location claim
 - [medium  ] `api-oauth-authorize-missing-pkce` [url-check] - OAuth authorization code request missing PKCE
 - [medium  ] `api-oauth-implicit-flow-response-type-token` [url-check] - OAuth implicit grant (response_type=token) in use
@@ -306,7 +306,7 @@ remediation documentation in the docs.
 - [critical] `env-file-reference` [body-pattern] - .env File Reference Detected
 - [critical] `phpinfo-exposed` [body-pattern] - phpinfo() Page Exposed
 - [medium  ] `discord-webhook-exposed` [body-pattern] - Discord Webhook URL Exposed
-- [medium  ] `swagger-docs-exposed` [body-pattern] - API Documentation Publicly Accessible
+- [low     ] `swagger-docs-exposed` [body-pattern] - API Documentation Publicly Accessible
 - [high    ] `spring-boot-actuator` [body-pattern] - Spring Boot Actuator Endpoints Exposed
 - [low     ] `inline-event-handlers` [body-pattern] - Excessive Inline Event Handlers
 - [medium  ] `document-domain-usage` [body-pattern] - Deprecated document.domain Usage
@@ -517,7 +517,7 @@ remediation documentation in the docs.
 - [low     ] `x-content-type-options-not-nosniff` [header-missing] - X-Content-Type-Options Set to Invalid Value (disabled duplicate)
 - [low     ] `referrer-policy-missing` [header-missing] - Missing Referrer-Policy Header
 - [low     ] `permissions-policy-missing` [combined] - Missing Permissions-Policy Header
-- [medium  ] `cors-wildcard` [combined] - Wildcard CORS Policy
+- [low     ] `cors-wildcard` [combined] - Wildcard CORS Policy
 - [low     ] `xxss-protection-missing` [combined] - Missing X-XSS-Protection Header
 - [medium  ] `cors-credentials-wildcard` [combined] - Dangerous CORS Configuration
 - [info    ] `cross-origin-resource-policy-report-only-missing` [header-missing] - Missing Cross-Origin-Resource-Policy (CORP)
@@ -912,9 +912,9 @@ remediation documentation in the docs.
 - Total checks: **854**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 238
+  - medium: 234
   - high: 206
-  - low: 191
+  - low: 195
   - info: 121
   - critical: 98
 - By type:

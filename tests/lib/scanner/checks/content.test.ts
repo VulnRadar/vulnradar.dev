@@ -27,6 +27,40 @@ import {
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "postmessage-star-origin": [
+    {
+      description: "wildcard target origin fires",
+      body: `<script>parent.postMessage(data, "*");</script>`,
+      expect: "fire",
+    },
+    {
+      description: "regression: a transfer list after the origin still fires",
+      body: `<script>frame.postMessage(msg, "*", [channel.port2]);</script>`,
+      expect: "fire",
+    },
+    {
+      description: "a specific target origin does not fire",
+      body: `<script>parent.postMessage(data, "https://app.example.com");</script>`,
+      expect: "skip",
+    },
+  ],
+  "git-directory-exposed": [
+    {
+      description: "a link to a .git path fires",
+      body: `<a href="/.git/config">config</a>`,
+      expect: "fire",
+    },
+    {
+      description: "regression: hardening advice in prose is not an exposure",
+      body: `<p>Make sure /.git/config is not readable from the web.</p>`,
+      expect: "skip",
+    },
+    {
+      description: "regression: an nginx deny rule in a code example",
+      body: `<pre><code>location ~ /\\.git { deny all; } # blocks /.git/HEAD</code></pre>`,
+      expect: "skip",
+    },
+  ],
   // The optional wrapper call sat between two `\s*` runs and could match
   // nothing, leaving the two runs free to split the same whitespace every
   // way: 16.2 seconds on a 128 KB body. The paren is folded into the

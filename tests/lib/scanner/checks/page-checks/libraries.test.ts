@@ -7,6 +7,18 @@ import { generateId } from "@/lib/scanner/_helpers";
 const fixtures: PageCheckFixtures = {
   "page-outdated-vulnerable-library": [
     {
+      // name@version is how jsDelivr and unpkg pin a package, and eight of the
+      // version patterns rejected "@".
+      description: "regression: jQuery pinned the jsDelivr way (jquery@1.12.4)",
+      body: `<script src="https://cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>`,
+      expect: "fire",
+    },
+    {
+      description: "regression: lodash pinned the unpkg way",
+      body: `<script src="https://unpkg.com/lodash@4.17.10/lodash.min.js"></script>`,
+      expect: "fire",
+    },
+    {
       // The sanitizer this product's own fix steps point people at, which
       // makes it the worst thing on the page to be outdated.
       description: "DOMPurify 2.3.6 has the mXSS bypasses",

@@ -9,6 +9,7 @@
 import {
   redactSecret,
   stripExampleContent,
+  extractScriptContents,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 
@@ -710,10 +711,17 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "secret-algolia-admin-key": (_url, _headers, body) => {
     if (!body) return null;
+    // "admin" only. The pattern also accepted "api", but Algolia's own docs
+    // name the SEARCH-ONLY key algoliaApiKey / ALGOLIA_API_KEY, and that key
+    // is meant to ship in client code, the same as a Stripe publishable key
+    // or a Firebase web key. Every InstantSearch site was reported as having
+    // leaked full write access to its indices, at critical.
     if (
-      /algolia[_\-]?(?:admin|api)[_\-]?key[\s"'=:]+[A-Za-z0-9]{32,}/i.test(body)
+      /algolia[_\-]?admin[_\-]?(?:api[_\-]?)?key[\s"'=:]+[A-Za-z0-9]{32,}/i.test(
+        body,
+      )
     ) {
-      return "Response contains an Algolia admin/search API key.";
+      return "Response contains a value labelled as an Algolia admin API key.";
     }
     return null;
   },
@@ -1263,14 +1271,41 @@ const rawDetectors: Record<string, DetectFn> = {
 // satisfy a provider's format regex). See maskPlaceholderSecrets' doc
 // comment above for why this runs as a single body-level pass rather than
 // per-detector match filtering.
+/**
+ * What the provider detectors search: the page with documentation examples
+ * removed, plus the page's authored inline scripts.
+ *
+ * It used to be stripExampleContent alone, and that helper removes every
+ * <script> element as well as <pre>/<code>, so on an HTML page none of these
+ * ~50 detectors ever saw inline script, which is where a leaked key most often
+ * sits (`Stripe("sk_live_...")`, a config object in a bootstrap script). They
+ * only matched keys in visible markup, comments and non-HTML bodies.
+ *
+ * The scripts come back through extractScriptContents, which is the filtered
+ * set: it leaves out JSON-LD, <script src>, Next.js RSC flight payloads (which
+ * carry the page's prose, code examples included, as string literals) and
+ * Cloudflare's edge bootstrap. So documentation still does not self-trigger,
+ * and the placeholder masking below still applies to all of it.
+ *
+ * Memoised on the body: one build per scan rather than one per detector.
+ */
+let lastSecretsInput: string | null = null;
+let lastSecretsSearchText = "";
+function secretsSearchText(body: string): string {
+  if (body !== lastSecretsInput) {
+    const scripts = extractScriptContents(body);
+    lastSecretsSearchText = maskPlaceholderSecrets(
+      [stripExampleContent(body), ...scripts].join("\n"),
+    );
+    lastSecretsInput = body;
+  }
+  return lastSecretsSearchText;
+}
+
 export const detectors: Record<string, DetectFn> = Object.fromEntries(
   Object.entries(rawDetectors).map(([id, fn]) => [
     id,
     ((url, headers, body) =>
-      fn(
-        url,
-        headers,
-        maskPlaceholderSecrets(stripExampleContent(body)),
-      )) as DetectFn,
+      fn(url, headers, secretsSearchText(body))) as DetectFn,
   ]),
 );

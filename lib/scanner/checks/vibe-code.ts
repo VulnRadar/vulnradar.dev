@@ -197,18 +197,13 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "vibe-jwt-none-alg": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
-    // Check the jwt.verify() call's own argument list for an algorithms
-    // whitelist, not the text that happens to follow the closing paren.
-    // The capture tolerates one level of nested parens so a common
-    // `jwt.verify(token, getKey(), { algorithms: ['HS256'] })` isn't
-    // truncated at getKey()'s ')' before the algorithms option is seen.
-    const verifyCallPattern = /jwt\.verify\s*\(((?:[^()]|\([^()]*\))*)\)/g;
-    let vm: RegExpExecArray | null;
-    while ((vm = verifyCallPattern.exec(body)) !== null) {
-      if (!/algorithms\s*:/.test(vm[1])) {
-        return "JWT 'none' algorithm risk pattern detected — library may accept unsigned tokens.";
-      }
-    }
+    // Only an explicit "none" is reported. A jwt.verify() call without an
+    // algorithms option used to be reported here too, at critical, on the
+    // stated basis that "libraries like jsonwebtoken default to accepting any
+    // algorithm". They do not: jsonwebtoken 9 rejects unsigned tokens unless
+    // the caller lists "none" and infers the allowed algorithms from the key
+    // type, so that branch reported ordinary, safe code as a forgeable login.
+    // Pinning algorithms is still good practice and the fix steps say so.
     const patterns = [
       /alg(?:orithm)?\s*:\s*["']none["']/i,
       /algorithms\s*:\s*\[[^\]]*none[^\]]*\]/i,

@@ -96,9 +96,16 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
+      // Used to fire at critical. jsonwebtoken 9 rejects unsigned tokens unless
+      // "none" is listed, so an omitted option is not a forgeable login.
       description:
-        "jwt.verify() with no algorithms option specified still fires",
+        "jwt.verify() with no algorithms option is not an alg-none flaw",
       body: "<script>jwt.verify(token, secret);</script>",
+      expect: "skip",
+    },
+    {
+      description: "an algorithms list that explicitly allows none fires",
+      body: "<script>jwt.verify(token, secret, { algorithms: ['HS256', 'none'] });</script>",
       expect: "fire",
       evidenceIncludes: "none",
     },

@@ -17,6 +17,55 @@ import { detectors } from "@/lib/scanner/checks/code";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "code-cookie-missing-secure-http": [
+    {
+      description: "a cookie without Secure fires",
+      cookies: ["session=abc; Path=/; HttpOnly"],
+      expect: "fire",
+    },
+    {
+      // headers.get("set-cookie") joined every cookie, so one Secure cookie
+      // anywhere in the response hid the insecure one.
+      description:
+        "regression: an insecure cookie next to a Secure one still fires",
+      cookies: ["session=abc; Path=/; HttpOnly", "theme=dark; Path=/; Secure"],
+      expect: "fire",
+      evidenceIncludes: "session",
+    },
+    {
+      description: "every cookie Secure does not fire",
+      cookies: ["session=abc; Path=/; Secure", "theme=dark; Secure"],
+      expect: "skip",
+    },
+  ],
+  "code-csp-missing-trusted-types": [
+    {
+      description: "innerHTML with no Trusted Types in the CSP",
+      headers: { "content-security-policy": "default-src 'self'" },
+      body: "<script>el.innerHTML = data;</script>",
+      expect: "fire",
+    },
+    {
+      // The check matched /trustedTypes/, the JavaScript API name, which no
+      // CSP ever contains, so correctly enforced Trusted Types was reported.
+      description:
+        "regression: require-trusted-types-for enforces Trusted Types",
+      headers: {
+        "content-security-policy":
+          "default-src 'self'; require-trusted-types-for 'script'",
+      },
+      body: "<script>el.innerHTML = data;</script>",
+      expect: "skip",
+    },
+    {
+      description: "a trusted-types policy directive counts too",
+      headers: {
+        "content-security-policy": "default-src 'self'; trusted-types app",
+      },
+      body: "<script>el.innerHTML = data;</script>",
+      expect: "skip",
+    },
+  ],
   "eval-in-scripts": [
     {
       // The false positive that made this product fail its own scan. Next.js

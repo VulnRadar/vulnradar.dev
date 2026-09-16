@@ -1217,11 +1217,11 @@
     "type": "body-pattern",
     "title": "API Documentation Publicly Accessible",
     "category": "content",
-    "severity": "medium",
-    "description": "Swagger/OpenAPI documentation endpoints referenced.",
+    "severity": "low",
+    "description": "The page references Swagger or OpenAPI documentation, which is often published intentionally.",
     "evidence": "API documentation references detected.",
-    "riskImpact": "API docs reveal all endpoints, parameters, and data models.",
-    "explanation": "Public API documentation helps attackers understand your API surface.",
+    "riskImpact": "Published API documentation shortens reconnaissance by listing endpoints, parameters and models. That matters when the spec includes internal or admin operations that were never meant to be public; a spec for a public API is usually published on purpose.",
+    "explanation": "Reachable documentation is not a vulnerability by itself. Confirm the spec lists only operations you intend to expose. The OpenAPI content checks in the API category look inside the spec for the concrete problems: weak or missing security schemes, server URLs that leak internal hosts, and plain-HTTP servers.",
     "fixSteps": ["Restrict API docs access to authenticated users."],
     "codeExamples": [
       {

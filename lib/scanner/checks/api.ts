@@ -324,7 +324,7 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "trace-method-enabled": (_url, headers) => {
     if (headers.has("allow") && /TRACE/i.test(headers.get("allow") || "")) {
-      return "HTTP TRACE method is enabled - potential Cross-Site Tracing (XST) attack vector.";
+      return "The Allow header lists TRACE. This is advertised, not confirmed; the active method probe verifies whether TRACE actually reflects a request.";
     }
     return null;
   },

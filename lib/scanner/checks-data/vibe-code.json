@@ -185,10 +185,10 @@
     "title": "JWT 'none' Algorithm Accepted",
     "category": "vibe-code",
     "severity": "critical",
-    "description": "The response body contains patterns suggesting JWT tokens with the 'none' algorithm may be accepted, or the JWT library is used without explicit algorithm restriction.",
+    "description": "The response body contains JWT verification code that explicitly allows the 'none' algorithm.",
     "evidence": "JWT 'none' algorithm vulnerability pattern detected.",
     "riskImpact": "The JWT 'none' algorithm attack allows an attacker to forge any JWT payload without knowing the signing key. By setting alg: 'none' and removing the signature, an attacker can impersonate any user including admins.",
-    "explanation": "AI-generated JWT verification code often omits the `algorithms` whitelist parameter. Libraries like jsonwebtoken default to accepting any algorithm unless explicitly restricted. The 'none' algorithm means the token is unsigned and trivially forgeable.",
+    "explanation": "A token signed with alg 'none' has no signature, so any server that accepts it will trust whatever payload the client writes. Modern libraries refuse 'none' unless it is listed explicitly, which is exactly what this pattern shows. Omitting the algorithms option is a separate, weaker concern: jsonwebtoken 9 and later infer the allowed algorithms from the key, but pinning them explicitly is still the safer habit.",
     "fixSteps": [
       "Always specify the allowed algorithms explicitly: jwt.verify(token, secret, { algorithms: ['HS256'] }).",
       "Never accept 'none' as a valid algorithm.",

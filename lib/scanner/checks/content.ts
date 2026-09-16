@@ -731,10 +731,16 @@ export const detectors: Record<string, DetectFn> = {
   // ── Backup / IDE / VCS / .env references ─────────────────────────────────
 
   "git-directory-exposed": (_url, _headers, body) => {
-    if (/\/?\.git\/(HEAD|config|objects|refs)/i.test(body)) {
-      return ".git directory paths detected in page source.";
-    }
-    return null;
+    // A link or asset reference, not prose. The bare pattern matched any page
+    // that mentions /.git/config, which is every hardening guide and every
+    // nginx snippet that denies it ("location ~ /\.git { deny all; }"), the
+    // same false positive env-file-reference and phpinfo-exposed were already
+    // fixed for. Whether .git is actually served is confirmed by the active
+    // exposed-files probe, which fetches it and checks the content.
+    const m = stripExampleContent(body).match(
+      /(?:href|src|action)=["'][^"']*\/\.git\/(?:HEAD|config|objects|refs)[^"']*["']/i,
+    );
+    return m ? `.git directory referenced by a link or asset: ${m[0]}` : null;
   },
 
   "env-file-reference": (_url, _headers, body) => {
@@ -905,7 +911,11 @@ export const detectors: Record<string, DetectFn> = {
   "postmessage-origin": () => null,
 
   "postmessage-star-origin": (_url, _headers, body) => {
-    if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*\)/.test(body)) {
+    // [,)] rather than \) after the origin: postMessage takes an optional
+    // third argument, the transfer list, and `win.postMessage(msg, "*", [port])`
+    // sends to every origin just the same. Requiring ")" straight after "*"
+    // missed exactly the calls that hand over a MessagePort.
+    if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*[,)]/.test(body)) {
       return "postMessage() called with wildcard (*) origin, sending data to any origin.";
     }
     return null;

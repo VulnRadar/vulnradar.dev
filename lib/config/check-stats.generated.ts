@@ -15,15 +15,15 @@ export const GENERATED_CHECKS_LABEL = "905+";
  */
 export const CHECK_CATEGORY_LAST_MODIFIED: Record<string, string> = {
   "active-probes": "2026-08-16",
-  api: "2026-09-03",
+  api: "2026-09-16",
   "client-side": "2026-09-01",
   code: "2026-09-03",
   configuration: "2026-09-07",
-  content: "2026-09-07",
+  content: "2026-09-16",
   cookies: "2026-09-03",
   dns: "2026-09-05",
   email: "2026-09-03",
-  headers: "2026-09-05",
+  headers: "2026-09-16",
   "host-validation": "2026-08-13",
   "information-disclosure": "2026-09-07",
   reputation: "2026-08-12",
@@ -31,5 +31,5 @@ export const CHECK_CATEGORY_LAST_MODIFIED: Record<string, string> = {
   ssl: "2026-09-03",
   "supply-chain": "2026-09-03",
   tls: "2026-09-16",
-  "vibe-code": "2026-09-01",
+  "vibe-code": "2026-09-16",
 };

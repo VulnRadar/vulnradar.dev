@@ -23,6 +23,13 @@ interface VulnRange {
   /** Matches the library's filename segment, case-insensitively. */
   filePattern: RegExp;
   /** Extracts the dotted version number from the matched filename. */
+  /**
+   * Must accept "@" between name and version. CDNs that serve npm packages
+   * (jsDelivr, unpkg, esm.sh) pin a version as name@1.2.3, and that is now the
+   * most common way to load one. Eight of these patterns allowed only "-" or
+   * ".", so https://cdn.jsdelivr.net/npm/jquery@1.12.4 was never matched while
+   * jquery-1.12.4.min.js was.
+   */
   versionPattern: RegExp;
   /** Inclusive: versions strictly below this are vulnerable. */
   fixedIn: string;
@@ -73,7 +80,7 @@ const RANGES: VulnRange[] = [
   {
     name: "jQuery",
     filePattern: /jquery(?!-ui)/i,
-    versionPattern: /jquery[-.]?(\d+\.\d+\.\d+)/i,
+    versionPattern: /jquery[-.@]?(\d+\.\d+\.\d+)/i,
     fixedIn: "3.5.0",
     cve: ["CVE-2020-11022", "CVE-2020-11023"],
     summary:
@@ -82,7 +89,7 @@ const RANGES: VulnRange[] = [
   {
     name: "jQuery UI",
     filePattern: /jquery-ui/i,
-    versionPattern: /jquery-ui[-.]?(\d+\.\d+\.\d+)/i,
+    versionPattern: /jquery-ui[-.@]?(\d+\.\d+\.\d+)/i,
     fixedIn: "1.13.2",
     cve: ["CVE-2021-41182", "CVE-2021-41183", "CVE-2021-41184"],
     summary:
@@ -91,7 +98,7 @@ const RANGES: VulnRange[] = [
   {
     name: "Bootstrap",
     filePattern: /bootstrap/i,
-    versionPattern: /bootstrap[-.]?(\d+\.\d+\.\d+)/i,
+    versionPattern: /bootstrap[-.@]?(\d+\.\d+\.\d+)/i,
     fixedIn: "4.3.1",
     cve: ["CVE-2019-8331"],
     summary:
@@ -100,7 +107,7 @@ const RANGES: VulnRange[] = [
   {
     name: "Lodash",
     filePattern: /lodash/i,
-    versionPattern: /lodash[-.]?(\d+\.\d+\.\d+)/i,
+    versionPattern: /lodash[-.@]?(\d+\.\d+\.\d+)/i,
     fixedIn: "4.17.21",
     cve: ["CVE-2020-8203", "CVE-2021-23337"],
     summary:
@@ -111,7 +118,7 @@ const RANGES: VulnRange[] = [
     // Anchored so it does not also match momentum.js, which is a different
     // library that has never had this CVE.
     filePattern: /(?:^|[/@._-])moment(?:[@/._-]|$)/i,
-    versionPattern: /moment[-.]?(\d+\.\d+\.\d+)/i,
+    versionPattern: /moment[-.@]?(\d+\.\d+\.\d+)/i,
     fixedIn: "2.29.4",
     cve: ["CVE-2022-24785"],
     summary:
@@ -120,7 +127,7 @@ const RANGES: VulnRange[] = [
   {
     name: "Handlebars",
     filePattern: /handlebars/i,
-    versionPattern: /handlebars[-.]?(\d+\.\d+\.\d+)/i,
+    versionPattern: /handlebars[-.@]?(\d+\.\d+\.\d+)/i,
     fixedIn: "4.7.7",
     cve: ["CVE-2021-23383"],
     summary:
@@ -129,7 +136,7 @@ const RANGES: VulnRange[] = [
   {
     name: "Underscore.js",
     filePattern: /underscore/i,
-    versionPattern: /underscore[-.]?(\d+\.\d+\.\d+)/i,
+    versionPattern: /underscore[-.@]?(\d+\.\d+\.\d+)/i,
     fixedIn: "1.13.0-2",
     cve: ["CVE-2021-23358"],
     summary:
@@ -138,7 +145,7 @@ const RANGES: VulnRange[] = [
   {
     name: "Axios",
     filePattern: /axios/i,
-    versionPattern: /axios[-.]?(\d+\.\d+\.\d+)/i,
+    versionPattern: /axios[-.@]?(\d+\.\d+\.\d+)/i,
     fixedIn: "0.21.2",
     cve: ["CVE-2021-3749"],
     summary:
