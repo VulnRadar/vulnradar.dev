@@ -393,6 +393,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: ShieldAlert,
+        label: "The Open Redirect Probe Tries the Common Bypass",
+        desc: "The active open redirect probe sent only an absolute URL and only recognised a redirect whose Location began with exactly that URL. The most common half-fix for open redirects accepts any value starting with a slash, on the theory that it must be a path on the same site, and a browser reads //example.com/path as a different site. An endpoint with that fix refused the probe and was reported clean. The probe now sends the protocol-relative form when the absolute one is refused, and reads the Location header the way a browser resolves it, so an uppercase host or a backslash variant also counts, while a redirect back to your own login page that merely carries the probe in its query string still does not.",
+        category: "engine",
+      },
+      {
         icon: CheckCheck,
         label: "Wrong Verdicts Corrected",
         desc: "Sites enforcing Trusted Types were told they were not, because the check searched the policy for the JavaScript API's name instead of the directive. Algolia's public search key, which Algolia's own documentation names ApiKey, was reported as a leaked admin key at critical. One check stated that jsonwebtoken accepts any algorithm when none is specified, which version 9 does not, and reported every verify call without one as critical; only an explicit none is reported now. Hardening guides that mention /.git/config were reported as exposing it. In the other direction: postMessage calls with a transfer list were missed, one Secure cookie hid every insecure cookie in the same response, a library pinned as jquery@1.12.4 the way jsDelivr and unpkg load it was never matched, Docker Hub organization tokens were not recognised, and neither was the /swagger-ui path.",
@@ -551,7 +557,7 @@ const CHANGELOG: Release[] = [
       {
         icon: ShieldAlert,
         label: "Engine Version 3.4.0",
-        desc: "The detection engine moves from 3.3.2 to 3.4.0. Scan results change for the reasons in the Engine & Checks section: pages are read the way a browser acts on them, error pages are matched by their own markup, two new certificate findings, and fifty retired checks leave the catalog. Finding identifiers for the checks that remain are unchanged, so triage marks and regression baselines carry over.",
+        desc: "The detection engine moves from 3.3.2 to 3.4.0. Scan results change for the reasons in the Engine & Checks section: pages are read the way a browser acts on them, error pages are matched by their own markup, two new certificate findings, and fifty-three checks that could never fire leave the catalog. Finding identifiers for the checks that remain are unchanged, so triage marks and regression baselines carry over.",
         category: "changed",
       },
       {

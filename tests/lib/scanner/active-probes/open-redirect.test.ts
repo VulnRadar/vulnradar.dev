@@ -15,7 +15,10 @@ vi.mock("dns/promises", () => ({
   lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
 }));
 
-import { checkOpenRedirectProbe } from "@/lib/scanner/active-probes/open-redirect";
+import {
+  checkOpenRedirectProbe,
+  redirectsToCanary,
+} from "@/lib/scanner/active-probes/open-redirect";
 
 const PAGE_WITH_LOGIN_REDIRECT = `
 <html><body>
@@ -233,6 +236,80 @@ describe("checkOpenRedirectProbe", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("flags an endpoint that only follows the protocol-relative payload", async () => {
+    // The classic "starts with /" validator: it refuses an absolute URL and
+    // treats //host/path as a path on this site, which a browser does not.
+    const sent: string[] = [];
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (input: unknown) => {
+        const url =
+          typeof input === "string" ? input : (input as URL).toString();
+        if (url === "https://example.com") {
+          return {
+            ok: true,
+            status: 200,
+            text: () => Promise.resolve(PAGE_WITH_LOGIN_REDIRECT),
+          };
+        }
+        const value = new URL(url).searchParams.get("redirect") ?? "";
+        sent.push(value);
+        return {
+          ok: false,
+          status: 302,
+          headers: {
+            get: (name: string) =>
+              name.toLowerCase() === "location"
+                ? value.startsWith("/")
+                  ? value
+                  : "/dashboard"
+                : null,
+          },
+        };
+      },
+    );
+
+    const findings = await checkOpenRedirectProbe("https://example.com");
+    expect(sent).toEqual([
+      "https://openredirect-probe.vulnradar.test/canary",
+      "//openredirect-probe.vulnradar.test/canary",
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence).toContain(
+      "redirect=//openredirect-probe.vulnradar.test/canary",
+    );
+  });
+
+  it("stops at the first payload that lands, so one endpoint is one finding", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (input: unknown) => {
+        const url =
+          typeof input === "string" ? input : (input as URL).toString();
+        if (url === "https://example.com") {
+          return {
+            ok: true,
+            status: 200,
+            text: () => Promise.resolve(PAGE_WITH_LOGIN_REDIRECT),
+          };
+        }
+        return {
+          ok: false,
+          status: 302,
+          headers: {
+            get: (name: string) =>
+              name.toLowerCase() === "location"
+                ? (new URL(url).searchParams.get("redirect") ?? "")
+                : null,
+          },
+        };
+      },
+    );
+
+    const findings = await checkOpenRedirectProbe("https://example.com");
+    expect(findings).toHaveLength(1);
+    // Baseline page plus the absolute payload only.
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("never calls fetch when cancelSignal is already aborted before the check starts", async () => {
     const controller = new AbortController();
     controller.abort();
@@ -242,5 +319,32 @@ describe("checkOpenRedirectProbe", () => {
     );
     expect(findings).toEqual([]);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("redirectsToCanary", () => {
+  const requested = new URL(
+    "https://example.com/login?redirect=https://openredirect-probe.vulnradar.test/canary",
+  );
+
+  it.each([
+    "https://openredirect-probe.vulnradar.test/canary",
+    "//openredirect-probe.vulnradar.test/canary",
+    "HTTPS://OPENREDIRECT-PROBE.VULNRADAR.TEST/canary",
+    "/\\openredirect-probe.vulnradar.test/canary",
+    "  https://openredirect-probe.vulnradar.test/canary",
+  ])("treats %j as leaving the site for the canary", (location) => {
+    expect(redirectsToCanary(location, requested)).toBe(true);
+  });
+
+  it.each([
+    "/dashboard",
+    "/login?next=https://openredirect-probe.vulnradar.test/canary",
+    "https://example.com/?to=//openredirect-probe.vulnradar.test/canary",
+    "https://openredirect-probe.vulnradar.test.example.com/canary",
+    "",
+    "http://[::1",
+  ])("does not treat %j as a redirect to the canary", (location) => {
+    expect(redirectsToCanary(location, requested)).toBe(false);
   });
 });

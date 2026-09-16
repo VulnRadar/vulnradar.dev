@@ -14,7 +14,7 @@ export const GENERATED_CHECKS_LABEL = "855+";
  * timestamp in lib/seo/routes.ts.
  */
 export const CHECK_CATEGORY_LAST_MODIFIED: Record<string, string> = {
-  "active-probes": "2026-08-16",
+  "active-probes": "2026-09-16",
   api: "2026-09-16",
   "client-side": "2026-09-01",
   code: "2026-09-16",

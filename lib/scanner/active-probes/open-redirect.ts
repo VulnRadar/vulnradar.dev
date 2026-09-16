@@ -47,8 +47,35 @@ const MAX_REDIRECT_CANDIDATES = 8;
 // target. A vulnerable endpoint that unconditionally redirects to whatever
 // this parameter says sends the browser here instead of the caller's real
 // destination.
-const CANARY_ORIGIN = "https://openredirect-probe.vulnradar.test";
-const CANARY_TARGET = `${CANARY_ORIGIN}/canary`;
+const CANARY_HOST = "openredirect-probe.vulnradar.test";
+
+// Sent in order for each candidate, stopping at the first that lands. The
+// absolute URL is the plain case. The protocol-relative form is the classic
+// bypass of a validator that accepts any value starting with "/" on the
+// theory that it must be a path on this site: a browser resolves
+// //host/path against the current scheme and leaves the site all the same.
+// An endpoint that rejects the first and follows the second was missed
+// before, because only the absolute URL was ever sent.
+const CANARY_PAYLOADS = [
+  `https://${CANARY_HOST}/canary`,
+  `//${CANARY_HOST}/canary`,
+] as const;
+
+/**
+ * Whether a Location header sends the browser to the canary host. Resolved
+ * the way a browser resolves it, against the URL that was requested, rather
+ * than by prefix: a Location of `//host/...`, `HTTPS://HOST/...` or
+ * `/\host/...` all leave the site, and none of them starts with the absolute
+ * canary origin. Resolving also keeps the check exact the other way, since
+ * `/login?next=https://<canary>` stays on the site and is not a redirect to it.
+ */
+export function redirectsToCanary(location: string, requested: URL): boolean {
+  try {
+    return new URL(location, requested).hostname === CANARY_HOST;
+  } catch {
+    return false;
+  }
+}
 
 const HREF_RE = /\b(?:href|action|src)\s*=\s*["']([^"'#\s]+)["']/gi;
 
@@ -122,7 +149,7 @@ function buildFinding(
  * one (up to MAX_REDIRECT_CANDIDATES) re-requests that exact endpoint with
  * the parameter's value replaced by a canary URL on an IANA-reserved TLD.
  * A candidate is flagged when the response is a 3xx redirect whose Location
- * header points at the canary origin -- proof the endpoint redirects to an
+ * header sends the browser to the canary host -- proof the endpoint redirects to an
  * arbitrary attacker-controlled URL rather than validating it.
  *
  * Deliberately never guesses a redirect endpoint that isn't already
@@ -183,43 +210,43 @@ export async function checkOpenRedirectProbe(
   for (const candidate of candidates) {
     if (cancelSignal?.aborted) break;
 
-    let probeUrl: URL;
     try {
-      probeUrl = new URL(candidate.pageUrl);
+      for (const payload of CANARY_PAYLOADS) {
+        if (cancelSignal?.aborted) break;
+        const probeUrl = new URL(candidate.pageUrl);
+        probeUrl.searchParams.set(candidate.paramName, payload);
+
+        // probeUrl is the same host as `url` (validated above), so reuse its
+        // resolved IP to pin the connect. redirect: "manual" is preserved, so
+        // the cross-host canary 3xx is still returned for inspection.
+        const probeTarget = pinToResolvedIp(
+          probeUrl.toString(),
+          safety.resolvedIp,
+          {
+            headers: { "User-Agent": USER_AGENT },
+            redirect: "manual",
+            signal: probeSignal(cancelSignal),
+          },
+        );
+        // Safe: same host as `url` (validated above), pinned to its resolved
+        // IP; only the redirect-shaped query param varies.
+        // codeql[js/request-forgery]
+        const res = await fetch(probeTarget.url, probeTarget.init);
+
+        if (res.status < 300 || res.status >= 400) continue;
+        const location = res.headers.get("location") ?? "";
+        if (!redirectsToCanary(location, probeUrl)) continue;
+
+        const finding = buildFinding(
+          url,
+          `${probeUrl.origin}${probeUrl.pathname}:${candidate.paramName}`,
+          `Requesting ${probeUrl.origin}${probeUrl.pathname} with ${candidate.paramName}=${payload} produced a ${res.status} redirect to Location: ${location}.`,
+        );
+        if (finding) findings.push(finding);
+        break;
+      }
     } catch {
-      continue;
-    }
-    probeUrl.searchParams.set(candidate.paramName, CANARY_TARGET);
-
-    try {
-      // probeUrl is the same host as `url` (validated above), so reuse its
-      // resolved IP to pin the connect. redirect: "manual" is preserved, so
-      // the cross-host canary 3xx is still returned for inspection.
-      const probeTarget = pinToResolvedIp(
-        probeUrl.toString(),
-        safety.resolvedIp,
-        {
-          headers: { "User-Agent": USER_AGENT },
-          redirect: "manual",
-          signal: probeSignal(cancelSignal),
-        },
-      );
-      // Safe: same host as `url` (validated above), pinned to its resolved
-      // IP; only the redirect-shaped query param varies.
-      // codeql[js/request-forgery]
-      const res = await fetch(probeTarget.url, probeTarget.init);
-
-      if (res.status < 300 || res.status >= 400) continue;
-      const location = res.headers.get("location") ?? "";
-      if (!location.startsWith(CANARY_ORIGIN)) continue;
-
-      const finding = buildFinding(
-        url,
-        `${probeUrl.origin}${probeUrl.pathname}:${candidate.paramName}`,
-        `Requesting ${probeUrl.origin}${probeUrl.pathname} with ${candidate.paramName}=${CANARY_TARGET} produced a ${res.status} redirect to Location: ${location}.`,
-      );
-      if (finding) findings.push(finding);
-    } catch {
+      // A failed request abandons this candidate, not the probe.
       continue;
     }
   }

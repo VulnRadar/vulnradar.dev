@@ -156,8 +156,9 @@ export const CONFIG_KNOWN_SCHEMA_VERSIONS = ["1.0.0", "2.0.0", "3.0.0"];
 // match the pages' own markup. Checks judge the URL actually fetched after
 // redirects, a meta-delivered CSP is read, and duplicate findings merge in
 // more families. Two new TLS findings (certificate for the wrong hostname,
-// untrusted chain). Fifty retired checks that could never fire leave the
-// catalog, and 111 unreachable detectors are deleted. Scan results and the
+// untrusted chain). Fifty-three checks that could never fire leave the
+// catalog, and 111 unreachable detectors are deleted. The open redirect probe
+// also sends the protocol-relative bypass and resolves Location like a browser. Scan results and the
 // check count change, with new checks, so a minor bump.
 export const CONFIG_ENGINE_VERSION = "3.4.0";
 // The most syndicated sentence in the product: it is the root meta
