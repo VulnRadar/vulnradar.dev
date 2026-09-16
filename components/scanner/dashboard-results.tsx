@@ -1,13 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import {
-  AlertTriangle,
-  Check,
-  Copy,
-  RotateCcw,
-  ShieldCheck,
-} from "lucide-react";
+import { AlertTriangle, RotateCcw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import dynamic from "next/dynamic";
@@ -23,7 +17,7 @@ import {
 import { AuthenticatedBadge } from "./authenticated-badge";
 import { SubdomainDiscovery } from "./subdomain-discovery";
 import { ScanResultDetail, type CrawlInfo } from "./scan-result-detail";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import { CopyableHeading } from "@/components/shared/copyable-heading";
 import { tourAnchor } from "@/lib/tour/anchors";
 import { API } from "@/lib/config/client-constants";
 import { LeadingIcon } from "@/components/shared/leading-icon";
@@ -99,7 +93,6 @@ export function DashboardResults({
   onFindingsUpdated,
   onVerdictChanged,
 }: DashboardResultsProps) {
-  const [copied, setCopied] = useState(false);
   // Seeded from the visibility the scan was actually requested with, not from
   // a flat `true`. The comment here used to say this view has no "start
   // private" control, which stopped being true when ScanForm grew its "Keep
@@ -177,13 +170,6 @@ export function DashboardResults({
     );
   }
 
-  async function copyUrl() {
-    if (await copyToClipboard(result.url)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  }
-
   const displayUrl = result.url.replace(/^https?:\/\//, "");
   const displayResult: ScanResult = {
     ...result,
@@ -206,29 +192,7 @@ export function DashboardResults({
 
               The h1 wraps the button rather than sitting inside it: a button
               takes phrasing content and a heading is not phrasing content. */}
-          <h1 className="flex min-w-0 items-center">
-            <button
-              type="button"
-              onClick={copyUrl}
-              aria-label="Copy scanned URL"
-              className="group flex min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span className="truncate font-mono text-base font-semibold text-foreground transition-colors group-hover:text-primary">
-                {displayUrl}
-              </span>
-              {copied ? (
-                <Check
-                  aria-hidden
-                  className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
-                />
-              ) : (
-                <Copy
-                  aria-hidden
-                  className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                />
-              )}
-            </button>
-          </h1>
+          <CopyableHeading value={result.url} display={displayUrl} noun="URL" />
           {authReport?.status === "authenticated" && (
             <AuthenticatedBadge className="shrink-0" />
           )}

@@ -8,8 +8,6 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
-  Check,
-  Copy,
   ExternalLink,
   ScanSearch,
   ShieldQuestion,
@@ -39,7 +37,7 @@ import { API, APP_NAME, ROUTES } from "@/lib/config/client-constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { HostReportData } from "@/app/api/v3/host/[hostname]/route";
 import type { HostScoreTrendPoint } from "@/app/api/v3/host/[hostname]/trend/route";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import { CopyableHeading } from "@/components/shared/copyable-heading";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 
 export default function HostReportPage() {
@@ -57,7 +55,6 @@ export default function HostReportPage() {
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
     null,
   );
-  const [copied, setCopied] = useState(false);
   // Only show a back button when we arrived via in-app navigation (e.g.
   // clicked from Assets or the Public Scans directory) -- document.referrer
   // is same-origin in that case. A link opened directly (typed URL, shared
@@ -118,13 +115,6 @@ export default function HostReportPage() {
       cancelled = true;
     };
   }, [hostname]);
-
-  async function copyHost() {
-    if (await copyToClipboard(data?.host || hostname)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  }
 
   const result: ScanResult | null =
     data && data.known
@@ -251,33 +241,10 @@ export default function HostReportPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={copyHost}
-                            aria-label="Copy hostname"
-                            className="group inline-flex min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {/* title, because the button's aria-label names
-                                the action and not the value, so a clipped
-                                host had no full form anywhere on the page. */}
-                            <h1
-                              title={data?.host}
-                              className="truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl"
-                            >
-                              {data?.host}
-                            </h1>
-                            {copied ? (
-                              <Check
-                                aria-hidden
-                                className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
-                              />
-                            ) : (
-                              <Copy
-                                aria-hidden
-                                className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                              />
-                            )}
-                          </button>
+                          <CopyableHeading
+                            value={data?.host || hostname}
+                            noun="hostname"
+                          />
                           {result.authenticated && (
                             <AuthenticatedBadge className="shrink-0" />
                           )}

@@ -8,9 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
-  Check,
   CircleAlert,
-  Copy,
   ExternalLink,
   ScanSearch,
   Tag,
@@ -40,7 +38,7 @@ import {
 } from "@/lib/config/client-constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import { CopyableHeading } from "@/components/shared/copyable-heading";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 
 export default function SharedScanPage() {
@@ -73,7 +71,6 @@ export default function SharedScanPage() {
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
     null,
   );
-  const [copied, setCopied] = useState(false);
   const router = useRouter();
 
   // Always offer a way back. Client-side (Link) navigation does not update
@@ -120,13 +117,6 @@ export default function SharedScanPage() {
     }
     load();
   }, [token]);
-
-  async function copyUrl() {
-    if (await copyToClipboard(result?.url || "")) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  }
 
   return (
     <PublicPageShell
@@ -243,33 +233,11 @@ export default function SharedScanPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={copyUrl}
-                            aria-label="Copy scanned URL"
-                            className="group inline-flex min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {/* Same as /host: the aria-label names the copy
-                                action, not the URL, so the clipped value
-                                needs a title of its own. */}
-                            <h1
-                              title={result.url}
-                              className="truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl"
-                            >
-                              {result.url}
-                            </h1>
-                            {copied ? (
-                              <Check
-                                aria-hidden
-                                className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
-                              />
-                            ) : (
-                              <Copy
-                                aria-hidden
-                                className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                              />
-                            )}
-                          </button>
+                          <CopyableHeading
+                            value={result.url}
+                            display={result.url.replace(/^https?:\/\//, "")}
+                            noun="URL"
+                          />
                           {result.authenticated && (
                             <AuthenticatedBadge className="shrink-0" />
                           )}

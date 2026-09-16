@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowLeft, Check, Copy } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { ScanActionsMenu } from "@/components/scanner/scan-actions-menu";
 import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import { CopyableHeading } from "@/components/shared/copyable-heading";
 
 interface HistoryDetailHeaderProps {
   scanDetail: ScanResult;
@@ -30,15 +29,6 @@ export function HistoryDetailHeader({
   onSummaryGenerated,
   onPrivacyChanged,
 }: HistoryDetailHeaderProps) {
-  const [copied, setCopied] = useState(false);
-
-  async function copyUrl() {
-    if (await copyToClipboard(scanDetail.url)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  }
-
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -63,32 +53,11 @@ export function HistoryDetailHeader({
               The h1 wraps the button rather than sitting inside it. A button's
               content model is phrasing content and a heading is not, so the
               other way round would be invalid markup. */}
-          <h1 className="flex min-w-0 items-center">
-            <button
-              type="button"
-              onClick={copyUrl}
-              aria-label="Copy scanned URL"
-              className="group flex min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span
-                title={scanDetail.url}
-                className="truncate font-mono text-base font-semibold text-foreground transition-colors group-hover:text-primary"
-              >
-                {scanDetail.url.replace(/^https?:\/\//, "")}
-              </span>
-              {copied ? (
-                <Check
-                  aria-hidden
-                  className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
-                />
-              ) : (
-                <Copy
-                  aria-hidden
-                  className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                />
-              )}
-            </button>
-          </h1>
+          <CopyableHeading
+            value={scanDetail.url}
+            display={scanDetail.url.replace(/^https?:\/\//, "")}
+            noun="URL"
+          />
           {scanDetail.authenticated && (
             <AuthenticatedBadge className="shrink-0" />
           )}

@@ -27,7 +27,8 @@ export function HistoryDetailSkeleton() {
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 items-center gap-2.5">
           <Skeleton className="h-11 w-11 shrink-0 rounded-md sm:h-7 sm:w-7" />
-          <Skeleton className="h-5 w-48" />
+          {/* The URL heading is Tier B (CopyableHeading): 28px then 32px. */}
+          <Skeleton className="h-7 w-48 sm:h-8" />
         </div>
         <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
       </div>
