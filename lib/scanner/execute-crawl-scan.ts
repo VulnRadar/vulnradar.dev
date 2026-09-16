@@ -15,6 +15,7 @@ import {
 } from "@/lib/rate-limiting/daily-limits";
 import {
   PAGE_CHECKS_INCOMPLETE,
+  dedupeScanFindings,
   runSyncChecksYielding,
   getPlannedSyncCategories,
 } from "./engine";
@@ -268,7 +269,7 @@ async function scanSingleUrl(
   // Worst first. SEVERITY_PRIORITY counts UP with severity, so this comparator
   // subtracts b from a, unlike the local table it replaced (which counted
   // critical down from 0). ref: AUDIT-013#dup-02
-  const findings = [...syncFindings, ...asyncFindings].sort(
+  const findings = dedupeScanFindings([...syncFindings, ...asyncFindings]).sort(
     (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
   );
 

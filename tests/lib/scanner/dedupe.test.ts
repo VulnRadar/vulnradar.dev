@@ -66,6 +66,71 @@ describe("dedupeFindings", () => {
     expect(checkIdOf(findings[0])).toBe("async-graphql-introspection-enabled");
   });
 
+  it("merges a group only within one component", () => {
+    const { findings, merged } = dedupeFindings(
+      [
+        finding("page-outdated-vulnerable-library", {
+          component: "jquery@1.12.4",
+        }),
+        finding("page-outdated-vulnerable-library", {
+          component: "lodash@4.17.15",
+        }),
+        finding("osv-vulnerable-library", { component: "jquery@1.12.4" }),
+      ],
+      pageCheckGroups,
+    );
+    expect(merged).toBe(1);
+    expect(findings.map((f) => [checkIdOf(f), f.component])).toEqual([
+      ["page-outdated-vulnerable-library", "lodash@4.17.15"],
+      ["osv-vulnerable-library", "jquery@1.12.4"],
+    ]);
+  });
+
+  it("keeps the live OSV.dev finding even when the offline snapshot rated it higher", () => {
+    const { findings } = dedupeFindings(
+      [
+        finding("page-outdated-vulnerable-library", {
+          severity: "high",
+          confidence: 95,
+          component: "jquery@1.12.4",
+        }),
+        finding("osv-vulnerable-library", {
+          severity: "medium",
+          component: "jquery@1.12.4",
+        }),
+      ],
+      pageCheckGroups,
+    );
+    expect(findings).toHaveLength(1);
+    expect(checkIdOf(findings[0])).toBe("osv-vulnerable-library");
+    expect(findings[0].alsoReportedBy).toEqual([
+      "page-outdated-vulnerable-library",
+    ]);
+  });
+
+  it("keeps earlier merges listed when it runs again over its own output", () => {
+    // A scan dedupes the page checks, then everything once the async checks
+    // answer. The keyword checks merged in the first pass must still be
+    // credited after the live query wins the second.
+    const first = dedupeFindings([
+      finding("graphql-introspection"),
+      finding("api-graphql-introspection-enabled", { confidence: 80 }),
+    ]).findings;
+    expect(first).toHaveLength(1);
+    const second = dedupeFindings([
+      ...first,
+      finding("async-graphql-introspection-enabled", { severity: "low" }),
+    ]);
+    expect(second.findings).toHaveLength(1);
+    expect(checkIdOf(second.findings[0])).toBe(
+      "async-graphql-introspection-enabled",
+    );
+    expect(second.findings[0].alsoReportedBy).toEqual([
+      "api-graphql-introspection-enabled",
+      "graphql-introspection",
+    ]);
+  });
+
   it("keeps findings with no group entirely untouched", () => {
     const input = [finding("hsts-missing"), finding("xcto-missing")];
     const { findings, merged } = dedupeFindings(input);

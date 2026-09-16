@@ -41,6 +41,8 @@ export interface CheckHit {
   confidence?: number;
   /** Overrides the check's declared severity for this instance. */
   severity?: Severity;
+  /** See Vulnerability.component. */
+  component?: string;
 }
 
 /**

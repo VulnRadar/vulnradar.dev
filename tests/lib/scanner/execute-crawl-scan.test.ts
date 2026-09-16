@@ -56,7 +56,12 @@ const mockRunSyncChecks = vi.fn();
 // the sync pass once per crawled page, so that is exactly the block that must
 // not hold the event loop for the whole page. Same arguments, same return
 // shape, awaited.
-vi.mock("@/lib/scanner/engine", () => ({
+// dedupeScanFindings is the real one: it is pure, and faking it would let a
+// crawl that stopped merging duplicate findings pass.
+vi.mock("@/lib/scanner/engine", async (importOriginal) => ({
+  dedupeScanFindings: (
+    await importOriginal<typeof import("@/lib/scanner/engine")>()
+  ).dedupeScanFindings,
   runSyncChecksYielding: async (...args: unknown[]) =>
     mockRunSyncChecks(...args),
   getPlannedSyncCategories: () => ["headers"],

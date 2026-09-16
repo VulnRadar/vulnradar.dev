@@ -66,6 +66,40 @@ const fixtures: PageCheckFixtures = {
       body: `<script src="/vendor/jquery.js"></script>`,
       expect: "skip",
     },
+    {
+      // The table used to hold one "fixed in" per library, 4.3.1 here, so the
+      // 3.x release that fixed CVE-2019-8331 was reported for it.
+      description:
+        "regression: Bootstrap 3.4.1 fixed CVE-2019-8331 on the 3.x line",
+      body: `<script src="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/js/bootstrap.min.js"></script>`,
+      expect: "skip",
+    },
+    {
+      description: "Bootstrap 3.3.7 is affected on the 3.x line",
+      body: `<script src="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/js/bootstrap.min.js"></script>`,
+      expect: "fire",
+      evidenceIncludes: "3.4.1 or later",
+    },
+    {
+      description: "regression: Underscore 1.12.1 fixed CVE-2021-23358",
+      body: `<script src="https://cdn.jsdelivr.net/npm/underscore@1.12.1/underscore-min.js"></script>`,
+      expect: "skip",
+    },
+    {
+      // The table said "fixed in 6.7.1" for an advisory fixed in 6.7.3.
+      description:
+        "regression: TinyMCE 6.7.1 is still affected by CVE-2023-48219",
+      body: `<script src="https://cdn.jsdelivr.net/npm/tinymce@6.7.1/tinymce.min.js"></script>`,
+      expect: "fire",
+      evidenceIncludes: "CVE-2023-48219",
+    },
+    {
+      description:
+        "the Handlebars template RCE is critical, not a uniform high",
+      body: `<script src="https://cdn.jsdelivr.net/npm/handlebars@4.7.6/dist/handlebars.min.js"></script>`,
+      expect: "fire",
+      evidenceIncludes: "CVSS 9.8",
+    },
   ],
   "page-angularjs-legacy-detected": [
     {
@@ -150,5 +184,53 @@ describe("page-outdated-vulnerable-library: two vulnerable libraries on one page
     expect(findings[0].id).toBe(
       generateId("page-outdated-vulnerable-library", url),
     );
+  });
+});
+
+describe("page-outdated-vulnerable-library: what a finding says", () => {
+  const url = "https://example.com";
+  const headers = new Headers();
+  const find = (body: string) =>
+    runSyncChecks(url, headers, body).findings.filter((f) =>
+      f.id.startsWith("page-outdated-vulnerable-library--"),
+    );
+
+  it("names only the advisories that affect this version", () => {
+    // 2.29.2 fixed CVE-2022-24785 and is still inside CVE-2022-31129's range.
+    const [finding] = find(
+      `<script src="https://cdn.jsdelivr.net/npm/moment@2.29.2/moment.min.js"></script>`,
+    );
+    expect(finding.evidence).toContain("CVE-2022-31129");
+    expect(finding.evidence).not.toContain("CVE-2022-24785");
+    expect(finding.evidence).toContain("2.29.4 or later fixes it.");
+  });
+
+  it("takes its severity from the worst advisory's CVSS score", () => {
+    const jquery = find(
+      `<script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>`,
+    );
+    expect(jquery[0].severity).toBe("medium");
+    const handlebars = find(
+      `<script src="https://cdn.jsdelivr.net/npm/handlebars@4.7.6/dist/handlebars.min.js"></script>`,
+    );
+    expect(handlebars[0].severity).toBe("critical");
+  });
+
+  it("names the library version as the finding's component", () => {
+    const [finding] = find(
+      `<script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>`,
+    );
+    expect(finding.component).toBe("jquery@1.12.4");
+  });
+
+  it("keeps two outdated libraries on one page as two findings through dedupe", () => {
+    const findings = find(
+      `<script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+       <script src="/vendor/lodash-4.17.15.min.js"></script>`,
+    );
+    expect(findings.map((f) => f.component).sort()).toEqual([
+      "jquery@1.12.4",
+      "lodash@4.17.15",
+    ]);
   });
 });

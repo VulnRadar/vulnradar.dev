@@ -125,6 +125,14 @@ export interface Vulnerability {
    * this finding by deduplication. Empty or absent when nothing was merged.
    */
   alsoReportedBy?: string[];
+  /**
+   * The one software component this finding is about, as
+   * `npm-package@version`, when a check can name it. Dedupe merges findings
+   * in a group only when their components match, so two checks reporting
+   * the same outdated library become one finding while two different
+   * outdated libraries on a page stay two.
+   */
+  component?: string;
   /** AI post-scan verdict (populated asynchronously after the scan completes) */
   aiVerdict?: "confirmed" | "possible_fp" | "uncertain";
   /** 60–97: AI confidence in its own verdict */

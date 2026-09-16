@@ -65,6 +65,19 @@ export interface SyncCheckResult {
 export const PAGE_CHECKS_INCOMPLETE = "page-checks";
 
 /**
+ * Dedupe a whole scan's findings: the page checks' own results together with
+ * everything that answered later (the async DNS, TLS and live-fetch checks,
+ * active probes, OSV.dev). runSyncChecks dedupes the page checks alone, and
+ * that pass never saw an async finding, so a merge rule naming one did
+ * nothing in a real scan: the live GraphQL query and the two keyword checks
+ * still arrived as three findings. Every path that combines the two calls
+ * this once over the combined list.
+ */
+export function dedupeScanFindings(findings: Vulnerability[]): Vulnerability[] {
+  return dedupeFindings(findings, pageCheckGroups).findings;
+}
+
+/**
  * A string that differs between two hits from the same check's `run()` call
  * when, and only when, the hits describe genuinely different things, so
  * `generateId` can fold it in and keep multi-hit findings from colliding on
@@ -111,6 +124,7 @@ function hitToVulnerability(
     confidence,
     detectionMethod: check.method,
     evidenceExcerpts: hit.excerpts,
+    ...(hit.component ? { component: hit.component } : {}),
   };
 }
 

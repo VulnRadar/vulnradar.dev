@@ -399,6 +399,18 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: ShieldAlert,
+        label: "One Outdated Library, One Finding, With Its Real Severity",
+        desc: "An old jQuery used to arrive as up to six findings: one from the built-in library table and one per OSV.dev advisory, capped at five, with any advisory past the fifth dropped without a word. It is one finding now, listing every advisory worst first and naming the single upgrade that fixes all of them, or saying so when no fixed release exists for that line. When OSV.dev cannot be reached, the built-in table still answers, and it was wrong in more places than it was right. It held one fixed version per library, so Bootstrap 3.4.1 and Underscore 1.12.1 were reported for the very CVEs those releases fixed, TinyMCE 6.7.1 was cleared of an advisory not fixed until 6.7.3, and Moment.js 2.29.2 was blamed for a CVE it fixed. Every hit was also rated high, including a Handlebars template RCE scored 9.8 and a jQuery XSS scored 6.9. It now records each advisory's affected ranges and published score the way OSV does. The two checks also detected libraries from separate copies of the same patterns that had drifted apart; they share one list, which also reads cdnjs's versioned folders.",
+        category: "engine",
+      },
+      {
+        icon: Layers,
+        label: "Duplicate Findings Merge Across the Whole Scan",
+        desc: "Merging duplicate findings only ever looked at the page checks. Everything that answers later, the DNS, TLS and live checks, active probes and the OSV.dev lookup, was added after that merge, so any rule pairing one of them with a page check did nothing in a real scan: the live GraphQL introspection query and the two keyword checks that guess at it still arrived as three findings. The merge now runs once more over the complete result, keeping every check already credited in the first pass, and a check that confirmed an issue against a live source is kept over one that inferred it. The landing page demo skipped the shared engine entirely and ran the legacy checks alone, with no parsed-page checks, no reading of the page a redirect landed on and no merging, so a visitor trying it saw a noisier verdict than an account gets for the same address. It runs the same engine now.",
+        category: "engine",
+      },
+      {
         icon: CheckCheck,
         label: "Wrong Verdicts Corrected",
         desc: "Sites enforcing Trusted Types were told they were not, because the check searched the policy for the JavaScript API's name instead of the directive. Algolia's public search key, which Algolia's own documentation names ApiKey, was reported as a leaked admin key at critical. One check stated that jsonwebtoken accepts any algorithm when none is specified, which version 9 does not, and reported every verify call without one as critical; only an explicit none is reported now. Hardening guides that mention /.git/config were reported as exposing it. In the other direction: postMessage calls with a transfer list were missed, one Secure cookie hid every insecure cookie in the same response, a library pinned as jquery@1.12.4 the way jsDelivr and unpkg load it was never matched, Docker Hub organization tokens were not recognised, and neither was the /swagger-ui path.",
@@ -557,7 +569,7 @@ const CHANGELOG: Release[] = [
       {
         icon: ShieldAlert,
         label: "Engine Version 3.4.0",
-        desc: "The detection engine moves from 3.3.2 to 3.4.0. Scan results change for the reasons in the Engine & Checks section: pages are read the way a browser acts on them, error pages are matched by their own markup, two new certificate findings, and fifty-three checks that could never fire leave the catalog. Finding identifiers for the checks that remain are unchanged, so triage marks and regression baselines carry over.",
+        desc: "The detection engine moves from 3.3.2 to 3.4.0. Scan results change for the reasons in the Engine & Checks section: pages are read the way a browser acts on them, error pages are matched by their own markup, two new certificate findings, and fifty-three checks that could never fire leave the catalog. Finding identifiers for the checks that remain are unchanged, so triage marks and regression baselines carry over, with one exception: the OSV.dev dependency check now reports one finding per library version instead of one per advisory, so its findings get new identifiers once.",
         category: "changed",
       },
       {

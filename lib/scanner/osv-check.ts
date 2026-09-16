@@ -1,13 +1,19 @@
 /**
  * Live dependency-vulnerability check via OSV.dev.
  *
- * lib/scanner/checks/page-checks/libraries.ts already flags a small, hand-
- * maintained table of library version ranges against a handful of CVEs
- * someone picked at one point in time. This check uses the exact same safe,
- * passive detection technique (read a version out of a script's own
- * filename or CDN-pinned URL, never execute anything) but queries OSV.dev
- * live for each detected library + version, so it reflects whatever OSV
- * currently knows -- not a frozen snapshot.
+ * Reads a library and exact version out of each script tag's URL (the shared
+ * fingerprints in library-fingerprints.ts; passive, never executes anything)
+ * and asks OSV.dev which published advisories affect that version, so the
+ * answer reflects whatever OSV currently knows rather than a frozen snapshot.
+ * checks/page-checks/libraries.ts answers the same question offline from a
+ * small built-in list; both set the same `component` and share a dedupe
+ * group, and this check's finding is the one kept.
+ *
+ * One finding per library and version, listing every advisory. It used to be
+ * one finding per advisory, capped at five, so an old jQuery arrived as five
+ * findings with the same fix, and the sixth advisory onward was dropped
+ * without a word. The fix for all of them is one upgrade, which the finding
+ * now names when OSV records a fixed release for every advisory it lists.
  *
  * Passive, not an active probe: this only ever reads the page once (a
  * request that already happens as part of a normal scan) and queries a
@@ -24,10 +30,19 @@ import { isPrivateHostname, safeFetch } from "./safe-fetch";
 import { openTags } from "./checks/_tag-scan";
 import { generateId } from "./_helpers";
 import { getCheckDef } from "./registry";
-import { computeCvssBaseScore, type CvssMetrics } from "./cvss";
-import { queryOsv, type OsvVuln } from "./osv-lookup";
+import {
+  computeCvssBaseScore,
+  parseCvssVector,
+  severityFromCvssScore,
+} from "./cvss";
+import { fixedVersionFor, queryOsv, type OsvVuln } from "./osv-lookup";
+import {
+  detectLibrary,
+  libraryComponent,
+  versionBelow,
+} from "./library-fingerprints";
 import type { Vulnerability, Category, Severity } from "./types";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
 
 const USER_AGENT = `${APP_NAME}/1.0 (Security Scanner; Dependency Check; +${APP_URL})`;
 const REQUEST_TIMEOUT_MS = 8000;
@@ -35,103 +50,9 @@ const REQUEST_TIMEOUT_MS = 8000;
 /** Caps how many distinct libraries get an OSV.dev lookup per scan -- a page
  *  can reference far more script tags than any real site would load. */
 const MAX_LIBRARIES_TO_CHECK = 15;
-/** Caps findings per library: a widely-used, long-lived library like jQuery
- *  can carry dozens of historical advisories against old versions. Keeps
- *  the highest-severity ones (see the sort before slicing below) rather
- *  than flooding a single outdated dependency into dozens of findings. */
-const MAX_VULNS_PER_LIBRARY = 5;
-
-interface LibraryFingerprint {
-  name: string;
-  /** The exact OSV.dev/npm registry package name to query. */
-  npmPackage: string;
-  /** Matches the library's identity in the resolved script URL. */
-  filePattern: RegExp;
-  /** Extracts a full x.y.z version from the same resolved script URL. */
-  versionPattern: RegExp;
-}
-
-// Same libraries and detection patterns as libraries.ts's static table,
-// where a match exists, plus a few more well-known libraries whose CDN
-// convention reliably pins a full semver into the URL (unpkg.com/jsdelivr's
-// `package@x.y.z` path segment). Deliberately excludes libraries whose
-// common CDN convention only encodes a MAJOR version (e.g. d3js.org's
-// `d3.v7.min.js`) -- OSV.dev needs an exact version to match affected
-// ranges precisely, and a wrong guess is worse than no detection.
-const LIBRARY_FINGERPRINTS: LibraryFingerprint[] = [
-  {
-    name: "jQuery",
-    npmPackage: "jquery",
-    filePattern: /jquery(?!-ui)/i,
-    versionPattern: /jquery[-.@]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "jQuery UI",
-    npmPackage: "jquery-ui",
-    filePattern: /jquery-ui/i,
-    versionPattern: /jquery-ui[-.@]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "Bootstrap",
-    npmPackage: "bootstrap",
-    filePattern: /bootstrap/i,
-    versionPattern: /bootstrap[-.@]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "Lodash",
-    npmPackage: "lodash",
-    filePattern: /lodash/i,
-    versionPattern: /lodash[-.@]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "Moment.js",
-    npmPackage: "moment",
-    filePattern: /moment/i,
-    versionPattern: /moment[-.@]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "Handlebars",
-    npmPackage: "handlebars",
-    filePattern: /handlebars/i,
-    versionPattern: /handlebars[-.@]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "Underscore.js",
-    npmPackage: "underscore",
-    filePattern: /underscore/i,
-    versionPattern: /underscore[-.@]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "Axios",
-    npmPackage: "axios",
-    filePattern: /axios/i,
-    versionPattern: /axios[-.@]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "Vue.js",
-    npmPackage: "vue",
-    filePattern: /\bvue[@/.]/i,
-    versionPattern: /vue[@/-]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "React",
-    npmPackage: "react",
-    filePattern: /\breact(?!-dom)[@/.]/i,
-    versionPattern: /react[@/-]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "Alpine.js",
-    npmPackage: "alpinejs",
-    filePattern: /alpinejs/i,
-    versionPattern: /alpinejs[@/-]?(\d+\.\d+\.\d+)/i,
-  },
-  {
-    name: "GSAP",
-    npmPackage: "gsap",
-    filePattern: /\bgsap[@/.]/i,
-    versionPattern: /gsap[@/-]?(\d+\.\d+\.\d+)/i,
-  },
-];
+/** How many advisories the evidence text spells out, worst first. The rest
+ *  are counted, and every one of them is still in cveIds and references. */
+const ADVISORIES_IN_EVIDENCE = 5;
 
 /**
  * The src of every script tag, in document order.
@@ -152,8 +73,6 @@ interface DetectedLibrary {
 
 // Exported so lib/scanner/software-inventory.ts can list the SAME client-side
 // libraries in its inventory panel without re-implementing this detection.
-// Export-only change: this remains the exact function osv-check itself uses,
-// so OSV finding behavior is unchanged.
 export function extractDetectedLibraries(
   html: string,
   baseUrl: string,
@@ -171,92 +90,31 @@ export function extractDetectedLibraries(
     } catch {
       continue;
     }
-    const src = resolved.toString();
-
-    for (const fp of LIBRARY_FINGERPRINTS) {
-      if (!fp.filePattern.test(src)) continue;
-      const versionMatch = src.match(fp.versionPattern);
-      if (!versionMatch) continue;
-      const key = `${fp.npmPackage}@${versionMatch[1]}`;
-      if (seen.has(key)) break;
-      seen.add(key);
-      detected.push({
-        name: fp.name,
-        npmPackage: fp.npmPackage,
-        version: versionMatch[1],
-        scriptUrl: src,
-      });
-      break; // one fingerprint match per script tag
-    }
+    const scriptUrl = resolved.toString();
+    const lib = detectLibrary(scriptUrl);
+    if (!lib) continue;
+    const key = libraryComponent(lib);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    detected.push({ ...lib, scriptUrl });
   }
 
   return detected;
 }
 
-const CVSS_METRIC_VALUES: Record<string, string[]> = {
-  AV: ["N", "A", "L", "P"],
-  AC: ["L", "H"],
-  PR: ["N", "L", "H"],
-  UI: ["N", "R"],
-  S: ["U", "C"],
-  C: ["N", "L", "H"],
-  I: ["N", "L", "H"],
-  A: ["N", "L", "H"],
-};
-
-/**
- * Parses a CVSS 3.x vector string (e.g.
- * "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", with or without the
- * leading "CVSS:3.x/" component) into computeCvssBaseScore's input shape.
- * Returns null when any required metric is missing or has an unrecognized
- * value, rather than guessing.
- */
-function parseCvssVector(vector: string): CvssMetrics | null {
-  const values: Record<string, string> = {};
-  for (const part of vector.split("/")) {
-    const [key, value] = part.split(":");
-    if (key && value) values[key] = value;
-  }
-  for (const [key, allowed] of Object.entries(CVSS_METRIC_VALUES)) {
-    if (!allowed.includes(values[key])) return null;
-  }
-  return {
-    av: values.AV as CvssMetrics["av"],
-    ac: values.AC as CvssMetrics["ac"],
-    pr: values.PR as CvssMetrics["pr"],
-    ui: values.UI as CvssMetrics["ui"],
-    scope: values.S as CvssMetrics["scope"],
-    c: values.C as CvssMetrics["c"],
-    i: values.I as CvssMetrics["i"],
-    a: values.A as CvssMetrics["a"],
-  };
-}
-
-/** Same severity bands NVD uses for a CVSS score (see lib/scanner/cvss.ts's
- *  header comment): Critical 9.0-10.0, High 7.0-8.9, Medium 4.0-6.9, Low
- *  0.1-3.9, None 0.0. */
-function severityFromCvssScore(score: number): Severity {
-  if (score >= 9.0) return "critical";
-  if (score >= 7.0) return "high";
-  if (score >= 4.0) return "medium";
-  if (score > 0) return "low";
-  return "info";
-}
-
 interface ScoredVuln {
   vuln: OsvVuln;
-  severity: Severity;
+  /** Absent when OSV gives no CVSS 3.x vector this module can score. */
+  severity?: Severity;
   cvssVector?: string;
   cvssScore?: number;
 }
 
 /**
- * Scores one OSV vuln from its own CVSS 3.x data when present (a REAL,
- * per-instance vector -- computeCvssBaseScore never invents one), falling
- * back to "high" (unscored but a confirmed exact-version advisory match,
- * the same uniform severity libraries.ts's static table already uses for
- * every one of its own hand-picked entries) when OSV gives no parseable
- * CVSS score for this advisory.
+ * Scores one OSV advisory from its own CVSS 3.x vector when present (a REAL,
+ * per-instance vector -- computeCvssBaseScore never invents one). Many
+ * advisories carry only a CVSS 4.0 vector or none; those stay unscored rather
+ * than being given a number.
  */
 function scoreVuln(vuln: OsvVuln): ScoredVuln {
   for (const sev of vuln.severity) {
@@ -271,53 +129,105 @@ function scoreVuln(vuln: OsvVuln): ScoredVuln {
       cvssScore,
     };
   }
-  return { vuln, severity: "high" };
+  return { vuln };
 }
 
+function cveIdsOf(vuln: OsvVuln): string[] {
+  return vuln.aliases.filter((a) => /^CVE-\d{4}-\d{4,}$/i.test(a));
+}
+
+/**
+ * The single finding for one library version: every advisory, the worst
+ * scored severity, and the release that fixes all of them when OSV records
+ * one for each. A library whose advisories are all unscored is reported as
+ * high, since OSV has confirmed an advisory affects this exact version.
+ */
 function buildOsvFinding(
   url: string,
   lib: DetectedLibrary,
-  scored: ScoredVuln,
+  vulns: OsvVuln[],
 ): Vulnerability | null {
   const def = getCheckDef("osv-vulnerable-library");
   if (!def) return null;
 
-  const { vuln, severity, cvssVector, cvssScore } = scored;
-  const cveIds = vuln.aliases.filter((a) => /^CVE-\d{4}-\d{4,}$/i.test(a));
-  const summary =
-    vuln.summary ||
-    vuln.details?.slice(0, 300) ||
-    "See the OSV.dev advisory for details.";
+  const scored = vulns
+    .map(scoreVuln)
+    .sort((a, b) => (b.cvssScore ?? -1) - (a.cvssScore ?? -1));
+  const worst = scored[0];
+  const severity: Severity =
+    scored.reduce<Severity | undefined>(
+      (acc, s) =>
+        s.severity &&
+        (!acc || SEVERITY_PRIORITY[s.severity] > SEVERITY_PRIORITY[acc])
+          ? s.severity
+          : acc,
+      undefined,
+    ) ?? "high";
+
+  const cveIds = [...new Set(scored.flatMap((s) => cveIdsOf(s.vuln)))];
+
+  const fixes = scored.map((s) => fixedVersionFor(s.vuln, lib.version));
+  const upgradeTo = fixes.every((f): f is string => typeof f === "string")
+    ? fixes.reduce((highest, v) => (versionBelow(highest, v) ? v : highest))
+    : null;
+  const unfixed = fixes.filter((f) => f === null).length;
+
+  const listed = scored
+    .slice(0, ADVISORIES_IN_EVIDENCE)
+    .map((s) => {
+      const cves = cveIdsOf(s.vuln);
+      const label = `${s.vuln.id}${cves.length ? ` (${cves.join(", ")})` : ""}`;
+      const score =
+        s.cvssScore !== undefined ? `, CVSS ${s.cvssScore.toFixed(1)}` : "";
+      const summary =
+        s.vuln.summary || s.vuln.details?.slice(0, 200) || "see the advisory";
+      return `${label}${score}: ${summary}`;
+    })
+    .join("; ");
+  const more =
+    scored.length > ADVISORIES_IN_EVIDENCE
+      ? ` Plus ${scored.length - ADVISORIES_IN_EVIDENCE} more, listed in the references.`
+      : "";
+  const one = scored.length === 1;
+  const remedy = upgradeTo
+    ? ` ${upgradeTo} or later fixes ${one ? "it" : "all of them"}.`
+    : unfixed > 0
+      ? ` OSV records no fixed release for ${unfixed === scored.length ? (one ? "it" : "any of them") : `${unfixed} of them`} on this version's line.`
+      : "";
 
   return {
-    id: generateId(def.id, url, `${lib.npmPackage}@${lib.version}:${vuln.id}`),
+    id: generateId(def.id, url, libraryComponent(lib)),
     title: def.title,
     severity,
     category: def.category as Category,
     description: def.description,
-    evidence: `${lib.name} ${lib.version} (loaded from ${lib.scriptUrl}) matches OSV advisory ${vuln.id}${cveIds.length ? ` (${cveIds.join(", ")})` : ""}: ${summary}`,
+    evidence: `${lib.name} ${lib.version} (loaded from ${lib.scriptUrl}) is affected by ${one ? "an OSV advisory" : `${scored.length} OSV advisories`}. ${listed}.${more}${remedy}`,
     riskImpact: def.riskImpact,
     explanation: def.explanation,
     fixSteps: def.fixSteps,
     codeExamples: def.codeExamples,
     references: [
       ...(def.references ?? []),
-      `https://osv.dev/vulnerability/${vuln.id}`,
+      ...scored.map((s) => `https://osv.dev/vulnerability/${s.vuln.id}`),
     ],
     confidence: 90,
     detectionMethod: "OSV.dev live dependency lookup",
+    evidenceExcerpts: [{ label: "script src", value: lib.scriptUrl }],
+    component: libraryComponent(lib),
     ...(def.cwe ? { cwe: def.cwe } : {}),
     ...(def.owasp ? { owasp: def.owasp } : {}),
     ...(cveIds.length ? { cveIds } : {}),
-    ...(cvssVector ? { cvssVector, cvssScore } : {}),
+    ...(worst?.cvssVector
+      ? { cvssVector: worst.cvssVector, cvssScore: worst.cvssScore }
+      : {}),
   };
 }
 
 /**
  * Fetches `url`, extracts every recognizable client-side library + exact
  * version from its script tags (up to MAX_LIBRARIES_TO_CHECK), and queries
- * OSV.dev live for each one. Returns a finding per matching advisory, up to
- * MAX_VULNS_PER_LIBRARY per library, highest-severity first.
+ * OSV.dev live for each one. Returns one finding per library version that
+ * any advisory affects.
  *
  * Fails open (returns []) on any error at any stage: a missing page, an
  * unreachable target, or an OSV.dev outage. A failure here must never crash
@@ -369,15 +279,8 @@ export async function checkOsvVulnerableLibraries(
     if (result.status !== "fulfilled" || result.value.vulns.length === 0) {
       continue;
     }
-    const { lib, vulns } = result.value;
-    const scored = vulns
-      .map(scoreVuln)
-      .sort((a, b) => (b.cvssScore ?? 0) - (a.cvssScore ?? 0))
-      .slice(0, MAX_VULNS_PER_LIBRARY);
-    for (const s of scored) {
-      const finding = buildOsvFinding(url, lib, s);
-      if (finding) findings.push(finding);
-    }
+    const finding = buildOsvFinding(url, result.value.lib, result.value.vulns);
+    if (finding) findings.push(finding);
   }
 
   return findings;

@@ -19,7 +19,7 @@
 import type { PageCheck, CheckHit } from "../../check-types";
 import { excerpt } from "../../check-types";
 import type { PageContext } from "../../page-context";
-import { versionBelow } from "./libraries";
+import { versionBelow } from "../../library-fingerprints";
 
 interface CmsDetection {
   name: string;

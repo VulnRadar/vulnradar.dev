@@ -312,6 +312,59 @@ export const CVSS_SEVERITY_BAND: Record<Severity, readonly [number, number]> = {
   info: [0.0, 0.0],
 };
 
+// Shared by the two library checks, which score real advisories rather than
+// a finding class: osv-check.ts from OSV.dev's vectors, and the offline
+// snapshot in checks/page-checks/libraries.ts from the same published scores.
+const CVSS_METRIC_VALUES: Record<string, string[]> = {
+  AV: ["N", "A", "L", "P"],
+  AC: ["L", "H"],
+  PR: ["N", "L", "H"],
+  UI: ["N", "R"],
+  S: ["U", "C"],
+  C: ["N", "L", "H"],
+  I: ["N", "L", "H"],
+  A: ["N", "L", "H"],
+};
+
+/**
+ * Parses a CVSS 3.x vector string (e.g.
+ * "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", with or without the
+ * leading "CVSS:3.x/" component) into computeCvssBaseScore's input shape.
+ * Returns null when any required metric is missing or has an unrecognized
+ * value, rather than guessing.
+ */
+export function parseCvssVector(vector: string): CvssMetrics | null {
+  const values: Record<string, string> = {};
+  for (const part of vector.split("/")) {
+    const [key, value] = part.split(":");
+    if (key && value) values[key] = value;
+  }
+  for (const [key, allowed] of Object.entries(CVSS_METRIC_VALUES)) {
+    if (!allowed.includes(values[key])) return null;
+  }
+  return {
+    av: values.AV as CvssMetrics["av"],
+    ac: values.AC as CvssMetrics["ac"],
+    pr: values.PR as CvssMetrics["pr"],
+    ui: values.UI as CvssMetrics["ui"],
+    scope: values.S as CvssMetrics["scope"],
+    c: values.C as CvssMetrics["c"],
+    i: values.I as CvssMetrics["i"],
+    a: values.A as CvssMetrics["a"],
+  };
+}
+
+/** Same severity bands NVD uses for a CVSS score (see this file's header
+ *  comment): Critical 9.0-10.0, High 7.0-8.9, Medium 4.0-6.9, Low
+ *  0.1-3.9, None 0.0. */
+export function severityFromCvssScore(score: number): Severity {
+  if (score >= 9.0) return "critical";
+  if (score >= 7.0) return "high";
+  if (score >= 4.0) return "medium";
+  if (score > 0) return "low";
+  return "info";
+}
+
 // Categories whose findings are fundamentally about exposing information
 // rather than tampering with or degrading the target.
 const CONFIDENTIALITY_CATEGORIES = new Set<Category>([

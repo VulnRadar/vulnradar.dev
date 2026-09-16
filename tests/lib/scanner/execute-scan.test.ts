@@ -37,7 +37,12 @@ const mockRunSyncChecks = vi.fn();
 // executeScan drives the yielding variant (AUDIT-011#scan-06): the check loop
 // releases the event loop between categories instead of blocking it for the
 // whole ~1.2s pass on a 1MB body. Same arguments, same return shape, awaited.
-vi.mock("@/lib/scanner/engine", () => ({
+// dedupeScanFindings is the real one: it is pure, and faking it would let a
+// scan that stopped merging page and async findings pass.
+vi.mock("@/lib/scanner/engine", async (importOriginal) => ({
+  dedupeScanFindings: (
+    await importOriginal<typeof import("@/lib/scanner/engine")>()
+  ).dedupeScanFindings,
   runSyncChecksYielding: async (...args: unknown[]) =>
     mockRunSyncChecks(...args),
 }));
@@ -214,6 +219,77 @@ describe("executeScan", () => {
     // findings JSON, count, summary JSON, duration, scannedAt, headers JSON, resultMeta JSON, finalUrl, id
     expect((completedParams as unknown[])[7]).toBeNull(); // no redirect in this fixture
     expect((completedParams as unknown[])[8]).toBe(1);
+  });
+
+  it("merges an async finding into the page check that reported the same issue", async () => {
+    // The page checks' own dedupe pass never saw async findings, so the live
+    // OSV.dev result and the offline snapshot arrived as two findings about
+    // one library. Two different libraries must still stay two.
+    const libraryFinding = (
+      checkId: string,
+      component: string,
+      severity: "high" | "medium",
+    ) => ({
+      id: `${checkId}--${component}`,
+      title: checkId,
+      severity,
+      category: "supply-chain" as const,
+      description: "d",
+      evidence: "e",
+      riskImpact: "r",
+      explanation: "x",
+      fixSteps: [],
+      codeExamples: [],
+      component,
+    });
+    mockSafeFetch.mockResolvedValue(
+      new Response("<html><body>ok</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    mockRunSyncChecks.mockResolvedValue({
+      findings: [
+        libraryFinding(
+          "page-outdated-vulnerable-library",
+          "jquery@1.12.4",
+          "high",
+        ),
+        libraryFinding(
+          "page-outdated-vulnerable-library",
+          "lodash@4.17.15",
+          "high",
+        ),
+      ],
+      checksRun: 5,
+      checksSkipped: 0,
+      checksErrored: 0,
+      erroredChecks: [],
+      deduped: 0,
+    });
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [
+        libraryFinding("osv-vulnerable-library", "jquery@1.12.4", "medium"),
+      ],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams());
+
+    const completedCall = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("status = 'completed'"),
+    );
+    const persisted = JSON.parse(
+      (completedCall![1] as unknown[])[0] as string,
+    ) as Array<{ id: string; alsoReportedBy?: string[] }>;
+    const ids = persisted.map((f) => f.id).sort();
+    expect(ids).toEqual([
+      "osv-vulnerable-library--jquery@1.12.4",
+      "page-outdated-vulnerable-library--lodash@4.17.15",
+    ]);
+    expect(
+      persisted.find((f) => f.id.startsWith("osv-"))?.alsoReportedBy,
+    ).toEqual(["page-outdated-vulnerable-library"]);
   });
 
   it("attaches a sourcemap-sourcescontent-exposed finding when the page references a .map file whose sourcesContent is live and non-empty", async () => {

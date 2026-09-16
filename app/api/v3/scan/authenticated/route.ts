@@ -43,6 +43,7 @@ import {
 } from "@/lib/scanner/safety-rating";
 import {
   PAGE_CHECKS_INCOMPLETE,
+  dedupeScanFindings,
   runSyncChecksYielding,
 } from "@/lib/scanner/engine";
 import {
@@ -536,7 +537,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
     }
 
-    const findings = [...syncFindings, ...asyncFindings].sort(
+    const findings = dedupeScanFindings([
+      ...syncFindings,
+      ...asyncFindings,
+    ]).sort(
       (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
     );
 

@@ -9,7 +9,11 @@
  * fire-and-forget, instead of racing a detached promise.
  */
 
-import { PAGE_CHECKS_INCOMPLETE, runSyncChecksYielding } from "./engine";
+import {
+  PAGE_CHECKS_INCOMPLETE,
+  dedupeScanFindings,
+  runSyncChecksYielding,
+} from "./engine";
 import {
   runAsyncChecksDetailed,
   getPlannedAsyncBranches,
@@ -744,14 +748,14 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       if (inventoryTimeoutHandle) clearTimeout(inventoryTimeoutHandle);
     }
 
-    let findings = [
+    let findings = dedupeScanFindings([
       ...protocolSpecificFindings,
       ...syncResult.findings,
       ...asyncResult.findings,
       ...(sourceMapFinding ? [sourceMapFinding] : []),
       ...riskyPortFindings,
       ...(softwareInventory?.findings ?? []),
-    ];
+    ]);
 
     // Worst first. SEVERITY_PRIORITY counts UP with severity, so this
     // comparator subtracts b from a, unlike the local table it replaced

@@ -29,7 +29,7 @@ export const CHECK_CATEGORY_LAST_MODIFIED: Record<string, string> = {
   reputation: "2026-08-12",
   "secrets-extended": "2026-08-13",
   ssl: "2026-09-16",
-  "supply-chain": "2026-09-03",
+  "supply-chain": "2026-09-16",
   tls: "2026-09-16",
   "vibe-code": "2026-09-16",
 };

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { allChecks } from "@/lib/scanner/registry";
+import {
+  PAGE_CHECKS_INCOMPLETE,
+  dedupeScanFindings,
+  runSyncChecksYielding,
+} from "@/lib/scanner/engine";
 import {
   runAsyncChecksDetailed,
   getPlannedAsyncBranches,
@@ -219,15 +223,22 @@ export async function POST(request: NextRequest) {
       responseBody.length > MAX_BODY_SIZE
         ? responseBody.slice(0, MAX_BODY_SIZE)
         : responseBody;
-    const syncFindings: Vulnerability[] = [];
-    for (const check of allChecks) {
-      try {
-        const result = check(url, headers, bodyForChecks);
-        if (result) syncFindings.push(result);
-      } catch {
-        // Skip failed checks
-      }
-    }
+    // The same engine every other scan runs. This loop used to call the
+    // legacy detectors directly, so the demo on the landing page skipped
+    // every parsed-page check, the prose view that keeps a page about a
+    // vulnerability from scoring as having one, the check that judges the
+    // page the redirect landed on, and deduplication: a visitor trying the
+    // product saw a different, noisier verdict than the one an account gets
+    // for the same URL.
+    const syncResult = await runSyncChecksYielding(
+      url,
+      headers,
+      bodyForChecks,
+      null,
+      undefined,
+      response.url && response.url !== url ? response.url : undefined,
+    );
+    const syncFindings: Vulnerability[] = syncResult.findings;
 
     // Read cached subdomains only. cacheOnly is essential here: the demo is
     // anonymous, so it must never trigger the live passive-source + DNS
@@ -315,7 +326,9 @@ export async function POST(request: NextRequest) {
       subdomains = undefined;
     }
 
-    const findings = [...syncFindings, ...asyncFindings];
+    if (syncResult.checksErrored > 0) incomplete.push(PAGE_CHECKS_INCOMPLETE);
+
+    const findings = dedupeScanFindings([...syncFindings, ...asyncFindings]);
     findings.sort(
       (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
     );

@@ -5,7 +5,7 @@ vi.mock("@/lib/config/runtime-config", () => ({
   getSetting: (...args: unknown[]) => mockGetSetting(...args),
 }));
 
-import { queryOsv } from "@/lib/scanner/osv-lookup";
+import { fixedVersionFor, queryOsv } from "@/lib/scanner/osv-lookup";
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
@@ -117,6 +117,107 @@ describe("queryOsv", () => {
         }),
     });
     const vulns = await queryOsv("npm", "jquery", "1.8.2");
-    expect(vulns).toEqual([{ id: "GHSA-1", aliases: [], severity: [] }]);
+    expect(vulns).toEqual([
+      { id: "GHSA-1", aliases: [], severity: [], affected: [] },
+    ]);
+  });
+});
+
+describe("affected intervals", () => {
+  // The shape api.osv.dev/v1/query returned for jquery@1.12.4 on
+  // GHSA-rmxg-73gg-4p98 (CVE-2015-9251): two SEMVER ranges for jquery, plus
+  // an entry for a different package that must not leak in.
+  const RAW = {
+    id: "GHSA-rmxg-73gg-4p98",
+    aliases: ["CVE-2015-9251"],
+    affected: [
+      {
+        package: { name: "jquery", ecosystem: "npm" },
+        ranges: [
+          {
+            type: "SEMVER",
+            events: [{ introduced: "0" }, { fixed: "1.12.2" }],
+          },
+          {
+            type: "SEMVER",
+            events: [{ introduced: "1.12.3" }, { fixed: "3.0.0" }],
+          },
+          { type: "GIT", events: [{ introduced: "abc123" }, { fixed: "def" }] },
+        ],
+      },
+      {
+        package: { name: "jquery-rails", ecosystem: "RubyGems" },
+        ranges: [
+          {
+            type: "ECOSYSTEM",
+            events: [{ introduced: "0" }, { fixed: "9.9.9" }],
+          },
+        ],
+      },
+    ],
+  };
+
+  async function parsed(raw: unknown, packageName = "jquery") {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ vulns: [raw] }),
+    });
+    const [vuln] = await queryOsv("npm", packageName, "1.12.4");
+    return vuln;
+  }
+
+  it("keeps only the queried package's version ranges", async () => {
+    const vuln = await parsed(RAW);
+    expect(vuln.affected).toEqual([
+      { introduced: "0", fixed: "1.12.2" },
+      { introduced: "1.12.3", fixed: "3.0.0" },
+    ]);
+  });
+
+  it("finds the release that fixes the interval a version falls in", async () => {
+    const vuln = await parsed(RAW);
+    expect(fixedVersionFor(vuln, "1.12.4")).toBe("3.0.0");
+    expect(fixedVersionFor(vuln, "1.9.1")).toBe("1.12.2");
+    // 1.12.2 is the fix for the first interval and before the second.
+    expect(fixedVersionFor(vuln, "1.12.2")).toBeUndefined();
+  });
+
+  it("reads last_affected as affected with no fixed release", async () => {
+    const vuln = await parsed(
+      {
+        id: "GHSA-x",
+        affected: [
+          {
+            package: { name: "tinymce", ecosystem: "npm" },
+            ranges: [
+              {
+                type: "ECOSYSTEM",
+                events: [{ introduced: "0" }, { last_affected: "5.10.9" }],
+              },
+            ],
+          },
+        ],
+      },
+      "tinymce",
+    );
+    expect(vuln.affected).toEqual([
+      { introduced: "0", lastAffected: "5.10.9" },
+    ]);
+    expect(fixedVersionFor(vuln, "5.10.9")).toBeNull();
+    expect(fixedVersionFor(vuln, "5.10.10")).toBeUndefined();
+  });
+
+  it("treats an interval that never closes as unfixed", async () => {
+    const vuln = await parsed({
+      id: "GHSA-open",
+      affected: [
+        {
+          package: { name: "jquery", ecosystem: "npm" },
+          ranges: [{ type: "SEMVER", events: [{ introduced: "1.0.0" }] }],
+        },
+      ],
+    });
+    expect(fixedVersionFor(vuln, "1.12.4")).toBeNull();
+    expect(fixedVersionFor(vuln, "0.9.0")).toBeUndefined();
   });
 });

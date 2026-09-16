@@ -22,12 +22,26 @@
 
 import { APP_NAME } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import { versionBelow } from "./library-fingerprints";
 
 const OSV_QUERY_URL = "https://api.osv.dev/v1/query";
 
 export interface OsvSeverity {
   type: string;
   score: string;
+}
+
+/**
+ * One affected interval for the queried package, flattened from OSV's event
+ * list. `introduced` "0" means every version before the end. An interval
+ * ends at `fixed` (exclusive) or `lastAffected` (inclusive, and means no
+ * fixed release was recorded), or at neither when every later version is
+ * still affected.
+ */
+export interface OsvAffectedInterval {
+  introduced: string;
+  fixed?: string;
+  lastAffected?: string;
 }
 
 export interface OsvVuln {
@@ -38,13 +52,84 @@ export interface OsvVuln {
   summary?: string;
   details?: string;
   severity: OsvSeverity[];
+  /** SEMVER and ECOSYSTEM intervals recorded for the queried package only. */
+  affected: OsvAffectedInterval[];
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
-function parseOsvVuln(raw: unknown): OsvVuln | null {
+function parseAffected(
+  raw: Record<string, unknown>,
+  packageName: string,
+): OsvAffectedInterval[] {
+  const intervals: OsvAffectedInterval[] = [];
+  const entries = Array.isArray(raw.affected) ? raw.affected : [];
+  for (const entry of entries) {
+    if (!isRecord(entry) || !isRecord(entry.package)) continue;
+    const name = entry.package.name;
+    if (typeof name !== "string") continue;
+    if (name.toLowerCase() !== packageName.toLowerCase()) continue;
+    const ranges = Array.isArray(entry.ranges) ? entry.ranges : [];
+    for (const range of ranges) {
+      if (!isRecord(range)) continue;
+      // GIT ranges are commit hashes, not versions.
+      if (range.type !== "SEMVER" && range.type !== "ECOSYSTEM") continue;
+      const events = Array.isArray(range.events) ? range.events : [];
+      let open: string | null = null;
+      for (const event of events) {
+        if (!isRecord(event)) continue;
+        if (typeof event.introduced === "string") {
+          open = event.introduced;
+        } else if (open !== null && typeof event.fixed === "string") {
+          intervals.push({ introduced: open, fixed: event.fixed });
+          open = null;
+        } else if (open !== null && typeof event.last_affected === "string") {
+          intervals.push({
+            introduced: open,
+            lastAffected: event.last_affected,
+          });
+          open = null;
+        }
+      }
+      if (open !== null) intervals.push({ introduced: open });
+    }
+  }
+  return intervals;
+}
+
+/**
+ * The release that fixes `version` for this advisory: a version string when
+ * OSV records one for the interval `version` falls in, null when it falls in
+ * an interval with no fixed release, and undefined when OSV's ranges do not
+ * place it at all (the advisory matched on its explicit version list).
+ */
+export function fixedVersionFor(
+  vuln: OsvVuln,
+  version: string,
+): string | null | undefined {
+  for (const interval of vuln.affected) {
+    if (
+      interval.introduced !== "0" &&
+      versionBelow(version, interval.introduced)
+    ) {
+      continue;
+    }
+    if (interval.fixed !== undefined) {
+      if (versionBelow(version, interval.fixed)) return interval.fixed;
+      continue;
+    }
+    if (interval.lastAffected !== undefined) {
+      if (!versionBelow(interval.lastAffected, version)) return null;
+      continue;
+    }
+    return null;
+  }
+  return undefined;
+}
+
+function parseOsvVuln(raw: unknown, packageName: string): OsvVuln | null {
   if (!isRecord(raw) || typeof raw.id !== "string") return null;
   const aliases = Array.isArray(raw.aliases)
     ? raw.aliases.filter((a): a is string => typeof a === "string")
@@ -64,6 +149,7 @@ function parseOsvVuln(raw: unknown): OsvVuln | null {
     summary: typeof raw.summary === "string" ? raw.summary : undefined,
     details: typeof raw.details === "string" ? raw.details : undefined,
     severity,
+    affected: parseAffected(raw, packageName),
   };
 }
 
@@ -96,7 +182,9 @@ export async function queryOsv(
     if (!res.ok) return [];
     const data: unknown = await res.json();
     const vulns = isRecord(data) && Array.isArray(data.vulns) ? data.vulns : [];
-    return vulns.map(parseOsvVuln).filter((v): v is OsvVuln => v !== null);
+    return vulns
+      .map((raw) => parseOsvVuln(raw, packageName))
+      .filter((v): v is OsvVuln => v !== null);
   } catch (err) {
     console.error(
       `[${APP_NAME}] osv-lookup: query failed for ${ecosystem}/${packageName}@${version} (non-fatal):`,

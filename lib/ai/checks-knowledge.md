@@ -20769,17 +20769,17 @@ A publicly accessible package.json has a preinstall, install, or postinstall scr
 ### `osv-vulnerable-library` [supply-chain / high / url-check]
 **Vulnerable Dependency (OSV-Confirmed)**
 
-A client-side library loaded by this page, at the exact version detected from its script filename, has a published vulnerability in OSV.dev (the Open Source Vulnerabilities database, which aggregates GitHub Security Advisories, npm audit advisories, and other ecosystem-specific sources). See the finding evidence for which library, version, and advisory.
+A client-side library loaded by this page, at the exact version detected from its script URL, is affected by one or more published advisories in OSV.dev (the Open Source Vulnerabilities database, which aggregates GitHub Security Advisories and other ecosystem sources). One finding per library version lists every advisory that affects it, worst first, and names the release that fixes all of them when OSV records one.
 
-**Risk:** Depends on the specific advisory; see the finding evidence for the exact CVE/GHSA identifier and its own impact description.
+**Risk:** Depends on the advisories; the finding's severity is the worst CVSS 3.x score among them, and the evidence gives each advisory's identifier, score and summary.
 
-**Why it matters:** The library name and version are read from the script's own filename or CDN URL (e.g. jquery-1.12.4.min.js, or a version-pinned CDN path like unpkg.com/react@18.2.0/...), the same passive, safe-by-construction technique lib/scanner/checks/page-checks/libraries.ts uses. Unlike that check's small, hand-maintained table of known-vulnerable ranges, this one queries OSV.dev live, so it reflects whatever OSV currently knows about the exact detected version rather than a fixed set of CVEs picked at one point in time.
+**Why it matters:** The library name and version are read from the script's own filename or CDN URL (e.g. jquery-1.12.4.min.js, unpkg.com/react@18.2.0/..., or cdnjs's ajax/libs/jquery/3.4.1/...), the same passive technique the offline library check uses, and from the same list of libraries. That check answers from a small built-in list of well-known advisories; this one queries OSV.dev live, so it reflects every advisory OSV knows about the exact version. When both report the same library, this finding is kept and the other is listed as agreeing with it. An advisory with no CVSS 3.x score does not set the severity, and a library whose advisories are all unscored is reported as high.
 
 **References:**
 - https://osv.dev/
 
 **Fix:**
-- Upgrade the library past the vulnerable range named in the finding evidence.
+- Upgrade the library to the version the finding names, which fixes every advisory it lists. Where it says OSV records no fixed release for one, that line of the library is unmaintained for that issue: move to a maintained major version.
 - If the library is bundled rather than loaded from a CDN, update it in the project's dependency manifest (package.json/package-lock.json) and rebuild.
 - Re-run this scan after the fix to confirm OSV.dev no longer returns a match for the new version.
 - **Pin the fixed version instead of the vulnerable one** (html):

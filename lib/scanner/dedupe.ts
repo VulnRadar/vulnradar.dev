@@ -143,7 +143,26 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "graphql-introspection": "graphql-introspection",
   "api-graphql-introspection-enabled": "graphql-introspection",
   "async-graphql-introspection-enabled": "graphql-introspection",
+
+  // A library version with a published advisory: the live OSV.dev lookup and
+  // the offline snapshot (page-outdated-vulnerable-library, which declares
+  // this group itself). Scoped per component, so each library stays its own
+  // finding.
+  "osv-vulnerable-library": "vulnerable-library",
 };
+
+/**
+ * Checks that establish an issue against a live source rather than infer it
+ * from the page. In a group, one of these is kept over a check that inferred
+ * the same issue whatever the two severities say, because its severity is
+ * the measured one: OSV.dev scores each advisory, where the offline library
+ * snapshot can only know the advisories it was given, and the live GraphQL
+ * query proves what the keyword matches guess at.
+ */
+const CONFIRMING_CHECKS: ReadonlySet<string> = new Set([
+  "osv-vulnerable-library",
+  "async-graphql-introspection-enabled",
+]);
 
 /** The check ID a finding came from, recovered from its stable finding ID. */
 export function checkIdOf(finding: Vulnerability): string {
@@ -151,20 +170,31 @@ export function checkIdOf(finding: Vulnerability): string {
   return sep === -1 ? finding.id : finding.id.slice(0, sep);
 }
 
+/**
+ * The key findings merge on: the check's group, narrowed to one component
+ * when the finding names one. Without the narrowing, a group whose checks
+ * report per library would fold two different outdated libraries into one.
+ */
 function groupOf(
   finding: Vulnerability,
   extra: Record<string, string>,
 ): string | null {
   const id = checkIdOf(finding);
-  return extra[id] ?? LEGACY_DEDUPE_GROUPS[id] ?? null;
+  const group = extra[id] ?? LEGACY_DEDUPE_GROUPS[id] ?? null;
+  if (!group) return null;
+  return finding.component ? `${group}|${finding.component}` : group;
 }
 
 /**
- * Pick the survivor of a duplicate group: highest severity, then highest
- * confidence, then lowest check ID so the choice is stable across runs and
- * two scans of the same target stay diffable.
+ * Pick the survivor of a duplicate group: a confirming check over one that
+ * inferred, then highest severity, then highest confidence, then lowest check
+ * ID so the choice is stable across runs and two scans of the same target
+ * stay diffable.
  */
 function better(a: Vulnerability, b: Vulnerability): Vulnerability {
+  const confirmsA = CONFIRMING_CHECKS.has(checkIdOf(a));
+  const confirmsB = CONFIRMING_CHECKS.has(checkIdOf(b));
+  if (confirmsA !== confirmsB) return confirmsA ? a : b;
   const sevA = SEVERITY_PRIORITY[a.severity] ?? 0;
   const sevB = SEVERITY_PRIORITY[b.severity] ?? 0;
   if (sevA !== sevB) return sevA > sevB ? a : b;
@@ -186,6 +216,11 @@ export interface DedupeResult {
  * Document order is preserved for the survivors. `extraGroups` lets checks
  * declared through the `PageCheck` interface contribute their own groupings
  * without editing the legacy table.
+ *
+ * Safe to run again over its own output mixed with new findings, which is
+ * how a scan uses it: once over the page checks, then over everything once
+ * the live checks have answered. A survivor's `alsoReportedBy` carries into
+ * the second pass, so a check merged in the first is still listed after it.
  */
 export function dedupeFindings(
   findings: Vulnerability[],
@@ -200,7 +235,9 @@ export function dedupeFindings(
     const existing = winners.get(group);
     winners.set(group, existing ? better(existing, f) : f);
     if (!contributors.has(group)) contributors.set(group, new Set());
-    contributors.get(group)!.add(checkIdOf(f));
+    const ids = contributors.get(group)!;
+    ids.add(checkIdOf(f));
+    for (const id of f.alsoReportedBy ?? []) ids.add(id);
   }
 
   const out: Vulnerability[] = [];
