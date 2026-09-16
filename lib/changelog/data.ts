@@ -452,6 +452,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Wrench,
+        label: "Grant Credits From the Admin Panel",
+        desc: "Staff can now see a user's AI, GitHub review and browser session credit balances in the admin panel and add credits directly, for example to make up for a problem, without touching the database. Each grant needs a reason and is recorded in the audit log, has a sensible maximum, and staff cannot grant credits to their own account. Only admins and the billing role can do this.",
+        category: "admin",
+      },
+      {
         icon: Mail,
         label: "Mail Servers That No Longer Exist Are Reported",
         desc: "A domain's MX records tell the world which servers receive its email. When one of those servers no longer exists, mail can bounce, and if the missing server belonged to another company's domain, whoever registers that domain could start receiving your email, password resets included. The scan now reports mail servers that do not exist, and treats the second case as high severity. A server that simply did not answer in time is not counted as missing.",

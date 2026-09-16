@@ -150,6 +150,15 @@ export interface UserDetail {
     scopes: string;
     connected_at: string;
   } | null;
+  /** Purchased balances (users.ai_credit_balance/github_credit_balance/
+   *  browserbase_credit_seconds_balance) -- null when the caller's role
+   *  lacks GRANT_CREDITS, the same permission the "Grant Credits" action
+   *  itself requires (see app/api/v3/admin/route.ts's canSeeCredits). */
+  credits: {
+    aiCreditBalance: number;
+    githubCreditBalance: number;
+    browserbaseCreditSecondsBalance: number;
+  } | null;
 }
 
 export interface AuditEntry {

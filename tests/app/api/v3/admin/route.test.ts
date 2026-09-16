@@ -519,6 +519,59 @@ describe("GET /api/v3/admin", () => {
     expect(json.apiKeys).toHaveLength(1);
   });
 
+  // Credits ride on GRANT_CREDITS, the same permission the grant_credits
+  // PATCH action itself requires -- a role that cannot spend these dollars
+  // cannot see the balance either.
+  it("section=user-detail includes credits for a role with GRANT_CREDITS (billing)", async () => {
+    queueRole("billing");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com" }],
+    }); // userRes
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badges
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // notes
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // discord
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // githubRepoConnection
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          ai_credit_balance: "1500",
+          github_credit_balance: "2500",
+          browserbase_credit_seconds_balance: "600",
+        },
+      ],
+    }); // credits
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.credits).toEqual({
+      aiCreditBalance: 1500,
+      githubCreditBalance: 2500,
+      browserbaseCreditSecondsBalance: 600,
+    });
+  });
+
+  it("section=user-detail omits credits for a role without GRANT_CREDITS (support)", async () => {
+    queueRole("support");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com" }],
+    }); // userRes
+    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.credits).toBeNull();
+    const sqlCalls = mockQuery.mock.calls.map((c) => c[0] as string);
+    expect(
+      sqlCalls.some((sql) =>
+        sql.includes("browserbase_credit_seconds_balance"),
+      ),
+    ).toBe(false);
+  });
+
   // The default branch is fetched on mount by every staff member and the
   // client reads a 403 as "no admin access at all", so a role without
   // VIEW_USERS keeps the aggregate stats and gets an empty list instead.
@@ -1468,6 +1521,194 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
       const res = await PATCH(patchRequest({ action, userId: 5 }));
       expect(res.status).toBe(200);
     }
+  });
+});
+
+describe("PATCH /api/v3/admin — grant_credits", () => {
+  it("ai: adds to ai_credit_balance in one UPDATE...RETURNING and returns the new balance", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ai_credit_balance: "51000" }],
+    });
+    const res = await PATCH(
+      patchRequest({
+        action: "grant_credits",
+        userId: 5,
+        creditType: "ai",
+        amount: 1000,
+        reason: "support ticket #123",
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ success: true, balance: 51000 });
+    const updateCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("ai_credit_balance = ai_credit_balance + $2"),
+    );
+    expect(updateCall).toBeDefined();
+    expect(updateCall?.[1]).toEqual([5, 1000]);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "grant_credits",
+      expect.stringContaining("1,000 tokens"),
+      "127.0.0.1",
+    );
+  });
+
+  it("github: adds to github_credit_balance", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ github_credit_balance: 2000 }],
+    });
+    const res = await PATCH(
+      patchRequest({
+        action: "grant_credits",
+        userId: 5,
+        creditType: "github",
+        amount: 2000,
+        reason: "goodwill credit",
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ success: true, balance: 2000 });
+    const updateCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes(
+        "github_credit_balance = github_credit_balance + $2",
+      ),
+    );
+    expect(updateCall?.[1]).toEqual([5, 2000]);
+  });
+
+  it("browser: converts minutes to seconds for the UPDATE and returns both balance (seconds) and balanceMinutes", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ browserbase_credit_seconds_balance: "3600" }],
+    });
+    const res = await PATCH(
+      patchRequest({
+        action: "grant_credits",
+        userId: 5,
+        creditType: "browser",
+        amount: 30,
+        reason: "demo session",
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json).toEqual({
+      success: true,
+      balance: 3600,
+      balanceMinutes: 60,
+    });
+    const updateCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes(
+        "browserbase_credit_seconds_balance = browserbase_credit_seconds_balance + $2",
+      ),
+    );
+    // 30 minutes in -> 1800 seconds sent to the column.
+    expect(updateCall?.[1]).toEqual([5, 1800]);
+  });
+
+  it.each([
+    ["bad creditType", { creditType: "crypto", amount: 100, reason: "x" }],
+    ["zero amount", { creditType: "ai", amount: 0, reason: "x" }],
+    ["negative amount", { creditType: "ai", amount: -100, reason: "x" }],
+    ["non-integer amount", { creditType: "ai", amount: 100.5, reason: "x" }],
+    [
+      "amount over the ai/github max",
+      { creditType: "ai", amount: 20_000_001, reason: "x" },
+    ],
+    [
+      "browser amount over the 500-minute max",
+      { creditType: "browser", amount: 501, reason: "x" },
+    ],
+    ["missing reason", { creditType: "ai", amount: 100, reason: undefined }],
+    ["blank reason", { creditType: "ai", amount: 100, reason: "   " }],
+    [
+      "reason over 200 characters",
+      { creditType: "ai", amount: 100, reason: "x".repeat(201) },
+    ],
+  ])("rejects %s with 400 and does not audit-log", async (_label, body) => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    const res = await PATCH(
+      patchRequest({ action: "grant_credits", userId: 5, ...body }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a role without GRANT_CREDITS (support) with 403", async () => {
+    queueRole("support");
+    const res = await PATCH(
+      patchRequest({
+        action: "grant_credits",
+        userId: 5,
+        creditType: "ai",
+        amount: 100,
+        reason: "x",
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("allows the billing role, which GRANT_CREDITS was added to", async () => {
+    queueRole("billing");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ ai_credit_balance: "100" }] });
+    const res = await PATCH(
+      patchRequest({
+        action: "grant_credits",
+        userId: 5,
+        creditType: "ai",
+        amount: 100,
+        reason: "billing role check",
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects a self-grant (staff cannot enrich their own balance)", async () => {
+    queueRole("admin");
+    const res = await PATCH(
+      patchRequest({
+        action: "grant_credits",
+        userId: 2, // matches session(2)'s own userId
+        creditType: "ai",
+        amount: 100,
+        reason: "self grant attempt",
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/own account/);
+    expect(mockLogAction).not.toHaveBeenCalled();
   });
 });
 

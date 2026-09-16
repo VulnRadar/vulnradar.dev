@@ -27,6 +27,12 @@ import { deleteUserAccountData } from "@/lib/auth/account-deletion";
 import { sendEmailVerification } from "@/lib/auth/email-verification";
 import { resolveCurrentWindow } from "@/lib/billing/ai-usage";
 import { getPaidPlans, getPlanById } from "@/lib/billing/catalog";
+import {
+  validateGrantCreditsInput,
+  applyCreditGrant,
+  formatGrantAmount,
+  ADMIN_CREDIT_TYPES,
+} from "@/lib/billing/admin-credit-grant";
 
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
@@ -195,6 +201,14 @@ export async function GET(request: NextRequest) {
       session.role,
       STAFF_PERMISSIONS.DELETE_USER_WEBHOOKS,
     );
+    // Purchased credit balances (AI/GitHub review tokens, browser session
+    // seconds) ride on GRANT_CREDITS -- the same permission the
+    // "grant_credits" PATCH action requires below -- so a role that cannot
+    // spend these dollars cannot see the balance either.
+    const canSeeCredits = hasStaffPermission(
+      session.role,
+      STAFF_PERMISSIONS.GRANT_CREDITS,
+    );
     const userId = searchParams.get("userId");
     if (!userId)
       return NextResponse.json({ error: "userId required" }, { status: 400 });
@@ -214,6 +228,7 @@ export async function GET(request: NextRequest) {
       notesRes,
       discordRes,
       githubRepoConnectionRes,
+      creditsRes,
     ] = await Promise.all([
       pool.query(
         `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
@@ -313,6 +328,12 @@ export async function GET(request: NextRequest) {
          FROM github_connections WHERE user_id = $1`,
         [userId],
       ),
+      canSeeCredits
+        ? pool.query(
+            "SELECT ai_credit_balance, github_credit_balance, browserbase_credit_seconds_balance FROM users WHERE id = $1",
+            [userId],
+          )
+        : Promise.resolve({ rows: [] as unknown[] }),
     ]);
 
     if (!userRes.rows[0])
@@ -351,6 +372,17 @@ export async function GET(request: NextRequest) {
       notes: notesRes.rows,
       discordConnection: discordRes.rows[0] || null,
       githubRepoConnection: githubRepoConnectionRes.rows[0] || null,
+      credits: canSeeCredits
+        ? {
+            aiCreditBalance: Number(creditsRes.rows[0]?.ai_credit_balance ?? 0),
+            githubCreditBalance: Number(
+              creditsRes.rows[0]?.github_credit_balance ?? 0,
+            ),
+            browserbaseCreditSecondsBalance: Number(
+              creditsRes.rows[0]?.browserbase_credit_seconds_balance ?? 0,
+            ),
+          }
+        : null,
     });
   }
 
@@ -617,6 +649,9 @@ export async function PATCH(request: NextRequest) {
     title: notifTitle,
     message: notifMessage,
     type: notifType,
+    creditType,
+    amount,
+    reason,
   } = body;
   // Normalize IDs to numbers (client may send as string)
   let userId: number | undefined;
@@ -661,6 +696,8 @@ export async function PATCH(request: NextRequest) {
       "disable",
       "reset_password",
       "set_role",
+      // Staff must not be able to add to their own purchased balances.
+      "grant_credits",
     ].includes(action)
   ) {
     return NextResponse.json(
@@ -2067,6 +2104,41 @@ export async function PATCH(request: NextRequest) {
         ip,
       );
       return NextResponse.json({ success: true });
+    }
+
+    case "grant_credits": {
+      const validated = validateGrantCreditsInput({
+        creditType,
+        amount,
+        reason,
+      });
+      if (!validated.ok) {
+        return NextResponse.json({ error: validated.error }, { status: 400 });
+      }
+      const {
+        creditType: grantType,
+        amount: grantAmount,
+        reason: grantReason,
+      } = validated.value;
+      const grantResult = await applyCreditGrant(
+        userId,
+        grantType,
+        grantAmount,
+      );
+      await logAction(
+        session.userId,
+        userId,
+        "grant_credits",
+        `Granted ${formatGrantAmount(grantType, grantAmount)} of ${ADMIN_CREDIT_TYPES[grantType].label} to ${targetUser.email}: ${grantReason}`,
+        ip,
+      );
+      return NextResponse.json({
+        success: true,
+        balance: grantResult.balance,
+        ...(grantResult.balanceMinutes !== undefined
+          ? { balanceMinutes: grantResult.balanceMinutes }
+          : {}),
+      });
     }
 
     case "update_name": {

@@ -44,6 +44,7 @@ import {
   Gauge,
   Smartphone,
   Sparkles,
+  Coins,
 } from "lucide-react";
 import { FaGithub, FaDiscord } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
@@ -207,6 +208,22 @@ export function UserDetailPanel({
     const result = await onAction(u.id, "add_note", { note: newNote.trim() });
     if (result.ok) setNewNote("");
   }
+  const [creditGrantType, setCreditGrantType] = useState<
+    "ai" | "github" | "browser"
+  >("ai");
+  const [creditGrantAmount, setCreditGrantAmount] = useState("");
+  const [creditGrantReason, setCreditGrantReason] = useState("");
+  async function grantCredits() {
+    const result = await onAction(u.id, "grant_credits", {
+      creditType: creditGrantType,
+      amount: Number(creditGrantAmount),
+      reason: creditGrantReason.trim(),
+    });
+    if (result.ok) {
+      setCreditGrantAmount("");
+      setCreditGrantReason("");
+    }
+  }
   const [editingNote, setEditingNote] = useState<{
     id: number;
     text: string;
@@ -266,6 +283,9 @@ export function UserDetailPanel({
   const badgeDisplayFieldId = useId();
   const notifTitleId = useId();
   const notifMessageId = useId();
+  const creditTypeFieldId = useId();
+  const creditAmountFieldId = useId();
+  const creditReasonFieldId = useId();
 
   // Support action confirmation state
   const [pendingSupportAction, setPendingSupportAction] = useState<{
@@ -2463,6 +2483,145 @@ export function UserDetailPanel({
                     )}
                   </div>
                 </div>
+
+                {/* Credits. Purchased AI/GitHub review token balances and
+                    browser session minutes -- gated on GRANT_CREDITS rather
+                    than per-card like the resets above, since the whole
+                    section is one capability (see the server's matching
+                    canSeeCredits gate in app/api/v3/admin/route.ts's
+                    section=user-detail branch, which is why detail.credits
+                    is only ever non-null when this check passes). */}
+                {hasStaffPermission(
+                  callerRole,
+                  STAFF_PERMISSIONS.GRANT_CREDITS,
+                ) && (
+                  <div id="credits">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+                      Credits
+                    </p>
+                    <div className="rounded-lg border border-border/50 bg-card/50 p-4 sm:p-5 flex flex-col gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <p className="text-[10px] text-muted-foreground">
+                            AI tokens
+                          </p>
+                          <p className="text-sm font-medium text-foreground">
+                            {(
+                              detail.credits?.aiCreditBalance ?? 0
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground">
+                            GitHub review tokens
+                          </p>
+                          <p className="text-sm font-medium text-foreground">
+                            {(
+                              detail.credits?.githubCreditBalance ?? 0
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground">
+                            Browser minutes
+                          </p>
+                          <p className="text-sm font-medium text-foreground">
+                            {Math.floor(
+                              (detail.credits
+                                ?.browserbaseCreditSecondsBalance ?? 0) / 60,
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 sm:items-end pt-1 border-t border-border/40">
+                        <div className="flex flex-col gap-1 pt-3 sm:pt-0">
+                          <label
+                            htmlFor={creditTypeFieldId}
+                            className="text-[10px] text-muted-foreground"
+                          >
+                            Type
+                          </label>
+                          <select
+                            id={creditTypeFieldId}
+                            value={creditGrantType}
+                            onChange={(e) =>
+                              setCreditGrantType(
+                                e.target.value as "ai" | "github" | "browser",
+                              )
+                            }
+                            className="h-9 text-xs rounded-md border border-border bg-background px-2"
+                          >
+                            <option value="ai">AI tokens</option>
+                            <option value="github">GitHub review tokens</option>
+                            <option value="browser">Browser minutes</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label
+                            htmlFor={creditAmountFieldId}
+                            className="text-[10px] text-muted-foreground"
+                          >
+                            Amount (
+                            {creditGrantType === "browser"
+                              ? "minutes"
+                              : "tokens"}
+                            )
+                          </label>
+                          <Input
+                            id={creditAmountFieldId}
+                            type="number"
+                            min={1}
+                            step={1}
+                            inputMode="numeric"
+                            value={creditGrantAmount}
+                            onChange={(e) =>
+                              setCreditGrantAmount(e.target.value)
+                            }
+                            className="h-9 text-xs w-28"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1 flex-1">
+                          <label
+                            htmlFor={creditReasonFieldId}
+                            className="text-[10px] text-muted-foreground"
+                          >
+                            Reason
+                          </label>
+                          <Input
+                            id={creditReasonFieldId}
+                            value={creditGrantReason}
+                            onChange={(e) =>
+                              setCreditGrantReason(e.target.value)
+                            }
+                            placeholder="Why is this being granted?"
+                            maxLength={200}
+                            className="h-9 text-xs"
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          className="h-9 gap-1.5"
+                          disabled={
+                            !creditGrantAmount.trim() ||
+                            !creditGrantReason.trim() ||
+                            isLoading("grant_credits")
+                          }
+                          onClick={() => void grantCredits()}
+                        >
+                          {isLoading("grant_credits") ? (
+                            <Loader2
+                              className="h-3.5 w-3.5 animate-spin"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <Coins className="h-3.5 w-3.5" aria-hidden="true" />
+                          )}
+                          Grant
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Account State. Deliberately NOT "Account Management":
                     that is the name of a different card higher up the page

@@ -384,6 +384,16 @@ export default defineConfig({
           functions: 100,
           branches: 90,
         },
+        "lib/billing/admin-credit-grant.ts": {
+          // 100% / 89.28% / 100% / 100% actual. The uncovered branches are
+          // the `?? 0` fallback on each RETURNING read (applyCreditGrant is
+          // only ever called after the route confirms the target user
+          // exists, so Postgres always returns exactly one row).
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 85,
+        },
         "lib/billing/stripe-errors.ts": {
           // 100% actual across the board. This predicate is what stands
           // between a Stripe timeout and a second live subscription on the

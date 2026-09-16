@@ -98,6 +98,10 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Five checks were producing false alarms on ordinary pages: a source-code download link was flagged as an exposed sensitive file; a field was flagged just because its name contained letters like "tax", like a checkout page's tax rate, and now needs a real card, ID or tax number filled in; a common code-loading technique was mistaken for a riskier one; an article merely mentioning a debugging address, without linking to it, was wrongly flagged; and an insecure setting was marked high severity even where nothing changed. All five now need real evidence before reporting a problem.
 - [ShieldCheck] **[SECURITY]** **A Page Designed to Freeze the Scanner No Longer Can**
   Before reading a page, the scanner first checks whether it is looking at a real web page at all. A page could be deliberately built to make that first check run almost forever, and while it did, every other scan running on the same server had to wait behind it. The check now takes an amount of time based only on the size of the page, not what is in it. A similar slowdown in the admin tool that converts a broadcast email into plain text was fixed the same way. Both were caught by automated security scanning of our own code.
+- [ShieldAlert] **[ENGINE]** **A Security Code That Never Changes Is Reported**
+  Some sites protect their pages with a one-time code, called a nonce, that tells the browser which scripts are genuine. It only works if the code is new on every visit. When it stays the same, for example because a page was cached with it, anyone can read it and use it to slip their own script in. The scanner now loads such a page twice and reports a code that did not change, without printing the code itself.
+- [Wrench] **[ADMIN]** **Grant Credits From the Admin Panel**
+  Staff can now see a user's AI, GitHub review and browser session credit balances in the admin panel and add credits directly, for example to make up for a problem, without touching the database. Each grant needs a reason and is recorded in the audit log, has a sensible maximum, and staff cannot grant credits to their own account. Only admins and the billing role can do this.
 - [Mail] **[ENGINE]** **Mail Servers That No Longer Exist Are Reported**
   A domain's MX records tell the world which servers receive its email. When one of those servers no longer exists, mail can bounce, and if the missing server belonged to another company's domain, whoever registers that domain could start receiving your email, password resets included. The scan now reports mail servers that do not exist, and treats the second case as high severity. A server that simply did not answer in time is not counted as missing.
 - [CheckCheck] **[ENGINE]** **Several Incorrect Results Corrected**
@@ -1224,6 +1228,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 925
+- **Total changes documented:** 927
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

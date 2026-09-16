@@ -55,6 +55,14 @@ export const STAFF_PERMISSIONS = {
   // subscription actions), EDIT_USER_PLAN, and VIEW_BILLING_OVERVIEW.
   GRANT_PREMIUM: "grant_premium",
   REVOKE_PREMIUM: "revoke_premium",
+  // Adds to a user's purchased AI/GitHub-review token balance or browser
+  // session minute balance (users.ai_credit_balance/github_credit_balance/
+  // browserbase_credit_seconds_balance -- see lib/billing/admin-credit-grant.ts).
+  // Its own permission rather than reusing GRANT_PREMIUM: a gifted plan is a
+  // subscription-tier override with an expiry, this is real spendable
+  // balance that never expires, and the billing role that already grants
+  // subscriptions is the natural (but not automatic) home for it too.
+  GRANT_CREDITS: "grant_credits",
   // Aggregate, site-wide revenue/plan-distribution dashboard (Admin >
   // Billing Overview). Narrower than "may look at a user's account": SUPPORT
   // holds VIEW_USERS, and so can see one user's plan and status on that
@@ -169,6 +177,7 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.VIEW_BILLING_OVERVIEW,
     STAFF_PERMISSIONS.GRANT_PREMIUM,
     STAFF_PERMISSIONS.REVOKE_PREMIUM,
+    STAFF_PERMISSIONS.GRANT_CREDITS,
   ],
   [STAFF_ROLES.SECURITY_ANALYST]: [
     STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
@@ -585,6 +594,17 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     category: "subscription",
     icon: "StarOff",
     requiresConfirmation: true,
+  },
+  {
+    // Adds to the user's purchased AI/GitHub-review token balance or
+    // browser session minute balance -- see lib/billing/admin-credit-grant.ts
+    // for the per-type ceiling and the column each credit type writes.
+    id: "grant_credits",
+    label: "Grant Credits",
+    description: "Add AI, GitHub review or browser credits",
+    permission: STAFF_PERMISSIONS.GRANT_CREDITS,
+    category: "subscription",
+    icon: "Coins",
   },
 
   // Scan Management

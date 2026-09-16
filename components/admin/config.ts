@@ -148,6 +148,12 @@ export const ACTION_META: Record<string, ActionMeta> = {
     icon: "gift-off",
     cls: "bg-destructive/10 text-destructive border-destructive/20",
   },
+  grant_credits: {
+    label: "Granted Credits",
+    verb: "granted credits to",
+    icon: "coins",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
+  },
   // Data management
   delete_scans: {
     label: "Scans Deleted",
@@ -312,6 +318,7 @@ export const ACTION_LABELS: Record<string, string> = {
   clear_rate_limits: "Rate limits cleared.",
   gift_subscription: "Subscription gifted successfully.",
   revoke_gift: "Gifted subscription revoked.",
+  grant_credits: "Credits granted.",
   toggle_ai_ban: "AI chat access updated.",
   verify_email: "Email verified.",
   unverify_email: "Email unverified.",
