@@ -8425,7 +8425,7 @@ export async function callbackGET(req: Request) {
 ### `debug-endpoint` [content / low / body-pattern]
 **Debug Endpoints Referenced**
 
-Debug or profiler endpoints found in source.
+The page links to, loads, or submits a form to a debug, profiler or trace path on its own origin.
 
 **Risk:** Debug endpoints often expose sensitive information.
 

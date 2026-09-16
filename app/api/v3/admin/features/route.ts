@@ -12,7 +12,7 @@ import {
 } from "@/lib/auth/permissions-client";
 import { STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
 import { CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES } from "@/lib/config/config-values";
-import { sendEmail, isEmailConfigured } from "@/lib/email/email";
+import { sendEmail, isEmailConfigured, stripHtmlTags } from "@/lib/email/email";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   isSettingKey,
@@ -227,18 +227,6 @@ function dateShapeError(key: string, value: string): string | null {
     return `Terms last updated (${key}): not a real calendar date.`;
   }
   return null;
-}
-
-// Robustly remove all HTML tags by repeatedly applying the regex until no more tags are found
-function stripHtmlTags(html: string): string {
-  let result = html;
-  let previous = "";
-  // Keep replacing until no more HTML tags are found (handles nested/stacked tags)
-  while (result !== previous) {
-    previous = result;
-    result = result.replace(/<[^>]*>/g, "");
-  }
-  return result;
 }
 
 // R3/D1: requireAdmin moved to lib/auth/authorization.ts (single source).

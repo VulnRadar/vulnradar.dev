@@ -1376,3 +1376,27 @@ describe("billing + account transactional templates", () => {
     });
   });
 });
+
+describe("stripHtmlTags", () => {
+  it("keeps the text of a message and drops its markup", async () => {
+    const { stripHtmlTags } = await loadEmail();
+    expect(
+      stripHtmlTags(
+        '<p>Hello <strong>there</strong>,</p><a href="/x">read more</a>',
+      ),
+    ).toBe("Hello there,read more");
+  });
+
+  it("keeps a lone angle bracket that opens no tag", async () => {
+    const { stripHtmlTags } = await loadEmail();
+    expect(stripHtmlTags("price < 10")).toBe("price < 10");
+  });
+
+  it("stays linear on a run of opening brackets with no closing one", async () => {
+    const { stripHtmlTags } = await loadEmail();
+    const input = "<".repeat(200_000) + "x";
+    const started = performance.now();
+    expect(stripHtmlTags(input)).toBe(input);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+});

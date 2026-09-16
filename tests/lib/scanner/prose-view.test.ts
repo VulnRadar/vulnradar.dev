@@ -196,3 +196,26 @@ describe("stripProse", () => {
     expect(seen.join("")).not.toMatch(/alpha|beta/);
   });
 });
+
+describe("stripProse on a hostile opening", () => {
+  // CodeQL js/redos, alert 200. Deciding whether a body is HTML used a regex
+  // with a repeated lazy comment group, which backtracked exponentially on a
+  // run of comments followed by anything that is not an element.
+  it("decides in linear time on a page of comments with no element after them", () => {
+    const body = "<!--a-->".repeat(500) + "x";
+    const started = performance.now();
+    expect(stripProse(body)).toBe(body);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+
+  it("still reads a document that opens with comments as HTML", () => {
+    const body =
+      "<!-- build 42 --> <!-- another -->\n<!doctype html><html><body><p>eval(x) is documented here</p></body></html>";
+    expect(stripProse(body)).not.toContain("documented here");
+  });
+
+  it("does not treat an unterminated comment as HTML", () => {
+    const body = "<!-- never closed <html><body>text</body></html>";
+    expect(stripProse(body)).toBe(body);
+  });
+});

@@ -42,9 +42,12 @@ vi.mock("@/lib/api/request-utils", () => ({
 
 const mockSendEmail = vi.fn();
 const mockIsEmailConfigured = vi.fn();
-vi.mock("@/lib/email/email", () => ({
+vi.mock("@/lib/email/email", async (importOriginal) => ({
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
   isEmailConfigured: () => mockIsEmailConfigured(),
+  // The real one: it is pure, and it builds the text part these tests read.
+  stripHtmlTags: (await importOriginal<typeof import("@/lib/email/email")>())
+    .stripHtmlTags,
 }));
 
 // The rate limiter reads and writes the same mocked pool, and its queries

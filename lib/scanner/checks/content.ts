@@ -752,10 +752,33 @@ const rawDetectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "debug-endpoint": (_url, _headers, body) => {
+  "debug-endpoint": (url, _headers, body) => {
+    // What the page links to, loads or submits to on its own origin. This
+    // used to match the path anywhere in the body, so a sentence mentioning
+    // /debug/, a changelog describing a profiler check, or a third-party
+    // script URL with /trace/ in it all read as this site exposing one. The
+    // self-scan caught it on our own changelog.
+    let origin: string;
+    try {
+      origin = new URL(url).origin;
+    } catch {
+      return null;
+    }
+    const DEBUG_SEGMENT = /\/(?:_?debug|_?profiler|trace)\//i;
     const html = stripExampleContent(body);
-    if (/\/debug\/|\/trace\/|\/profiler\/|\/_debug\//gi.test(html)) {
-      return "Debug endpoints referenced in page source.";
+    for (const m of html.matchAll(
+      /\b(?:href|src|action|formaction)\s*=\s*["']([^"']{1,500})["']/gi,
+    )) {
+      let target: URL;
+      try {
+        target = new URL(m[1], url);
+      } catch {
+        continue;
+      }
+      if (target.origin !== origin) continue;
+      if (DEBUG_SEGMENT.test(`${target.pathname}/`)) {
+        return `Debug endpoint referenced by the page: ${target.pathname}`;
+      }
     }
     return null;
   },

@@ -436,9 +436,15 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Filter,
-        label: "Four Page Checks Stop Flagging Ordinary Pages",
-        desc: "A link to clone a project from GitHub, or to download a release archive, was reported as a sensitive file on the page; the check now looks only at files this site itself serves, and no longer counts archive downloads or public certificates. A read-only field was reported as exposing sensitive data whenever its name contained letters like tax or card anywhere, which matched syntax highlighters, taxonomies and the tax rate on every checkout; it now needs a real card, social security or tax ID field with a value actually rendered into it. A RequireJS module was reported as a JSONP endpoint. An insecure base URL was reported as high on pages already served over plain HTTP, where it changes nothing, and half of that check could never run. Separately, one postMessage call sent to every origin could still produce two findings, and now produces one.",
+        label: "Five Page Checks Stop Flagging Ordinary Pages",
+        desc: "A link to clone a project from GitHub, or to download a release archive, was reported as a sensitive file on the page; the check now looks only at files this site itself serves, and no longer counts archive downloads or public certificates. A read-only field was reported as exposing sensitive data whenever its name contained letters like tax or card anywhere, which matched syntax highlighters, taxonomies and the tax rate on every checkout; it now needs a real card, social security or tax ID field with a value actually rendered into it. A RequireJS module was reported as a JSONP endpoint. A page that merely mentioned a debugging address in its text, such as an article or a changelog, was reported as exposing one; now only links, scripts and forms that actually point at such an address on the same site count. An insecure base URL was reported as high on pages already served over plain HTTP, where it changes nothing, and half of that check could never run. Separately, one postMessage call sent to every origin could still produce two findings, and now produces one.",
         category: "engine",
+      },
+      {
+        icon: ShieldCheck,
+        label: "A Page Built to Stall the Scanner No Longer Can",
+        desc: "Before reading a page, the scanner checks whether it is a web page at all. That check could be made to take practically forever by a page that opens with a long run of HTML comments, and while it ran, every other scan on the same server waited. The check now reads the start of the page once, so its time grows with the size of the page and nothing more. A similar slowdown in how the admin broadcast tool turns a message into its plain-text email version is fixed the same way. Both were found by GitHub's code scanning.",
+        category: "security",
       },
       {
         icon: CheckCheck,

@@ -409,6 +409,30 @@ export function redactEmailPreview(text: string): string {
 }
 
 /**
+ * An HTML message body with its tags removed, for the plain-text part of the
+ * same email.
+ *
+ * One pass: each tag is skipped by finding the next ">" after its "<". This
+ * used to repeat a /<[^>]*>/g replace until the string stopped changing,
+ * which is quadratic on a run of "<" with no ">" (CodeQL js/polynomial-redos)
+ * and repeated that for as many passes as the input could force. The output
+ * is text/plain, so nothing in it is ever parsed as markup again.
+ */
+export function stripHtmlTags(html: string): string {
+  let out = "";
+  let i = 0;
+  while (i < html.length) {
+    const open = html.indexOf("<", i);
+    if (open === -1) break;
+    const close = html.indexOf(">", open + 1);
+    if (close === -1) break;
+    out += html.slice(i, open);
+    i = close + 1;
+  }
+  return out + html.slice(i);
+}
+
+/**
  * redactEmailPreview applied to one run of text taken from markup.
  *
  * Character references are held out of the redaction because they are not

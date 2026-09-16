@@ -396,17 +396,36 @@ export function stripProse(body: string): string {
 let lastProseInput: string | null = null;
 let lastProseOutput = "";
 
+const HTML_ELEMENT_START =
+  /^<(?:!doctype\s+html|html|head|body|meta|link|script|style|title|base|noscript|div|span|p|a|main|section|article|header|footer|nav|aside|form|input|button|table|ul|ol|li|img|svg|iframe|h[1-6]|br|hr|pre|code|template)\b/i;
+
 /**
- * An HTML document or fragment: optional doctype and comments, then an HTML
- * element. XML is not, however much it looks like markup: a served pom.xml,
- * WSDL or sitemap carries its evidence in text nodes, and the prose view
- * would drop exactly that.
+ * An HTML document or fragment: optional whitespace and comments, then an
+ * HTML element. XML is not, however much it looks like markup: a served
+ * pom.xml, WSDL or sitemap carries its evidence in text nodes, and the prose
+ * view would drop exactly that.
+ *
+ * Written as a loop rather than one regex. The regex it replaced wrapped a
+ * lazy comment body in a repeated group, and a comment body can itself
+ * contain "-->", so a page opening with a run of comments and then no
+ * element had exponentially many ways to fail: 22 comments took 117ms and
+ * each two more quadrupled it, on a body the scanned site controls. Each
+ * comment here is skipped with one indexOf, so the cost is linear.
  */
-const HTML_START =
-  /^\s*(?:<!--[\s\S]{0,2000}?-->\s*)*<(?:!doctype\s+html|html|head|body|meta|link|script|style|title|base|noscript|div|span|p|a|main|section|article|header|footer|nav|aside|form|input|button|table|ul|ol|li|img|svg|iframe|h[1-6]|br|hr|pre|code|template)\b/i;
+function looksLikeHtml(head: string): boolean {
+  let i = 0;
+  for (;;) {
+    while (i < head.length && /\s/.test(head[i])) i++;
+    if (!head.startsWith("<!--", i)) break;
+    const end = head.indexOf("-->", i + 4);
+    if (end === -1) return false;
+    i = end + 3;
+  }
+  return HTML_ELEMENT_START.test(head.slice(i, i + 64));
+}
 
 function buildProseView(body: string): string {
-  if (!body || !HTML_START.test(body.slice(0, 4096))) return body;
+  if (!body || !looksLikeHtml(body.slice(0, 4096))) return body;
   const input = stripTagElements(body, TEXT_REGION_TAGS);
   const out: string[] = [];
   const closers: Record<string, RegExp> = {

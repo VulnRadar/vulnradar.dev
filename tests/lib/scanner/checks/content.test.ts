@@ -841,10 +841,30 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
-      description: "a real /debug/ reference outside a code block fires",
-      body: "<p>Visit /debug/console for diagnostics.</p>",
+      description: "a same-origin link to a debug console fires",
+      url: "https://example.com/",
+      body: '<a href="/debug/console">Diagnostics</a>',
       expect: "fire",
-      evidenceIncludes: "Debug endpoints",
+      evidenceIncludes: "/debug/console",
+    },
+    {
+      description: "a form posting to the Symfony profiler fires",
+      url: "https://example.com/",
+      body: '<form action="https://example.com/_profiler/search"></form>',
+      expect: "fire",
+    },
+    {
+      // The self-scan: our own changelog describes the profiler checks.
+      description: "regression: a sentence naming a debug path",
+      url: "https://example.com/changelog",
+      body: "<p>Visit /debug/console for diagnostics, or /_profiler/ in Symfony.</p>",
+      expect: "skip",
+    },
+    {
+      description: "regression: a third-party script with /trace/ in its path",
+      url: "https://example.com/",
+      body: '<script src="https://cdn.vendor.example/trace/sdk.js"></script>',
+      expect: "skip",
     },
   ],
   "email-enumeration": [
