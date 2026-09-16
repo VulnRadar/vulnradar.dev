@@ -61,6 +61,11 @@ const VALID_PREF_COLS = new Set([
 // for the same reason lib/scanner/scheduled-scans-worker.ts's runInBatches
 // exists: an unbounded fan-out opens one SMTP connection per user and takes
 // the transport (or the pool) down on the first large send.
+/** Matches the broadcast_templates column widths in the boot schema. */
+const TEMPLATE_NAME_MAX = 120;
+const TEMPLATE_DESCRIPTION_MAX = 300;
+const TEMPLATE_SUBJECT_MAX = 255;
+
 const BROADCAST_PAGE_SIZE = 200;
 const BROADCAST_SEND_CONCURRENCY = 5;
 
@@ -814,6 +819,139 @@ export async function POST(req: NextRequest) {
         );
 
         return NextResponse.json({ success: true, sentTo: recipient.email });
+      }
+
+      /**
+       * Templates an admin writes, as opposed to the seven in
+       * lib/email/campaigns.ts.
+       *
+       * Those are a compiled-in `const` array imported directly into a client
+       * component, so adding to them is a source edit and a release. That is
+       * the whole of "we cannot even add more": the picker was never the
+       * problem, the list behind it being code was.
+       *
+       * These are not a data version of those. The built-ins carry typed
+       * fields and subject/body FUNCTIONS, and storing those would mean
+       * inventing a placeholder language and an editor for it. A saved
+       * template is the simpler thing: a subject and a body you start from and
+       * then edit, which is what a built-in becomes anyway once its fields are
+       * filled in.
+       */
+      if (action === "template_list") {
+        const result = await pool.query(
+          `SELECT t.id, t.name, t.description, t.subject, t.content,
+                  t.updated_at, u.name AS created_by_name
+             FROM broadcast_templates t
+             LEFT JOIN users u ON u.id = t.created_by
+            ORDER BY LOWER(t.name)`,
+        );
+        return NextResponse.json({ templates: result.rows });
+      }
+
+      if (action === "template_save") {
+        const { name, description, subject, content } = body;
+        const cleanName = typeof name === "string" ? name.trim() : "";
+        if (!cleanName) {
+          return NextResponse.json(
+            { error: "A template needs a name." },
+            { status: 400 },
+          );
+        }
+        if (cleanName.length > TEMPLATE_NAME_MAX) {
+          return NextResponse.json(
+            { error: `Keep the name under ${TEMPLATE_NAME_MAX} characters.` },
+            { status: 400 },
+          );
+        }
+        if (typeof subject !== "string" || !subject.trim()) {
+          return NextResponse.json(
+            { error: "A template needs a subject." },
+            { status: 400 },
+          );
+        }
+        if (typeof content !== "string" || !content.trim()) {
+          return NextResponse.json(
+            { error: "A template needs a body." },
+            { status: 400 },
+          );
+        }
+        const cleanDescription =
+          typeof description === "string"
+            ? description.trim().slice(0, TEMPLATE_DESCRIPTION_MAX)
+            : null;
+
+        // Upsert on the case-insensitive unique index, so saving a name that
+        // already exists updates it. The alternative is a second entry in the
+        // picker differing only in capitalisation, which is not a choice
+        // anyone wants to be offered.
+        const result = await pool.query(
+          `INSERT INTO broadcast_templates (name, description, subject, content, created_by)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (LOWER(name)) DO UPDATE
+             SET name = EXCLUDED.name,
+                 description = EXCLUDED.description,
+                 subject = EXCLUDED.subject,
+                 content = EXCLUDED.content,
+                 updated_at = NOW()
+           RETURNING id, name, description, subject, content, updated_at,
+                     -- How an upsert tells the caller which half it did, for
+                     -- the audit entry's wording and nothing else. Both
+                     -- columns default to NOW() on an insert and NOW() is
+                     -- transaction-start time, so they are equal on a row this
+                     -- statement created and never on one it overwrote, whose
+                     -- created_at came from an earlier transaction. (The usual
+                     -- idiom is xmax = 0; this says the same thing without
+                     -- depending on system-column semantics.)
+                     (created_at = updated_at) AS created`,
+          [
+            cleanName.slice(0, TEMPLATE_NAME_MAX),
+            cleanDescription,
+            subject.trim().slice(0, TEMPLATE_SUBJECT_MAX),
+            content,
+            user.id,
+          ],
+        );
+        const saved = result.rows[0];
+
+        await logAction(
+          user.id,
+          null,
+          saved.created
+            ? "broadcast_template_created"
+            : "broadcast_template_updated",
+          `${saved.created ? "Created" : "Updated"} the broadcast template "${saved.name}"`,
+          ip,
+        );
+
+        return NextResponse.json({ success: true, template: saved });
+      }
+
+      if (action === "template_delete") {
+        const { id } = body;
+        if (!Number.isInteger(id)) {
+          return NextResponse.json(
+            { error: "Invalid template id" },
+            { status: 400 },
+          );
+        }
+        const result = await pool.query(
+          `DELETE FROM broadcast_templates WHERE id = $1 RETURNING name`,
+          [id],
+        );
+        if (result.rows.length === 0) {
+          return NextResponse.json(
+            { error: "Template not found" },
+            { status: 404 },
+          );
+        }
+        await logAction(
+          user.id,
+          null,
+          "broadcast_template_deleted",
+          `Deleted the broadcast template "${result.rows[0].name}"`,
+          ip,
+        );
+        return NextResponse.json({ success: true });
       }
 
       if (action === "list") {

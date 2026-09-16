@@ -62,6 +62,10 @@ const ANONYMISED_ON_PURPOSE = new Map<string, string>([
     "as created_by; nulled by the FK so an erasure is never blocked",
   ],
   [
+    "broadcast_templates.created_by",
+    "shared staff boilerplate that outlives whoever typed it, which is why the FK is SET NULL rather than CASCADE: deleting a departing admin must not take the team's announcement template with them. What survives is a subject and a body they wrote for the product, carrying nothing personal about them once the id is gone",
+  ],
+  [
     "system_settings.updated_by",
     "records that a setting changed, not who the person was once they are gone",
   ],

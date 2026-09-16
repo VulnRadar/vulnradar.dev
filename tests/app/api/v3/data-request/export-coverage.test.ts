@@ -57,6 +57,10 @@ const DELIBERATELY_EXCLUDED = new Map<string, string>([
     "the message itself is ours; the recipient row that names the user IS exported",
   ],
   [
+    "broadcast_templates",
+    "staff-authored boilerplate; created_by records which admin wrote a reusable template, not personal data about them",
+  ],
+  [
     "system_settings",
     "created_by records which staff member changed a service-wide setting, not personal data",
   ],

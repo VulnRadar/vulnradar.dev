@@ -26,7 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Sparkles, Wand2, Loader2 } from "lucide-react";
+import { Sparkles, Wand2, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { BILLING_ENABLED } from "@/lib/config/client-constants";
 import {
@@ -38,12 +38,50 @@ import {
 } from "@/lib/email/campaigns";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 
-interface Props {
-  /** Called with everything the composer needs, once the writer confirms. */
-  onApply: (next: { title: string; content: string; category: string }) => void;
+/**
+ * A template an admin wrote and saved, as opposed to one of the seven written
+ * into lib/email/campaigns.ts.
+ *
+ * No `fields`: the built-ins carry typed inputs and subject/body FUNCTIONS,
+ * and a saved one is a subject and a body you start from and then edit. That
+ * is deliberately the simpler half. Making the built-ins storable would mean
+ * inventing a placeholder language and an editor for it, and a built-in
+ * becomes exactly this once its fields are filled in anyway.
+ */
+export interface SavedTemplate {
+  id: number;
+  name: string;
+  description: string | null;
+  subject: string;
+  content: string;
+  created_by_name?: string | null;
 }
 
-export function CampaignTemplatePicker({ onApply }: Props) {
+interface Props {
+  /**
+   * Called with everything the composer needs, once the writer confirms.
+   *
+   * `category` is the opt-in preference the send is filtered by. Each
+   * built-in declares one; a saved template has no opinion and omits it,
+   * because overwriting the composer's current choice with a guess would
+   * silently change who the broadcast reaches.
+   */
+  onApply: (next: {
+    title: string;
+    content: string;
+    category?: string;
+  }) => void;
+  /** The admin-written templates, owned and fetched by the composer. */
+  saved?: SavedTemplate[];
+  /** Omitted when the caller has nothing to delete against. */
+  onDeleteSaved?: (template: SavedTemplate) => void;
+}
+
+export function CampaignTemplatePicker({
+  onApply,
+  saved = [],
+  onDeleteSaved,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<CampaignTemplate | null>(null);
   const [values, setValues] = useState<CampaignValues>({});
@@ -55,6 +93,21 @@ export function CampaignTemplatePicker({ onApply }: Props) {
     () => CAMPAIGN_TEMPLATES.filter((t) => BILLING_ENABLED || !t.billingOnly),
     [],
   );
+
+  /**
+   * A saved template skips the second step. There are no fields to fill in,
+   * so stopping to show an empty form would be a step that asks nothing.
+   *
+   * The category is left alone: it is the opt-in preference the send is
+   * filtered by, the built-ins each declare one, and a saved template has no
+   * opinion. Overwriting the composer's current choice with a guess would
+   * silently change who a broadcast reaches.
+   */
+  function applySaved(template: SavedTemplate) {
+    onApply({ title: template.subject, content: template.content });
+    setOpen(false);
+    setSelected(null);
+  }
 
   function choose(template: CampaignTemplate) {
     setSelected(template);
@@ -124,6 +177,60 @@ export function CampaignTemplatePicker({ onApply }: Props) {
           </DialogTitle>
         </DialogHeader>
         <DialogBody className="space-y-4">
+          {!selected && saved.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
+                Saved here
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {saved.map((t) => (
+                  <div
+                    key={t.id}
+                    className={cn(
+                      "group relative rounded-lg border border-border/50 bg-background/50",
+                      "transition-colors hover:border-primary/40 hover:bg-muted/40",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => applySaved(t)}
+                      className={cn(
+                        "w-full p-4 pr-11 text-left",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg",
+                      )}
+                    >
+                      <p className="text-sm font-semibold text-foreground">
+                        {t.name}
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        {t.description || t.subject}
+                      </p>
+                      {t.created_by_name && (
+                        <p className="mt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                          Saved by {t.created_by_name}
+                        </p>
+                      )}
+                    </button>
+                    {onDeleteSaved && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1.5 top-1.5 h-8 w-8 text-muted-foreground hover:text-[hsl(var(--destructive))]"
+                        onClick={() => onDeleteSaved(t)}
+                        aria-label={`Delete the template ${t.name}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/70 pt-2">
+                Written for you
+              </p>
+            </div>
+          )}
+
           {!selected && (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {templates.map((t) => (

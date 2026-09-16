@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Mail,
@@ -20,6 +21,7 @@ import {
   RefreshCw,
   Loader2,
   MailCheck,
+  BookmarkPlus,
   FileEdit,
   CheckCircle2,
   Clock,
@@ -49,7 +51,10 @@ import {
 import { formatTimestamp } from "@/components/admin/utils";
 import type { ToastState } from "@/components/admin/types";
 import { LeadingIcon } from "@/components/shared/leading-icon";
-import { CampaignTemplatePicker } from "./campaign-template-picker";
+import {
+  CampaignTemplatePicker,
+  type SavedTemplate,
+} from "./campaign-template-picker";
 
 interface Broadcast {
   id: string;
@@ -104,6 +109,13 @@ export function MassEmailManager() {
   const [category, setCategory] = useState("none");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [templates, setTemplates] = useState<SavedTemplate[]>([]);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [templateDescription, setTemplateDescription] = useState("");
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [pendingTemplateDelete, setPendingTemplateDelete] =
+    useState<SavedTemplate | null>(null);
   const [historyFilter, setHistoryFilter] = useState<"all" | "draft" | "sent">(
     "all",
   );
@@ -117,9 +129,12 @@ export function MassEmailManager() {
   const segmentId = useId();
   const specificEmailId = useId();
   const categoryId = useId();
+  const templateNameId = useId();
+  const templateDescriptionId = useId();
 
   useEffect(() => {
     fetchMessages();
+    fetchTemplates();
   }, []);
 
   async function fetchMessages() {
@@ -184,6 +199,102 @@ export function MassEmailManager() {
       setToast({ message: "The test could not be sent.", type: "error" });
     } finally {
       setTesting(false);
+    }
+  }
+
+  /**
+   * The admin-written templates, as opposed to the seven in
+   * lib/email/campaigns.ts.
+   *
+   * Owned here rather than inside the picker so the picker stays
+   * presentational: the composer is already the component that talks to this
+   * route, and it is the one that has the subject and body a save is made of.
+   */
+  async function fetchTemplates() {
+    try {
+      const res = await fetch("/api/v3/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "template_list", section: "broadcast" }),
+      });
+      const data = await res.json();
+      setTemplates(data.templates || []);
+    } catch (err) {
+      console.error("Error fetching templates:", err);
+    }
+  }
+
+  async function handleSaveTemplate() {
+    if (!templateName.trim() || !title || !content) return;
+    setSavingTemplate(true);
+    try {
+      const res = await fetch("/api/v3/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "template_save",
+          section: "broadcast",
+          name: templateName,
+          description: templateDescription,
+          subject: title,
+          content,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({
+          message: data.error || "The template could not be saved.",
+          type: "error",
+        });
+        return;
+      }
+      setSaveTemplateOpen(false);
+      setTemplateName("");
+      setTemplateDescription("");
+      setToast({
+        message: data.template?.created
+          ? `Saved "${data.template.name}". It is in the template picker now.`
+          : `Updated "${data.template?.name ?? templateName}".`,
+        type: "success",
+      });
+      fetchTemplates();
+    } catch (err) {
+      console.error("Error saving template:", err);
+      setToast({ message: "The template could not be saved.", type: "error" });
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function handleDeleteTemplate(template: SavedTemplate) {
+    try {
+      const res = await fetch("/api/v3/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "template_delete",
+          section: "broadcast",
+          id: template.id,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setToast({
+          message: data.error || "The template could not be deleted.",
+          type: "error",
+        });
+        return;
+      }
+      setToast({ message: `Deleted "${template.name}".`, type: "success" });
+      fetchTemplates();
+    } catch (err) {
+      console.error("Error deleting template:", err);
+      setToast({
+        message: "The template could not be deleted.",
+        type: "error",
+      });
+    } finally {
+      setPendingTemplateDelete(null);
     }
   }
 
@@ -375,10 +486,16 @@ export function MassEmailManager() {
               broadcast ends up reaching people who opted out of exactly this
               kind of message. A template sets all three together. */}
           <CampaignTemplatePicker
+            saved={templates}
+            onDeleteSaved={setPendingTemplateDelete}
             onApply={(next) => {
               setTitle(next.title);
               setContent(next.content);
-              setCategory(next.category);
+              // Only when the template declares one. A saved template has
+              // no opinion about the audience filter, and replacing the
+              // current choice with a default would quietly change who the
+              // broadcast reaches.
+              if (next.category) setCategory(next.category);
             }}
           />
           <div>
@@ -582,6 +699,92 @@ export function MassEmailManager() {
               )}
               Send test to me
             </Button>
+
+            <Dialog
+              open={saveTemplateOpen}
+              onOpenChange={(next) => {
+                setSaveTemplateOpen(next);
+                if (!next) {
+                  setTemplateName("");
+                  setTemplateDescription("");
+                }
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="gap-2 border-border/40"
+                  disabled={!title || !content}
+                >
+                  <BookmarkPlus className="h-4 w-4" aria-hidden="true" />
+                  Save as template
+                </Button>
+              </DialogTrigger>
+              <DialogContent variant="shell" size="sm">
+                <DialogHeader>
+                  <DialogTitle>Save as template</DialogTitle>
+                </DialogHeader>
+                <DialogBody className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Keeps this subject and body as a starting point in the
+                    template picker, for you and every other admin. Saving over
+                    a name that already exists replaces it.
+                  </p>
+                  <div>
+                    <label
+                      htmlFor={templateNameId}
+                      className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+                    >
+                      Name
+                    </label>
+                    <Input
+                      id={templateNameId}
+                      value={templateName}
+                      onChange={(e) => setTemplateName(e.target.value)}
+                      placeholder="Monthly product update"
+                      maxLength={120}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor={templateDescriptionId}
+                      className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+                    >
+                      What it is for (optional)
+                    </label>
+                    <Input
+                      id={templateDescriptionId}
+                      value={templateDescription}
+                      onChange={(e) => setTemplateDescription(e.target.value)}
+                      placeholder="Shown under the name in the picker"
+                      maxLength={300}
+                    />
+                  </div>
+                </DialogBody>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setSaveTemplateOpen(false)}
+                    disabled={savingTemplate}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSaveTemplate}
+                    disabled={savingTemplate || !templateName.trim()}
+                    className="gap-2"
+                  >
+                    {savingTemplate && (
+                      <Loader2
+                        className="h-4 w-4 animate-spin"
+                        aria-hidden="true"
+                      />
+                    )}
+                    Save template
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <Button
               onClick={handleCreate}
@@ -809,6 +1012,40 @@ export function MassEmailManager() {
           </div>
         )}
       </div>
+
+      {/* Template Delete Confirmation */}
+      <SaveConfirmationModal
+        isOpen={!!pendingTemplateDelete}
+        onClose={() => setPendingTemplateDelete(null)}
+        onConfirm={async () => {
+          if (pendingTemplateDelete) {
+            await handleDeleteTemplate(pendingTemplateDelete);
+          }
+          return { ok: true };
+        }}
+        title="Delete template"
+        description="This removes the template from the picker for every admin. Broadcasts already written from it are untouched."
+        changes={
+          pendingTemplateDelete
+            ? [
+                {
+                  field: "name",
+                  label: "Template",
+                  oldValue: pendingTemplateDelete.name,
+                  newValue: "Deleted",
+                },
+                {
+                  field: "subject",
+                  label: "Subject",
+                  oldValue: pendingTemplateDelete.subject,
+                  newValue: "Removed",
+                },
+              ]
+            : []
+        }
+        confirmText="Delete"
+        variant="destructive"
+      />
 
       {/* Delete Confirmation Modal */}
       <SaveConfirmationModal

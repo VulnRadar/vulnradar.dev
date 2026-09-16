@@ -1065,3 +1065,147 @@ describe("POST /api/v3/admin/features — broadcast test send", () => {
     expect(mockSendEmail).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Templates an admin writes, as opposed to the seven compiled into
+ * lib/email/campaigns.ts. Those are a `const` array imported straight into a
+ * client component, so adding to them is a source edit and a release, which is
+ * the whole of "we cannot even add more".
+ *
+ * The SQL underneath (a unique index on an expression, an ON CONFLICT target
+ * that has to match it, ON DELETE SET NULL) is proved against a real Postgres
+ * in tests/integration/broadcast-templates.test.ts, because a faked pool
+ * answers those identically whether they are right or wrong. What is left for
+ * this tier is the validation and the wiring.
+ */
+describe("POST /api/v3/admin/features — broadcast templates", () => {
+  const save = {
+    section: "broadcast",
+    action: "template_save",
+    name: "Monthly update",
+    description: "The one we send on the first",
+    subject: "What shipped in October",
+    content: "<p>Body</p>",
+  };
+
+  function queueSaved(name = "Monthly update", created = true) {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 3, name, subject: save.subject, created }],
+    });
+  }
+
+  it("saves a template and audit-logs it as a creation", async () => {
+    queueRole("admin");
+    queueSaved();
+    const res = await POST(postRequest(save));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ success: true });
+    expect(mockLogAction).toHaveBeenCalledWith(
+      1,
+      null,
+      "broadcast_template_created",
+      expect.stringContaining("Monthly update"),
+      "127.0.0.1",
+    );
+  });
+
+  it("calls an overwrite an update, not a creation", async () => {
+    // Saving a name that exists replaces it, so the audit trail has to say
+    // which of the two happened or it reads as a second template appearing.
+    queueRole("admin");
+    queueSaved("Monthly update", false);
+    await POST(postRequest(save));
+    expect(mockLogAction).toHaveBeenCalledWith(
+      1,
+      null,
+      "broadcast_template_updated",
+      expect.stringContaining("Monthly update"),
+      "127.0.0.1",
+    );
+  });
+
+  it("refuses a template with no name, subject or body", async () => {
+    for (const bad of [
+      { ...save, name: "   " },
+      { ...save, subject: "" },
+      { ...save, content: "  " },
+    ]) {
+      queueRole("admin");
+      const res = await POST(postRequest(bad));
+      expect(res.status, JSON.stringify(bad.name)).toBe(400);
+    }
+  });
+
+  it("refuses a name longer than the column holds", async () => {
+    // Rejected rather than silently truncated: a name is the only handle on a
+    // template, and a picker entry cut off mid-word is not the one you saved.
+    queueRole("admin");
+    const res = await POST(postRequest({ ...save, name: "x".repeat(121) }));
+    expect(res.status).toBe(400);
+  });
+
+  it("does not touch broadcasts when saving a template", async () => {
+    queueRole("admin");
+    queueSaved();
+    await POST(postRequest(save));
+    const sql = mockQuery.mock.calls.map((c) => String(c[0]));
+    expect(sql.some((q) => /broadcast_messages/i.test(q))).toBe(false);
+  });
+
+  it("lists templates with who saved each one", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 1, name: "Monthly update", created_by_name: "Ada" }],
+    });
+    const res = await POST(
+      postRequest({ section: "broadcast", action: "template_list" }),
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      templates: [{ name: "Monthly update", created_by_name: "Ada" }],
+    });
+  });
+
+  it("deletes a template and says so in the audit log", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: "Monthly update" }] });
+    const res = await POST(
+      postRequest({ section: "broadcast", action: "template_delete", id: 3 }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      1,
+      null,
+      "broadcast_template_deleted",
+      expect.stringContaining("Monthly update"),
+      "127.0.0.1",
+    );
+  });
+
+  it("404s a delete for a template that is not there", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await POST(
+      postRequest({ section: "broadcast", action: "template_delete", id: 999 }),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a delete id that is not an integer", async () => {
+    queueRole("admin");
+    const res = await POST(
+      postRequest({
+        section: "broadcast",
+        action: "template_delete",
+        id: "3 OR 1=1",
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("is closed to a staff role below admin", async () => {
+    queueRole("content_manager");
+    const res = await POST(postRequest(save));
+    expect(res.status).toBe(401);
+  });
+});

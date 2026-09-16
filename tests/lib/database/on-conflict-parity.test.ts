@@ -32,7 +32,19 @@ const {
  * legitimately rely on one. Empty today; it exists so a future case is a
  * conscious entry rather than a loosened assertion.
  */
-const DELIBERATE_PARTIAL_INDEX_UPSERTS: string[] = [];
+const DELIBERATE_PARTIAL_INDEX_UPSERTS: string[] = [
+  // broadcast_templates' unique index is on LOWER(name), an expression, so
+  // that saving "October promo" a second time updates it instead of leaving
+  // the picker offering two entries that differ only in capitalisation. The
+  // upsert repeats the expression verbatim -- ON CONFLICT (LOWER(name))
+  // against CREATE UNIQUE INDEX ... ON broadcast_templates(LOWER(name)) --
+  // which is what makes it a valid target; parseUniqueTargets simply cannot
+  // see expression indexes.
+  //
+  // If this line number drifts, the entry is what moved, not the code. Re-run
+  // this suite and take the file:line it prints.
+  "app/api/v3/admin/features/route.ts:888",
+];
 
 const SOURCE_ROOTS = ["lib", "app"];
 

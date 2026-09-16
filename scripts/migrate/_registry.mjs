@@ -235,6 +235,7 @@ export const VERSIONS = [
         "billing_verification_codes",
         "broadcast_messages",
         "broadcast_recipients",
+        "broadcast_templates",
         "browser_sessions",
         "browserbase_credit_purchases",
         "browserbase_usage",

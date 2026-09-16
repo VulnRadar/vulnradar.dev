@@ -764,6 +764,25 @@ const SUPPORT_TICKET_SHARES_SQL = `
     ON support_ticket_shares(shared_with_user_id);
 `;
 
+// Broadcast templates. Reusable starting points an admin writes in the
+// composer, as opposed to the seven campaign templates compiled into
+// lib/email/campaigns.ts. Mirrors the boot schema's broadcast-templates step.
+const BROADCAST_TEMPLATES_SQL = `
+  CREATE TABLE IF NOT EXISTS broadcast_templates (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    description VARCHAR(300),
+    subject VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_broadcast_templates_name
+    ON broadcast_templates(LOWER(name));
+`;
+
 // Staff invites. Was created lazily by lib/admin/staff-invites.ts on every
 // admin request instead of by any schema file (AUDIT-013 schema-02);
 // instrumentation.ts now creates it at boot and this is the matching
@@ -908,6 +927,7 @@ export const upgrade = {
     { name: "staff_invites", sql: STAFF_INVITES_SQL },
     { name: "admin_audit_log_archive", sql: ADMIN_AUDIT_LOG_ARCHIVE_SQL },
     { name: "scan_history_teams", sql: SCAN_HISTORY_TEAMS_SQL },
+    { name: "broadcast_templates", sql: BROADCAST_TEMPLATES_SQL },
   ],
 
   addColumns: [
@@ -2150,6 +2170,7 @@ export const downgrade = {
     // upgrade, so a rolled-back database still shows every scan under one team
     // rather than none.
     "scan_history_teams",
+    "broadcast_templates",
   ],
 
   dropColumns: [
