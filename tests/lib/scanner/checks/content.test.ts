@@ -866,6 +866,18 @@ const fixtures: DetectorFixtures = {
       body: '<script src="https://cdn.vendor.example/trace/sdk.js"></script>',
       expect: "skip",
     },
+    {
+      description: "a same-origin /trace/ link is usually package tracking",
+      url: "https://shop.example.com/",
+      body: '<a href="/trace/AB123456">Track your package</a>',
+      expect: "skip",
+    },
+    {
+      description: "Django's debug toolbar mount",
+      url: "https://example.com/",
+      body: '<a href="/__debug__/render_panel/">Debug toolbar</a>',
+      expect: "fire",
+    },
   ],
   "email-enumeration": [
     {

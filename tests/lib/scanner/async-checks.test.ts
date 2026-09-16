@@ -1093,7 +1093,7 @@ describe("checkDNSSecurity", () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf1 -all"]]); // DMARC missing
     dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND")); // DKIM missing
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      json: () => Promise.resolve({ AD: false }),
+      json: () => Promise.resolve({ Status: 0, AD: false }),
     });
     const findings = await checkDNSSecurity(
       "example.com",
@@ -2788,7 +2788,7 @@ describe("runAsyncChecksDetailed progress hook", () => {
  * answers with an empty Answer section, and "fail" rejects both, which is how
  * dohHasAnswer reports "could not tell".
  */
-function stubDohByType(byType: Record<string, boolean | "fail">) {
+function stubDohByType(byType: Record<string, boolean | "fail" | "no-status">) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: unknown) => {
@@ -2796,8 +2796,13 @@ function stubDohByType(byType: Record<string, boolean | "fail">) {
       const type = /[?&]type=([A-Z0-9]+)/i.exec(href)?.[1] ?? "";
       const entry = byType[type];
       if (entry === undefined || entry === "fail") throw new Error("network");
+      // Real DoH JSON always carries Status (0 NOERROR). "no-status" is a
+      // proxy or captive portal answering {} as JSON.
+      if (entry === "no-status") {
+        return { json: async () => ({}) } as unknown as Response;
+      }
       return {
-        json: async () => ({ Answer: entry ? [{ data: "x" }] : [] }),
+        json: async () => ({ Status: 0, Answer: entry ? [{ data: "x" }] : [] }),
       } as unknown as Response;
     }),
   );
@@ -2822,6 +2827,16 @@ describe("checkTLSARecord", () => {
     expect(findings[0].evidence).toContain("_25._tcp.mx1.dane-none.test");
     expect(findings[0].evidence).toContain("_25._tcp.mx2.dane-none.test");
     expect(findings[0].evidence).not.toContain("_443._tcp");
+  });
+
+  it("does not read a JSON body with no DNS status as the record being absent", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mx1.dane-proxy.test", priority: 10 },
+    ]);
+    stubDohByType({ DNSKEY: true, TLSA: "no-status" });
+    expect(
+      await checkTLSARecord("dane-proxy.test", "https://dane-proxy.test"),
+    ).toEqual([]);
   });
 
   it("reports nothing when the domain accepts no mail", async () => {

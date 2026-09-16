@@ -762,7 +762,9 @@ const rawDetectors: Record<string, DetectFn> = {
     } catch {
       return null;
     }
-    const DEBUG_SEGMENT = /\/(?:_?debug|_?profiler|trace)\//i;
+    // No bare "trace": a same-origin /trace/<id> is package tracking far more
+    // often than a debug route. Django's debug toolbar mounts /__debug__/.
+    const DEBUG_SEGMENT = /\/(?:_?debug|__debug__|_?profiler)\//i;
     const html = stripExampleContent(body);
     for (const m of html.matchAll(
       /\b(?:href|src|action|formaction)\s*=\s*["']([^"']{1,500})["']/gi,

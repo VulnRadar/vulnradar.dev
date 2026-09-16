@@ -2032,11 +2032,12 @@ async function dohQuery(name: string, type: string): Promise<boolean | null> {
   // the zone's nameservers, which says nothing about whether the record
   // exists. Counting it as "no records" made an unreachable nameserver read
   // as a domain that has never enabled DNSSEC. Only NOERROR and NXDOMAIN are
-  // answers.
+  // answers, and a body with no Status at all (a captive portal or proxy
+  // answering {} as JSON) is not a DoH answer either.
   const answered = (r: PromiseSettledResult<unknown>): boolean => {
     if (r.status !== "fulfilled") return false;
     const status = (r.value as { Status?: unknown })?.Status;
-    return typeof status !== "number" || status === 0 || status === 3;
+    return status === 0 || status === 3;
   };
   const gOK = answered(g);
   const cOK = answered(c);
