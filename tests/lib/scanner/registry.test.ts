@@ -446,6 +446,30 @@ describe("explicit detector homes", () => {
   // (a Docker Hub organization-token pattern the live check lacked) that
   // everyone reading the file assumed were live. Either give it a definition
   // or delete it.
+  // The async-only modules keep a `() => null` placeholder per documented id
+  // so the coverage test above can map each one. When 53 retired checks lost
+  // their definitions, 18 of these placeholders stayed behind in the DNS and
+  // email modules, still listed as checks in the one place a maintainer reads
+  // to see what those families cover, because this guard only walked the
+  // inline categories.
+  it("every async-only placeholder names a defined check", () => {
+    const definedIds = new Set(allCheckDefs.map((d) => d.id));
+    const placeholders: Record<string, Record<string, unknown>> = {
+      tls: tlsDetectors,
+      email: emailDetectors,
+      dns: dnsDetectors,
+      reputation: reputationDetectors,
+      "active-probes": activeProbesDetectors,
+    };
+    const undefinedIds = Object.entries(placeholders).flatMap(
+      ([category, map]) =>
+        Object.keys(map)
+          .filter((id) => !definedIds.has(id))
+          .map((id) => `${category}:${id}`),
+    );
+    expect(undefinedIds).toEqual([]);
+  });
+
   it("every inline detector has a definition", () => {
     const definedIds = new Set(allCheckDefs.map((d) => d.id));
     const undefinedIds: string[] = [];
