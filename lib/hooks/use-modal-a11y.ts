@@ -50,6 +50,52 @@ interface UseModalA11yOptions {
   hasDescription?: boolean;
 }
 
+/**
+ * Hide every top-level body child that does not contain `panelRef` from
+ * assistive tech, and take it out of the tab order, for as long as `open`.
+ *
+ * Extracted from useModalA11y so the two full-screen mobile nav drawers can
+ * have it without adopting the whole hook. Both declare
+ * `role="dialog" aria-modal="true"`, both hand-rolled their own Escape
+ * handling and focus trap, and neither ever did this half - so `aria-modal`
+ * told a screen-reader user the page behind was inert while it remained fully
+ * reachable by swipe or virtual cursor. Their own comments describe that
+ * exact gap as the reason for the focus trap they did write, which only
+ * closed the keyboard half of it.
+ *
+ * They are not converted wholesale to useModalA11y here: they are navigation
+ * drawers rather than dialogs, they label themselves with aria-label rather
+ * than a heading id, and one of them locks body scroll. Sharing the piece
+ * they were missing fixes the bug without rewriting two working components
+ * into a shape that does not quite fit them.
+ */
+export function useInertBackground(
+  open: boolean,
+  panelRef: React.RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const hidden: HTMLElement[] = [];
+    for (const el of Array.from(document.body.children)) {
+      if (!(el instanceof HTMLElement)) continue;
+      if (el.contains(panel)) continue;
+      if (el.hasAttribute(OVERLAY_PASSTHROUGH)) continue;
+      if (el.hasAttribute("aria-hidden")) continue;
+      el.setAttribute("aria-hidden", "true");
+      el.setAttribute("inert", "");
+      hidden.push(el);
+    }
+    return () => {
+      for (const el of hidden) {
+        el.removeAttribute("aria-hidden");
+        el.removeAttribute("inert");
+      }
+    };
+  }, [open, panelRef]);
+}
+
 export function useModalA11y({
   open,
   onClose,
@@ -95,27 +141,7 @@ export function useModalA11y({
   // sibling, and its "End tour" button went dead every time a modal opened over
   // a step. Opted into by attribute rather than by component name so this file
   // keeps knowing nothing about who its neighbours are.
-  useEffect(() => {
-    if (!open) return;
-    const panel = panelRef.current;
-    if (!panel) return;
-    const hidden: HTMLElement[] = [];
-    for (const el of Array.from(document.body.children)) {
-      if (!(el instanceof HTMLElement)) continue;
-      if (el.contains(panel)) continue;
-      if (el.hasAttribute(OVERLAY_PASSTHROUGH)) continue;
-      if (el.hasAttribute("aria-hidden")) continue;
-      el.setAttribute("aria-hidden", "true");
-      el.setAttribute("inert", "");
-      hidden.push(el);
-    }
-    return () => {
-      for (const el of hidden) {
-        el.removeAttribute("aria-hidden");
-        el.removeAttribute("inert");
-      }
-    };
-  }, [open]);
+  useInertBackground(open, panelRef);
 
   // Focus trap: keep Tab / Shift+Tab cycling inside the modal so a keyboard
   // user can't step out into the (now aria-hidden) page behind it -- an ARIA

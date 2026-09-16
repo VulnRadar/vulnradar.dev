@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/ui/utils";
 import { modalCloseChip } from "@/components/ui/modal-grammar";
+import { useInertBackground } from "@/lib/hooks/use-modal-a11y";
 import { List, X } from "lucide-react";
 import { DOCS_NAV, isNavItemActive } from "./docs-nav";
 import type { TocItem } from "./docs-types";
@@ -55,6 +56,14 @@ export function DocsMobileNav({
   const pathname = usePathname();
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // The half the hand-rolled trap below never did. This drawer declares
+  // aria-modal="true", which promises the page behind it is inert; the trap
+  // only stopped Tab from walking out, leaving a screen-reader user free to
+  // swipe straight past the drawer into content the attribute says is not
+  // there. Shared with every modal in the product rather than written a
+  // third time.
+  useInertBackground(isOpen, panelRef);
 
   // Escape closes the drawer, and focus moves into it on open so a keyboard
   // user is not left tabbing through the page behind it.

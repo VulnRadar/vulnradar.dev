@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { ChevronDown, List, X } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { modalCloseChip } from "@/components/ui/modal-grammar";
+import { useInertBackground } from "@/lib/hooks/use-modal-a11y";
 
 export interface AdminTocItem {
   /** Unique per list: it is this item's React key. Several items can point
@@ -201,6 +202,14 @@ export function AdminMobileToc({
 }: AdminMobileTocProps) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // The half the hand-rolled trap below never did. This drawer declares
+  // aria-modal="true", which promises the page behind it is inert; the trap
+  // only stopped Tab from walking out, leaving a screen-reader user free to
+  // swipe straight past the drawer into content the attribute says is not
+  // there. Shared with every modal in the product rather than written a
+  // third time.
+  useInertBackground(isOpen, panelRef);
 
   // a11y. This drawer declares role="dialog" aria-modal="true" below but only
   // ever handled Escape: Tab walked straight out into the page behind, which

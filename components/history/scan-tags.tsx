@@ -141,13 +141,20 @@ export function ScanTags({
           >
             <Sparkles className="h-2.5 w-2.5 text-primary" aria-hidden />
             {t.tag}
+            {/* after:-inset-2 widens the hit area without growing the box.
+                The visible control is a 10px X with no padding, so the
+                tappable target was about 10x10 - well under the 24px floor
+                in SC 2.5.8, on a row where tags sit at gap-1 and the thing
+                next to it is another tag's remove button. Same trick
+                inline-auth-form.tsx already uses for its small icon
+                button. */}
             {!readOnly && (
               <button
                 type="button"
                 disabled={pending}
                 aria-label={`Dismiss auto tag ${t.tag}: not accurate for this scan`}
                 title="Tell us this tag is wrong for this scan"
-                className="ml-0.5 hover:text-destructive disabled:opacity-50"
+                className="relative ml-0.5 after:absolute after:-inset-2 hover:text-destructive disabled:opacity-50"
                 onClick={(e) => {
                   e.stopPropagation();
                   removeTag(t.tag);
@@ -169,7 +176,7 @@ export function ScanTags({
                 type="button"
                 disabled={pending}
                 aria-label={`Remove tag ${t.tag}`}
-                className="ml-0.5 hover:text-destructive disabled:opacity-50"
+                className="relative ml-0.5 after:absolute after:-inset-2 hover:text-destructive disabled:opacity-50"
                 onClick={(e) => {
                   e.stopPropagation();
                   removeTag(t.tag);
