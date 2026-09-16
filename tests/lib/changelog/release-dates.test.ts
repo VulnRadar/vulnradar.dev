@@ -17,14 +17,40 @@ import { CHANGELOG } from "@/lib/changelog/data";
  * claimed February 14 when they shipped on the 16th, and 1.6.0 through 1.6.5
  * were spread across four days they were not released on.
  */
+/**
+ * The one entry allowed to have no date.
+ *
+ * A release that has not shipped has no publishedAt to take a date from, and
+ * writing today's date into it would be exactly the thing this file exists to
+ * catch: a hand-typed date asserting a ship day that never happened. So the
+ * top entry may say "Unreleased", and only the top entry, and only one of
+ * them. Every other rule below still applies to every other release.
+ */
+const UNRELEASED = "Unreleased";
+
 describe("changelog release dates", () => {
   const releases = CHANGELOG;
+  const dated = releases.filter((r) => r.date !== UNRELEASED);
 
   it("has entries", () => {
     expect(releases.length).toBeGreaterThan(10);
   });
 
-  it.each(releases.map((r) => [r.version, r.date] as const))(
+  it("allows at most one Unreleased entry, and only at the top", () => {
+    const unreleased = releases
+      .map((r, i) => ({ ...r, i }))
+      .filter((r) => r.date === UNRELEASED);
+    expect(unreleased.length).toBeLessThanOrEqual(1);
+    for (const r of unreleased) {
+      expect(
+        r.i,
+        `${r.version} is marked ${UNRELEASED} but is not the newest entry. ` +
+          `A shipped release below an unshipped one means the order is wrong.`,
+      ).toBe(0);
+    }
+  });
+
+  it.each(dated.map((r) => [r.version, r.date] as const))(
     "%s has a parseable date",
     (version, date) => {
       const parsed = new Date(`${date} UTC`);
@@ -39,7 +65,7 @@ describe("changelog release dates", () => {
   it("dates no release in the future", () => {
     // A day of slack: the dates are UTC and a contributor may be behind it.
     const cutoff = Date.now() + 24 * 60 * 60 * 1000;
-    const future = releases.filter(
+    const future = dated.filter(
       (r) => new Date(`${r.date} UTC`).getTime() > cutoff,
     );
     expect(
@@ -54,14 +80,16 @@ describe("changelog release dates", () => {
     // being made to the reader. A later entry dated after an earlier one means
     // either the order or the date is wrong.
     const offenders: string[] = [];
-    for (let i = 1; i < releases.length; i++) {
-      const prev = new Date(`${releases[i - 1].date} UTC`).getTime();
-      const cur = new Date(`${releases[i].date} UTC`).getTime();
+    // Walks the dated entries in their original order, so an Unreleased top
+    // entry is skipped rather than breaking the chain between its neighbours.
+    for (let i = 1; i < dated.length; i++) {
+      const prev = new Date(`${dated[i - 1].date} UTC`).getTime();
+      const cur = new Date(`${dated[i].date} UTC`).getTime();
       if (Number.isNaN(prev) || Number.isNaN(cur)) continue;
       if (cur > prev) {
         offenders.push(
-          `${releases[i].version} (${releases[i].date}) is dated after ` +
-            `${releases[i - 1].version} (${releases[i - 1].date}), but is ` +
+          `${dated[i].version} (${dated[i].date}) is dated after ` +
+            `${dated[i - 1].version} (${dated[i - 1].date}), but is ` +
             `listed below it`,
         );
       }
