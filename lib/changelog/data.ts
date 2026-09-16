@@ -495,6 +495,12 @@ const CHANGELOG: Release[] = [
         category: "removed",
       },
       {
+        icon: ShieldAlert,
+        label: "Engine Version 3.4.0",
+        desc: "The detection engine moves from 3.3.2 to 3.4.0. Scan results change for the reasons in the Engine & Checks section: pages are read the way a browser acts on them, error pages are matched by their own markup, two new certificate findings, and fifty retired checks leave the catalog. Finding identifiers for the checks that remain are unchanged, so triage marks and regression baselines carry over.",
+        category: "changed",
+      },
+      {
         icon: Gauge,
         label: "Four Findings Lowered to Low Severity",
         desc: "Access-Control-Allow-Origin: * (browsers never send credentials to a wildcard), published Swagger or OpenAPI documentation, TRACE listed in an Allow header, and GraphQL introspection text found by keyword. Each overstated what the check can observe. The confirmed versions, from the active HTTP method probe and the live introspection query, keep medium severity. A CI gate set to fail on medium no longer trips on these four.",

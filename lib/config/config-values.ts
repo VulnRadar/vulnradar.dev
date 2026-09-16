@@ -150,7 +150,16 @@ export const CONFIG_KNOWN_SCHEMA_VERSIONS = ["1.0.0", "2.0.0", "3.0.0"];
 // script-src-elem substring collisions fixed, TLS incomplete-chain now
 // detected, MTA-STS mode read from the policy file. Scan results change, so a
 // patch bump.
-export const CONFIG_ENGINE_VERSION = "3.3.2";
+// 3.4.0: pages are read the way a browser acts on them. Code-pattern checks
+// read stripProse's view (tags, behavioural attributes, authored script) and
+// no longer match a vulnerable API named in a page's text; error-page checks
+// match the pages' own markup. Checks judge the URL actually fetched after
+// redirects, a meta-delivered CSP is read, and duplicate findings merge in
+// more families. Two new TLS findings (certificate for the wrong hostname,
+// untrusted chain). Fifty retired checks that could never fire leave the
+// catalog, and 111 unreachable detectors are deleted. Scan results and the
+// check count change, with new checks, so a minor bump.
+export const CONFIG_ENGINE_VERSION = "3.4.0";
 // The most syndicated sentence in the product: it is the root meta
 // description, the OpenGraph and Twitter description, the PWA manifest
 // description, all three JSON-LD description fields, and the opening line of

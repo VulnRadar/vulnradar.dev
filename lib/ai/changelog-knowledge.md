@@ -114,6 +114,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Fifty checks had been retired over earlier releases, each for a sound reason: a duplicate of another check, a header browsers no longer use, a key that is public by design. Their detectors were reduced to returning nothing, but the checks stayed defined, so they were still counted in the advertised total and still had a page in the checks catalog, a few with titles admitting they were disabled duplicates. They are gone, and the count moves from 905+ to 855+, the number a scan actually runs. Separately, 111 detectors that could not run at all were deleted: 38 had no definition, and 73 were second or third copies of a check implemented in another file, some with tests that passed while the code they tested never ran. Tests now fail on all three.
 - [Trash2] **[REMOVED]** **Code Nothing Used**
   About 260 lines removed after checking every import, script, worker and test. Eight of the animation module's thirteen exports had no users, including a second, weaker copy of the class-name helper that was easy to import by mistake. A deprecated IP address helper still had three callers five months after its deprecation; those now call the real function and the wrapper is gone. Several other unused exports and types went with them.
+- [ShieldAlert] **[CHANGED]** **Engine Version 3.4.0**
+  The detection engine moves from 3.3.2 to 3.4.0. Scan results change for the reasons in the Engine & Checks section: pages are read the way a browser acts on them, error pages are matched by their own markup, two new certificate findings, and fifty retired checks leave the catalog. Finding identifiers for the checks that remain are unchanged, so triage marks and regression baselines carry over.
 - [Gauge] **[CHANGED]** **Four Findings Lowered to Low Severity**
   Access-Control-Allow-Origin: * (browsers never send credentials to a wildcard), published Swagger or OpenAPI documentation, TRACE listed in an Allow header, and GraphQL introspection text found by keyword. Each overstated what the check can observe. The confirmed versions, from the active HTTP method probe and the live introspection query, keep medium severity. A CI gate set to fail on medium no longer trips on these four.
 - [Package] **[CHANGED]** **Dependency Updates**
@@ -2426,6 +2428,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 905
+- **Total changes documented:** 906
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
