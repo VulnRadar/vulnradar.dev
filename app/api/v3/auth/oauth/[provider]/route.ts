@@ -21,6 +21,7 @@ import {
   OAUTH_NONCE_COOKIE,
   OAUTH_STATE_TTL_MS,
 } from "@/lib/auth/oauth-state";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 export async function GET(
   request: Request,
@@ -114,7 +115,7 @@ export async function GET(
   if (loginNonce) {
     response.cookies.set(OAUTH_NONCE_COOKIE, loginNonce, {
       httpOnly: true,
-      secure: baseUrl.startsWith("https://"),
+      secure: cookiesRequireHttps(),
       sameSite: "lax", // must survive the top-level redirect back from the IdP
       path: "/",
       maxAge: Math.ceil(OAUTH_STATE_TTL_MS / 1000),

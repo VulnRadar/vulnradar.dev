@@ -453,6 +453,12 @@ const CHANGELOG: Release[] = [
         category: "selfhost",
       },
       {
+        icon: Lock,
+        label: "Plain-HTTP Deployments Can Stay Signed In",
+        desc: "ALLOW_INSECURE_HTTP=1 is the documented way to run with no TLS on a trusted network, and signing in never worked with it. The session cookie, and every other sign-in cookie, was marked Secure whenever the app ran in production, and a browser discards a Secure cookie that arrives over plain HTTP. Eleven places set those cookies and decided the attribute in two different ways, neither of which read the flag. They share one rule now, with a test that fails if a cookie option decides it on its own again.",
+        category: "selfhost",
+      },
+      {
         icon: Activity,
         label: "An Incomplete Test Run Cannot Pass Quietly",
         desc: "The guard that fails a test run when a worker never started counted only the main test folder, so a run that lost the browser extension's suites still matched the number on disk. It now counts every folder the runner collects.",

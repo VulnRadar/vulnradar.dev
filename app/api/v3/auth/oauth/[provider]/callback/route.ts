@@ -59,6 +59,7 @@ import {
   loginsPausedReasonFor,
   signupsPausedReason,
 } from "@/lib/admin/service-state";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 // Separate cookie from the password-login AUTH_2FA_PENDING_COOKIE (see
 // lib/config/constants.ts) and distinct from Discord's own
@@ -421,7 +422,7 @@ async function signInOAuthUser(
       signPendingToken({ userId, method, email: twoFA.email, ts: Date.now() }),
       {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: cookiesRequireHttps(),
         sameSite: "lax",
         maxAge: pendingMaxAgeSeconds,
         path: "/",

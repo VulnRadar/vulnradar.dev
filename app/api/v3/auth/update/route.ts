@@ -29,6 +29,7 @@ import {
 import { getSetting } from "@/lib/config/runtime-config";
 import { sendEmailVerification } from "@/lib/auth/email-verification";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 export async function PATCH(request: NextRequest) {
   const session = await getSession();
@@ -445,7 +446,7 @@ export async function PATCH(request: NextRequest) {
       const sessionMaxAgeDays = await getSetting("SESSION_MAX_AGE_DAYS");
       response.cookies.set(AUTH_SESSION_COOKIE_NAME, newSessionId, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: cookiesRequireHttps(),
         sameSite: "lax",
         path: "/",
         maxAge: sessionMaxAgeDays * 24 * 60 * 60,
@@ -488,7 +489,7 @@ export async function PATCH(request: NextRequest) {
       const sessionMaxAgeDays = await getSetting("SESSION_MAX_AGE_DAYS");
       response.cookies.set(AUTH_SESSION_COOKIE_NAME, newSessionId, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: cookiesRequireHttps(),
         sameSite: "lax",
         path: "/",
         maxAge: sessionMaxAgeDays * 24 * 60 * 60,

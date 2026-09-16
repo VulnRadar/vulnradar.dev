@@ -26,6 +26,7 @@ import pool from "@/lib/database/db";
 import { AUTH_SESSION_COOKIE_NAME } from "@/lib/config/constants";
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
 import { hashSessionId } from "@/lib/auth/auth";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 const IMPERSONATION_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 const RETURN_SESSION_COOKIE = "imp_return_session";
@@ -99,7 +100,7 @@ export async function startImpersonation(
   const maxAge = IMPERSONATION_SESSION_MAX_AGE_MS / 1000;
   const cookieOpts = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookiesRequireHttps(),
     sameSite: "lax" as const,
     path: "/",
     maxAge,
@@ -168,7 +169,7 @@ export async function stopImpersonation(): Promise<StopImpersonationResult> {
 
   cookieStore.set(AUTH_SESSION_COOKIE_NAME, returnSessionToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookiesRequireHttps(),
     sameSite: "lax",
     path: "/",
   });

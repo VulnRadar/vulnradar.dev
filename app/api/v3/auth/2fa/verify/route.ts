@@ -23,6 +23,7 @@ import {
 import { getSetting } from "@/lib/config/runtime-config";
 import { upsertTrustedDevice } from "@/lib/auth/device-trust";
 import { loginsPausedResponseFor } from "@/lib/admin/service-state";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
@@ -391,7 +392,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const deviceTrustMaxAgeDays = await getSetting("DEVICE_TRUST_MAX_AGE_DAYS");
     response.cookies.set(DEVICE_TRUST_COOKIE_NAME, fingerprint, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: cookiesRequireHttps(),
       sameSite: "lax",
       path: "/",
       maxAge: deviceTrustMaxAgeDays * 24 * 60 * 60,

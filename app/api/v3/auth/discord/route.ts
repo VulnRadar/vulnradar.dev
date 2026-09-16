@@ -9,6 +9,7 @@ import {
   DISCORD_NONCE_COOKIE,
   DISCORD_STATE_TTL_MS,
 } from "@/lib/auth/discord-state";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
   if (loginNonce) {
     response.cookies.set(DISCORD_NONCE_COOKIE, loginNonce, {
       httpOnly: true,
-      secure: baseUrl.startsWith("https://"),
+      secure: cookiesRequireHttps(),
       sameSite: "lax", // must survive the top-level redirect back from Discord
       path: "/",
       maxAge: Math.ceil(DISCORD_STATE_TTL_MS / 1000),

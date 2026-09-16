@@ -10,6 +10,7 @@ import {
   getDiscoveryDocument,
 } from "@/lib/auth/staff-oidc";
 import { signOAuthState } from "@/lib/auth/oauth-state";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 export async function GET(request: Request) {
   const baseUrl = await resolveAppUrl(request);
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
   // already at its intended shape).
   response.cookies.set("staff_oidc_nonce", nonce, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookiesRequireHttps(),
     sameSite: "lax",
     maxAge: 300,
     path: "/",

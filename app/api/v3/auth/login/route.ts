@@ -41,6 +41,7 @@ import {
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
 import { loginsPausedResponseFor } from "@/lib/admin/service-state";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 // auth: module-scoped cache for the dummy scrypt hash used to equalize
 // timing between user-exists and user-doesn't-exist login paths.
@@ -352,7 +353,7 @@ export const POST = withErrorHandling(async (request: Request) => {
       signPendingToken({ userId: user.id, ts: Date.now() }),
       {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: cookiesRequireHttps(),
         sameSite: "lax",
         path: "/",
         maxAge: pendingMaxAgeSeconds, // seconds

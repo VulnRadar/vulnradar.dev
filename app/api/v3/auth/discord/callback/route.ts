@@ -23,6 +23,7 @@ import { signPendingToken } from "@/lib/auth/pending-2fa";
 import { encryptApiKey } from "@/lib/auth/crypto";
 import { getClientIp } from "@/lib/api/request-utils";
 import { loginsPausedReasonFor } from "@/lib/admin/service-state";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
@@ -351,7 +352,7 @@ export async function GET(request: Request) {
           }),
           {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
+            secure: cookiesRequireHttps(),
             sameSite: "lax",
             maxAge: pendingMaxAgeSeconds,
             path: "/",

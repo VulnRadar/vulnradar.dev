@@ -100,6 +100,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The example environment file shipped a Turnstile site key placeholder uncommented. The captcha switches on when that variable is present, but its secret was still unset, so on a fresh install copied exactly as the README instructs, signup, password reset and the contact form all failed. It is commented out like every other credential. The quick-start also told you to run a database initialisation script that actually creates a second, unused database; the schema already creates itself on first start, and that step is gone.
 - [Activity] **[SELFHOST]** **Container Health Checks Pass**
   The app redirects plain-HTTP requests to https, and it applied that to every direct request, because the server fills in the forwarded-protocol header itself when no proxy has. The image's health check calls the health endpoint over plain HTTP from inside the container, followed the redirect to a port that does not speak TLS, and failed, so every Docker and docker-compose install reported unhealthy. The health endpoint is never redirected now. The CI smoke test had passed throughout, because the tool it used counts a redirect as success; it now requires a real 200 and runs the image's own health check.
+- [Lock] **[SELFHOST]** **Plain-HTTP Deployments Can Stay Signed In**
+  ALLOW_INSECURE_HTTP=1 is the documented way to run with no TLS on a trusted network, and signing in never worked with it. The session cookie, and every other sign-in cookie, was marked Secure whenever the app ran in production, and a browser discards a Secure cookie that arrives over plain HTTP. Eleven places set those cookies and decided the attribute in two different ways, neither of which read the flag. They share one rule now, with a test that fails if a cookie option decides it on its own again.
 - [Activity] **[SELFHOST]** **An Incomplete Test Run Cannot Pass Quietly**
   The guard that fails a test run when a worker never started counted only the main test folder, so a run that lost the browser extension's suites still matched the number on disk. It now counts every folder the runner collects.
 - [Settings] **[SELFHOST]** **Clearer Self-Hosting Configuration**
@@ -2424,6 +2426,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 904
+- **Total changes documented:** 905
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

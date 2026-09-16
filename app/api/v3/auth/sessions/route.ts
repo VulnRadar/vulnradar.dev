@@ -13,6 +13,7 @@ import pool from "@/lib/database/db";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { sessionRevokedEmail } from "@/lib/email/email";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 /**
  * List the caller's own active sessions. Session-owner-only: always
@@ -74,7 +75,7 @@ export const DELETE = withErrorHandling(async () => {
   const cookieStore = await cookies();
   cookieStore.set(AUTH_SESSION_COOKIE_NAME, "", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookiesRequireHttps(),
     sameSite: "lax",
     maxAge: 0,
     path: "/",

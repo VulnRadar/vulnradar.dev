@@ -14,6 +14,7 @@ import {
 import { getSettings } from "@/lib/config/runtime-config";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { newLoginEmail, isEmailConfigured } from "@/lib/email/email";
+import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 const SESSION_COOKIE = AUTH_SESSION_COOKIE_NAME;
 const CLEANUP_INTERVAL = AUTH_CLEANUP_INTERVAL;
@@ -81,7 +82,7 @@ export async function createSession(
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, sessionToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookiesRequireHttps(),
     sameSite: "lax",
     path: "/",
     maxAge: cookieMaxAgeSeconds,
