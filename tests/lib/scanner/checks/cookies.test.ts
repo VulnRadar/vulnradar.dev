@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the cookies category.
  *
- * Covers 31 detectors in lib/scanner/checks/cookies.ts. Every detector
+ * Covers every detector in lib/scanner/checks/cookies.ts. Every detector
  * is exercised by the smoke harness (callable, no-throw, deterministic);
  * the curated fixtures below cover the most common cookie patterns.
  */
@@ -234,23 +234,6 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "cookie-domain-no-leading-dot": [
-    {
-      description:
-        "removed — merged into cookie-domain-broad, which now fires on this same input regardless of leading dot",
-      cookies: ["session=abc; Domain=example.com"],
-      expect: "skip",
-    },
-  ],
-
-  "cookie-domain-parent-on-subdomain": [
-    {
-      description: "removed — duplicate of cookie-domain-broad",
-      cookies: ["session=abc; Domain=.example.com"],
-      expect: "skip",
-    },
-  ],
-
   "cookie-domain-set-too-loose": [
     {
       description: "explicit Domain= is common and not a finding on its own",
@@ -260,14 +243,6 @@ const fixtures: DetectorFixtures = {
   ],
 
   // ── Expires / Max-Age ───────────────────────────────────────────────
-
-  "cookie-max-age-excessive": [
-    {
-      description: "removed — duplicate of cookie-expires-too-far",
-      cookies: ["session=abc; Max-Age=99999999"],
-      expect: "skip",
-    },
-  ],
 
   "cookie-expires-too-far": [
     {
@@ -373,25 +348,9 @@ const fixtures: DetectorFixtures = {
 
   // ── Path ────────────────────────────────────────────────────────────
 
-  "cookie-path-broad": [
-    {
-      description: "removed — duplicate of cookie-path-cross-app",
-      cookies: ["session=abc; Path=/"],
-      expect: "skip",
-    },
-  ],
-
   "cookie-path-cross-app": [
     {
       description: "Path=/ is the standard correct setting, not a finding",
-      cookies: ["session=abc; Path=/"],
-      expect: "skip",
-    },
-  ],
-
-  "cookie-path-root": [
-    {
-      description: "removed — duplicate of cookie-path-cross-app",
       cookies: ["session=abc; Path=/"],
       expect: "skip",
     },
@@ -415,14 +374,6 @@ const fixtures: DetectorFixtures = {
     {
       description: "generic cookie name",
       cookies: ["session=abc; HttpOnly; Secure"],
-      expect: "skip",
-    },
-  ],
-
-  "cookie-prefix-missing": [
-    {
-      description: "removed — duplicate of cookie-no-secure-prefix",
-      cookies: ["auth_token=abc; HttpOnly"],
       expect: "skip",
     },
   ],

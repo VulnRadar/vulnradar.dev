@@ -745,8 +745,8 @@ export const detectors: Record<string, DetectFn> = {
 
   "env-file-reference": (_url, _headers, body) => {
     // Only fire when the reference appears inside a href/src/action attribute
-    // (a real link the browser would navigate to), same guard
-    // backup-file-reference uses in information-disclosure.ts. The old
+    // (a real link the browser would navigate to), the same guard
+    // sensitive-files uses. The old
     // bare-substring version matched any page whose HTML merely contained
     // the text ".env" in quotes or after a slash -- including our own docs
     // and any other project's docs/READMEs showing an nginx snippet like
@@ -1197,13 +1197,10 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  // ── Email / phone / PII ──────────────────────────────────────────────────
-
   // ── Storage APIs ─────────────────────────────────────────────────────────
-  // phone-number-leak, jwt-in-html, jwt-in-url, token-exposure:
-  // detector implementations live in secrets-extended.ts (loads after content
-  // in BUNDLES); the secrets-extended version wins the detectorMap.
-  // JSON defs remain in content.json so the registry still builds the check.
+  // phone-number-leak, jwt-in-html, jwt-in-url and token-exposure are defined
+  // in content.json but implemented in secrets-extended.ts, routed there by
+  // DETECTOR_HOME in registry.ts.
 
   "storage-api-usage": (_url, _headers, body) => {
     const sensitiveKeys =
@@ -1930,8 +1927,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "docker-hub-token-exposed": (url, _headers, body) => {
-    if (/\bdckr_pat_[A-Za-z0-9_\-]{27,}\b/.test(body))
-      return "Docker Hub PAT detected in source.";
+    // dckr_oat_ as well as dckr_pat_: an organization access token carries
+    // the same registry push and pull rights as a personal one. Only a
+    // detector that never ran (it had no definition) knew the oat prefix.
+    if (/\bdckr_(?:pat|oat)_[A-Za-z0-9_\-]{27,}/.test(body))
+      return "Docker Hub access token (dckr_pat_/dckr_oat_) detected in source.";
     return null;
   },
 
@@ -2223,28 +2223,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "excessive-permissions": (url, headers) => {
-    const pp = headers.get("permissions-policy");
-    if (!pp) {
-      return null;
-    }
-    const features = pp.split(/[;,]/).map((s) => s.trim());
-    const broad = features.filter((f) => /\s*=\s*\*\b/.test(f));
-    if (broad.length > 2)
-      return `${broad.length} Permissions-Policy features allow any origin (*).`;
-    return null;
-  },
-
-  "feature-policy-deprecated": (url, headers) => {
-    if (headers.has("feature-policy"))
-      return "Deprecated 'Feature-Policy' header present — migrate to 'Permissions-Policy'.";
-    return null;
-  },
-
-  // internal-ip-exposed: detector implementation lives in secrets-extended.ts
-  // (loads after content in BUNDLES — secrets-extended version wins detectorMap).
-  // JSON def remains in content.json so the registry still builds the check.
-
   "hardcoded-ip-addresses": (url, _headers, body) => {
     const ipRe = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
     // SVG path/polygon coordinate data (e.g. an inline icon's
@@ -2308,9 +2286,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  // credit-card-pattern, ssn-pattern: implementations live in secrets-extended.ts
-  // (loads after content — secrets-extended wins). JSON defs remain in content.json.
-
   "swagger-docs-exposed": (url, _headers, body) => {
     // URL check is reliable — the page IS the docs endpoint.
     const urlPatterns = [
@@ -2327,7 +2302,7 @@ export const detectors: Record<string, DetectFn> = {
       ...body.matchAll(/(?:href|src|action)=["']([^"']+)["']/gi),
     ].map((m) => m[1]);
     const bodyPatterns = [
-      /\/swagger(?:\.json|\.yaml|\/ui)/i,
+      /\/swagger(?:\.json|\.yaml|[/-]ui)/i,
       /\/openapi(?:\.json|\.yaml)/i,
       /\/api-docs(?:\/|$)/i,
     ];
@@ -2372,9 +2347,6 @@ export const detectors: Record<string, DetectFn> = {
       return "JSONP callback parameter reference detected in body.";
     return null;
   },
-
-  // base64-credentials, connection-string-exposed, private-key-in-source:
-  // implementations live in secrets-extended.ts. JSON defs remain in content.json.
 
   // ── Subdomain takeover / third-party fingerprints ────────────────────────
 

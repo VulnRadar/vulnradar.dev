@@ -26,12 +26,10 @@ import { SEVERITY_PRIORITY } from "@/lib/config/client-constants";
 export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   // Subresource Integrity missing on an external resource.
   "sri-missing": "sri-missing",
-  "external-script-no-sri": "sri-missing",
   "third-party-script-no-sri": "sri-missing",
   "supply-chain-sri-external-script": "sri-missing",
 
   // Sensitive values written to localStorage / sessionStorage.
-  "local-storage-sensitive": "client-storage-sensitive",
   "localstorage-sensitive": "client-storage-sensitive",
   "sessionstorage-tokens": "client-storage-sensitive",
   "code-local-storage-pii": "client-storage-sensitive",
@@ -56,11 +54,10 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
 
   // Source map references shipped to production.
   "sourcemap-reference": "source-map-exposed",
-  "source-maps": "source-map-exposed",
   "source-map-exposed-production": "source-map-exposed",
 
   // document.domain writes.
-  "document-domain": "document-domain",
+  "cs-document-domain-relaxation": "document-domain",
   "document-domain-usage": "document-domain",
 
   // AWS access key material in the response.
@@ -70,20 +67,11 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
 
   // PEM private key block in the response.
   "private-key-exposed": "secret-private-key",
-  "private-key-in-source": "secret-private-key",
   "secret-private-key-pem": "secret-private-key",
-
-  // Stripe secret key.
-  "stripe-key-exposed": "secret-stripe-key",
-  "secret-stripe-secret-key": "secret-stripe-key",
 
   // GitHub personal access token.
   "github-token-exposed": "secret-github-token",
   "secret-github-pat": "secret-github-token",
-
-  // Docker Hub token.
-  "docker-hub-token-exposed": "secret-docker-hub-token",
-  "secret-docker-hub-token": "secret-docker-hub-token",
 
   // CSP script-src allows 'unsafe-inline'.
   "csp-unsafe-inline-script": "csp-unsafe-inline",
@@ -165,6 +153,12 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "csp-wildcard-source": "csp-wildcard-source",
   "csp-allows-http-sources": "csp-http-sources",
   "csp-object-src-unsafe": "csp-object-src-unrestricted",
+  // Page frameable by any site. code-clickjack-x-frame-options restates
+  // clickjack-missing's condition word for word, and the meta-tag PageCheck
+  // reports the same exposure with the reason the author thought it was fixed.
+  "clickjack-missing": "clickjacking",
+  "code-clickjack-x-frame-options": "clickjacking",
+  "target-blank-no-noopener": "anchor-target-blank-no-noopener",
 };
 
 /** The check ID a finding came from, recovered from its stable finding ID. */

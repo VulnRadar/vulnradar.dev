@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the API category.
  *
- * Covers 40 detectors in lib/scanner/checks/api.ts. Every detector is
+ * Covers every detector in lib/scanner/checks/api.ts. Every detector is
  * exercised by the smoke harness (callable, no-throw, deterministic).
  *
  * Most API detectors rely on very narrow patterns (specific GraphQL
@@ -36,9 +36,6 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "weak security scheme",
     },
   ],
-
-  // graphql-endpoint-exposed, swagger-docs-exposed, debug-endpoint, admin-endpoint
-  // — moved to content.ts; tested in content.test.ts
 
   // ── CORS ─────────────────────────────────────────────────────────────
   // Removed: api-cors-credentials-with-wildcard-origin, api-cors-null-origin-reflected,

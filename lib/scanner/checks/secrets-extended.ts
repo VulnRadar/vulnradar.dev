@@ -122,31 +122,6 @@ function maskPlaceholderSecrets(body: string): string {
  * validation a real card would) are always Luhn-valid, so this alone
  * eliminates most non-card false positives without needing per-site tuning.
  */
-/**
- * Email address in a page body.
- *
- * The previous form, `/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g`,
- * backtracked catastrophically. `.` and `-` are in the local-part class, so on
- * any long run of them the engine matched the entire run from EVERY starting
- * offset before failing to find an `@`: quadratic. Measured on a run of
- * `a.` pairs: 0.5s at 16k characters, 10.3s at 64k, against a body capped at
- * a megabyte. One page of dotted text was enough to pin the event loop, and
- * every timeout in the scan path is a setTimeout, so nothing could interrupt
- * it. Same failure mode, and the same reasoning, as the placeholder-masking
- * regex documented at the top of this file.
- *
- * Two changes fix it. The lookbehind means a match can only START where the
- * previous character is not itself a local-part character, so a long run is
- * attempted once instead of once per offset. And the domain is matched as
- * explicit dot-separated labels rather than one `[a-zA-Z0-9.-]+` blob, so the
- * label loop and the `\.` between labels cannot overlap. 24ms on a full 1MB
- * body, against minutes before. It is also slightly stricter, in the right
- * direction: a label now has to start and end alphanumeric, so `x@-foo.com`
- * and `x@a..com` no longer count as addresses. ref: AUDIT-002#scanner-02
- */
-const EMAIL_RE =
-  /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}/g;
-
 function passesLuhnCheck(digits: string): boolean {
   let sum = 0;
   let double = false;
@@ -363,47 +338,6 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "email-exposure": (_url, _headers, body) => {
-    const emails = body.match(EMAIL_RE) || [];
-    const filtered = emails.filter((e) => {
-      const lower = e.toLowerCase();
-      const atIndex = lower.indexOf("@");
-      if (atIndex === -1) return false;
-      const domain = lower.substring(atIndex + 1);
-      if (
-        domain.endsWith(".png") ||
-        domain.endsWith(".jpg") ||
-        domain.endsWith(".svg") ||
-        domain.endsWith(".gif") ||
-        domain.endsWith(".webp")
-      )
-        return false;
-      const testDomains = [
-        "example.com",
-        "example.org",
-        "test.com",
-        "test.org",
-        "schema.org",
-        "w3.org",
-        "sentry.io",
-      ];
-      if (testDomains.some((d) => domain === d || domain.endsWith("." + d)))
-        return false;
-      if (lower.includes("@2x") || lower.includes("@3x")) return false;
-      return true;
-    });
-    const unique = [...new Set(filtered)];
-    return unique.length > 0
-      ? `Found ${unique.length} email address(es): ${unique.slice(0, 3).join(", ")}`
-      : null;
-  },
-
-  // "email-address-leak" removed: threshold has no security basis and the check overlaps email-exposure.
-  // "private-ip-exposure" removed: dead code — no JSON entry; "internal-ip-exposed" (content.json) covers this.
-  // "email-exposure" removed: dead code — no JSON entry; removed intentionally for high FP rate.
-  // "connection-string-exposed" removed: dead code — covered by hardcoded-secrets patterns.
-  // "private-key-in-source" removed: dead code — covered by secret-private-key-pem.
-
   "internal-ip-exposed": (_url, _headers, body) => {
     const stripped = stripExampleContent(body);
     const patterns = [
@@ -486,18 +420,6 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "connection-string-exposed": (_url, _headers, body) => {
-    const patterns = [
-      /(?:mongodb|postgres|mysql|redis):\/\/[^\s"']+:[^\s"']+@[^\s"']+/i,
-      /Server=[\w.-]+;.*Password=[^;]+/i,
-    ];
-    for (const p of patterns) {
-      if (p.test(body)) return "Database connection string pattern detected.";
-    }
-    // Removed: fallback that fired for every api.* URL regardless of content.
-    return null;
-  },
-
   // ── JWT / tokens / private keys ──────────────────────────────────────────
 
   "jwt-in-html": (_url, _headers, body) => {
@@ -529,16 +451,6 @@ const rawDetectors: Record<string, DetectFn> = {
     return sessions.length > 0
       ? `Session ID(s) exposed in source: ${sessions.length} found`
       : null;
-  },
-
-  "private-key-in-source": (_url, _headers, body) => {
-    if (
-      /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)
-    ) {
-      return "Private key material detected in source.";
-    }
-    // Removed: fallback that fired for every api.* URL regardless of content.
-    return null;
   },
 
   // "hardcoded-secrets" used to have a second, full implementation here, a
@@ -677,14 +589,6 @@ const rawDetectors: Record<string, DetectFn> = {
     if (!body) return null;
     if (/pypi-AgEIcHlwaS[A-Za-z0-9_-]{10,}/.test(body)) {
       return "Response contains a PyPI upload token (pypi-AgEIcHlwaS*).";
-    }
-    return null;
-  },
-
-  "secret-docker-hub-token": (_url, _headers, body) => {
-    if (!body) return null;
-    if (/dckr_(?:pat|oat)_[A-Za-z0-9_-]{20,}/.test(body)) {
-      return "Response contains a Docker Hub access token (dckr_pat_*/dckr_oat_*).";
     }
     return null;
   },

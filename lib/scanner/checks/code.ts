@@ -11,13 +11,12 @@
 import {
   getEffectiveCsp,
   getSetCookies,
-  stripExampleContent,
   stripDocBlocks,
   withDocBlocksStripped,
   type EvidenceFn as DetectFn,
   extractScriptContents,
 } from "../_helpers";
-import { openTags, hasTagWith, tagsWith } from "./_tag-scan";
+import { openTags, hasTagWith } from "./_tag-scan";
 
 /**
  * The leading run of `text` up to the first line terminator, matching what a
@@ -482,38 +481,6 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "dom-xss-sinks": (_url, _headers, body) => {
-    const sinks = [
-      {
-        name: "innerHTML with URL data",
-        pattern:
-          /\.innerHTML\s*=\s*(?:.*(?:location|document\.URL|document\.referrer|window\.name))/gi,
-      },
-      {
-        name: "document.write with URL",
-        pattern:
-          /document\.write(?:ln)?\s*\(.*(?:location|document\.URL|document\.referrer)/gi,
-      },
-      {
-        name: "eval with URL data",
-        pattern:
-          /eval\s*\(.*(?:location|document\.URL|document\.referrer|window\.name)/gi,
-      },
-      {
-        name: "location assignment",
-        pattern:
-          /(?:location|location\.href)\s*=\s*(?:.*(?:location\.hash|location\.search|document\.referrer))/gi,
-      },
-    ];
-    const found: string[] = [];
-    for (const { name, pattern } of sinks) {
-      if (pattern.test(body)) found.push(name);
-    }
-    return found.length > 0
-      ? `DOM XSS sinks detected: ${found.join(", ")}`
-      : null;
-  },
-
   // ── Eval / function / setTimeout strings ────────────────────────────────
 
   "eval-in-scripts": (_url, _headers, body) => {
@@ -545,128 +512,6 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "settimeout-string": (_url, _headers, _body) => {
-    return null;
-  },
-
-  "dangerous-inline-js": (_url, _headers, body) => {
-    const scripts =
-      body.match(/<script[^>]{0,2000}>[\s\S]*?<\/script[^>]{0,2000}>/gi) || [];
-    const dangerousPatterns = [
-      /eval\s*\(/i,
-      /document\.write\s*\(/i,
-      /\.innerHTML\s*=\s*(?!['"]<)/i,
-      /Function\s*\(/i,
-      /setTimeout\s*\(\s*['"]/i,
-      /setInterval\s*\(\s*['"]/i,
-    ];
-    const found: string[] = [];
-    for (const script of scripts) {
-      if (script.includes("src=")) continue;
-      for (const p of dangerousPatterns) {
-        if (p.test(script)) {
-          found.push(p.source.replace(/\\s\*|\\|\['"]/g, "").slice(0, 20));
-          break;
-        }
-      }
-    }
-    return found.length > 0
-      ? `Found ${found.length} inline script(s) with dangerous patterns: ${[...new Set(found)].join(", ")}`
-      : null;
-  },
-
-  "inline-event-handlers": (_url, _headers, body) => {
-    const handlers = body.match(
-      /\son(click|error|load|mouseover|focus|blur|submit|change|input)\s*=\s*["']/gi,
-    );
-    if (!handlers || handlers.length < 3) return null;
-    return `${handlers.length} inline event handler attributes found (onclick, onerror, etc.).`;
-  },
-
-  "dangerous-html-attrs": (_url, _headers, body) => {
-    const handlers =
-      body.match(
-        /\son\w+=["'][^"']*(?:location|document|window|eval|fetch|XMLHttpRequest|alert)[^"']*["']/gi,
-      ) || [];
-    return handlers.length > 0
-      ? `Found ${handlers.length} inline event handler(s) with potentially dangerous patterns.`
-      : null;
-  },
-
-  "unencrypted-connections": (_url, _headers, body) => {
-    const wsInsecure = body.match(/new\s+WebSocket\s*\(\s*["']ws:\/\//gi) || [];
-    const fetchHttp =
-      body.match(/fetch\s*\(\s*["']http:\/\/(?!localhost)/gi) || [];
-    const xhrHttp =
-      body.match(
-        /\.open\s*\(\s*["'](?:GET|POST)["']\s*,\s*["']http:\/\/(?!localhost)/gi,
-      ) || [];
-    const total = wsInsecure.length + fetchHttp.length + xhrHttp.length;
-    return total > 0
-      ? `Found ${total} unencrypted connection(s) in JavaScript.`
-      : null;
-  },
-
-  "websocket-unencrypted": (_url, _headers, body) => {
-    if (/new\s+WebSocket\s*\(\s*["']ws:\/\//i.test(body)) {
-      return "Unencrypted WebSocket (ws://) connection detected. Use wss:// instead.";
-    }
-    return null;
-  },
-
-  "cross-site-websocket": (_url, _headers, body) => {
-    const wsConnections = body.match(/new\s+WebSocket\s*\(/gi) || [];
-    if (wsConnections.length === 0) return null;
-    const hasOriginCheck = /origin|(?:ws|socket).*(?:verify|check|valid)/i.test(
-      body,
-    );
-    if (hasOriginCheck) return null;
-    return `Found ${wsConnections.length} WebSocket connection(s) without apparent origin validation.`;
-  },
-
-  // ── postMessage ──────────────────────────────────────────────────────────
-
-  "postmessage-origin": (_url, _headers, body) => {
-    const listeners =
-      body.match(/addEventListener\s*\(\s*["']message["']/g) || [];
-    if (listeners.length === 0) return null;
-    const originCheck = /event\.origin|e\.origin|msg\.origin/i.test(body);
-    if (originCheck) return null;
-    return `Found ${listeners.length} message event listener(s) without apparent origin validation.`;
-  },
-
-  "postmessage-star-origin": (_url, _headers, body) => {
-    if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*\)/.test(body)) {
-      return "postMessage() called with wildcard (*) origin, sending data to any origin.";
-    }
-    return null;
-  },
-
-  // ── Storage / cookies ────────────────────────────────────────────────────
-
-  "local-storage-sensitive": (_url, _headers, body) => {
-    const sensitive =
-      body.match(
-        /(?:localStorage|sessionStorage)\.setItem\s*\(\s*["'](?:token|auth|jwt|password|session|secret|api[_-]?key|credit[_-]?card|ssn)[^"']*["']/gi,
-      ) || [];
-    return sensitive.length > 0
-      ? `Found ${sensitive.length} instance(s) of sensitive data in browser storage.`
-      : null;
-  },
-
-  "storage-api-usage": (_url, _headers, body) => {
-    const sensitiveKeys =
-      /(?:localStorage|sessionStorage)\.(?:setItem|getItem)\s*\(\s*["'](?:token|jwt|auth|password|session|secret|api[_-]?key|credit[_-]?card)[^"']*["']/gi;
-    const matches = body.match(sensitiveKeys) || [];
-    return matches.length > 0
-      ? `Found ${matches.length} sensitive storage API usage(s).`
-      : null;
-  },
-
-  "document-cookie-access": (_url, _headers, body) => {
-    const matches = body.match(/document\.cookie/g) || [];
-    if (matches.length > 2) {
-      return `${matches.length} document.cookie accesses - consider HttpOnly cookies.`;
-    }
     return null;
   },
 
@@ -837,12 +682,6 @@ const rawDetectors: Record<string, DetectFn> = {
     return found.length > 0 ? `SSRF risk: ${found[0]}` : null;
   },
 
-  "ssrf-indicators": (_url, _headers, _body) => {
-    // Removed: url=http fires on any page with HTTP links; code-ssrf-* detectors
-    // cover SSRF with user-input context. This was too broad.
-    return null;
-  },
-
   "path-traversal": (_url, _headers, body) => {
     const patterns = [
       /\.\.[\/\\]/g,
@@ -863,12 +702,6 @@ const rawDetectors: Record<string, DetectFn> = {
     const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
     if (/<code|<pre|```|example|documentation/i.test(before)) return null;
     return "Potential path traversal pattern in URL parameters.";
-  },
-
-  "xxe-vulnerability": (_url, _headers, _body) => {
-    // Removed: duplicate of xml-external-entity which has more specific pattern
-    // (requires SYSTEM or PUBLIC keyword).
-    return null;
   },
 
   "xml-external-entity": (_url, _headers, body) => {
@@ -1028,104 +861,6 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  // ── SRI / external assets (sast-ish for <script src>) ───────────────────
-
-  "sri-missing": (_url, _headers, body) => {
-    const externalScripts = tagsWith(
-      body,
-      "script",
-      /src=["']https?:\/\/[^"']+["']/i,
-    );
-    const noSRI = externalScripts.filter(
-      (t) => !t.toLowerCase().includes("integrity="),
-    );
-    if (noSRI.length === 0) return null;
-    const samples = noSRI.slice(0, 3).map((t) => {
-      const srcMatch = t.match(/src=["'](https?:\/\/[^"']+)["']/i);
-      return srcMatch ? srcMatch[1] : t.slice(0, 80);
-    });
-    return `Found ${noSRI.length} external script(s) without integrity:\n${samples.join("\n")}${noSRI.length > 3 ? `\n...and ${noSRI.length - 3} more` : ""}`;
-  },
-
-  "external-script-no-sri": (_url, _headers, body) => {
-    const scripts = tagsWith(body, "script", /src\s*=\s*["'][^"']*["']/i);
-    let missing = 0;
-    for (const s of scripts) {
-      if (/src\s*=\s*["']https?:\/\//i.test(s) && !s.includes("integrity"))
-        missing++;
-    }
-    if (missing < 1) return null;
-    return `${missing} external script(s) loaded without Subresource Integrity (SRI) hash.`;
-  },
-
-  // ── Window opener abuse ──────────────────────────────────────────────────
-
-  "window-opener-abuse": (_url, _headers, body) => {
-    const openerUsage = body.match(/window\.opener\./g) || [];
-    return openerUsage.length > 0
-      ? `Found ${openerUsage.length} window.opener reference(s).`
-      : null;
-  },
-
-  "document-domain": (_url, _headers, body) => {
-    const usage = body.match(/document\.domain\s*=/g) || [];
-    return usage.length > 0
-      ? `Found ${usage.length} document.domain assignment(s). This is deprecated and unsafe.`
-      : null;
-  },
-
-  "document-domain-usage": (_url, _headers, body) => {
-    if (/document\.domain\s*=/.test(body)) {
-      return "document.domain assignment found. This deprecated practice relaxes same-origin policy.";
-    }
-    return null;
-  },
-
-  // ── Open redirect / SSRF patterns ────────────────────────────────────────
-
-  "open-redirect": (_url, _headers, body) => {
-    const patterns = [
-      /[?&](?:redirect|return|next|url|goto|dest|redir|returnTo|continue|forward|target)=[^&"'\s]+/gi,
-      /window\.location\s*=\s*(?:decodeURIComponent|unescape)?\(?\s*(?:new\s+URLSearchParams|location\.(?:search|hash))/gi,
-    ];
-    const found: string[] = [];
-    for (const p of patterns) {
-      const matches = body.match(p) || [];
-      found.push(...matches.slice(0, 3));
-    }
-    return found.length > 0
-      ? `Found ${found.length} redirect-related pattern(s): ${found.slice(0, 2).join(", ")}`
-      : null;
-  },
-
-  "open-redirect-params": (_url, _headers, body) => {
-    const matches = body.match(
-      /[?&](redirect|return|next|url|goto|destination|continue|redir|returnTo)\s*=\s*https?%3A/gi,
-    );
-    if (!matches) return null;
-    return `Potential open redirect parameter(s) found: ${matches.length} occurrence(s).`;
-  },
-
-  // ── GraphQL query patterns ───────────────────────────────────────────────
-
-  "graphql-introspection": (_url, _headers, body) => {
-    const indicators = [
-      /__schema/i,
-      /introspectionQuery/i,
-      /__type/i,
-      /graphiql/i,
-      /playground.*graphql/i,
-      /altair/i,
-    ];
-    const found: string[] = [];
-    for (const p of indicators) {
-      if (p.test(body)) found.push(p.source.replace(/[\\]/g, ""));
-    }
-    return found.length > 0
-      ? `GraphQL introspection indicators: ${found.join(", ")}`
-      : null;
-  },
-
   // ── Source-map / debug paths in code ────────────────────────────────────
 
   // "sourcemap-reference" used to have an identical copy here (and a third in
@@ -1171,31 +906,6 @@ const rawDetectors: Record<string, DetectFn> = {
   "hardcoded-secrets-low-risk": (_url, _headers, body) =>
     formatSecretFindings(matchSecretPatterns(body, LOW_RISK_SECRET_PATTERNS)),
 
-  // ── Geo / clipboard / media APIs ────────────────────────────────────────
-
-  "geolocation-usage": (_url, _headers, body) => {
-    if (/navigator\.geolocation/g.test(body)) {
-      return "Geolocation API usage detected - ensure user consent.";
-    }
-    return null;
-  },
-
-  "clipboard-access": (_url, _headers, body) => {
-    if (
-      /navigator\.clipboard|document\.execCommand\s*\(\s*["']copy/gi.test(body)
-    ) {
-      return "Clipboard API access detected - potential data exfiltration vector.";
-    }
-    return null;
-  },
-
-  "webcam-microphone-access": (_url, _headers, body) => {
-    if (/getUserMedia|mediaDevices/g.test(body)) {
-      return "Media device access (camera/microphone) detected.";
-    }
-    return null;
-  },
-
   // ── Form / page semantics (no-prefix, JSON category=code) ────────────────
 
   "insecure-form-submission": (_url, _headers, body) => {
@@ -1217,12 +927,6 @@ const rawDetectors: Record<string, DetectFn> = {
     // This fired on any page with any postMessage listener, even when the
     // listener properly validates origin. The postmessage-no-origin check in
     // content.ts already does this correctly.
-    return null;
-  },
-
-  "regex-dos-pattern": (_url, _headers, _body) => {
-    // Removed: new RegExp() fires on every React/Vue app; nested quantifier pattern
-    // fires on minified bundles. code-redos-* detectors handle this more specifically.
     return null;
   },
 
@@ -1689,16 +1393,6 @@ const rawDetectors: Record<string, DetectFn> = {
   // hanging the scan server. No safe linear-time rewrite existed for the
   // detection patterns they used.
 
-  "code-redos-greedy-quantifier": (_url, _headers, _body) => {
-    // Removed: pattern matches any minified JS bundle — near 100% FP rate.
-    return null;
-  },
-
-  "code-redos-alternation-overlap": (_url, _headers, _body) => {
-    // Removed: pattern matches any minified JS bundle — near 100% FP rate.
-    return null;
-  },
-
   // ── Redirects (code-redirect-*) ──────────────────────────────────────────
 
   "code-redirect-window-location-href": (_url, _headers, body) => {
@@ -2136,23 +1830,6 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "code-location-assign-with-user-input": (_url, _headers, _body) => {
-    // Removed: duplicate of code-redirect-window-location-href which has the same logic.
-    return null;
-  },
-
-  "code-vue-v-html": (_url, _headers, _body) => {
-    // Removed: duplicate of code-xss-vue-v-html-dynamic which is more specific
-    // (distinguishes dynamic vs static v-html bindings).
-    return null;
-  },
-
-  "code-angular-bypass-security": (_url, _headers, _body) => {
-    // Removed: duplicate of code-xss-angular-bypass-dynamic which is more comprehensive
-    // (also checks [innerHTML] binding and ng-bind-html).
-    return null;
-  },
-
   "code-jquery-html": (_url, _headers, body) => {
     if (/\$\([^)]*\)\.html\s*\((?!\s*(["'])(?:(?!\1).)*\1\s*\))/i.test(body)) {
       return "jQuery .html() with non-literal argument - DOM XSS sink.";
@@ -2225,34 +1902,6 @@ const rawDetectors: Record<string, DetectFn> = {
       /\[(?:ngStyle|ngClass)\]\s*=/i.test(body)
     ) {
       return "Angular property-binding bypass of interpolation - audit user content.";
-    }
-    return null;
-  },
-
-  "html-injection-patterns": (_url, _headers, body) => {
-    // Strip scripts and code blocks so normal framework bundles and examples
-    // don't self-trigger. After stripping, only look for patterns that CANNOT
-    // appear in legitimate HTML — not just any <script> tag.
-    const html = stripExampleContent(body);
-    // Script injected after </title> — classic stored XSS breakout
-    if (/<\/title>\s*<script\b/i.test(html)) {
-      return "HTML injection detected — script tag injected after </title>.";
-    }
-    // onerror with obvious JS execution (alert/eval/fetch — not a legit fallback)
-    if (
-      /\bonerror\s*=\s*(?:alert|eval|document\.write|fetch|XMLHttpRequest)\s*\(/i.test(
-        html,
-      )
-    ) {
-      return "HTML injection detected — onerror handler executing JavaScript.";
-    }
-    // javascript: URL in href/src/action that isn't void(0)
-    if (
-      /(?:href|src|action)\s*=\s*["']\s*javascript\s*:\s*(?!void\s*\()/i.test(
-        html,
-      )
-    ) {
-      return "HTML injection detected — javascript: URL in href/src/action.";
     }
     return null;
   },

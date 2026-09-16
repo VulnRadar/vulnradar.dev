@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the secrets-extended category.
  *
- * Covers 74 detectors in lib/scanner/checks/secrets-extended.ts. Every
+ * Covers every detector in lib/scanner/checks/secrets-extended.ts. Every
  * detector is exercised by the smoke harness (callable, no-throw,
  * deterministic). Most secret detectors look for vendor-specific key
  * patterns (Stripe, AWS, Google Maps, etc.) in source code; we rely on
@@ -9,7 +9,6 @@
  * for the most common patterns.
  */
 
-import { describe, it, expect } from "vitest";
 import { detectors } from "@/lib/scanner/checks/secrets-extended";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
@@ -259,45 +258,3 @@ const fixtures: DetectorFixtures = {
 };
 
 runDetectorTests(detectors, fixtures);
-
-// AUDIT-002#scanner-02: email-exposure's address regex backtracked
-// catastrophically. "." and "-" are in its local-part class, so on a long run
-// of them it matched the whole run from every starting offset before failing
-// to find an "@". Measured on the old pattern: 0.5s at 16k characters and
-// 10.3s at 64k, against a body capped at a megabyte, with no way to interrupt
-// it (every scan timeout in this codebase is a setTimeout, which cannot fire
-// while the event loop is blocked).
-describe("email-exposure address matching", () => {
-  const detect = detectors["email-exposure"];
-  const headers = new Headers();
-
-  it("stays linear on a long run of local-part characters", () => {
-    // 200k characters of "a." pairs: no "@" anywhere, so every offset is a
-    // failed start. The old pattern did not finish this in any usable time.
-    const body = "a.".repeat(100_000);
-    const started = performance.now();
-    const result = detect("https://example.com/", headers, body);
-    const elapsed = performance.now() - started;
-
-    expect(result).toBeNull();
-    expect(elapsed).toBeLessThan(1000);
-  });
-
-  it("still finds a real address, including one after a long run", () => {
-    const body =
-      "a.".repeat(50_000) + " contact ops@mail-server.acme-corp.co.uk";
-    expect(detect("https://example.com/", headers, body)).toContain(
-      "ops@mail-server.acme-corp.co.uk",
-    );
-  });
-
-  it("does not treat a malformed domain as an address", () => {
-    // A label has to start and end alphanumeric, so neither of these is one.
-    expect(
-      detect("https://example.com/", headers, "reach me at x@-broken.com"),
-    ).toBeNull();
-    expect(
-      detect("https://example.com/", headers, "reach me at x@a..com"),
-    ).toBeNull();
-  });
-});

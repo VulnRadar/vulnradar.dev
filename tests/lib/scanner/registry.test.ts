@@ -398,18 +398,45 @@ describe("explicit detector homes", () => {
     }
   });
 
-  // The invariant that makes the remaining duplication safe. About 75 check
-  // ids are still implemented in two or three category files at once (copy-
-  // pasted years ago, then one copy tightened). That is tolerable ONLY while
-  // every one of them is also implemented in the file its definition's
-  // category names, because resolveDetector prefers that bundle: the extra
-  // copies are provably unreachable rather than "unreachable today". The
-  // moment an id resolves through the declaration-order fallback instead,
-  // which implementation runs depends on the order of the BUNDLES array, and
-  // adding an unrelated copy-pasted detector to an earlier bundle silently
-  // changes detection behaviour. Anything that genuinely lives outside its
-  // category belongs in DETECTOR_HOME, not in the fallback.
-  // ref: AUDIT-009#misc-01
+  // An id that resolves through the declaration-order fallback runs
+  // whichever implementation the order of the BUNDLES array picks, so adding
+  // an unrelated detector to an earlier bundle would silently change
+  // detection behaviour. Anything that genuinely lives outside its category
+  // belongs in DETECTOR_HOME, not in the fallback. ref: AUDIT-009#misc-01
+  // A detector with no definition never runs: buildCheck only binds ids that
+  // a JSON file declares. 38 had accumulated, among them real detections
+  // (a Docker Hub organization-token pattern the live check lacked) that
+  // everyone reading the file assumed were live. Either give it a definition
+  // or delete it.
+  it("every inline detector has a definition", () => {
+    const definedIds = new Set(allCheckDefs.map((d) => d.id));
+    const undefinedIds: string[] = [];
+    for (const [category, map] of Object.entries(DETECTORS_BY_CATEGORY)) {
+      for (const id of Object.keys(map)) {
+        if (!definedIds.has(id)) undefinedIds.push(`${category}:${id}`);
+      }
+    }
+    expect(undefinedIds).toEqual([]);
+  });
+
+  // One id, one implementation. 73 ids were implemented in two or three
+  // category files at once; only the copy in the owning file ever ran, and
+  // twelve of the dead copies had fixtures proving behaviour the live check
+  // did not have, so a maintainer fixing the copy they found first changed
+  // nothing at all.
+  it("no check id is implemented in more than one detector file", () => {
+    const homes = new Map<string, string[]>();
+    for (const [category, map] of Object.entries(DETECTORS_BY_CATEGORY)) {
+      for (const id of Object.keys(map)) {
+        homes.set(id, [...(homes.get(id) ?? []), category]);
+      }
+    }
+    const duplicated = [...homes]
+      .filter(([, categories]) => categories.length > 1)
+      .map(([id, categories]) => `${id} (${categories.join(", ")})`);
+    expect(duplicated).toEqual([]);
+  });
+
   it("no check resolves through the declaration-order fallback", () => {
     const stragglers: string[] = [];
     for (const def of allCheckDefs) {

@@ -167,9 +167,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cookie-max-age-excessive": () => null, // duplicate of cookie-expires-too-far
-  "cookie-path-broad": () => null, // duplicate of cookie-path-cross-app
-
   // Stubbed for the same reason as the two above it: it is a duplicate, and
   // this one was the loudest.
   //
@@ -226,10 +223,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     return null;
   },
-
-  "cookie-domain-no-leading-dot": () => null, // merged into cookie-domain-broad, see comment above
-
-  "cookie-domain-parent-on-subdomain": () => null, // duplicate of cookie-domain-broad
 
   "cookie-domain-set-too-loose": (_url, _headers) => {
     // Setting an explicit Domain= attribute is extremely common and not a
@@ -421,9 +414,6 @@ export const detectors: Record<string, DetectFn> = {
     // from the response alone.
     return null;
   },
-
-  "cookie-path-root": () => null, // duplicate of cookie-path-cross-app
-  "cookie-prefix-missing": () => null, // duplicate of cookie-no-secure-prefix
 
   "cookie-secure-prefix-not-secure": (_url, headers) => {
     const cookies = getSetCookies(headers);

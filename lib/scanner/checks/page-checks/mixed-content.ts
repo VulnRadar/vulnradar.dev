@@ -146,7 +146,10 @@ export const mixedContentChecks: PageCheck[] = [
     ],
     codeExamples: [],
     needs: ["html", "https"],
-    dedupeGroup: "mixed-content-passive",
+    // The same group as the legacy mixed-content check, which already counts
+    // <img>, <video>, <audio>, <source>, <object> and <embed> alongside scripts,
+    // so one http:// image used to be reported by both.
+    dedupeGroup: "mixed-content",
     run(ctx) {
       if (!ctx.isHttps) return null;
       const offending: string[] = [];

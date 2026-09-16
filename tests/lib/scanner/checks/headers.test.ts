@@ -1875,6 +1875,64 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+  "x-backend-server-exposed": [
+    {
+      description: "X-Served-By present",
+      headers: { "x-served-by": "cache-lga21920-LGA" },
+      expect: "fire",
+    },
+  ],
+  "x-debug-header-exposed": [
+    {
+      description: "X-Debug-Token present",
+      headers: { "x-debug-token": "abc-123" },
+      expect: "fire",
+    },
+  ],
+  "x-vercel-id": [
+    {
+      description:
+        "removed — CDN presence is not actionable security information",
+      headers: { "x-vercel-id": "iad1::abc123" },
+      expect: "skip",
+    },
+  ],
+  "x-cache-header": [
+    {
+      description: "removed — cache state is not a security finding",
+      headers: { "x-cache": "HIT from cache.example.com" },
+      expect: "skip",
+    },
+  ],
+  "nel-header-missing": [
+    {
+      description:
+        "retired: NEL is an optional reporting API, not a security control",
+      expect: "skip",
+    },
+  ],
+  "access-control-expose-broad": [
+    {
+      description: "Access-Control-Expose-Headers exposes many headers (>=5)",
+      headers: {
+        "access-control-expose-headers":
+          "X-User-Id, X-User-Roles, X-Auth-Token, X-RateLimit-Remaining, X-Request-Id",
+      },
+      expect: "fire",
+    },
+    {
+      description: "Access-Control-Expose-Headers with 1 header",
+      headers: { "access-control-expose-headers": "X-Request-Id" },
+      expect: "skip",
+    },
+  ],
+  "access-control-max-age-long": [
+    {
+      description: "Access-Control-Max-Age > 24h",
+      headers: { "access-control-max-age": "86400" },
+      expect: "fire",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

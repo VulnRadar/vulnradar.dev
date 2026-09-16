@@ -205,13 +205,13 @@ const legacyCheckDefs: CheckDef[] = BUNDLES.flatMap((b) => b.defs);
 // detector are still kept in `allCheckDefs` so /finding-types surfaces
 // them — the scan orchestrator handles them via async dispatch.
 //
-// A check ID must only ever have one implementation, but copy-pasted
-// detectors have drifted into 78 IDs defined in two or three category
-// files at once. Flattening `BUNDLES` in declaration order used to let whichever module
-// happened to load last silently win, which in every measured case was
-// NOT the module that owns the check's definition, so a check tuned to
-// avoid false positives could be shadowed by an older, noisier copy
-// living in an unrelated file.
+// A check ID has exactly one implementation. Copy-pasted detectors once
+// drifted into 73 IDs implemented in two or three category files at once,
+// and flattening `BUNDLES` in declaration order let whichever module loaded
+// last silently win, which in every measured case was NOT the module that
+// owns the check's definition. The unreachable copies have been deleted, and
+// tests/lib/scanner/registry.test.ts now fails on a second implementation or
+// on a detector with no definition (38 of those had accumulated, never run).
 //
 // The definition's own category is authoritative: look for the detector
 // in the bundle that owns the definition first, and only fall back to

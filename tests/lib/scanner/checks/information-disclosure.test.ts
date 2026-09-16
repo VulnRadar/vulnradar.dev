@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the information-disclosure category.
  *
- * Covers 92 detectors in lib/scanner/checks/information-disclosure.ts.
+ * Covers every detector in lib/scanner/checks/information-disclosure.ts.
  * Every detector is exercised by the smoke harness (callable, no-throw,
  * deterministic); the curated fixtures below cover a subset of detectors
  * whose behavior we can verify by reading the regex patterns in source.
@@ -87,57 +87,6 @@ const fixtures: DetectorFixtures = {
 
   // ── Errors / stack traces ───────────────────────────────────────────
 
-  "exposed-error-messages": [
-    {
-      description: "Fatal error with line number",
-      body: "<html><body>Fatal error: Call to undefined function foo() in /var/www/app.php on line 42</body></html>",
-      expect: "fire",
-      evidenceIncludes: "PHP",
-    },
-  ],
-
-  "stack-trace-exposed": [],
-
-  "php-error-in-page": [
-    {
-      description: "PHP Fatal error",
-      body: "<html><body>PHP Fatal error: Allowed memory size exhausted in /var/www/app.php on line 42</body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "asp-error-in-page": [
-    {
-      description: "ASP.NET error",
-      body: "<html><body>Server Error in '/' Application. Runtime Error</body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "django-debug-page": [
-    {
-      description: "Django debug page with settings.py reference",
-      body: "<html><body>Django Version: 4.2 settings.py INSTALLED_APPS</body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "laravel-debug-page": [
-    {
-      description: "Laravel Whoops error page",
-      body: "<html><body>Whoops\\Run\\Illuminate\\Exception</body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "verbose-error-messages": [
-    {
-      description: "verbose exception details",
-      body: "<html><body>syntax error at line 42: undefined variable foo</body></html>",
-      expect: "fire",
-    },
-  ],
-
   // ── Source maps / debug paths ───────────────────────────────────────
 
   // "sourcemap-reference" is implemented in content.ts (which owns the
@@ -151,84 +100,7 @@ const fixtures: DetectorFixtures = {
   // content.test.ts, not here -- fixture hygiene would fail otherwise
   // since this file's `detectors` map no longer has that key.
 
-  "backup-file-reference": [
-    {
-      description: ".bak file in href attribute",
-      body: '<html><body><a href="/backup/config.bak">Download</a></body></html>',
-      expect: "fire",
-    },
-    {
-      description:
-        "bare .bak mention in text (not in attribute, no longer fires)",
-      body: "<html><body>Cannot load /var/www/config.bak</body></html>",
-      expect: "skip",
-    },
-  ],
-
-  "phpinfo-exposed": [
-    {
-      description: "phpinfo() page title",
-      body: "<html><head><title>phpinfo()</title></head></html>",
-      expect: "fire",
-    },
-  ],
-
   // ── Endpoints / framework ───────────────────────────────────────────
-
-  "wp-login-exposed": [
-    {
-      description: "wp-login + WordPress generator",
-      body: '<html><head><meta name="generator" content="WordPress 6.4"></head><body><a href="/wp-login.php">Login</a></body></html>',
-      expect: "fire",
-    },
-  ],
-
-  "sensitive-endpoints": [
-    {
-      description: "/wp-admin referenced",
-      body: '<html><body><a href="/wp-admin/setup-config.php">setup</a></body></html>',
-      expect: "fire",
-    },
-  ],
-
-  "debug-endpoint": [
-    {
-      description: "/debug endpoint",
-      body: '<html><body>Visit <a href="/debug/pprof">debug</a></body></html>',
-      expect: "fire",
-    },
-  ],
-
-  "admin-endpoint": [
-    {
-      description: "/admin URL is directly scanned",
-      url: "https://example.com/admin/",
-      expect: "fire",
-    },
-    {
-      description:
-        "body mentions /admin but URL is not admin (no longer fires on body)",
-      url: "https://example.com/",
-      body: '<html><body>Visit <a href="/admin/login">admin</a></body></html>',
-      expect: "skip",
-    },
-  ],
-
-  "swagger-docs-exposed": [
-    {
-      description: "Swagger UI link",
-      body: '<html><body><a href="/swagger-ui">API docs</a></body></html>',
-      expect: "fire",
-    },
-  ],
-
-  "spring-boot-actuator": [
-    {
-      description: "Actuator /env endpoint",
-      body: '<html><body><a href="/actuator/env">env</a></body></html>',
-      expect: "fire",
-    },
-  ],
 
   // aws-metadata-reference, s3-bucket-exposed, firebase-config-exposed, jwt-in-html,
   // jwt-in-url, token-exposure — moved to secrets-extended.ts (bundle 8 wins). Smoke-only.
@@ -238,31 +110,7 @@ const fixtures: DetectorFixtures = {
   // oauth-state-missing, remember-me-token
   // — detector patterns are too narrow / require specific page context. Smoke-only.
 
-  "password-in-get": [
-    {
-      description: "password in URL query string",
-      body: "<html><body>GET /login?user=admin&password=secret123</body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "outdated-js-libs": [
-    {
-      description: "old jQuery 1.x",
-      body: '<html><body><script src="/jquery-1.4.2.min.js"></script></body></html>',
-      expect: "fire",
-    },
-  ],
-
   // outdated-jquery and outdated-angular — handled by content.ts; smoke-only here
-
-  "exposed-api-version": [
-    {
-      description: "X-API-Version header",
-      headers: { "x-api-version": "2.0" },
-      expect: "fire",
-    },
-  ],
 
   "privacy-policy-missing": [
     {
@@ -615,14 +463,6 @@ const fixtures: DetectorFixtures = {
   "open-api-schema-version-leak": [],
   "cdn-cors-exposes-internal": [],
 
-  "timing-allow-origin-wide": [
-    {
-      description: "Timing-Allow-Origin: *",
-      headers: { "timing-allow-origin": "*" },
-      expect: "fire",
-    },
-  ],
-
   "sitemap-public": [
     {
       description: "URL is sitemap.xml directly",
@@ -635,27 +475,6 @@ const fixtures: DetectorFixtures = {
       url: "https://example.com/",
       body: '<html><body><a href="/sitemap.xml">Sitemap</a></body></html>',
       expect: "skip",
-    },
-  ],
-
-  "robots-txt-allows-all": [
-    {
-      description:
-        "allowing all crawlers is a design choice, not a vulnerability (removed)",
-      body: "User-agent: *\nAllow: /",
-      expect: "skip",
-    },
-  ],
-
-  "email-enumeration": [],
-  "oauth-state-missing": [],
-  "remember-me-token": [],
-
-  "debug-indicators": [
-    {
-      description: "DEBUG=True in body",
-      body: "<html><body>DEBUG = True</body></html>",
-      expect: "fire",
     },
   ],
 

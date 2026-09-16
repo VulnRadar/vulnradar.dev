@@ -26,7 +26,51 @@ import {
 } from "@/lib/scanner/checks/content";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
+// Assembled at runtime so the source never holds a token-shaped literal,
+// which GitHub push protection rejects even when it is a made-up fixture.
+const DOCKER_PAT = ["dckr", "pat", "AbCdEfGhIjKlMnOpQrStUvWxYz0"].join("_");
+const DOCKER_OAT = ["dckr", "oat", "AbCdEfGhIjKlMnOpQrStUvWxYz012345"].join(
+  "_",
+);
+
 const fixtures: DetectorFixtures = {
+  "docker-hub-token-exposed": [
+    {
+      description: "a personal access token fires",
+      body: `<script>const t = "${DOCKER_PAT}";</script>`,
+      expect: "fire",
+    },
+    {
+      // Only a detector with no definition knew this prefix, so it never ran.
+      description: "regression: an organization access token fires too",
+      body: `<script>const t = "${DOCKER_OAT}";</script>`,
+      expect: "fire",
+    },
+    {
+      description: "the bare prefix with no token body does not fire",
+      body: `<p>Docker tokens start with dckr_pat_ or dckr_oat_.</p>`,
+      expect: "skip",
+    },
+  ],
+  "swagger-docs-exposed": [
+    {
+      description: "a link to /swagger/ui fires",
+      body: `<a href="/swagger/ui">API</a>`,
+      expect: "fire",
+    },
+    {
+      // springdoc and Swashbuckle both serve the UI at /swagger-ui, which the
+      // pattern only accepted as /swagger/ui.
+      description: "regression: the /swagger-ui path springdoc serves fires",
+      body: `<a href="/swagger-ui/index.html">API</a>`,
+      expect: "fire",
+    },
+    {
+      description: "a mention in prose does not fire",
+      body: `<p>We publish a /swagger-ui for partners.</p>`,
+      expect: "skip",
+    },
+  ],
   "postmessage-star-origin": [
     {
       description: "wildcard target origin fires",
@@ -785,6 +829,66 @@ const fixtures: DetectorFixtures = {
       body: '<input type="password" minlength="4">',
       expect: "fire",
       evidenceIncludes: "weak minlength",
+    },
+  ],
+  "exposed-error-messages": [
+    {
+      description: "Fatal error with line number",
+      body: "<html><body>Fatal error: Call to undefined function foo() in /var/www/app.php on line 42</body></html>",
+      expect: "fire",
+      evidenceIncludes: "PHP",
+    },
+  ],
+  "php-error-in-page": [
+    {
+      description: "PHP Fatal error",
+      body: "<html><body>PHP Fatal error: Allowed memory size exhausted in /var/www/app.php on line 42</body></html>",
+      expect: "fire",
+    },
+  ],
+  "asp-error-in-page": [
+    {
+      description: "ASP.NET error",
+      body: "<html><body>Server Error in '/' Application. Runtime Error</body></html>",
+      expect: "fire",
+    },
+  ],
+  "phpinfo-exposed": [
+    {
+      description: "phpinfo() page title",
+      body: "<html><head><title>phpinfo()</title></head></html>",
+      expect: "fire",
+    },
+  ],
+  "wp-login-exposed": [
+    {
+      description: "wp-login + WordPress generator",
+      body: '<html><head><meta name="generator" content="WordPress 6.4"></head><body><a href="/wp-login.php">Login</a></body></html>',
+      expect: "fire",
+    },
+  ],
+  "spring-boot-actuator": [
+    {
+      description: "Actuator /env endpoint",
+      body: '<html><body><a href="/actuator/env">env</a></body></html>',
+      expect: "fire",
+    },
+  ],
+  // outdated-jquery and outdated-angular — handled by content.ts; smoke-only here
+
+  "exposed-api-version": [
+    {
+      description: "X-API-Version header",
+      headers: { "x-api-version": "2.0" },
+      expect: "fire",
+    },
+  ],
+  "remember-me-token": [],
+  "debug-indicators": [
+    {
+      description: "DEBUG=True in body",
+      body: "<html><body>DEBUG = True</body></html>",
+      expect: "fire",
     },
   ],
 };

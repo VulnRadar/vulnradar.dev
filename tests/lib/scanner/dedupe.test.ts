@@ -5,6 +5,9 @@ import {
   LEGACY_DEDUPE_GROUPS,
 } from "@/lib/scanner/dedupe";
 import type { Vulnerability } from "@/lib/scanner/types";
+import { allCheckDefs } from "@/lib/scanner/registry";
+import { pageCheckGroups } from "@/lib/scanner/checks/page-checks";
+import { ASYNC_CHECKS } from "@/lib/scanner/async-check-catalog";
 
 function finding(
   checkId: string,
@@ -63,7 +66,7 @@ describe("dedupeFindings", () => {
 
   it("picks the higher-severity finding as the survivor", () => {
     const low = finding("sri-missing", { severity: "low" });
-    const high = finding("external-script-no-sri", { severity: "high" });
+    const high = finding("third-party-script-no-sri", { severity: "high" });
     const { findings } = dedupeFindings([low, high]);
     expect(findings).toHaveLength(1);
     expect(findings[0].severity).toBe("high");
@@ -71,7 +74,7 @@ describe("dedupeFindings", () => {
 
   it("breaks a severity tie using confidence", () => {
     const lowConf = finding("sri-missing", { confidence: 50 });
-    const highConf = finding("external-script-no-sri", { confidence: 90 });
+    const highConf = finding("third-party-script-no-sri", { confidence: 90 });
     const { findings } = dedupeFindings([lowConf, highConf]);
     expect(findings[0].confidence).toBe(90);
   });
@@ -93,6 +96,36 @@ describe("dedupeFindings", () => {
     const c = finding("xcto-missing");
     const { findings } = dedupeFindings([a, b, c]);
     expect(findings.map((f) => f.id)).toEqual([a.id, b.id, c.id]);
+  });
+
+  // A key naming a check that does not exist merges nothing, and a group with
+  // one member merges nothing either, so both read as coverage that is not
+  // there. Seven such keys had built up, most pointing at detectors that had
+  // no definition and so never ran.
+  it("every LEGACY_DEDUPE_GROUPS key is a real check id", () => {
+    const known = new Set<string>([
+      ...allCheckDefs.map((d) => d.id),
+      ...Object.values(ASYNC_CHECKS).map((d) => d.checkId),
+    ]);
+    const unknown = Object.keys(LEGACY_DEDUPE_GROUPS).filter(
+      (id) => !known.has(id),
+    );
+    expect(unknown).toEqual([]);
+  });
+
+  it("every dedupe group has at least two members", () => {
+    const members = new Map<string, Set<string>>();
+    for (const [id, group] of Object.entries({
+      ...LEGACY_DEDUPE_GROUPS,
+      ...pageCheckGroups,
+    })) {
+      if (!members.has(group)) members.set(group, new Set());
+      members.get(group)!.add(id);
+    }
+    const singletons = [...members]
+      .filter(([, ids]) => ids.size < 2)
+      .map(([group]) => group);
+    expect(singletons).toEqual([]);
   });
 
   it("every LEGACY_DEDUPE_GROUPS entry maps to a non-empty group name", () => {

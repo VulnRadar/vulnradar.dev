@@ -13,7 +13,6 @@ import {
   parseCookieName,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
-import { hasTagWith, openingTagOf, tagElements } from "./_tag-scan";
 
 const h = getHeader;
 
@@ -28,198 +27,6 @@ const STATIC_ASSET_URL_RE =
   /\.(?:js|mjs|cjs|css|map|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|eot|mp4|webm|mp3|wav|ogg|pdf|zip|txt)(?:\?|#|$)/i;
 
 export const detectors: Record<string, DetectFn> = {
-  "server-header-disclosure": (_url, headers) => {
-    const server = h(headers, "server");
-    const powered = h(headers, "x-powered-by");
-    const via = h(headers, "x-aspnet-version");
-    const found: string[] = [];
-    if (server && server !== "cloudflare" && server !== "Vercel")
-      found.push(`Server: ${server}`);
-    if (powered) found.push(`X-Powered-By: ${powered}`);
-    if (via) found.push(`X-AspNet-Version: ${via}`);
-    return found.length > 0
-      ? `Technology disclosed: ${found.join(", ")}`
-      : null;
-  },
-
-  "x-powered-by-exposed": (_url, headers) => {
-    if (!hasHeader(headers, "x-powered-by")) return null;
-    return `X-Powered-By header exposes: '${h(headers, "x-powered-by")}'.`;
-  },
-
-  "x-aspnet-version-exposed": (_url, headers) => {
-    if (!hasHeader(headers, "x-aspnet-version")) return null;
-    return `X-AspNet-Version exposed: '${h(headers, "x-aspnet-version")}'.`;
-  },
-
-  "x-aspnetmvc-version-exposed": (_url, headers) => {
-    if (!hasHeader(headers, "x-aspnetmvc-version")) return null;
-    return `X-AspNetMvc-Version exposed: '${h(headers, "x-aspnetmvc-version")}'.`;
-  },
-
-  "via-header-exposed": (_url, headers) => {
-    if (!hasHeader(headers, "via")) return null;
-    return `Via header reveals proxy chain: '${h(headers, "via")}'.`;
-  },
-
-  "x-runtime-exposed": (_url, headers) => {
-    if (!hasHeader(headers, "x-runtime")) return null;
-    return `X-Runtime header exposes request processing time: ${h(headers, "x-runtime")}ms.`;
-  },
-
-  "x-request-id-exposed": () => null, // request-id is not a security finding
-
-  "x-backend-server-exposed": (_url, headers) => {
-    for (const name of [
-      "x-backend-server",
-      "x-served-by",
-      "x-server",
-      "x-host",
-    ]) {
-      if (hasHeader(headers, name))
-        return `Header '${name}' exposes backend server info: '${h(headers, name)}'.`;
-    }
-    return null;
-  },
-
-  "age-header-reveals-cdn": () => null, // Age header presence is not a security finding
-
-  "x-debug-header-exposed": (_url, headers) => {
-    for (const name of [
-      "x-debug",
-      "x-debug-token",
-      "x-debug-token-link",
-      "x-debug-info",
-    ]) {
-      if (hasHeader(headers, name))
-        return `Debug header '${name}' found in production response.`;
-    }
-    return null;
-  },
-
-  "cache-control-missing": (_url, headers) => {
-    if (hasHeader(headers, "cache-control") || hasHeader(headers, "pragma"))
-      return null;
-    return "Neither 'Cache-Control' nor 'Pragma' headers are present.";
-  },
-
-  // The registered implementation of this id lives in checks/headers.ts (the
-  // definition's own category is headers, and that is what the registry
-  // resolves). This copy is kept in sync with it rather than left on the old
-  // "any POST form is sensitive" condition, which flagged every public
-  // contact/newsletter/search form on a normally-cached page.
-  // ref: AUDIT-010#scanner-10
-  "cache-control-public-sensitive": (_url, headers, body) => {
-    const cc = h(headers, "cache-control");
-    if (!cc || !cc.includes("public")) return null;
-    // Bound the [^>]* attribute gaps to avoid O(n^2) backtracking (ReDoS) on a
-    // body full of unclosed tags; a real tag's attributes never exceed ~2000 chars.
-    const hasPasswd = hasTagWith(body, "input", /type\s*=\s*["']?password/i);
-    if (hasPasswd) {
-      return "Cache-Control: public set on page containing sensitive forms.";
-    }
-    const hasSensitiveField = (form: string) =>
-      hasTagWith(
-        form,
-        "input",
-        /(?:name|id)\s*=\s*["'][^"']*(?:card|ssn|cvv|account[-_]?number)[^"']*["']/i,
-      );
-    const postForms = tagElements(body, "form").filter((f) =>
-      /method\s*=\s*["']?post/i.test(openingTagOf(f)),
-    );
-    if (!postForms.some(hasSensitiveField)) return null;
-    return "Cache-Control: public set on page containing sensitive forms.";
-  },
-
-  "x-amz-request-id": (_url, headers) => {
-    if (
-      hasHeader(headers, "x-amz-request-id") ||
-      hasHeader(headers, "x-amz-id-2")
-    ) {
-      return "AWS request ID headers exposed - reveals AWS infrastructure.";
-    }
-    return null;
-  },
-
-  "cf-ray-header": () => null, // CDN presence is not actionable security information
-  "x-vercel-id": () => null, // CDN presence is not actionable security information
-  "x-cache-header": () => null, // cache state is not a security finding
-  "etag-inode": () => null, // duplicate of etag-inode-leak
-
-  "etag-inode-leak": (_url, headers) => {
-    const etag = h(headers, "etag");
-    if (!etag) return null;
-    if (/^"?[0-9a-f]+-[0-9a-f]+-[0-9a-f]+"?$/i.test(etag)) {
-      return `ETag '${etag}' uses inode-size-timestamp format, leaking filesystem info.`;
-    }
-    return null;
-  },
-
-  "date-time-skew": (_url, headers) => {
-    const serverDate = h(headers, "date");
-    if (!serverDate) return null;
-    const serverTime = new Date(serverDate).getTime();
-    const now = Date.now();
-    const skew = Math.abs(serverTime - now);
-    if (skew > 300000) {
-      return "Server date significantly differs from client time - potential NTP issues.";
-    }
-    return null;
-  },
-
-  "server-version-detailed": () => null, // duplicate of server-header-disclosure
-
-  "server-timing-exposure": (_url, headers) => {
-    const st = h(headers, "server-timing");
-    if (!st) return null;
-    if (/dur=\d|;desc=/i.test(st))
-      return `Server-Timing header exposes performance details: ${st.slice(0, 100)}`;
-    return null;
-  },
-
-  "document-policy-missing": () => null, // experimental header, not a security requirement
-  "origin-agent-cluster": () => null, // performance hint, not a security requirement
-  "nel-header-missing": () => null, // duplicate of nel-missing (which gates on HTML content-type)
-  "report-to-header-missing": () => null, // duplicate of nel-missing
-
-  "x-dns-prefetch-control-off": (_url, headers) => {
-    const v = h(headers, "x-dns-prefetch-control");
-    if (v && v.toLowerCase() === "off") {
-      return "X-DNS-Prefetch-Control is off - may impact performance.";
-    }
-    return null;
-  },
-
-  "access-control-expose-broad": (_url, headers) => {
-    const v = h(headers, "access-control-expose-headers");
-    if (!v) return null;
-    const exposed = v.split(",").map((s) => s.trim().toLowerCase());
-    if (exposed.length < 5) return null;
-    return `Access-Control-Expose-Headers exposes ${exposed.length} headers: ${exposed.join(", ")}.`;
-  },
-
-  "access-control-max-age-long": (_url, headers) => {
-    const v = h(headers, "access-control-max-age");
-    if (!v) return null;
-    const seconds = parseInt(v, 10);
-    if (isNaN(seconds) || seconds < 86400) return null;
-    return `Access-Control-Max-Age set to ${seconds}s (${Math.round(seconds / 3600)}h). Preflight results cached excessively.`;
-  },
-
-  "clickjacking-frameable": (_url, headers) => {
-    const xfo = h(headers, "x-frame-options");
-    const csp = h(headers, "content-security-policy");
-    // Only DENY / SAMEORIGIN are honored by modern browsers. ALLOW-FROM (and
-    // any other / garbage value) is ignored, leaving the page fully frameable,
-    // so it must not suppress the finding.
-    const xfoNorm = xfo?.trim().toUpperCase();
-    if (xfoNorm === "DENY" || xfoNorm === "SAMEORIGIN") return null;
-    if (csp && csp.includes("frame-ancestors")) return null;
-    return "No framing protection detected (no X-Frame-Options, no CSP frame-ancestors).";
-  },
-
-  // ── Vary / cache coordination ────────────────────────────────────────────
-
   "vary-header-missing": (_url, headers) => {
     // Scoped to the scenario the JSON metadata actually describes: a
     // compressed response missing Vary: Accept-Encoding. The previous
@@ -304,8 +111,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "transfer-encoding-chunked": () => null, // performance concern, not a security finding
-
   // ── Server-Timing / Timing-Allow-Origin ──────────────────────────────────
 
   "server-timing-allow-origin-public": (_url, headers) => {
@@ -378,18 +183,6 @@ export const detectors: Record<string, DetectFn> = {
           return "Debug flag set via cookie — easy to forget when promoting from staging to production.";
         }
       }
-    }
-    return null;
-  },
-
-  // ── NEL (Network Error Logging) ──────────────────────────────────────────
-
-  "nel-missing": (_url, headers) => {
-    if (hasHeader(headers, "nel") || hasHeader(headers, "report-to"))
-      return null;
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct)) {
-      return "HTML page has no NEL (Network Error Logging) or Report-To header — add for visibility into connectivity failures.";
     }
     return null;
   },

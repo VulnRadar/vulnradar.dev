@@ -232,8 +232,6 @@ function looksLikeGraphQLBatch(body: string): boolean {
 }
 
 const rawDetectors: Record<string, DetectFn> = {
-  // graphql-introspection, graphql-endpoint-exposed, swagger-docs-exposed handled by content.ts
-
   "rate-limiting": (url, headers) => {
     // Rate-limit headers only appear on API/auth endpoints, not HTML pages.
     // Firing on a homepage is always a false positive.
@@ -325,24 +323,6 @@ const rawDetectors: Record<string, DetectFn> = {
   "trace-method-enabled": (_url, headers) => {
     if (headers.has("allow") && /TRACE/i.test(headers.get("allow") || "")) {
       return "The Allow header lists TRACE. This is advertised, not confirmed; the active method probe verifies whether TRACE actually reflects a request.";
-    }
-    return null;
-  },
-
-  // ── Admin / debug endpoints in body ─────────────────────────────────────
-
-  "debug-endpoint": (_url, _headers, body) => {
-    if (/\/debug\/|\/trace\/|\/profiler\/|\/_debug\//gi.test(body)) {
-      return "Debug endpoints referenced in page source.";
-    }
-    return null;
-  },
-
-  "admin-endpoint": (_url, _headers, body) => {
-    // Removed /\/dashboard\// — "dashboard" appears in navigation of nearly
-    // every web application and does not constitute an admin-endpoint finding.
-    if (/\/admin\/|\/administrator\/|\/management\//gi.test(body)) {
-      return "Admin/management endpoints referenced in page source.";
     }
     return null;
   },
@@ -564,17 +544,6 @@ const rawDetectors: Record<string, DetectFn> = {
 
   // ── JWT ──────────────────────────────────────────────────────────────────
 
-  "api-jwt-alg-none": (_url, _headers, _body) => {
-    // Retired: this was a raw substring search for `"alg":"none"` in the
-    // page body (matching a blog post that merely discusses the
-    // vulnerability) plus a dead check of headers.get("authorization") on
-    // the RESPONSE, which is a request-only header (see the same reasoning
-    // on api-bearer-header-leak below). Superseded by page-jwt-alg-none
-    // (checks/page-checks/jwt.ts), which finds a real JWT-shaped token and
-    // base64url-decodes its header instead of grepping for literal text.
-    return null;
-  },
-
   "api-jwt-hs256-weak-secret": (_url, _headers, body) => {
     // The greedy [^)]*  used to backtrack to the LAST short quoted string
     // before the call's closing paren, which is typically an option value
@@ -607,17 +576,6 @@ const rawDetectors: Record<string, DetectFn> = {
     if (OBJECT_PAYLOAD.test(body) || BARE_PAYLOAD.test(body)) {
       return "JWT signed with short or hardcoded HS256 secret.";
     }
-    return null;
-  },
-
-  "api-jwt-missing-exp-claim": (_url, _headers, _body) => {
-    // Retired: this checked for the literal text `"exp":` in the still
-    // base64url-ENCODED body/header — a JWT payload's real exp claim is
-    // never visible as that literal text, so this fired on virtually any
-    // JWT-bearing page regardless of whether the token actually carries an
-    // exp claim. Superseded by page-jwt-missing-exp-claim (checks/page-
-    // checks/jwt.ts), which base64url-decodes the payload and checks the
-    // real exp property.
     return null;
   },
 

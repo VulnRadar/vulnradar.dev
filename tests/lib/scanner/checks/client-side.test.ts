@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the client-side category.
  *
- * Covers 26 detectors in lib/scanner/checks/client-side.ts. Every
+ * Covers every detector in lib/scanner/checks/client-side.ts. Every
  * detector is exercised by the smoke harness (callable, no-throw,
  * deterministic); the detectors below also get explicit fixtures
  * covering known false-positive classes (vendor-documented example

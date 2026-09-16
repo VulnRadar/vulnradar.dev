@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the code category.
  *
- * Covers 154 detectors in lib/scanner/checks/code.ts. Every detector
+ * Covers every detector in lib/scanner/checks/code.ts. Every detector
  * is exercised by the smoke harness (callable, no-throw, deterministic);
  * a small number of detectors with simple enough patterns also get
  * explicit positive fixtures.
