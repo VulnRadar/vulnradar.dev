@@ -65,7 +65,11 @@ const endpoints: Endpoint[] = [
       "Webhooks and scan-complete emails fire when the background job finishes, not when this request returns.",
     ],
     errors: [
-      { code: 400, description: "Missing or invalid URL" },
+      {
+        code: 400,
+        description:
+          "Missing or invalid URL, or scanners names a category the engine does not have",
+      },
       {
         code: 401,
         description: "Unauthorized (session cookie or Bearer API key required)",
@@ -73,7 +77,7 @@ const endpoints: Endpoint[] = [
       {
         code: 403,
         description:
-          "active-probes was requested against a domain you haven't verified (DOMAIN_NOT_VERIFIED)",
+          "active-probes or portScan was requested against a domain you haven't verified (DOMAIN_NOT_VERIFIED)",
       },
       { code: 429, description: "Rate limit or daily quota exceeded" },
       { code: 500, description: "Failed to create the scan job; retry" },
@@ -421,8 +425,17 @@ const endpoints: Endpoint[] = [
       "Poll GET /scan/status/{scanId}: the completed result's result.crawl field carries { pagesDiscovered, pagesScanned, pagesSkipped, pages: [...] } alongside the aggregate findings and summary.",
     ],
     errors: [
-      { code: 400, description: "Missing or invalid URL" },
+      {
+        code: 400,
+        description:
+          "Missing or invalid URL, or scanners names a category the engine does not have",
+      },
       { code: 401, description: "Unauthorized" },
+      {
+        code: 403,
+        description:
+          "active-probes, portScan or a form-login auth block was requested against a domain you haven't verified (DOMAIN_NOT_VERIFIED)",
+      },
       { code: 429, description: "Rate limit or daily quota" },
     ],
   },
@@ -2054,7 +2067,7 @@ export default function APIDocsPage() {
           poll loop yourself.
         </p>
         <CodeBlock
-          code={`- uses: ${APP_REPO}/.github/actions/scan-gate@v3.7.2
+          code={`- uses: ${APP_REPO}/.github/actions/scan-gate@v${APP_VERSION}
   with:
     url: https://your-staging-url.com
     api-key: \${{ secrets.VULNRADAR_TOKEN }}
@@ -2080,13 +2093,16 @@ export default function APIDocsPage() {
             full 40-character commit SHA, which is stronger still because a tag
             can be moved:
           </p>
-          {/* This has to be the COMMIT sha. The value that used to sit here
-              was the annotated tag object's sha, which is not a commit and is
-              not what "a full 40-character commit SHA" one line above
-              promises. `git rev-list -n 1 v3.7.2` is the command that gives
-              you the right one. */}
+          {/* The tag follows APP_VERSION so this page never recommends a
+              release older than the behaviour it documents: it pinned v3.7.2
+              while describing the exit code 2 split, which that release does
+              not have. A literal sha cannot follow the version, so the
+              reader resolves it; the ^{} dereferences an annotated tag to its
+              COMMIT, which is what a pin needs. */}
           <CodeBlock
-            code={`- uses: ${APP_REPO}/.github/actions/scan-gate@3de56cd1057eb61b1bec57587f72e6b1d03439d8 # v3.7.2`}
+            code={`git ls-remote https://github.com/${APP_REPO} "refs/tags/v${APP_VERSION}^{}"
+# then:
+- uses: ${APP_REPO}/.github/actions/scan-gate@<that 40-character sha> # v${APP_VERSION}`}
             language="yaml"
           />
         </DocsCallout>
@@ -2129,6 +2145,8 @@ vulnradar_scan:
           exceeded, <InlineCode>2</InlineCode> when it could not run. To let an
           outage through while findings still block, add{" "}
           <InlineCode>allow_failure: exit_codes: [2]</InlineCode> to the job.
+          The GitHub Action separates the two from v4.0.0; a pin to an older
+          release exits <InlineCode>1</InlineCode> for both.
         </p>
 
         <DocsCallout variant="info" title="POST /scan does not return findings">

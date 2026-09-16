@@ -7,6 +7,7 @@ import { FRAMEWORKS } from "@/lib/reports/compliance-mappings";
 import { WEBSOCKET_CHECK_IDS } from "@/lib/scanner/protocols/websocket";
 import { FTP_CHECK_IDS } from "@/lib/scanner/protocols/ftp";
 import { SETTINGS_REGISTRY } from "@/lib/config/registry";
+import { GENERATED_CHECKS_LABEL } from "@/lib/config/check-stats.generated";
 
 /**
  * The docs pages are TSX, so nothing type-checks the sentences in them. What
@@ -263,6 +264,22 @@ describe("docs pages read their numbers from the code", () => {
    * The profile page routes its tabs with query params. `/profile#api-keys`
    * silently landed on whichever tab is the default.
    */
+  /**
+   * README.md cannot render a constant, and it is the first thing most people
+   * read. It said 855+ after five checks were added and every rendered page
+   * had moved to the generated 860+.
+   */
+  it("advertises the generated check count in README.md", () => {
+    const readme = source("README.md");
+    const claimed = [
+      ...readme.matchAll(/\b(\d{3,})\+\s+(?:deterministic\s+)?checks/g),
+    ];
+    expect(claimed.length).toBeGreaterThan(0);
+    for (const m of claimed) {
+      expect(`${m[1]}+`).toBe(GENERATED_CHECKS_LABEL);
+    }
+  });
+
   it("links the profile tabs the way the profile page reads them", () => {
     for (const page of DOC_PAGES) {
       expect(source(page)).not.toContain("PROFILE}#");

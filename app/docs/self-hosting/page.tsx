@@ -474,12 +474,13 @@ TRUSTED_PROXY_CIDR=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`}
           the webhook in Stripe and returns the signing secret, but only when
           the secret is not yet stored. After first run it returns{" "}
           <InlineCode>{`{ success: true, configured: true }`}</InlineCode> with
-          no secret. The endpoint requires an admin session unless the webhook
-          is already configured.
+          no secret. Every call needs an admin session, including after the
+          webhook is configured, because even that answer tells a caller the
+          instance uses Stripe.
         </p>
         <DocsCallout variant="warning">
           Using <InlineCode>curl</InlineCode> against this endpoint without an
-          admin session cookie will get 401. Log in as admin in a browser, copy
+          admin session cookie will get 403. Log in as admin in a browser, copy
           the session cookie, and pass it as{" "}
           <InlineCode>-b &quot;cookie.txt&quot;</InlineCode> in curl.
         </DocsCallout>

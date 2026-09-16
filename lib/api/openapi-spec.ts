@@ -117,7 +117,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             "401": { $ref: "#/components/responses/Unauthorized" },
             "403": {
               description:
-                "active-probes requested against a domain you have not verified (DOMAIN_NOT_VERIFIED)",
+                "active-probes or portScan requested against a domain you have not verified (DOMAIN_NOT_VERIFIED)",
             },
             "429": { $ref: "#/components/responses/RateLimited" },
           },
@@ -149,6 +149,10 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             },
             "400": { $ref: "#/components/responses/BadRequest" },
             "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description:
+                "active-probes, portScan or a form-login auth block requested against a domain you have not verified (DOMAIN_NOT_VERIFIED)",
+            },
             "429": { $ref: "#/components/responses/RateLimited" },
           },
         },
@@ -1863,6 +1867,12 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             evidence: { type: "string" },
             cwe: { type: "string", example: "CWE-79" },
             owasp: { type: "string", example: "A03:2021" },
+            component: {
+              type: "string",
+              description:
+                "What the finding is about when one check can report several things on a page, as package@version for an outdated library. Absent for page-wide findings.",
+              example: "jquery@1.12.4",
+            },
             confidence: {
               type: "integer",
               description:

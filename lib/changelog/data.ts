@@ -262,7 +262,7 @@ const CHANGELOG: Release[] = [
       {
         icon: ShieldCheck,
         label: "VulnRadar Scans Itself on Every Change",
-        desc: "Every change to VulnRadar is now checked by scanning our own site, all 871 of its pages, with the same scanner customers use. If that scan finds a real problem, the change is stopped until it is fixed. Three known, harmless items are allowed through: two notes about a styling choice we made deliberately, and the description of our own API, which we publish on purpose. Everything else must come back clean, and the scanner is given no special treatment for being pointed at our own site.",
+        desc: "Every change to VulnRadar is now checked by scanning every page of our own public site with the same scanner customers use. If that scan finds a real problem, the change is stopped until it is fixed. Three known, harmless items are allowed through: two notes about a styling choice we made deliberately, and the description of our own API, which we publish on purpose. Everything else must come back clean, and the scanner is given no special treatment for being pointed at our own site.",
         category: "added",
       },
       {
@@ -412,7 +412,7 @@ const CHANGELOG: Release[] = [
       {
         icon: ShieldAlert,
         label: "One Outdated Library Now Gets One Finding, Rated Correctly",
-        desc: "An outdated code library, such as an old jQuery, used to be reported as up to six separate findings, with anything past the fifth silently dropped. It is now one finding, listing every issue worst first and naming the one upgrade that fixes them all. The backup list used when the outside database is unreachable had its own problems: some versions were wrongly cleared, others blamed for issues already fixed, and every issue was rated high regardless of severity. The two systems that detect a site's libraries have also been merged into one fuller list.",
+        desc: 'An outdated code library, such as an old jQuery, used to be reported as up to six separate findings, with anything past the fifth silently dropped. It is now one finding, listing every issue worst first and naming the one upgrade that fixes them all. The backup list used when the outside database is unreachable had its own problems: some versions were wrongly cleared, others blamed for issues already fixed, and every issue was rated high regardless of severity. The two systems that detect a site\'s libraries have also been merged into one fuller list. Because each library now has a single finding, the first scan after upgrading shows these findings with new identifiers: expect a one-time set of "new" and "resolved" library findings in comparisons and alert emails, and set any false positive or accepted risk you had recorded on the old library findings again.',
         category: "engine",
       },
       {
@@ -497,8 +497,8 @@ const CHANGELOG: Release[] = [
       {
         icon: ShieldAlert,
         label: "A Misspelled Check Name No Longer Gives a Clean Result",
-        desc: "When a scan is started from the API, the command-line tool or a pipeline, it can be limited to certain kinds of checks by name. A misspelled name used to match nothing, so the scan quietly ran no checks at all and reported no problems, which looked exactly like a clean site. A name the scanner does not recognise is now refused straight away, with the list of names it does accept.",
-        category: "api",
+        desc: "When a scan is started from the API, the command-line tool or a pipeline, it can be limited to certain kinds of checks by name. A misspelled name used to match nothing, so the scan quietly ran no checks at all and reported no problems, which looked exactly like a clean site. A name the scanner does not recognise is now refused straight away, with the list of names it does accept. If an existing pipeline passes a name that was never valid, it will now stop with an error instead of passing, which is the point: it was never actually checking anything.",
+        category: "breaking",
       },
       {
         icon: Mail,

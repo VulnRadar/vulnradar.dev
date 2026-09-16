@@ -596,6 +596,10 @@ immediately, unreviewed by you. Pin a release tag as shown, or a
 full 40-character commit SHA, which is stronger still because a tag
 can be moved:
 
+# v
+language="yaml"
+/>
+
 > **INFO: POST /scan does not return findings**
 > The scan runs as a background job: the create call only returns a
 scanId, so any gate that reads
@@ -1512,7 +1516,7 @@ Remove a webhook so it stops being called.
 
 ### Code examples
 ```yaml
-- uses: <value>/.github/actions/scan-gate@v3.7.2
+- uses: <value>/.github/actions/scan-gate@v<value>
   with:
     url: https://your-staging-url.com
     api-key: \<value>}
@@ -1522,7 +1526,9 @@ Remove a webhook so it stops being called.
 ```
 
 ```yaml
-- uses: <value>/.github/actions/scan-gate@3de56cd1057eb61b1bec57587f72e6b1d03439d8 # v3.7.2
+git ls-remote https://github.com/<value> "refs/tags/v<value>^{}"
+# then:
+- uses: <value>/.github/actions/scan-gate@<that 40-character sha> # v<value>
 ```
 
 ```yaml
