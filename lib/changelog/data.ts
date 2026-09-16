@@ -471,6 +471,12 @@ const CHANGELOG: Release[] = [
         category: "selfhost",
       },
       {
+        icon: ShieldAlert,
+        label: "The Updater Will Not Downgrade You",
+        desc: "An install newer than the latest published release, such as a build from the main branch, was offered Update now, and taking it would have installed the older release over the newer code, run its dependency install and applied its migrations to a schema they did not write. The button is off in that state and says why, and the update job itself refuses any release older than the running version, whichever way it is started.",
+        category: "admin",
+      },
+      {
         icon: Settings,
         label: "Clearer Self-Hosting Configuration",
         desc: "DATABASE_SSL_CA was documented as accepting a file path, but only the certificate contents work; a path left the app unable to connect at startup. The AI model guidance said 200K tokens of context and then recommended 128K models; the real requirement is about 300K, and the examples now show which models meet it. The placeholder Stripe publishable key is commented out, and the Stripe and Turnstile client keys now warn that a pulled Docker image must be rebuilt with docker compose build app to use them. MIGRATION_BACKUP_RETENTION_DAYS is documented for the first time.",

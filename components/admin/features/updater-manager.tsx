@@ -452,7 +452,8 @@ export function UpdaterManager() {
                 !status?.tarAvailable ||
                 jobRunning ||
                 status?.status === "unknown" ||
-                status?.status === "up-to-date"
+                status?.status === "up-to-date" ||
+                status?.status === "ahead"
               }
               onClick={() => setConfirmOpen(true)}
             >
@@ -462,6 +463,17 @@ export function UpdaterManager() {
             {status?.status === "up-to-date" && !jobRunning && (
               <span className="text-xs text-muted-foreground">
                 Already on the latest version.
+              </span>
+            )}
+            {/* An install newer than the latest release (a build from main,
+                a pre-release) used to leave this button live, and "updating"
+                would have installed the older release over it. The job now
+                refuses that too; this says why the button is off. */}
+            {status?.status === "ahead" && !jobRunning && (
+              <span className="text-xs text-muted-foreground">
+                This install is newer than the latest published release
+                {status.latest ? ` (v${status.latest})` : ""}, so updating would
+                downgrade it.
               </span>
             )}
           </div>

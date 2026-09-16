@@ -173,6 +173,25 @@ describe("runUpdateJob: verification gates run before anything is written", () =
     expect(getJob(job.id)!.status).toBe("failed");
   });
 
+  it("refuses to install a release older than the running version", async () => {
+    mockResolveRelease.mockResolvedValue({
+      ...release(),
+      tagName: "v0.0.1",
+      assets: [
+        { name: "vulnradar-v0.0.1.tar.gz", size: 123 },
+        { name: "sha256sums.txt", size: 64 },
+      ],
+    });
+    const job = createJob("latest", 1)!;
+
+    await runUpdateJob(job.id, "latest");
+
+    expect(getJob(job.id)!.status).toBe("failed");
+    expect(getJob(job.id)!.error).toContain("refusing to downgrade");
+    expect(mockDownloadReleaseAsset).not.toHaveBeenCalled();
+    expect(mockCopyTreeOverlay).not.toHaveBeenCalled();
+  });
+
   it("aborts when no release matches the requested version", async () => {
     mockResolveRelease.mockResolvedValue(null);
     const job = createJob("v9.9.9", 1)!;

@@ -44,6 +44,8 @@ import {
   finishJob,
 } from "@/lib/updater/job-store";
 import { getSettings } from "@/lib/config/runtime-config";
+import { APP_VERSION } from "@/lib/config/constants";
+import { compareVersions } from "@/lib/updater/version-compare";
 
 const MAX_TARBALL_BYTES = 200 * 1024 * 1024; // generous ceiling for a source-only tarball
 const MAX_SMALL_ASSET_BYTES = 2 * 1024 * 1024; // sums file + cosign bundle are tiny
@@ -82,6 +84,19 @@ export async function runUpdateJob(
     if (!release) {
       throw new UpdaterError(
         `Could not find a GitHub release for "${targetVersion}".`,
+      );
+    }
+    // Never install an older release over a newer one. The status panel
+    // offers "Update now" whenever it is not up to date, and "not up to date"
+    // included an install AHEAD of the latest published release (a build from
+    // main, or a pre-release). Applying "latest" there overwrote the newer
+    // code, ran the older release's npm ci over it, and ran its migrations
+    // against a schema they did not write. Checked here, after resolving,
+    // because "latest" names no version until GitHub answers.
+    const releaseVersion = release.tagName.replace(/^v/, "");
+    if (compareVersions(APP_VERSION, releaseVersion).status === "ahead") {
+      throw new UpdaterError(
+        `Release ${release.tagName} is older than the running v${APP_VERSION}; refusing to downgrade.`,
       );
     }
     setStep(jobId, "resolve-release", "done", release.tagName);
