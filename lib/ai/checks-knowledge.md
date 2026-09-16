@@ -18,17 +18,17 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 804
+- **Total checks:** 801
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 226
+  - medium: 223
   - high: 196
-  - low: 185
-  - info: 99
+  - low: 184
+  - info: 100
   - critical: 98
 - **By type:**
   - body-pattern: 460
-  - header: 158
+  - header: 155
   - combined: 60
   - header-missing: 42
   - network-probe: 38
@@ -11309,7 +11309,7 @@ res.setHeader('Set-Cookie', `session=abc123; Max-Age=<value>; Expires=<value>; S
 
 ---
 
-## Category: dns (28 checks)
+## Category: dns (27 checks)
 
 ### `dns-caa-record-missing` [dns / medium / header]
 **CAA Record Missing**
@@ -11523,29 +11523,6 @@ for sub in staging dev api; do
   target=$(dig +short CNAME <value>.example.com)
   [ -n "$target" ] && echo "<value> -> $target: $(dig +short $target | head -1)"
 done
-```
-
-### `dns-resolves` [dns / info / header]
-**DNS A/AAAA Resolution**
-
-Async check: resolves A and AAAA records for the target hostname. Reports whether the domain resolves at all and flags private, loopback, or link-local addresses that should not appear in public DNS.
-
-**Risk:** Private IPs in public DNS reveal internal network topology and can indicate dangling records or takeover risk for cloud-provisioned addresses.
-
-**Why it matters:** DNS resolution is the first step of every scan. If the resolver returns RFC1918 (10.x, 172.16-31.x, 192.168.x), loopback (127.x), or link-local (169.254.x) addresses for a public hostname, the target may not be publicly reachable or may expose internal infrastructure.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc1034
-- https://datatracker.ietf.org/doc/html/rfc1918
-
-**Fix:**
-- Remove A/AAAA records pointing to internal or private IP ranges from public DNS.
-- Audit CNAME chains for dangling-takeover risk (Cloudfront, Heroku, GitHub Pages, etc.).
-- Use split-horizon DNS only where appropriate and audit both views.
-- **Check A and AAAA** (bash):
-```bash
-dig +short A example.com
-dig +short AAAA example.com
 ```
 
 ### `dns-dangling-cname-cdn-paas` [dns / high / header]
@@ -12041,31 +12018,9 @@ dig +short TXT example.com | grep -i -E 'verification|verify|challenge'
 
 ---
 
-## Category: email (37 checks)
+## Category: email (35 checks)
 
-### `email-dmarc-ruf-missing` [email / low / header]
-**DMARC Forensic Report URI (ruf=) Missing**
-
-The DMARC record does not include a ruf= tag specifying a forensic report URI. Forensic reports contain message samples from emails that fail DMARC, which are invaluable for diagnosing spoofing attempts.
-
-**Risk:** Without ruf=, you receive no forensic reports about individual spoofed messages targeting your domain. Active spoofing campaigns may go undetected until end users report them.
-
-**Why it matters:** DMARC defines two reporting channels: rua= (aggregate reports, delivered daily) and ruf= (forensic reports, delivered per-failure). Forensic reports include message headers and sometimes body excerpts from emails that failed DMARC. They give you actionable intelligence about spoofing attempts and legitimate mail that is misconfigured.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc7489#section-6.2
-- https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html
-
-**Fix:**
-- Add ruf=mailto:dmarc-forensic@yourdomain.com to your _dmarc TXT record.
-- Use a dedicated inbox or a DMARC reporting service that can parse and alert on forensic reports.
-- Note: some receivers do not send forensic reports for privacy reasons.
-- **DNS TXT record** (dns):
-```dns
-_dmarc.example.com. IN TXT "v=DMARC1; p=reject; rua=mailto:dmarc-agg@example.com; ruf=mailto:dmarc-forensic@example.com; adkim=s; aspf=s"
-```
-
-### `email-dmarc-rua-missing` [email / medium / header]
+### `email-dmarc-rua-missing` [email / info / header]
 **DMARC Aggregate Report URI (rua=) Missing**
 
 The DMARC record does not include an rua= tag. Without aggregate reports, you have no visibility into how receivers are handling mail from your domain, and you cannot see if your legitimate mail is failing authentication.
@@ -12088,10 +12043,10 @@ _dmarc.example.com. IN TXT "v=DMARC1; p=none; rua=mailto:dmarc-reports@example.c
 # Start with p=none to monitor, then move to p=quarantine, then p=reject
 ```
 
-### `mta-sts` [email / medium / header]
-**MTA-STS (SMTP Strict Transport Security)**
+### `mta-sts` [email / info / header]
+**MTA-STS Record Missing**
 
-Async check: probes _mta-sts.<domain> for a v=STSv1 TXT record and reports its mode= value. Policy-file reachability at mta-sts.<domain>/.well-known/mta-sts.txt is verified separately by the email-mta-sts-policy-missing check.
+The domain publishes no _mta-sts TXT record (v=STSv1), so sending mail servers are not told to require TLS when delivering to it. Whether a published policy file is reachable, and whether its mode enforces, are reported by the MTA-STS policy checks.
 
 **Risk:** Without MTA-STS, inbound SMTP sessions can be downgraded from STARTTLS to plaintext by a network attacker, exposing all email content and credentials.
 
@@ -12202,7 +12157,7 @@ The DMARC record specifies pct= less than 100, meaning the declared policy (quar
 _dmarc.example.com. IN TXT "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@example.com; adkim=s; aspf=s"
 ```
 
-### `email-dmarc-p-none` [email / medium / header]
+### `email-dmarc-p-none` [email / low / header]
 **DMARC Policy Set to Monitor-Only (p=none)**
 
 A DMARC record exists for this domain, but its p= tag is set to "none". Receivers apply no enforcement action to mail that fails DMARC; failing messages are delivered exactly as if no DMARC record existed at all, with reports (if configured) as the only effect.
@@ -12277,27 +12232,6 @@ version: STSv1
 mode: enforce
 mx: mail.example.com
 max_age: 604800
-```
-
-### `email-mta-sts-id-not-rotated` [email / low / header]
-**MTA-STS Policy ID Not Rotated**
-
-The MTA-STS id= field has not changed, meaning previously cached policies may not be invalidated when the policy changes. Sending servers cache MTA-STS policies for up to max_age seconds.
-
-**Risk:** Stale cached policies prevent rapid policy changes from taking effect. During an incident where you need to change MX records or revoke TLS enforcement, sending servers may continue enforcing the old policy for hours.
-
-**Why it matters:** The id= tag in the _mta-sts DNS TXT record serves as a cache-buster. When you update the policy file (e.g., change mode from testing to enforce, or update MX hostnames), you must also update id= to a new value. Sending servers compare the cached id against the current DNS id; if different, they fetch the new policy.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc8461#section-3.2
-
-**Fix:**
-- Update id= to a new value (e.g., a UTC timestamp like 20240101120000) whenever the policy file changes.
-- Also update id= when changing MX records to ensure sending servers pick up the new MX list.
-- **DNS TXT: updated id** (dns):
-```dns
-_mta-sts.example.com. IN TXT "v=STSv1; id=20240101120000"
-# Increment id every time the mta-sts.txt policy changes
 ```
 
 ### `email-mx-hostname-cname` [email / medium / header]

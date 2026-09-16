@@ -1,40 +1,10 @@
 [
   {
-    "id": "email-dmarc-ruf-missing",
-    "type": "header",
-    "title": "DMARC Forensic Report URI (ruf=) Missing",
-    "category": "email",
-    "severity": "low",
-    "description": "The DMARC record does not include a ruf= tag specifying a forensic report URI. Forensic reports contain message samples from emails that fail DMARC, which are invaluable for diagnosing spoofing attempts.",
-    "evidence": "Email-auth finding for `email-dmarc-ruf-missing` against {{domain}}.",
-    "riskImpact": "Without ruf=, you receive no forensic reports about individual spoofed messages targeting your domain. Active spoofing campaigns may go undetected until end users report them.",
-    "explanation": "DMARC defines two reporting channels: rua= (aggregate reports, delivered daily) and ruf= (forensic reports, delivered per-failure). Forensic reports include message headers and sometimes body excerpts from emails that failed DMARC. They give you actionable intelligence about spoofing attempts and legitimate mail that is misconfigured.",
-    "fixSteps": [
-      "Add ruf=mailto:dmarc-forensic@yourdomain.com to your _dmarc TXT record.",
-      "Use a dedicated inbox or a DMARC reporting service that can parse and alert on forensic reports.",
-      "Note: some receivers do not send forensic reports for privacy reasons."
-    ],
-    "codeExamples": [
-      {
-        "label": "DNS TXT record",
-        "language": "dns",
-        "code": "_dmarc.example.com. IN TXT \"v=DMARC1; p=reject; rua=mailto:dmarc-agg@example.com; ruf=mailto:dmarc-forensic@example.com; adkim=s; aspf=s\""
-      }
-    ],
-    "_idx": 0,
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc7489#section-6.2",
-      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
-    ],
-    "cwe": "CWE-290",
-    "owasp": "A07:2021"
-  },
-  {
     "id": "email-dmarc-rua-missing",
     "type": "header",
     "title": "DMARC Aggregate Report URI (rua=) Missing",
     "category": "email",
-    "severity": "medium",
+    "severity": "info",
     "description": "The DMARC record does not include an rua= tag. Without aggregate reports, you have no visibility into how receivers are handling mail from your domain, and you cannot see if your legitimate mail is failing authentication.",
     "evidence": "Email-auth finding for `email-dmarc-rua-missing` against {{domain}}.",
     "riskImpact": "Without rua= aggregate reports, you cannot detect SPF/DKIM misconfigurations in your mail stack, identify unauthorized senders using your domain, or track the effectiveness of your DMARC policy rollout.",
@@ -62,10 +32,10 @@
   {
     "id": "mta-sts",
     "type": "header",
-    "title": "MTA-STS (SMTP Strict Transport Security)",
+    "title": "MTA-STS Record Missing",
     "category": "email",
-    "severity": "medium",
-    "description": "Async check: probes _mta-sts.<domain> for a v=STSv1 TXT record and reports its mode= value. Policy-file reachability at mta-sts.<domain>/.well-known/mta-sts.txt is verified separately by the email-mta-sts-policy-missing check.",
+    "severity": "info",
+    "description": "The domain publishes no _mta-sts TXT record (v=STSv1), so sending mail servers are not told to require TLS when delivering to it. Whether a published policy file is reachable, and whether its mode enforces, are reported by the MTA-STS policy checks.",
     "evidence": "DNS TXT query for the _mta-sts record.",
     "riskImpact": "Without MTA-STS, inbound SMTP sessions can be downgraded from STARTTLS to plaintext by a network attacker, exposing all email content and credentials.",
     "explanation": "MTA-STS tells sending mail servers to require TLS and refuse to deliver mail if TLS cannot be established. Without it, opportunistic STARTTLS can be stripped by a MITM between sending and receiving mail servers.",
@@ -205,7 +175,7 @@
     "type": "header",
     "title": "DMARC Policy Set to Monitor-Only (p=none)",
     "category": "email",
-    "severity": "medium",
+    "severity": "low",
     "description": "A DMARC record exists for this domain, but its p= tag is set to \"none\". Receivers apply no enforcement action to mail that fails DMARC; failing messages are delivered exactly as if no DMARC record existed at all, with reports (if configured) as the only effect.",
     "evidence": "Email-auth finding for `email-dmarc-p-none` against {{domain}}.",
     "riskImpact": "Spoofed mail that fails SPF and DKIM alignment is still delivered to recipients unchanged. p=none is the single most common DMARC misconfiguration: teams publish a record to start collecting reports, then never progress past it, leaving the domain with the appearance of DMARC protection but none of its enforcement.",
@@ -288,30 +258,6 @@
     "_idx": 9,
     "cwe": "CWE-319",
     "owasp": "A02:2021"
-  },
-  {
-    "id": "email-mta-sts-id-not-rotated",
-    "type": "header",
-    "title": "MTA-STS Policy ID Not Rotated",
-    "category": "email",
-    "severity": "low",
-    "description": "The MTA-STS id= field has not changed, meaning previously cached policies may not be invalidated when the policy changes. Sending servers cache MTA-STS policies for up to max_age seconds.",
-    "evidence": "Email-auth finding for `email-mta-sts-id-not-rotated` against {{domain}}.",
-    "riskImpact": "Stale cached policies prevent rapid policy changes from taking effect. During an incident where you need to change MX records or revoke TLS enforcement, sending servers may continue enforcing the old policy for hours.",
-    "explanation": "The id= tag in the _mta-sts DNS TXT record serves as a cache-buster. When you update the policy file (e.g., change mode from testing to enforce, or update MX hostnames), you must also update id= to a new value. Sending servers compare the cached id against the current DNS id; if different, they fetch the new policy.",
-    "fixSteps": [
-      "Update id= to a new value (e.g., a UTC timestamp like 20240101120000) whenever the policy file changes.",
-      "Also update id= when changing MX records to ensure sending servers pick up the new MX list."
-    ],
-    "codeExamples": [
-      {
-        "label": "DNS TXT: updated id",
-        "language": "dns",
-        "code": "_mta-sts.example.com. IN TXT \"v=STSv1; id=20240101120000\"\n# Increment id every time the mta-sts.txt policy changes"
-      }
-    ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc8461#section-3.2"],
-    "_idx": 10
   },
   {
     "id": "email-mx-hostname-cname",

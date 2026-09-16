@@ -257,34 +257,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "dns-resolves",
-    "type": "header",
-    "title": "DNS A/AAAA Resolution",
-    "category": "dns",
-    "severity": "info",
-    "description": "Async check: resolves A and AAAA records for the target hostname. Reports whether the domain resolves at all and flags private, loopback, or link-local addresses that should not appear in public DNS.",
-    "evidence": "DNS-level finding for `dns-resolution` against {{domain}}.",
-    "riskImpact": "Private IPs in public DNS reveal internal network topology and can indicate dangling records or takeover risk for cloud-provisioned addresses.",
-    "explanation": "DNS resolution is the first step of every scan. If the resolver returns RFC1918 (10.x, 172.16-31.x, 192.168.x), loopback (127.x), or link-local (169.254.x) addresses for a public hostname, the target may not be publicly reachable or may expose internal infrastructure.",
-    "fixSteps": [
-      "Remove A/AAAA records pointing to internal or private IP ranges from public DNS.",
-      "Audit CNAME chains for dangling-takeover risk (Cloudfront, Heroku, GitHub Pages, etc.).",
-      "Use split-horizon DNS only where appropriate and audit both views."
-    ],
-    "codeExamples": [
-      {
-        "label": "Check A and AAAA",
-        "language": "bash",
-        "code": "dig +short A example.com\ndig +short AAAA example.com"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc1034",
-      "https://datatracker.ietf.org/doc/html/rfc1918"
-    ],
-    "_idx": 8
-  },
-  {
     "id": "dns-dangling-cname-cdn-paas",
     "type": "header",
     "title": "Dangling CNAME (CDN/PaaS Takeover)",

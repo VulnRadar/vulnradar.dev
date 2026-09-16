@@ -18,7 +18,6 @@
 import type { EvidenceFn as DetectFn } from "../_helpers";
 
 export const detectors: Record<string, DetectFn> = {
-  "dns-resolves": () => null,
   "dns-caa-record-missing": () => null,
   "dns-ns-record-count": () => null,
   "dns-mx-record-missing": () => null,

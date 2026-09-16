@@ -417,7 +417,7 @@ remediation documentation in the docs.
 - [low     ] `netscaler-cookie-exposes-internal-server` [header] - Citrix NetScaler Cookie May Expose Internal Server
 - [low     ] `cookie-maxage-expires-conflict` [header] - Cookie Max-Age and Expires Disagree
 
-### dns (28)
+### dns (27)
 - [medium  ] `dns-caa-record-missing` [header] - CAA Record Missing
 - [high    ] `dns-ns-record-count` [header] - Less Than 2 Authoritative Nameservers
 - [medium  ] `dns-mx-record-missing` [header] - MX Record Missing
@@ -426,7 +426,6 @@ remediation documentation in the docs.
 - [low     ] `dns-soa-refresh-high` [header] - SOA Refresh Interval Too High
 - [info    ] `dns-tlsa-record-missing` [header] - TLSA (DANE) Record Missing
 - [medium  ] `dns-dangling-cname` [header] - Dangling CNAME Record (Subdomain Takeover Risk)
-- [info    ] `dns-resolves` [header] - DNS A/AAAA Resolution
 - [high    ] `dns-dangling-cname-cdn-paas` [header] - Dangling CNAME (CDN/PaaS Takeover)
 - [high    ] `dns-dangling-cname-saas` [header] - Dangling CNAME (SaaS Takeover)
 - [high    ] `dns-zone-transfer-allowed` [header] - DNS Zone Transfer (AXFR) Allowed from Public IPs
@@ -447,18 +446,16 @@ remediation documentation in the docs.
 - [info    ] `dns-caa-iodef-missing` [network-probe] - CAA record names no incident reporting address
 - [info    ] `dns-txt-verification-tokens-stale` [network-probe] - Accumulated SaaS domain-verification TXT records
 
-### email (37)
-- [low     ] `email-dmarc-ruf-missing` [header] - DMARC Forensic Report URI (ruf=) Missing
-- [medium  ] `email-dmarc-rua-missing` [header] - DMARC Aggregate Report URI (rua=) Missing
-- [medium  ] `mta-sts` [header] - MTA-STS (SMTP Strict Transport Security)
+### email (35)
+- [info    ] `email-dmarc-rua-missing` [header] - DMARC Aggregate Report URI (rua=) Missing
+- [info    ] `mta-sts` [header] - MTA-STS Record Missing
 - [low     ] `email-tls-rpt-rua-missing` [header] - TLS-RPT Record Missing rua= Reporting URI
 - [high    ] `email-spf-lookup-count-too-high` [header] - SPF Exceeds 10 DNS Lookup Limit
 - [high    ] `email-spf-redirect-loop` [header] - SPF Redirect Loop
 - [low     ] `email-dmarc-pct-not-100` [header] - DMARC pct= Below 100
-- [medium  ] `email-dmarc-p-none` [header] - DMARC Policy Set to Monitor-Only (p=none)
+- [low     ] `email-dmarc-p-none` [header] - DMARC Policy Set to Monitor-Only (p=none)
 - [medium  ] `email-mta-sts-policy-missing` [header] - MTA-STS Policy File Missing
 - [medium  ] `email-mta-sts-mode-none` [header] - MTA-STS Mode Not Enforcing
-- [low     ] `email-mta-sts-id-not-rotated` [header] - MTA-STS Policy ID Not Rotated
 - [medium  ] `email-mx-hostname-cname` [header] - MX Hostname Is a CNAME (RFC Violation)
 - [medium  ] `spf-record` [header] - SPF Record (Sender Policy Framework)
 - [medium  ] `dmarc-record` [header] - DMARC Record Missing
@@ -859,17 +856,17 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **804**
+- Total checks: **801**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 226
+  - medium: 223
   - high: 196
-  - low: 185
-  - info: 99
+  - low: 184
+  - info: 100
   - critical: 98
 - By type:
   - body-pattern: 460
-  - header: 158
+  - header: 155
   - combined: 60
   - header-missing: 42
   - network-probe: 38
