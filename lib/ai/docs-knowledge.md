@@ -116,6 +116,7 @@ headers assume HTTPS in production.
 ### Notes
 - Before you begin, ensure you have the following installed:
 - .npmrc sets engine-strict=true, so an install under a Node outside engines ( >=22.0.0 <23.0.0) fails instead of warning. It holds no install-script allow-list: npm has no such mechanism, and the Docker build installs with --ignore-scripts because nothing in the production tree needs one (sharp and the Next SWC binaries ship prebuilt as optional dependencies).
+- Make the user the database's owner rather than granting it privileges on the database. Since PostgreSQL 15 nobody but the owner may create tables in the public schema, and GRANT ALL PRIVILEGES ON DATABASE does not change that, so would stop at its first CREATE TABLE with "permission denied for schema public".
 - The included docker-compose.yml provisions Postgres as user vulnradar and database vulnradar by default. POSTGRES_PASSWORD has no default: compose refuses to start until you set it in .env. The database port is not published to the host at all, so it is reachable only from inside the compose network, at postgres:5432. See the Docker section below.
 - instrumentation.ts runs CREATE TABLE IF NOT EXISTS for every table on first server boot. No manual migration is required for a fresh database. For databases upgraded from an older schema, see Schema Migration .
 - Secrets and per-deployment overrides go in .env (or .env.local for local-only overrides; Next.js loads .env.local with higher precedence than .env ).
@@ -123,7 +124,6 @@ headers assume HTTPS in production.
 - Optional: SMTP, Stripe, Discord, Turnstile. Full reference on the Configuration page.
 - .env and .env.local are git-ignored by default. If you fork the repo, double-check .gitignore.
 - Non-secret deployment tunables live in lib/config/config-values.ts. Branding, app name, and SEO values are baked in at build time, so edit those before the first build and restart to pick up changes. Most of the rest (rate limits, feature flags, billing, scan timeouts) can also be changed at runtime after signup, from /admin&rsquo;s Settings tab, with no restart. See Configuration for which is which.
-- Earlier (pre-v2.3.0) planning docs referenced a config.yaml file. The current implementation does not use one. All non-secret configuration is in lib/config/config-values.ts; all secrets are environment variables.
 
 ### Code examples
 ```bash
@@ -138,9 +138,8 @@ cd <value>.dev
 ```sql
 psql -U postgres
 
-CREATE DATABASE vulnradar;
 CREATE USER vulnradar_user WITH PASSWORD 'strong_password_here';
-GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
+CREATE DATABASE vulnradar OWNER vulnradar_user;
 \\q
 ```
 
@@ -2979,7 +2978,7 @@ individual URLs instead.
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
 | `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
-| `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 27 | 30 |
+| `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 28 | 30 |
 | `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 14 | 2 |
 | `/docs/self-hosting` | - | 16 | 9 | 0 | 14 | 0 | 0 | 28 | 3 |
 | `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 31 | 0 |

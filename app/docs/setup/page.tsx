@@ -196,12 +196,20 @@ export default function SetupPage() {
           <CodeBlock
             code={`psql -U postgres
 
-CREATE DATABASE vulnradar;
 CREATE USER vulnradar_user WITH PASSWORD 'strong_password_here';
-GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
+CREATE DATABASE vulnradar OWNER vulnradar_user;
 \\q`}
             language="sql"
           />
+          <p className="text-sm text-muted-foreground mt-3">
+            Make the user the database&apos;s owner rather than granting it
+            privileges on the database. Since PostgreSQL 15 nobody but the owner
+            may create tables in the <InlineCode>public</InlineCode> schema, and{" "}
+            <InlineCode>GRANT ALL PRIVILEGES ON DATABASE</InlineCode> does not
+            change that, so {APP_NAME} would stop at its first{" "}
+            <InlineCode>CREATE TABLE</InlineCode> with &quot;permission denied
+            for schema public&quot;.
+          </p>
         </Card>
 
         <Card className="p-6 border-border/40">
