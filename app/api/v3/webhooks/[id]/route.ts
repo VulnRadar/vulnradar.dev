@@ -3,7 +3,12 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
-import { detectWebhookType } from "@/lib/webhooks/detect-type";
+import {
+  detectWebhookType,
+  isWebhookType,
+  WEBHOOK_TYPE_ERROR,
+  type WebhookType,
+} from "@/lib/webhooks/detect-type";
 import {
   getTeamResourceAccess,
   getAssignableTeamIds,
@@ -85,12 +90,18 @@ export async function PATCH(
   if (hasName && (typeof name !== "string" || !name.trim())) {
     return NextResponse.json({ error: "Invalid name" }, { status: 400 });
   }
-  if (hasType && typeof userType !== "string") {
-    return NextResponse.json({ error: "Invalid type" }, { status: 400 });
+  // An allowlist, not just a typeof. Any non-"auto" string used to be written
+  // to the column unchanged, and nothing downstream validates it either:
+  // scan-notifications.ts branches on "discord" and "slack" and treats
+  // everything else as generic, so a Discord webhook edited to "Discord"
+  // silently started receiving flat JSON instead of an embed. "auto" is
+  // accepted here and never stored -- it means re-detect from the URL.
+  if (hasType && userType !== "auto" && !isWebhookType(userType)) {
+    return NextResponse.json({ error: WEBHOOK_TYPE_ERROR }, { status: 400 });
   }
 
   let validatedUrl: string | undefined;
-  let resolvedType: string | undefined;
+  let resolvedType: WebhookType | undefined;
 
   if (hasUrl) {
     if (typeof url !== "string") {
@@ -124,11 +135,9 @@ export async function PATCH(
     // Re-detect type when the URL changes, same as creation, unless the
     // caller explicitly pinned a non-"auto" type in the same request.
     resolvedType =
-      hasType && userType !== "auto"
-        ? (userType as string)
-        : detectWebhookType(url);
-  } else if (hasType && userType !== "auto") {
-    resolvedType = userType as string;
+      hasType && isWebhookType(userType) ? userType : detectWebhookType(url);
+  } else if (hasType && isWebhookType(userType)) {
+    resolvedType = userType;
   }
 
   const existingRes = await pool.query<{

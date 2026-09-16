@@ -206,7 +206,7 @@ export default function WebhooksPage() {
             notes={[
               `Returns 201, not 200. Per-user limit is set by your plan: ${WEBHOOK_CAPS}`,
               "URL must be HTTPS (no localhost, no private IPs, no link-local)",
-              "type defaults to auto-detect; allowed values are auto | discord | slack | generic. Only the detected value is stored.",
+              "type defaults to auto-detect; allowed values are auto | discord | slack | generic, and anything else is a 400. auto means detect from the URL; the other three pin the payload format regardless of what the URL looks like, which is what you want for a proxy sitting in front of a Discord or Slack endpoint.",
               "secret is returned on this response and, if you ever have to replace it, on POST /webhooks/{id}/rotate-secret. Nothing else returns it, so save it now: it signs every delivery.",
             ]}
             errors={[

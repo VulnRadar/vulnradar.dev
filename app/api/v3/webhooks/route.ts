@@ -17,7 +17,10 @@ import {
   withinPlanLimit,
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
-import { detectWebhookType } from "@/lib/webhooks/detect-type";
+import {
+  resolveWebhookType,
+  WEBHOOK_TYPE_ERROR,
+} from "@/lib/webhooks/detect-type";
 import { encryptWebhookSecret } from "@/lib/webhooks/secret";
 import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
 
@@ -74,6 +77,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Detected from the URL unless the caller pinned one of the three real
+  // types. Anything else is refused rather than stored: see
+  // resolveWebhookType for what silently accepting it used to cost.
+  const webhookType = resolveWebhookType(userType, url);
+  if (webhookType === null) {
+    return NextResponse.json({ error: WEBHOOK_TYPE_ERROR }, { status: 400 });
+  }
+
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(url);
@@ -116,9 +127,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Auto-detect type from URL if user didn't specify or chose "auto"
-  const webhookType =
-    userType && userType !== "auto" ? userType : detectWebhookType(url);
   const webhookName = name || "Default";
 
   // Generated here (not left to the column's migration-backfill DEFAULT)
