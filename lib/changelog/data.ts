@@ -441,6 +441,12 @@ const CHANGELOG: Release[] = [
         category: "cli",
       },
       {
+        icon: Wrench,
+        label: "CI Templates Match the CLI",
+        desc: "The GitHub Action and the GitLab template now behave like the CLI where they had drifted from it. One failed status poll no longer fails the build: five in a row do. They exit 1 only when a threshold was exceeded and 2 when the scan could not run, so a pipeline can let an outage through while findings still block. The GitLab template's timeout follows the scan instead of a flat five minutes that failed crawls the server was still running, and both build the request body with a JSON encoder, so a URL containing a quote no longer breaks the request.",
+        category: "cli",
+      },
+      {
         icon: Keyboard,
         label: "Everything Draggable Now Works From the Keyboard",
         desc: "The profile picture cropper could only be repositioned by dragging, and the assistant panel's resize handles were mouse-only elements with no name and no focus. The cropper now moves with the arrow keys (hold Shift for larger steps). The resize handles are focusable, labelled separators that respond to the arrow keys, Home and End.",

@@ -89,7 +89,7 @@ runs:
 
         if [ -z "$VR_API_KEY" ]; then
           echo "::error::api-key is empty. Pass it from a repo secret, e.g. \${{ secrets.VULNRADAR_TOKEN }}."
-          exit 1
+          exit 2
         fi
 
         if [ "$VR_CRAWL" = "true" ]; then
@@ -98,22 +98,27 @@ runs:
           endpoint="$VR_API_BASE/scan"
         fi
 
+        # jq builds the body: a URL interpolated into a JSON string broke the
+        # request on the first double quote or backslash in it.
+        create_body_json=$(jq -n --arg url "$VR_URL" '{url: $url}')
         create_response=$(curl -sS -w '\n%{http_code}' -X POST "$endpoint" \
           -H "Authorization: Bearer $VR_API_KEY" \
           -H "Content-Type: application/json" \
-          -d "{\"url\": \"$VR_URL\"}")
+          -d "$create_body_json" || printf '\n000')
         create_status="${create_response##*$'\n'}"
         create_body="${create_response%$'\n'*}"
 
-        if [ "$create_status" -ge 300 ]; then
+        # Exit codes match the vulnradar CLI: 2 when the scan could not run,
+        # 1 only when it ran and a threshold was exceeded.
+        if [ "$create_status" -ge 300 ] || [ "$create_status" = "000" ]; then
           echo "::error::Failed to start scan (HTTP $create_status): $create_body"
-          exit 1
+          exit 2
         fi
 
         scan_id=$(echo "$create_body" | jq -r '.scanId')
         if [ -z "$scan_id" ] || [ "$scan_id" = "null" ]; then
           echo "::error::No scanId in response: $create_body"
-          exit 1
+          exit 2
         fi
         echo "Started scan $scan_id for $VR_URL"
         echo "scan-id=$scan_id" >> "$GITHUB_OUTPUT"
@@ -140,17 +145,32 @@ runs:
           fi
         fi
 
+        failures=0
         while [ "$elapsed" -lt "$VR_TIMEOUT" ]; do
           status_response=$(curl -sS -w '\n%{http_code}' \
             -H "Authorization: Bearer $VR_API_KEY" \
-            "$VR_API_BASE/scan/status/$scan_id")
+            "$VR_API_BASE/scan/status/$scan_id" || printf '\n000')
           status_code="${status_response##*$'\n'}"
           status_body="${status_response%$'\n'*}"
 
-          if [ "$status_code" -ge 300 ]; then
-            echo "::error::Failed to poll scan status (HTTP $status_code): $status_body"
-            exit 1
+          if [ "$status_code" = "401" ] || [ "$status_code" = "403" ]; then
+            echo "::error::Not authorized to read scan $scan_id (HTTP $status_code)."
+            exit 2
           fi
+          # One 502 from a proxy used to fail the build for a scan that was
+          # succeeding. Up to five failures in a row are retried, as the CLI does.
+          if [ "$status_code" -ge 300 ] || [ "$status_code" = "000" ]; then
+            failures=$((failures + 1))
+            if [ "$failures" -gt 5 ]; then
+              echo "::error::Lost contact with the API while polling scan $scan_id (HTTP $status_code): $status_body"
+              exit 2
+            fi
+            echo "::warning::Status poll failed (HTTP $status_code); retrying ($failures/5)."
+            sleep "$VR_POLL_INTERVAL"
+            elapsed=$((elapsed + VR_POLL_INTERVAL))
+            continue
+          fi
+          failures=0
 
           status=$(echo "$status_body" | jq -r '.status')
 
@@ -161,7 +181,7 @@ runs:
           if [ "$status" = "failed" ]; then
             error_reason=$(echo "$status_body" | jq -r '.error // "unknown error"')
             echo "::error::Scan failed: $error_reason"
-            exit 1
+            exit 2
           fi
 
           sleep "$VR_POLL_INTERVAL"
@@ -170,7 +190,7 @@ runs:
 
         if [ -z "$result" ]; then
           echo "::error::Timed out after ${VR_TIMEOUT}s waiting for scan $scan_id to complete."
-          exit 1
+          exit 2
         fi
 
         critical=$(echo "$result" | jq -r '.result.summary.critical // 0')

@@ -21,6 +21,13 @@
 #
 # Everything else is set through the variables below (shown with defaults);
 # override them on the job.
+#
+# Exit codes match the vulnradar CLI: 1 means the scan ran and a threshold was
+# exceeded, 2 means the scan could not run (missing token, network, API
+# error, timeout). To let tool failures through while still blocking on
+# findings, add to the job:
+#   allow_failure:
+#     exit_codes: [2]
 
 vulnradar_scan:
   stage: test
@@ -37,7 +44,10 @@ vulnradar_scan:
     VR_MAX_CRITICAL: "0" # fail if criticals exceed this
     VR_MAX_HIGH: "0" # fail if highs exceed this
     VR_MAX_MEDIUM: "-1" # fail if mediums exceed this; -1 disables the check
-    VR_TIMEOUT: "300" # give up waiting after this many seconds
+    # Give up waiting after this many seconds. Empty follows the scan: 300,
+    # or 900 with VR_CRAWL, matching the larger budget the server gives a
+    # crawl. A flat 300 failed crawls the server was still running fine.
+    VR_TIMEOUT: ""
     VR_POLL_INTERVAL: "5" # seconds between status polls
   before_script:
     - apk add --no-cache curl jq
@@ -46,10 +56,13 @@ vulnradar_scan:
       set -eu
 
       if [ -z "${VULNRADAR_TOKEN:-}" ]; then
-        echo "VULNRADAR_TOKEN is not set. Add it as a masked CI/CD variable."; exit 1
+        echo "VULNRADAR_TOKEN is not set. Add it as a masked CI/CD variable."; exit 2
       fi
       if [ -z "${VR_URL:-}" ]; then
-        echo "VR_URL is empty. Set it to the URL you want scanned."; exit 1
+        echo "VR_URL is empty. Set it to the URL you want scanned."; exit 2
+      fi
+      if [ -z "${VR_TIMEOUT:-}" ]; then
+        if [ "$VR_CRAWL" = "true" ]; then VR_TIMEOUT=900; else VR_TIMEOUT=300; fi
       fi
 
       if [ "$VR_CRAWL" = "true" ]; then
@@ -60,39 +73,57 @@ vulnradar_scan:
 
       # Start the scan. POST /scan runs as a background job and returns only a
       # scanId, never findings -- the result appears on GET /scan/status/{id}.
+      # jq builds the body: a URL interpolated into a JSON string broke the
+      # request on the first double quote or backslash in it.
+      body=$(jq -n --arg url "$VR_URL" '{url: $url}')
       code=$(curl -sS -o resp.json -w '%{http_code}' -X POST "$endpoint" \
         -H "Authorization: Bearer $VULNRADAR_TOKEN" \
         -H "Content-Type: application/json" \
-        -d "{\"url\": \"$VR_URL\"}")
-      if [ "$code" -ge 300 ]; then
-        echo "Failed to start scan (HTTP $code): $(cat resp.json)"; exit 1
+        -d "$body" || echo 000)
+      if [ "$code" -ge 300 ] || [ "$code" = "000" ]; then
+        echo "Failed to start scan (HTTP $code): $(cat resp.json 2>/dev/null)"; exit 2
       fi
       scan_id=$(jq -r '.scanId' resp.json)
       if [ -z "$scan_id" ] || [ "$scan_id" = "null" ]; then
-        echo "No scanId in response: $(cat resp.json)"; exit 1
+        echo "No scanId in response: $(cat resp.json)"; exit 2
       fi
       echo "Started scan $scan_id for $VR_URL"
 
       # Poll until it completes.
       elapsed=0
       done=false
+      failures=0
       while [ "$elapsed" -lt "$VR_TIMEOUT" ]; do
         code=$(curl -sS -o status.json -w '%{http_code}' \
           -H "Authorization: Bearer $VULNRADAR_TOKEN" \
-          "$VR_API_BASE/scan/status/$scan_id")
-        if [ "$code" -ge 300 ]; then
-          echo "Failed to poll status (HTTP $code): $(cat status.json)"; exit 1
+          "$VR_API_BASE/scan/status/$scan_id" || echo 000)
+        if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+          echo "Not authorized to read scan $scan_id (HTTP $code)."; exit 2
         fi
+        # A scan polls about sixty times, a crawl closer to two hundred, so
+        # one 502 from a proxy used to fail a pipeline for a scan that was
+        # succeeding. Up to five failures in a row are retried, as the CLI does.
+        if [ "$code" -ge 300 ] || [ "$code" = "000" ]; then
+          failures=$((failures + 1))
+          if [ "$failures" -gt 5 ]; then
+            echo "Lost contact with the API while polling scan $scan_id (HTTP $code)."; exit 2
+          fi
+          echo "Status poll failed (HTTP $code); retrying ($failures/5)."
+          sleep "$VR_POLL_INTERVAL"
+          elapsed=$((elapsed + VR_POLL_INTERVAL))
+          continue
+        fi
+        failures=0
         status=$(jq -r '.status' status.json)
         if [ "$status" = "completed" ]; then done=true; break; fi
         if [ "$status" = "failed" ]; then
-          echo "Scan failed: $(jq -r '.error // "unknown error"' status.json)"; exit 1
+          echo "Scan failed: $(jq -r '.error // "unknown error"' status.json)"; exit 2
         fi
         sleep "$VR_POLL_INTERVAL"
         elapsed=$((elapsed + VR_POLL_INTERVAL))
       done
       if [ "$done" != "true" ]; then
-        echo "Timed out after ${VR_TIMEOUT}s waiting for scan $scan_id to complete."; exit 1
+        echo "Timed out after ${VR_TIMEOUT}s waiting for scan $scan_id to complete."; exit 2
       fi
 
       critical=$(jq -r '.result.summary.critical // 0' status.json)

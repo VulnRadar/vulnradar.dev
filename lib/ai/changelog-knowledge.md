@@ -96,6 +96,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The extension documentation listed activeTab and scripting, which neither the Chrome nor the Firefox manifest requests, and omitted contextMenus and downloads, which both request and use for right-click scanning and report export. For a security tool, claiming permissions it does not ask for is as misleading as hiding ones it does. The list now matches the manifests exactly. The extension's build toolchain was also updated, and its TypeScript version can no longer move a major version away from the app's without a deliberate change.
 - [Wrench] **[CLI]** **The CLI Can Choose Scanners, Visibility and Teams**
   The command-line tool started every scan with nothing but the URL, whatever the web app or the API allowed. It now takes --scanners to run only the categories a pipeline cares about, --public or --private to decide whether the result is listed in the public directory, and --team-id, repeatable, to share the result with the teams that need it. A rate-limited start waits for the time the server asks and tries again instead of failing the build, every request identifies itself as the CLI, and --version prints the version. Its tests now check what the tool sends, not only how it reacts to the reply.
+- [Wrench] **[CLI]** **CI Templates Match the CLI**
+  The GitHub Action and the GitLab template now behave like the CLI where they had drifted from it. One failed status poll no longer fails the build: five in a row do. They exit 1 only when a threshold was exceeded and 2 when the scan could not run, so a pipeline can let an outage through while findings still block. The GitLab template's timeout follows the scan instead of a flat five minutes that failed crawls the server was still running, and both build the request body with a JSON encoder, so a URL containing a quote no longer breaks the request.
 - [Keyboard] **[ACCESSIBILITY]** **Everything Draggable Now Works From the Keyboard**
   The profile picture cropper could only be repositioned by dragging, and the assistant panel's resize handles were mouse-only elements with no name and no focus. The cropper now moves with the arrow keys (hold Shift for larger steps). The resize handles are focusable, labelled separators that respond to the arrow keys, Home and End.
 - [Eye] **[ACCESSIBILITY]** **Menus That Claimed to Hide the Page Behind Them Now Do**
@@ -2434,6 +2436,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 909
+- **Total changes documented:** 910
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

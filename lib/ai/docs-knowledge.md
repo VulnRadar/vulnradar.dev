@@ -2982,7 +2982,7 @@ individual URLs instead.
 | `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 14 | 2 |
 | `/docs/self-hosting` | - | 16 | 9 | 0 | 14 | 0 | 0 | 28 | 3 |
 | `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 31 | 0 |
-| `/docs/api` | - | 8 | 5 | 0 | 6 | 42 | 0 | 17 | 5 |
+| `/docs/api` | - | 8 | 5 | 0 | 6 | 42 | 0 | 18 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |
 | `/docs/webhooks` | ✓ | 7 | 0 | 0 | 4 | 0 | 0 | 13 | 6 |
 | `/docs/rate-limits` | - | 6 | 6 | 0 | 4 | 0 | 0 | 11 | 3 |

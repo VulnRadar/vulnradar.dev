@@ -2123,6 +2123,13 @@ vulnradar_scan:
           Override <InlineCode>VR_API_BASE</InlineCode> with your deployment's{" "}
           <InlineCode>/api/v3</InlineCode>.
         </p>
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          The template and the GitHub Action exit the way the CLI does:{" "}
+          <InlineCode>1</InlineCode> when the scan ran and a threshold was
+          exceeded, <InlineCode>2</InlineCode> when it could not run. To let an
+          outage through while findings still block, add{" "}
+          <InlineCode>allow_failure: exit_codes: [2]</InlineCode> to the job.
+        </p>
 
         <DocsCallout variant="info" title="POST /scan does not return findings">
           The scan runs as a background job: the create call only returns a{" "}
