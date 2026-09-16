@@ -13,6 +13,8 @@ import {
   PROTOCOL_CONFIGS,
   SCAN_PROTOCOLS,
   getProtocolFromUrl,
+  mongoServiceFinding,
+  sshServiceFinding,
   getProtocolConfig,
   isCategoryApplicable,
   getApplicableCategories,
@@ -144,57 +146,32 @@ describe("getProtocolFindings: dispatch by parsed protocol", () => {
     expect(f?.severity).toBe("critical");
   });
 
-  it("ssh:// produces an informational service-detected finding", () => {
-    const findings = getProtocolFindings("ssh://example.com/");
-    const f = findings.find((x) => x.id.startsWith("proto-ssh-detected--"));
-    expect(f).toBeDefined();
-    expect(f?.severity).toBe("info");
+  // Nothing is known about these services until a connection is made, so
+  // the URL alone reports nothing: an unreachable host used to get "SSH
+  // Service Detected", and an SMTP server offering STARTTLS a high-severity
+  // "Plaintext SMTP" it did not deserve. execute-scan.ts reports them after
+  // the banner or wire probe answers.
+  it.each([
+    "ssh://example.com/",
+    "smtp://example.com/",
+    "imap://example.com/",
+    "pop3://example.com/",
+    "mongodb://example.com/",
+  ])("%s produces nothing from the URL alone", (url) => {
+    expect(getProtocolFindings(url)).toEqual([]);
   });
 
-  it("smtp:// (plaintext) produces a high-severity plaintext finding; smtps:// does not", () => {
-    expect(
-      getProtocolFindings("smtp://example.com/").some((f) =>
-        f.id.startsWith("proto-smtp-plaintext--"),
-      ),
-    ).toBe(true);
-    expect(
-      getProtocolFindings("smtps://example.com/").some((f) =>
-        f.id.startsWith("proto-smtp-plaintext--"),
-      ),
-    ).toBe(false);
-  });
-
-  it("imap:// produces a plaintext finding; imaps:// does not", () => {
-    expect(
-      getProtocolFindings("imap://example.com/").some((f) =>
-        f.id.startsWith("proto-imap-plaintext--"),
-      ),
-    ).toBe(true);
-    expect(
-      getProtocolFindings("imaps://example.com/").some((f) =>
-        f.id.startsWith("proto-imap-plaintext--"),
-      ),
-    ).toBe(false);
-  });
-
-  it("pop3:// produces a plaintext finding; pop3s:// does not", () => {
-    expect(
-      getProtocolFindings("pop3://example.com/").some((f) =>
-        f.id.startsWith("proto-pop3-plaintext--"),
-      ),
-    ).toBe(true);
-    expect(
-      getProtocolFindings("pop3s://example.com/").some((f) =>
-        f.id.startsWith("proto-pop3-plaintext--"),
-      ),
-    ).toBe(false);
-  });
-
-  it("mongodb:// produces a medium-severity service-detected finding", () => {
-    const findings = getProtocolFindings("mongodb://example.com/");
-    const f = findings.find((x) => x.id.startsWith("proto-mongodb-detected--"));
-    expect(f).toBeDefined();
-    expect(f?.severity).toBe("medium");
+  it("the service findings built after a probe answers keep their ids and severities", () => {
+    expect(sshServiceFinding("ssh://example.com/").id).toMatch(
+      /^proto-ssh-detected--/,
+    );
+    expect(sshServiceFinding("ssh://example.com/").severity).toBe("info");
+    expect(mongoServiceFinding("mongodb://example.com/").id).toMatch(
+      /^proto-mongodb-detected--/,
+    );
+    expect(mongoServiceFinding("mongodb://example.com/").severity).toBe(
+      "medium",
+    );
   });
 
   it("an unparseable URL is treated as https and produces no findings", () => {

@@ -480,117 +480,62 @@ export function getProtocolFindings(url: string): Vulnerability[] {
     });
   }
 
-  // Banner-style protocols — at scan time we open a TCP socket, read
-  // the greeting, and look for version disclosure / unsupported flags.
-  // The actual banner fetch lives in lib/scanner/async-checks.ts.
-  if (protocol === "ssh") {
-    findings.push({
-      id: generateId("proto-ssh-detected", url),
-      title: "SSH Service Detected",
-      description:
-        "An SSH service is reachable on the standard port (22). Banner disclosure and key-exchange analysis run in async-checks.",
-      severity: "info",
-      category: "configuration",
-      evidence: `Protocol: ssh://`,
-      riskImpact:
-        "SSH itself is secure, but weak configs and old key-exchange algorithms can be exploited.",
-      explanation:
-        "SSH scanners check the protocol version string and the negotiated algorithms (e.g. SSH-1.5, 3DES, hmac-md5).",
-      fixSteps: [
-        "Disable SSH-1.",
-        "Restrict to modern KEX (curve25519, diffie-hellman-group18) and ciphers (chacha20-poly1305, aes256-gcm).",
-        "Disable password authentication in favor of public-key.",
-      ],
-      codeExamples: [],
-    });
-  }
-
-  if (protocol === "smtp" || protocol === "smtps") {
-    const isSecure = protocol === "smtps";
-    if (!isSecure) {
-      findings.push({
-        id: generateId("proto-smtp-plaintext", url),
-        title: "Plaintext SMTP Detected",
-        description:
-          "SMTP submission without STARTTLS exposes credentials in transit.",
-        severity: "high",
-        category: "configuration",
-        evidence: `Protocol: smtp://`,
-        riskImpact:
-          "An on-path attacker can read authentication credentials and mail content.",
-        explanation:
-          "Plain SMTP transmits the AUTH command in the clear. Use submission (port 587) with STARTTLS, or SMTPS (port 465).",
-        fixSteps: [
-          "Force STARTTLS for submission (port 587).",
-          "Publish MTA-STS and TLS-RPT DNS records.",
-        ],
-        codeExamples: [],
-      });
-    }
-  }
-
-  if (protocol === "imap" || protocol === "imaps") {
-    const isSecure = protocol === "imaps";
-    if (!isSecure) {
-      findings.push({
-        id: generateId("proto-imap-plaintext", url),
-        title: "Plaintext IMAP Detected",
-        description:
-          "IMAP without TLS exposes credentials and mailbox contents in transit.",
-        severity: "high",
-        category: "configuration",
-        evidence: `Protocol: imap://`,
-        riskImpact:
-          "Credentials and all email sync traffic can be intercepted.",
-        explanation: "Use IMAPS (port 993) or STARTTLS on port 143.",
-        fixSteps: ["Disable IMAP on port 143 in favor of IMAPS (993)."],
-        codeExamples: [],
-      });
-    }
-  }
-
-  if (protocol === "pop3" || protocol === "pop3s") {
-    const isSecure = protocol === "pop3s";
-    if (!isSecure) {
-      findings.push({
-        id: generateId("proto-pop3-plaintext", url),
-        title: "Plaintext POP3 Detected",
-        description:
-          "POP3 without TLS exposes credentials and downloaded mail in transit.",
-        severity: "high",
-        category: "configuration",
-        evidence: `Protocol: pop3://`,
-        riskImpact:
-          "Credentials and downloaded email are visible on the network.",
-        explanation: "Use POP3S (port 995) or STARTTLS on port 110.",
-        fixSteps: ["Disable POP3 on port 110 in favor of POP3S (995)."],
-        codeExamples: [],
-      });
-    }
-  }
-
-  if (protocol === "mongodb") {
-    findings.push({
-      id: generateId("proto-mongodb-detected", url),
-      title: "MongoDB Service Detected",
-      description:
-        "A MongoDB wire-protocol service is reachable on port 27017. Banner analysis runs in async-checks (isMaster / hello) for build info and auth requirements.",
-      severity: "medium",
-      category: "configuration",
-      evidence: `Protocol: mongodb://`,
-      riskImpact:
-        "Exposed MongoDB without authentication has been the source of multiple mass-ransomware incidents.",
-      explanation:
-        "MongoDB exposes its version string in the hello/isMaster reply. Combined with no auth and a public bind, this is a high-risk exposure.",
-      fixSteps: [
-        "Bind MongoDB to a private interface (bindIp: 127.0.0.1) or firewall it.",
-        "Enable SCRAM authentication and require TLS.",
-      ],
-      codeExamples: [],
-    });
-  }
+  // ssh, smtp, imap, pop3 and mongodb produce nothing from the URL alone.
+  // These used to report "SSH Service Detected ... reachable on port 22",
+  // "MongoDB Service Detected" and "Plaintext SMTP/IMAP/POP3 Detected" (high)
+  // before any connection was attempted, so an unreachable host got a service
+  // finding and an SMTP server that advertises STARTTLS, the normal secure
+  // setup, was told it sends credentials in the clear. What is true of the
+  // service is known only after execute-scan.ts connects: see
+  // sshServiceFinding and mongoServiceFinding below, and buildStartTlsFindings
+  // in protocol-findings.ts, which reads the real capability banner.
 
   return findings;
+}
+
+/** An SSH service answered with a banner on this target. */
+export function sshServiceFinding(url: string): Vulnerability {
+  return {
+    id: generateId("proto-ssh-detected", url),
+    title: "SSH Service Reachable",
+    description:
+      "An SSH service answered with its version banner. The banner's version and the SSH-specific checks are reported separately.",
+    severity: "info",
+    category: "configuration",
+    evidence: `Protocol: ssh://`,
+    riskImpact:
+      "SSH itself is secure, but weak configurations and old key-exchange algorithms can be exploited, and a reachable SSH port is a target for password guessing.",
+    explanation:
+      "SSH scanners check the protocol version string and the negotiated algorithms (e.g. SSH-1.5, 3DES, hmac-md5).",
+    fixSteps: [
+      "Disable SSH-1.",
+      "Restrict to modern KEX (curve25519, diffie-hellman-group18) and ciphers (chacha20-poly1305, aes256-gcm).",
+      "Disable password authentication in favor of public-key.",
+    ],
+    codeExamples: [],
+  };
+}
+
+/** A MongoDB wire-protocol service answered on this target. */
+export function mongoServiceFinding(url: string): Vulnerability {
+  return {
+    id: generateId("proto-mongodb-detected", url),
+    title: "MongoDB Service Reachable",
+    description:
+      "A MongoDB wire-protocol service answered from this address. Whether it requires authentication is reported separately.",
+    severity: "medium",
+    category: "configuration",
+    evidence: `Protocol: mongodb://`,
+    riskImpact:
+      "A database port reachable from the internet is one misconfiguration away from exposure. Exposed MongoDB without authentication has been the source of multiple mass-ransomware incidents.",
+    explanation:
+      "Database servers belong on a private network. Authentication protects the data, but a publicly reachable port still exposes the service to credential attacks and to any future authentication bypass.",
+    fixSteps: [
+      "Bind MongoDB to a private interface (bindIp: 127.0.0.1) or firewall it.",
+      "Enable SCRAM authentication and require TLS.",
+    ],
+    codeExamples: [],
+  };
 }
 
 // Re-export protocol-specific check modules

@@ -37,7 +37,12 @@ import {
   SEVERITY_PRIORITY,
 } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
-import { getProtocolFromUrl, getProtocolFindings } from "./protocols";
+import {
+  getProtocolFromUrl,
+  getProtocolFindings,
+  mongoServiceFinding,
+  sshServiceFinding,
+} from "./protocols";
 import { runWebSocketChecks } from "./protocols/websocket";
 import { runFtpChecks } from "./protocols/ftp";
 import {
@@ -375,6 +380,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
             port,
           );
           if (mongoResult) {
+            protocolSpecificFindings.push(mongoServiceFinding(normalizedUrl));
             protocolSpecificFindings.push(
               ...buildMongoAuthFindings(
                 mongoResult,
@@ -414,6 +420,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           // ssh
           const banner = await grabBanner(protocolType, parsed.hostname, port);
           if (banner) {
+            protocolSpecificFindings.push(sshServiceFinding(normalizedUrl));
             const versionFinding = buildVersionDisclosureFinding(
               `banner-version-${protocolType}`,
               `${protocolType.toUpperCase()} service discloses version`,
@@ -427,8 +434,8 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           }
         }
       } catch {
-        // Banner grab failed — that's OK, the protocol-level findings
-        // already cover the high-severity issues.
+        // Banner grab failed: nothing is reported about a service that did
+        // not answer. getProtocolFindings no longer claims one from the URL.
       }
     } else {
       // Raw IP targets: skip HTTP fetch (no hostname context for headers /
