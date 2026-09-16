@@ -12,6 +12,7 @@
 
 import type { PageCheck } from "../../check-types";
 import { excerpt } from "../../check-types";
+import { redactValueAttribute } from "../../page-context";
 
 export const formChecks: PageCheck[] = [
   {
@@ -155,7 +156,9 @@ export const formChecks: PageCheck[] = [
       if (offending.length === 0) return null;
       return {
         evidence: `${offending.length} password field(s) missing autocomplete="current-password" or "new-password".`,
-        excerpts: offending.map((p) => excerpt("input", p.raw)),
+        excerpts: offending.map((p) =>
+          excerpt("input", redactValueAttribute(p.raw)),
+        ),
       };
     },
   },

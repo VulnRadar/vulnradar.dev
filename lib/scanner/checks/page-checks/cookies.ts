@@ -50,7 +50,7 @@ export const cookieChecks: PageCheck[] = [
       if (offending.length === 0) return null;
       return {
         evidence: `${offending.length} of ${ctx.cookies.length} cookie(s) missing Secure: ${offending.map(label).join(", ")}.`,
-        excerpts: offending.map((c) => excerpt("Set-Cookie", c.raw)),
+        excerpts: offending.map((c) => excerpt("Set-Cookie", c.redacted)),
         severity: offending.some((c) => c.sessionLike) ? "high" : "medium",
       };
     },
@@ -81,7 +81,7 @@ export const cookieChecks: PageCheck[] = [
       if (offending.length === 0) return null;
       return {
         evidence: `${offending.length} session-like cookie(s) missing HttpOnly: ${offending.map((c) => c.name).join(", ")}.`,
-        excerpts: offending.map((c) => excerpt("Set-Cookie", c.raw)),
+        excerpts: offending.map((c) => excerpt("Set-Cookie", c.redacted)),
       };
     },
   },
@@ -109,7 +109,7 @@ export const cookieChecks: PageCheck[] = [
       if (offending.length === 0) return null;
       return {
         evidence: `${offending.length} of ${ctx.cookies.length} cookie(s) missing SameSite: ${offending.map(label).join(", ")}.`,
-        excerpts: offending.map((c) => excerpt("Set-Cookie", c.raw)),
+        excerpts: offending.map((c) => excerpt("Set-Cookie", c.redacted)),
       };
     },
   },
@@ -140,7 +140,7 @@ export const cookieChecks: PageCheck[] = [
       if (offending.length === 0) return null;
       return {
         evidence: `${offending.length} cookie(s) set SameSite=None without Secure: ${offending.map((c) => c.name).join(", ")}.`,
-        excerpts: offending.map((c) => excerpt("Set-Cookie", c.raw)),
+        excerpts: offending.map((c) => excerpt("Set-Cookie", c.redacted)),
       };
     },
   },
@@ -177,7 +177,7 @@ export const cookieChecks: PageCheck[] = [
       if (offending.length === 0) return null;
       return {
         evidence: `${offending.length} cookie(s) violate their name prefix's requirements: ${offending.map((c) => c.name).join(", ")}.`,
-        excerpts: offending.map((c) => excerpt("Set-Cookie", c.raw)),
+        excerpts: offending.map((c) => excerpt("Set-Cookie", c.redacted)),
       };
     },
   },
@@ -221,7 +221,7 @@ export const cookieChecks: PageCheck[] = [
       if (offending.length === 0) return null;
       return {
         evidence: `${offending.length} session-like cookie(s) qualify for the __Host- prefix but don't use it: ${offending.map((c) => c.name).join(", ")}.`,
-        excerpts: offending.map((c) => excerpt("Set-Cookie", c.raw)),
+        excerpts: offending.map((c) => excerpt("Set-Cookie", c.redacted)),
       };
     },
   },
@@ -253,7 +253,7 @@ export const cookieChecks: PageCheck[] = [
       if (offending.length === 0) return null;
       return {
         evidence: `${offending.length} session-like cookie(s) set SameSite=None: ${offending.map((c) => c.name).join(", ")}.`,
-        excerpts: offending.map((c) => excerpt("Set-Cookie", c.raw)),
+        excerpts: offending.map((c) => excerpt("Set-Cookie", c.redacted)),
       };
     },
   },

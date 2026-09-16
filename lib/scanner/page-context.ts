@@ -135,7 +135,16 @@ export interface CookieInfo {
   prefix: "__Host-" | "__Secure-" | null;
   /** True when the name looks like a session or auth cookie. */
   sessionLike: boolean;
+  /**
+   * The header exactly as received, VALUE INCLUDED. For parsing only: never
+   * put this in evidence. A cookie value is frequently a live session id or a
+   * bearer token, and on an authenticated scan it is the scanning user's own
+   * session. Evidence is stored with the scan and can be shared publicly. Use
+   * `redacted` in an excerpt instead.
+   */
   raw: string;
+  /** `raw` with the value replaced by its length, safe to show and store. */
+  redacted: string;
 }
 
 export interface ParsedCsp {
@@ -325,7 +334,37 @@ export function parseSetCookie(raw: string): CookieInfo {
     prefix,
     sessionLike: SESSION_NAME.test(name),
     raw,
+    redacted: redactSetCookie(raw),
   };
+}
+
+/**
+ * A Set-Cookie line with its value replaced by a length marker, attributes
+ * kept, for use in evidence. The attributes are what every cookie check is
+ * actually about (Secure, HttpOnly, SameSite, Domain, Path, lifetimes); the
+ * value is never the finding and is often a credential.
+ */
+export function redactSetCookie(raw: string): string {
+  const semi = raw.indexOf(";");
+  const first = semi === -1 ? raw : raw.slice(0, semi);
+  const rest = semi === -1 ? "" : raw.slice(semi);
+  const eq = first.indexOf("=");
+  if (eq === -1) return raw;
+  const value = first.slice(eq + 1).trim();
+  if (value === "") return raw;
+  return `${first.slice(0, eq).trim()}=<redacted, ${value.length} chars>${rest}`;
+}
+
+/**
+ * An HTML tag with its value attribute replaced, for evidence about an input.
+ * A password field that ships with a prefilled value is rare, and exactly the
+ * case where the excerpt would otherwise contain the password.
+ */
+export function redactValueAttribute(tag: string): string {
+  return tag.replace(
+    /(\svalue\s*=\s*)(?:"[^"]*"|'[^']*'|[^\s>]+)/gi,
+    '$1"<redacted>"',
+  );
 }
 
 function detectFramework(body: string): string | null {

@@ -268,7 +268,7 @@ export const jwtChecks: PageCheck[] = [
       if (offending.length === 0) return null;
       return {
         evidence: `${offending.length} cookie(s) hold a JWT and are missing HttpOnly: ${offending.map((c) => c.name).join(", ")}.`,
-        excerpts: offending.map((c) => excerpt("Set-Cookie", c.raw)),
+        excerpts: offending.map((c) => excerpt("Set-Cookie", c.redacted)),
       };
     },
   },
