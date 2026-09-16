@@ -20,6 +20,15 @@ vi.mock("@/lib/auth", () => ({
 
 const { GET } = await import("@/app/api/v3/admin/queue-status/route");
 
+/**
+ * The route reads `?failures=1` off request.url, so it needs a real Request
+ * with an absolute URL. Origin is irrelevant -- only the search string is
+ * ever read.
+ */
+function req(query = "") {
+  return new Request(`https://vulnradar.test/api/v3/admin/queue-status${query}`);
+}
+
 function withAdmin(userId = 7, role = "admin") {
   mockGetSession.mockResolvedValue({ userId });
   // totp_enabled: true short-circuits requireAdmin's 2FA-enforcement
@@ -45,7 +54,7 @@ afterEach(() => {
 describe("GET /api/v3/admin/queue-status", () => {
   it("requires a session", async () => {
     mockGetSession.mockResolvedValue(null);
-    const res = await GET();
+    const res = await GET(req());
     expect(res.status).toBe(403);
     expect(mockQuery).not.toHaveBeenCalled();
   });
@@ -53,7 +62,7 @@ describe("GET /api/v3/admin/queue-status", () => {
   it("rejects a caller below admin (e.g. support)", async () => {
     mockGetSession.mockResolvedValue({ userId: 3 });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 3, role: "support" }] });
-    const res = await GET();
+    const res = await GET(req());
     expect(res.status).toBe(403);
   });
 
@@ -61,7 +70,7 @@ describe("GET /api/v3/admin/queue-status", () => {
     withAdmin();
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const res = await GET();
+    const res = await GET(req());
     const json = await res.json();
 
     expect(res.status).toBe(200);
@@ -96,7 +105,7 @@ describe("GET /api/v3/admin/queue-status", () => {
       ],
     });
 
-    const res = await GET();
+    const res = await GET(req());
     const json = await res.json();
 
     expect(res.status).toBe(200);
@@ -114,7 +123,7 @@ describe("GET /api/v3/admin/queue-status", () => {
     withAdmin();
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    await GET();
+    await GET(req());
 
     const [sql] = mockQuery.mock.calls[1] as [string];
     expect(sql).toContain("status IN ('pending', 'running')");
@@ -126,7 +135,135 @@ describe("GET /api/v3/admin/queue-status", () => {
   it("returns a graceful 500 when the query fails", async () => {
     withAdmin();
     mockQuery.mockRejectedValueOnce(new Error("db exploded"));
-    const res = await GET();
+    const res = await GET(req());
     expect(res.status).toBe(500);
+  });
+});
+
+/**
+ * The rows behind the "Failed (24h)" tile. That count used to be a bare
+ * number: the endpoint did one GROUP BY and never selected a scan row, so an
+ * operator could see THAT scans were failing and never which or why.
+ */
+describe("GET /api/v3/admin/queue-status?failures=1", () => {
+  const failedRow = {
+    id: 91,
+    user_id: 4,
+    url: "https://example.com/checkout",
+    error_message: "connect ECONNREFUSED 10.0.0.5:5432",
+    source: "web",
+    duration: 1200,
+    started_at: "2026-08-13T11:58:00.000Z",
+    scanned_at: "2026-08-13T11:58:03.000Z",
+  };
+
+  it("does not touch the failures table unless asked", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await GET(req());
+    const json = await res.json();
+
+    // Auth lookup + the one grouped count, and nothing else. The rows carry
+    // a customer URL and a user id, and the card behind this polls every 45
+    // seconds, so an unasked-for fetch would put targets on the wire
+    // continuously to render a collapsed section.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(json.failures).toBeUndefined();
+    expect(json.failuresTruncated).toBeUndefined();
+  });
+
+  it("ignores any value other than exactly 1", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const json = await (await GET(req("?failures=true"))).json();
+
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(json.failures).toBeUndefined();
+  });
+
+  it("returns the failed rows, newest first and capped", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ status: "failed", count: 1, oldest_at: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [failedRow] });
+
+    const json = await (await GET(req("?failures=1"))).json();
+
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    const [sql] = mockQuery.mock.calls[2] as [string];
+    expect(sql).toContain("status = 'failed'");
+    expect(sql).toContain("NOW() - INTERVAL '24 hours'");
+    expect(sql).toContain("ORDER BY scanned_at DESC");
+    expect(sql).toContain("LIMIT 25");
+
+    expect(json.failures).toEqual([
+      {
+        id: 91,
+        userId: 4,
+        url: "https://example.com/checkout",
+        error: "connect ECONNREFUSED 10.0.0.5:5432",
+        source: "web",
+        durationMs: 1200,
+        failedAt: "2026-08-13T11:58:03.000Z",
+        ranForMs: 3000,
+      },
+    ]);
+    expect(json.failuresTruncated).toBe(false);
+  });
+
+  it("passes error_message through RAW, not through the public sanitizer", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [failedRow] });
+
+    const json = await (await GET(req("?failures=1"))).json();
+
+    // This is the deliberate part, and the reason the assertion is explicit.
+    // publicScanErrorMessage() would collapse this to "The target refused the
+    // connection or closed it early." -- correct for the person who ran the
+    // scan, and the loss of exactly the detail an operator opened this panel
+    // to read. If someone later routes this field through the sanitizer,
+    // this test is what should stop them.
+    expect(json.failures[0].error).toBe("connect ECONNREFUSED 10.0.0.5:5432");
+  });
+
+  it("never joins users: an id is this endpoint's permission to give, a name is not", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [failedRow] });
+
+    await GET(req("?failures=1"));
+
+    const [sql] = mockQuery.mock.calls[2] as [string];
+    expect(sql).not.toMatch(/JOIN/i);
+    expect(sql).not.toContain("email");
+  });
+
+  it("flags truncation when the window holds more than the cap", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({
+      rows: Array.from({ length: 25 }, (_, i) => ({ ...failedRow, id: i })),
+    });
+
+    const json = await (await GET(req("?failures=1"))).json();
+
+    expect(json.failures).toHaveLength(25);
+    expect(json.failuresTruncated).toBe(true);
+  });
+
+  it("leaves ranForMs null when the row never started", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...failedRow, started_at: null }],
+    });
+
+    const json = await (await GET(req("?failures=1"))).json();
+
+    expect(json.failures[0].ranForMs).toBeNull();
   });
 });

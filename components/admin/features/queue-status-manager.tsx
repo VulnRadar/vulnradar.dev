@@ -3,7 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ListOrdered, RefreshCw, AlertTriangle, Clock } from "lucide-react";
+import {
+  ListOrdered,
+  RefreshCw,
+  AlertTriangle,
+  Clock,
+  ChevronDown,
+  XCircle,
+} from "lucide-react";
 import {
   SkeletonRegion,
   AdminPanelHeader,
@@ -19,11 +26,14 @@ import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import {
   formatAgeMs,
   computeBackedUp,
+  groupFailures,
   STALE_PENDING_MS,
   STALE_RUNNING_MS,
+  type FailedScan,
   type QueueStatusResponse,
 } from "./queue-status-utils";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { formatRelativeTime } from "@/components/admin/utils";
 
 // No admin panel manager currently uses SWR (see
 // components/providers/auth-provider.tsx for the only usage in the repo,
@@ -47,6 +57,43 @@ export function QueueStatusManager() {
   // "still loading" rather than "this never arrived". The toast that fires
   // alongside it is gone after five seconds.
   const [loadFailed, setLoadFailed] = useState(false);
+
+  // The rows behind the Failed count, fetched separately and only once the
+  // operator opens the list. They carry a customer URL and a user id, unlike
+  // the aggregate counts above, so the 45-second poll does not pull them.
+  const [failures, setFailures] = useState<FailedScan[] | null>(null);
+  const [failuresTruncated, setFailuresTruncated] = useState(false);
+  const [failuresOpen, setFailuresOpen] = useState(false);
+  const [failuresLoading, setFailuresLoading] = useState(false);
+
+  const fetchFailures = useCallback(async () => {
+    setFailuresLoading(true);
+    try {
+      const res = await fetch("/api/v3/admin/queue-status?failures=1");
+      if (res.ok) {
+        const json: QueueStatusResponse = await res.json();
+        setFailures(json.failures ?? []);
+        setFailuresTruncated(!!json.failuresTruncated);
+      } else {
+        setToast({
+          message: "Failed to load the failed scans.",
+          type: "error",
+        });
+      }
+    } catch {
+      setToast({ message: "Failed to load the failed scans.", type: "error" });
+    }
+    setFailuresLoading(false);
+  }, []);
+
+  // Opening fetches; re-opening reuses what is already there. The Refresh
+  // button re-fetches an open list, so a stale list is never the only option.
+  const toggleFailures = useCallback(() => {
+    setFailuresOpen((open) => {
+      if (!open && failures === null) void fetchFailures();
+      return !open;
+    });
+  }, [failures, fetchFailures]);
 
   const fetchStatus = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);
@@ -125,7 +172,15 @@ export function QueueStatusManager() {
               variant="outline"
               size="sm"
               className="h-9 px-3 gap-2 border-border/40"
-              onClick={() => fetchStatus(false)}
+              onClick={() => {
+                void fetchStatus(false);
+                // An open list is part of what the operator is looking
+                // at, so Refresh has to move it too. Without this the
+                // counts updated and the rows under them did not, which
+                // is worse than a stale card: the two disagree and
+                // neither of them says so.
+                if (failuresOpen) void fetchFailures();
+              }}
               disabled={loading || refreshing}
               aria-label="Refresh scanner queue status"
             >
@@ -141,7 +196,11 @@ export function QueueStatusManager() {
         <CardContent className="px-4 sm:px-5 py-5 space-y-4">
           {!data && loadFailed ? (
             <div className="flex items-start gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/10">
-              <LeadingIcon icon={AlertTriangle} className="text-destructive" />
+              <LeadingIcon
+                line="p"
+                icon={AlertTriangle}
+                className="text-destructive"
+              />
               <p className="text-sm text-destructive">
                 Couldn&apos;t load the scanner queue. This is not an all-clear:
                 the queue state is unknown. Use Refresh to try again.
@@ -236,6 +295,121 @@ export function QueueStatusManager() {
                           ? "Past every configured scan timeout. It is stuck, not slow."
                           : "Running inside the configured scan timeout."}
                       </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* The rows behind the Failed count.
+                  ------------------------------------------------------------
+                  This tile was a bare number for its whole life: the panel
+                  could tell an operator THAT scans were failing and never
+                  which ones or why, because the endpoint behind it is a
+                  GROUP BY and never selected a single row. Knowing the count
+                  is 25 is the least useful form of that fact.
+
+                  Grouped by error text rather than listed flat, because the
+                  first question is never "which 25 scans" - it is "is this
+                  one problem 25 times, or 25 problems". Twenty-five identical
+                  timeouts and twenty-five different errors are the same tile
+                  and completely different incidents. */}
+              {data.counts.failedLast24h > 0 && (
+                <div className="rounded-md border border-destructive/25 bg-destructive/5">
+                  <button
+                    type="button"
+                    onClick={toggleFailures}
+                    aria-expanded={failuresOpen}
+                    aria-controls="queue-failed-scans"
+                    className="flex w-full items-start gap-2.5 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-destructive/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <LeadingIcon
+                      line="sm"
+                      icon={XCircle}
+                      className="text-destructive"
+                    />
+                    <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
+                      {data.counts.failedLast24h}{" "}
+                      {data.counts.failedLast24h === 1 ? "scan" : "scans"}{" "}
+                      failed in the last {data.recentWindowHours}h
+                    </span>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={cn(
+                        "icon-lead h-4 w-4 text-muted-foreground transition-transform",
+                        failuresOpen && "rotate-180",
+                      )}
+                    />
+                  </button>
+
+                  {failuresOpen && (
+                    <div
+                      id="queue-failed-scans"
+                      className="space-y-2 border-t border-destructive/20 px-3 py-3"
+                    >
+                      {failuresLoading && failures === null ? (
+                        <p className="text-xs text-muted-foreground">
+                          Loading the failed scans...
+                        </p>
+                      ) : !failures || failures.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          No failed scans are left in the{" "}
+                          {data.recentWindowHours}h window. The count above is
+                          from an earlier poll, so they have since aged out.
+                        </p>
+                      ) : (
+                        <>
+                          {groupFailures(failures).map((group) => (
+                            <div
+                              key={group.error}
+                              className="rounded-md border border-border/40 bg-background/40 p-3"
+                            >
+                              <div className="flex items-start gap-2">
+                                <span className="shrink-0 rounded-sm bg-destructive/10 px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-destructive">
+                                  {group.count}&times;
+                                </span>
+                                {/* Raw driver text, so it wraps rather than
+                                    truncates: the tail of a pg or socket
+                                    error is usually the part that identifies
+                                    it. break-words, not break-all, because
+                                    these are sentences. */}
+                                <p className="min-w-0 flex-1 break-words font-mono text-xs leading-relaxed text-destructive">
+                                  {group.error}
+                                </p>
+                              </div>
+                              <ul className="mt-2 space-y-2 border-t border-border/30 pt-2">
+                                {group.scans.map((scan) => (
+                                  <li key={scan.id} className="min-w-0 text-xs">
+                                    {/* break-all: a scanned URL is a single
+                                        unbroken token with no spaces to wrap
+                                        at, and it is exactly the value that
+                                        pushes a panel past the viewport on a
+                                        phone. */}
+                                    <span className="block break-all font-mono text-foreground">
+                                      {scan.url}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                      user #{scan.userId} &middot; {scan.source}
+                                      {scan.failedAt
+                                        ? ` · ${formatRelativeTime(new Date(scan.failedAt))}`
+                                        : ""}
+                                      {scan.ranForMs != null
+                                        ? ` · ran ${(scan.ranForMs / 1000).toFixed(1)}s`
+                                        : ""}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                          {failuresTruncated && (
+                            <p className="text-xs text-muted-foreground">
+                              Showing the most recent {failures.length}. There
+                              are more in the window: check the server logs for
+                              the full picture.
+                            </p>
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

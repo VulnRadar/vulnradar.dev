@@ -417,91 +417,156 @@ export function BillingOverviewManager() {
               description="Nobody is currently sitting in a failed-payment retry window."
             />
           ) : (
-            /* This was a bare <Table> with no scroll container, so on a phone
-               the three columns compressed into each other instead of
-               scrolling. min-w on the table is what makes the wrapper scroll
-               rather than shrink. */
-            <TableScrollArea maxHeight="28rem">
-              <Table className="min-w-[620px]">
-                <TableHeader className="bg-muted/40">
-                  <TableRow className="border-y border-border/50 hover:bg-transparent">
-                    <TableHead className={TH}>Account</TableHead>
-                    <TableHead className={TH}>Plan</TableHead>
-                    <TableHead className={TH}>State</TableHead>
-                    <TableHead className={TH_RIGHT}>Period end</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data?.failedPayments.pastDueUsers.map((user) => {
-                    const state = pastDueState(user.currentPeriodEnd);
-                    const plan = getPlanById(user.plan);
-                    return (
-                      <TableRow
-                        key={user.id}
-                        // The red "Past due" number in the strip above had
-                        // nothing connecting it to the rows that produced it:
-                        // this was the failure list of the whole panel drawn
-                        // in default grey. A row whose period has already
-                        // closed carries the tint; one still inside its retry
-                        // window does not, so the two are told apart.
-                        className={cn(
-                          "border-border/40",
-                          state.tone === "crit" && "bg-destructive/5",
-                        )}
-                      >
-                        <TableCell className={TD}>
-                          {/* A real link to the account, the same move the
+            /* Desktop table plus an md:hidden card list, the same split the
+               Plan mix table above already uses.
+               ----------------------------------------------------------
+               This was a bare <Table>, then a TableScrollArea with a
+               min-w-[620px] on it. The scroll container stopped the columns
+               compressing into each other, but it left a phone reading four
+               columns of account, plan, state and period-end by dragging a
+               620px table sideways inside a card. Past-due accounts are the
+               one thing on this panel someone chases from their phone, so
+               that is the wrong surface to make the hardest to read.
+               The card list carries the same four facts stacked. */
+            <>
+              <div className="hidden md:block">
+                <TableScrollArea maxHeight="28rem">
+                  <Table className="min-w-[620px]">
+                    <TableHeader className="bg-muted/40">
+                      <TableRow className="border-y border-border/50 hover:bg-transparent">
+                        <TableHead className={TH}>Account</TableHead>
+                        <TableHead className={TH}>Plan</TableHead>
+                        <TableHead className={TH}>State</TableHead>
+                        <TableHead className={TH_RIGHT}>Period end</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data?.failedPayments.pastDueUsers.map((user) => {
+                        const state = pastDueState(user.currentPeriodEnd);
+                        const plan = getPlanById(user.plan);
+                        return (
+                          <TableRow
+                            key={user.id}
+                            // The red "Past due" number in the strip above had
+                            // nothing connecting it to the rows that produced it:
+                            // this was the failure list of the whole panel drawn
+                            // in default grey. A row whose period has already
+                            // closed carries the tint; one still inside its retry
+                            // window does not, so the two are told apart.
+                            className={cn(
+                              "border-border/40",
+                              state.tone === "crit" && "bg-destructive/5",
+                            )}
+                          >
+                            <TableCell className={TD}>
+                              {/* A real link to the account, the same move the
                               support inbox makes with a requester's name, so
                               chasing a failed payment does not mean copying an
                               email into the Users tab by hand. */}
+                              <a
+                                href={`/admin?tab=users&user=${user.id}`}
+                                className="text-sm text-primary hover:underline"
+                              >
+                                {user.name || user.email}
+                              </a>
+                              {user.name && (
+                                <div className="text-xs text-muted-foreground font-mono">
+                                  {user.email}
+                                </div>
+                              )}
+                            </TableCell>
+                            {/* A past-due Pro and a past-due Free rendered
+                            identically though only one of them is revenue.
+                            The tier's price is what says which is which. */}
+                            <TableCell className={TD}>
+                              <span className="text-sm font-medium text-foreground">
+                                {plan?.name || user.plan}
+                              </span>
+                              {plan && plan.priceInCents > 0 && (
+                                <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">
+                                  {formatCents(plan.priceInCents)}/mo
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className={TD}>
+                              <StatusPill tone={state.tone}>
+                                {state.label}
+                              </StatusPill>
+                            </TableCell>
+                            <TableCell
+                              className={cn(
+                                TD,
+                                "text-right tabular-nums text-muted-foreground",
+                              )}
+                            >
+                              {/* Was "-", a bare ASCII hyphen, for a null. Every
+                              other absence in this panel is spelled out. */}
+                              {user.currentPeriodEnd
+                                ? formatTimestamp(user.currentPeriodEnd)
+                                : "Not recorded"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableScrollArea>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y divide-border/40">
+                {data?.failedPayments.pastDueUsers.map((user) => {
+                  const state = pastDueState(user.currentPeriodEnd);
+                  const plan = getPlanById(user.plan);
+                  return (
+                    <div
+                      key={user.id}
+                      className={cn(
+                        "px-4 py-3",
+                        state.tone === "crit" && "bg-destructive/5",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        {/* min-w-0 with break-all under it: an account here is
+                            identified by an email, which is a single unbroken
+                            token and the value most likely to push this row
+                            past a 375px viewport. */}
+                        <div className="min-w-0">
                           <a
                             href={`/admin?tab=users&user=${user.id}`}
-                            className="text-sm text-primary hover:underline"
+                            className="block break-all text-sm text-primary hover:underline"
                           >
                             {user.name || user.email}
                           </a>
                           {user.name && (
-                            <div className="text-xs text-muted-foreground font-mono">
+                            <div className="break-all font-mono text-xs text-muted-foreground">
                               {user.email}
                             </div>
                           )}
-                        </TableCell>
-                        {/* A past-due Pro and a past-due Free rendered
-                            identically though only one of them is revenue.
-                            The tier's price is what says which is which. */}
-                        <TableCell className={TD}>
-                          <span className="text-sm font-medium text-foreground">
-                            {plan?.name || user.plan}
+                        </div>
+                        <StatusPill tone={state.tone}>{state.label}</StatusPill>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">
+                          {plan?.name || user.plan}
+                        </span>
+                        {plan && plan.priceInCents > 0 && (
+                          <span className="tabular-nums">
+                            {formatCents(plan.priceInCents)}/mo
                           </span>
-                          {plan && plan.priceInCents > 0 && (
-                            <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">
-                              {formatCents(plan.priceInCents)}/mo
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className={TD}>
-                          <StatusPill tone={state.tone}>
-                            {state.label}
-                          </StatusPill>
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            TD,
-                            "text-right tabular-nums text-muted-foreground",
-                          )}
-                        >
-                          {/* Was "-", a bare ASCII hyphen, for a null. Every
-                              other absence in this panel is spelled out. */}
+                        )}
+                        <span aria-hidden="true">&middot;</span>
+                        <span className="tabular-nums">
                           {user.currentPeriodEnd
                             ? formatTimestamp(user.currentPeriodEnd)
-                            : "Not recorded"}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableScrollArea>
+                            : "Period end not recorded"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
 
           {!loading && data && data.failedPayments.recentEvents.length > 0 && (
