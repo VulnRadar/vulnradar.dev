@@ -12,6 +12,7 @@ import {
   getSetCookies,
   stripExampleContent,
   stripDocBlocks,
+  withDocBlocksStripped,
   type EvidenceFn as DetectFn,
   extractScriptContents,
 } from "../_helpers";
@@ -411,7 +412,7 @@ function isPlausibleCredentialValue(value: string): boolean {
   return !CREDENTIAL_VALUE_PLACEHOLDERS.has(v.toLowerCase());
 }
 
-export const detectors: Record<string, DetectFn> = {
+const rawDetectors: Record<string, DetectFn> = {
   // ── DOM XSS sinks ─────────────────────────────────────────────────────────
 
   "innerhtml-xss-sink": (_url, _headers, body) => {
@@ -2315,3 +2316,36 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 };
+
+/**
+ * Detectors that already decide, per match, whether a hit sits inside a
+ * documentation block. matchSecretPatterns reports a secret shown in a <pre>
+ * differently from one shipped in live code, so it needs the full body and
+ * must not be handed a pre-stripped one.
+ */
+const JUDGES_DOC_BLOCKS_ITSELF = new Set([
+  "hardcoded-secrets",
+  "hardcoded-secrets-high-risk",
+  "hardcoded-secrets-client-exposed",
+  "hardcoded-secrets-low-risk",
+  "code-cloud-aws-hardcoded-credentials",
+]);
+
+/**
+ * Every other detector here looks for a source-code pattern (string-built SQL,
+ * exec with a shell, unsafe deserialisation, an SSRF-shaped fetch) and had no
+ * guard at all against finding that pattern in a page ABOUT it. A security
+ * tutorial showing `pool.query("SELECT ... " + req.body.email)` in a <pre>
+ * block was reported as a critical SQL injection in the site itself, and this
+ * product's own docs render exactly such examples. api.ts, supply-chain.ts and
+ * vibe-code.ts already wrap their maps this way; the strip is memoised, so it
+ * costs one pass per body however many modules use it.
+ */
+const stripped = withDocBlocksStripped(rawDetectors);
+
+export const detectors: Record<string, DetectFn> = Object.fromEntries(
+  Object.entries(rawDetectors).map(([id, fn]) => [
+    id,
+    JUDGES_DOC_BLOCKS_ITSELF.has(id) ? fn : stripped[id],
+  ]),
+);

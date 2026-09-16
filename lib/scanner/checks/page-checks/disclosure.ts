@@ -6,13 +6,46 @@
  * verbose error pages as a real coverage gap: the `code`, `secrets-extended`
  * and `information-disclosure` categories combined produced zero findings
  * on the audit's fixtures. These checks are new, narrowly-scoped detections
- * against known error/debug page shapes, matched against `ctx.text`
- * (script/style/comment-stripped visible text) or the raw body where a
- * debug page's own markup is the signal.
+ * against known error/debug page shapes, matched against the body with inline code examples removed
+ * (see withoutExamples) or its comments, since a debug page's own
+ * markup and text are the signal.
  */
 
 import type { PageCheck } from "../../check-types";
 import { excerpt } from "../../check-types";
+import { stripTagElements } from "../_tag-scan";
+
+/**
+ * The body without inline code examples or script/style, for the checks below.
+ *
+ * All three match error and debug output by its text, so all three fired on a
+ * page that SHOWS that output as an example: a tutorial quoting a Python
+ * traceback, or a docs page describing what Werkzeug's debugger says, which is
+ * reported at critical. This product's own docs render examples that way.
+ *
+ * <code>, <kbd> and <samp> are removed and bare <pre> is kept, deliberately.
+ * Documentation marks an example as code (every docs generator, and this
+ * product's own DocsCodeBlock, renders <pre><code>), while a real framework
+ * error page, Express's development handler for one, prints its trace in a
+ * bare <pre>. Stripping <pre> too would silence the real thing.
+ *
+ * Memoised on the body: three checks, one strip.
+ */
+let lastBody: string | null = null;
+let lastStripped = "";
+function withoutExamples(body: string): string {
+  if (body !== lastBody) {
+    lastStripped = stripTagElements(body, [
+      "script",
+      "style",
+      "code",
+      "kbd",
+      "samp",
+    ]);
+    lastBody = body;
+  }
+  return lastStripped;
+}
 
 const STACK_TRACE_PATTERNS: { name: string; re: RegExp }[] = [
   { name: "Node.js/V8", re: /at\s+[\w$.<>]+\s+\([^)]*\.(?:js|ts):\d+:\d+\)/ },
@@ -28,7 +61,9 @@ const STACK_TRACE_PATTERNS: { name: string; re: RegExp }[] = [
 const DEBUG_MODE_MARKERS: { name: string; re: RegExp; critical?: boolean }[] = [
   {
     name: "Django",
-    re: /You're seeing this error because you have <code>DEBUG = True<\/code>|DisallowedHost at \/|Django Version:\s*\d/,
+    // The real page wraps "DEBUG = True" in <code>, which withoutExamples
+    // removes, so the sentence is matched around the gap it leaves.
+    re: /You're seeing this error because you have\s*(?:<code>DEBUG = True<\/code>)?\s*in your (?:Django )?settings file|DisallowedHost at \/|Django Version:\s*\d/,
   },
   {
     name: "Laravel",
@@ -78,7 +113,8 @@ export const disclosureChecks: PageCheck[] = [
     codeExamples: [],
     needs: ["body"],
     run(ctx) {
-      const haystack = ctx.text + "\n" + ctx.comments.join("\n");
+      const haystack =
+        withoutExamples(ctx.body) + "\n" + ctx.comments.join("\n");
       for (const { name, re } of STACK_TRACE_PATTERNS) {
         const m = haystack.match(re);
         if (m) {
@@ -113,7 +149,7 @@ export const disclosureChecks: PageCheck[] = [
     needs: ["body"],
     run(ctx) {
       for (const { name, re, critical } of DEBUG_MODE_MARKERS) {
-        const m = ctx.body.match(re);
+        const m = withoutExamples(ctx.body).match(re);
         if (m) {
           return {
             evidence: `Response matches ${name}'s debug/development error page.`,
@@ -147,7 +183,7 @@ export const disclosureChecks: PageCheck[] = [
     needs: ["body"],
     run(ctx) {
       for (const re of INTERNAL_PATH_PATTERNS) {
-        const m = ctx.body.match(re);
+        const m = withoutExamples(ctx.body).match(re);
         if (m) {
           return {
             evidence: "An absolute filesystem path is present in the response.",

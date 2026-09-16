@@ -26,6 +26,19 @@ const fixtures: PageCheckFixtures = {
       body: `<html><body><h1>Welcome</h1></body></html>`,
       expect: "skip",
     },
+    {
+      // A tutorial or docs page SHOWING a traceback marks it as code. This
+      // product's own docs render every example as <pre><code>.
+      description: "a traceback quoted as a code example in documentation",
+      body: `<article><p>Here is what an unhandled error looks like:</p><pre><code class="language-text">Traceback (most recent call last):
+  File "app.py", line 3</code></pre></article>`,
+      expect: "skip",
+    },
+    {
+      description: "a Node trace in inline <code> in prose",
+      body: `<p>The log line <code>at Object.run (/app/index.js:12:34)</code> means the handler threw.</p>`,
+      expect: "skip",
+    },
   ],
   "page-debug-mode-enabled": [
     {
@@ -33,6 +46,12 @@ const fixtures: PageCheckFixtures = {
       body: `<p>You're seeing this error because you have <code>DEBUG = True</code> in your settings file.</p>`,
       expect: "fire",
       evidenceIncludes: "django",
+    },
+    {
+      description:
+        "a docs page quoting Werkzeug's debugger text as a code example is not the debugger",
+      body: `<p>If you see this, disable debug mode:</p><pre><code>The debugger caught an exception in your WSGI application.</code></pre>`,
+      expect: "skip",
     },
     {
       description: "Werkzeug interactive debugger",

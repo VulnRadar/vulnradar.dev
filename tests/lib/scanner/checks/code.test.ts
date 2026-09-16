@@ -12,6 +12,7 @@
  * (e.g. requiring ≥2 occurrences of a sink) are smoke-only.
  */
 
+import { describe, it, expect } from "vitest";
 import { detectors } from "@/lib/scanner/checks/code";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
@@ -493,3 +494,63 @@ const fixtures: DetectorFixtures = {
 };
 
 runDetectorTests(detectors, fixtures);
+
+/**
+ * A page ABOUT a vulnerable pattern is not that vulnerability.
+ *
+ * Every code-* detector except the secret matchers (which judge doc blocks per
+ * match themselves) used to run on the raw body, so a security tutorial that
+ * shows string-built SQL or exec() with a shell in a <pre><code> block was
+ * reported as critical SQL injection and command injection in the site itself.
+ * This product's own docs render examples exactly that way. One body carrying
+ * a representative anti-pattern from each family, all inside code examples,
+ * must produce nothing.
+ */
+describe("code detectors ignore documentation examples", () => {
+  const examples = [
+    `const result = await pool.query("SELECT * FROM users WHERE email = " + req.body.email);`,
+    `exec("convert " + req.query.file, { shell: true });`,
+    `child_process.exec(\`ls \${req.params.dir}\`);`,
+    `const obj = pickle.loads(request.data)`,
+    `ObjectInputStream in = new ObjectInputStream(request.getInputStream());`,
+    `fetch(req.query.url).then(r => r.text())`,
+    `element.innerHTML = location.hash.slice(1);`,
+    `jwt.verify(token, secret, { algorithms: ["none"] })`,
+  ];
+  const body = `<!doctype html><html><body><article><h1>Common mistakes</h1>${examples
+    .map(
+      (e) =>
+        `<p>Do not write this:</p><pre><code class="language-js">${e
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")}</code></pre>`,
+    )
+    .join("")}</article></body></html>`;
+
+  it("reports none of the patterns shown as examples", () => {
+    const headers = new Headers({ "content-type": "text/html" });
+    const firing = (b: string) =>
+      new Set(
+        Object.entries(detectors)
+          .filter(([id]) => !id.startsWith("hardcoded-secrets"))
+          .filter(([, fn]) => fn("https://example.com/docs", headers, b))
+          .map(([id]) => id),
+      );
+    // Compared against the same page with the examples removed, so a check
+    // that fires on the response headers alone (a missing X-Frame-Options,
+    // say) is not mistaken for one that read the examples.
+    const baseline = firing(
+      "<!doctype html><html><body><article><h1>Common mistakes</h1></article></body></html>",
+    );
+    const fromExamples = [...firing(body)].filter((id) => !baseline.has(id));
+    expect(fromExamples).toEqual([]);
+  });
+
+  it("still reports the same pattern shipped in a live script", () => {
+    const headers = new Headers({ "content-type": "text/html" });
+    const live = `<!doctype html><html><body><script>${examples[0]}</script></body></html>`;
+    const fired = Object.entries(detectors)
+      .filter(([, fn]) => fn("https://example.com/", headers, live))
+      .map(([id]) => id);
+    expect(fired.length).toBeGreaterThan(0);
+  });
+});
