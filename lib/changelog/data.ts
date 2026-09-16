@@ -452,6 +452,19 @@ const CHANGELOG: Release[] = [
         category: "security",
       },
       {
+        icon: Package,
+        label: "Outdated Library Checks Are More Accurate",
+        desc: 'The scanner looks at the code libraries a page loads, such as jQuery or Bootstrap, and warns when a version has known security problems. Several things made that less accurate. A site\'s own file that merely sat in a folder called "bootstrap" was reported as the Bootstrap library, with Bootstrap\'s security problems named against it; now the file has to actually be the library. WordPress sites were missed, because WordPress writes a library\'s version at the end of the address ("?ver=3.7.1") where the scanner never looked; it now reads that for the libraries WordPress itself ships. A test version such as 2.0.0-rc.1 was treated as newer than the finished 2.0.0, so sites on the finished release were warned about a problem fixed before it came out. Problems that have no fix yet now say so, instead of leaving the advice blank, and a problem rated only on the newest scoring system now counts toward how serious the finding is.',
+        category: "fixed",
+      },
+      {
+        icon: ShieldAlert,
+        label:
+          "An Unreachable Vulnerability Database No Longer Looks Like a Clean Result",
+        desc: 'Part of the outdated library check asks OSV.dev, a public database of known security problems, about each library it finds. When OSV.dev could not be reached, the scan quietly treated that as "no problems found", so a report could say a library was fine when it was never checked. A scan now says this part did not complete when none of those questions got an answer, the same way it already does for other parts that fail. The software list in a report shows "unknown" rather than "clean" for anything it could not look up, and it asks again on the next scan instead of remembering the failure for half an hour.',
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

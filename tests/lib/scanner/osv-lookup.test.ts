@@ -38,6 +38,29 @@ describe("queryOsv", () => {
     );
   });
 
+  it("reads the advisory database's own severity rating", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          vulns: [
+            {
+              id: "GHSA-a",
+              database_specific: { severity: "MODERATE" },
+            },
+            { id: "GHSA-b", database_specific: { severity: "unheard-of" } },
+            { id: "GHSA-c" },
+          ],
+        }),
+    });
+    const vulns = (await queryOsv("npm", "jquery", "1.8.2"))!;
+    expect(vulns.map((v) => v.databaseSeverity)).toEqual([
+      "medium",
+      undefined,
+      undefined,
+    ]);
+  });
+
   it("parses vulns with aliases and CVSS severity from a real-shaped response", async () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
@@ -60,7 +83,7 @@ describe("queryOsv", () => {
         }),
     });
 
-    const vulns = await queryOsv("npm", "jquery", "1.8.2");
+    const vulns = (await queryOsv("npm", "jquery", "1.8.2"))!;
     expect(vulns).toHaveLength(1);
     expect(vulns[0].id).toBe("GHSA-gxr4-xjj5-5px2");
     expect(vulns[0].aliases).toEqual(["CVE-2020-11022"]);
@@ -82,30 +105,33 @@ describe("queryOsv", () => {
     expect(vulns).toEqual([]);
   });
 
-  it("returns [] on a non-ok response", async () => {
+  // A failed lookup is null, not []: [] is "OSV.dev has nothing for this
+  // version", and reading an outage that way reported unchecked libraries as
+  // checked and clean.
+  it("returns null on a non-ok response", async () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
       json: () => Promise.resolve({}),
     });
     const vulns = await queryOsv("npm", "jquery", "1.8.2");
-    expect(vulns).toEqual([]);
+    expect(vulns).toBeNull();
   });
 
-  it("fails open (returns []) when the request throws", async () => {
+  it("returns null, without throwing, when the request throws", async () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("network error"),
     );
     const vulns = await queryOsv("npm", "jquery", "1.8.2");
-    expect(vulns).toEqual([]);
+    expect(vulns).toBeNull();
   });
 
-  it("fails open when the response body is malformed (vulns is not an array)", async () => {
+  it("returns null when the response body is malformed (vulns is not an array)", async () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ vulns: "not-an-array" }),
     });
     const vulns = await queryOsv("npm", "jquery", "1.8.2");
-    expect(vulns).toEqual([]);
+    expect(vulns).toBeNull();
   });
 
   it("skips a vuln entry with no id rather than throwing", async () => {
@@ -162,9 +188,52 @@ describe("affected intervals", () => {
       ok: true,
       json: () => Promise.resolve({ vulns: [raw] }),
     });
-    const [vuln] = await queryOsv("npm", packageName, "1.12.4");
+    const [vuln] = (await queryOsv("npm", packageName, "1.12.4"))!;
     return vuln;
   }
+
+  it("reads an advisory that lists affected versions and no ranges as having no fix", async () => {
+    // GHSA-q58r-hwc8-rm9j as OSV.dev publishes it: Bootstrap 3.4.1, no
+    // patched release, so no range to express one.
+    const vuln = await parsed(
+      {
+        id: "GHSA-q58r-hwc8-rm9j",
+        aliases: ["CVE-2025-1647"],
+        affected: [
+          {
+            package: { name: "bootstrap", ecosystem: "npm" },
+            versions: ["3.4.1"],
+          },
+        ],
+      },
+      "bootstrap",
+    );
+    expect(vuln.affected).toEqual([
+      { introduced: "3.4.1", lastAffected: "3.4.1" },
+    ]);
+    expect(fixedVersionFor(vuln, "3.4.1")).toBeNull();
+    expect(fixedVersionFor(vuln, "3.4.2")).toBeUndefined();
+  });
+
+  it("uses the ranges, not the version list, when an entry has both", async () => {
+    const vuln = await parsed({
+      id: "GHSA-both",
+      affected: [
+        {
+          package: { name: "jquery", ecosystem: "npm" },
+          ranges: [
+            {
+              type: "SEMVER",
+              events: [{ introduced: "0" }, { fixed: "3.5.0" }],
+            },
+          ],
+          versions: ["1.12.4", "3.4.1"],
+        },
+      ],
+    });
+    expect(vuln.affected).toEqual([{ introduced: "0", fixed: "3.5.0" }]);
+    expect(fixedVersionFor(vuln, "1.12.4")).toBe("3.5.0");
+  });
 
   it("keeps only the queried package's version ranges", async () => {
     const vuln = await parsed(RAW);

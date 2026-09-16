@@ -111,8 +111,11 @@ interface ScoredVuln {
 /**
  * Scores one OSV advisory from its own CVSS 3.x vector when present (a REAL,
  * per-instance vector -- computeCvssBaseScore never invents one). Many
- * advisories carry only a CVSS 4.0 vector or none; those stay unscored rather
- * than being given a number.
+ * advisories carry only a CVSS 4.0 vector or none; those get no score, but
+ * take the advisory database's own rating as their severity when it has one.
+ * Without that, a critical advisory published with only a 4.0 vector counted
+ * for nothing, and a library whose other advisories were low was reported as
+ * low, below what the offline table said for the same version.
  */
 function scoreVuln(vuln: OsvVuln): ScoredVuln {
   for (const sev of vuln.severity) {
@@ -127,7 +130,7 @@ function scoreVuln(vuln: OsvVuln): ScoredVuln {
       cvssScore,
     };
   }
-  return { vuln };
+  return { vuln, severity: vuln.databaseSeverity };
 }
 
 function cveIdsOf(vuln: OsvVuln): string[] {
@@ -227,9 +230,12 @@ function buildOsvFinding(
  * OSV.dev live for each one. Returns one finding per library version that
  * any advisory affects.
  *
- * Fails open (returns []) on any error at any stage: a missing page, an
- * unreachable target, or an OSV.dev outage. A failure here must never crash
- * the scan or produce a false positive.
+ * Returns [] when there is nothing to look up: a missing page, an
+ * unreachable target, or no recognisable library. When libraries were found
+ * but OSV.dev answered none of the lookups it throws, so the async branch is
+ * recorded in ScanResult.incomplete as not checked rather than as checked and
+ * clean. Offline, the known-advisory snapshot in page-checks/libraries.ts
+ * still covers most of these libraries, but not Vue, React, Alpine or GSAP.
  */
 export async function checkOsvVulnerableLibraries(
   url: string,
@@ -262,12 +268,21 @@ export async function checkOsvVulnerableLibraries(
     })),
   );
 
+  const answered = results.filter(
+    (r) => r.status === "fulfilled" && r.value.vulns !== null,
+  );
+  if (answered.length === 0) {
+    throw new Error(
+      `OSV.dev answered none of the ${libraries.length} library lookups`,
+    );
+  }
+
   const findings: Vulnerability[] = [];
   for (const result of results) {
-    if (result.status !== "fulfilled" || result.value.vulns.length === 0) {
-      continue;
-    }
-    const finding = buildOsvFinding(url, result.value.lib, result.value.vulns);
+    if (result.status !== "fulfilled") continue;
+    const { lib, vulns } = result.value;
+    if (!vulns || vulns.length === 0) continue;
+    const finding = buildOsvFinding(url, lib, vulns);
     if (finding) findings.push(finding);
   }
 

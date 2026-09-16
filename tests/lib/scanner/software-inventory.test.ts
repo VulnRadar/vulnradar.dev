@@ -462,6 +462,23 @@ describe("correlateSoftwareCves: OSV", () => {
     expect(result!.findings).toEqual([]);
     expect(result!.inventory.items[0].cveStatus).toBe("clean");
   });
+
+  it("marks an OSV item unknown, NOT clean, when the lookup failed", async () => {
+    stubFetch();
+    mockQueryOsv.mockResolvedValue(null);
+    const result = await correlateSoftwareCves("https://example.com", [
+      item({ name: "Werkzeug", version: "9.9.8", category: "framework" }),
+    ]);
+    expect(result!.findings).toEqual([]);
+    expect(result!.inventory.items[0].cveStatus).toBe("unknown");
+
+    // Not cached: the next scan asks again instead of holding the outage
+    // against this host for the cache lifetime.
+    await correlateSoftwareCves("https://example.com", [
+      item({ name: "Werkzeug", version: "9.9.8", category: "framework" }),
+    ]);
+    expect(mockQueryOsv).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ── Cache reuse ─────────────────────────────────────────────────────────────

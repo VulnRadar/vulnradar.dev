@@ -143,15 +143,75 @@ export interface DetectedLibrary {
   version: string;
 }
 
+/** cdnjs and Google Hosted Libraries: /ajax/libs/<package>/<version>/. */
+const HOSTED_LIBRARY_PATH = /\/ajax\/libs\/([^/?#]+)\/v?\d+\.\d+\.\d+\//i;
+
+/**
+ * WordPress core registers each vendor library it bundles with that
+ * library's own version as `?ver=`, as in
+ * /wp-includes/js/jquery/jquery.min.js?ver=3.7.1. Anywhere else `?ver=` is a
+ * theme's or plugin's own version or a cache key, so it is only read under
+ * /wp-includes/js/ and only for the file that is the library itself:
+ * jquery-migrate.min.js?ver=3.4.1 is not jQuery 3.4.1.
+ */
+const WORDPRESS_CORE_FILES: Readonly<Record<string, RegExp>> = {
+  jquery: /^jquery(?:\.min)?\.js$/i,
+  underscore: /^underscore(?:\.min)?\.js$/i,
+  lodash: /^lodash(?:\.min)?\.js$/i,
+  moment: /^moment(?:\.min)?\.js$/i,
+  react: /^react(?:\.min)?\.js$/i,
+};
+const WORDPRESS_CORE_VERSION =
+  /\/wp-includes\/js\/[^?#]*\?(?:[^#]*&)?ver=(\d+\.\d+\.\d+)/i;
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Whether the URL loads the library itself rather than something that sits
+ * next to it. The library has to be the file, the package a CDN URL pins as
+ * name@x.y.z, or the package directory of a hosted-library path. A directory
+ * that merely shares the name is not enough: /assets/bootstrap/3.2.0/init.js
+ * is a site's own start-up script, and it was reported as Bootstrap 3.2.0
+ * with Bootstrap's CVEs named against it.
+ */
+function loadsLibrary(fp: LibraryFingerprint, scriptUrl: string): boolean {
+  const path = scriptUrl.split(/[?#]/, 1)[0];
+  const fileName = path.slice(path.lastIndexOf("/") + 1);
+  if (fp.filePattern.test(fileName)) return true;
+  const pinned = new RegExp(
+    `(?:^|/)${escapeRegExp(fp.npmPackage)}@v?\\d+\\.\\d+\\.\\d+`,
+    "i",
+  );
+  if (pinned.test(path)) return true;
+  const hosted = HOSTED_LIBRARY_PATH.exec(path);
+  return !!hosted && fp.filePattern.test(`${hosted[1]}/`);
+}
+
 /** The library and exact version a script URL loads, or null. */
 export function detectLibrary(scriptUrl: string): DetectedLibrary | null {
   for (const fp of LIBRARY_FINGERPRINTS) {
     if (!fp.filePattern.test(scriptUrl)) continue;
-    const m = scriptUrl.match(fp.versionPattern);
-    if (!m) continue;
-    return { name: fp.name, npmPackage: fp.npmPackage, version: m[1] };
+    if (!loadsLibrary(fp, scriptUrl)) continue;
+    const version =
+      scriptUrl.match(fp.versionPattern)?.[1] ??
+      wordpressCoreVersion(fp, scriptUrl);
+    if (!version) continue;
+    return { name: fp.name, npmPackage: fp.npmPackage, version };
   }
   return null;
+}
+
+function wordpressCoreVersion(
+  fp: LibraryFingerprint,
+  scriptUrl: string,
+): string | undefined {
+  const file = WORDPRESS_CORE_FILES[fp.npmPackage];
+  if (!file) return undefined;
+  const path = scriptUrl.split(/[?#]/, 1)[0];
+  if (!file.test(path.slice(path.lastIndexOf("/") + 1))) return undefined;
+  return WORDPRESS_CORE_VERSION.exec(scriptUrl)?.[1];
 }
 
 /**
@@ -164,18 +224,54 @@ export function libraryComponent(lib: DetectedLibrary): string {
 }
 
 /**
- * True when dotted version `a` sorts below `b`, comparing numeric parts left
- * to right and treating a missing part as 0. Not full semver: a prerelease
- * suffix is read as further numeric parts. Shared by both library checks and
- * by framework-fingerprint.ts, which compares CMS core versions.
+ * True when version `a` sorts below `b`, in semver order: numeric parts left
+ * to right with a missing part read as 0, then a prerelease below the release
+ * it leads up to. Shared by both library checks, the OSV interval logic and
+ * framework-fingerprint.ts, which compares CMS core versions.
+ *
+ * The prerelease used to be read as more numeric parts, so 2.0.0 sorted below
+ * 2.0.0-rc.1 and a site on 2.0.0 was reported for an advisory fixed in that
+ * release candidate. A leading "v" is ignored rather than read as 0.
  */
 export function versionBelow(a: string, b: string): boolean {
-  const pa = a.split(/[.-]/).map((n) => parseInt(n, 10) || 0);
-  const pb = b.split(/[.-]/).map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] ?? 0;
-    const y = pb[i] ?? 0;
-    if (x !== y) return x < y;
+  return compareVersions(a, b) < 0;
+}
+
+function parseVersion(v: string): { core: number[]; pre: string[] | null } {
+  const bare = v.trim().replace(/^v/i, "").split("+", 1)[0];
+  const dash = bare.indexOf("-");
+  const core = (dash === -1 ? bare : bare.slice(0, dash))
+    .split(".")
+    .map((n) => parseInt(n, 10) || 0);
+  const pre = dash === -1 ? "" : bare.slice(dash + 1);
+  return { core, pre: pre ? pre.split(".") : null };
+}
+
+function compareVersions(a: string, b: string): number {
+  const va = parseVersion(a);
+  const vb = parseVersion(b);
+  for (let i = 0; i < Math.max(va.core.length, vb.core.length); i++) {
+    const d = (va.core[i] ?? 0) - (vb.core[i] ?? 0);
+    if (d !== 0) return d;
   }
-  return false;
+  if (!va.pre || !vb.pre) {
+    if (va.pre === vb.pre) return 0;
+    return va.pre ? -1 : 1;
+  }
+  for (let i = 0; i < Math.max(va.pre.length, vb.pre.length); i++) {
+    const x = va.pre[i];
+    const y = vb.pre[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const nx = /^\d+$/.test(x);
+    const ny = /^\d+$/.test(y);
+    if (nx && ny) {
+      if (Number(x) !== Number(y)) return Number(x) - Number(y);
+    } else if (nx !== ny) {
+      return nx ? -1 : 1;
+    } else if (x !== y) {
+      return x < y ? -1 : 1;
+    }
+  }
+  return 0;
 }

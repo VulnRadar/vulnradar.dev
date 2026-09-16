@@ -23,6 +23,7 @@
 import { APP_NAME } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { versionBelow } from "./library-fingerprints";
+import type { Severity } from "./types";
 
 const OSV_QUERY_URL = "https://api.osv.dev/v1/query";
 
@@ -52,6 +53,13 @@ export interface OsvVuln {
   summary?: string;
   details?: string;
   severity: OsvSeverity[];
+  /**
+   * The advisory database's own rating, from database_specific.severity
+   * (GitHub advisories: CRITICAL, HIGH, MODERATE, LOW). Many recent
+   * advisories publish only a CVSS 4.0 vector, which is not scored here, and
+   * this is what rates those.
+   */
+  databaseSeverity?: Severity;
   /** SEMVER and ECOSYSTEM intervals recorded for the queried package only. */
   affected: OsvAffectedInterval[];
 }
@@ -72,6 +80,7 @@ function parseAffected(
     if (typeof name !== "string") continue;
     if (name.toLowerCase() !== packageName.toLowerCase()) continue;
     const ranges = Array.isArray(entry.ranges) ? entry.ranges : [];
+    const fromRanges = intervals.length;
     for (const range of ranges) {
       if (!isRecord(range)) continue;
       // GIT ranges are commit hashes, not versions.
@@ -94,6 +103,17 @@ function parseAffected(
         }
       }
       if (open !== null) intervals.push({ introduced: open });
+    }
+    // An advisory with no fixed release often lists the affected versions
+    // and no ranges at all, as GHSA-q58r-hwc8-rm9j does for Bootstrap 3.4.1.
+    // Each listed version is an interval with no fix, so fixedVersionFor
+    // says "no fixed release" instead of not placing the version.
+    if (intervals.length === fromRanges && Array.isArray(entry.versions)) {
+      for (const v of entry.versions) {
+        if (typeof v === "string") {
+          intervals.push({ introduced: v, lastAffected: v });
+        }
+      }
     }
   }
   return intervals;
@@ -129,6 +149,24 @@ export function fixedVersionFor(
   return undefined;
 }
 
+const DATABASE_SEVERITY: Readonly<Record<string, Severity>> = {
+  CRITICAL: "critical",
+  HIGH: "high",
+  MODERATE: "medium",
+  MEDIUM: "medium",
+  LOW: "low",
+};
+
+function databaseSeverityOf(
+  raw: Record<string, unknown>,
+): Severity | undefined {
+  const specific = raw.database_specific;
+  if (!isRecord(specific) || typeof specific.severity !== "string") {
+    return undefined;
+  }
+  return DATABASE_SEVERITY[specific.severity.toUpperCase()];
+}
+
 function parseOsvVuln(raw: unknown, packageName: string): OsvVuln | null {
   if (!isRecord(raw) || typeof raw.id !== "string") return null;
   const aliases = Array.isArray(raw.aliases)
@@ -149,22 +187,26 @@ function parseOsvVuln(raw: unknown, packageName: string): OsvVuln | null {
     summary: typeof raw.summary === "string" ? raw.summary : undefined,
     details: typeof raw.details === "string" ? raw.details : undefined,
     severity,
+    databaseSeverity: databaseSeverityOf(raw),
     affected: parseAffected(raw, packageName),
   };
 }
 
 /**
  * Queries OSV.dev for every known vulnerability affecting this exact
- * package + version. Returns [] on any error (network, timeout, malformed
- * response, or genuinely no vulnerabilities found) -- callers cannot
- * distinguish "none found" from "lookup failed", the same fail-open
- * contract as every other external call in the scanner.
+ * package + version: the advisories, [] when OSV.dev has none, or null when
+ * the lookup itself failed (network, timeout, non-ok status, malformed body).
+ * It never throws.
+ *
+ * Failure used to be [] too, which made an OSV.dev outage indistinguishable
+ * from a clean result: the scan reported the library check as done and found
+ * nothing, for libraries it had never looked up.
  */
 export async function queryOsv(
   ecosystem: string,
   packageName: string,
   version: string,
-): Promise<OsvVuln[]> {
+): Promise<OsvVuln[] | null> {
   try {
     const timeoutMs = await getSetting("SCANNER_THREAT_INTEL_API_TIMEOUT_MS");
     const res = await fetch(OSV_QUERY_URL, {
@@ -179,10 +221,13 @@ export async function queryOsv(
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return [];
+    if (!res.ok) return null;
     const data: unknown = await res.json();
-    const vulns = isRecord(data) && Array.isArray(data.vulns) ? data.vulns : [];
-    return vulns
+    // OSV.dev answers {} for a version with no advisories.
+    if (!isRecord(data)) return null;
+    if (data.vulns === undefined) return [];
+    if (!Array.isArray(data.vulns)) return null;
+    return data.vulns
       .map((raw) => parseOsvVuln(raw, packageName))
       .filter((v): v is OsvVuln => v !== null);
   } catch (err) {
@@ -190,6 +235,6 @@ export async function queryOsv(
       `[${APP_NAME}] osv-lookup: query failed for ${ecosystem}/${packageName}@${version} (non-fatal):`,
       err instanceof Error ? err.message : err,
     );
-    return [];
+    return null;
   }
 }

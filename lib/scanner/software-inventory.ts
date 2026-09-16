@@ -751,9 +751,8 @@ type CorrelationOutcome =
 
 /**
  * OSV.dev lookup for a packaged ecosystem. Reuses queryOsv (its own timeout,
- * fail-open, non-throwing contract). queryOsv cannot tell "none" from
- * "failed", so an empty result is reported as "clean" here -- acceptable
- * because it only ever suppresses a finding, never invents one.
+ * non-throwing contract). A failed lookup is "unknown", not "clean": the two
+ * used to be indistinguishable, so an OSV.dev outage read as a clean result.
  */
 async function correlateViaOsv(
   ecosystem: string,
@@ -761,6 +760,7 @@ async function correlateViaOsv(
   version: string,
 ): Promise<CorrelationOutcome> {
   const vulns = await queryOsv(ecosystem, pkg, version);
+  if (vulns === null) return { status: "unknown" };
   if (vulns.length === 0) return { status: "clean" };
 
   const cveIds = collectOsvCveIds(vulns);
@@ -1111,7 +1111,10 @@ export async function correlateSoftwareCves(
                   timeoutMs,
                 )
               : { status: "unknown" };
-          writeCache(key, outcome);
+          // Only a definite answer is cached. "unknown" is usually a lookup
+          // that failed, and caching it held a brief OSV.dev or NVD outage
+          // against this host for the whole TTL.
+          if (outcome.status !== "unknown") writeCache(key, outcome);
           slot.outcome = outcome;
         }
       },

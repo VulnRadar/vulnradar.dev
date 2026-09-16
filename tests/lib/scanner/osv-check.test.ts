@@ -86,6 +86,37 @@ describe("checkOsvVulnerableLibraries", () => {
     expect(mockQueryOsv).toHaveBeenCalledWith("npm", "jquery", "1.8.2");
   });
 
+  it("throws when OSV.dev answered none of the lookups, so the branch reads as not checked", async () => {
+    mockSafeFetch.mockResolvedValueOnce(htmlResponse(JQUERY_PAGE));
+    mockQueryOsv.mockResolvedValue(null);
+    await expect(
+      checkOsvVulnerableLibraries("https://example.com"),
+    ).rejects.toThrow(/OSV\.dev answered none/);
+  });
+
+  it("still reports what it found when only some lookups failed", async () => {
+    mockSafeFetch.mockResolvedValueOnce(
+      htmlResponse(
+        '<script src="https://code.jquery.com/jquery-1.8.2.min.js"></script>' +
+          '<script src="https://unpkg.com/vue@3.2.0/dist/vue.global.js"></script>',
+      ),
+    );
+    mockQueryOsv.mockImplementation(async (_eco: string, pkg: string) =>
+      pkg === "jquery"
+        ? [
+            cvssVuln(
+              "GHSA-gxr4-xjj5-5px2",
+              "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N",
+              ["CVE-2020-11022"],
+            ),
+          ]
+        : null,
+    );
+    const findings = await checkOsvVulnerableLibraries("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].component).toBe("jquery@1.8.2");
+  });
+
   it("returns [] when OSV.dev has no advisory for this exact version", async () => {
     mockSafeFetch.mockResolvedValueOnce(htmlResponse(JQUERY_PAGE));
     mockQueryOsv.mockResolvedValue([]);
@@ -168,6 +199,24 @@ describe("checkOsvVulnerableLibraries", () => {
     ]);
     const findings = await checkOsvVulnerableLibraries("https://example.com");
     expect(findings[0].severity).toBe("low");
+  });
+
+  it("rates an advisory with no CVSS 3.x vector by the advisory database's own severity", async () => {
+    // A GitHub advisory published with only a CVSS 4.0 vector still says
+    // CRITICAL in database_specific; it must not count for nothing.
+    mockSafeFetch.mockResolvedValueOnce(htmlResponse(JQUERY_PAGE));
+    mockQueryOsv.mockResolvedValue([
+      {
+        id: "GHSA-v4-critical",
+        aliases: [],
+        severity: [],
+        databaseSeverity: "critical",
+        affected: [],
+      },
+      cvssVuln("GHSA-low", "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:L/I:N/A:N"),
+    ]);
+    const findings = await checkOsvVulnerableLibraries("https://example.com");
+    expect(findings[0].severity).toBe("critical");
   });
 
   it("buckets a critical-scored advisory as critical severity", async () => {

@@ -207,6 +207,10 @@ export function ScanResultDetail({
     dns: "DNS records",
     tls: "TLS and certificate checks",
     "live-fetch": "Live page fetch",
+    reputation: "Domain reputation lookups",
+    // Thrown by osv-check.ts when OSV.dev answered none of the lookups.
+    "osv-libraries": "The live vulnerable-library lookup",
+    "active-probes": "Active probes",
     // Written by POST /api/v3/scan/authenticated when the login held long
     // enough to start but the session was lost during the run: the pages
     // that came back are the signed-out surface, so the authenticated area
