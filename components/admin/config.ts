@@ -440,5 +440,3 @@ export const DANGER_ZONE_ACTIONS = [
 
 // Default pagination sizes
 export const DEFAULT_PAGE_SIZE = 10;
-export const DEFAULT_AUDIT_PAGE_SIZE = 10;
-export const DEFAULT_STAFF_PAGE_SIZE = 10;

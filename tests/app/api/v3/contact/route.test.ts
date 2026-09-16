@@ -13,11 +13,19 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockCheckRateLimit = vi.fn();
-const mockGetClientIP = vi.fn();
+const mockGetClientIp = vi.fn();
 vi.mock("@/lib/rate-limiting/rate-limit", () => ({
   checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
-  getClientIP: () => mockGetClientIP(),
   RATE_LIMITS: { api: { limit: "api", maxAttempts: 30, windowSeconds: 3600 } },
+}));
+// The route used a deprecated getClientIP re-exported from the rate-limit
+// module; it now calls the real getClientIp, so the mock moves to where the
+// function actually lives.
+vi.mock("@/lib/api/request-utils", () => ({
+  getClientIp: () => mockGetClientIp(),
+  // Also reached by this route, and a module mock replaces the whole
+  // module - omitting it makes the real one undefined at the call site.
+  rateLimitIpKey: (ip: string) => ip,
 }));
 
 // The submission is now stored before either email is attempted, because
@@ -96,7 +104,7 @@ async function flushMicrotasks() {
 
 beforeEach(() => {
   mockCheckRateLimit.mockReset();
-  mockGetClientIP.mockReset();
+  mockGetClientIp.mockReset();
   mockSendEmail.mockReset();
   mockRecordSubmission.mockReset();
   mockRecordEmailOutcome.mockReset();
@@ -107,7 +115,7 @@ beforeEach(() => {
   mockFetch.mockClear();
   turnstileSuccess = true;
 
-  mockGetClientIP.mockResolvedValue("203.0.113.7");
+  mockGetClientIp.mockResolvedValue("203.0.113.7");
   mockCheckRateLimit.mockResolvedValue({
     allowed: true,
     remaining: 29,

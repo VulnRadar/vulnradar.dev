@@ -276,13 +276,6 @@ export async function resetRateLimit(key: string): Promise<void> {
 }
 
 /**
- * @deprecated Use getClientIp from request-utils instead
- */
-export async function getClientIP(): Promise<string> {
-  return getClientIp();
-}
-
-/**
  * Rate limit configs, each tagged with its own name. Spreading one into
  * checkRateLimit (`...RATE_LIMITS.login`) carries the name along, which is
  * what lets the call resolve the live admin value. The numbers stay on the

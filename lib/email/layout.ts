@@ -239,11 +239,6 @@ function calloutClass(accent: EmailAccent): string {
   return `v-cl-${accent}`;
 }
 
-/** The light hex for an accent, for the one caller that needs it inline. */
-export function accentColor(accent: EmailAccent): string {
-  return ACCENTS[accent].light;
-}
-
 /** Class + inline colour for an accent, ready to drop into an element. */
 function accentAttrs(accent: EmailAccent): { cls: string; color: string } {
   return { cls: accentClass(accent), color: ACCENTS[accent].light };

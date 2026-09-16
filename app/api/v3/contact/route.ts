@@ -3,11 +3,7 @@ import {
   recordContactSubmission,
   recordContactEmailOutcome,
 } from "@/lib/support/contact-submissions";
-import {
-  checkRateLimit,
-  getClientIP,
-  RATE_LIMITS,
-} from "@/lib/rate-limiting/rate-limit";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   contactConfirmationEmail,
   contactEmail,
@@ -15,7 +11,7 @@ import {
 } from "@/lib/email/email";
 import { TURNSTILE_ENABLED } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
-import { rateLimitIpKey } from "@/lib/api/request-utils";
+import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 
 // One label per category the form actually offers (components/contact/
 // contact-types.ts's CATEGORIES). billing, enterprise and feedback used to be
@@ -44,7 +40,7 @@ function asTrimmedString(value: unknown): string | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = await getClientIP();
+    const ip = await getClientIp();
     const rl = await checkRateLimit({
       key: `contact:${rateLimitIpKey(ip)}`,
       ...RATE_LIMITS.api,

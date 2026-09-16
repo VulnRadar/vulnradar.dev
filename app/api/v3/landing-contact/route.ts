@@ -3,18 +3,14 @@ import {
   recordContactSubmission,
   recordContactEmailOutcome,
 } from "@/lib/support/contact-submissions";
-import {
-  checkRateLimit,
-  getClientIP,
-  RATE_LIMITS,
-} from "@/lib/rate-limiting/rate-limit";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   sendEmail,
   landingContactEmail,
   landingContactConfirmationEmail,
 } from "@/lib/email/email";
 import { getSetting } from "@/lib/config/runtime-config";
-import { rateLimitIpKey } from "@/lib/api/request-utils";
+import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { TURNSTILE_ENABLED } from "@/lib/config/constants";
 
 function asTrimmedString(value: unknown): string | null {
@@ -27,7 +23,7 @@ function asTrimmedString(value: unknown): string | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = await getClientIP();
+    const ip = await getClientIp();
     const rl = await checkRateLimit({
       key: `landing-contact:${rateLimitIpKey(ip)}`,
       ...RATE_LIMITS.api,

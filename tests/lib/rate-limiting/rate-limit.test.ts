@@ -13,7 +13,7 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-// Mock getClientIp so the deprecated getClientIP re-export works.
+// checkRateLimit resolves the caller's IP through request-utils.
 vi.mock("@/lib/api/request-utils", () => ({
   getClientIp: vi.fn(async () => "127.0.0.1"),
 }));

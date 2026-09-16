@@ -377,8 +377,15 @@ const COMPETITORS: Alternative[] = [
  * the reproducibility that makes the CI gate and the scan-to-scan diff mean
  * anything. Determinism only differentiates if you say what it is against,
  * so this is stated once and appended to every comparison page.
+ *
+ * Exported because the landing FAQ needs the same answer. It was only on
+ * the comparison pages, which are the pages a reader reaches after they
+ * have already named a competitor - the objection arrives earlier than
+ * that. Exported rather than retyped: a second copy of a positioning
+ * statement drifts the same way a second copy of a constant does, and this
+ * one makes a claim about what the product structurally will not do.
  */
-const AGENTIC_PENTEST_FAQ = {
+export const AGENTIC_PENTEST_FAQ = {
   question: `Does ${APP_NAME} do AI pentesting?`,
   answer: `No, on purpose. The detection engine is deterministic: the same URL produces the same finding IDs every run, which is what lets you fail a build on a specific ID and diff Tuesday's scan against Friday's. A model is used to triage and explain findings, never to decide whether one exists. Active probing, where ${APP_NAME} does send real payloads, is opt-in and only runs against domains you have proven you own. If you want an agent that autonomously exploits a live target and writes the report, that is a different product and this is not trying to be it.`,
 };

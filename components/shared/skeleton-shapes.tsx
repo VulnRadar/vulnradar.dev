@@ -19,32 +19,6 @@ import { cn } from "@/lib/ui/utils";
  * placeholder cell and the real cell round to the same box.
  */
 
-/** A stack of text lines, e.g. a page title over a subtitle. */
-export function SkeletonText({
-  lines = 2,
-  widths = [20, 52],
-  className,
-}: {
-  lines?: number;
-  /** Tailwind width units per line; the last is reused if the list runs out. */
-  widths?: number[];
-  className?: string;
-}) {
-  return (
-    <div className={cn("space-y-2", className)}>
-      {Array.from({ length: lines }).map((_, i) => (
-        <Skeleton
-          key={i}
-          className={cn(i === 0 ? "h-7" : "h-4")}
-          style={{
-            width: `${(widths[i] ?? widths[widths.length - 1] ?? 40) * 0.25}rem`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
 /**
  * The list/table shape: a bordered, divided container of uniform rows.
  *
@@ -90,42 +64,6 @@ export function SkeletonRows({
             />
           ))}
         </div>
-      ))}
-    </div>
-  );
-}
-
-/** A responsive grid of card placeholders. */
-export function SkeletonCards({
-  count = 3,
-  columns = 3,
-  height = 32,
-  className,
-}: {
-  count?: number;
-  /** Columns at sm and up. One column below sm, as every real grid does. */
-  columns?: 2 | 3 | 4;
-  /** Card height in Tailwind units. */
-  height?: number;
-  className?: string;
-}) {
-  // Written out rather than interpolated: Tailwind only emits classes it can
-  // see as complete strings, so `sm:grid-cols-${columns}` would compile to
-  // nothing and silently collapse every grid to one column.
-  const cols = {
-    2: "sm:grid-cols-2",
-    3: "sm:grid-cols-2 lg:grid-cols-3",
-    4: "sm:grid-cols-2 lg:grid-cols-4",
-  }[columns];
-
-  return (
-    <div className={cn("grid grid-cols-1 gap-4", cols, className)}>
-      {Array.from({ length: count }).map((_, i) => (
-        <Skeleton
-          key={i}
-          className="w-full rounded-xl"
-          style={{ height: `${height * 0.25}rem` }}
-        />
       ))}
     </div>
   );

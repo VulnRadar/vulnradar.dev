@@ -26,6 +26,7 @@ import {
   TOTAL_CHECKS_LABEL,
 } from "@/lib/config/constants";
 import { getCategoryCounts } from "@/lib/scanner/registry";
+import { AGENTIC_PENTEST_FAQ } from "@/lib/seo/alternatives";
 
 export const metadata: Metadata = pageMetadata({
   title: "Scan Any Website for Security Issues",
@@ -106,6 +107,12 @@ function buildFaq(checkCount: string, categoryCount: number): FaqItem[] {
       answer:
         "Yes. Everything the interface can do is available over REST with bearer token auth, plus webhooks for delivering results and scheduled scans for recurring checks.",
     },
+    // Imported, not retyped. Every vendor on the comparison pages shipped an
+    // agentic AI pentest in 2026, so "why not just buy one of those" is a live
+    // objection - and it was answered only on /alternatives/*, which a reader
+    // reaches after they have already named a competitor. It belongs here too,
+    // where most people arrive.
+    AGENTIC_PENTEST_FAQ,
   ];
 }
 

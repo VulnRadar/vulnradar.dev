@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
-import { getClientIP } from "@/lib/rate-limiting/rate-limit";
+import { getClientIp } from "@/lib/api/request-utils";
 import { TURNSTILE_ENABLED } from "@/lib/config/constants";
 import {
   confirmTicketToUser,
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    const ip = await getClientIP();
+    const ip = await getClientIp();
     const turnstileRes = await fetch(
       "https://challenges.cloudflare.com/turnstile/v0/siteverify",
       {

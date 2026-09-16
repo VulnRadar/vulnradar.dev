@@ -45,27 +45,6 @@ export interface ScanRecord {
   tags?: ScanTag[];
 }
 
-export interface HistoryState {
-  scans: ScanRecord[];
-  loading: boolean;
-  filter: string;
-  tagFilter: string | null;
-  allTags: string[];
-  currentPage: number;
-  pageSize: number;
-}
-
-export interface ScanDetailState {
-  selectedScanId: string | null;
-  scanDetail: ScanResult | null;
-  detailLoading: boolean;
-  selectedIssue: Vulnerability | null;
-  scanOwnerId: number | null;
-  scanNotes: string;
-  editingNotes: boolean;
-  savingNotes: boolean;
-}
-
 /**
  * What a history row is actually reporting.
  *

@@ -77,5 +77,3 @@ export function useAdminPermissions(callerRole: string) {
 
   return permissions;
 }
-
-export type AdminPermissions = ReturnType<typeof useAdminPermissions>;

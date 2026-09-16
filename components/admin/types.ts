@@ -224,18 +224,7 @@ export interface TeamDetail {
   members: TeamMember[];
 }
 
-export interface ConfirmDialogState {
-  title: string;
-  description: string;
-  confirmLabel: string;
-  danger?: boolean;
-  action: () => Promise<void>;
-  children?: React.ReactNode;
-}
-
 export interface ToastState {
   message: string;
   type: "success" | "error";
 }
-
-export type AdminTab = "users" | "audit" | "admins" | "notifications" | "teams";
