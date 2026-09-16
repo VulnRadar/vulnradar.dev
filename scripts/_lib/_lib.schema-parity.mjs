@@ -268,10 +268,6 @@ function createTableBody(stmt) {
 }
 
 /** "b,a" -> "a,b", lowercased and unquoted, so two spellings compare equal. */
-function normalizeColumnTuple(columns) {
-  return normalizeConflictTarget(columns);
-}
-
 /**
  * One spelling for a unique target, whether it came from source, from the
  * boot schema or from pg_get_indexdef: lowercased, unquoted, whitespace and
