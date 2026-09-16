@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { readKnowledgeFile } from "@/lib/ai/knowledge-files";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { getDailyLimit } from "@/lib/rate-limiting/daily-limits";
+import { canMakeRequest } from "@/lib/rate-limiting/daily-limits";
+import { SEVERITY_ORDER } from "@/lib/config/client-constants";
+import type { Vulnerability } from "@/lib/scanner/types";
 import { buildHelpText } from "@/lib/ai/commands";
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 
@@ -139,8 +141,15 @@ async function handleContext(
           );
         }
 
+        // `findings` is selected now, and it is the point of this change.
+        // This loaded the severity COUNTS and nothing else, so the assistant
+        // could say "that scan has one critical" and could not say which one
+        // - the single most likely thing to be asked next, on the surface
+        // whose whole job is explaining findings. The column was already
+        // there; it simply was not read.
         const res = await pool.query(
-          `SELECT id, url, summary, findings_count, duration, scanned_at, source
+          `SELECT id, url, summary, findings, findings_count, duration,
+                  scanned_at, source
              FROM scan_history
              WHERE id = $1 AND user_id = $2`,
           [scanId, session.userId],
@@ -169,6 +178,48 @@ async function handleContext(
               .join(", ")
           : "no findings";
 
+        // Worst first, and capped.
+        //
+        // Ordered by SEVERITY_ORDER rather than by however the engine happened
+        // to emit them, because if the list is cut the reader must lose the
+        // info-level noise and never the critical. The cap exists because a
+        // scan can carry hundreds of findings and this whole block is spent
+        // from the per-command context budget in app/api/v3/ai/chat: without
+        // one, a single busy scan could crowd out every other block loaded
+        // beside it. A cut list says so in the list, so the model reports a
+        // limit rather than answering as though it had seen everything.
+        //
+        // Title, severity, category and id only. The description, evidence and
+        // fix for a check are already retrievable by id through /finding, so
+        // repeating them per finding would spend the budget on text the
+        // assistant can fetch precisely when it is actually asked about.
+        const MAX_FINDINGS_LISTED = 40;
+        const rawFindings = Array.isArray(scan.findings)
+          ? (scan.findings as Vulnerability[])
+          : [];
+        const rank = (sev: string) => {
+          const i = (SEVERITY_ORDER as readonly string[]).indexOf(sev);
+          return i === -1 ? SEVERITY_ORDER.length : i;
+        };
+        const ordered = [...rawFindings].sort(
+          (a, b) => rank(a?.severity) - rank(b?.severity),
+        );
+        const shown = ordered.slice(0, MAX_FINDINGS_LISTED);
+        const findingsSection = shown.length
+          ? `## Findings\n\n` +
+            shown
+              .map(
+                (f) =>
+                  `- **${f.severity}** \`${f.id}\` ${f.title}` +
+                  (f.category ? ` _(${f.category})_` : ""),
+              )
+              .join("\n") +
+            (ordered.length > shown.length
+              ? `\n\n_Showing the ${shown.length} most severe of ${ordered.length}. Ask about a severity or category to see the rest._`
+              : "") +
+            `\n\nUse \`/finding [id]\` for what a check looks for and how to fix it.\n`
+          : "";
+
         const content =
           `# Scan #${scan.id}\n\n` +
           `**URL:** ${scan.url}\n` +
@@ -179,13 +230,16 @@ async function handleContext(
           (summary
             ? `## Summary\n\n${Object.entries(summary)
                 .map(([sev, count]) => `- **${sev}:** ${count}`)
-                .join("\n")}\n`
-            : "");
+                .join("\n")}\n\n`
+            : "") +
+          findingsSection;
 
         result = {
           cmd,
           label: `Scan #${scanId}`,
-          summary: `Scan #${scanId} loaded (${scan.url}, ${date}).`,
+          summary: shown.length
+            ? `Scan #${scanId} loaded (${scan.url}, ${date}): ${severities}.`
+            : `Scan #${scanId} loaded (${scan.url}, ${date}).`,
           content,
         };
       } else {
@@ -247,18 +301,35 @@ async function handleContext(
       }
 
       const u = res.rows[0];
-      // Live cap: users.daily_scan_limit is never written, so it always read
-      // as "plan default" no matter what the account actually gets.
-      const resolvedLimit = await getDailyLimit(session.userId);
-      const dailyLimitLabel = Number.isFinite(resolvedLimit)
-        ? String(resolvedLimit)
-        : "Unlimited";
+      // The live cap AND today's usage against it.
+      //
+      // This loaded only the cap. "Your daily scan limit is 25" does not
+      // answer the question people actually bring to the assistant, which is
+      // some form of "why can't I scan right now" - and the number that
+      // answers it, how many are left today, was the one thing the assistant
+      // could not see. It would then reason from the cap alone and guess.
+      //
+      // canMakeRequest resolves the cap, today's count, the remainder and the
+      // reset instant in one call, and is what the scan routes themselves
+      // gate on. Reusing it means the assistant quotes the number that will
+      // actually allow or refuse the next scan, rather than a second opinion
+      // computed from a different query.
+      const quota = await canMakeRequest(session.userId);
+      // canMakeRequest reports an unlimited plan as -1, not Infinity.
+      const unlimited = quota.limit === -1;
+      const dailyLimitLabel = unlimited ? "Unlimited" : String(quota.limit);
 
       const joined = new Date(u.created_at).toLocaleDateString("en-US", {
         year: "numeric",
         month: "long",
         day: "numeric",
       });
+
+      const usageLines = unlimited
+        ? `**Scans used today:** ${quota.used} (this plan has no daily cap)\n`
+        : `**Scans used today:** ${quota.used} of ${quota.limit}\n` +
+          `**Remaining today:** ${quota.remaining}\n` +
+          `**Quota resets:** ${new Date(quota.resetsAt).toUTCString()}\n`;
 
       const content =
         `# Your Account\n\n` +
@@ -267,12 +338,19 @@ async function handleContext(
         `**Plan:** ${u.plan || "free"}\n` +
         `**Role:** ${u.role || "user"}\n` +
         `**Daily scan limit:** ${dailyLimitLabel}\n` +
+        usageLines +
         `**Member since:** ${joined}\n`;
 
       result = {
         cmd,
         label: "My Account",
-        summary: `Account info loaded for ${u.name || u.email}.`,
+        // The remainder goes in the summary too, not just the body. The
+        // summary is what the widget shows the person directly; the body is
+        // for the model. "Why can't I scan" deserves an answer they can read
+        // without asking a follow-up question.
+        summary: unlimited
+          ? `Account info loaded for ${u.name || u.email}.`
+          : `Account info loaded for ${u.name || u.email}: ${quota.remaining} of ${quota.limit} scans left today.`,
         content,
       };
       break;

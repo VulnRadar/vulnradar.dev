@@ -41,11 +41,17 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     cmd: "history",
     args: "[id]",
-    description: "List your recent scans, or load a specific one with an id",
+    description:
+      "List your recent scans, or load one with an id to see its findings",
     requiresAuth: true,
     example: "/history 123",
   },
-  { cmd: "me", description: "Load your account info", requiresAuth: true },
+  {
+    cmd: "me",
+    description:
+      "Your account, plan, and how much of today's scan quota is left",
+    requiresAuth: true,
+  },
   {
     cmd: "finding",
     args: "[id]",

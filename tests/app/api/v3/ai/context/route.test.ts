@@ -19,6 +19,11 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+const mockCanMakeRequest = vi.fn();
+vi.mock("@/lib/rate-limiting/daily-limits", () => ({
+  canMakeRequest: (...args: unknown[]) => mockCanMakeRequest(...args),
+}));
+
 const mockExistsSync = vi.fn();
 const mockReadFileSync = vi.fn();
 vi.mock("fs", () => ({
@@ -46,7 +51,161 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockExistsSync.mockReset();
   mockReadFileSync.mockReset();
+  mockCanMakeRequest.mockReset();
   mockGetSession.mockResolvedValue({ userId: 7 });
+  mockCanMakeRequest.mockResolvedValue({
+    allowed: true,
+    used: 3,
+    limit: 25,
+    remaining: 22,
+    resetsAt: "2026-09-17T00:00:00.000Z",
+  });
+});
+
+function getRequestWithId(cmd: string, id: string) {
+  return new NextRequest(
+    `http://localhost/api/v3/ai/context?cmd=${encodeURIComponent(cmd)}&id=${encodeURIComponent(id)}`,
+  );
+}
+
+/** One row as scan_history hands it back, with a findings array. */
+function scanRow(findings: unknown[]) {
+  return {
+    rows: [
+      {
+        id: 42,
+        url: "https://example.com",
+        summary: { critical: 1, high: 1, info: 1, total: 3 },
+        findings,
+        findings_count: Array.isArray(findings) ? findings.length : 0,
+        duration: 2841,
+        scanned_at: "2026-09-15T10:00:00.000Z",
+        source: "web",
+      },
+    ],
+  };
+}
+
+const FINDING = (id: string, severity: string) => ({
+  id,
+  title: `Title for ${id}`,
+  severity,
+  category: "headers",
+});
+
+describe("GET /api/v3/ai/context?cmd=me", () => {
+  it("reports today's usage, not just the daily cap", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          name: "Ada",
+          email: "ada@example.com",
+          plan: "free",
+          role: "user",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const json = await (await GET(getRequest("me"))).json();
+
+    // The cap alone was all this used to carry, and it cannot answer "why
+    // can't I scan right now".
+    expect(json.content).toContain("**Daily scan limit:** 25");
+    expect(json.content).toContain("**Scans used today:** 3 of 25");
+    expect(json.content).toContain("**Remaining today:** 22");
+    expect(json.content).toContain("**Quota resets:**");
+    // The remainder reaches the person directly, not only the model.
+    expect(json.summary).toContain("22 of 25 scans left today");
+  });
+
+  it("does not invent a cap or a remainder for an unlimited plan", async () => {
+    mockCanMakeRequest.mockResolvedValue({
+      allowed: true,
+      used: 9,
+      limit: -1, // canMakeRequest reports unlimited as -1, not Infinity
+      remaining: 0,
+      resetsAt: "2026-09-17T00:00:00.000Z",
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          name: "Ada",
+          email: "ada@example.com",
+          plan: "elite_supporter",
+          role: "user",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const json = await (await GET(getRequest("me"))).json();
+
+    expect(json.content).toContain("**Daily scan limit:** Unlimited");
+    expect(json.content).toContain("no daily cap");
+    // remaining is 0 on an unlimited plan, and printing it would read as
+    // "you have none left", which is the opposite of true.
+    expect(json.content).not.toContain("**Remaining today:**");
+    expect(json.content).not.toContain("-1");
+  });
+});
+
+describe("GET /api/v3/ai/context?cmd=history&id=N", () => {
+  it("lists the findings, worst first", async () => {
+    mockQuery.mockResolvedValueOnce(
+      scanRow([
+        FINDING("info-thing", "info"),
+        FINDING("crit-thing", "critical"),
+        FINDING("high-thing", "high"),
+      ]),
+    );
+
+    const json = await (await GET(getRequestWithId("history", "42"))).json();
+
+    expect(json.content).toContain("## Findings");
+    expect(json.content).toContain("crit-thing");
+    expect(json.content).toContain("high-thing");
+    // Ordered by SEVERITY_ORDER, not by the order the engine emitted them, so
+    // a truncated list loses info-level noise rather than the critical.
+    expect(json.content.indexOf("crit-thing")).toBeLessThan(
+      json.content.indexOf("high-thing"),
+    );
+    expect(json.content.indexOf("high-thing")).toBeLessThan(
+      json.content.indexOf("info-thing"),
+    );
+  });
+
+  it("selects the findings column at all", async () => {
+    mockQuery.mockResolvedValueOnce(scanRow([FINDING("a", "low")]));
+    await GET(getRequestWithId("history", "42"));
+    const [sql] = mockQuery.mock.calls[0] as [string];
+    // The whole bug was that this column existed and was never read.
+    expect(sql).toContain("findings");
+  });
+
+  it("caps a large list and says that it did", async () => {
+    const many = Array.from({ length: 60 }, (_, i) =>
+      FINDING(`finding-${i}`, "medium"),
+    );
+    mockQuery.mockResolvedValueOnce(scanRow(many));
+
+    const json = await (await GET(getRequestWithId("history", "42"))).json();
+
+    expect(json.content).toContain("Showing the 40 most severe of 60");
+    expect(json.content).not.toContain("finding-59");
+  });
+
+  it("omits the findings section entirely for a clean scan", async () => {
+    mockQuery.mockResolvedValueOnce(scanRow([]));
+    const json = await (await GET(getRequestWithId("history", "42"))).json();
+    expect(json.content).not.toContain("## Findings");
+  });
+
+  it("survives a row whose findings column is not an array", async () => {
+    mockQuery.mockResolvedValueOnce(scanRow(null as unknown as unknown[]));
+    const res = await GET(getRequestWithId("history", "42"));
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("GET /api/v3/ai/context?cmd=legal", () => {
