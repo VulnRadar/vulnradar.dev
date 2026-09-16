@@ -1,5 +1,4 @@
-"use client";
-
+// Server component, for the same reason components/shared/callout.tsx is.
 // Moved to components/shared/callout.tsx once /legal and /security needed the
 // same aside. Re-exported under the old name so the 19 docs pages that render
 // it did not all have to change.

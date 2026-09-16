@@ -1,4 +1,7 @@
-"use client";
+// Server component. Marked "use client" with no state, effects, handlers or
+// browser API, and rendered from server pages throughout app/docs and
+// app/legal - six times in one page in places. It is a bordered box with an
+// icon; there was never anything for the client to do.
 
 import {
   AlertTriangle,

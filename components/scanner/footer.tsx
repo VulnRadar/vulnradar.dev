@@ -1,4 +1,10 @@
-"use client";
+// Server component. It was marked "use client" and uses no state, no
+// effects, no handlers and no browser API - and it is rendered directly by
+// server components on ~45 pages (both page shells and the landing page),
+// so the directive pulled the footer and its whole import graph into the
+// client bundle and the hydration pass of nearly every route in the
+// product. ThemedLogo and SocialLinks are server components too, so
+// nothing below this needs a client boundary either.
 
 import Link from "next/link";
 import { Heart, Mail } from "lucide-react";

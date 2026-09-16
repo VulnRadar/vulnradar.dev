@@ -1,5 +1,4 @@
-"use client";
-
+// Server component, for the same reason components/shared/callout.tsx is.
 import { Callout } from "@/components/shared/callout";
 
 /**
