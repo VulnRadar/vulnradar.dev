@@ -292,8 +292,9 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // away from normalizedUrl (e.g. https://host/ -> https://host/landing).
     // Passed to finalizeScanSuccess so scan_history.url reflects the page
     // that was really scanned, not just the URL the scan was requested
-    // with -- everything else in this function (finding ids, DNS/email
-    // checks, etc.) intentionally keeps using normalizedUrl as-is.
+    // with. Finding ids and DNS/email checks keep using normalizedUrl; the
+    // sync checks judge finalScanUrl, since the headers and body they read
+    // came from it (see checkPasses in engine.ts).
     let finalScanUrl: string | undefined;
 
     // Get protocol-specific findings first (only meaningful when URL scheme
@@ -608,6 +609,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           bodyForChecks,
           selectedScanners as Category[] | null,
           onProgress,
+          finalScanUrl,
         );
 
     // Real detection for sourcemap-sourcescontent-exposed (content.ts's
@@ -628,7 +630,13 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // unbounded await on the scan's critical path. ref: AUDIT-012#perf-02
     const sourceMapPromise = isRawIpTarget
       ? Promise.resolve(null)
-      : checkSourceMapSourcesExposed(normalizedUrl, headers, bodyForChecks);
+      : // The fetched URL, because a relative sourceMappingURL resolves
+        // against the page that referenced it, not the one requested.
+        checkSourceMapSourcesExposed(
+          finalScanUrl ?? normalizedUrl,
+          headers,
+          bodyForChecks,
+        );
     sourceMapPromise.catch(() => {});
 
     // Await async checks (already running in parallel with sync)

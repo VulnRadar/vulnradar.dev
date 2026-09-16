@@ -217,6 +217,10 @@ async function scanSingleUrl(
     bodyForChecks,
     scanners as Category[] | null,
     onProgress,
+    // The page this crawl entry actually landed on, when a same-host redirect
+    // moved it. Detectors judge the response they are reading; ids stay on
+    // the crawled URL (see checkPasses in engine.ts).
+    response.url && response.url !== url ? response.url : undefined,
   );
   const syncFindings = syncResult.findings;
 

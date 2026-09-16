@@ -74,6 +74,13 @@ export type CheckFn = ((
   url: string,
   headers: Headers,
   body: string,
+  /**
+   * The URL the finding id is keyed on, when it differs from `url`. `url` is
+   * what the detector judges (the page actually fetched, after redirects);
+   * this is the URL the scan was requested with, which is what finding ids,
+   * triage marks and regression baselines have always been keyed on.
+   */
+  idUrl?: string,
 ) => Vulnerability | null) & {
   /**
    * The check id this function was built from. Carried on the function itself
@@ -389,10 +396,10 @@ export function buildVulnerabilityFromEvidence(
 function buildCheck(def: CheckDef): CheckFn | null {
   const detect = detectorMap[def.id];
   if (!detect) return null;
-  const fn: CheckFn = (url, headers, body): Vulnerability | null => {
+  const fn: CheckFn = (url, headers, body, idUrl): Vulnerability | null => {
     const evidence = detect(url, headers, body);
     if (!evidence) return null;
-    return buildVulnerabilityFromEvidence(def, url, evidence);
+    return buildVulnerabilityFromEvidence(def, idUrl ?? url, evidence);
   };
   fn.checkId = def.id;
   return fn;

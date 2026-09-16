@@ -441,8 +441,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       // safeFetch restricts any redirect it follows to the same host (see its
       // own comment), so this is never a different site -- only a different
       // path/query on the one that was requested. Recorded separately from
-      // `url` so every check below keeps running against the URL that was
-      // actually requested; only scan_history's stored identity changes.
+      // `url`, which stays the identity finding ids are keyed on. The sync
+      // checks judge finalScanUrl, since the headers and body came from it.
       if (response.url && response.url !== url) {
         finalScanUrl = response.url;
       }
@@ -491,6 +491,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       headers,
       bodyForChecks,
       (scanners as Category[] | undefined) ?? null,
+      undefined,
+      finalScanUrl,
     );
     const syncFindings: Vulnerability[] = syncResult.findings;
 

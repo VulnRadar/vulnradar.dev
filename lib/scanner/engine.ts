@@ -150,8 +150,16 @@ export function runSyncChecks(
   body: string,
   categories?: Category[] | null,
   onProgress?: ScanProgressHook,
+  fetchedUrl?: string,
 ): SyncCheckResult {
-  const pass = checkPasses(url, headers, body, categories, onProgress);
+  const pass = checkPasses(
+    url,
+    headers,
+    body,
+    categories,
+    onProgress,
+    fetchedUrl,
+  );
   let step = pass.next();
   while (!step.done) step = pass.next();
   return step.value;
@@ -205,8 +213,16 @@ export async function runSyncChecksYielding(
   body: string,
   categories?: Category[] | null,
   onProgress?: ScanProgressHook,
+  fetchedUrl?: string,
 ): Promise<SyncCheckResult> {
-  const pass = checkPasses(url, headers, body, categories, onProgress);
+  const pass = checkPasses(
+    url,
+    headers,
+    body,
+    categories,
+    onProgress,
+    fetchedUrl,
+  );
   let step = pass.next();
   while (!step.done) {
     await yieldToEventLoop();
@@ -228,7 +244,22 @@ function* checkPasses(
   body: string,
   categories?: Category[] | null,
   onProgress?: ScanProgressHook,
+  /**
+   * The URL the headers and body really came from, when the fetch followed a
+   * redirect. Detectors judge THIS: `headers` belong to it, and a scheme-gated
+   * check reading the requested URL instead got the protocol wrong. A scan
+   * requested as http://example.com that redirects to https://example.com
+   * was told it had no TLS at all (deprecated-tls, high) while HSTS on the
+   * HTTPS response it actually inspected was never checked (hsts-missing
+   * returns early for any non-https URL), and mixed-content and form-action
+   * were skipped on a real HTTPS page.
+   *
+   * `url` stays the identity: finding ids are keyed on it, as are triage marks
+   * and regression baselines, so a redirect never changes a finding's id.
+   */
+  fetchedUrl?: string,
 ): Generator<void, SyncCheckResult, void> {
+  const detectUrl = fetchedUrl ?? url;
   const allowedCategories =
     categories && categories.length > 0 ? new Set(categories) : null;
   const applicablePageChecks = allowedCategories
@@ -245,7 +276,7 @@ function* checkPasses(
   yield;
   const ctx =
     applicablePageChecks.length > 0
-      ? buildPageContext(url, headers, body)
+      ? buildPageContext(detectUrl, headers, body)
       : null;
 
   const findings: Vulnerability[] = [];
@@ -277,7 +308,7 @@ function* checkPasses(
 
     for (const check of catLegacyChecks) {
       try {
-        const result = check(url, headers, body);
+        const result = check(detectUrl, headers, body, url);
         if (result) findings.push(result);
       } catch (err) {
         // One bad detector must not take the scan down with it, but it must

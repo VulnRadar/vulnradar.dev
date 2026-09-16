@@ -364,3 +364,65 @@ describe("runSyncChecksYielding", () => {
     ).rejects.toBeInstanceOf(Stop);
   });
 });
+
+/**
+ * Detectors judge the response they read; ids stay on the requested URL.
+ *
+ * safeFetch follows same-host redirects, so a scan requested as
+ * http://example.com that lands on https://example.com hands the engine the
+ * HTTPS response's headers and body. The engine used to be told the requested
+ * URL anyway, and every scheme-gated check got the protocol wrong in the
+ * direction that hurts most: deprecated-tls reported "no TLS at all" at high
+ * severity for a page that was served over TLS, and hsts-missing, which only
+ * runs for https URLs, never looked at the HTTPS response it was holding.
+ */
+describe("runSyncChecks against a redirected fetch", () => {
+  const requested = "http://example.com/";
+  const fetched = "https://example.com/";
+  const headers = new Headers({ "content-type": "text/html" });
+  const body = "<!doctype html><html><head></head><body>ok</body></html>";
+  const ids = (url: string, fetchedUrl?: string) =>
+    runSyncChecks(
+      url,
+      headers,
+      body,
+      ["headers"],
+      undefined,
+      fetchedUrl,
+    ).findings.map((f) => f.id);
+
+  it("judges HSTS on the HTTPS response it actually fetched", () => {
+    const found = ids(requested, fetched);
+    expect(found.some((id) => id.startsWith("hsts-missing--"))).toBe(true);
+  });
+
+  it("does not claim a page served over TLS has no TLS", () => {
+    const found = ids(requested, fetched);
+    expect(found.some((id) => id.startsWith("deprecated-tls--"))).toBe(false);
+  });
+
+  it("still reports plain HTTP when the fetch really stayed on HTTP", () => {
+    const found = ids(requested);
+    expect(found.some((id) => id.startsWith("deprecated-tls--"))).toBe(true);
+  });
+
+  it("keys finding ids on the requested URL, so a redirect never changes an id", () => {
+    // Same check, same response, judged either way: the id must be the one
+    // computed from the requested URL, because triage marks and regression
+    // baselines are stored against it.
+    const viaRedirect = ids(requested, fetched).find((id) =>
+      id.startsWith("hsts-missing--"),
+    );
+    const direct = runSyncChecks(fetched, headers, body, ["headers"])
+      .findings.map((f) => f.id)
+      .find((id) => id.startsWith("hsts-missing--"));
+    expect(viaRedirect).toBeDefined();
+    expect(direct).toBeDefined();
+    expect(viaRedirect).not.toBe(direct);
+    const hashOf = (id?: string) => id?.split("--")[1];
+    const requestedOnly = runSyncChecks(requested, headers, body, ["headers"])
+      .findings.map((f) => f.id)
+      .find((id) => id.startsWith("deprecated-tls--"));
+    expect(hashOf(viaRedirect)).toBe(hashOf(requestedOnly));
+  });
+});
