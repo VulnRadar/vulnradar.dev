@@ -11,6 +11,12 @@
  * Optional:
  *   VULNRADAR_SELF_SCAN_REPORT=path.json  writes every finding, accepted or not
  *   VULNRADAR_SELF_SCAN_LIMIT=50          scans only the first N routes
+ *   VULNRADAR_SELF_SCAN_BEHIND_TLS=1      the instance is reached directly over
+ *     plain HTTP but deployed behind a TLS terminator, which is the only
+ *     supported production shape (CI's container). Requests carry
+ *     X-Forwarded-Proto: https, as that terminator would send, and each page
+ *     is judged at its https URL on the default port, which is what a visitor
+ *     gets. Without it a CI run would be scanning a transport nobody uses.
  *
  * A finding is either a defect in the app, which gets fixed, a defect in the
  * check, which gets fixed, or an accepted finding listed in ACCEPTED below
@@ -29,6 +35,7 @@ import { APP_NAME } from "@/lib/config/constants";
 const BASE = process.env.VULNRADAR_SELF_SCAN_URL?.replace(/\/+$/, "");
 const REPORT = process.env.VULNRADAR_SELF_SCAN_REPORT;
 const LIMIT = Number(process.env.VULNRADAR_SELF_SCAN_LIMIT) || Infinity;
+const BEHIND_TLS = process.env.VULNRADAR_SELF_SCAN_BEHIND_TLS === "1";
 // The engine's default body cap (CONFIG_SCAN_MAX_BODY_BYTES ships 1 MiB).
 const MAX_BODY_BYTES = 1_048_576;
 const CONCURRENCY = 6;
@@ -64,20 +71,26 @@ interface RouteResult {
 
 async function scanRoute(path: string): Promise<RouteResult> {
   const url = `${BASE}${path}`;
+  // The terminator serves 443, so the direct port goes with the scheme.
+  const judged = (u: string) =>
+    BEHIND_TLS ? u.replace(/^http:\/\/([^/:]+)(?::\d+)?/i, "https://$1") : u;
   try {
     const res = await fetch(url, {
       redirect: "follow",
-      headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+      headers: {
+        "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
+        ...(BEHIND_TLS ? { "X-Forwarded-Proto": "https" } : {}),
+      },
       signal: AbortSignal.timeout(30_000),
     });
     const body = await safeReadBody(res, MAX_BODY_BYTES);
     const { findings } = runSyncChecks(
-      url,
+      judged(url),
       res.headers,
       body,
       null,
       undefined,
-      res.url || url,
+      judged(res.url || url),
     );
     return {
       path,

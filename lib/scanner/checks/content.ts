@@ -2416,8 +2416,10 @@ const rawDetectors: Record<string, DetectFn> = {
     // enabled: require the reference to actually sit in a /graphql-looking
     // context, either the URL path or a nearby GraphQL response envelope,
     // not a bare substring anywhere on the page.
+    // A /graphql path segment, the same rule api.ts applies: a bare
+    // /\/graphql/ also matched /graphql-introspection and /graphql-guide.
     const looksLikeGraphQL =
-      /\/graphql/i.test(url) || hasGraphQLResponseEnvelope(body);
+      /\/graphql(?:[/?#]|$)/i.test(url) || hasGraphQLResponseEnvelope(body);
     if (!looksLikeGraphQL) return null;
     if (
       /__schema\s*\{|query\s*IntrospectionQuery|getIntrospectionQuery/i.test(

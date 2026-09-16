@@ -387,16 +387,23 @@ export function middleware(request: NextRequest) {
   // but not every self-hosted deployment gets that configured. X-Forwarded-
   // Proto reflects what the client actually connected with, trusted the
   // same way requestSelfOrigin() below trusts it -- redirect here as a
-  // fallback whenever it explicitly says "http". A no-op for any proxy
-  // that already upgrades before forwarding (the request would already be
-  // https by the time it reaches here), and for a direct/internal request
-  // with no proxy in front at all (no header present, nothing to redirect
-  // on).
+  // fallback whenever it says "http". A no-op for any proxy that already
+  // upgrades before forwarding.
+  //
+  // It is NOT a no-op for a direct request with no proxy at all, which this
+  // comment used to claim: Next.js's server fills in x-forwarded-proto itself
+  // (`??= "http"`) before middleware runs, so every direct plain-HTTP request
+  // is redirected. That includes the image's own HEALTHCHECK and compose's,
+  // which call http://localhost:3000/api/v3/health from inside the container:
+  // wget followed the 301 to https://localhost:3000, where nothing speaks
+  // TLS, and every install reported unhealthy. A health probe always connects
+  // directly, so the health endpoint is never redirected.
   // ALLOW_INSECURE_HTTP=1 turns this off for a deployment that has no TLS at
   // all (see the constant's own comment); without an opt-out, such an install
   // was redirected to an https URL that nothing was listening on.
   if (
     !ALLOW_INSECURE_HTTP &&
+    request.nextUrl.pathname !== "/api/v3/health" &&
     request.headers
       .get("x-forwarded-proto")
       ?.split(",")[0]

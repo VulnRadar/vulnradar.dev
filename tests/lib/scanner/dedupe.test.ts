@@ -56,6 +56,16 @@ describe("dedupeFindings", () => {
     );
   });
 
+  it("keeps the live GraphQL introspection result over the keyword matches", () => {
+    const { findings, merged } = dedupeFindings([
+      finding("graphql-introspection", { severity: "low" }),
+      finding("api-graphql-introspection-enabled", { severity: "low" }),
+      finding("async-graphql-introspection-enabled", { severity: "medium" }),
+    ]);
+    expect(merged).toBe(2);
+    expect(checkIdOf(findings[0])).toBe("async-graphql-introspection-enabled");
+  });
+
   it("keeps findings with no group entirely untouched", () => {
     const input = [finding("hsts-missing"), finding("xcto-missing")];
     const { findings, merged } = dedupeFindings(input);

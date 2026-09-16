@@ -739,3 +739,29 @@ describe("middleware: x-pathname forwarding", () => {
     expect(res.headers.get("x-middleware-request-x-pathname")).toBe("/landing");
   });
 });
+
+/**
+ * Next.js's server sets x-forwarded-proto to "http" on every direct plain-HTTP
+ * request before middleware runs, so the fallback redirect applied to them all,
+ * including the Docker HEALTHCHECK and compose's, which call
+ * http://localhost:3000/api/v3/health from inside the container and followed
+ * the 301 to an https port nothing listens on.
+ */
+describe("middleware: plain-HTTP redirect", () => {
+  it("redirects a request that arrived over plain HTTP", () => {
+    const res = middleware(
+      makeRequest("/pricing", { headers: { "x-forwarded-proto": "http" } }),
+    );
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toMatch(/^https:\/\//);
+  });
+
+  it("never redirects the health endpoint a container probe calls directly", () => {
+    const res = middleware(
+      makeRequest("/api/v3/health", {
+        headers: { "x-forwarded-proto": "http" },
+      }),
+    );
+    expect(res.status).not.toBe(301);
+  });
+});

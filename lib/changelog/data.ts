@@ -260,6 +260,12 @@ const CHANGELOG: Release[] = [
         category: "security",
       },
       {
+        icon: ShieldCheck,
+        label: "VulnRadar Scans Itself on Every Build",
+        desc: "CI now boots the production image and runs every page the sitemap publishes, all 871 of them, through the same engine a scan uses. A finding fails the build unless it is listed as accepted with the reason it is not a defect, and there are three: two informational notes about inline styles that our script-locked policy permits, and the API description we publish on purpose. Nothing in the engine knows our own hostname, and no check was weakened to get there.",
+        category: "added",
+      },
+      {
         icon: Mail,
         label: "Send a Broadcast to Yourself Before Sending It to Everyone",
         desc: "The broadcast composer had a preview and a send button and nothing in between, and the preview cannot show what Gmail or Outlook will actually do with the message. Send test to me delivers the composed message to your own inbox through the same email layout, with your own unsubscribe link. It writes nothing: no draft, no recipient records, no history entry, so an unsaved draft can be tested as often as needed. The subject is prefixed [TEST] so it cannot be confused with the real send, and it is rate limited.",
@@ -276,6 +282,12 @@ const CHANGELOG: Release[] = [
         label: "The Assistant Can See How Much of Your Limit Is Left",
         desc: "Asked why a scan would not start, the assistant could see your daily limit but not how much of it you had used, so it guessed. It now reads the same usage figure the scan routes enforce, so the number it quotes is the one that decides your next scan. When you ask about a specific scan it can also name the findings, not just count them by severity.",
         category: "added",
+      },
+      {
+        icon: UserCheck,
+        label: "Password Managers Recognise the Sign-In Field",
+        desc: "The email field on the sign-in and sign-up forms was marked as an email address rather than as the username, which is the field password managers pair with the password. Our own scanner reported it.",
+        category: "improved",
       },
       {
         icon: Palette,
@@ -359,7 +371,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Layers,
         label: "One Misconfiguration, One Finding",
-        desc: "Newer checks declared which older checks they duplicate, but the older checks never got the matching entry, so the two never merged. One session cookie with no attributes produced nine findings, one policy with a wildcard and an http: source produced four, and a frameable page, a target=_blank link and an http:// image were each reported two or three times. They now merge into one finding that lists the other checks that agreed. Tests fail on a merge rule naming a check that does not exist or a group with a single member, which is how seven rules had quietly stopped doing anything.",
+        desc: "Newer checks declared which older checks they duplicate, but the older checks never got the matching entry, so the two never merged. One session cookie with no attributes produced nine findings, one policy with a wildcard and an http: source produced four, and a frameable page, a target=_blank link and an http:// image were each reported two or three times. They now merge into one finding that lists the other checks that agreed. Tests fail on a merge rule naming a check that does not exist or a group with a single member, which is how seven rules had quietly stopped doing anything. GraphQL introspection, reported by two keyword checks and the live query that confirms it, is one finding too, and the confirmed result is the one kept.",
         category: "engine",
       },
       {
@@ -371,7 +383,7 @@ const CHANGELOG: Release[] = [
       {
         icon: FileSearch,
         label: "Writing About a Vulnerability No Longer Scores as Having One",
-        desc: "The source-code checks read tutorial snippets inside pre and code blocks as the site's own code, so a documentation page showing a vulnerable example was reported as vulnerable. The debug-mode, stack-trace and internal-path checks did the same with example output. They now skip code examples, the way the API, supply-chain and AI-generated-code checks already did, and a real stack trace printed into the page is still found. The Django debug marker also matches the page Django actually renders.",
+        desc: "Scanning our own site with our own engine raised about 120 checks, a dozen at critical, almost all on the check catalog and the documentation: PHP create_function() at critical, an HMAC compared with === at high, a site reading session cookies and opening the camera. Those pages run none of that code. They name it, the way every security blog and framework tutorial does, so every customer with a documentation site was getting the same report. Removing code blocks was not enough, because the same words sit in headings, paragraphs, link text, data attributes, the meta description and, on a Next.js site, a second copy of the page's text inside a script tag. Checks that look for a code pattern now read the page as a browser acts on it: tags, the attributes that do something, and the page's own scripts, without the prose. Checks whose evidence is text, such as a stack trace or an error page, still read the text. A test pins both halves: a page quoting eighteen dangerous snippets every way a page can reports nothing a blank page would not, and a page that really runs them still fires.",
         category: "engine",
       },
       {
@@ -384,6 +396,12 @@ const CHANGELOG: Release[] = [
         icon: CheckCheck,
         label: "Wrong Verdicts Corrected",
         desc: "Sites enforcing Trusted Types were told they were not, because the check searched the policy for the JavaScript API's name instead of the directive. Algolia's public search key, which Algolia's own documentation names ApiKey, was reported as a leaked admin key at critical. One check stated that jsonwebtoken accepts any algorithm when none is specified, which version 9 does not, and reported every verify call without one as critical; only an explicit none is reported now. Hardening guides that mention /.git/config were reported as exposing it. In the other direction: postMessage calls with a transfer list were missed, one Secure cookie hid every insecure cookie in the same response, a library pinned as jquery@1.12.4 the way jsDelivr and unpkg load it was never matched, Docker Hub organization tokens were not recognised, and neither was the /swagger-ui path.",
+        category: "engine",
+      },
+      {
+        icon: ScanSearch,
+        label: "Error Pages Are Recognised by Their Own Markup",
+        desc: "A default error page is evidence because of its text, so these checks cannot simply ignore text; they matched a sentence describing the page instead of the page. Each now looks for what the real page renders: nginx's centred version footer, Apache's address signature, S3's error code element, the ASP.NET yellow screen's section labels, the .NET Core exception page's stack tab, Jenkins' head attributes and Grafana's boot data. A subdomain takeover fingerprint only counts on a short page, since an unclaimed-domain response is a sentence or two. Several plain bugs went with them: the GraphQL checks treated /graphql-introspection as a GraphQL endpoint, the Swagger check matched any path starting /swagger and a link to a vendor's API docs, two secret checks fired on their own name in a link, and the hidden password field check read Tailwind's outline-hidden class as a hidden field, so every styled sign-in form was flagged.",
         category: "engine",
       },
       {
@@ -426,6 +444,18 @@ const CHANGELOG: Release[] = [
         icon: Container,
         label: "Copying .env.example No Longer Breaks Signup",
         desc: "The example environment file shipped a Turnstile site key placeholder uncommented. The captcha switches on when that variable is present, but its secret was still unset, so on a fresh install copied exactly as the README instructs, signup, password reset and the contact form all failed. It is commented out like every other credential. The quick-start also told you to run a database initialisation script that actually creates a second, unused database; the schema already creates itself on first start, and that step is gone.",
+        category: "selfhost",
+      },
+      {
+        icon: Activity,
+        label: "Container Health Checks Pass",
+        desc: "The app redirects plain-HTTP requests to https, and it applied that to every direct request, because the server fills in the forwarded-protocol header itself when no proxy has. The image's health check calls the health endpoint over plain HTTP from inside the container, followed the redirect to a port that does not speak TLS, and failed, so every Docker and docker-compose install reported unhealthy. The health endpoint is never redirected now. The CI smoke test had passed throughout, because the tool it used counts a redirect as success; it now requires a real 200 and runs the image's own health check.",
+        category: "selfhost",
+      },
+      {
+        icon: Activity,
+        label: "An Incomplete Test Run Cannot Pass Quietly",
+        desc: "The guard that fails a test run when a worker never started counted only the main test folder, so a run that lost the browser extension's suites still matched the number on disk. It now counts every folder the runner collects.",
         category: "selfhost",
       },
       {

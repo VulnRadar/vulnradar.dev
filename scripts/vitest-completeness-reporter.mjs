@@ -30,6 +30,12 @@ const RESET = COLOR ? "\x1b[0m" : "";
  */
 const ROOT = resolve(import.meta.dirname, "..");
 const TESTS_DIR = join(ROOT, "tests");
+/**
+ * Every root the root config's `include` collects from, with the same file
+ * shapes. extension/tests joined the include without joining this count, and
+ * `.tsx` suites were never counted, so a run that lost either still matched.
+ */
+const TEST_ROOTS = [TESTS_DIR, join(ROOT, "extension", "tests")];
 
 /**
  * tests/integration/ is excluded from the root config's `include`, so its
@@ -49,7 +55,7 @@ function countTestFiles(dir) {
     if (statSync(full).isDirectory()) {
       if (dir === TESTS_DIR && UNCOUNTED_DIRS.has(entry)) continue;
       n += countTestFiles(full);
-    } else if (/\.(test|spec)\.ts$/.test(entry)) {
+    } else if (/\.(test|spec)\.tsx?$/.test(entry)) {
       n += 1;
     }
   }
@@ -80,7 +86,7 @@ export default class CompletenessReporter {
 
     let onDisk;
     try {
-      onDisk = countTestFiles(TESTS_DIR);
+      onDisk = TEST_ROOTS.reduce((n, dir) => n + countTestFiles(dir), 0);
     } catch {
       return; // cannot read the tree: stay out of the way
     }
@@ -94,7 +100,7 @@ export default class CompletenessReporter {
       // verbatim, and an escape sequence there is literal noise sitting in
       // front of the one line that says the run proved nothing.
       `\n${RED}${BOLD}INCOMPLETE TEST RUN${RESET}\n` +
-        `  ${ranCount} test files ran, but ${onDisk} exist under tests/.\n` +
+        `  ${ranCount} test files ran, but ${onDisk} exist under tests/ and extension/tests/.\n` +
         `  ${missing} file${missing === 1 ? "" : "s"} never executed, ` +
         `almost certainly a forks worker that failed to start.\n` +
         `  This run proves nothing about the missing files. Re-run it.\n`,

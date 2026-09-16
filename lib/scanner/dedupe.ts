@@ -138,6 +138,11 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "clickjack-missing": "clickjacking",
   "code-clickjack-x-frame-options": "clickjacking",
   "target-blank-no-noopener": "anchor-target-blank-no-noopener",
+  // GraphQL introspection. Two passive keyword checks and the live query that
+  // confirms it; the survivor is the confirmed one whenever it ran.
+  "graphql-introspection": "graphql-introspection",
+  "api-graphql-introspection-enabled": "graphql-introspection",
+  "async-graphql-introspection-enabled": "graphql-introspection",
 };
 
 /** The check ID a finding came from, recovered from its stable finding ID. */

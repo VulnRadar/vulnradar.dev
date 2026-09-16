@@ -491,7 +491,7 @@ jobs:
   selfhost:
     name: Self-host smoke test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -541,8 +541,14 @@ jobs:
             -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
             vulnradar:ci
 
+          # A 200 from the health endpoint, not merely a non-error: curl -f
+          # treats a 301 as success, and the app's plain-HTTP redirect answered
+          # this probe with one, so the job reported "healthy" on a redirect
+          # while the image's own HEALTHCHECK (wget, which follows it into an
+          # https port nothing serves) was failing on every install.
           for i in $(seq 1 60); do
-            if curl -fsS http://localhost:3000/api/v3/health > /dev/null 2>&1; then
+            code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:3000/api/v3/health 2>/dev/null || true)
+            if [ "$code" = "200" ]; then
               echo "healthy after ${i}0s"
               exit 0
             fi
@@ -567,6 +573,32 @@ jobs:
             2>/dev/null || echo 0)
           echo "tables created: $count"
           test "$count" -gt 40 || { echo "expected the full schema, got $count tables"; exit 1; }
+
+      - name: Assert the image's own HEALTHCHECK passes
+        run: |
+          set -euo pipefail
+          docker exec vr-smoke wget --no-verbose --tries=1 --spider http://localhost:3000/api/v3/health
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: "22.23.2"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # VulnRadar must pass VulnRadar. Every route the sitemap publishes is
+      # fetched from the container just booted and run through the same engine
+      # a scan uses. A finding fails the build unless tests/selfscan lists it
+      # as accepted, with the reason it is not a defect. The container is
+      # reached over plain HTTP but deployed behind a TLS terminator, so pages
+      # are judged at their https URL (see the suite's header).
+      - name: Self-scan every published route
+        env:
+          VULNRADAR_SELF_SCAN_URL: http://localhost:3000
+          VULNRADAR_SELF_SCAN_BEHIND_TLS: "1"
+        run: npx vitest run tests/selfscan
 
       - name: Container logs on failure
         if: failure()
