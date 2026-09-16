@@ -472,7 +472,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Wrench,
         label: "Grant Credits From the Admin Panel",
-        desc: "Staff can now see a user's AI, GitHub review and browser session credit balances in the admin panel and add credits directly, for example to make up for a problem, without touching the database. Each grant needs a reason and is recorded in the audit log, has a sensible maximum, and staff cannot grant credits to their own account. Only admins and the billing role can do this.",
+        desc: "Staff can now see a user's AI, GitHub review and browser session credit balances in the admin panel and add credits directly, for example to make up for a problem, without touching the database. Each grant needs a reason and the staff member's own password, is recorded in the audit log, has a sensible maximum, and staff cannot grant credits to their own account. Only admins and the billing role can do this.",
         category: "admin",
       },
       {

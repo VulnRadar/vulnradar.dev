@@ -213,16 +213,20 @@ export function UserDetailPanel({
   >("ai");
   const [creditGrantAmount, setCreditGrantAmount] = useState("");
   const [creditGrantReason, setCreditGrantReason] = useState("");
-  async function grantCredits() {
-    const result = await onAction(u.id, "grant_credits", {
-      creditType: creditGrantType,
-      amount: Number(creditGrantAmount),
-      reason: creditGrantReason.trim(),
-    });
-    if (result.ok) {
-      setCreditGrantAmount("");
-      setCreditGrantReason("");
-    }
+  // Password-gated (PASSWORD_GATED_ACTIONS), so it goes through the same
+  // queue as the other gated actions; executeSupportAction clears the form.
+  function grantCredits() {
+    queueSupportAction(
+      "grant_credits",
+      "Grant Credits",
+      `Add ${creditGrantAmount.trim()} ${creditGrantType === "browser" ? "browser minutes" : creditGrantType === "github" ? "GitHub review tokens" : "AI tokens"} to ${u.name || u.email}'s balance.`,
+      "default",
+      {
+        creditType: creditGrantType,
+        amount: Number(creditGrantAmount),
+        reason: creditGrantReason.trim(),
+      },
+    );
   }
   const [editingNote, setEditingNote] = useState<{
     id: number;
@@ -477,6 +481,10 @@ export function UserDetailPanel({
       ...(password ? { currentAdminPassword: password } : {}),
     });
     if (result.ok) {
+      if (pendingSupportAction.action === "grant_credits") {
+        setCreditGrantAmount("");
+        setCreditGrantReason("");
+      }
       if (pendingSupportAction.action === "impersonate") {
         // The browser's session cookie now points at the target user's
         // session (see lib/auth/impersonation.ts) -- a full reload, not
@@ -2606,7 +2614,7 @@ export function UserDetailPanel({
                             !creditGrantReason.trim() ||
                             isLoading("grant_credits")
                           }
-                          onClick={() => void grantCredits()}
+                          onClick={grantCredits}
                         >
                           {isLoading("grant_credits") ? (
                             <Loader2

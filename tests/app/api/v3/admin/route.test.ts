@@ -1532,6 +1532,7 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
       role: "user",
       unsubscribe_token: null,
     });
+    queueAdminPassword(adminHash);
     mockQuery.mockResolvedValueOnce({
       rows: [{ ai_credit_balance: "51000" }],
     });
@@ -1539,6 +1540,7 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
       patchRequest({
         action: "grant_credits",
         userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
         creditType: "ai",
         amount: 1000,
         reason: "support ticket #123",
@@ -1568,6 +1570,7 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
       role: "user",
       unsubscribe_token: null,
     });
+    queueAdminPassword(adminHash);
     mockQuery.mockResolvedValueOnce({
       rows: [{ github_credit_balance: 2000 }],
     });
@@ -1575,6 +1578,7 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
       patchRequest({
         action: "grant_credits",
         userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
         creditType: "github",
         amount: 2000,
         reason: "goodwill credit",
@@ -1598,6 +1602,7 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
       role: "user",
       unsubscribe_token: null,
     });
+    queueAdminPassword(adminHash);
     mockQuery.mockResolvedValueOnce({
       rows: [{ browserbase_credit_seconds_balance: "3600" }],
     });
@@ -1605,6 +1610,7 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
       patchRequest({
         action: "grant_credits",
         userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
         creditType: "browser",
         amount: 30,
         reason: "demo session",
@@ -1652,8 +1658,14 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
       role: "user",
       unsubscribe_token: null,
     });
+    queueAdminPassword(adminHash);
     const res = await PATCH(
-      patchRequest({ action: "grant_credits", userId: 5, ...body }),
+      patchRequest({
+        action: "grant_credits",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+        ...body,
+      }),
     );
     expect(res.status).toBe(400);
     expect(mockLogAction).not.toHaveBeenCalled();
@@ -1665,6 +1677,7 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
       patchRequest({
         action: "grant_credits",
         userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
         creditType: "ai",
         amount: 100,
         reason: "x",
@@ -1681,11 +1694,13 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
       role: "user",
       unsubscribe_token: null,
     });
+    queueAdminPassword(adminHash);
     mockQuery.mockResolvedValueOnce({ rows: [{ ai_credit_balance: "100" }] });
     const res = await PATCH(
       patchRequest({
         action: "grant_credits",
         userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
         creditType: "ai",
         amount: 100,
         reason: "billing role check",
@@ -1693,6 +1708,30 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
     );
     expect(res.status).toBe(200);
   });
+
+  it("requires the admin's password, like every other action that adds value", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "grant_credits",
+        userId: 5,
+        creditType: "ai",
+        amount: 100,
+        reason: "no password supplied",
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(mockLogAction).not.toHaveBeenCalled();
+    expect(
+      mockQuery.mock.calls.some((c) => String(c[0]).includes("ai_credit_balance")),
+    ).toBe(false);
+  }, 20000);
 
   it("rejects a self-grant (staff cannot enrich their own balance)", async () => {
     queueRole("admin");

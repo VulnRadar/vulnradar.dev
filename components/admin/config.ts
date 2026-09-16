@@ -389,6 +389,10 @@ export const PASSWORD_GATED_ACTIONS = new Set([
   "make_admin",
   "set_role",
   "impersonate",
+  // Adds real, non-expiring spendable balance, up to 20M AI tokens or 500
+  // browser minutes a call, so a hijacked staff session should not be able
+  // to repeat it without the password.
+  "grant_credits",
   // Not a PATCH /api/v3/admin action: it names the POST to
   // /api/v3/admin/staff-invites, which grants the same privilege set_role
   // does (admin is selectable) and used to take one unconfirmed click.
