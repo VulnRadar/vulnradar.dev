@@ -26,7 +26,9 @@ const { GET } = await import("@/app/api/v3/admin/queue-status/route");
  * ever read.
  */
 function req(query = "") {
-  return new Request(`https://vulnradar.test/api/v3/admin/queue-status${query}`);
+  return new Request(
+    `https://vulnradar.test/api/v3/admin/queue-status${query}`,
+  );
 }
 
 function withAdmin(userId = 7, role = "admin") {
