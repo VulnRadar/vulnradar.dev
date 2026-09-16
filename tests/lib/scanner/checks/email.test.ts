@@ -112,6 +112,26 @@ describe("checkSpfRecordQuality", () => {
     expect(ids(findings)).toContain("email-spf-all-mechanism-missing");
   });
 
+  it("flags an explicit ?all, which RFC 7208 treats as no policy", async () => {
+    txtByName({ "example.com": ["v=spf1 include:_spf.google.com ?all"] });
+    const findings = await checkSpfRecordQuality("example.com", URL_UNDER_TEST);
+    const hit = findings.find(
+      (f) => f.id.split("--")[0] === "email-spf-all-mechanism-missing",
+    );
+    expect(hit?.description).toContain("?all");
+  });
+
+  it("does not flag ~all or -all", async () => {
+    for (const all of ["~all", "-all"]) {
+      txtByName({ "example.com": [`v=spf1 include:_spf.google.com ${all}`] });
+      const findings = await checkSpfRecordQuality(
+        "example.com",
+        URL_UNDER_TEST,
+      );
+      expect(ids(findings)).not.toContain("email-spf-all-mechanism-missing");
+    }
+  });
+
   it("flags redirect= sitting alongside an all mechanism", async () => {
     txtByName({
       "example.com": ["v=spf1 ip4:203.0.113.1 -all redirect=_spf.example.net"],

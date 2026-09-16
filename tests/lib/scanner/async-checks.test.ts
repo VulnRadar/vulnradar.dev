@@ -226,6 +226,31 @@ describe("checkSPFChain", () => {
     expect(findings).toEqual([]);
   });
 
+  it("counts bare a and mx, which RFC 7208 counts with or without a domain", async () => {
+    // `v=spf1 a mx include:...` is the textbook record, and the mechanism
+    // regex required a colon, so bare a and mx cost nothing. Nine includes
+    // plus a and mx is eleven lookups: a permerror for every receiver.
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "example.com") return [[`v=spf1 a mx ${includes(9)} -all`]];
+      if (/^leaf\d+\.example$/.test(name)) return [[LEAF]];
+      throw new Error("NXDOMAIN");
+    });
+    const findings = await checkSPFChain("example.com", "https://example.com");
+    expect(findings.length).toBe(1);
+    expect(findings[0].title).toMatch(/lookup/i);
+  });
+
+  it("stays quiet at exactly ten lookups with bare a, mx and an a/24 form", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "example.com")
+        return [[`v=spf1 a mx a/24 ${includes(7)} -all`]];
+      if (/^leaf\d+\.example$/.test(name)) return [[LEAF]];
+      throw new Error("NXDOMAIN");
+    });
+    const findings = await checkSPFChain("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+
   it("still reports a chain that genuinely exceeds the 10-lookup limit", async () => {
     dnsMock.resolveTxt.mockImplementation(async (name: string) => {
       if (name === "example.com") return [[`v=spf1 ${includes(11)} -all`]];
@@ -1239,6 +1264,68 @@ describe("checkTLSCert", () => {
     );
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/self.?signed/i);
+  });
+
+  /**
+   * The two verification failures that used to produce a failing SSL grade and
+   * no finding at all. checkTLSCert handled three authorization error codes and
+   * had no branch for any other, so a certificate for the wrong hostname or one
+   * chaining to an unknown CA was silently dropped while ssl-grade.ts capped the
+   * grade to F for the same codes.
+   */
+  const unauthorized = (code: string, cert = makeFakeCert()) => {
+    const sock = mockSocket(cert);
+    sock.authorized = false;
+    sock.authorizationError = Object.assign(new Error(code), { code });
+    tlsMock.connect.mockImplementationOnce(((
+      _opts: unknown,
+      cb?: () => void,
+    ) => {
+      if (typeof cb === "function") setImmediate(cb);
+      return sock;
+    }) as unknown as typeof tls.connect);
+  };
+
+  it("reports a certificate issued for a different hostname", async () => {
+    unauthorized(
+      "ERR_TLS_CERT_ALTNAME_INVALID",
+      makeFakeCert({ subjectaltname: "DNS:other.example.net" }),
+    );
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
+    const hit = findings.find((f) => /match the hostname/i.test(f.title));
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe("high");
+    expect(hit?.evidence).toContain("other.example.net");
+    expect(hit?.evidence).toContain("example.com");
+  });
+
+  it("reports any other verification failure instead of dropping it", async () => {
+    unauthorized("UNABLE_TO_GET_ISSUER_CERT_LOCALLY");
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
+    const hit = findings.find((f) => /untrusted/i.test(f.title));
+    expect(hit).toBeDefined();
+    expect(hit?.evidence).toContain("UNABLE_TO_GET_ISSUER_CERT_LOCALLY");
+  });
+
+  it("does not double-report a code that already has its own finding", async () => {
+    unauthorized("DEPTH_ZERO_SELF_SIGNED_CERT");
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
+    expect(findings.some((f) => /untrusted/i.test(f.title))).toBe(false);
   });
 
   it("returns SAN-missing finding when subjectaltname is absent", async () => {

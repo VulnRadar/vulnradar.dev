@@ -18,11 +18,11 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 852
+- **Total checks:** 854
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
   - medium: 238
-  - high: 204
+  - high: 206
   - low: 191
   - info: 121
   - critical: 98
@@ -31,7 +31,7 @@ in this file and quote the title, description, and fix steps.
   - header: 175
   - combined: 64
   - header-missing: 55
-  - network-probe: 36
+  - network-probe: 38
   - url-check: 19
   - header-value: 18
   - header-present: 10
@@ -23122,7 +23122,7 @@ EOF
 
 ---
 
-## Category: tls (22 checks)
+## Category: tls (24 checks)
 
 ### `tls-certificate-expiry` [tls / high / header]
 **TLS Certificate Expiry**
@@ -23713,6 +23713,50 @@ ssl_protocols TLSv1.2 TLSv1.3;
 openssl s_client -connect example.com:443 -tls1 </dev/null
 openssl s_client -connect example.com:443 -tls1_1 </dev/null
 # both should fail to complete a handshake
+```
+
+### `tls-cert-hostname-mismatch` [tls / high / network-probe]
+**Certificate Does Not Match the Hostname**
+
+The server presents a TLS certificate whose Subject Alternative Names do not include the hostname that was requested.
+
+**Risk:** Browsers block the page with a full-screen warning. A user who clicks through has no assurance they reached this site rather than an interceptor presenting its own certificate.
+
+**Why it matters:** A certificate proves identity only for the names it lists. The usual causes are a shared IP or load balancer serving another site's certificate because SNI is misconfigured, a certificate that was renewed without one of the site's names, or a DNS record still pointing at shared hosting.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc6125
+- https://datatracker.ietf.org/doc/html/rfc2818#section-3.1
+
+**Fix:**
+- Issue a certificate that lists this hostname in its Subject Alternative Names.
+- If several sites share an IP or load balancer, confirm SNI is configured so each name is served its own certificate.
+- Check whether this hostname is still meant to be served here at all.
+- **See which names the served certificate covers** (bash):
+```bash
+openssl s_client -connect example.com:443 -servername example.com </dev/null 2>/dev/null \
+  | openssl x509 -noout -ext subjectAltName
+```
+
+### `tls-cert-untrusted` [tls / high / network-probe]
+**Certificate Not Trusted**
+
+The TLS certificate failed verification for a reason other than expiry, self-signing, a missing intermediate or a hostname mismatch, for example a private CA, an unknown issuer, or a certificate that is not yet valid or has been revoked.
+
+**Risk:** Clients that verify certificates, which includes every browser and most API clients, refuse the connection or warn the user.
+
+**Why it matters:** A certificate is trusted only when it chains to a root the client already trusts, is within its validity period and is not revoked. The finding carries the exact verification error, which identifies which of those failed.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc5280#section-6
+
+**Fix:**
+- Use a certificate from a publicly trusted CA for anything served to the public internet.
+- Check the certificate's validity dates and the complete chain the server sends.
+- Reproduce the exact verification error with openssl s_client.
+- **Show the verification result** (bash):
+```bash
+openssl s_client -connect example.com:443 -servername example.com -verify_return_error </dev/null
 ```
 
 ---

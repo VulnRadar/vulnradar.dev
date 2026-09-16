@@ -297,8 +297,16 @@ export async function checkSPF(
 // which counted as an `a:` mechanism and inflated the lookup total on a
 // record that is nowhere near the RFC 7208 limit. SPF terms are always
 // whitespace separated, so nothing legitimate is lost.
+//
+// The domain-spec is optional for a, mx and ptr. RFC 7208 4.6.4 counts them
+// "whether or not they have a domain-spec", and bare `a` and `mx` (or `a/24`)
+// are the most common way to write them: `v=spf1 a mx include:... -all` is the
+// textbook record. Requiring a colon skipped both, so a record nine includes
+// deep plus bare a and mx (eleven lookups, a permerror for every receiver) was
+// reported as within the limit. The lookahead keeps bare `a` from matching the
+// start of `all`.
 const SPF_LOOKUP_MECHANISM_RE =
-  /(?:^|\s)[+\-~?]?(include|a|mx|ptr|exists):(\S+)/gi;
+  /(?:^|\s)[+\-~?]?(include|a|mx|ptr|exists)(?::(\S+)|\/\d+(?=\s|$)|(?=\s|$))/gi;
 const SPF_MAX_WALK_STEPS = 12; // RFC limit is 10; a little headroom so an
 // over-limit domain still reports how far over it is instead of stopping
 // right at the threshold.
@@ -358,7 +366,11 @@ async function walkSpfChain(
     ];
     for (const m of mechanisms) {
       count++;
-      if (m[1].toLowerCase() === "include" && /^_?[a-z0-9.-]+$/i.test(m[2])) {
+      if (
+        m[1].toLowerCase() === "include" &&
+        m[2] !== undefined &&
+        /^_?[a-z0-9.-]+$/i.test(m[2])
+      ) {
         const sub = await walkSpfChain(m[2], ancestors, budget);
         count += sub.lookupCount;
         if (sub.loop) {
@@ -2583,6 +2595,66 @@ export async function checkTLSCert(
                     ],
                     [],
                     94,
+                  ),
+                );
+              } else if (authCode === "ERR_TLS_CERT_ALTNAME_INVALID") {
+                // The certificate is valid, just not for this name. The SSL
+                // grade already capped itself to F for exactly this code
+                // (see hostnameMismatch below), and nothing told the user
+                // why: a wrong-domain certificate, the most common cause
+                // being a shared IP or load balancer serving the default
+                // site's certificate, produced a failing grade and an empty
+                // finding list.
+                const sans = String(
+                  (cert as { subjectaltname?: string } | undefined)
+                    ?.subjectaltname ?? "",
+                )
+                  .split(",")
+                  .map((n) => n.trim().replace(/^DNS:/, ""))
+                  .filter(Boolean)
+                  .slice(0, 5);
+                findings.push(
+                  makeVuln(
+                    url,
+                    asyncCheckVariant(A.tlsCertificateHostnameMismatch, {
+                      category: emitCategory,
+                    }),
+                    `The TLS certificate is not valid for ${hostname}.`,
+                    `Certificate names: ${sans.length > 0 ? sans.join(", ") : cert?.subject?.CN || "(none listed)"}. Requested host: ${hostname}.`,
+                    "Browsers refuse the connection with a full-page warning, and a user who clicks through gets no assurance they reached this site rather than an interceptor.",
+                    "A certificate proves identity only for the names it lists. Serving one issued for another name is, to a client, indistinguishable from a man-in-the-middle presenting its own certificate.",
+                    [
+                      "Issue a certificate that lists this hostname in its Subject Alternative Names.",
+                      "If several sites share an IP or load balancer, confirm SNI is configured so each name gets its own certificate.",
+                      "Check whether the hostname is still meant to be served here at all; a stale DNS record pointing at shared hosting produces exactly this.",
+                    ],
+                    [],
+                    94,
+                  ),
+                );
+              } else {
+                // Everything else that failed verification: a private or
+                // enterprise CA, a revoked or not-yet-valid certificate, an
+                // unknown issuer. Reported rather than dropped, with the
+                // verifier's own code, which is the most precise statement
+                // of the problem available.
+                findings.push(
+                  makeVuln(
+                    url,
+                    asyncCheckVariant(A.untrustedTlsCertificate, {
+                      category: emitCategory,
+                    }),
+                    "The TLS certificate could not be verified against a trusted certificate authority.",
+                    `Certificate verification failed: ${authCode || "unknown reason"}.${cert?.issuer?.CN ? ` Issuer: ${cert.issuer.CN}.` : ""}`,
+                    "Browsers and API clients that verify certificates will refuse the connection or warn the user.",
+                    "A certificate is only trusted when it chains to a root the client already trusts, is within its validity period and has not been revoked. This one failed at least one of those.",
+                    [
+                      "Use a certificate from a publicly trusted CA for anything served to the public internet.",
+                      "Check the certificate's validity dates and the full chain the server sends.",
+                      "Inspect the exact verification error with: openssl s_client -connect host:443 -servername host",
+                    ],
+                    [],
+                    90,
                   ),
                 );
               }

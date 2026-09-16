@@ -247,6 +247,15 @@ export const ASYNC_CHECKS = {
   // TLS certificate and protocol (checkTLSCert)
   expiredTlsCertificate: def("Expired TLS Certificate", "critical", "ssl"),
   selfSignedTlsCertificate: def("Self-Signed TLS Certificate", "high", "ssl"),
+  // The two trust failures checkTLSCert used to fold silently into the SSL
+  // grade with no finding: a certificate for a different hostname, and one
+  // that chains to nothing the trust store recognises.
+  tlsCertificateHostnameMismatch: def(
+    "TLS Certificate Does Not Match the Hostname",
+    "high",
+    "ssl",
+  ),
+  untrustedTlsCertificate: def("Untrusted TLS Certificate", "high", "ssl"),
   incompleteTlsCertificateChain: def(
     "Incomplete TLS Certificate Chain",
     "medium",

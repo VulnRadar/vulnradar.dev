@@ -986,4 +986,6 @@ export const detectors: Record<string, DetectFn> = {
   "tls-cipher-cbc-mode": () => null,
   "tls-ephemeral-key-weak": () => null,
   "tls-legacy-protocol-accepted": () => null,
+  "tls-cert-hostname-mismatch": () => null,
+  "tls-cert-untrusted": () => null,
 };

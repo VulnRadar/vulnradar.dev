@@ -219,14 +219,22 @@ export async function checkSpfRecordQuality(
   const allTerm = terms.find((t) => /^[-~+?]?all$/i.test(t));
   const redirect = terms.find((t) => /^redirect=/i.test(t));
 
-  if (!allTerm && !redirect) {
+  // An explicit ?all is the same outcome written down: RFC 7208 4.7 gives it
+  // the Neutral result, which is exactly what a record with no all at all
+  // returns. It used to count as "an all term is present" and report nothing,
+  // while the finding below says, correctly, that neutral means no policy.
+  const neutralAll = allTerm !== undefined && /^\?all$/i.test(allTerm);
+
+  if ((!allTerm || neutralAll) && !redirect) {
     findings.push(
       makeEmailVuln(
         "email-spf-all-mechanism-missing",
         url,
         "SPF Record Has No all Mechanism",
         "low",
-        `The SPF record for ${domain} ends without an all mechanism and without a redirect modifier, so any sender not matched by an earlier mechanism gets the default result, neutral.`,
+        neutralAll
+          ? `The SPF record for ${domain} ends in ?all, which gives every sender not matched by an earlier mechanism the neutral result, the same as having no all mechanism.`
+          : `The SPF record for ${domain} ends without an all mechanism and without a redirect modifier, so any sender not matched by an earlier mechanism gets the default result, neutral.`,
         `SPF record for ${domain}: "${record.slice(0, 200)}"`,
         "Neutral is explicitly defined to be treated the same as no policy at all, so every sender the record does not list is neither permitted nor denied. The listed senders still pass, which makes the record look like it is working, while the whole point of publishing SPF, saying that everyone else is not authorised, is missing.",
         "The all mechanism is what makes an SPF record a closed list rather than an open one. Use -all once you are confident the record covers every legitimate sender, or ~all (softfail) while you are still finding them, and let DMARC aggregate reports tell you what you missed before tightening. A record with neither is the only variant that says nothing at all about unlisted senders.",

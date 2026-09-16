@@ -840,7 +840,7 @@ remediation documentation in the docs.
 - [medium  ] `supply-chain-github-action-unpinned-tag` [body-pattern] - CI workflow uses a third-party action by mutable tag
 - [low     ] `supply-chain-sbom-document-exposed` [body-pattern] - Software bill of materials publicly served
 
-### tls (22)
+### tls (24)
 - [high    ] `tls-certificate-expiry` [header] - TLS Certificate Expiry
 - [high    ] `tls-protocol-version` [header] - Weak TLS Protocol Version
 - [high    ] `tls-cert-key-size-rsa` [header] - RSA Key Size Below 2048 Bits
@@ -863,6 +863,8 @@ remediation documentation in the docs.
 - [low     ] `tls-cipher-cbc-mode` [network-probe] - Negotiated cipher suite uses CBC mode
 - [medium  ] `tls-ephemeral-key-weak` [network-probe] - Weak ephemeral key exchange parameters
 - [medium  ] `tls-legacy-protocol-accepted` [network-probe] - Server still accepts TLS 1.0 or TLS 1.1
+- [high    ] `tls-cert-hostname-mismatch` [network-probe] - Certificate Does Not Match the Hostname
+- [high    ] `tls-cert-untrusted` [network-probe] - Certificate Not Trusted
 
 ### vibe-code (37)
 - [low     ] `vibe-generic-error-message` [body-pattern] - Generic Error Messages Leak No Context
@@ -907,11 +909,11 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **852**
+- Total checks: **854**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
   - medium: 238
-  - high: 204
+  - high: 206
   - low: 191
   - info: 121
   - critical: 98
@@ -920,7 +922,7 @@ remediation documentation in the docs.
   - header: 175
   - combined: 64
   - header-missing: 55
-  - network-probe: 36
+  - network-probe: 38
   - url-check: 19
   - header-value: 18
   - header-present: 10

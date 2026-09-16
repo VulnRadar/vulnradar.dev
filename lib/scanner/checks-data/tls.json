@@ -720,5 +720,62 @@
     "cwe": "CWE-327",
     "owasp": "A02:2021",
     "_idx": 21
+  },
+  {
+    "id": "tls-cert-hostname-mismatch",
+    "type": "network-probe",
+    "title": "Certificate Does Not Match the Hostname",
+    "category": "tls",
+    "severity": "high",
+    "description": "The server presents a TLS certificate whose Subject Alternative Names do not include the hostname that was requested.",
+    "evidence": "TLS certificate verification for {{url}} failed with ERR_TLS_CERT_ALTNAME_INVALID.",
+    "riskImpact": "Browsers block the page with a full-screen warning. A user who clicks through has no assurance they reached this site rather than an interceptor presenting its own certificate.",
+    "explanation": "A certificate proves identity only for the names it lists. The usual causes are a shared IP or load balancer serving another site's certificate because SNI is misconfigured, a certificate that was renewed without one of the site's names, or a DNS record still pointing at shared hosting.",
+    "fixSteps": [
+      "Issue a certificate that lists this hostname in its Subject Alternative Names.",
+      "If several sites share an IP or load balancer, confirm SNI is configured so each name is served its own certificate.",
+      "Check whether this hostname is still meant to be served here at all."
+    ],
+    "codeExamples": [
+      {
+        "label": "See which names the served certificate covers",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 -servername example.com </dev/null 2>/dev/null \\\n  | openssl x509 -noout -ext subjectAltName"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6125",
+      "https://datatracker.ietf.org/doc/html/rfc2818#section-3.1"
+    ],
+    "cwe": "CWE-297",
+    "owasp": "A02:2021",
+    "_idx": 22
+  },
+  {
+    "id": "tls-cert-untrusted",
+    "type": "network-probe",
+    "title": "Certificate Not Trusted",
+    "category": "tls",
+    "severity": "high",
+    "description": "The TLS certificate failed verification for a reason other than expiry, self-signing, a missing intermediate or a hostname mismatch, for example a private CA, an unknown issuer, or a certificate that is not yet valid or has been revoked.",
+    "evidence": "TLS certificate verification for {{url}} failed; the verifier's error code is included in the finding.",
+    "riskImpact": "Clients that verify certificates, which includes every browser and most API clients, refuse the connection or warn the user.",
+    "explanation": "A certificate is trusted only when it chains to a root the client already trusts, is within its validity period and is not revoked. The finding carries the exact verification error, which identifies which of those failed.",
+    "fixSteps": [
+      "Use a certificate from a publicly trusted CA for anything served to the public internet.",
+      "Check the certificate's validity dates and the complete chain the server sends.",
+      "Reproduce the exact verification error with openssl s_client."
+    ],
+    "codeExamples": [
+      {
+        "label": "Show the verification result",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 -servername example.com -verify_return_error </dev/null"
+      }
+    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc5280#section-6"],
+    "cwe": "CWE-295",
+    "owasp": "A02:2021",
+    "_idx": 23
   }
 ]
