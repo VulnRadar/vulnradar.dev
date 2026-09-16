@@ -263,6 +263,7 @@ export function DashboardResults({
       {authReport?.status === "lost" && (
         <div className="flex items-start gap-3 rounded-md border border-[hsl(var(--severity-high))]/30 bg-[hsl(var(--severity-high))]/10 px-4 py-3">
           <LeadingIcon
+            line="p"
             icon={AlertTriangle}
             size="lg"
             className="text-[hsl(var(--severity-high))]"

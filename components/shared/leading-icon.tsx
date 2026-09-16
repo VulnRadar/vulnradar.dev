@@ -42,6 +42,23 @@ const LINE_BOX = {
    * what the Updater's cosign warning did.
    */
   inherit: "text-[length:inherit] leading-[inherit]",
+  /**
+   * A <p> that has not been given a leading- of its own: 28px line, at any
+   * font size.
+   *
+   * This is the sibling case of `inherit`, and it is the one the default got
+   * wrong. `inherit` covers a row that IS the <p>; this covers the far more
+   * common shape, a flex row whose text child is a <p>. The base layer in
+   * app/globals.css gives every <p> `leading-7`, and leading-7 is an absolute
+   * 1.75rem rather than a multiplier, so the box is 28px whether the paragraph
+   * runs at text-sm or text-xs -- which is why this entry sets no font size.
+   *
+   * An icon told `line="sm"` beside one of these builds a 20px box against a
+   * 28px line and lands 4px high. That is the "icons are slightly above the
+   * text" report, and it was the default, so it was every call site that did
+   * not think to override it.
+   */
+  p: "leading-7",
   /** 12px text, 16px line. Helper rows, captions, dense meta lines. */
   xs: "text-xs",
   /** 12px text, 19.5px line. A helper row set relaxed. */

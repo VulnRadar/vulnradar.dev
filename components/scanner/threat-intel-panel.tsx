@@ -133,7 +133,7 @@ function SourceRow({ source }: { source: ThreatIntelSource }) {
   const { Icon, tone, label } = VERDICT_META[source.verdict];
   return (
     <div className="flex items-start gap-2.5 px-4 py-2">
-      <LeadingIcon icon={Icon} className={tone} />
+      <LeadingIcon line="xs" icon={Icon} className={tone} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-xs font-medium text-foreground">

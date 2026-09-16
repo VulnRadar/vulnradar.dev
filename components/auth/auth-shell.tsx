@@ -213,6 +213,7 @@ export function AuthAlert({
     >
       <div className="flex items-start gap-2.5">
         <LeadingIcon
+          line="relaxed"
           icon={Icon}
           className={tone === "error" ? "text-destructive" : "text-primary"}
         />

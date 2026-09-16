@@ -143,7 +143,11 @@ export default function DomainPage({
         // Verify now button, stay on the domains list where adding one starts.
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-6">
           <div className="flex items-start gap-3">
-            <LeadingIcon icon={Globe} className="text-muted-foreground" />
+            <LeadingIcon
+              line="p"
+              icon={Globe}
+              className="text-muted-foreground"
+            />
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">
                 This domain is not verified yet

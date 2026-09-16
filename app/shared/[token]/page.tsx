@@ -340,6 +340,7 @@ export default function SharedScanPage() {
                 <div className="flex flex-col items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
                     <LeadingIcon
+                      line="p"
                       icon={ScanSearch}
                       size="lg"
                       className="text-primary"

@@ -1836,6 +1836,7 @@ export function UserDetailPanel({
                           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex flex-col gap-3">
                             <div className="flex items-start gap-3">
                               <LeadingIcon
+                                line="p"
                                 icon={AlertTriangle}
                                 className="text-destructive"
                               />

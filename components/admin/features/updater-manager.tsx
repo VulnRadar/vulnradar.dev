@@ -274,7 +274,7 @@ export function UpdaterManager() {
     <div className="space-y-6">
       {status && !status.supported && (
         <div className="flex items-start gap-3 p-4 rounded-lg border border-border/50 bg-muted/30">
-          <LeadingIcon icon={Info} className="text-muted-foreground" />
+          <LeadingIcon line="p" icon={Info} className="text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             {status.unsupportedReason}
           </p>
@@ -339,7 +339,11 @@ export function UpdaterManager() {
         <CardContent className="p-4 sm:p-5 space-y-5">
           {!status && loadFailed && (
             <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
-              <LeadingIcon icon={AlertTriangle} className="text-destructive" />
+              <LeadingIcon
+                line="p"
+                icon={AlertTriangle}
+                className="text-destructive"
+              />
               <p className="text-sm text-destructive">
                 Couldn&apos;t load updater status. Everything below is unknown,
                 not absent. Use Refresh to try again.
@@ -506,6 +510,7 @@ export function UpdaterManager() {
             {job.status === "completed" && (
               <div className="flex items-start gap-3 p-3 rounded-lg border border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/5">
                 <LeadingIcon
+                  line="p"
                   icon={CheckCircle2}
                   className="text-[hsl(var(--success))]"
                 />
@@ -531,6 +536,7 @@ export function UpdaterManager() {
               ) && (
                 <div className="flex items-start gap-3 p-4 rounded-lg border-2 border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/10">
                   <LeadingIcon
+                    line="p"
                     icon={AlertTriangle}
                     size="lg"
                     className="text-[hsl(var(--warning))]"
@@ -552,7 +558,11 @@ export function UpdaterManager() {
               )}
             {job.status === "failed" && job.error && (
               <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/20 bg-destructive/5">
-                <LeadingIcon icon={XCircle} className="text-destructive" />
+                <LeadingIcon
+                  line="p"
+                  icon={XCircle}
+                  className="text-destructive"
+                />
                 <p className="text-sm text-destructive">{job.error}</p>
               </div>
             )}

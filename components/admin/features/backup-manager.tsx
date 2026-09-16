@@ -281,7 +281,11 @@ export function BackupManager() {
         <CardContent className="p-4 sm:p-5 space-y-5">
           {!status && loadFailed && (
             <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
-              <LeadingIcon icon={AlertTriangle} className="text-destructive" />
+              <LeadingIcon
+                line="p"
+                icon={AlertTriangle}
+                className="text-destructive"
+              />
               <p className="text-sm text-destructive">
                 Couldn&apos;t load backup status. The figures below are unknown,
                 not zero. Use Refresh to try again.
@@ -371,11 +375,16 @@ export function BackupManager() {
             >
               {job.status === "success" ? (
                 <LeadingIcon
+                  line="p"
                   icon={CheckCircle2}
                   className="text-[hsl(var(--success))]"
                 />
               ) : (
-                <LeadingIcon icon={XCircle} className="text-destructive" />
+                <LeadingIcon
+                  line="p"
+                  icon={XCircle}
+                  className="text-destructive"
+                />
               )}
               <div className="flex-1 min-w-0">
                 <p
