@@ -102,6 +102,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Some sites protect their pages with a one-time code, called a nonce, that tells the browser which scripts are genuine. It only works if the code is new on every visit. When it stays the same, for example because a page was cached with it, anyone can read it and use it to slip their own script in. The scanner now loads such a page twice and reports a code that did not change, without printing the code itself.
 - [Wrench] **[ADMIN]** **Grant Credits From the Admin Panel**
   Staff can now see a user's AI, GitHub review and browser session credit balances in the admin panel and add credits directly, for example to make up for a problem, without touching the database. Each grant needs a reason and is recorded in the audit log, has a sensible maximum, and staff cannot grant credits to their own account. Only admins and the billing role can do this.
+- [ShieldAlert] **[API]** **A Misspelled Check Name No Longer Gives a Clean Result**
+  When a scan is started from the API, the command-line tool or a pipeline, it can be limited to certain kinds of checks by name. A misspelled name used to match nothing, so the scan quietly ran no checks at all and reported no problems, which looked exactly like a clean site. A name the scanner does not recognise is now refused straight away, with the list of names it does accept.
 - [Mail] **[ENGINE]** **Mail Servers That No Longer Exist Are Reported**
   A domain's MX records tell the world which servers receive its email. When one of those servers no longer exists, mail can bounce, and if the missing server belonged to another company's domain, whoever registers that domain could start receiving your email, password resets included. The scan now reports mail servers that do not exist, and treats the second case as high severity. A server that simply did not answer in time is not counted as missing.
 - [CheckCheck] **[ENGINE]** **Several Incorrect Results Corrected**
@@ -1228,6 +1230,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 927
+- **Total changes documented:** 928
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

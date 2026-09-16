@@ -56,6 +56,7 @@ import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
+import { parseScannerSelection } from "@/lib/scanner/scanner-selection";
 import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 import { upsertHostReputation } from "@/lib/scanner/host-reputation";
 import { saveAutoTags, maybeSuggestAiTag } from "@/lib/tags/auto-tags";
@@ -314,7 +315,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       parsed.error.issues[0]?.message || "Invalid request.",
     );
   }
-  const { url, scanners } = parsed.data;
+  const { url } = parsed.data;
+  const scannerSelection = parseScannerSelection(parsed.data.scanners);
+  if (!scannerSelection.ok) {
+    return ApiResponse.badRequest(scannerSelection.error);
+  }
+  const scanners = scannerSelection.scanners ?? undefined;
   // Authenticated scans see whatever a logged-in area of the target site
   // renders -- account settings, billing details, internal dashboards,
   // anything behind the login this request just performed. That is a

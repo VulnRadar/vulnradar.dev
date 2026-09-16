@@ -32,6 +32,7 @@ import {
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
+import { parseScannerSelection } from "@/lib/scanner/scanner-selection";
 import {
   checkConcurrentScanLimit,
   reserveConcurrentScanSlot,
@@ -193,10 +194,14 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const url: string = body.url;
   const selectedUrls: string[] | undefined = body.urls;
-  const scanners: string[] | null =
-    Array.isArray(body.scanners) && body.scanners.length > 0
-      ? body.scanners
-      : null;
+  const scannerSelection = parseScannerSelection(body.scanners);
+  if (!scannerSelection.ok) {
+    return NextResponse.json(
+      { error: scannerSelection.error },
+      { status: 400 },
+    );
+  }
+  const scanners = scannerSelection.scanners;
   // Opt-in main-URL screenshot (see ExecuteCrawlScanParams.captureScreenshot).
   // Never implied -- a screenshot spins up a real, metered BrowserBase
   // session, so it only runs when explicitly requested.

@@ -255,6 +255,16 @@ describe("POST /api/v3/scan - target safety gates", () => {
     expect(mockExecuteScan).not.toHaveBeenCalled();
   });
 
+  it("refuses a scanner name that selects nothing instead of running zero checks", async () => {
+    const res = await POST(
+      postRequest({ url: "https://example.com", scanners: ["headerz"] }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('"headerz"');
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+  });
+
   it("falls back to a generic message when the guard refuses without a reason", async () => {
     mockValidateScanTarget.mockResolvedValue({ safe: false });
 

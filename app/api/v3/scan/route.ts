@@ -37,6 +37,7 @@ import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
+import { parseScannerSelection } from "@/lib/scanner/scanner-selection";
 import { reserveConcurrentScanSlot } from "@/lib/rate-limiting/concurrent-scans";
 import {
   checkTargetScanLimit,
@@ -230,8 +231,14 @@ export async function POST(request: NextRequest) {
     // abuse, so this is held to the SAME verified-domain-ownership gate active
     // probing uses, enforced below.
     const portScan = body.portScan === true;
-    const selectedScanners: string[] | null =
-      Array.isArray(scanners) && scanners.length > 0 ? scanners : null;
+    const scannerSelection = parseScannerSelection(scanners);
+    if (!scannerSelection.ok) {
+      return NextResponse.json(
+        { error: scannerSelection.error },
+        { status: 400 },
+      );
+    }
+    const selectedScanners = scannerSelection.scanners;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });

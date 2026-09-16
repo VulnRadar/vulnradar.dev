@@ -458,6 +458,12 @@ const CHANGELOG: Release[] = [
         category: "admin",
       },
       {
+        icon: ShieldAlert,
+        label: "A Misspelled Check Name No Longer Gives a Clean Result",
+        desc: "When a scan is started from the API, the command-line tool or a pipeline, it can be limited to certain kinds of checks by name. A misspelled name used to match nothing, so the scan quietly ran no checks at all and reported no problems, which looked exactly like a clean site. A name the scanner does not recognise is now refused straight away, with the list of names it does accept.",
+        category: "api",
+      },
+      {
         icon: Mail,
         label: "Mail Servers That No Longer Exist Are Reported",
         desc: "A domain's MX records tell the world which servers receive its email. When one of those servers no longer exists, mail can bounce, and if the missing server belonged to another company's domain, whoever registers that domain could start receiving your email, password resets included. The scan now reports mail servers that do not exist, and treats the second case as high severity. A server that simply did not answer in time is not counted as missing.",
