@@ -358,12 +358,12 @@ the SQL above.
 - Edit lib/config/config-values.ts to set:
 - If you don't want billing features, set:
 - Full reference on the Configuration page.
+- Chat, finding verification, and audit summaries are off unless you point them at an AI endpoint. Add to .env: AI_BASE_URL (or the AI_PROVIDER shorthand), AI_MODEL, and AI_API_KEY. Full variable reference and a real per-model context-window / max-output-token table are on Configuration → AI Providers & Models .
 - These features load actual scan output into the prompt, not a short chat message. As a floor, use a model with around 300,000 tokens of context. A small local model, e.g. Ollama&rsquo;s default llama3.2, does not have that headroom and will degrade or break outright once enough context is loaded.
 - The default docker-compose.yml provisions Postgres and the app container, each with a healthcheck, and the app waits for Postgres to report healthy before it starts. The app reads .env via env_file, so every variable in that file reaches the container; the values compose derives itself, such as the in-network database URL, are set on the service and take precedence.
-- On boot, instrumentation.ts runs CREATE TABLE IF NOT EXISTS for every table. The meta row in vulnradar_schema_meta is written on the first successful migration. Look for Database schema verified successfully in the logs.
-- does not terminate TLS itself. Put a reverse proxy in front. Minimal Caddy config:
-- Caddy auto-provisions a Let's Encrypt certificate.
-- For nginx, see the official nginx + Next.js guide .
+- Because compose sets DATABASE_URL itself, putting your provider&rsquo;s URL in .env does nothing on its own: the app keeps talking to the bundled database. The repository ships docker-compose.managed-db.yml for this. It hands the app your DATABASE_URL, turns SSL on by default, and moves the bundled Postgres behind a profile so it does not start. Add to .env:
+- Keep the POSTGRES_* lines from .env.example, since the base file still names them. This needs Docker Compose 2.24 or newer. Check what compose will actually run with docker compose config --services, which should list app and not postgres.
+- --build matters on a source checkout. The compose file names both the published image and a build context, and when both are present a plain docker compose up pulls the published image rather than building yours. That image was built from upstream&rsquo;s config-values.ts and with NEXT_PUBLIC_APP_URL baked in as upstream&rsquo;s own domain, so the edits from the previous steps would silently not be there.
 
 ### Code examples
 ```typescript
@@ -381,8 +381,7 @@ export const CONFIG_BILLING_ENABLED = false;
 
 ```bash
 # Required
-DATABASE_URL=postgresql://vulnradar:STRONG_PASSWORD@postgres:5432/vulnradar
-DATABASE_SSL=false
+POSTGRES_PASSWORD=<output of: openssl rand -hex 32>
 API_KEY_ENCRYPTION_KEY=<paste your 64-char hex>
 NEXT_PUBLIC_APP_URL=https://scanner.yourdomain.com
 
@@ -410,11 +409,16 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-```caddyfile
--- Only for promoting a LATER account, never the first one:
-UPDATE users
-SET role = 'admin'
-WHERE email = 'a-colleague@yourdomain.com';
+```sql
+docker compose up -d --build
+docker compose logs -f app   # watch startup
+```
+
+```bash
+scanner.yourdomain.com {
+    reverse_proxy localhost:3000
+    encode zstd gzip
+}
 ```
 
 ```bash
@@ -451,10 +455,6 @@ export const CONFIG_LEGAL_EMAIL = "legal@yourdomain.com";
 export const CONFIG_SECURITY_EMAIL = "security@yourdomain.com";
 export const CONFIG_ENTERPRISE_EMAIL = "enterprise@yourdomain.com";
 export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";
-```
-
-```text
-cp .env.example .env
 ```
 
 ## Configuration
@@ -2981,10 +2981,10 @@ individual URLs instead.
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
 | `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
-| `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 29 | 30 |
+| `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 30 | 30 |
 | `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 14 | 2 |
-| `/docs/self-hosting` | - | 16 | 9 | 0 | 14 | 0 | 0 | 28 | 3 |
-| `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 31 | 0 |
+| `/docs/self-hosting` | - | 16 | 9 | 0 | 16 | 0 | 0 | 33 | 3 |
+| `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 32 | 0 |
 | `/docs/api` | - | 8 | 5 | 0 | 6 | 42 | 0 | 18 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |
 | `/docs/webhooks` | ✓ | 7 | 0 | 0 | 4 | 0 | 0 | 13 | 6 |

@@ -512,6 +512,40 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - name: Validate the documented compose configurations
+        # Nothing in this job runs compose, so a change to docker-compose.yml
+        # that broke the managed-database overlay, or a typo in the overlay
+        # itself, would reach operators first. `config` parses, interpolates
+        # and merges without pulling or starting anything. Both setups are
+        # configured the way the docs tell operators to: through .env.
+        run: |
+          set -euo pipefail
+          trap 'rm -f .env' EXIT
+          docker compose version
+          cat > .env <<'ENV'
+          POSTGRES_PASSWORD=ci_compose_config_password
+          API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+          ENV
+
+          services=$(docker compose config --services | sort | tr '\n' ' ')
+          echo "bundled database: ${services}"
+          test "${services}" = "app postgres " || { echo "expected app and postgres"; exit 1; }
+          docker compose config --format json | jq -e \
+            '.services.app.environment.DATABASE_URL | startswith("postgresql://vulnradar:ci_compose_config_password@postgres:5432/")'
+
+          cat >> .env <<'ENV'
+          DATABASE_URL=postgresql://managed:ci_secret@db.example.com:5432/vulnradar
+          COMPOSE_FILE=docker-compose.yml:docker-compose.managed-db.yml
+          ENV
+
+          services=$(docker compose config --services | sort | tr '\n' ' ')
+          echo "managed database: ${services}"
+          test "${services}" = "app " || { echo "expected only app: the bundled postgres must stay behind its profile"; exit 1; }
+          cfg=$(docker compose config --format json)
+          echo "${cfg}" | jq -e '.services.app.environment.DATABASE_URL == "postgresql://managed:ci_secret@db.example.com:5432/vulnradar"'
+          echo "${cfg}" | jq -e '.services.app.environment.DATABASE_SSL == "true"'
+          echo "${cfg}" | jq -e '(.services.app.depends_on // {}) | length == 0'
+
       - name: Build the production image
         run: docker build -t vulnradar:ci .
 

@@ -1,0 +1,36 @@
+# Run VulnRadar against a managed PostgreSQL (Neon, Supabase, RDS, ...)
+# instead of the bundled `postgres` service.
+#
+# docker-compose.yml builds DATABASE_URL for the bundled database itself, and
+# a service's `environment:` map takes precedence over `env_file`, so on its
+# own it ignores any DATABASE_URL you put in .env. This file is layered on top
+# of it and hands the app your database instead:
+#
+#   1. In .env, set DATABASE_URL to your provider's connection string and
+#      DATABASE_SSL=true (plus DATABASE_SSL_CA if the provider signs with a
+#      CA that is not in the system trust store).
+#   2. Also in .env:
+#        COMPOSE_FILE=docker-compose.yml:docker-compose.managed-db.yml
+#      Compose reads COMPOSE_FILE from .env, so every documented command
+#      (`docker compose up -d`, `docker compose exec app npm run db:backup`,
+#      the upgrade steps) uses both files without extra flags.
+#
+# Keep the POSTGRES_* lines from .env.example: docker-compose.yml still names
+# them. The bundled service is only moved behind a profile, so its volume and
+# data are left untouched if you ever switch back.
+#
+# Needs Docker Compose 2.24 or newer, for `!reset`.
+
+services:
+  postgres:
+    # Not started unless someone asks for it with --profile bundled-db.
+    profiles: ["bundled-db"]
+
+  app:
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env to your managed database connection string.}
+      DATABASE_SSL: ${DATABASE_SSL:-true}
+    # The base file makes the app wait for the bundled database to report
+    # healthy, and compose refuses a dependency on a service that a profile
+    # has switched off.
+    depends_on: !reset {}

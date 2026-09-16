@@ -56,6 +56,8 @@ const KEPT_AT_ROOT: Record<string, string> = {
   // A documented way to run the database, and the app image alongside it.
   "docker-compose.yml": "documented way to run Postgres and the app",
   "docker-compose.dev.yml": "documented development database",
+  "docker-compose.managed-db.yml":
+    "documented overlay for running the app against a managed database",
 
   // Git plumbing. Kept deliberately: an install that was `git clone`d and
   // then stripped of .gitignore turns .env into an untracked file someone

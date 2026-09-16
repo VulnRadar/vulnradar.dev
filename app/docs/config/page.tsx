@@ -1163,12 +1163,26 @@ export default function ConfigPage() {
             </li>
           </ul>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            <InlineCode>DB_PORT</InlineCode> is still in{" "}
-            <InlineCode>.env.example</InlineCode> but is read by nothing:{" "}
+            Under compose, <InlineCode>DATABASE_URL</InlineCode> and{" "}
+            <InlineCode>DATABASE_SSL</InlineCode> in{" "}
+            <InlineCode>.env</InlineCode> are not used: the compose file builds
+            the URL for its bundled Postgres from the three variables above and
+            sets it on the app service, which takes precedence. To point a
+            compose deployment at a managed database, see{" "}
+            <a
+              href="/docs/self-hosting#managed-postgres"
+              className="text-primary hover:underline"
+            >
+              Self-Hosting to Using a managed PostgreSQL
+            </a>
+            .
+          </p>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            An older <InlineCode>.env</InlineCode> may still carry{" "}
+            <InlineCode>DB_PORT</InlineCode>. Nothing reads it:{" "}
             <InlineCode>docker-compose.yml</InlineCode> publishes no host port
             for Postgres at all, so the database is reachable only from inside
             the compose network at <InlineCode>postgres:5432</InlineCode>.
-            Setting it changes nothing.
           </p>
         </DocsSubSection>
       </DocsSection>

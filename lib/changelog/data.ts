@@ -477,6 +477,12 @@ const CHANGELOG: Release[] = [
         category: "selfhost",
       },
       {
+        icon: Container,
+        label: "docker-compose Runs What the Docs Describe",
+        desc: "Three places where following the self-hosting guide produced something other than what it said. The guide had operators put their database password in DATABASE_URL, which compose ignores: it builds that URL from POSTGRES_PASSWORD, so the bundled database could come up with the placeholder password from the example file. A managed database was recommended with no way to use one, because the same override also discarded a DATABASE_URL pointing elsewhere; a docker-compose.managed-db.yml overlay now does it, switched on with one line in .env, and CI checks that both setups parse and wire the app the way the docs say. And the guide's source-checkout path edited the app's config and then ran docker compose up, which pulls the published image rather than building the checkout, so those edits never took effect; it builds now. The guide also explains when TRUSTED_PROXY_CIDR is needed, since behind a CDN and a proxy every visitor otherwise shares one rate-limit bucket, and the dead DB_PORT is gone from .env.example.",
+        category: "selfhost",
+      },
+      {
         icon: Lock,
         label: "Plain-HTTP Deployments Can Stay Signed In",
         desc: "ALLOW_INSECURE_HTTP=1 is the documented way to run with no TLS on a trusted network, and signing in never worked with it. The session cookie, and every other sign-in cookie, was marked Secure whenever the app ran in production, and a browser discards a Secure cookie that arrives over plain HTTP. Eleven places set those cookies and decided the attribute in two different ways, neither of which read the flag. They share one rule now, with a test that fails if a cookie option decides it on its own again.",

@@ -633,11 +633,13 @@ cd ~/vulnradar`}
             </h3>
             <CodeBlock
               code={`# Required
-DATABASE_URL=postgresql://vulnradar:your-strong-password@postgres:5432/vulnradar
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 
-# Used by docker-compose.yml to provision Postgres
+# docker-compose.yml provisions Postgres from these and builds the app's
+# DATABASE_URL from them itself, so a DATABASE_URL here is not used.
+# Use hex for the password (openssl rand -hex 32): it goes into that URL
+# as-is. For a managed database, see /docs/self-hosting#managed-postgres.
 POSTGRES_DB=vulnradar
 POSTGRES_USER=vulnradar
 POSTGRES_PASSWORD=your-strong-password
@@ -655,6 +657,13 @@ APP_PORT=3000
           <Card className="p-6 border-border/40">
             <h3 className="text-base font-semibold mb-4">Step 4: Start</h3>
             <CodeBlock code="docker compose up -d" language="bash" />
+            <p className="text-xs text-muted-foreground mt-2">
+              Built from source? Use{" "}
+              <InlineCode>docker compose up -d --build</InlineCode>. The compose
+              file names the published image too, and without{" "}
+              <InlineCode>--build</InlineCode> compose pulls that image instead
+              of building your checkout.
+            </p>
             <CodeBlock
               code="docker compose ps"
               language="bash"

@@ -86,7 +86,14 @@ export default function SelfHostingPage() {
         />
         <DocsCallout variant="info">
           A managed PostgreSQL (Neon, Supabase, RDS) is recommended over running
-          your own DB.
+          your own DB. See{" "}
+          <a
+            href="#managed-postgres"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Using a managed PostgreSQL
+          </a>{" "}
+          for the compose setup.
         </DocsCallout>
       </DocsSection>
 
@@ -155,8 +162,7 @@ export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";`}
         <CodeBlock
           language="bash"
           code={`# Required
-DATABASE_URL=postgresql://vulnradar:STRONG_PASSWORD@postgres:5432/vulnradar
-DATABASE_SSL=false
+POSTGRES_PASSWORD=<output of: openssl rand -hex 32>
 API_KEY_ENCRYPTION_KEY=<paste your 64-char hex>
 NEXT_PUBLIC_APP_URL=https://scanner.yourdomain.com
 
@@ -183,6 +189,21 @@ STRIPE_PUBLISHABLE_KEY=pk_live_...
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...`}
         />
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          There is no <InlineCode>DATABASE_URL</InlineCode> to fill in here.
+          docker-compose builds it for the bundled Postgres from{" "}
+          <InlineCode>POSTGRES_USER</InlineCode>,{" "}
+          <InlineCode>POSTGRES_PASSWORD</InlineCode> and{" "}
+          <InlineCode>POSTGRES_DB</InlineCode>, and sets it on the app service,
+          where it wins over anything in <InlineCode>.env</InlineCode>. The
+          password goes into that URL as-is, which is why the example uses hex:
+          an <InlineCode>@</InlineCode>, <InlineCode>/</InlineCode> or{" "}
+          <InlineCode>:</InlineCode> in it breaks the connection string.
+          Postgres only reads <InlineCode>POSTGRES_PASSWORD</InlineCode> the
+          first time it initialises its volume, so changing it later does not
+          change the database&rsquo;s password; set it before the first{" "}
+          <InlineCode>docker compose up</InlineCode>.
+        </p>
       </DocsSection>
 
       <DocsSection id="ai" title="AI Features (Optional)">
@@ -228,14 +249,59 @@ STRIPE_WEBHOOK_SECRET=whsec_...`}
           For production, prefer Docker secrets or a secret manager over a plain{" "}
           <InlineCode>.env</InlineCode> file on disk.
         </DocsCallout>
+
+        <DocsSubSection
+          id="managed-postgres"
+          title="Using a managed PostgreSQL"
+        >
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Because compose sets <InlineCode>DATABASE_URL</InlineCode> itself,
+            putting your provider&rsquo;s URL in <InlineCode>.env</InlineCode>{" "}
+            does nothing on its own: the app keeps talking to the bundled
+            database. The repository ships{" "}
+            <InlineCode>docker-compose.managed-db.yml</InlineCode> for this. It
+            hands the app your <InlineCode>DATABASE_URL</InlineCode>, turns SSL
+            on by default, and moves the bundled Postgres behind a profile so it
+            does not start. Add to <InlineCode>.env</InlineCode>:
+          </p>
+          <CodeBlock
+            language="bash"
+            code={`DATABASE_URL=postgresql://user:password@your-db-host:5432/vulnradar
+DATABASE_SSL=true
+# DATABASE_SSL_CA="-----BEGIN CERTIFICATE-----\\n...\\n-----END CERTIFICATE-----"
+
+# Compose reads this from .env, so every command below uses both files.
+COMPOSE_FILE=docker-compose.yml:docker-compose.managed-db.yml`}
+          />
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Keep the <InlineCode>POSTGRES_*</InlineCode> lines from{" "}
+            <InlineCode>.env.example</InlineCode>, since the base file still
+            names them. This needs Docker Compose 2.24 or newer. Check what
+            compose will actually run with{" "}
+            <InlineCode>docker compose config --services</InlineCode>, which
+            should list <InlineCode>app</InlineCode> and not{" "}
+            <InlineCode>postgres</InlineCode>.
+          </p>
+        </DocsSubSection>
       </DocsSection>
 
       <DocsSection id="start" title="Start the Stack">
         <CodeBlock
           language="bash"
-          code={`docker compose up -d
+          code={`docker compose up -d --build
 docker compose logs -f app   # watch startup`}
         />
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          <InlineCode>--build</InlineCode> matters on a source checkout. The
+          compose file names both the published image and a build context, and
+          when both are present a plain{" "}
+          <InlineCode>docker compose up</InlineCode> pulls the published image
+          rather than building yours. That image was built from upstream&rsquo;s{" "}
+          <InlineCode>config-values.ts</InlineCode> and with{" "}
+          <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> baked in as{" "}
+          upstream&rsquo;s own domain, so the edits from the previous steps
+          would silently not be there.
+        </p>
         <p className="text-sm text-muted-foreground">
           On boot, <InlineCode>instrumentation.ts</InlineCode> runs{" "}
           <InlineCode>CREATE TABLE IF NOT EXISTS</InlineCode> for every table.
@@ -328,6 +394,33 @@ WHERE email = 'a-colleague@yourdomain.com';`}
           </a>
           .
         </p>
+        <DocsSubSection title="Client IPs behind more than one proxy">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Rate limits, session and API key IP binding, and the audit log all
+            read the visitor&rsquo;s address from{" "}
+            <InlineCode>X-Forwarded-For</InlineCode>. Left unset, the app takes
+            the right-most entry, which is correct with exactly one proxy in
+            front of it: the Caddy above appends the visitor&rsquo;s address,
+            and a visitor cannot forge the entry their proxy adds last. Put a
+            second hop in front, such as a CDN ahead of Caddy, and the
+            right-most entry becomes the CDN&rsquo;s edge address instead, so
+            every visitor arriving through the same edge shares one rate-limit
+            bucket. Set <InlineCode>TRUSTED_PROXY_CIDR</InlineCode> to the
+            ranges of every proxy between the internet and the app, and the app
+            walks the header from the right, skipping those, and uses the first
+            address that is not one of yours.
+          </p>
+          <CodeBlock
+            language="bash"
+            code={`# .env: your proxies' ranges, comma-separated
+TRUSTED_PROXY_CIDR=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`}
+          />
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            List only ranges you control or your CDN publishes. A range that
+            covers the public internet lets a visitor put any address they like
+            in the header and have it believed.
+          </p>
+        </DocsSubSection>
       </DocsSection>
 
       <DocsSection id="stripe" title="Configure Stripe Webhook (If Billing)">
