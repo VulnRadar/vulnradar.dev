@@ -51,6 +51,23 @@ function getCspDirective(csp: string, name: string): string {
   return "";
 }
 
+/**
+ * Directives csp-wildcard-source leaves alone. Images and media from any
+ * origin are an ordinary policy. The rest each have a check of their own:
+ * script-src, style-src and default-src are page-csp-wildcard-host-source's,
+ * object-src is csp-object-src-unsafe's and frame-ancestors is
+ * page-csp-frame-ancestors-wildcard's.
+ */
+const WILDCARD_DIRECTIVES_ELSEWHERE = new Set([
+  "img-src",
+  "media-src",
+  "script-src",
+  "style-src",
+  "default-src",
+  "object-src",
+  "frame-ancestors",
+]);
+
 export const detectors: Record<string, DetectFn> = {
   // ── Security header presence ────────────────────────────────────────────────
 
@@ -324,22 +341,26 @@ export const detectors: Record<string, DetectFn> = {
     const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     const parts = csp.split(";").map((s) => s.trim());
-    for (const p of parts) {
-      const hasRealWildcard = /(?:^|\s)\*(?:\s|$)/.test(p);
-      if (
-        hasRealWildcard &&
-        !p.includes("img-src") &&
-        !p.includes("media-src")
-      ) {
-        return `CSP uses wildcard source: '${p}'.`;
-      }
+    const nameOf = (p: string) => p.split(/\s+/)[0]?.toLowerCase() ?? "";
+    // A wildcard in script-src, style-src or default-src is reported by
+    // page-csp-wildcard-host-source, which also catches *.example.com there.
+    // The two shared a dedupe group, so `connect-src *; script-src *` came out
+    // as one finding naming one directive and the other fix was lost. They
+    // now cover different directives, and every offending one is listed.
+    const wildcards = parts.filter(
+      (p) =>
+        !WILDCARD_DIRECTIVES_ELSEWHERE.has(nameOf(p)) &&
+        /(?:^|\s)\*(?:\s|$)/.test(p),
+    );
+    if (wildcards.length > 0) {
+      return `CSP uses a wildcard source: ${wildcards.map((p) => `'${p}'`).join(", ")}.`;
     }
     // A bare scheme source ("https:") allows every origin on that scheme,
     // which for scripts is a wildcard with extra steps: anyone can host a
     // script on an https origin. Scoped to the script directives, where it
     // matters; img-src https: is an ordinary, reasonable policy.
     for (const p of parts) {
-      const name = p.split(/\s+/)[0]?.toLowerCase();
+      const name = nameOf(p);
       if (name !== "script-src" && name !== "default-src") continue;
       if (/(?:^|\s)https?:(?:\s|$)/i.test(p)) {
         return `CSP ${name} allows any origin on a scheme: '${p}'.`;
@@ -839,8 +860,7 @@ export const detectors: Record<string, DetectFn> = {
     // end of the directive string, so it also matched a tightly scoped
     // path wildcard (`script-src 'self' https://cdn.example.com/js/*`),
     // which is the opposite of a wildcard host. A genuinely wildcard
-    // script-src is already reported by `csp-wildcard-source` and
-    // `page-csp-wildcard-host-source`.
+    // script-src is already reported by `page-csp-wildcard-host-source`.
     //
     // allow-http / reflected-xss are matched as directive NAMES, not as
     // substrings of the whole header: a host, a report endpoint path or a

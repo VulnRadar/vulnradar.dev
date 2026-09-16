@@ -130,7 +130,6 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "cookie-host-prefix-wrong-path": "cookie-prefix-violation",
   "cookie-secure-prefix-not-secure": "cookie-prefix-violation",
   "cookie-host-prefix-attribute-mismatch": "cookie-prefix-violation",
-  "csp-wildcard-source": "csp-wildcard-source",
   "csp-allows-http-sources": "csp-http-sources",
   "csp-object-src-unsafe": "csp-object-src-unrestricted",
   // Page frameable by any site. code-clickjack-x-frame-options restates

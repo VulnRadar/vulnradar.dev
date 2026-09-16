@@ -13619,18 +13619,19 @@ export default {
 ### `csp-wildcard-source` [headers / medium / combined]
 **CSP Uses Wildcard Source**
 
-Content Security Policy uses wildcard (*) as a source.
+A Content Security Policy directive that has no wildcard check of its own (for example connect-src, frame-src or worker-src) allows any origin with *, or script-src allows every origin on a scheme such as https:.
 
-**Risk:** Any origin can serve content, defeating CSP protections.
+**Risk:** A wildcard connect-src lets injected script send data to any server, a wildcard frame-src or worker-src lets a page load content from anywhere, and a bare https: in script-src lets anyone who can host a file on any https site run script on the page.
 
-**Why it matters:** Wildcard sources allow loading resources from any origin.
+**Why it matters:** Each directive is an allowlist for one kind of resource, and * or a bare scheme turns that allowlist off. Wildcards in script-src, style-src, default-src, object-src and frame-ancestors are each reported by a check for that directive.
 
 **References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Replace * with specific trusted domains.
+- Replace * in each directive the finding names with the origins that directive really needs, for example connect-src 'self' https://api.example.com.
+- Replace a bare https: in script-src with the exact script origins, or with nonces or hashes.
 - **Replace CSP wildcards with specific origins** (javascript):
 ```javascript
 // BAD: script-src *, allows any origin to run scripts
@@ -14106,7 +14107,7 @@ The CSP names a directive browsers no longer implement (allow-http, reflected-xs
 
 **Risk:** Remove legacy directives like allow-http and reflected-xss
 
-**Why it matters:** allow-http (Chrome 41-65) and reflected-xss were both removed and are silently ignored, so a policy relying on either has a gap it does not know about. A permissive script-src alongside a restrictive default-src is not reported here: default-src is a fallback that script-src is specified to override, and a genuinely wildcard script-src is covered by csp-wildcard-source.
+**Why it matters:** allow-http (Chrome 41-65) and reflected-xss were both removed and are silently ignored, so a policy relying on either has a gap it does not know about. A permissive script-src alongside a restrictive default-src is not reported here: default-src is a fallback that script-src is specified to override, and a genuinely wildcard script-src is covered by the check for wildcard hosts in script-src.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/

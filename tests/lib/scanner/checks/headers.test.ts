@@ -1013,16 +1013,33 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
-      description: "CSP default-src *",
+      description: "CSP connect-src *",
       url: "https://example.com/",
-      headers: { "content-security-policy": "default-src *" },
+      headers: { "content-security-policy": "default-src 'self'; connect-src *" },
       expect: "fire",
+      evidenceIncludes: "connect-src *",
     },
     {
       description: "wildcard set via meta-tag CSP (no header CSP at all)",
       url: "https://example.com/",
-      body: '<meta http-equiv="Content-Security-Policy" content="default-src *">',
+      body: '<meta http-equiv="Content-Security-Policy" content="frame-src *">',
       expect: "fire",
+    },
+    {
+      description: "every wildcard directive is named, not only the first",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy": "connect-src *; worker-src *; img-src *",
+      },
+      expect: "fire",
+      evidenceIncludes: "'connect-src *', 'worker-src *'",
+    },
+    {
+      // page-csp-wildcard-host-source reports these, including *.example.com.
+      description: "default-src * belongs to the wildcard host check",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "default-src *; script-src * 'self'" },
+      expect: "skip",
     },
   ],
 

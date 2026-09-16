@@ -56,6 +56,17 @@ describe("dedupeFindings", () => {
     );
   });
 
+  it("keeps wildcards in different CSP directives as separate findings", () => {
+    // One finding per directive fix: connect-src * and script-src * used to
+    // share a group, and the survivor named only one of them.
+    const { findings, merged } = dedupeFindings([
+      finding("csp-wildcard-source", { evidence: "connect-src *" }),
+      finding("page-csp-wildcard-host-source", { evidence: "script-src" }),
+    ]);
+    expect(merged).toBe(0);
+    expect(findings).toHaveLength(2);
+  });
+
   it("keeps the live GraphQL introspection result over the keyword matches", () => {
     const { findings, merged } = dedupeFindings([
       finding("graphql-introspection", { severity: "low" }),

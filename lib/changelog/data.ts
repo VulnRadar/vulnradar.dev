@@ -440,6 +440,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: ShieldCheck,
+        label: "Each Loose Security Policy Rule Gets Its Own Finding",
+        desc: "A site's Content Security Policy is a list of rules saying where a page may load things from, one rule per kind of thing: scripts, styles, connections, frames and so on. Two checks looked for rules that allow anywhere at all, and when both fired they were merged into one finding. So a policy that allowed scripts from anywhere and also allowed connections to anywhere was reported as one problem naming only one of the two, and the other fix was easy to miss. The two checks now look at different rules, and the one covering connections, frames and the rest lists every rule that allows anywhere, not just the first it finds.",
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

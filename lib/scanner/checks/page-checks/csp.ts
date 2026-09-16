@@ -159,7 +159,6 @@ export const cspChecks: PageCheck[] = [
     ],
     codeExamples: [],
     needs: ["csp"],
-    dedupeGroup: "csp-wildcard-source",
     run(ctx) {
       const csp = ctx.csp!;
       if (csp.reportOnly) return null;

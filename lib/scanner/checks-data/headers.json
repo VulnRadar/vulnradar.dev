@@ -737,11 +737,14 @@
     "title": "CSP Uses Wildcard Source",
     "category": "headers",
     "severity": "medium",
-    "description": "Content Security Policy uses wildcard (*) as a source.",
-    "evidence": "CSP contains wildcard source directive.",
-    "riskImpact": "Any origin can serve content, defeating CSP protections.",
-    "explanation": "Wildcard sources allow loading resources from any origin.",
-    "fixSteps": ["Replace * with specific trusted domains."],
+    "description": "A Content Security Policy directive that has no wildcard check of its own (for example connect-src, frame-src or worker-src) allows any origin with *, or script-src allows every origin on a scheme such as https:.",
+    "evidence": "CSP uses a wildcard source in one or more directives.",
+    "riskImpact": "A wildcard connect-src lets injected script send data to any server, a wildcard frame-src or worker-src lets a page load content from anywhere, and a bare https: in script-src lets anyone who can host a file on any https site run script on the page.",
+    "explanation": "Each directive is an allowlist for one kind of resource, and * or a bare scheme turns that allowlist off. Wildcards in script-src, style-src, default-src, object-src and frame-ancestors are each reported by a check for that directive.",
+    "fixSteps": [
+      "Replace * in each directive the finding names with the origins that directive really needs, for example connect-src 'self' https://api.example.com.",
+      "Replace a bare https: in script-src with the exact script origins, or with nonces or hashes."
+    ],
     "codeExamples": [
       {
         "label": "Replace CSP wildcards with specific origins",
@@ -751,8 +754,8 @@
     ],
     "_idx": 34,
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy",
+      "https://owasp.org/www-project-secure-headers/"
     ],
     "cwe": "CWE-693",
     "owasp": "A05:2021"
@@ -1194,7 +1197,7 @@
     "description": "The CSP names a directive browsers no longer implement (allow-http, reflected-xss), or its script-src combines 'none' with 'unsafe-inline' or 'unsafe-eval'. Directive names are matched as names, so a host or report endpoint whose path happens to contain one of those words is not reported.",
     "evidence": "Header absent or misconfigured for `headers-csp-incompatible-directives`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Remove legacy directives like allow-http and reflected-xss",
-    "explanation": "allow-http (Chrome 41-65) and reflected-xss were both removed and are silently ignored, so a policy relying on either has a gap it does not know about. A permissive script-src alongside a restrictive default-src is not reported here: default-src is a fallback that script-src is specified to override, and a genuinely wildcard script-src is covered by csp-wildcard-source.",
+    "explanation": "allow-http (Chrome 41-65) and reflected-xss were both removed and are silently ignored, so a policy relying on either has a gap it does not know about. A permissive script-src alongside a restrictive default-src is not reported here: default-src is a fallback that script-src is specified to override, and a genuinely wildcard script-src is covered by the check for wildcard hosts in script-src.",
     "fixSteps": ["Remove legacy directives like allow-http and reflected-xss"],
     "codeExamples": [
       {
