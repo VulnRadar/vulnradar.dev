@@ -147,3 +147,9 @@ id_ed25519
 audits/report.html
 audits/merged-findings.json
 audits/email-previews/
+
+# Design-language reference pulled in by `npx getdesign@latest add <name>`.
+# It is a local styling aid for keeping the site visually coherent, not part
+# of the product, and it re-materialises on demand.
+/DESIGN.md
+/apple/

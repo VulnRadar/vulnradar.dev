@@ -8,6 +8,7 @@ import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import {
   modalBand,
   modalCloseChip,
+  modalMotion,
   modalPanel,
   modalPositioner,
   modalScrim,
@@ -86,9 +87,22 @@ export function ModalShell({
     // action it offers (close) is also on the keyboard-reachable button below
     // and on Escape, which useModalA11y binds. That is why it carries no role
     // and no key handler of its own.
-    <div className={cn(modalScrim, modalPositioner)} onClick={onClose}>
+    <div
+      className={cn(modalScrim, modalPositioner, "animate-in fade-in-0")}
+      onClick={onClose}
+    >
+      {/* Entrance only. This shell is not Radix: `if (!open) return null`
+          above unmounts it on the same tick, so there is no element left
+          on screen for an exit animation to run on. Adding the closed-state
+          classes here would compile dead CSS and imply a fade-out that
+          never plays. */}
       <div
-        className={cn(modalPanel, modalTier.shell, modalSize[size])}
+        className={cn(
+          modalPanel,
+          modalMotion.panelEnter,
+          modalTier.shell,
+          modalSize[size],
+        )}
         onClick={(e) => e.stopPropagation()}
         {...panelProps}
         {...dialogProps}

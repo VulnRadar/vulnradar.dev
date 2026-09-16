@@ -9,7 +9,7 @@ interface LandingFaqProps {
 
 export function LandingFaq({ items }: LandingFaqProps) {
   return (
-    <section className="py-16 sm:py-20 border-t border-border/50">
+    <section className="py-16 sm:py-20">
       <div className="max-w-3xl mx-auto px-4 sm:px-6">
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-8">
           Questions people ask first

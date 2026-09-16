@@ -42,7 +42,7 @@ const TabsTrigger = React.forwardRef<
       // :focus-visible rule in app/globals.css is a more specific selector,
       // so a keyboard-focused tab still paints the ring-2 focus indicator
       // over this.
-      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-input",
+      "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-input",
       // Was a bare `transition-all`, which also animated the trigger's own box
       // whenever a sibling's label changed width. Only the colours change on
       // activation, so only the colours are transitioned.

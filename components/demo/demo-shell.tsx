@@ -6,7 +6,7 @@ import { Footer } from "@/components/scanner/footer";
 
 export function DemoShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col bg-background overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-background">
       <LandingNav />
       <main id="main-content" tabIndex={-1} className="flex-1 min-w-0">
         {children}

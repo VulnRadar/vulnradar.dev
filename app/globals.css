@@ -224,14 +224,40 @@
       4rem + var(--vr-banner-h, 0px) + var(--vr-imp-banner-h, 0px)
     );
     scroll-padding-bottom: calc(var(--vr-cookie-h, 0px) + 1rem);
-    /* iOS Safari rounds subpixel widths differently than Chrome/Android, so a
+  }
+
+  /* iOS Safari rounds subpixel widths differently than Chrome/Android, so a
      handful of grid/flex layouts (dashboard stat strip, recent scans list)
      end up a fraction of a pixel wider than the viewport there and nowhere
      else. Without this, iOS lets that sliver become a real sideways swipe
-     (reads as content "going off screen"); Android/desktop never surface
-     it. Locking the X axis on the root scrolling element is the fix, not
-     hunting down every layout that can round up by <1px. */
-    overflow-x: hidden;
+     (reads as content "going off screen"); Android/desktop never surface it.
+     Locking the X axis on the root is the fix, not hunting down every layout
+     that can round up by <1px.
+
+     TWO CHANGES from the version of this that sat on `html` alone, both of
+     which are why the swipe survived it on a real iPhone:
+
+     `html, body`, not `html`. WebKit picks which of the two is the viewport
+     propagation source, and a clamp on only one of them leaves the other
+     free to be the box that pans. Desktop and Android never showed it, which
+     is exactly why it read as fixed.
+
+     `clip`, not `hidden`. `overflow: hidden` makes the element a SCROLL
+     CONTAINER whose scrollport merely has its bars hidden - it is still
+     scrollable programmatically and still pannable by a touch gesture, which
+     is the whole bug. `overflow: clip` creates no scroll container at all,
+     so there is nothing left to pan. It also leaves `position: sticky`
+     descendants working, which `hidden` on body would have broken.
+
+     Safari 16 / Chrome 90 / Firefox 81 and up. Anything older simply loses
+     the clamp and behaves as it did before this rule existed.
+
+     This is a floor, not a licence: it hides a sliver, it does not fix a
+     layout that is genuinely too wide. A long unbroken URL still needs
+     `min-w-0` and `break-all` at the component. */
+  html,
+  body {
+    overflow-x: clip;
   }
 
   /* Reserve scrollbar-track width up front so a Radix modal locking the page
@@ -442,6 +468,69 @@
     --chart-5: 340 75% 55%;
     --radius: 0.5rem;
 
+    /* Section tiles: the marketing surface's rhythm.
+       ------------------------------------------------------------------
+       The reference language this is drawn from stacks full-bleed sections
+       edge to edge and lets the SURFACE CHANGE be the divider, instead of
+       drawing a rule between them. Three steps are enough for that:
+
+         --tile-base      the page itself (--background), stated here only
+                          so a tile can name a step rather than an absence
+         --tile-alt       one micro-step away. The "is this a new section"
+                          signal, used for the every-other-one band
+         --tile-contrast  the strongest step the theme has room for, used
+                          two or three times on a page for the sections
+                          that should stop someone. NOT an inversion - see
+                          the note on the light value below
+
+       These are steps on a ladder, not colours, which is what makes the
+       rhythm survive both themes: each theme resolves "one step away" and
+       "as far as this theme goes" into values that are still legible in
+       it. That is the reason not to reach for the reference's literal
+       #f5f5f7 and #272729 here - a hardcoded parchment is invisible on a
+       dark page, a hardcoded near-black band on the light page reads as
+       the theme having broken, and this app's default is dark.
+
+       --tile-contrast-foreground travels WITH the contrast tile. Anything
+       placed on that surface has to take its text colour from the pair,
+       because --foreground is by definition the wrong one there. */
+    --tile-base: var(--background);
+    --tile-alt: 213 22% 95%;
+    /* The deepest step this theme has room for, and still a LIGHT surface.
+       ----------------------------------------------------------------
+       The reference language puts a near-black tile on a light page, and
+       that is genuinely what it does - but here it read as a section
+       hardcoded to dark mode rather than as rhythm, because this product's
+       default IS dark and a black band on the light theme looks like the
+       theme failed rather than like a design choice.
+
+       So `contrast` means "the strongest step away from the page that this
+       theme can make", not "inverted". Light steps DOWN from the page
+       (90% -> 82%) while --tile-alt steps up (90% -> 95%), which gives the
+       three surfaces a real 82/90/95 ladder in one direction of travel.
+       Dark has no room downward from 6%, so it steps up instead. Either way
+       a tile follows the theme it is rendered in, which is the part that was
+       actually wrong. */
+    --tile-contrast: 213 20% 82%;
+    /* 11.46:1 on --tile-contrast. This theme's own --foreground: a light
+       tile takes dark text, so there is no second ink to define. */
+    --tile-contrast-foreground: 220 20% 10%;
+    /* 4.95:1 on --tile-contrast. */
+    --tile-contrast-muted: 220 12% 34%;
+    /* Links have to be re-pitched for this surface and it is the one value
+       that is easy to miss. --primary-text (213 94% 42%) is tuned against
+       --background at 90% and --card at 95%; on an 82% tile it measures
+       3.72:1, which is under AA for body text. 34% restores it to 5.04:1.
+       .tile-contrast below routes --primary-text here. --primary itself is
+       NOT re-pitched: as a button fill it is paired with its own
+       foreground and is unaffected by the surface behind it. */
+    --tile-contrast-link: 213 94% 34%;
+    /* A hairline, and a subtle fill that lifts off the tile. Both step
+       toward the page rather than away, because the tile is the dark end of
+       this theme's ladder. */
+    --tile-contrast-border: 213 15% 68%;
+    --tile-contrast-surface: 213 20% 88%;
+
     /* a11y: light and dark used to share one value per severity, tuned for
        the dark background. Used as TEXT on this theme's light surfaces they
        measured 2.98:1 (critical), 2.19 (high), 1.56 (medium) and 2.62 (low)
@@ -566,6 +655,31 @@
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
 
+    /* The same ladder, pointing the other way. See the light block above.
+       --tile-alt is --card, so an alternating band reads as the same
+       material the app's panels are made of rather than a fourth grey.
+       --tile-contrast steps UP from the page instead of down: on a near
+       black page the only direction a surface can travel is toward light,
+       and the reference's own dark tiles are built from micro-steps of
+       exactly this size. --tile-contrast-foreground stays the standard
+       light-on-dark text, because that is still what this tile is. */
+    --tile-base: var(--background);
+    --tile-alt: 224 18% 9%;
+    --tile-contrast: 224 14% 15%;
+    /* 13.89:1 on --tile-contrast. */
+    --tile-contrast-foreground: 210 20% 95%;
+    /* 5.95:1 on --tile-contrast. */
+    --tile-contrast-muted: 215 14% 64%;
+    /* Unchanged from --primary-text, unlike the light theme's. This tile is
+       LIGHTER than the page it sits on, so a link that already clears AA on
+       --background clears it here too: 6.17:1, measured. The variable exists
+       in both themes anyway so .tile-contrast can route through one name. */
+    --tile-contrast-link: 213 94% 68%;
+    /* This theme's contrast tile already sits at 15%, so its hairline and
+       fill step up from there rather than from the page. */
+    --tile-contrast-border: 224 11% 28%;
+    --tile-contrast-surface: 224 13% 20%;
+
     --severity-critical: 0 84% 60%;
     --severity-high: 25 95% 53%;
     --severity-medium: 45 93% 47%;
@@ -584,6 +698,65 @@
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 9%;
   }
+}
+
+/* The three section surfaces, as classes rather than bare background
+   utilities.
+   ---------------------------------------------------------------------
+   `.tile-contrast` does the part a `bg-*` utility cannot: it REMAPS the
+   semantic tokens for everything inside it.
+
+   The problem it solves is that a contrast tile inverts the surface while
+   its children keep asking for --foreground and --muted-foreground, both of
+   which are defined against --background. On a light page the contrast tile
+   is near-black, so a child's `text-muted-foreground` resolves to a dark
+   grey on a dark tile and effectively disappears. Every child would
+   otherwise need a second set of on-dark classes, which is the duplication
+   that makes an inverted section rot the first time someone edits it.
+
+   Redefining the tokens on the tile itself means the existing components go
+   on using `text-foreground` / `text-muted-foreground` / `border-border`
+   and simply resolve them against the tile they are standing on. Nothing
+   inside has to know it is on an inverted surface.
+
+   --card and --popover are remapped too: a card dropped onto the tile would
+   otherwise paint the page background back over it in a rectangle. --primary
+   is deliberately NOT remapped. It is the single accent, it is the same blue
+   on every surface by design, and it already clears contrast on all three. */
+.tile-base {
+  background-color: hsl(var(--background));
+}
+
+.tile-alt {
+  background-color: hsl(var(--tile-alt));
+}
+
+.tile-contrast {
+  background-color: hsl(var(--tile-contrast));
+  --background: var(--tile-contrast);
+  --foreground: var(--tile-contrast-foreground);
+  --muted-foreground: var(--tile-contrast-muted);
+  --card: var(--tile-contrast);
+  --card-foreground: var(--tile-contrast-foreground);
+  --popover: var(--tile-contrast);
+  --popover-foreground: var(--tile-contrast-foreground);
+  /* Hairlines and subtle fills have to lift off the TILE, not off the page.
+     Both are stated per theme rather than derived from the foreground with
+     an alpha: --muted is a background, so pointing it at a text colour
+     paints a near-white block, and `border-border/50` at call sites would
+     compose a second alpha on top of a first. */
+  --border: var(--tile-contrast-border);
+  --input: var(--tile-contrast-border);
+  --muted: var(--tile-contrast-surface);
+  --secondary: var(--tile-contrast-surface);
+  --accent: var(--tile-contrast-surface);
+  --secondary-foreground: var(--tile-contrast-foreground);
+  --accent-foreground: var(--tile-contrast-foreground);
+  /* The .text-primary override further down resolves this, so an
+     in-copy link on the tile picks up the re-pitched value without
+     any call site knowing it is on a tile. */
+  --primary-text: var(--tile-contrast-link);
+  color: hsl(var(--tile-contrast-foreground));
 }
 
 @layer utilities {

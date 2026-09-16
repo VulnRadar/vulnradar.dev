@@ -189,7 +189,7 @@ export default async function RootLayout({
               screen is not a flash of the wrong palette. */}
           <ThemeProvider
             attribute="class"
-            defaultTheme="dark"
+            defaultTheme="system"
             enableSystem
             disableTransitionOnChange
           >
@@ -245,9 +245,23 @@ export default async function RootLayout({
           Skip to main content
         </a>
         <SiteStructuredData />
+        {/* Follow the OS, and fall back to dark when the OS cannot be read.
+            `enableSystem` alone did not do this: it only made "system" an
+            available choice, while `defaultTheme="dark"` meant a first-time
+            visitor whose machine is set to light still got a dark app.
+
+            The fallback is the `class="dark"` on <html> above, not a stored
+            preference. Writing "dark" into localStorage here would look like
+            the same thing and is the trap: an explicit stored theme outranks
+            the system one in next-themes, so it would pin that visitor to dark
+            permanently and the app would stop following the OS for them, which
+            is the opposite of what this is for. Leaving the SSR class to stand
+            covers every case where the system genuinely cannot be read - no
+            JS, a blocked or failed script, matchMedia missing - because
+            nothing then runs to replace it. */}
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >

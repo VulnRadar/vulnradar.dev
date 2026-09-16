@@ -160,3 +160,37 @@ export const modalCloseClearance = {
  */
 export const modalCloseChip =
   "absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background/90 text-muted-foreground backdrop-blur-xs transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none";
+
+/**
+ * Entrance and exit motion, for the Radix-driven surfaces.
+ * ---------------------------------------------------------------------
+ * This is the reason modals that DO conform to this grammar could still feel
+ * like different components. `Sheet` fades and slides, the command palette
+ * fades and zooms, and `Dialog`, `AlertDialog` and `ModalShell` had no
+ * transition at all: they appeared between one frame and the next. Same
+ * scrim, same panel, same bands, and one of them snaps while its neighbour
+ * glides, which reads as "these are different modals" long before anyone
+ * measures a radius.
+ *
+ * The scrim only fades. The panel fades and takes a 95% zoom with it, which
+ * is the same pair `components/ui/tooltip.tsx` and the command palette
+ * already use, so this adds no new motion vocabulary to the product.
+ *
+ * These are tailwindcss-animate's modifiers, not the same-named `@utility`
+ * shorthands in app/globals.css. Read the comment above those before
+ * touching either: both define `animate-in`, the plugin's copy currently
+ * wins on source order, and every working call site in the product depends
+ * on that. This follows the same path rather than inventing a second one.
+ *
+ * Radix drives both halves off `data-state`, and holds the element mounted
+ * for the exit. `ModalShell` is not Radix and unmounts immediately, so it
+ * can only take the entrance half - see the note on its own usage.
+ */
+export const modalMotion = {
+  scrim:
+    "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
+  panel:
+    "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
+  /** The entrance alone, for a surface that unmounts rather than animating out. */
+  panelEnter: "animate-in fade-in-0 zoom-in-95",
+} as const;

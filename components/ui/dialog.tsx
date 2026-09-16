@@ -10,6 +10,7 @@ import {
   modalCloseChip,
   modalCloseClearance,
   modalCompact,
+  modalMotion,
   modalPanel,
   modalPositioner,
   modalScrim,
@@ -43,7 +44,7 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn(modalScrim, className)}
+    className={cn(modalScrim, modalMotion.scrim, className)}
     {...props}
   />
 ));
@@ -80,6 +81,7 @@ const DialogContent = React.forwardRef<
           ref={ref}
           className={cn(
             modalPanel,
+            modalMotion.panel,
             modalTier[variant],
             modalSize[size],
             className,

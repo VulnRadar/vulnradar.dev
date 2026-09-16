@@ -981,7 +981,7 @@ function AdminContent() {
             <ServerCrash className="h-7 w-7 text-destructive" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
               Couldn&apos;t load the admin panel
             </h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-xs">
@@ -1025,7 +1025,7 @@ function AdminContent() {
           </div>
           {twoFactorLockout ? (
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
                 Two-Factor Authentication Required
               </h1>
               <p className="text-sm text-muted-foreground mt-1 max-w-xs">
@@ -1036,7 +1036,7 @@ function AdminContent() {
             </div>
           ) : (
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
                 Access Denied
               </h1>
               <p className="text-sm text-muted-foreground mt-1 max-w-xs">

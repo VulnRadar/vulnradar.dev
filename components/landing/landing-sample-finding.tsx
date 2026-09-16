@@ -27,7 +27,7 @@ const META: [string, string][] = [
 
 export function LandingSampleFinding() {
   return (
-    <section className="border-y border-border/50 bg-muted/30 py-16 sm:py-24">
+    <section className="tile-alt py-16 sm:py-24">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)] gap-10 lg:gap-16 items-start">
           <div className="lg:pt-2">

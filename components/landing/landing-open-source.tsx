@@ -49,7 +49,7 @@ const socialLinkClass = `inline-flex h-11 w-11 sm:h-9 sm:w-9 items-center justif
 
 export function LandingOpenSource() {
   return (
-    <section className="py-16 sm:py-20 border-t border-border/50">
+    <section className="tile-contrast py-20 sm:py-28">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="max-w-2xl">
           <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-4">

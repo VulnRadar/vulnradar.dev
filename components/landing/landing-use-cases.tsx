@@ -25,7 +25,7 @@ const USE_CASES = [
 
 export function LandingUseCases() {
   return (
-    <section className="py-16 sm:py-20 border-t border-border/50">
+    <section className="tile-alt py-16 sm:py-20">
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-8">
           Who actually runs this

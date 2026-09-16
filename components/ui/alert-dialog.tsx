@@ -8,6 +8,7 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   modalBand,
   modalCompact,
+  modalMotion,
   modalPanel,
   modalPositioner,
   modalScrim,
@@ -31,7 +32,7 @@ const AlertDialogOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
-    className={cn(modalScrim, className)}
+    className={cn(modalScrim, modalMotion.scrim, className)}
     {...props}
     ref={ref}
   />
@@ -65,6 +66,7 @@ const AlertDialogContent = React.forwardRef<
           ref={ref}
           className={cn(
             modalPanel,
+            modalMotion.panel,
             modalTier[variant],
             modalSize[size],
             className,

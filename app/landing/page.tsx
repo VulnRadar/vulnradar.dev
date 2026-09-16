@@ -120,7 +120,7 @@ export default async function LandingPage() {
   const faq = buildFaq(checkCount, categoryCount);
 
   return (
-    <div className="min-h-screen flex flex-col bg-background overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-background">
       <SoftwareStructuredData nonce={nonce} />
       <FaqStructuredData items={faq} nonce={nonce} />
       <LandingNav />

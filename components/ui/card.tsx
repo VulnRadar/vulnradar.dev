@@ -9,7 +9,17 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-lg border bg-card text-card-foreground shadow-xs",
+      // No shadow. This was stock shadcn's `shadow-xs`, and it was the one
+      // place the primitive disagreed with the rest of the product: the app's
+      // own card idiom, written out by hand in dozens of panels, is
+      // `rounded-xl border border-border bg-card` with no elevation at all.
+      // The design language in DESIGN.md is explicit for the same reason -
+      // elevation comes from a change of surface, and a shadow belongs on
+      // imagery rather than on chrome. Floating things that genuinely sit
+      // above the page (dropdowns, toasts, sticky action bars, modal panels)
+      // still carry their own shadow-lg, which is what makes them read as
+      // floating once the static cards underneath stop competing.
+      "rounded-lg border bg-card text-card-foreground",
       className,
     )}
     {...props}

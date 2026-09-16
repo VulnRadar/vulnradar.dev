@@ -19,7 +19,7 @@ export function LandingCta({ freeScansPerDay }: LandingCtaProps) {
   const isLoggedIn = !!me?.userId;
 
   return (
-    <section className="border-t border-border/50 bg-muted/30">
+    <section className="tile-alt">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 lg:gap-12 items-center">
           {isLoggedIn ? (
@@ -34,7 +34,11 @@ export function LandingCta({ freeScansPerDay }: LandingCtaProps) {
                 </p>
               </div>
               <Link href={ROUTES.DASHBOARD} className="shrink-0">
-                <Button size="lg" className="h-11 px-6 gap-2 w-full">
+                <Button
+                  size="lg"
+                  shape="pill"
+                  className="h-11 px-6 gap-2 w-full"
+                >
                   <LayoutDashboard className="h-4 w-4" />
                   Go to Dashboard
                 </Button>
@@ -55,7 +59,11 @@ export function LandingCta({ freeScansPerDay }: LandingCtaProps) {
               </div>
               <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
                 <Link href={ROUTES.SIGNUP}>
-                  <Button size="lg" className="h-11 px-6 gap-2 w-full">
+                  <Button
+                    size="lg"
+                    shape="pill"
+                    className="h-11 px-6 gap-2 w-full"
+                  >
                     Create a free account
                     <ArrowRight className="h-4 w-4" />
                   </Button>
@@ -64,6 +72,7 @@ export function LandingCta({ freeScansPerDay }: LandingCtaProps) {
                   <Link href={ROUTES.DEMO}>
                     <Button
                       size="lg"
+                      shape="pill"
                       variant="outline"
                       className="h-11 px-6 w-full"
                     >

@@ -67,7 +67,7 @@ export function UnsubscribeSkeleton() {
       {/* Real heading, placeholder subtitle: which screen this is was never
           waiting on the token, only whose address it is managing. */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
           Email preferences
         </h1>
         <Skeleton className="mt-1.5 h-4 w-56" />
