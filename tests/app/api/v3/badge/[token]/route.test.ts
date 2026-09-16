@@ -16,6 +16,7 @@ vi.mock("@/lib/database/db", () => ({
 }));
 
 const { GET } = await import("@/app/api/v3/badge/[token]/route");
+const { BRAND } = await import("@/lib/config/brand");
 
 function makeRequest() {
   return new NextRequest("http://localhost/api/v3/badge/token");
@@ -172,7 +173,7 @@ describe("GET /api/v3/badge/[token]", () => {
     // picks the colour, so the badge's at-a-glance meaning is unchanged.
     // ref: AUDIT-014#comp-03
     expect(body).toContain("A+ -");
-    expect(body).toContain("#22c55e");
+    expect(body).toContain(BRAND.success);
     expect(body).not.toContain("example.com");
   });
 
@@ -210,7 +211,7 @@ describe("GET /api/v3/badge/[token]", () => {
     expect(body).not.toContain("F -");
     // The safety rating still picks the colour, so a stored grade never
     // repaints a dangerous host green.
-    expect(body).toContain("#ef4444");
+    expect(body).toContain(BRAND.severity.critical);
   });
 
   it("reads a stored grade out of a result_meta column returned as a JSON string", async () => {
@@ -296,7 +297,12 @@ describe("GET /api/v3/badge/[token]", () => {
 
     const body = await res.text();
     expect(body).toContain("D -");
-    expect(body).toContain("#eab308");
+    // Was a transcribed "#eab308", stock Tailwind yellow-500, which is not
+    // the product's amber (#e7b008) - so the suite asserted the badge
+    // route's private copy of the colour rather than checking it against
+    // the palette. Reading BRAND here means the test cannot agree with a
+    // drifted value again.
+    expect(body).toContain(BRAND.severity.medium);
   });
 
   it("grades a critical exploitable finding F and keeps the unsafe colour", async () => {
@@ -318,7 +324,7 @@ describe("GET /api/v3/badge/[token]", () => {
 
     const body = await res.text();
     expect(body).toContain("F -");
-    expect(body).toContain("#ef4444");
+    expect(body).toContain(BRAND.severity.critical);
     expect(res.headers.get("Cache-Control")).toBe(
       "public, max-age=3600, s-maxage=3600",
     );

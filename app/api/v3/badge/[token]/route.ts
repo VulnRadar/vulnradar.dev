@@ -8,6 +8,7 @@ import {
   type SiteGrade,
 } from "@/lib/scanner/site-grade";
 import { APP_NAME } from "@/lib/config/constants";
+import { BRAND } from "@/lib/config/brand";
 import { getSetting } from "@/lib/config/runtime-config";
 
 /**
@@ -134,10 +135,18 @@ export async function GET(
   // something an owner removes rather than keeps. The safety rating is still
   // what picks the colour, so the badge's at-a-glance meaning is unchanged.
   // ref: AUDIT-014#comp-03
+  //
+  // Taken from BRAND rather than typed out. These three were hand-written
+  // hex, and two of them happened to match the palette exactly while the
+  // middle one did not: `caution` was #eab308, stock Tailwind yellow-500,
+  // where the product's amber is #e7b008. Small enough to look identical
+  // beside each other and still a real mismatch, in the one surface that
+  // renders outside the app entirely - a cacheable SVG embedded in other
+  // people's READMEs, where nothing else on the page can correct it.
   const ratingConfig = {
-    safe: { color: "#22c55e" },
-    caution: { color: "#eab308" },
-    unsafe: { color: "#ef4444" },
+    safe: { color: BRAND.success },
+    caution: { color: BRAND.severity.medium },
+    unsafe: { color: BRAND.severity.critical },
   };
 
   const { color } = ratingConfig[safetyRating];

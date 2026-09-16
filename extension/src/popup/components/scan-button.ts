@@ -1,11 +1,13 @@
 // Scan button + mode toggle + URL pill.
 // Layout:
 //   [URL bar with copy]
-//   [Quick | Deep]        [N/16 families]
+//   [Quick | Deep]        [N/M families]
 //   [       Scan this page        ]
 //
 // Mode = "quick" (single page) | "deep" (crawl multiple same-origin pages)
-// The families chip shows how many categories are enabled.
+// The families chip shows how many categories are enabled. M is counted
+// from CATEGORIES_BY_ID at render time, never written out here - the
+// sketch above said 16 and the real figure has been 18 for some time.
 
 import { html, type TemplateResult } from "lit-html";
 import type { ScanMode, ScannerCategory } from "../../lib/types";

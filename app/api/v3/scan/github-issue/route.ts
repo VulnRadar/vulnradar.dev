@@ -6,6 +6,9 @@ import { getDecryptedGithubToken } from "@/lib/github/github-connections";
 import { createRepoIssue } from "@/lib/github/github-api";
 import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
 import type { Vulnerability, Severity } from "@/lib/scanner/types";
+// One list, not a fourth private copy. See its definition for the nine-table
+// history that made this worth consolidating.
+import { SEVERITY_ORDER } from "@/lib/config/client-constants";
 
 /**
  * POST /api/v3/scan/github-issue
@@ -16,13 +19,6 @@ import type { Vulnerability, Severity } from "@/lib/scanner/types";
  * Body: { scanId: <public_id>, repo: "owner/name" }.
  */
 
-const SEVERITY_ORDER: Severity[] = [
-  "critical",
-  "high",
-  "medium",
-  "low",
-  "info",
-];
 const REPO_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const MAX_FINDINGS_LISTED = 50;
 

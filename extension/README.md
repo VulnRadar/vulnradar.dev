@@ -98,16 +98,29 @@ drives both the nav and the page. Keep the two in step.
 
 ## Permissions
 
-| Permission                                   | Why                                                                     |
-| -------------------------------------------- | ----------------------------------------------------------------------- |
-| `storage`                                    | Save API key, preferences, scan history cache in `chrome.storage.local` |
-| `alarms`                                     | Scheduled scans (one-time / daily / weekly)                             |
-| `notifications`                              | "Scan complete" toasts when threshold met                               |
-| `tabs`                                       | Read current tab URL, query active tab for popup                        |
-| `activeTab`                                  | Minimal-scope current-tab access for popup → background comms           |
-| `scripting`                                  | On-demand content script injection (for auto-scan)                      |
-| `<all_urls>` (content_scripts)               | Run scan on every page the user visits                                  |
-| `https://vulnradar.dev/*` (host_permissions) | API calls to your VulnRadar instance                                    |
+This table is the complete contents of `permissions`, `host_permissions` and
+`content_scripts` in `manifest/chrome.json` and `manifest/firefox.json`. Both
+manifests request exactly the same set. It previously listed `activeTab` and
+`scripting`, which are in neither manifest, and omitted `contextMenus` and
+`downloads`, which are in both and are used: a permissions table is the one
+piece of documentation a reader is entitled to check against the manifest, and
+for a security tool it is worse to overstate what is requested than to
+understate it.
+
+| Permission                       | Why                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------- |
+| `storage`                        | API key, preferences and the scan-history cache, in `browser.storage.local`            |
+| `alarms`                         | Scheduled scans (one-time / daily / weekly)                                            |
+| `notifications`                  | "Scan complete" toasts, when the severity threshold is met                             |
+| `tabs`                           | Read the current tab's URL so the popup knows what it is offering to scan              |
+| `contextMenus`                   | The "Scan this page with VulnRadar" right-click entry                                  |
+| `downloads`                      | Save an exported report; the payload is handed over as a `data:` URL, never a blob URL |
+| `<all_urls>` (`content_scripts`) | `content.js` runs at `document_idle` on pages you visit, in the top frame only         |
+| `__API_HOST__/*` (host)          | API calls, to `https://vulnradar.dev` by default or to whatever instance you configure |
+
+Not requested, and worth stating because extensions of this kind usually ask
+for them: no `scripting`, no `activeTab`, no `webRequest`, no `cookies`, no
+`history`, and no optional permissions.
 
 **No data is sent to any other origin.** The extension talks to `vulnradar.dev` (or whatever you configure) and that's it.
 

@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { pageMetadata, clampText } from "@/lib/seo/metadata";
+import { SEVERITY_ORDER } from "@/lib/config/client-constants";
 import {
   BreadcrumbStructuredData,
   FaqStructuredData,
@@ -31,14 +32,6 @@ export function generateStaticParams() {
 }
 
 const VALID = new Set<string>(SEO_CATEGORIES);
-
-const SEVERITY_ORDER: Severity[] = [
-  "critical",
-  "high",
-  "medium",
-  "low",
-  "info",
-];
 
 export async function generateMetadata({
   params,

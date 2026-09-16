@@ -3,9 +3,17 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import {
+  SEVERITY_ORDER,
+  type SeverityName,
+} from "@/lib/config/client-constants";
 
-const SEVERITIES = ["critical", "high", "medium", "low", "info"] as const;
-type Severity = (typeof SEVERITIES)[number];
+// Was a private copy of the same five strings under a different name. The
+// canonical list documents at its own definition that this concept was once
+// nine private tables under three incompatible orderings, which is how a
+// comparator copied between files silently inverted.
+const SEVERITIES = SEVERITY_ORDER;
+type Severity = SeverityName;
 
 /** Shown with no filter applied, and restored when the filter is cleared. */
 const IDLE_STATUS = "Expand a category to jump straight to any single check.";

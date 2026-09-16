@@ -28,7 +28,12 @@ vulnradar_scan:
   variables:
     VR_URL: "" # required: the URL to scan
     VR_API_BASE: "https://vulnradar.dev/api/v3" # self-hosting? point at your own /api/v3
-    VR_CRAWL: "false" # "true" crawls and scans up to 15 pages
+    # "true" crawls and scans several pages instead of just the one URL.
+    # How many is your plan's crawl page limit, which starts at 25. This
+    # said 15, which is not a limit that exists on any plan; the GitHub
+    # Action beside this file had the same wrong number and was corrected,
+    # and this copy was missed.
+    VR_CRAWL: "false"
     VR_MAX_CRITICAL: "0" # fail if criticals exceed this
     VR_MAX_HIGH: "0" # fail if highs exceed this
     VR_MAX_MEDIUM: "-1" # fail if mediums exceed this; -1 disables the check
