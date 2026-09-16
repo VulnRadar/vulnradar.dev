@@ -2155,7 +2155,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SCAN_RESPONSE_BODY_MAX_BYTES,
     group: "Scanning",
     label: "Scan response body cap (bytes)",
-    help: "Bytes read from a scanned page's response body before body-based checks run, in the demo, bulk, and authenticated scan routes. Raise this for large single-page apps or content-heavy sites.",
+    help: "Bytes read from a scanned page's response body before body-based checks run, on the demo and authenticated scan routes. Raise this for large single-page apps or content-heavy sites. This said 'demo, bulk, and authenticated', and bulk was never one of them: a bulk scan runs through executeScan, which resolves SCANNER_MAX_RESPONSE_BODY_BYTES instead, so raising this to fix truncated findings in a bulk batch changed nothing.",
     min: 65536,
     max: 52428800,
   },

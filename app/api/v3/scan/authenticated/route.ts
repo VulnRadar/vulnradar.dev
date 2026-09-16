@@ -41,7 +41,7 @@ import {
   getDangerScore,
   getEngineConfidence,
 } from "@/lib/scanner/safety-rating";
-import { runSyncChecks } from "@/lib/scanner/engine";
+import { runSyncChecksYielding } from "@/lib/scanner/engine";
 import {
   getPlannedAsyncBranches,
   runAsyncChecksDetailed,
@@ -473,7 +473,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // contradictions, form security, etc.) instead of only the legacy
     // header/body checks. This matters more here, not less: the whole point
     // of authenticating is to see the page a logged-out scan can't reach.
-    const syncResult = runSyncChecks(
+    // Yielding, like both other executors. This called the blocking
+    // runSyncChecks, which the engine's own measurements put at ~1.2s of
+    // uninterrupted synchronous work on a body at the cap - and this app runs
+    // as one persistent Node process, so that is 1.2s during which every other
+    // user's in-flight scan and every dashboard status poll is stalled.
+    //
+    // The engine's docblock called keeping it here deliberate, on the grounds
+    // that the extra await "would change their control flow for no benefit
+    // (they already run one page at a time)". Running one page at a time is a
+    // fact about this caller; the cost was never paid by this caller. It is
+    // paid by everyone else sharing the process, which the paragraph directly
+    // above that one spells out. This handler is already async - there is an
+    // await eleven lines up - so the await is free.
+    const syncResult = await runSyncChecksYielding(
       url,
       headers,
       bodyForChecks,

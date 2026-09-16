@@ -240,7 +240,13 @@ function ClosedSection({ ports }: { ports: ClosedPort[] }) {
         // already reports its state; this one did not, so the chevron was the
         // only signal that anything was collapsed.
         aria-expanded={show}
-        className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+        // The visible control is 10px type beside a 12px chevron with no
+        // padding, so the tappable box was about 12px tall against the 24px
+        // floor in SC 2.5.8 - and its own sibling disclosure higher up this
+        // file already uses px-4 py-3. py-1.5 plus an after: hit area widens
+        // the target without moving the text, the same trick
+        // components/scanner/inline-auth-form.tsx uses for its icon button.
+        className="relative flex items-center gap-1 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground transition-colors after:absolute after:-inset-x-2 after:-inset-y-1 after:content-[''] hover:text-foreground"
       >
         {show ? (
           <ChevronDown className="h-3 w-3" />

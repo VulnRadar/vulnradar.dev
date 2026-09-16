@@ -2,6 +2,31 @@
 // executable so they can be unit-tested with node:test without spawning a
 // process or hitting the network.
 
+/**
+ * Exit codes.
+ *
+ * The CLI's entire reason to exist in CI is its exit code, and it had two:
+ * 0 for a clean gate and 1 for everything else. "Everything else" covered a
+ * real threshold breach, an expired API key, a network timeout, a 5xx from the
+ * API, a malformed response, and a typo in a flag - so a pipeline that treats
+ * a non-zero exit as "block the merge, we found a vulnerability" could not
+ * tell that apart from "VulnRadar was briefly unreachable". The only way to
+ * distinguish them was to parse stdout for an `ok:false` key that nothing
+ * documented and that --json mode alone produced.
+ *
+ * Splitting them is a behaviour change, and a deliberate one for a major
+ * release: a script testing for non-zero is unaffected, and a script that
+ * wants "the gate failed, specifically" can now ask for it.
+ */
+export const EXIT = {
+  /** Every finding count is at or under its threshold. */
+  OK: 0,
+  /** The scan ran and a threshold was exceeded. This is a real result. */
+  GATE_FAILED: 1,
+  /** The tool could not produce a result: auth, network, API, bad arguments. */
+  ERROR: 2,
+};
+
 export const DEFAULTS = {
   apiBase: "https://vulnradar.dev/api/v3",
   crawl: false,
@@ -217,5 +242,8 @@ Options:
   --json                 Print the raw completed result as JSON.
   -h, --help             Show this help.
 
-Exit code is 0 when findings are under the thresholds, 1 otherwise (or on error).
+Exit codes:
+  0  every finding count is at or under its threshold
+  1  the scan ran and a threshold was exceeded
+  2  the scan could not run: auth, network, API, or bad arguments
 `;

@@ -176,9 +176,19 @@ npm install -g .`}
       <DocsSection id="exit-codes" title="Exit codes">
         <p className="text-sm text-muted-foreground">
           <InlineCode>0</InlineCode> when every finding count is at or under its
-          threshold; <InlineCode>1</InlineCode> when a threshold is exceeded or
-          the scan errors out. That is what lets a CI job block a merge on a new
-          critical.
+          threshold. <InlineCode>1</InlineCode> when the scan ran and a
+          threshold was exceeded: a real result, and what lets a CI job block a
+          merge on a new critical. <InlineCode>2</InlineCode> when the scan
+          could not run at all - bad arguments, a missing or invalid API key, a
+          network failure, an API error, or a scan that never completed.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          <InlineCode>1</InlineCode> and <InlineCode>2</InlineCode> were both{" "}
+          <InlineCode>1</InlineCode> before, so a pipeline could not tell
+          &quot;we found a critical, block the merge&quot; from &quot;VulnRadar
+          was briefly unreachable&quot;. A script testing for any non-zero exit
+          behaves exactly as it did; one that wants the gate result specifically
+          can now ask for it.
         </p>
       </DocsSection>
 

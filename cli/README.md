@@ -63,8 +63,18 @@ vulnradar scan <url> [options]
   -h, --help             Show help.
 ```
 
-Exit code is `0` when findings are under the thresholds, `1` otherwise (or on
-error), so it drops straight into a CI gate.
+### Exit codes
+
+| Code | Meaning                                                                                                                   |
+| ---- | ------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | Every finding count is at or under its threshold.                                                                         |
+| `1`  | The scan ran and a threshold was exceeded. This is a real result.                                                         |
+| `2`  | The scan could not run: bad arguments, no/invalid API key, network failure, an API error, or a scan that never completed. |
+
+`1` and `2` used to both be `1`, which meant a pipeline could not tell "we
+found a critical, block the merge" from "VulnRadar was briefly unreachable".
+A script testing for any non-zero exit is unaffected; one that wants the gate
+result specifically can now ask for it.
 
 ## Example: GitHub Actions
 

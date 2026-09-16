@@ -184,11 +184,19 @@ function yieldToEventLoop(): Promise<void> {
  * the slowest PageCheck 13ms). Splitting it further would mean an incremental
  * parser, which is a different piece of work.
  *
- * `runSyncChecks` stays as it is and stays exported: the bulk and
- * authenticated scan routes call it from a place where the extra await would
- * change their control flow for no benefit (they already run one page at a
- * time), and the whole test suite drives it synchronously. Both share the
- * generator below, so there is one implementation of the check loop.
+ * `runSyncChecks` stays exported, but nothing in the request path calls it any
+ * more. This used to say it was kept for "the bulk and authenticated scan
+ * routes", on the grounds that the extra await "would change their control
+ * flow for no benefit (they already run one page at a time)". Both halves of
+ * that were wrong by the end. Bulk scans go through execute-bulk-scan.ts into
+ * executeScan(), which yields; and running one page at a time is a fact about
+ * the caller, while the cost of blocking is paid by every other scan and
+ * status poll sharing the process - which is what the paragraph above this one
+ * measures. The authenticated route now yields too.
+ *
+ * What it is still for is the test suite, which drives the check loop
+ * synchronously in four files and has no reason not to. Both variants share
+ * the generator below, so there is one implementation of the loop either way.
  * ref: AUDIT-011#scan-06
  */
 export async function runSyncChecksYielding(

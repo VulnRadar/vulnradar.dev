@@ -5,7 +5,7 @@
 // of the project. It used to advertise Node 18, which went end of life in
 // April 2025 and is exercised by nothing here.
 
-import { parseArgs, evaluateGate, USAGE } from "./lib.mjs";
+import { parseArgs, evaluateGate, USAGE, EXIT } from "./lib.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -87,7 +87,7 @@ async function readJson(opts, res, target) {
 }
 
 /**
- * Report a fatal error and exit 1.
+ * Report a fatal error and exit EXIT.ERROR.
  *
  * In --json mode this writes a JSON document to stdout as well, because the
  * whole point of that mode is a pipeline: `vulnradar scan $URL --json | jq
@@ -103,7 +103,7 @@ function fail(opts, message, extra = {}) {
     );
   }
   console.error(message);
-  process.exit(1);
+  process.exit(EXIT.ERROR);
 }
 
 async function main() {
@@ -113,29 +113,38 @@ async function main() {
   // Errors first. `vulnradar --typo` sets opts.error AND leaves command
   // undefined, and checking the help branch first printed bare usage with
   // nothing to say the flag had been rejected.
+  // Every branch below routes through fail(), which is what makes --json mean
+  // something on all of them. It applied to the scan paths only, so an
+  // argument error wrote nothing at all to stdout and
+  // `vulnradar scan $URL --json | jq -e .ok` got empty stdin - and jq exits 0
+  // on empty input, so without `set -o pipefail` the shell reported the failed
+  // pipeline as a pass. That is the exact bug fail() exists to close, left open
+  // on the paths that never called it.
   if (opts.error) {
-    console.error(`Error: ${opts.error}\n`);
     console.error(USAGE);
-    process.exit(1);
+    fail(opts, `Error: ${opts.error}`);
   }
-  if (opts.help || !opts.command) {
+  if (opts.help) {
+    // Asking for help and getting it is success, and it belongs on stdout.
     console.log(USAGE);
-    process.exit(opts.help ? 0 : 1);
+    process.exit(EXIT.OK);
+  }
+  if (!opts.command) {
+    console.error(USAGE);
+    fail(opts, "Error: a command is required.");
   }
   if (opts.command !== "scan") {
-    console.error(`Unknown command: ${opts.command}. Did you mean "scan"?`);
-    process.exit(1);
+    fail(opts, `Unknown command: ${opts.command}. Did you mean "scan"?`);
   }
   if (!opts.url) {
-    console.error("Error: a URL to scan is required.\n");
     console.error(USAGE);
-    process.exit(1);
+    fail(opts, "Error: a URL to scan is required.");
   }
   if (!opts.apiKey) {
-    console.error(
+    fail(
+      opts,
       "Error: no API key. Pass --api-key or set VULNRADAR_TOKEN. Get one at Settings > API Keys.",
     );
-    process.exit(1);
   }
 
   const headers = {
@@ -260,12 +269,15 @@ async function main() {
   });
   if (failed) {
     for (const r of reasons) console.error(r);
-    process.exit(1);
+    // EXIT.GATE_FAILED, not EXIT.ERROR. The scan ran and the answer was "too
+    // many findings" - this is the one non-zero exit that means the tool
+    // worked, and the whole reason a pipeline can act on it.
+    process.exit(EXIT.GATE_FAILED);
   }
-  process.exit(0);
+  process.exit(EXIT.OK);
 }
 
 main().catch((err) => {
   console.error(`Unexpected error: ${err?.message || err}`);
-  process.exit(1);
+  process.exit(EXIT.ERROR);
 });

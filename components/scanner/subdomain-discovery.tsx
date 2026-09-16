@@ -619,7 +619,13 @@ function UnreachableSection({
         type="button"
         onClick={() => setShow(!show)}
         aria-expanded={show}
-        className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
+        // The visible control is 10px type beside a 12px chevron with no
+        // padding, so the tappable box was about 12px tall against the 24px
+        // floor in SC 2.5.8 - and its own sibling disclosure higher up this
+        // file already uses px-4 py-3. py-1.5 plus an after: hit area widens
+        // the target without moving the text, the same trick
+        // components/scanner/inline-auth-form.tsx uses for its icon button.
+        className="relative text-[10px] font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1 py-1.5 after:absolute after:-inset-x-2 after:-inset-y-1 after:content-['']"
       >
         {show ? (
           <ChevronDown className="h-3 w-3" />

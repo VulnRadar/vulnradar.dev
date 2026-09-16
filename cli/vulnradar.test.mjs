@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { parseArgs, evaluateGate, DEFAULTS } from "./lib.mjs";
+import { parseArgs, evaluateGate, DEFAULTS, EXIT } from "./lib.mjs";
 
 const CLI = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -212,7 +212,7 @@ test("cli: exits 0 and prints the summary when findings are under the thresholds
   assert.match(stdout, /critical=0 high=0 medium=4 low=1 total=5/);
 });
 
-test("cli: exits 1 and names every breached threshold", async () => {
+test("cli: exits EXIT.GATE_FAILED and names every breached threshold", async () => {
   const { code, stderr } = await runCli(
     [
       "scan",
@@ -233,7 +233,7 @@ test("cli: exits 1 and names every breached threshold", async () => {
       },
     },
   );
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.GATE_FAILED);
   assert.match(stderr, /2 critical finding\(s\) exceed the max of 0/);
   assert.match(stderr, /1 high finding\(s\) exceed the max of 0/);
   assert.match(stderr, /9 medium finding\(s\) exceed the max of 1/);
@@ -280,7 +280,7 @@ test("cli: a non-200 from the create call is reported with its status and body",
       routes: { "/scan": { status: 401, body: { error: "Invalid API key" } } },
     },
   );
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   assert.match(stderr, /Failed to start scan \(HTTP 401\)/);
   assert.match(stderr, /Invalid API key/);
 });
@@ -290,7 +290,7 @@ test("cli: a create response with no scanId is an error, not a hang", async () =
     ["scan", "https://target.example", "--api-key", "k"],
     { routes: { "/scan": { body: { status: "queued" } } } },
   );
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   assert.match(stderr, /No scanId/);
 });
 
@@ -313,13 +313,13 @@ test("cli: a failed scan reports the server's reason", async () => {
       },
     },
   );
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   assert.match(stderr, /Scan failed: DNS lookup failed/);
 });
 
-test("cli: no API key exits 1 and points at both ways to supply one", async () => {
+test("cli: no API key exits EXIT.ERROR and points at both ways to supply one", async () => {
   const { code, stderr } = await runCli(["scan", "https://target.example"]);
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   assert.match(stderr, /--api-key/);
   assert.match(stderr, /VULNRADAR_TOKEN/);
 });
@@ -338,9 +338,9 @@ test("cli: VULNRADAR_TOKEN is accepted in place of --api-key", async () => {
   assert.equal(code, 0);
 });
 
-test("cli: no URL exits 1 and prints usage", async () => {
+test("cli: no URL exits EXIT.ERROR and prints usage", async () => {
   const { code, stderr } = await runCli(["scan", "--api-key", "k"]);
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   assert.match(stderr, /a URL to scan is required/);
   assert.match(stderr, /Usage:/);
 });
@@ -352,7 +352,7 @@ test("cli: an unknown command is rejected by name", async () => {
     "--api-key",
     "k",
   ]);
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   assert.match(stderr, /Unknown command: scam/);
 });
 
@@ -423,7 +423,7 @@ test("cli: the FIRST bad flag is the one reported", () => {
 
 test("cli: an unknown flag with no command reports the flag, not bare usage", async () => {
   const { code, stderr } = await runCli(["--typo"], { routes: {} });
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   assert.match(stderr, /Unknown flag: --typo/);
 });
 
@@ -468,7 +468,7 @@ test("--timeout actually bounds a connection that is accepted and never answered
     },
   );
   const elapsed = Date.now() - started;
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   // Generous, but far below the "forever" this replaces.
   assert.ok(elapsed < 30_000, `took ${elapsed}ms, should give up near 3s`);
   assert.match(stderr, /timed out|Timed out/i);
@@ -541,7 +541,7 @@ test("a 401 while polling is fatal rather than retried", async () => {
       res.end(JSON.stringify({ scanId: "abc" }));
     },
   );
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   assert.equal(polls, 1, "an auth failure must not be retried");
   assert.match(stderr, /Not authorized/i);
 });
@@ -556,7 +556,7 @@ test("--json writes a parseable document to stdout even when the run fails", asy
     ["scan", "https://target.example", "--api-key", "k", "--json"],
     { routes: { "/scan": { status: 500, body: { error: "boom" } } } },
   );
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   const parsed = JSON.parse(stdout);
   assert.equal(parsed.ok, false);
   assert.ok(parsed.error.length > 0);
@@ -577,7 +577,68 @@ test("an HTML error page is reported as one, not as a JSON parser message", asyn
       },
     },
   );
-  assert.equal(code, 1);
+  assert.equal(code, EXIT.ERROR);
   assert.match(stderr, /not JSON/i);
   assert.match(stderr, /doctype/i);
+});
+
+/**
+ * The distinction the exit codes exist to make.
+ *
+ * Both of these used to exit 1, so a pipeline treating any non-zero exit as
+ * "block the merge, we found a vulnerability" could not tell that apart from
+ * "VulnRadar was briefly unreachable". Asserting them side by side is the
+ * point: it is the difference between the two that matters, not either value
+ * on its own.
+ *
+ * Note the route order. runCli matches with `startsWith`, so "/scan" would
+ * also swallow "/scan/status/..." if it came first - the poll would be handed
+ * the create response forever and the run would sit there until its timeout.
+ */
+test("a breached gate and a broken tool exit differently", async () => {
+  const gate = await runCli(
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--poll-interval",
+      "0",
+    ],
+    {
+      routes: {
+        "/scan/status/": {
+          body: completed({ critical: 3, high: 0, total: 3 }),
+        },
+        "/scan": { body: { scanId: "s1" } },
+      },
+    },
+  );
+
+  const broken = await runCli(
+    ["scan", "https://target.example", "--api-key", "k"],
+    { routes: { "/scan": { status: 503, body: { error: "upstream down" } } } },
+  );
+
+  assert.equal(gate.code, EXIT.GATE_FAILED);
+  assert.equal(broken.code, EXIT.ERROR);
+  assert.notEqual(gate.code, broken.code);
+});
+
+test("--json writes a parseable document on an argument error, not only a scan error", async () => {
+  // fail() was reached only from the scan paths, so an argument error wrote
+  // nothing to stdout at all. `... --json | jq -e .ok` then got empty stdin,
+  // and jq exits 0 on empty input, so the failed pipeline reported as a pass.
+  const { code, stdout } = await runCli(["scan", "--json"], { routes: {} });
+
+  assert.equal(code, EXIT.ERROR);
+  const doc = JSON.parse(stdout.trim());
+  assert.equal(doc.ok, false);
+  assert.match(doc.error, /URL/i);
+});
+
+test("--help succeeds and writes usage to stdout", async () => {
+  const { code, stdout } = await runCli(["--help"], { routes: {} });
+  assert.equal(code, EXIT.OK);
+  assert.match(stdout, /Usage:/);
 });
