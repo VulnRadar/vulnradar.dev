@@ -7,6 +7,7 @@ import {
   normalizeUrl,
   isRawIpv4,
   isValidUrl,
+  SUPPORTED_PROTOCOLS,
   getProtocolType,
 } from "@/lib/scanner/execute-scan";
 import { getSession } from "@/lib/auth";
@@ -253,10 +254,16 @@ export async function POST(request: NextRequest) {
     const normalizedUrl = normalizeUrl(url);
 
     if (!isValidUrl(normalizedUrl)) {
+      // Built from SUPPORTED_PROTOCOLS rather than written out. The hardcoded
+      // version listed six of the fifteen this endpoint actually accepts, so
+      // a caller refused for some other reason was told smtp:// and mongodb://
+      // were unsupported when they are not, and the message could drift
+      // further every time the list grew.
       return NextResponse.json(
         {
-          error:
-            "Invalid URL. Supported protocols: http://, https://, ws://, wss://, ftp://, ftps://",
+          error: `Invalid URL. Supported protocols: ${SUPPORTED_PROTOCOLS.map(
+            (p) => `${p}//`,
+          ).join(", ")}`,
         },
         { status: 400 },
       );

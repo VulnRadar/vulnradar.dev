@@ -426,8 +426,11 @@ describe("POST /api/v3/scan/bulk - request validation", () => {
   });
 
   it("rejects when none of the submitted URLs are parseable or supported", async () => {
+    // These two are genuinely outside SUPPORTED_PROTOCOLS. This case used to
+    // use ssh://, which is IN that list - see the test directly below for why
+    // that mattered.
     const res = await POST(
-      postRequest({ urls: ["not a url at all", "ssh://example.com:22"] }),
+      postRequest({ urls: ["not a url at all", "gopher://example.com"] }),
     );
 
     expect(res.status).toBe(400);
@@ -435,6 +438,30 @@ describe("POST /api/v3/scan/bulk - request validation", () => {
     expect(json.error).toBe("No valid URLs provided.");
     expect(insertedRows()).toHaveLength(0);
   });
+
+  // Regression: this route carried its own six-entry SUPPORTED_PROTOCOLS while
+  // lib/scanner/execute-scan.ts accepted fifteen, and the extra nine were
+  // dropped by a bare `continue` - no error, no mention in the response, the
+  // batch just came back short. The same URL sent to POST /scan succeeded.
+  //
+  // The old version of the test above encoded that bug as the expected
+  // behaviour: it used ssh:// as its example of an unsupported protocol, so
+  // the suite asserted the drift rather than catching it.
+  it.each([
+    "ssh://example.com:22",
+    "smtp://mail.example.com",
+    "mongodb://db.example.com",
+  ])(
+    "accepts %s, which POST /scan accepts, instead of silently dropping it",
+    async (url) => {
+      const res = await POST(postRequest({ urls: [url] }));
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.total).toBe(1);
+      expect(insertedRows()).toHaveLength(1);
+    },
+  );
 });
 
 describe("POST /api/v3/scan/bulk - queueing", () => {

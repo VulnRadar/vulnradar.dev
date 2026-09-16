@@ -33,7 +33,11 @@ import {
 } from "@/lib/teams/scan-teams";
 import { getPlannedSyncCategories } from "@/lib/scanner/engine";
 import { getPlannedAsyncBranches } from "@/lib/scanner/async-checks";
-import { isRawIpv4, getProtocolType } from "@/lib/scanner/execute-scan";
+import {
+  isRawIpv4,
+  getProtocolType,
+  SUPPORTED_PROTOCOLS,
+} from "@/lib/scanner/execute-scan";
 import {
   runBulkBatch,
   type BulkQueuedScan,
@@ -48,8 +52,6 @@ import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { scanningPausedResponse } from "@/lib/admin/service-state";
-
-const SUPPORTED_PROTOCOLS = ["http:", "https:", "ws:", "wss:", "ftp:", "ftps:"];
 
 const DAILY_LIMIT_MESSAGE =
   "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.";
@@ -284,6 +286,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // SUPPORTED_PROTOCOLS is imported, not redeclared. This file used to carry
+  // its own six-entry copy while lib/scanner/execute-scan.ts accepted fifteen,
+  // and the mismatch was silent in the worst way: a target whose protocol was
+  // in the canonical list but not the local one was dropped by the `continue`
+  // below without ever appearing in the response. The same URL sent one at a
+  // time to POST /scan was accepted. So a batch containing an smtp://,
+  // imap://, pop3://, ssh://, sftp:// or mongodb:// target quietly came back
+  // short, and nothing told the caller which entries went missing or why.
   const validUrls: string[] = [];
   for (const u of urls) {
     try {

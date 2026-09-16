@@ -10,7 +10,13 @@ import {
 } from "@/lib/auth/password-strength";
 import { passwordChangedEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
-import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import {
+  getClientIp,
+  getUserAgent,
+  rateLimitIpKey,
+} from "@/lib/api/request-utils";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
 import {
   ApiResponse,
   parseBody,
@@ -30,6 +36,29 @@ import { authTokenHashCandidates } from "@/lib/auth/token-hash";
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
   const userAgent = await getUserAgent();
+
+  // The other half of this flow, forgot-password, is rate limited per IP and
+  // per email; this half had nothing. Every call here opens a dedicated pooled
+  // client and runs BEGIN / SELECT ... FOR UPDATE / ROLLBACK before it can
+  // decide the token is wrong, so an unthrottled caller holds a connection and
+  // a row lock per attempt. It is not a brute-force risk - the token is 256
+  // bits - it is a way to spend the connection pool for free.
+  //
+  // Reuses forgotPassword's budget under its own key rather than adding a
+  // preset: it is the same flow, the same actor and the same order of
+  // magnitude of legitimate attempts, and a second preset would also need its
+  // own SETTINGS_REGISTRY entry for a number nobody would tune separately.
+  const rl = await checkRateLimit({
+    key: `reset:${rateLimitIpKey(ip)}`,
+    ...RATE_LIMITS.forgotPassword,
+  });
+  if (!rl.allowed) {
+    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
+    return ApiResponse.tooManyRequests(
+      ERROR_MESSAGES.TOO_MANY_ATTEMPTS("reset attempts", minutes),
+      rl.retryAfterSeconds,
+    );
+  }
 
   const parsed = await parseBody<{ token: string; password: string }>(request);
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
