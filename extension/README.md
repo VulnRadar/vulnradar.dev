@@ -193,18 +193,10 @@ npm run format:check       # prettier
 
 (Gates that apply to the main repo, tsc, eslint, build, also work on `extension/`. The extension ships its own minimal configs to avoid dragging in Next.js / React conventions.)
 
-**The extension type-checks with its own TypeScript, and it is a major behind
-the app's.** `extension/package.json` declares `typescript@^5.7.2` while the
-repo root pins `6.0.3`, and `npm run typecheck` here resolves the extension's
-copy. The root's `@typescript-eslint` peer range is what holds the root back
-from moving further, and the extension has simply not been moved forward yet.
-Two consequences worth knowing before you spend an hour on a phantom error:
-an editor opened at the repo root resolves the root's 6.0.3 for these files,
-so it can report diagnostics CI never produces (and miss ones it does); and
-`extension/**` is not in the root `eslint.config.mjs` ignore list the way
-`cli/**` is, so a root `npm run lint` also walks this source with the app's
-ruleset. Align the two TypeScript versions when the root's peer range allows
-it.
+**The extension type-checks with its own TypeScript, and it is not the app's.**
+`npm run typecheck` here resolves `extension/node_modules/typescript`; the root
+resolves its own. See [TypeScript version](#typescript-version) below for which
+way they currently differ and what to do about it.
 
 ### Tests
 
@@ -235,13 +227,30 @@ either place: that package has no Node-side stub, so anything reaching
 
 ### TypeScript version
 
-The extension pins TypeScript 5.x while the repo root is on 6.x. The root's
-`.github/dependabot.yml` holds TypeScript majors back because
-`@typescript-eslint`'s peer range caps below 6.1, and the same constraint
-applies here since root eslint also parses `extension/src`. An editor opened
-at the repo root therefore resolves the root's TypeScript for these files
-while CI type-checks them with this package's own. Keep new syntax inside
-what 5.x accepts until both manifests move together.
+**This package is a major AHEAD of the repo root, not behind it.** Compare
+`extension/package.json` with the root `package.json` for today's numbers;
+they are deliberately not transcribed here, because the last time they were
+they went stale in the worst possible direction and told contributors to
+avoid syntax that had in fact been available for a year.
+
+The divergence is a gap in `.github/dependabot.yml`, not a decision. The root
+block ignores TypeScript majors, with a comment giving the reason:
+`@typescript-eslint`'s peer range caps below 6.1. The `/extension` block
+groups only minor and patch updates, which does not ignore majors, it just
+stops grouping them, so a TypeScript major opened as its own PR here and was
+merged while the root stayed put. That block now carries the same ignore, so
+the two move together again.
+
+What this means while they are apart, and it is the opposite of the old
+advice: **keep new syntax inside what the ROOT's TypeScript accepts.**
+`extension/**` is not in the root `eslint.config.mjs` ignore list the way
+`cli/**` is, so a root `npm run lint` walks this source with the app's parser
+and the app's older TypeScript. Two things follow. An editor opened at the
+repo root resolves the root's TypeScript for these files, so it can report
+diagnostics CI never produces and miss ones it does. And syntax only the
+newer compiler understands type-checks clean in `npm run typecheck` here and
+fails the root lint job, which is the confusing half: the error names a file
+in this directory and the fix is a version mismatch two directories up.
 
 ## License
 

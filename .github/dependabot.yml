@@ -140,6 +140,18 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # The same hold the root block puts on TypeScript majors, and for the
+      # same reason: root eslint parses `extension/src` too, because
+      # `extension/**` is not in eslint.config.mjs's ignore list the way
+      # `cli/**` is. Without this the two packages drift, and they already
+      # did. Listing only minor and patch under `groups` does not ignore
+      # majors, it only stops grouping them, so a TypeScript major arrived
+      # here as its own PR and was merged while the root stayed pinned. The
+      # extension ended up a major AHEAD of the app, and extension/README.md
+      # spent that whole time telling contributors it was a major behind.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # Base images: the Dockerfile's node:22.x-alpine (build + runner stages)
   # and the cosign image, plus postgres:16.x-alpine in both compose files.

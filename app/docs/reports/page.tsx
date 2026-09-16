@@ -137,6 +137,59 @@ const FRAMEWORK_MEANINGS: Record<FrameworkKey, string> = {
   gdpr: "The security obligation a finding touches, not lawful basis or data-subject rights.",
 };
 
+/**
+ * The formats the report endpoint emits, and this page's own source of
+ * truth for them.
+ *
+ * The hero claimed five and named five, the paragraph above the table said
+ * six, and the table below had six rows: one fact written three times on
+ * one page, with the wrong copy the first thing a reader saw. The one it
+ * left out was csv, which is the format someone comes to this page looking
+ * for, because it is the one the others cannot stand in for.
+ *
+ * Six, not the route's seven: `md` and `markdown` are two names for one
+ * generator, so FORMATS in app/api/v3/history/[id]/report/route.ts has an
+ * entry this does not. Both numbers on this page now count this array.
+ */
+const REPORT_FORMATS = [
+  {
+    format: "sarif",
+    contentType: "application/sarif+json",
+    whenToUse:
+      "Upload to GitHub Code Scanning so findings show up as annotated alerts on the Security tab instead of a report nobody opens.",
+  },
+  {
+    format: "pdf",
+    contentType: "application/pdf",
+    whenToUse:
+      "A branded, self-contained report to hand to a stakeholder or client who will not open a terminal.",
+  },
+  {
+    format: "md",
+    contentType: "text/markdown",
+    whenToUse:
+      "Paste into a pull request, an issue, a wiki, or a chat message. Renders as a readable severity-ordered report.",
+  },
+  {
+    format: "compliance",
+    contentType: "text/markdown",
+    whenToUse:
+      "The control crosswalk below, as a Markdown summary for an auditor or GRC reviewer to prioritise remediation.",
+  },
+  {
+    format: "csv",
+    contentType: "text/csv",
+    whenToUse:
+      "One row per finding for a spreadsheet: finding id, severity, affected target, triage status, CWE, OWASP, CVE, CVSS, KEV, EPSS, plus the prose fields. The finding id is what makes two weeks' exports diffable.",
+  },
+  {
+    format: "json",
+    contentType: "application/json",
+    whenToUse:
+      "The raw ScanResult (findings, summary, response headers, metadata) when you would rather parse it yourself. This is the default.",
+  },
+];
+
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
   { id: "endpoint", label: "The report endpoint" },
@@ -155,9 +208,12 @@ export default function ReportsDocsPage() {
         id="top"
         badge="Reporting"
         title="Reports & Compliance"
-        description={`Every completed scan can be pulled back out as SARIF, PDF, Markdown, raw JSON, or a compliance crosswalk. One endpoint, one query param, the same auth as the scan itself. Point it at CI to gate a build, hand a PDF to a stakeholder, or generate an auditor-facing control summary from the same findings.`}
+        description={`Every completed scan can be pulled back out as SARIF, PDF, Markdown, CSV, raw JSON, or a compliance crosswalk. One endpoint, one query param, the same auth as the scan itself. Point it at CI to gate a build, hand a PDF to a stakeholder, or generate an auditor-facing control summary from the same findings.`}
         stats={[
-          { value: "5", label: "Export formats" },
+          {
+            value: String(REPORT_FORMATS.length),
+            label: "Export formats",
+          },
           {
             value: String(FRAMEWORKS.length),
             label: "Compliance frameworks",
@@ -205,9 +261,9 @@ export default function ReportsDocsPage() {
 
       <DocsSection id="formats" title="Report formats">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
-          Six outputs off the one endpoint. <InlineCode>md</InlineCode> and{" "}
-          <InlineCode>markdown</InlineCode> are the same generator under two
-          names; everything else is distinct.
+          {REPORT_FORMATS.length} outputs off the one endpoint.{" "}
+          <InlineCode>md</InlineCode> and <InlineCode>markdown</InlineCode> are
+          the same generator under two names; everything else is distinct.
         </p>
 
         <DocsTable
@@ -221,44 +277,7 @@ export default function ReportsDocsPage() {
             },
             { key: "whenToUse", header: "When to use it", className: "w-full" },
           ]}
-          data={[
-            {
-              format: "sarif",
-              contentType: "application/sarif+json",
-              whenToUse:
-                "Upload to GitHub Code Scanning so findings show up as annotated alerts on the Security tab instead of a report nobody opens.",
-            },
-            {
-              format: "pdf",
-              contentType: "application/pdf",
-              whenToUse:
-                "A branded, self-contained report to hand to a stakeholder or client who will not open a terminal.",
-            },
-            {
-              format: "md",
-              contentType: "text/markdown",
-              whenToUse:
-                "Paste into a pull request, an issue, a wiki, or a chat message. Renders as a readable severity-ordered report.",
-            },
-            {
-              format: "compliance",
-              contentType: "text/markdown",
-              whenToUse:
-                "The control crosswalk below, as a Markdown summary for an auditor or GRC reviewer to prioritise remediation.",
-            },
-            {
-              format: "csv",
-              contentType: "text/csv",
-              whenToUse:
-                "One row per finding for a spreadsheet: finding id, severity, affected target, triage status, CWE, OWASP, CVE, CVSS, KEV, EPSS, plus the prose fields. The finding id is what makes two weeks' exports diffable.",
-            },
-            {
-              format: "json",
-              contentType: "application/json",
-              whenToUse:
-                "The raw ScanResult (findings, summary, response headers, metadata) when you would rather parse it yourself. This is the default.",
-            },
-          ]}
+          data={REPORT_FORMATS}
         />
       </DocsSection>
 
