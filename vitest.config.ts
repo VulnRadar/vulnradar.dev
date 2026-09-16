@@ -393,6 +393,16 @@ export default defineConfig({
           functions: 100,
           branches: 100,
         },
+        "lib/billing/stripe-webhook-events.ts": {
+          // 100% actual across the board, which costs nothing here: the file
+          // is one exported array with no branches. Its suite is not really
+          // about coverage anyway, it reads the webhook route's switch as
+          // text and holds the two lists to each other.
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
         "lib/billing/invoice-subscription.ts": {
           // 100% / 100% / 100% / 95.23% actual. The uncovered branch is the
           // optional-chain miss on a line item with no parent, which the
