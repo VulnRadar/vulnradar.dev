@@ -965,14 +965,21 @@ export async function checkDNSSEC(
   domain: string,
   url: string,
 ): Promise<Vulnerability[]> {
-  // Query Google and Cloudflare DoH in parallel for the AD (Authenticated Data) flag
+  // Query Google and Cloudflare DoH in parallel, both validating resolvers:
+  // the AD (Authenticated Data) flag says the answer validated, and Status 2
+  // (SERVFAIL) is what a validating resolver returns instead of an answer it
+  // could not validate.
+  const answer = (d: { AD?: unknown; Status?: unknown }) => ({
+    ad: d.AD === true,
+    servfail: d.Status === 2,
+  });
   const [googleResult, cloudflareResult] = await Promise.allSettled([
     fetch(
       `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=A&do=1`,
       { signal: AbortSignal.timeout(4000) },
     )
       .then((r) => r.json())
-      .then((d) => d.AD === true),
+      .then(answer),
     fetch(
       `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=A&do=true`,
       {
@@ -981,29 +988,55 @@ export async function checkDNSSEC(
       },
     )
       .then((r) => r.json())
-      .then((d) => d.AD === true),
+      .then(answer),
   ]);
 
-  const googleOK = googleResult.status === "fulfilled";
-  const cloudflareOK = cloudflareResult.status === "fulfilled";
+  const answered = [googleResult, cloudflareResult].flatMap((r) =>
+    r.status === "fulfilled" ? [r.value] : [],
+  );
 
   // If both DoH resolvers failed (network error, timeout), we cannot determine
   // DNSSEC status. Skip rather than false-positive every site.
-  if (!googleOK && !cloudflareOK) return [];
+  if (answered.length === 0) return [];
 
-  const enabled =
-    (googleOK && googleResult.value) ||
-    (cloudflareOK && cloudflareResult.value);
-
-  if (enabled) return [];
+  if (answered.some((a) => a.ad)) return [];
 
   // The AD flag alone cannot tell "never signed" from "signed and broken",
-  // and those two want opposite advice. Reading the chain narrows this to the
-  // domain that has simply never turned DNSSEC on. The two records-missing
-  // checks own the half-configured states, and a fully published chain whose
-  // AD flag did not come back is not something to report as "not enabled".
+  // and those two want opposite advice. The chain, read with validation off
+  // so a broken zone still shows what it publishes, separates them: nothing
+  // published is a domain that never turned DNSSEC on; one half published is
+  // owned by the two records-missing checks; both halves published with a
+  // resolver refusing to answer is a chain that does not validate.
   const chain = await readDnssecChain(domain);
-  if (!chain || chain.dnskey || chain.ds) return [];
+  if (!chain) return [];
+
+  if (chain.dnskey && chain.ds) {
+    if (!answered.some((a) => a.servfail)) return [];
+    // A SERVFAIL on its own is also what an unreachable nameserver produces.
+    // Asking again with checking disabled tells the two apart: if the answer
+    // comes back once validation is off, validation is what failed.
+    if (!(await dohAnswersWithoutValidation(domain, "A"))) return [];
+    return [
+      makeVuln(
+        url,
+        A.dnssecValidationFailing,
+        `${domain} publishes DNSKEY records and the parent zone publishes a DS record, but validating resolvers refuse to answer for it: its DNSSEC signatures do not validate.`,
+        `A validating DoH resolver returned SERVFAIL for ${domain}, and the same query with checking disabled (cd) was answered normally.`,
+        "Every client behind a validating resolver gets no address for this domain at all, so it is down for them while it resolves normally from any resolver that does not validate. Google Public DNS, Cloudflare 1.1.1.1, Quad9 and many ISP resolvers validate, so this is a partial outage that the operator's own machine usually cannot reproduce.",
+        "Validation fails when the chain from the parent's DS record to the zone's own signatures breaks. The usual causes are a DS record at the registrar that no longer matches any DNSKEY after a key rollover or a move to a new DNS provider, and RRSIG signatures that expired because the zone stopped being re-signed.",
+        [
+          "Compare the DS record at your registrar with the zone's current KSK: the DS digest must match a published DNSKEY with flags 257.",
+          "If the zone moved providers or rolled its key, publish the new DS at the registrar, or remove the DS entirely to fall back to unsigned while you fix signing.",
+          "Check RRSIG expiry dates and confirm the DNS host is still re-signing the zone.",
+          `Diagnose: https://dnsviz.net/d/${domain}/dnssec/ or dig +dnssec +cd A ${domain}`,
+        ],
+        [],
+        85,
+      ),
+    ];
+  }
+
+  if (chain.dnskey || chain.ds) return [];
 
   return [
     makeVuln(
@@ -1888,27 +1921,78 @@ async function dohHasAnswer(
   return run;
 }
 
+/**
+ * Whether a record is published, asked with DNSSEC checking disabled (cd).
+ *
+ * Both resolvers validate by default, and a validating resolver answers
+ * SERVFAIL, with no records, for a zone whose signatures do not validate.
+ * Without cd, a signed zone with a broken chain read as publishing no DNSKEY
+ * at all, so checkDNSKEYRecord told its operator to sign a zone that was
+ * already signed. This helper answers what the zone publishes; checkDNSSEC is
+ * the one that asks whether it validates.
+ */
 async function dohQuery(name: string, type: string): Promise<boolean | null> {
   const [g, c] = await Promise.allSettled([
     fetch(
-      `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${type}`,
+      `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${type}&cd=1`,
       { signal: AbortSignal.timeout(4000) },
     ).then((r) => r.json()),
     fetch(
-      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}`,
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}&cd=true`,
       {
         signal: AbortSignal.timeout(4000),
         headers: { Accept: "application/dns-json" },
       },
     ).then((r) => r.json()),
   ]);
-  const gOK = g.status === "fulfilled";
-  const cOK = c.status === "fulfilled";
+  // A resolver that returned SERVFAIL or REFUSED did not get an answer from
+  // the zone's nameservers, which says nothing about whether the record
+  // exists. Counting it as "no records" made an unreachable nameserver read
+  // as a domain that has never enabled DNSSEC. Only NOERROR and NXDOMAIN are
+  // answers.
+  const answered = (r: PromiseSettledResult<unknown>): boolean => {
+    if (r.status !== "fulfilled") return false;
+    const status = (r.value as { Status?: unknown })?.Status;
+    return typeof status !== "number" || status === 0 || status === 3;
+  };
+  const gOK = answered(g);
+  const cOK = answered(c);
   if (!gOK && !cOK) return null;
-  const hasAnswer = (v: unknown): boolean =>
-    Array.isArray((v as { Answer?: unknown[] })?.Answer) &&
-    (v as { Answer: unknown[] }).Answer.length > 0;
-  return (gOK && hasAnswer(g.value)) || (cOK && hasAnswer(c.value));
+  const hasAnswer = (r: PromiseSettledResult<unknown>): boolean => {
+    if (r.status !== "fulfilled") return false;
+    const v = r.value as { Answer?: unknown[] } | undefined;
+    return Array.isArray(v?.Answer) && v.Answer.length > 0;
+  };
+  return (gOK && hasAnswer(g)) || (cOK && hasAnswer(c));
+}
+
+/**
+ * Whether either resolver answers a query normally (NOERROR or NXDOMAIN)
+ * once DNSSEC checking is disabled. Used only to confirm that a SERVFAIL was
+ * a validation failure rather than an unreachable nameserver.
+ */
+async function dohAnswersWithoutValidation(
+  name: string,
+  type: string,
+): Promise<boolean> {
+  const results = await Promise.allSettled([
+    fetch(
+      `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${type}&cd=1`,
+      { signal: AbortSignal.timeout(4000) },
+    ).then((r) => r.json()),
+    fetch(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}&cd=true`,
+      {
+        signal: AbortSignal.timeout(4000),
+        headers: { Accept: "application/dns-json" },
+      },
+    ).then((r) => r.json()),
+  ]);
+  return results.some(
+    (r) =>
+      r.status === "fulfilled" &&
+      (r.value?.Status === 0 || r.value?.Status === 3),
+  );
 }
 
 /**

@@ -18,11 +18,11 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 801
+- **Total checks:** 802
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 223
-  - high: 195
+  - medium: 222
+  - high: 197
   - low: 184
   - info: 100
   - critical: 99
@@ -31,7 +31,7 @@ in this file and quote the title, description, and fix steps.
   - header: 155
   - combined: 60
   - header-missing: 42
-  - network-probe: 38
+  - network-probe: 39
   - url-check: 19
   - header-value: 18
   - header-present: 9
@@ -11309,7 +11309,7 @@ res.setHeader('Set-Cookie', `session=abc123; Max-Age=<value>; Expires=<value>; S
 
 ---
 
-## Category: dns (27 checks)
+## Category: dns (28 checks)
 
 ### `dns-caa-record-missing` [dns / medium / header]
 **CAA Record Missing**
@@ -11417,9 +11417,9 @@ example.com. IN MX 20 backup-mail.example.com. ; backup
 ### `dns-ds-record-missing` [dns / medium / header]
 **DNSSEC DS Record Missing**
 
-No DS (Delegation Signer) record exists in the parent zone for this domain. DS records are required to establish the DNSSEC chain of trust from the parent zone to the child zone.
+The zone is signed with DNSSEC (it publishes DNSKEY records), but no DS (Delegation Signer) record exists in the parent zone, so nothing validates those signatures. Only reported for a signed zone: a domain that has never enabled DNSSEC is covered by the DNSSEC Not Enabled note instead.
 
-**Risk:** Without a DS record in the parent zone, DNSSEC validation fails or is bypassed entirely. Resolvers cannot build a chain of trust and may treat the zone as unsigned, allowing DNS cache poisoning attacks.
+**Risk:** A signed zone with no DS record in the parent is treated as unsigned by every resolver. All of the cost of running DNSSEC is paid and none of the protection is received: responses can still be spoofed exactly as if the zone had never been signed.
 
 **Why it matters:** DNSSEC works by creating a chain of trust from the DNS root down to the domain. The DS record in the parent zone (e.g., the TLD) contains a hash of the child zone's DNSKEY, linking the two zones together. Without the DS record, even a fully signed child zone cannot be validated by resolvers.
 
@@ -11428,8 +11428,8 @@ No DS (Delegation Signer) record exists in the parent zone for this domain. DS r
 - https://datatracker.ietf.org/doc/html/rfc4035
 
 **Fix:**
-- Generate DNSSEC keys for your zone using your DNS provider or BIND.
-- Submit the DS record to your domain registrar to publish it in the parent TLD zone.
+- Copy the DS record (or the DNSKEY, if your registrar takes that form) from your DNS provider.
+- Submit it to your domain registrar so it is published in the parent TLD zone.
 - Verify the chain: dig +dnssec DS example.com
 - **Check DS record** (bash):
 ```bash
@@ -11604,24 +11604,23 @@ dig AXFR example.com @ns1.example.com
 # Should return: Transfer failed. or REFUSED
 ```
 
-### `dns-dnskey-record-missing` [dns / medium / header]
+### `dns-dnskey-record-missing` [dns / high / header]
 **DNSKEY Record Missing**
 
-No DNSKEY records are present in the zone. DNSKEY records publish the public keys used to sign the zone and are required for DNSSEC validation to work.
+The parent zone publishes a DS record for this domain, but the zone itself publishes no DNSKEY records, so the DNSSEC chain of trust is broken at the zone. Checked with DNSSEC validation disabled, so a zone that is signed but failing validation is reported as DNSSEC Validation Failing instead.
 
-**Risk:** Without DNSKEY records, no DNSSEC validation is possible for this zone. Resolvers cannot verify DNS responses, leaving the domain vulnerable to cache poisoning (Kaminsky-style) attacks.
+**Risk:** A DS record in the parent is a promise that the zone is signed. Every validating resolver that sees it demands signatures, gets none, and returns SERVFAIL instead of the address, so the domain stops resolving for clients behind a validating resolver while still working from anywhere that does not validate.
 
-**Why it matters:** DNSKEY records hold the public keys that correspond to the private keys used to sign DNS records (RRSIG). There are two types: KSK (Key Signing Key, flags 257) signs the DNSKEY RRset, and ZSK (Zone Signing Key, flags 256) signs all other RRsets. Both are needed for a fully signed zone.
+**Why it matters:** DNSKEY records hold the public keys matching the private keys that sign the zone's records (RRSIG). The usual cause of this state is DNSSEC being switched off at the DNS host, or the zone moving to a new provider, without the DS record first being withdrawn at the registrar.
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc4034
 - https://datatracker.ietf.org/doc/html/rfc4035
 
 **Fix:**
-- Enable DNSSEC signing on your authoritative DNS server.
-- Generate KSK and ZSK key pairs and sign the zone.
-- Submit the DS record (derived from the KSK) to your domain registrar.
-- Verify: dig +dnssec DNSKEY example.com
+- If you meant to run DNSSEC: re-sign the zone at your DNS provider so it publishes DNSKEY and RRSIG records again.
+- If you meant to switch DNSSEC off: remove the DS record at your registrar first, then wait out the parent TTL before unsigning the zone.
+- Verify: dig +short +cd DNSKEY example.com and dig +short DS example.com
 - **Check DNSKEY** (bash):
 ```bash
 dig +short DNSKEY example.com
@@ -12014,6 +12013,34 @@ The domain publishes verification TXT records for five or more distinct SaaS ven
 - **List what is published** (bash):
 ```bash
 dig +short TXT example.com | grep -i -E 'verification|verify|challenge'
+```
+
+### `dns-dnssec-validation-failing` [dns / high / network-probe]
+**DNSSEC Validation Failing**
+
+The zone publishes DNSKEY records and the parent publishes a DS record, but validating resolvers refuse to answer for the domain: its DNSSEC signatures do not validate. Confirmed by the same query succeeding once DNSSEC checking is disabled, which rules out an unreachable nameserver.
+
+**Risk:** Every client behind a validating resolver gets no address for the domain at all. Google Public DNS, Cloudflare 1.1.1.1, Quad9 and many ISP resolvers validate, so this is a partial outage that usually cannot be reproduced from the operator's own machine.
+
+**Why it matters:** Validation fails when the chain from the parent's DS record to the zone's own signatures breaks. The usual causes are a DS record at the registrar that no longer matches any DNSKEY after a key rollover or a move to a new DNS provider, and RRSIG signatures that expired because the zone stopped being re-signed.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc4035
+- https://dnsviz.net/
+
+**Fix:**
+- Compare the DS record at your registrar with the zone's current key-signing key: the DS digest must match a published DNSKEY with flags 257.
+- If the zone moved providers or rolled its key, publish the new DS at the registrar, or remove the DS entirely to fall back to unsigned while signing is fixed.
+- Check RRSIG expiry dates and confirm the DNS host is still re-signing the zone.
+- **See whether validation is what fails** (bash):
+```bash
+dig A example.com @1.1.1.1        # status: SERVFAIL
+dig +cd A example.com @1.1.1.1    # answered once checking is disabled
+```
+- **Compare the DS with the published keys** (bash):
+```bash
+dig +short DS example.com
+dig +short +cd DNSKEY example.com
 ```
 
 ---

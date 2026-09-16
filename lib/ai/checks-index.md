@@ -417,7 +417,7 @@ remediation documentation in the docs.
 - [low     ] `netscaler-cookie-exposes-internal-server` [header] - Citrix NetScaler Cookie May Expose Internal Server
 - [low     ] `cookie-maxage-expires-conflict` [header] - Cookie Max-Age and Expires Disagree
 
-### dns (27)
+### dns (28)
 - [medium  ] `dns-caa-record-missing` [header] - CAA Record Missing
 - [high    ] `dns-ns-record-count` [header] - Less Than 2 Authoritative Nameservers
 - [medium  ] `dns-mx-record-missing` [header] - MX Record Missing
@@ -429,7 +429,7 @@ remediation documentation in the docs.
 - [high    ] `dns-dangling-cname-cdn-paas` [header] - Dangling CNAME (CDN/PaaS Takeover)
 - [high    ] `dns-dangling-cname-saas` [header] - Dangling CNAME (SaaS Takeover)
 - [high    ] `dns-zone-transfer-allowed` [header] - DNS Zone Transfer (AXFR) Allowed from Public IPs
-- [medium  ] `dns-dnskey-record-missing` [header] - DNSKEY Record Missing
+- [high    ] `dns-dnskey-record-missing` [header] - DNSKEY Record Missing
 - [medium  ] `dns-caa-no-issue-restriction` [header] - CAA Record Present But Restricts No Certificate Authority
 - [low     ] `dns-caa-wildcard-only-restriction` [header] - CAA Record Restricts Wildcard Certificates Only
 - [info    ] `dns-soa-serial-stale` [header] - SOA Serial Looks Stale (Date-Based Convention)
@@ -445,6 +445,7 @@ remediation documentation in the docs.
 - [low     ] `dns-cname-chain-too-long` [network-probe] - CNAME chain longer than three hops
 - [info    ] `dns-caa-iodef-missing` [network-probe] - CAA record names no incident reporting address
 - [info    ] `dns-txt-verification-tokens-stale` [network-probe] - Accumulated SaaS domain-verification TXT records
+- [high    ] `dns-dnssec-validation-failing` [network-probe] - DNSSEC Validation Failing
 
 ### email (35)
 - [info    ] `email-dmarc-rua-missing` [header] - DMARC Aggregate Report URI (rua=) Missing
@@ -856,11 +857,11 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **801**
+- Total checks: **802**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 223
-  - high: 195
+  - medium: 222
+  - high: 197
   - low: 184
   - info: 100
   - critical: 99
@@ -869,7 +870,7 @@ remediation documentation in the docs.
   - header: 155
   - combined: 60
   - header-missing: 42
-  - network-probe: 38
+  - network-probe: 39
   - url-check: 19
   - header-value: 18
   - header-present: 9

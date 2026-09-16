@@ -131,13 +131,13 @@
     "title": "DNSSEC DS Record Missing",
     "category": "dns",
     "severity": "medium",
-    "description": "No DS (Delegation Signer) record exists in the parent zone for this domain. DS records are required to establish the DNSSEC chain of trust from the parent zone to the child zone.",
+    "description": "The zone is signed with DNSSEC (it publishes DNSKEY records), but no DS (Delegation Signer) record exists in the parent zone, so nothing validates those signatures. Only reported for a signed zone: a domain that has never enabled DNSSEC is covered by the DNSSEC Not Enabled note instead.",
     "evidence": "DNS-level finding for `dns-ds-record-missing` against {{domain}}.",
-    "riskImpact": "Without a DS record in the parent zone, DNSSEC validation fails or is bypassed entirely. Resolvers cannot build a chain of trust and may treat the zone as unsigned, allowing DNS cache poisoning attacks.",
+    "riskImpact": "A signed zone with no DS record in the parent is treated as unsigned by every resolver. All of the cost of running DNSSEC is paid and none of the protection is received: responses can still be spoofed exactly as if the zone had never been signed.",
     "explanation": "DNSSEC works by creating a chain of trust from the DNS root down to the domain. The DS record in the parent zone (e.g., the TLD) contains a hash of the child zone's DNSKEY, linking the two zones together. Without the DS record, even a fully signed child zone cannot be validated by resolvers.",
     "fixSteps": [
-      "Generate DNSSEC keys for your zone using your DNS provider or BIND.",
-      "Submit the DS record to your domain registrar to publish it in the parent TLD zone.",
+      "Copy the DS record (or the DNSKEY, if your registrar takes that form) from your DNS provider.",
+      "Submit it to your domain registrar so it is published in the parent TLD zone.",
       "Verify the chain: dig +dnssec DS example.com"
     ],
     "codeExamples": [
@@ -355,16 +355,15 @@
     "type": "header",
     "title": "DNSKEY Record Missing",
     "category": "dns",
-    "severity": "medium",
-    "description": "No DNSKEY records are present in the zone. DNSKEY records publish the public keys used to sign the zone and are required for DNSSEC validation to work.",
+    "severity": "high",
+    "description": "The parent zone publishes a DS record for this domain, but the zone itself publishes no DNSKEY records, so the DNSSEC chain of trust is broken at the zone. Checked with DNSSEC validation disabled, so a zone that is signed but failing validation is reported as DNSSEC Validation Failing instead.",
     "evidence": "DNS-level finding for `dns-dnskey-record-missing` against {{domain}}.",
-    "riskImpact": "Without DNSKEY records, no DNSSEC validation is possible for this zone. Resolvers cannot verify DNS responses, leaving the domain vulnerable to cache poisoning (Kaminsky-style) attacks.",
-    "explanation": "DNSKEY records hold the public keys that correspond to the private keys used to sign DNS records (RRSIG). There are two types: KSK (Key Signing Key, flags 257) signs the DNSKEY RRset, and ZSK (Zone Signing Key, flags 256) signs all other RRsets. Both are needed for a fully signed zone.",
+    "riskImpact": "A DS record in the parent is a promise that the zone is signed. Every validating resolver that sees it demands signatures, gets none, and returns SERVFAIL instead of the address, so the domain stops resolving for clients behind a validating resolver while still working from anywhere that does not validate.",
+    "explanation": "DNSKEY records hold the public keys matching the private keys that sign the zone's records (RRSIG). The usual cause of this state is DNSSEC being switched off at the DNS host, or the zone moving to a new provider, without the DS record first being withdrawn at the registrar.",
     "fixSteps": [
-      "Enable DNSSEC signing on your authoritative DNS server.",
-      "Generate KSK and ZSK key pairs and sign the zone.",
-      "Submit the DS record (derived from the KSK) to your domain registrar.",
-      "Verify: dig +dnssec DNSKEY example.com"
+      "If you meant to run DNSSEC: re-sign the zone at your DNS provider so it publishes DNSKEY and RRSIG records again.",
+      "If you meant to switch DNSSEC off: remove the DS record at your registrar first, then wait out the parent TTL before unsigning the zone.",
+      "Verify: dig +short +cd DNSKEY example.com and dig +short DS example.com"
     ],
     "codeExamples": [
       {
@@ -852,5 +851,40 @@
     "cwe": "CWE-200",
     "owasp": "A05:2021",
     "_idx": 27
+  },
+  {
+    "id": "dns-dnssec-validation-failing",
+    "type": "network-probe",
+    "title": "DNSSEC Validation Failing",
+    "category": "dns",
+    "severity": "high",
+    "description": "The zone publishes DNSKEY records and the parent publishes a DS record, but validating resolvers refuse to answer for the domain: its DNSSEC signatures do not validate. Confirmed by the same query succeeding once DNSSEC checking is disabled, which rules out an unreachable nameserver.",
+    "evidence": "A validating DoH resolver returned SERVFAIL for {{domain}}, and the same query with checking disabled was answered.",
+    "riskImpact": "Every client behind a validating resolver gets no address for the domain at all. Google Public DNS, Cloudflare 1.1.1.1, Quad9 and many ISP resolvers validate, so this is a partial outage that usually cannot be reproduced from the operator's own machine.",
+    "explanation": "Validation fails when the chain from the parent's DS record to the zone's own signatures breaks. The usual causes are a DS record at the registrar that no longer matches any DNSKEY after a key rollover or a move to a new DNS provider, and RRSIG signatures that expired because the zone stopped being re-signed.",
+    "fixSteps": [
+      "Compare the DS record at your registrar with the zone's current key-signing key: the DS digest must match a published DNSKEY with flags 257.",
+      "If the zone moved providers or rolled its key, publish the new DS at the registrar, or remove the DS entirely to fall back to unsigned while signing is fixed.",
+      "Check RRSIG expiry dates and confirm the DNS host is still re-signing the zone."
+    ],
+    "codeExamples": [
+      {
+        "label": "See whether validation is what fails",
+        "language": "bash",
+        "code": "dig A example.com @1.1.1.1        # status: SERVFAIL\ndig +cd A example.com @1.1.1.1    # answered once checking is disabled"
+      },
+      {
+        "label": "Compare the DS with the published keys",
+        "language": "bash",
+        "code": "dig +short DS example.com\ndig +short +cd DNSKEY example.com"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc4035",
+      "https://dnsviz.net/"
+    ],
+    "cwe": "CWE-345",
+    "owasp": "A05:2021",
+    "_idx": 28
   }
 ]

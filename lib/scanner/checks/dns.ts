@@ -28,6 +28,7 @@ export const detectors: Record<string, DetectFn> = {
   "dns-zone-transfer-allowed": () => null,
   "dns-ds-record-missing": () => null,
   "dns-dnskey-record-missing": () => null,
+  "dns-dnssec-validation-failing": () => null,
   "dns-nsec-zone-walking": () => null,
   "dns-dangling-cname-cdn-paas": () => null,
   "dns-dangling-cname-saas": () => null,

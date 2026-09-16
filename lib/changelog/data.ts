@@ -411,6 +411,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Globe,
+        label: "A Broken DNSSEC Chain Is Reported as Broken",
+        desc: "A domain whose DNSSEC signatures no longer validate, usually after a key rollover or a move to a new DNS host left a stale DS record at the registrar, is unreachable for everyone behind a validating resolver, which includes Google, Cloudflare and Quad9. The scan reported nothing about it. Worse, the record lookups themselves went through those validating resolvers, which refuse to answer for such a zone, so it read as publishing no keys and was told to sign a zone that was already signed. Record lookups now ask with validation turned off to see what the zone really publishes, and a new high-severity finding reports a signed, delegated zone that validating resolvers refuse, confirmed by the same query succeeding once validation is off so a nameserver that is simply down is not blamed on DNSSEC. A resolver failure also no longer counts as a record being absent, which had made an unreachable nameserver read as a domain that never enabled DNSSEC. The finding for a DS record with no keys behind it, the same outage by another route, is raised from medium to high to match.",
+        category: "engine",
+      },
+      {
         icon: CheckCheck,
         label: "Wrong Verdicts Corrected",
         desc: "Sites enforcing Trusted Types were told they were not, because the check searched the policy for the JavaScript API's name instead of the directive. Algolia's public search key, which Algolia's own documentation names ApiKey, was reported as a leaked admin key at critical. One check stated that jsonwebtoken accepts any algorithm when none is specified, which version 9 does not, and reported every verify call without one as critical; only an explicit none is reported now. Hardening guides that mention /.git/config were reported as exposing it. In the other direction: postMessage calls with a transfer list were missed, one Secure cookie hid every insecure cookie in the same response, a library pinned as jquery@1.12.4 the way jsDelivr and unpkg load it was never matched, Docker Hub organization tokens were not recognised, and neither was the /swagger-ui path.",

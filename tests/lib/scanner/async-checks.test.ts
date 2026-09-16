@@ -649,27 +649,46 @@ describe("checkDKIMWeakKey", () => {
  * to it) have four combinations, and each check now owns exactly one.
  */
 
-/** Answer DoH queries per record type, plus the AD flag on the A query. */
+/**
+ * Answer DoH queries the way a validating resolver does.
+ *
+ * `bogus` is a zone whose signatures do not validate: without checking
+ * disabled (cd) every query for it is SERVFAIL with no records, including the
+ * DNSKEY query itself; with cd the resolver answers what the zone publishes.
+ * `unreachable` is a SERVFAIL that disabling validation does not fix.
+ */
 function mockDoh({
   ad = false,
   dnskey = false,
   ds = false,
+  bogus = false,
+  unreachable = false,
 }: {
   ad?: boolean;
   dnskey?: boolean;
   ds?: boolean;
+  bogus?: boolean;
+  unreachable?: boolean;
 }) {
   const answer = [{ name: "example.com.", type: 1, data: "x" }];
   vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     async (input: unknown) => {
       const u = String(input);
+      const cd = /[?&]cd=(1|true)\b/i.test(u);
+      if (unreachable || (bogus && !cd)) {
+        return { json: async () => ({ Status: 2, AD: false }) };
+      }
       const present = /type=DNSKEY/i.test(u)
         ? dnskey
         : /type=DS/i.test(u)
           ? ds
-          : false;
+          : !/type=(DNSKEY|DS)/i.test(u);
       return {
-        json: async () => ({ AD: ad, ...(present ? { Answer: answer } : {}) }),
+        json: async () => ({
+          Status: 0,
+          AD: ad && !cd,
+          ...(present ? { Answer: answer } : {}),
+        }),
       };
     },
   );
@@ -730,6 +749,55 @@ describe("the DNSSEC chain", () => {
     expect(dnskeyMissing[0].riskImpact).toMatch(/SERVFAIL/);
     expect(notEnabled).toEqual([]);
     expect(dsMissing).toEqual([]);
+  });
+
+  it("reports a signed, delegated zone that does not validate, and only that", async () => {
+    // Both halves of the chain are published, and validating resolvers still
+    // refuse to answer. The DNSKEY lookup used to go through validation too,
+    // so this zone read as publishing no keys and was told to sign itself.
+    mockDoh({ dnskey: true, ds: true, bogus: true });
+    const [notEnabled, dsMissing, dnskeyMissing] = await Promise.all([
+      checkDNSSEC("example.com", "https://example.com"),
+      checkDSRecord("example.com", "https://example.com"),
+      checkDNSKEYRecord("example.com", "https://example.com"),
+    ]);
+    expect(notEnabled).toHaveLength(1);
+    expect(notEnabled[0].title).toBe("DNSSEC Validation Failing");
+    expect(notEnabled[0].severity).toBe("high");
+    expect(notEnabled[0].evidence).toMatch(/SERVFAIL/);
+    expect(dsMissing).toEqual([]);
+    expect(dnskeyMissing).toEqual([]);
+  });
+
+  it("reads what a zone publishes with checking disabled", async () => {
+    mockDoh({ dnskey: true, ds: true, bogus: true });
+    const calls = vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>);
+    calls.mockClear();
+    await checkDNSKEYRecord("example.com", "https://example.com");
+    const recordQueries = calls.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => /type=(DNSKEY|DS)/i.test(u));
+    expect(recordQueries.length).toBeGreaterThan(0);
+    for (const u of recordQueries) expect(u).toMatch(/[?&]cd=(1|true)/);
+  });
+
+  it("does not blame DNSSEC for a SERVFAIL that disabling validation does not fix", async () => {
+    // A nameserver that is down also produces SERVFAIL. The chain reads as
+    // unknown here (no resolver answered), so nothing in the family fires.
+    mockDoh({ dnskey: true, ds: true, unreachable: true });
+    const [notEnabled, dsMissing, dnskeyMissing] = await Promise.all([
+      checkDNSSEC("example.com", "https://example.com"),
+      checkDSRecord("example.com", "https://example.com"),
+      checkDNSKEYRecord("example.com", "https://example.com"),
+    ]);
+    expect([...notEnabled, ...dsMissing, ...dnskeyMissing]).toEqual([]);
+  });
+
+  it("says nothing about a signed zone whose answer is simply not authenticated", async () => {
+    // No SERVFAIL: an unsigned CNAME target, for one, leaves AD unset on a
+    // signed zone without anything being broken.
+    mockDoh({ ad: false, dnskey: true, ds: true });
+    expect(await checkDNSSEC("example.com", "https://example.com")).toEqual([]);
   });
 
   it("stays quiet when the resolvers do not answer at all", async () => {

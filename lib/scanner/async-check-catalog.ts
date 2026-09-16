@@ -230,7 +230,8 @@ export const ASYNC_CHECKS = {
     "dns",
   ),
   dnssecDsRecordMissing: def("DNSSEC DS Record Missing", "medium", "dns"),
-  dnskeyRecordMissing: def("DNSKEY Record Missing", "medium", "dns"),
+  dnskeyRecordMissing: def("DNSKEY Record Missing", "high", "dns"),
+  dnssecValidationFailing: def("DNSSEC Validation Failing", "high", "dns"),
   tlsaDaneRecordMissing: def("TLSA (DANE) Record Missing", "info", "dns"),
   potentialSubdomainTakeoverViaDanglingCname: def(
     "Potential Subdomain Takeover via Dangling CNAME",
