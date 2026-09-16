@@ -3,23 +3,11 @@ import { cn } from "@/lib/ui/utils";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import {
   CHANGE_CATEGORIES,
+  CHANGE_CATEGORY_ORDER as CATEGORY_ORDER,
   type Change,
   type ChangeCategory,
   type Release,
 } from "@/lib/changelog/data";
-
-// Reading order within a release, not authorship order: security first
-// (the thing people scanning a changelog for "am I safer now" look for),
-// then new capabilities, then bug fixes, then everything else. Within a
-// group, original order is preserved.
-const CATEGORY_ORDER: ChangeCategory[] = [
-  "security",
-  "added",
-  "fixed",
-  "changed",
-  "performance",
-  "deprecated",
-];
 
 /**
  * A solid version of each category's colour, for the group marker and the
@@ -38,6 +26,16 @@ const CATEGORY_ACCENT: Record<ChangeCategory, string> = {
   changed: "bg-[hsl(var(--severity-low))]",
   performance: "bg-primary",
   deprecated: "bg-[hsl(var(--severity-info))]",
+  breaking: "bg-[hsl(var(--severity-high))]",
+  improved: "bg-primary",
+  removed: "bg-[hsl(var(--severity-info))]",
+  engine: "bg-muted-foreground",
+  api: "bg-muted-foreground",
+  admin: "bg-muted-foreground",
+  cli: "bg-muted-foreground",
+  extension: "bg-muted-foreground",
+  accessibility: "bg-muted-foreground",
+  selfhost: "bg-muted-foreground",
 };
 
 /**
@@ -53,6 +51,16 @@ const CATEGORY_NOUN: Record<ChangeCategory, string> = {
   changed: "changes",
   performance: "performance changes",
   deprecated: "deprecations",
+  breaking: "breaking changes",
+  improved: "improvements",
+  removed: "removals",
+  engine: "engine changes",
+  api: "API changes",
+  admin: "admin changes",
+  cli: "CLI changes",
+  extension: "extension changes",
+  accessibility: "accessibility changes",
+  selfhost: "developer and self-hosting changes",
 };
 
 /**

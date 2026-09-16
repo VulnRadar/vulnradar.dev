@@ -120,9 +120,86 @@ const CHANGE_CATEGORIES = {
     color:
       "bg-[hsl(var(--severity-info))]/10 text-[hsl(var(--severity-info))] border-[hsl(var(--severity-info))]/20",
   },
+  // Added for 4.0.0, the first release large enough that "added, changed,
+  // fixed" stopped telling a reader where to look. Two kinds, deliberately
+  // coloured differently. The first three are KINDS of change, like the ones
+  // above, and carry a semantic colour. The rest are AREAS of the product, and
+  // share one neutral treatment: an area is where a change landed, not how
+  // worried to be about it, and giving eight areas eight colours would spend
+  // the palette's meaning on navigation.
+  breaking: {
+    label: "Breaking Changes",
+    color:
+      "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/20",
+  },
+  improved: {
+    label: "Improved",
+    color: "bg-primary/10 text-primary border-primary/20",
+  },
+  removed: {
+    label: "Removed",
+    color:
+      "bg-[hsl(var(--severity-info))]/10 text-[hsl(var(--severity-info))] border-[hsl(var(--severity-info))]/20",
+  },
+  engine: {
+    label: "Engine & Checks",
+    color: "bg-muted text-foreground border-border",
+  },
+  api: {
+    label: "API",
+    color: "bg-muted text-foreground border-border",
+  },
+  admin: {
+    label: "Admin",
+    color: "bg-muted text-foreground border-border",
+  },
+  cli: {
+    label: "CLI",
+    color: "bg-muted text-foreground border-border",
+  },
+  extension: {
+    label: "Extensions",
+    color: "bg-muted text-foreground border-border",
+  },
+  accessibility: {
+    label: "Accessibility",
+    color: "bg-muted text-foreground border-border",
+  },
+  selfhost: {
+    label: "Developers & Self-Hosting",
+    color: "bg-muted text-foreground border-border",
+  },
 } as const;
 
 type ChangeCategory = keyof typeof CHANGE_CATEGORIES;
+
+// Reading order within a release, not authorship order. Breaking changes
+// first, because they are the one group a reader must not miss before
+// upgrading; then security (the thing people scanning a changelog for "am I
+// safer now" look for), then new capabilities, then fixes, then the product
+// areas, then what went away. Within a group, original order is preserved.
+//
+// Lives beside CHANGE_CATEGORIES so the two are declared in one place, and a
+// test holds them to each other: a category missing here does not fail to
+// compile, it silently renders under "Other".
+const CHANGE_CATEGORY_ORDER: ChangeCategory[] = [
+  "breaking",
+  "security",
+  "added",
+  "improved",
+  "fixed",
+  "changed",
+  "performance",
+  "engine",
+  "api",
+  "admin",
+  "cli",
+  "extension",
+  "accessibility",
+  "selfhost",
+  "removed",
+  "deprecated",
+];
 
 interface Change {
   icon: LucideIcon;
@@ -142,95 +219,196 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
-    // In progress. package.json, CONFIG_APP_VERSION and docker-compose.yml
-    // still read 3.9.1 and move together at release time: the compose file
-    // pins ghcr.io/vulnradar/vulnradar:v<version>, so bumping it before that
-    // image is published would break `docker compose up` for anyone tracking
-    // main. tests/version-sync.test.ts holds those three to each other.
+    // Unreleased. Covers every meaningful change since the v3.9.1 tag
+    // (git log v3.9.1..HEAD), not only the latest overhaul. Append here as
+    // work lands; condense before the release is cut.
     version: "4.0.0",
     date: "Unreleased",
     title: "The Things That Were Written Down Twice",
     highlights: true,
     summary:
-      "A pass over the whole product rather than one part of it, and the theme that kept returning was duplication: a fact recorded in two places, agreeing today, with nothing keeping the two in step. Six copies of a pagination parser, two carrying a bug a query string could reach. A protocol list that silently dropped nine of the fifteen targets its own sibling route accepts. A badge colour one hex digit away from the palette, in the one surface that renders inside other people's READMEs. An example environment file that shipped a placeholder uncommented and broke signup for anyone who copied it the way the README says to. Where a second copy earns its place it now has a test holding it to the first; where it did not, it is gone.",
+      "The largest release since 3.0, and a pass over the whole product rather than one part of it. The theme that kept returning was facts written down in more than one place: a pagination parser copied seven times, a protocol list that silently dropped nine of the fifteen targets its sibling route accepts, API docs describing response shapes the routes do not return, and an example environment file that broke signup for anyone who copied it. Where a second copy earns its place it now has a test holding it to the first; where it did not, it is gone. Alongside that: admins can test a broadcast and save their own templates, the CLI's exit codes finally separate a failed security gate from a failed run, everything draggable works from the keyboard, and a set of performance fixes removed waiting that did not need to happen. Read Breaking Changes before upgrading.",
     changes: [
       {
         icon: Code,
-        label: "The CLI Could Not Tell a Finding From an Outage",
-        desc: "The CLI exists to be a CI gate and its exit code is the whole product. It had two: 0 for a clean gate, 1 for everything else. Everything else covered a real threshold breach, an expired API key, a network timeout, a 5xx, a malformed response, and a typo in a flag, so a pipeline treating non-zero as block-the-merge could not tell that apart from VulnRadar being briefly unreachable. 1 now means the scan ran and a threshold was exceeded; 2 means the tool could not produce a result. A script testing for any non-zero exit is unaffected, and one that wants the gate result specifically can now ask for it. The machine-readable mode was half-finished the same way: it wrote a parseable document on scan failures, because an empty stdin makes jq exit 0 and report a failed pipeline as a pass, but an argument error printed usage and wrote nothing at all. Every argument branch goes through that path now.",
-        category: "changed",
+        label: "CLI Exit Codes Now Separate a Failed Gate From a Failed Run",
+        desc: 'The CLI had two exit codes: 0 for a clean gate and 1 for everything else, so a pipeline could not tell a real threshold breach from an expired API key, a network timeout or a 5xx. Exit 1 now means the scan ran and a threshold was exceeded; exit 2 means the CLI could not produce a result (authentication, network, API error or bad arguments), and --help exits 0. With --json, argument errors now print a JSON document too, so a pipe into jq never receives empty input and reports a pass. Migration: scripts that only check for a non-zero exit are unaffected; scripts that treat exit 1 as "any failure" should also handle 2.',
+        category: "breaking",
       },
       {
-        icon: AlertTriangle,
-        label: "A Bulk Scan Quietly Returned Fewer Targets Than It Was Given",
-        desc: "The bulk endpoint carried its own list of six accepted protocols while the scanner accepts fifteen. The other nine were dropped by a bare continue: no error, no entry in the response, the batch simply came back shorter than it was sent. The same URL submitted one at a time to the single-scan endpoint was accepted, so a batch containing an smtp, imap, pop3, ssh, sftp or mongodb target lost it and nothing said which or why. The test suite had the bug written into it, using ssh as its own example of an unsupported protocol. Both routes read one list now, and the refusal message is built from that list rather than naming six of the fifteen.",
-        category: "fixed",
+        icon: Webhook,
+        label: "Webhook Type Is Now Validated",
+        desc: 'The type field on POST /api/v3/webhooks and PATCH /api/v3/webhooks/{id} was documented as an enum and accepted anything. Delivery only recognises discord and slack, so a Discord webhook saved as "Discord" silently received plain JSON instead of an embed, with every call returning success. Values other than auto, discord, slack and generic now return 400. Migration: send one of those four, or leave type out to detect it from the URL.',
+        category: "breaking",
       },
       {
-        icon: Database,
-        label: "Pagination a Query String Could Push Out of Range",
-        desc: "Six routes each parsed the page and limit parameters separately and three got an edge wrong. One had no floor under the page, so asking for page zero produced a negative offset, which Postgres rejects: a 500 from a query string. Another clamped with a maximum against a parse that can return NaN, and the maximum of 1 and NaN is NaN, not 1. The third looked safe because it checks for NaN, and was not, because a number written in exponent form is finite, clears that check, and multiplies into an offset past what a bigint holds. There is one parser now, promoted from the single copy that got every case right, with the page capped and a test naming each edge.",
-        category: "fixed",
-      },
-      {
-        icon: Gauge,
-        label: "Work That Waited on Itself",
-        desc: "Three routes built the owner's view of their findings by awaiting the remediation lookup and then passing its result into the false-positive lookup. That reads like a dependency and is not one: both key off the finding id, neither changes an id, and neither reads what the other wrote. Two round trips, written out three times, on the paths a signed-in user hits most. They are one call now. The bulk batch inserted one row per URL inside the transaction holding its concurrency reservation, which the crawl executor had already stopped doing; it is one statement. And the authenticated scan was the last caller of the blocking check runner, which the engine's own measurements put at about 1.2 seconds of uninterrupted synchronous work: in a single process, 1.2 seconds during which every other scan and every status poll is stalled.",
-        category: "performance",
-      },
-      {
-        icon: Wrench,
-        label: "An Example Environment File That Broke Signup",
-        desc: "Three optional values shipped uncommented while every sibling in their own sections was commented out. The worst was the captcha site key, because the captcha is switched on by that variable merely being present and a placeholder string is present. So copying the example file, which is step two of the quick-start, turned the captcha on across signup, password reset and contact while its secret stayed unset, leaving verification with nothing to send and every one of those forms failing on a brand new install. The section directly above those lines says to leave both blank to disable. The quick-start also told people to initialise the database with a script that is really the side-by-side clone tool: the schema already creates itself on boot, and following the step as written left a spare database nothing was configured to read.",
-        category: "fixed",
-      },
-      {
-        icon: Lock,
-        label: "Password Reset Had No Rate Limit",
-        desc: "The other half of the same flow is limited per IP and per email; this half had nothing. Every call takes a pooled client and opens a transaction with a row lock before it can decide the token is wrong, so an unthrottled caller spends a connection and a lock per attempt. Not a brute-force risk, since the token is 256 bits, but a free way to drain the pool. It reuses the existing budget under its own key rather than introducing a second number nobody would ever tune separately.",
+        icon: ShieldCheck,
+        label: "Deleting a Webhook No Longer Reveals Which Ids Exist",
+        desc: "DELETE /api/v3/webhooks returned 404 for a webhook that exists but belongs to someone else, and 200 for an id that matched nothing, so comparing the two told a caller which ids were in use. Both now return 404. Migration: treat a 404 on an id you already deleted as the same outcome as the 200 it used to return.",
         category: "security",
       },
       {
-        icon: Bot,
-        label: "The Assistant Could See Your Limit and Not How Much Was Left",
-        desc: "Asking the in-app assistant about your account loaded the daily scan cap. Your limit is 25 does not answer the question people actually bring to it, which is some form of why can I not scan right now, and the number that answers it was the one thing it could not see, so it reasoned from the cap and guessed. It now reads the same helper the scan routes gate on, so it quotes the number that will actually allow or refuse the next scan. Loading a specific scan had the matching gap: it fetched the severity counts and not the findings, so the assistant could say a scan had one critical and could not say which one, on the surface whose entire job is explaining findings. The column was already in the row it was selecting.",
+        icon: Lock,
+        label: "Completing a Password Reset Is Rate Limited",
+        desc: "Requesting a reset was limited per IP and per email; completing one was not limited at all. Each attempt takes a database connection and a row lock before it can reject a wrong token, so an unthrottled caller could exhaust the connection pool. It now shares the existing reset budget under its own key. Reset tokens are 256 bits, so this was never a guessing risk, but it was a free way to degrade the service.",
+        category: "security",
+      },
+      {
+        icon: Mail,
+        label: "Send a Broadcast to Yourself Before Sending It to Everyone",
+        desc: "The broadcast composer had a preview and a send button and nothing in between, and the preview cannot show what Gmail or Outlook will actually do with the message. Send test to me delivers the composed message to your own inbox through the same email layout, with your own unsubscribe link. It writes nothing: no draft, no recipient records, no history entry, so an unsaved draft can be tested as often as needed. The subject is prefixed [TEST] so it cannot be confused with the real send, and it is rate limited.",
         category: "added",
       },
       {
-        icon: Layers,
-        label: "Every Modal Now Arrives the Same Way",
-        desc: "The shared modal grammar was already adopted almost everywhere and modals still did not feel like one component. The reason was motion: the sheet faded and slid, the command palette faded and zoomed, and dialogs, alert dialogs and the hand-built shell had no transition at all, appearing between one frame and the next. Same scrim, same panel, same bands, and one snapped while its neighbour glided. Motion is part of the grammar now, so there is one definition rather than three.",
-        category: "fixed",
+        icon: FileText,
+        label: "Save Your Own Broadcast Templates",
+        desc: "The seven campaign templates were built into the app, so adding an eighth meant a code change and a release. Save as template now keeps the current subject and body as a starting point, listed under Saved here in the template picker for every admin. Saving a name that already exists updates it, regardless of capitalisation. Deleting a staff account keeps the templates that person wrote, and creating, updating and deleting a template are all recorded in the audit log.",
+        category: "added",
+      },
+      {
+        icon: Bot,
+        label: "The Assistant Can See How Much of Your Limit Is Left",
+        desc: "Asked why a scan would not start, the assistant could see your daily limit but not how much of it you had used, so it guessed. It now reads the same usage figure the scan routes enforce, so the number it quotes is the one that decides your next scan. When you ask about a specific scan it can also name the findings, not just count them by severity.",
+        category: "added",
       },
       {
         icon: Palette,
-        label: "The Landing Page Takes Its Rhythm From the Surface",
-        desc: "Sections were separated by a rule drawn under almost every one of them, which is what made the page read as a list of panels rather than a sequence of rooms. The surface change is the divider now and those rules are gone. The three steps are defined as positions on a ladder rather than as fixed colours, so one rhythm survives both themes: the first attempt used a literal near-black band the way the reference design does, and on the light theme that reads as a section whose theme has broken rather than as rhythm. Buttons also press now. The design language makes that its system-wide interaction, and this app had the class written down twice and rendered zero times, because both objects holding it had no importers at all.",
-        category: "changed",
+        label: "A Calmer, More Consistent Interface",
+        desc: "The landing page separates sections with a change of background instead of a line under each one, using three surface steps that hold up in both light and dark themes. Every button now responds visibly to a press. Marketing calls to action are pill shaped while buttons inside the app stay rectangular. Cards dropped the stock drop shadow the rest of the app never used, and menu items, checkboxes and tabs now share the corner radius of every other control. First-time visitors get the theme their operating system asks for, with dark as the fallback.",
+        category: "improved",
       },
       {
-        icon: Eye,
-        label: "Two Drawers Promised the Page Behind Them Was Inert",
-        desc: "The admin and docs mobile navigation drawers both declare themselves modal, both hand-rolled a keyboard focus trap, and neither ever hid the rest of the page from assistive technology, so the attribute told a screen-reader user the background was unreachable while it stayed fully reachable by swipe. Their own comments describe that gap as the reason for the focus trap they did write, and a focus trap is not what closes it. An icon sitting four pixels above its own text in eighteen places had a related cause: every paragraph in the app renders over a 28 pixel line box, and the shared leading-icon default built a 20 pixel one.",
+        icon: Layers,
+        label: "Every Modal Opens the Same Way",
+        desc: "Modals already shared a layout but not their motion: sheets slid in, the command palette zoomed, and dialogs, alert dialogs and the custom modal shell appeared with no transition at all. They now share one entrance, so modals that are built the same finally look the same when they open.",
+        category: "improved",
+      },
+      {
+        icon: ServerCrash,
+        label: "See Which Scans Failed, Not Just How Many",
+        desc: "Admin > System > Scanner Queue showed a count of failed scans with nothing behind it. The count now opens into the failures grouped by error message, so 25 identical timeouts and 25 unrelated errors no longer look the same. The rows load when opened rather than on the 45-second refresh, so customer URLs are not sent over the wire to fill a collapsed section. On Billing Overview, the past-due accounts table now has a card layout on phones instead of a wide table you had to drag sideways.",
+        category: "improved",
+      },
+      {
+        icon: Target,
+        label: "Icons Now Line Up With the Text Beside Them",
+        desc: "An icon next to a paragraph sat about four pixels above the first line of text in 18 places across the app. The shared icon component centred itself on a shorter line than body text actually uses; it now matches the text it sits beside.",
         category: "fixed",
       },
       {
         icon: Smartphone,
-        label: "A Page That Could Still Be Swiped Sideways on iOS",
-        desc: "The horizontal overflow clamp sat on the root element and not on the body, and WebKit chooses which of the two is the viewport source, so clamping only one leaves the other free to pan. It also used a value that hides the scrollbar while still making the element a scroll container, which is the thing that pans in the first place. Both elements now use a value that creates no scroll container at all. Measured afterwards at 375 pixels, the document is exactly as wide as the window. Two page-level masks papering over the same symptom are removed, so the next regression is visible rather than silently reabsorbed.",
+        label: "Pages No Longer Swipe Sideways on iPhone",
+        desc: "Some pages could be dragged left and right on iOS even though nothing visible was wider than the screen. The horizontal overflow rule was applied to only one of the two elements Safari can scroll, and used a value that still creates a scrollable area. Both elements now use one that cannot scroll, and at 375px wide every page measures exactly the width of the window.",
         category: "fixed",
       },
       {
-        icon: Trash2,
-        label: "Half of the Animation Module Had No Consumers",
-        desc: "Eight of its thirteen exports were unreachable and two were worse than unused. One was a second helper sharing the name of the real one and quietly doing less, joining class strings with none of the conflict resolution the real one performs, one import line away from being picked by mistake. The other produced a stagger delay in exactly the shape another component documents at length as broken, having already replaced it, so it was a working implementation of a bug somebody had fixed, kept alive only by the test covering it. Also removed: a deprecated helper that still had three callers five months on, which is not a deprecation but a second name for one function.",
-        category: "changed",
+        icon: Shield,
+        label: "The Status Badge Uses the Brand Colours",
+        desc: "The embeddable badge drew its caution state in a stock yellow one shade away from the product's amber, in the one surface that renders inside other people's READMEs where nothing else can correct it. It now reads the brand palette directly, and its test compares against the palette instead of a copied colour code.",
+        category: "fixed",
+      },
+      {
+        icon: Gauge,
+        label: "Less Waiting on the Pages You Use Most",
+        desc: "Three routes, including the scan detail page, loaded remediation state and then false-positive state one after the other although neither needed the other; they now load together. A bulk scan wrote one database row per URL while holding its concurrency lock and now writes the batch in one statement. Authenticated scans used an older check runner that blocked the server for about a second per scan, stalling every other request; they now use the same yielding runner as regular scans.",
+        category: "performance",
+      },
+      {
+        icon: Download,
+        label:
+          "Audit Log Export Streams Instead of Loading Everything Into Memory",
+        desc: "Exporting the audit log loaded up to a year of entries into server memory and then built the entire file as one string, which on a busy instance could take the site down. The export now streams in pages. It is still the complete log, and if the database fails partway through, the download aborts rather than producing a file that looks complete but is not.",
+        category: "performance",
+      },
+      {
+        icon: Search,
+        label: "The Public Scans Directory Has Its Own Index",
+        desc: "The public scans directory had no database index for the filter it runs on every request, so each page read through scan history to find the public entries and then counted them again. A partial index now covers exactly the rows the directory can show, in the order it shows them. This page is public and crawled, so it was the listing that needed it most.",
+        category: "performance",
+      },
+      {
+        icon: AlertTriangle,
+        label: "Bulk Scans No Longer Drop Targets Silently",
+        desc: "The bulk scan endpoint kept its own list of six accepted protocols while the scanner supports fifteen. A batch containing an smtp, imap, pop3, ssh, sftp or mongodb target came back shorter than it was sent, with no error and no entry explaining the gap, even though each of those URLs was accepted by the single scan endpoint. Both now use one list, and the error for a genuinely unsupported protocol names all fifteen supported ones.",
+        category: "engine",
+      },
+      {
+        icon: ServerCrash,
+        label: "A Scan That Could Not Be Marked Failed Now Leaves a Trace",
+        desc: "When recording a scan as failed was itself rejected, usually because the database was unhealthy, seven code paths discarded the error without logging it. The scan stayed pending or running with nothing to explain why. Those paths now write the scan id, the reason and the error to the admin error log, and still never crash the server.",
+        category: "engine",
+      },
+      {
+        icon: Database,
+        label: "Pagination Parameters Can No Longer Break a Request",
+        desc: "Seven routes each parsed page and limit on their own, and three got an edge case wrong: page=0 produced a negative offset and a 500 error, a non-numeric limit reached the database as NaN, and a value like 1e21 passed validation and overflowed. Every route now uses one parser that handles each of those cases.",
+        category: "api",
       },
       {
         icon: FileText,
-        label: "A Published API Contract That Omitted Fields It Accepts",
-        desc: "The OpenAPI document is what an SDK, a generated client and the interactive docs are built from, so a field missing there does not exist as far as anyone working from the contract is concerned, which is a plausible reason neither the CLI nor the extension ever learned to send these. The scan schema documented three fields where the route reads seven. The crawl endpoint reused that same schema, so the two fields that make a crawl a crawl rather than a copy of a single scan appeared nowhere at all. And the login block was documented as one flat object holding the form fields while advertising two other methods whose required fields were written down only in the source.",
-        category: "fixed",
+        label: "The OpenAPI Spec Lists Everything the Scan Endpoints Accept",
+        desc: "The OpenAPI document is what generated clients and the API playground are built from. It listed three of the seven fields POST /api/v3/scan accepts (isPublic, captureScreenshot, teamId and teamIds were missing), reused that schema for crawls so the page selection and login fields appeared nowhere, and described the auth block as a single shape when it is three. All of that is now accurate, and the playground no longer pre-fills a request body that would fail validation.",
+        category: "api",
+      },
+      {
+        icon: BookOpen,
+        label: "API Reference Corrections",
+        desc: "The API reference was checked line by line against the routes. The most important correction: crawls were documented as costing one quota unit when run with an API key, but every scanned page costs one, for every authentication method. Also corrected: POST /scan/authenticated does run the page-content checks; the response shape of POST /scan/discover; DELETE /history/{id} returns only success, takes the scan's opaque id, and is allowed for teammates with scan management rights; and the subdomain cache lasts 4 hours by default, not 24. Newly documented: GET /browser/sessions/logs, the bound_ip field on GET /keys, rate limiting on POST /keys, and team sharing on the scan endpoints.",
+        category: "api",
+      },
+      {
+        icon: Puzzle,
+        label: "The Extension's Permission List Matches Its Manifests",
+        desc: "The extension documentation listed activeTab and scripting, which neither the Chrome nor the Firefox manifest requests, and omitted contextMenus and downloads, which both request and use for right-click scanning and report export. For a security tool, claiming permissions it does not ask for is as misleading as hiding ones it does. The list now matches the manifests exactly. The extension's build toolchain was also updated, and its TypeScript version can no longer move a major version away from the app's without a deliberate change.",
+        category: "extension",
+      },
+      {
+        icon: Keyboard,
+        label: "Everything Draggable Now Works From the Keyboard",
+        desc: "The profile picture cropper could only be repositioned by dragging, and the assistant panel's resize handles were mouse-only elements with no name and no focus. The cropper now moves with the arrow keys (hold Shift for larger steps). The resize handles are focusable, labelled separators that respond to the arrow keys, Home and End.",
+        category: "accessibility",
+      },
+      {
+        icon: Eye,
+        label: "Menus That Claimed to Hide the Page Behind Them Now Do",
+        desc: "The admin and documentation mobile menus told screen readers the rest of the page was unavailable, but never actually made it so, and a swipe could still reach it. The page behind an open menu is now inert, matching every other modal. Two touch targets smaller than 24 pixels were also enlarged.",
+        category: "accessibility",
+      },
+      {
+        icon: Container,
+        label: "Copying .env.example No Longer Breaks Signup",
+        desc: "The example environment file shipped a Turnstile site key placeholder uncommented. The captcha switches on when that variable is present, but its secret was still unset, so on a fresh install copied exactly as the README instructs, signup, password reset and the contact form all failed. It is commented out like every other credential. The quick-start also told you to run a database initialisation script that actually creates a second, unused database; the schema already creates itself on first start, and that step is gone.",
+        category: "selfhost",
+      },
+      {
+        icon: Settings,
+        label: "Clearer Self-Hosting Configuration",
+        desc: "DATABASE_SSL_CA was documented as accepting a file path, but only the certificate contents work; a path left the app unable to connect at startup. The AI model guidance said 200K tokens of context and then recommended 128K models; the real requirement is about 300K, and the examples now show which models meet it. The placeholder Stripe publishable key is commented out, and the Stripe and Turnstile client keys now warn that a pulled Docker image must be rebuilt with docker compose build app to use them. MIGRATION_BACKUP_RETENTION_DAYS is documented for the first time.",
+        category: "selfhost",
+      },
+      {
+        icon: BookOpen,
+        label: "Documentation Checked Against the Code",
+        desc: "The documentation was verified claim by claim. Corrected: when the schema version check runs (at startup, not on the first scan), which permissions each staff role holds (two listed capabilities do not exist), that a scan can be shared with several teams, that a support ticket can be shared with several teammates, how AI code review scores confidence, the number of report formats, the Node and test runner version requirements, Dependabot's auto-merge rules, how long a Discord sign-in link lasts, the GitLab CI template's crawl page limit (25 to 250 by plan, not 15), and the extension's TypeScript version. The version and toolchain numbers are now checked against the code by tests.",
+        category: "selfhost",
+      },
+      {
+        icon: GitMerge,
+        label: "CI Catches More Before It Ships",
+        desc: "Integration tests ran against a different Postgres version than docker-compose installs, so they verified a database no self-hoster runs; they now match. The extension gained the same lockfile check the app has, which catches a lockfile regenerated on Windows before it breaks a Linux build. New tests keep facts that live in more than one place in agreement: the app version across package.json, the config and docker-compose; all 52 plan limits between billing and enforcement; the Stripe webhook events the app subscribes to and the ones it handles; and a single list of the database upserts both schema checks allow.",
+        category: "selfhost",
+      },
+      {
+        icon: Trash2,
+        label: "Code Nothing Used",
+        desc: "About 260 lines removed after checking every import, script, worker and test. Eight of the animation module's thirteen exports had no users, including a second, weaker copy of the class-name helper that was easy to import by mistake. A deprecated IP address helper still had three callers five months after its deprecation; those now call the real function and the wrapper is gone. Several other unused exports and types went with them.",
+        category: "removed",
+      },
+      {
+        icon: Package,
+        label: "Dependency Updates",
+        desc: "React 19.3, the Stripe SDKs, jose, nodemailer and zod, the Anthropic and OpenAI AI SDK providers, lucide-react, the TypeScript ESLint packages, and the browser extension's build toolchain.",
+        category: "changed",
       },
     ],
   },
@@ -6137,5 +6315,5 @@ const CHANGELOG: Release[] = [
   },
 ];
 
-export { CHANGE_CATEGORIES, CHANGELOG };
+export { CHANGE_CATEGORIES, CHANGE_CATEGORY_ORDER, CHANGELOG };
 export type { ChangeCategory, Change, Release };
