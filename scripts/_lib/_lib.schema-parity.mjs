@@ -100,37 +100,6 @@ export const META_TABLE = "vulnradar_schema_meta";
 export const DELIBERATE_BOOT_ONLY_TABLES = Object.freeze({});
 
 /**
- * Upserts whose ON CONFLICT target is an EXPRESSION index, keyed "file:line".
- *
- * An expression index is a perfectly valid ON CONFLICT target as long as the
- * clause repeats the expression, and neither parity check can see that:
- * parseUniqueTargets reads column tuples out of the boot schema, and the
- * integration check reads them out of pg_indexes. Both report a real,
- * working upsert as unmatched.
- *
- * Declared here rather than in either test because BOTH read it. It lived in
- * tests/lib/database/on-conflict-parity.test.ts alone, so adding an entry
- * there left the integration copy in tests/integration/schema.test.ts red,
- * which is the two-sources-of-truth problem these parity checks exist to
- * catch, in the parity checks themselves.
- *
- * An entry here is a claim that the clause repeats the index's expression
- * exactly. Check that before adding one; getting it wrong is a 500 on the
- * write path, which is what both checks are for.
- */
-export const DELIBERATE_PARTIAL_INDEX_UPSERTS = Object.freeze([
-  // broadcast_templates' unique index is on LOWER(name), so that saving
-  // "October promo" a second time updates it instead of leaving the picker
-  // offering two entries that differ only in capitalisation. The upsert reads
-  // ON CONFLICT (LOWER(name)) against
-  // CREATE UNIQUE INDEX ... ON broadcast_templates(LOWER(name)).
-  //
-  // If a line number here drifts, the entry is what moved, not the code:
-  // re-run either parity suite and take the file:line it prints.
-  "app/api/v3/admin/features/route.ts:888",
-]);
-
-/**
  * Columns that intentionally exist on the boot path only, keyed
  * "table.column". Same contract as DELIBERATE_BOOT_ONLY_TABLES.
  */
@@ -300,35 +269,87 @@ function createTableBody(stmt) {
 
 /** "b,a" -> "a,b", lowercased and unquoted, so two spellings compare equal. */
 function normalizeColumnTuple(columns) {
-  return columns
-    .split(",")
-    .map((s) => s.trim().replace(/"/g, "").toLowerCase())
-    .filter(Boolean)
-    .sort()
-    .join(",");
+  return normalizeConflictTarget(columns);
+}
+
+/**
+ * One spelling for a unique target, whether it came from source, from the
+ * boot schema or from pg_get_indexdef: lowercased, unquoted, whitespace and
+ * type casts removed, redundant parentheses around a bare identifier
+ * dropped, and the top-level comma-separated parts sorted.
+ *
+ * That is what lets an expression index be matched like any other target.
+ * `ON CONFLICT (LOWER(name))` in source, `ON broadcast_templates(LOWER(name))`
+ * in the schema and `USING btree (lower((name)::text))` from the catalog all
+ * become "lower(name)". The expression-index upsert used to be exempted by
+ * file and line number instead, so deleting twelve unrelated lines above it
+ * failed both parity suites.
+ */
+export function normalizeConflictTarget(text) {
+  let t = text.replace(/"/g, "").toLowerCase().replace(/\s+/g, "");
+  t = t.replace(/::[a-z_]+(?:\(\d+(?:,\d+)?\))?(?:\[\])?/g, "");
+  let previous;
+  do {
+    previous = t;
+    t = t.replace(/\(\(([a-z_][a-z0-9_]*)\)\)/g, "($1)");
+    t = t.replace(/([,(])\(([a-z_][a-z0-9_]*)\)/g, "$1$2");
+    t = t.replace(/^\(([a-z_][a-z0-9_]*)\)$/, "$1");
+  } while (t !== previous);
+  const parts = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of t) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    if (ch === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current);
+  return parts.filter(Boolean).sort().join(",");
+}
+
+/**
+ * The text inside the parenthesis that opens at `open`, respecting nesting,
+ * or null when it never closes.
+ */
+function balancedParens(text, open) {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === "(") depth++;
+    else if (text[i] === ")") {
+      depth--;
+      if (depth === 0) return text.slice(open + 1, i);
+    }
+  }
+  return null;
 }
 
 /**
  * Every column tuple an `ON CONFLICT (...)` clause may legally name, per
  * table: PRIMARY KEY, inline `col ... UNIQUE`, table-level `UNIQUE (a, b)`,
- * `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE (...)`, and plain (non-partial,
- * non-expression) CREATE UNIQUE INDEX.
+ * `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE (...)`, and non-partial CREATE
+ * UNIQUE INDEX, including expression indexes.
  *
  * PostgreSQL rejects an ON CONFLICT target that matches no unique index with
  * "there is no unique or exclusion constraint matching the ON CONFLICT
- * specification", at execution time, on the write path. Partial and
- * expression unique indexes are deliberately excluded: inferring one needs
- * the ON CONFLICT clause to repeat its predicate or expression, so treating
- * them as ordinary targets would make this check pass for an upsert that
- * still throws.
+ * specification", at execution time, on the write path. Partial unique
+ * indexes are deliberately excluded: inferring one needs the ON CONFLICT
+ * clause to repeat the predicate, which this does not read. An expression
+ * index is included under its normalized expression, so it only matches a
+ * clause that repeats the same expression, which is what PostgreSQL needs.
  *
- * Returns Map<table, Set<"a,b">> with each tuple sorted and lowercased.
+ * Returns Map<table, Set<target>> with each target normalized by
+ * normalizeConflictTarget.
  */
 export function parseUniqueTargets(statements) {
   const targets = new Map();
   const add = (table, columns) => {
-    const key = normalizeColumnTuple(columns);
-    if (!key || key.includes("(")) return;
+    const key = normalizeConflictTarget(columns);
+    if (!key) return;
     if (!targets.has(table)) targets.set(table, new Set());
     targets.get(table).add(key);
   };
@@ -374,7 +395,7 @@ export function parseUniqueTargets(statements) {
     }
 
     const index = parseCreateIndex(stmt);
-    if (index && index.unique && !index.where && !index.columns.includes("(")) {
+    if (index && index.unique && !index.where) {
       add(index.table, index.columns);
     }
   }
@@ -394,13 +415,17 @@ export function parseUniqueTargets(statements) {
  */
 export function findOnConflictTargets(source) {
   const re =
-    /INSERT\s+INTO\s+"?([A-Za-z0-9_]+)"?[^;`]{0,4000}?ON\s+CONFLICT\s*\(([^)]*)\)/gi;
+    /INSERT\s+INTO\s+"?([A-Za-z0-9_]+)"?[^;`]{0,4000}?ON\s+CONFLICT\s*\(/gi;
   const out = [];
   let m;
   while ((m = re.exec(source)) !== null) {
+    // Read to the matching parenthesis: an expression target such as
+    // LOWER(name) closes its own parenthesis first.
+    const inner = balancedParens(source, m.index + m[0].length - 1);
+    if (inner === null) continue;
     out.push({
       table: m[1],
-      columns: normalizeColumnTuple(m[2]),
+      columns: normalizeConflictTarget(inner),
       line: source.slice(0, m.index).split("\n").length,
     });
   }

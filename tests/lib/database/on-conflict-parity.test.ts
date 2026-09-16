@@ -22,7 +22,7 @@ const {
   bootSchemaStatements,
   parseUniqueTargets,
   findOnConflictTargets,
-  DELIBERATE_PARTIAL_INDEX_UPSERTS,
+  normalizeConflictTarget,
   REPO_ROOT,
 } = await import("@/scripts/_lib/_lib.schema-parity.mjs");
 
@@ -59,6 +59,21 @@ describe("ON CONFLICT parity with the boot schema", () => {
     expect(uniqueTargets.size).toBeGreaterThan(40);
     expect(uniqueTargets.get("users")?.has("email")).toBe(true);
     expect(uniqueTargets.get("scan_tags")?.has("scan_id,tag")).toBe(true);
+    // An expression index is a target under its normalized expression.
+    expect(uniqueTargets.get("broadcast_templates")?.has("lower(name)")).toBe(
+      true,
+    );
+  });
+
+  it("spells a target the same way from source, schema and catalog", () => {
+    expect(normalizeConflictTarget("LOWER(name)")).toBe("lower(name)");
+    expect(normalizeConflictTarget("lower((name)::text)")).toBe("lower(name)");
+    expect(normalizeConflictTarget('"user_id", message_id')).toBe(
+      "message_id,user_id",
+    );
+    expect(
+      normalizeConflictTarget("lower((email)::character varying(255))"),
+    ).toBe("lower(email)");
   });
 
   it("finds the upserts it is supposed to be checking", () => {
@@ -79,7 +94,6 @@ describe("ON CONFLICT parity with the boot schema", () => {
         line: number;
       }>) {
         const where = `${relative(REPO_ROOT, file).replace(/\\/g, "/")}:${target.line}`;
-        if (DELIBERATE_PARTIAL_INDEX_UPSERTS.includes(where)) continue;
         const known = uniqueTargets.get(target.table);
         if (!known?.has(target.columns)) {
           unmatched.push(

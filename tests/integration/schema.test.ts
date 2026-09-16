@@ -20,8 +20,8 @@ import { describeIntegration } from "./_db";
  */
 const {
   findOnConflictTargets,
+  normalizeConflictTarget,
   readBootSchema,
-  DELIBERATE_PARTIAL_INDEX_UPSERTS,
   REPO_ROOT,
 } = await import("@/scripts/_lib/_lib.schema-parity.mjs");
 
@@ -57,30 +57,38 @@ describeIntegration("the schema the boot path builds", () => {
   let uniqueTargets: Map<string, Set<string>>;
 
   beforeAll(async () => {
-    // Partial (indpred) and expression (indexprs) unique indexes are excluded
-    // for the same reason the static parity test excludes them: PostgreSQL
-    // will not infer one from a bare `ON CONFLICT (cols)` unless the clause
-    // repeats the predicate or expression, so counting them here would make
-    // this pass for an upsert that still throws at runtime.
-    const { rows } = await pool.query<{ table_name: string; cols: string }>(
+    // Partial (indpred) unique indexes are excluded for the same reason the
+    // static parity test excludes them: PostgreSQL will not infer one from
+    // `ON CONFLICT (...)` unless the clause repeats the predicate. Expression
+    // indexes are read from their definition and normalized the same way the
+    // static half normalizes source and schema, so LOWER(name) in the clause
+    // matches lower((name)::text) in the catalog.
+    const { rows } = await pool.query<{ table_name: string; def: string }>(
       `SELECT c.relname AS table_name,
-              (SELECT string_agg(att.attname, ',' ORDER BY att.attname)
-                 FROM unnest(i.indkey::int2[]) AS k(attnum)
-                 JOIN pg_attribute att
-                   ON att.attrelid = c.oid AND att.attnum = k.attnum) AS cols
+              pg_get_indexdef(i.indexrelid) AS def
          FROM pg_index i
          JOIN pg_class c ON c.oid = i.indrelid
          JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE i.indisunique
           AND i.indpred IS NULL
-          AND i.indexprs IS NULL
           AND n.nspname = 'public'`,
     );
     uniqueTargets = new Map();
     for (const row of rows) {
-      if (!row.cols) continue;
+      const open = row.def.indexOf("(", row.def.indexOf(" USING "));
+      if (open === -1) continue;
+      let depth = 0;
+      let close = -1;
+      for (let i = open; i < row.def.length; i++) {
+        if (row.def[i] === "(") depth++;
+        else if (row.def[i] === ")" && --depth === 0) {
+          close = i;
+          break;
+        }
+      }
+      if (close === -1) continue;
       const set = uniqueTargets.get(row.table_name) ?? new Set<string>();
-      set.add(row.cols.toLowerCase());
+      set.add(normalizeConflictTarget(row.def.slice(open + 1, close)));
       uniqueTargets.set(row.table_name, set);
     }
   });
@@ -210,20 +218,7 @@ describeIntegration("the schema the boot path builds", () => {
         line: number;
       }>) {
         checked += 1;
-        // An expression index is a valid target when the clause repeats
-        // the expression, and pg_indexes gives this check column tuples,
-        // so it cannot see one either. The list is shared with the static
-        // half in tests/lib/database/on-conflict-parity.test.ts: an
-        // exception that satisfied one check and not the other would be
-        // the same two-sources-of-truth bug these checks exist to catch.
         const where = `${relative(REPO_ROOT, file).replace(/\\/g, "/")}:${target.line}`;
-        if (
-          (DELIBERATE_PARTIAL_INDEX_UPSERTS as readonly string[]).includes(
-            where,
-          )
-        ) {
-          continue;
-        }
         const known = uniqueTargets.get(target.table);
         if (!known?.has(target.columns)) {
           unmatched.push(
