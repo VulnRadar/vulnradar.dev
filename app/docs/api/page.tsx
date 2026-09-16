@@ -49,7 +49,7 @@ const endpoints: Endpoint[] = [
   "status": "running"
 }`,
     notes: [
-      "url accepts a bare hostname (auto-prepended https://), a full URL with any of the 15 supported schemes, or a public IPv4 literal (probe-only mode). The full set (SUPPORTED_PROTOCOLS in lib/scanner/execute-scan.ts) is http, https, ws, wss, ftp, ftps, ssh, sftp, smtp, smtps, imap, imaps, pop3, pop3s, mongodb. Note that the 400 body this route returns on a rejected scheme names only the first six; sftp and smtps in particular are accepted despite not appearing in that message.",
+      "url accepts a bare hostname (auto-prepended https://), a full URL with any of the 15 supported schemes, or a public IPv4 literal (probe-only mode). The full set (SUPPORTED_PROTOCOLS in lib/scanner/execute-scan.ts) is http, https, ws, wss, ftp, ftps, ssh, sftp, smtp, smtps, imap, imaps, pop3, pop3s, mongodb. The 400 body this route returns on a rejected scheme is built from that same list, so it names all fifteen.",
       "Raw IPv4: web checks (headers, ssl, tls, cookies, content, info, configuration, code, secrets, api) are skipped, because there is no hostname context for them. DNS, email, and the portScan sweep still run.",
       "portScan is a boolean. Set it to true to run a curated sweep of common ports and services (the previous per-service probes array was removed and consolidated into this single flag). Each reachable service has its banner read and is reported for version disclosure and reachability.",
       "portScan is held to the same verified-domain gate as active-probes: port scanning from shared infrastructure is abuse, so a request setting portScan against a domain you have not verified is rejected with 403 before the scan starts.",
@@ -172,7 +172,7 @@ const endpoints: Endpoint[] = [
       "Nothing under auth is ever written to a database table, a log line, or an audit record. The audit log and scan_history only record the non-secret fact that an authenticated scan ran, its method, and its outcome.",
       'authReport.status is "authenticated" on a normal run, "lost" if the authenticated session appears to have dropped partway through (e.g. a redirect back to the login page), or "failed" if login itself never succeeded, in which case authReport.reason explains why and no scan runs.',
       "If the login page turns out to be a Cloudflare challenge or a CAPTCHA, that is reported as a failed login with a reason describing the block, not silently treated like a wrong password.",
-      "Runs the same detector set as an unauthenticated single-page scan (the legacy per-category checks plus DNS/TLS/email async checks); it does not yet run the newer page-content checks described below.",
+      "Runs the same detector set as an unauthenticated single-page scan: the per-category checks, the DNS/TLS/email async checks, and the page-content checks described below. This note used to say the page-content checks were not included, which was true of an older runner this route no longer calls.",
       'Gated by the "Authenticated scanning" admin setting; returns 403 if disabled on this deployment.',
     ],
     errors: [
@@ -414,8 +414,7 @@ const endpoints: Endpoint[] = [
       "isPublic behaves as on POST /scan for a logged-out crawl: omit it and the account default decides. An AUTHENTICATED crawl (one carrying an auth block) is the exception, and is private unless this request sets isPublic: true. It sees whatever a logged-in area renders, so neither the account default nor the normal is_public default is allowed to make it public.",
       "auth (object, optional) turns this into an authenticated crawl. It takes the same block, the same admin toggle, and the same limits as POST /scan/authenticated: the session is established once and threaded through every page fetch. Nothing under auth is stored or logged.",
       "All pages must share the entry URL's hostname (same-origin).",
-      "For session auth, each scanned page counts as one daily quota unit.",
-      "For Bearer auth, the entire crawl counts as one quota unit.",
+      "Each scanned page counts as one daily quota unit, for session auth and Bearer auth alike. A 25-page crawl spends 25 units. Discovery itself is free: only pages that are actually scanned are charged, so a crawl that stops early because the cap was reached charges only for what it got through.",
       "Poll GET /scan/status/{scanId}: the completed result's result.crawl field carries { pagesDiscovered, pagesScanned, pagesSkipped, pages: [...] } alongside the aggregate findings and summary.",
     ],
     errors: [
@@ -478,15 +477,37 @@ const endpoints: Endpoint[] = [
   "requestId": "a3f9c1e2-7b04-4d8a-9c31-5e6f0b2a8d47"
 }`,
     responseExample: `{
+  "domain": "example.com",
+  "total": 3,
+  "reachable": 2,
   "subdomains": [
-    { "host": "www.example.com", "source": "crt.sh" },
-    { "host": "api.example.com", "source": "rapiddns" },
-    { "host": "staging.example.com", "source": "brute" }
-  ]
+    {
+      "subdomain": "www.example.com",
+      "url": "https://www.example.com",
+      "reachable": true,
+      "statusCode": 200,
+      "sources": ["crt.sh", "certspotter"]
+    },
+    {
+      "subdomain": "api.example.com",
+      "url": "https://api.example.com",
+      "reachable": true,
+      "statusCode": 403,
+      "sources": ["rapiddns"]
+    },
+    {
+      "subdomain": "staging.example.com",
+      "url": "https://staging.example.com",
+      "reachable": false,
+      "sources": ["brute-force"]
+    }
+  ],
+  "sources": { "crt.sh": 2, "rapiddns": 1, "brute-force": 1 },
+  "cached": false
 }`,
     notes: [
       "forceRefresh: true bypasses the subdomain_cache table.",
-      "Results are cached for 24h per domain by default.",
+      "Results are cached per domain for CONFIG_SUBDOMAIN_CACHE_TTL_HOURS, which defaults to 4 hours and is admin-configurable. A cached response carries cached: true with cachedAt and expiresAt; a fresh one carries a sources tally instead.",
       "requestId (string, optional) is a caller-generated id for THIS request. Supply one and you can poll GET /scan/discover/progress/{requestId} while this POST is still in flight to watch which of the passive sources it is working through. Omit it and there is nothing to poll: the progress endpoint has no other way to find the run. This call still blocks until discovery finishes either way.",
     ],
     errors: [
@@ -798,22 +819,23 @@ format=json       -> application/json            vulnradar-example.com.json`,
     method: "DELETE",
     path: "/history/{id}",
     title: "Delete a Single Scan",
-    description: "Permanently delete a single scan by ID. Owner only.",
+    description:
+      "Permanently delete a single scan. Needs write access: the owner, or a teammate whose team role carries manage_scans on a scan shared with that team.",
     pathParams: [
       {
         name: "id",
-        type: "number",
+        type: "string",
         required: true,
-        description: "Scan ID to delete",
+        description:
+          "The scan's opaque id, as returned by GET /history. A legacy numeric id still resolves.",
       },
     ],
     responseExample: `{
-  "success": true,
-  "message": "Scan deleted successfully"
+  "success": true
 }`,
     errors: [
       { code: 401, description: "Unauthorized" },
-      { code: 403, description: "Forbidden: not the scan owner" },
+      { code: 403, description: "Forbidden: no write access to this scan" },
       { code: 404, description: "Scan not found" },
     ],
   },
@@ -1407,7 +1429,7 @@ format=json       -> application/json            vulnradar-example.com.json`,
   "domain": "example.com",
   "team_id": 7,
   "status": "verified",
-  "verification_method": "dns-txt",
+  "verification_method": "dns_txt",
   "created_at": "2026-08-01T00:00:00.000Z",
   "verified_at": "2026-08-01T00:12:00.000Z",
   "last_checked_at": "2026-08-30T04:00:00.000Z",

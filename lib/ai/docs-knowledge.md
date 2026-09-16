@@ -858,11 +858,33 @@ Enumerate subdomains for a domain. Aggregates nine passive sources (crt.sh, Hack
 - **Response (200):**
 ```json
 {
+  "domain": "example.com",
+  "total": 3,
+  "reachable": 2,
   "subdomains": [
-    { "host": "www.example.com", "source": "crt.sh" },
-    { "host": "api.example.com", "source": "rapiddns" },
-    { "host": "staging.example.com", "source": "brute" }
-  ]
+    {
+      "subdomain": "www.example.com",
+      "url": "https://www.example.com",
+      "reachable": true,
+      "statusCode": 200,
+      "sources": ["crt.sh", "certspotter"]
+    },
+    {
+      "subdomain": "api.example.com",
+      "url": "https://api.example.com",
+      "reachable": true,
+      "statusCode": 403,
+      "sources": ["rapiddns"]
+    },
+    {
+      "subdomain": "staging.example.com",
+      "url": "https://staging.example.com",
+      "reachable": false,
+      "sources": ["brute-force"]
+    }
+  ],
+  "sources": { "crt.sh": 2, "rapiddns": 1, "brute-force": 1 },
+  "cached": false
 }
 ```
 
@@ -973,13 +995,12 @@ Look up the cached reputation of a host from public scans, without scanning it. 
 ```
 
 #### `DELETE /history/{id}`: Delete a Single Scan
-Permanently delete a single scan by ID. Owner only.
+Permanently delete a single scan. Needs write access: the owner, or a teammate whose team role carries manage_scans on a scan shared with that team.
 
 - **Response (200):**
 ```json
 {
-  "success": true,
-  "message": "Scan deleted successfully"
+  "success": true
 }
 ```
 
@@ -1294,7 +1315,7 @@ Share a verified domain with a team so its members' scans can use it, or send te
   "domain": "example.com",
   "team_id": 7,
   "status": "verified",
-  "verification_method": "dns-txt",
+  "verification_method": "dns_txt",
   "created_at": "2026-08-01T00:00:00.000Z",
   "verified_at": "2026-08-01T00:12:00.000Z",
   "last_checked_at": "2026-08-30T04:00:00.000Z",
@@ -2029,11 +2050,11 @@ license, type-safe models, real tests against a live instance.
 > **WARNING: Node 22 is required, not just recommended**
 > The engines field in
 package.json is
-{ "node": ">=22.0.0" }. There is no
-fallback to Node 20: the Dockerfile builds and runs on
-node:22.23.2-alpine, and CI runs the full
-lint, typecheck, test, and build matrix on Node 22 only. Match that
-locally.
+{ "node": ">=22.0.0 . There
+is no fallback to Node 20 and no jump to 24 either: the Dockerfile
+builds and runs on node:22.23.2-alpine, and
+CI runs the full lint, typecheck, test, and build matrix on Node 22
+only. Match that locally.
 
 > **WARNING: We will ask you to switch first**
 > Bug reports filed against Node 20 or earlier get closed with a
@@ -2100,7 +2121,7 @@ curl <value>/api/v3/finding-types
 
 ```bash
 # nvm / fnm / volta / asdf will all auto-pick this from the repo root
-nvm use          # reads .nvmrc (which says 22)
+nvm use          # reads .nvmrc (which pins 22.23.2)
 
 # or install + use explicitly
 nvm install 22
@@ -2560,7 +2581,7 @@ report says exactly this in a disclaimer at the top of its output.
 - stores each scan once and renders reports from it on demand. The in-app export menu on a scan runs the report generators client-side; the same generators are exposed over one HTTP endpoint so a pipeline or a script can fetch the exact same output with a Bearer key. There is no separate "report" object to create or poll: you already have a scan id, so you already have every report.
 - The endpoint lives under /api/v3/ like the rest of the v3 API . Pick a format with the format query parameter; the response is a file download, not a JSON envelope, so pipe it to a file or hand it straight to whatever consumes it.
 - One GET, authenticated exactly like GET /history/"}. The format parameter selects the generator; the response headers tell you what came back.
-- Six outputs off the one endpoint. md and markdown are the same generator under two names; everything else is distinct.
+- outputs off the one endpoint. md and markdown are the same generator under two names; everything else is distinct.
 - The report inherits the scan's access model, so there is nothing new to authorise. A caller who can read the scan can pull any format of its report; a caller who cannot gets the same 404 the scan itself returns.
 - SARIF is the format worth wiring up first. The export is SARIF 2.1.0, the JSON schema GitHub Code Scanning consumes natively. Critical and high map to level: error, medium to warning, low and info to note. Each result carries a partialFingerprints.vulnradarFindingId equal to the stable check id, so re-running the scan updates the same alert instead of opening a duplicate. When a finding has a real computed CVSS score it is exported as security-severity; otherwise a per-band default is used.
 - Store the key as a repo secret, fetch the SARIF for a completed scan, then hand it to the official upload action. The findings appear on the Security tab, annotated against the target.
@@ -2945,7 +2966,7 @@ individual URLs instead.
 | `/docs/webhooks` | ✓ | 7 | 0 | 0 | 4 | 0 | 0 | 13 | 6 |
 | `/docs/rate-limits` | - | 6 | 6 | 0 | 4 | 0 | 0 | 11 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 3 | 0 | 0 | 8 | 0 |
-| `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 20 | 9 |
+| `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 19 | 9 |
 | `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 22 | 0 |
 | `/docs/administration` | - | 10 | 6 | 0 | 0 | 0 | 0 | 31 | 0 |
 | `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 19 | 0 |
