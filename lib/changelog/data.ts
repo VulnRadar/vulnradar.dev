@@ -446,6 +446,12 @@ const CHANGELOG: Release[] = [
         category: "security",
       },
       {
+        icon: ShieldAlert,
+        label: "A Security Code That Never Changes Is Reported",
+        desc: "Some sites protect their pages with a one-time code, called a nonce, that tells the browser which scripts are genuine. It only works if the code is new on every visit. When it stays the same, for example because a page was cached with it, anyone can read it and use it to slip their own script in. The scanner now loads such a page twice and reports a code that did not change, without printing the code itself.",
+        category: "engine",
+      },
+      {
         icon: Mail,
         label: "Mail Servers That No Longer Exist Are Reported",
         desc: "A domain's MX records tell the world which servers receive its email. When one of those servers no longer exists, mail can bounce, and if the missing server belonged to another company's domain, whoever registers that domain could start receiving your email, password resets included. The scan now reports mail servers that do not exist, and treats the second case as high severity. A server that simply did not answer in time is not counted as missing.",

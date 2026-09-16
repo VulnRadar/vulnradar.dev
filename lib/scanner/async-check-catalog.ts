@@ -470,6 +470,11 @@ export const ASYNC_CHECKS = {
     "medium",
     "information-disclosure",
   ),
+  cspNonceReusedAcrossResponses: def(
+    "CSP Nonce Is Reused Across Responses",
+    "medium",
+    "headers",
+  ),
   goPprofDebugEndpointsExposed: def(
     "Go pprof Debug Endpoints Exposed",
     "high",

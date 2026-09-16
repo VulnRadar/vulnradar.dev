@@ -106,6 +106,7 @@ import {
   checkRobotsTxt,
   checkSecurityTxt,
   checkLiveFetch,
+  checkCspNonceReuse,
   checkActiveCORS,
   checkActiveHttpMethods,
   checkXForwardedHostInjection,
@@ -2092,6 +2093,46 @@ describe("checkLiveFetch: service exposure probes", () => {
     expect(await titles()).not.toContain(
       "Grafana Dashboards Readable Without Login",
     );
+  });
+});
+
+describe("checkCspNonceReuse", () => {
+  function respondWithNonces(...nonces: (string | null)[]) {
+    let call = 0;
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async () => {
+        const nonce = nonces[Math.min(call++, nonces.length - 1)];
+        return {
+          ok: true,
+          status: 200,
+          text: async () => "<html></html>",
+          headers: {
+            get: (name: string) =>
+              name.toLowerCase() === "content-security-policy" && nonce
+                ? `script-src 'self' 'nonce-${nonce}'; object-src 'none'`
+                : null,
+          },
+        };
+      },
+    );
+  }
+
+  it("reports a nonce that is the same on two responses, without printing it", async () => {
+    respondWithNonces("c3RhdGljLW5vbmNlLTEyMw==", "c3RhdGljLW5vbmNlLTEyMw==");
+    const [finding] = await checkCspNonceReuse("https://example.com/");
+    expect(finding.title).toBe("CSP Nonce Is Reused Across Responses");
+    expect(finding.evidence).not.toContain("c3RhdGljLW5vbmNlLTEyMw");
+  });
+
+  it("stays quiet when the nonce changes per response", async () => {
+    respondWithNonces("Zmlyc3Qtbm9uY2UtdmFsdWU=", "c2Vjb25kLW5vbmNlLXZhbHVl");
+    expect(await checkCspNonceReuse("https://example.com/")).toEqual([]);
+  });
+
+  it("makes no second request when the page uses no nonce", async () => {
+    respondWithNonces(null);
+    expect(await checkCspNonceReuse("https://example.com/")).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 

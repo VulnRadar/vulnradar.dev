@@ -5053,6 +5053,72 @@ export async function checkSecurityTxt(
 // explicit opt-in and domain-ownership check. checkBucketListing stays here:
 // its probes target third-party bucket hosts the page already publicly
 // references, not the scanned origin itself, and it sends no spoofed headers.
+/**
+ * A Content-Security-Policy nonce that is the same on two responses.
+ *
+ * A nonce only protects anything if an attacker cannot know it in advance: it
+ * has to be new on every response. A nonce generated once at build time, or
+ * an HTML page cached with its CSP header by a CDN, hands every visitor the
+ * same value, so an HTML injection can simply include it and its script runs
+ * as if the site had written it. Nothing on a single response shows this,
+ * which is why it takes a second request, and that second request is only
+ * made when the first response actually uses a nonce.
+ */
+export async function checkCspNonceReuse(
+  url: string,
+): Promise<Vulnerability[]> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
+    if (isPrivateHostname(parsed.hostname)) return [];
+  } catch {
+    return [];
+  }
+
+  const NONCE = /'nonce-([A-Za-z0-9+/_=-]{8,})'/g;
+  const noncesOf = async (): Promise<Set<string> | null> => {
+    const res = await safeFetch(url, {
+      method: "GET",
+      headers: FETCH_OPTS.headers,
+      signal: AbortSignal.timeout(5000),
+    });
+    // Drain the body so the connection is released; only the header matters.
+    await res.text().catch(() => "");
+    if (!res.ok) return null;
+    const csp = res.headers.get("content-security-policy") ?? "";
+    return new Set([...csp.matchAll(NONCE)].map((m) => m[1]));
+  };
+
+  try {
+    const first = await noncesOf();
+    if (!first || first.size === 0) return [];
+    const second = await noncesOf();
+    if (!second) return [];
+    const repeated = [...first].filter((n) => second.has(n));
+    if (repeated.length === 0) return [];
+    return [
+      makeVuln(
+        url,
+        A.cspNonceReusedAcrossResponses,
+        "The page's Content-Security-Policy uses a nonce, but two separate requests received the same nonce value, so it is not generated fresh for each response.",
+        `Two GET requests to ${url} returned a Content-Security-Policy header with the same nonce (${repeated.length === 1 ? "one value" : `${repeated.length} values`}, not shown).`,
+        "A nonce is only secret while it changes on every response. Once it repeats, anyone can read it from the page, and an injected script tag that carries it is allowed to run as if the site had written it. The policy still looks strong while protecting against nothing that an attacker who reads the page first cannot bypass.",
+        "The usual causes are a nonce generated once when the server starts or when the page is built, or an HTML page cached with its security header by a CDN or reverse proxy, which then serves one visitor's nonce to everybody.",
+        [
+          "Generate a new random nonce (at least 128 bits) in middleware for every request, and put the same value in the header and on that response's script tags.",
+          "Do not cache HTML responses that carry a nonce at a CDN or proxy, or generate the nonce at the edge instead.",
+          "If pages must be fully static, use hashes of the inline scripts in the policy rather than a nonce.",
+        ],
+        [],
+        85,
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
 export async function checkLiveFetch(
   url: string,
   scope: AsyncBranchScope = "all",
@@ -5092,7 +5158,7 @@ export async function checkLiveFetch(
     );
   }
   if (scope !== "host") {
-    tasks.push(checkBucketListing(url));
+    tasks.push(checkBucketListing(url), checkCspNonceReuse(url));
   }
 
   const settled = await Promise.allSettled(tasks);
