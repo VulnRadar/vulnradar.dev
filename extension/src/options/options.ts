@@ -911,7 +911,11 @@ function SectionSiteAlerts(): TemplateResult {
         <div class="section-desc">
           The small card shown on the page itself when you visit a site:
           VulnRadar's last scan of it if there is one, or a one-click offer to
-          scan it if there isn't. Independent of auto-scan above.
+          scan it if there isn't. Independent of auto-scan above. To choose the
+          card, the extension asks ${VULNRADAR.apiHost} about each site you
+          open, sending its hostname and page URL at most once every
+          ${Math.round(VULNRADAR.reputationThrottleMs / 1000)} seconds per site.
+          Turning both switches off stops those requests.
         </div>
       </div>
       <div class="row">
@@ -1377,12 +1381,21 @@ function SectionPrivacy(): TemplateResult {
         </div>
       </div>
       <div class="muted" style="line-height:1.6">
-        The extension talks to <strong>${VULNRADAR.apiHost}</strong> only. When
-        you click "Scan this page" or auto-scan fires, it sends the current page
-        URL to that host. The response (findings, severity counts) is cached in
+        The extension talks to <strong>${VULNRADAR.apiHost}</strong> only, and
+        sends it two kinds of request. <br /><br />
+        <strong>Scans.</strong> When you click "Scan this page" or auto-scan
+        fires, the current page URL is sent and scanned, and the scan is saved
+        to your account's history. <br /><br />
+        <strong>Site Alerts</strong>, on unless you turn them off. When you open
+        a page, its hostname and full URL are sent to look up whether VulnRadar
+        has scanned it, at most once every
+        ${Math.round(VULNRADAR.reputationThrottleMs / 1000)} seconds per site.
+        The lookup reads existing scans only: it does not start a scan and does
+        not store the address. Turn off both Site Alerts switches to stop it
+        everywhere, or mute a single site from its card. <br /><br />
+        Responses (findings, severity counts) are cached in
         <code>extension storage</code> on this device so the popup can show
-        recent scans without re-querying. It is never synced across devices.
-        <br /><br />
+        recent scans without re-querying. They are never synced across devices.
         Nothing is sent to any other origin. The extension has no analytics, no
         telemetry, no third-party scripts.
       </div>

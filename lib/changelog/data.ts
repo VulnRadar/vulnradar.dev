@@ -447,6 +447,12 @@ const CHANGELOG: Release[] = [
         category: "cli",
       },
       {
+        icon: Eye,
+        label: "The Extension's Privacy Statements Match What It Sends",
+        desc: "The browser extension's Site Alerts are on by default and look up every site you open, sending its hostname and page URL at most once every 45 seconds per site. Its own Privacy settings said the extension sent a URL only when you scanned, and the privacy policy described page lookups as an optional feature you had to turn on and said page titles were sent, which they are not. All three now say what happens, including that the lookup reads existing scans without storing the address and how to switch it off. A test keeps the policy's interval in step with the extension.",
+        category: "extension",
+      },
+      {
         icon: Keyboard,
         label: "Everything Draggable Now Works From the Keyboard",
         desc: "The profile picture cropper could only be repositioned by dragging, and the assistant panel's resize handles were mouse-only elements with no name and no focus. The cropper now moves with the arrow keys (hold Shift for larger steps). The resize handles are focusable, labelled separators that respond to the arrow keys, Home and End.",

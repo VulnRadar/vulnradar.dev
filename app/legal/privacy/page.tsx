@@ -182,8 +182,8 @@ export default async function PrivacyPage() {
           The VulnRadar browser extension (Chrome and Firefox) connects to your
           {" " + APP_NAME} account using an API key you generate and paste into
           the extension&apos;s Settings page. It scans whatever page you tell it
-          to scan and, if you turn on its optional features, watches the pages
-          you browse to offer a scan or show a past result.
+          to scan and, unless you turn its Site Alerts off, checks the pages you
+          open against past scans so it can show a result or offer a scan.
         </p>
         <p className="font-medium text-foreground mt-4">
           What the extension sends to our servers
@@ -202,14 +202,17 @@ export default async function PrivacyPage() {
             </>,
             <>
               <strong>
-                The URL (and page title) of pages you visit, while a feature
-                that needs it is turned on
+                The hostname and URL of pages you open, while a feature that
+                needs them is turned on
               </strong>
-              : the on-page &quot;Site Alerts&quot; card (shows a past result or
-              a one-click scan offer) and auto-scan (background scanning without
-              you clicking anything). Both are configurable independently in
-              Settings; auto-scan is off by default. If both are off, the
-              extension does not report page visits at all.
+              : the on-page &quot;Site Alerts&quot; card, which looks the page
+              up against past scans to show a result or a one-click scan offer,
+              at most once every 45 seconds per site, and auto-scan, which scans
+              pages in the background without you clicking anything. Site Alerts
+              are on by default and auto-scan is off by default; both can be
+              turned off in Settings. A Site Alerts lookup only reads existing
+              scans and does not store the address. If both features are off,
+              the extension does not report page visits at all.
             </>,
           ]}
         />
@@ -218,7 +221,7 @@ export default async function PrivacyPage() {
         </p>
         <LegalList
           items={[
-            "It does not read, copy, or transmit the content of the pages you visit (text, images, forms, or scripts). It only sends the URL and, where noted above, the page title.",
+            "It does not read, copy, or transmit the content of the pages you visit (text, images, forms, or scripts), or their titles. It only sends the hostname and URL, as described above.",
             "It does not monitor clicks, keystrokes, mouse movement, or scrolling on any page.",
             "It does not run any code it fetches at runtime; everything it executes ships inside the extension package you installed from the Chrome Web Store or Firefox Add-ons.",
           ]}
