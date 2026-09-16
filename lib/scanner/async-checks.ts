@@ -2790,15 +2790,28 @@ export async function checkTLSCert(
                 certWithCurve.asn1Curve || certWithCurve.nistCurve,
               );
               if (!isEcKey && bits < 2048) {
+                // Two different problems, the same split the DKIM key check
+                // makes. Below 1024 bits the key is within reach of published
+                // factoring work (RSA-829 was factored in 2020), so anyone
+                // who records the traffic can impersonate the site. From 1024
+                // to 2047 it is deprecated rather than broken: no public CA
+                // has issued one since 2014, so it is also a sign the
+                // certificate is self-managed or long out of date. Both used
+                // to be "high" with text saying either was "practically
+                // factorable", which is only true of the first.
+                const brokenKey = bits < 1024;
                 findings.push(
                   makeVuln(
                     url,
                     asyncCheckVariant(A.weakTlsCertificateKeySize, {
                       category: emitCategory,
+                      ...(brokenKey ? { severity: "critical" as const } : {}),
                     }),
                     `TLS certificate uses a ${bits}-bit RSA key, below the 2048-bit minimum recommended by NIST.`,
-                    `Certificate public key size: ${bits} bits. Keys below 2048 bits are practically factorable with modern compute.`,
-                    "RSA keys smaller than 2048 bits can be factored offline, allowing session decryption and impersonation.",
+                    `Certificate public key size: ${bits} bits.`,
+                    brokenKey
+                      ? "RSA keys this small are within reach of published factoring work. Whoever factors it can impersonate the site and decrypt any recorded session that did not use forward secrecy."
+                      : "RSA keys below 2048 bits are deprecated and no longer issued by public certificate authorities. They are not known to be factored at this size, but their margin is gone, and the rest of the certificate's setup deserves a look.",
                     "NIST SP 800-131A requires RSA keys of at least 2048 bits. Keys below this are considered weak by browsers and CAs.",
                     [
                       "Reissue the certificate with RSA 2048 or 3072 bits.",

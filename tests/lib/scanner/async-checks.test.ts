@@ -1191,7 +1191,23 @@ describe("checkTLSCert", () => {
       443,
       "ssl",
     );
-    expect(findings.some((f) => /weak.*key size/i.test(f.title))).toBe(true);
+    const weak = findings.find((f) => /weak.*key size/i.test(f.title));
+    expect(weak).toBeDefined();
+    // Deprecated, not broken: no published factoring reaches 1024 bits.
+    expect(weak!.severity).toBe("high");
+    expect(weak!.riskImpact).not.toMatch(/within reach of published factoring/);
+  });
+
+  it("escalates an RSA key below 1024 bits to critical", async () => {
+    setupTlsMock(makeFakeCert({ bits: 768 }));
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
+    const weak = findings.find((f) => /weak.*key size/i.test(f.title));
+    expect(weak?.severity).toBe("critical");
   });
 
   it("does not flag a 256-bit ECDSA P-256 certificate as a weak RSA key", async () => {

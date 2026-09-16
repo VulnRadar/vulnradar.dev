@@ -788,7 +788,7 @@ remediation documentation in the docs.
 - [low     ] `supply-chain-sbom-document-exposed` [body-pattern] - Software bill of materials publicly served
 
 ### tls (24)
-- [high    ] `tls-certificate-expiry` [header] - TLS Certificate Expiry
+- [critical] `tls-certificate-expiry` [header] - TLS Certificate Expiry
 - [high    ] `tls-protocol-version` [header] - Weak TLS Protocol Version
 - [high    ] `tls-cert-key-size-rsa` [header] - RSA Key Size Below 2048 Bits
 - [high    ] `tls-cert-self-signed` [header] - Self-Signed Certificate in Production
@@ -860,10 +860,10 @@ remediation documentation in the docs.
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
   - medium: 223
-  - high: 196
+  - high: 195
   - low: 184
   - info: 100
-  - critical: 98
+  - critical: 99
 - By type:
   - body-pattern: 460
   - header: 155

@@ -22,10 +22,10 @@ in this file and quote the title, description, and fix steps.
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
   - medium: 223
-  - high: 196
+  - high: 195
   - low: 184
   - info: 100
-  - critical: 98
+  - critical: 99
 - **By type:**
   - body-pattern: 460
   - header: 155
@@ -21660,7 +21660,7 @@ EOF
 
 ## Category: tls (24 checks)
 
-### `tls-certificate-expiry` [tls / high / header]
+### `tls-certificate-expiry` [tls / critical / header]
 **TLS Certificate Expiry**
 
 Async check: opens a TLS connection to :443 and reports the certificate validity window, expiry, self-signing, and incomplete chains.

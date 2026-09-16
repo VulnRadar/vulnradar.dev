@@ -4,7 +4,7 @@
     "type": "header",
     "title": "TLS Certificate Expiry",
     "category": "tls",
-    "severity": "high",
+    "severity": "critical",
     "description": "Async check: opens a TLS connection to :443 and reports the certificate validity window, expiry, self-signing, and incomplete chains.",
     "evidence": "Executed in async-checks.ts via Node tls.connect().",
     "riskImpact": "An expired or self-signed certificate breaks HTTPS trust and exposes users to MITM attacks.",
