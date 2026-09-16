@@ -3914,6 +3914,90 @@ async function checkExposedFiles(
         "Use TLS for RabbitMQ connections and management interface.",
       ],
     },
+    {
+      // Importing net/http/pprof registers these handlers on the default mux
+      // as a side effect, so a Go service that serves its app from that mux
+      // publishes them on the public port without anyone deciding to. The
+      // index page's own heading and its goroutine link are what only the
+      // real handler serves.
+      path: "/debug/pprof/",
+      verify: (status, body) => {
+        if (status !== 200) return null;
+        if (!/Types of profiles available/i.test(body)) return null;
+        if (!/href=['"]?(?:\/debug\/pprof\/)?goroutine\?debug=1/i.test(body))
+          return null;
+        return "The Go pprof index is served without authentication, with links to heap, goroutine, CPU profile and cmdline endpoints.";
+      },
+      def: A.goPprofDebugEndpointsExposed,
+      description:
+        "The Go runtime profiler (net/http/pprof) is reachable on the public site. Its endpoints return heap dumps, full goroutine stack traces, the process command line, and on-demand CPU and execution traces.",
+      riskImpact:
+        "A heap profile holds whatever the process had in memory, which routinely includes API keys, session tokens and database credentials, and the command line often carries secrets passed as flags. The profile and trace endpoints make the process do expensive work for as long as the caller asks, which is a denial-of-service lever needing no credentials.",
+      fixSteps: [
+        "Stop importing net/http/pprof in production builds, or register it on a separate mux served only on a localhost or internal-network listener.",
+        "If profiling is needed in production, put the handlers behind authentication at the application or proxy layer.",
+        "Block /debug/pprof/ at the reverse proxy until the handlers are moved.",
+      ],
+    },
+    {
+      // Symfony's WebProfilerBundle, which belongs in require-dev. The
+      // symfony-debug-token header check sees the header that points here;
+      // this confirms the profiler UI itself answers.
+      path: "/_profiler/",
+      verify: (status, body, ct) => {
+        if (status !== 200 || !/text\/html/i.test(ct)) return null;
+        const title = body.match(/<title>([^<]{1,120})<\/title>/i)?.[1] ?? "";
+        if (!/Symfony Profiler/i.test(title)) return null;
+        return "The Symfony profiler search page is served without authentication.";
+      },
+      def: A.symfonyProfilerExposed,
+      description:
+        "Symfony's web profiler is reachable in production. It records every request the application handles and lets anyone browse them.",
+      riskImpact:
+        "Each stored profile shows the full request and response, including session cookies and authorization headers from other visitors, every database query with its parameters, logged exceptions, and the application's configuration and environment. The phpinfo panel adds server paths and settings. This has been used to take over sessions and recover application secrets directly.",
+      fixSteps: [
+        "Set APP_ENV=prod and APP_DEBUG=0 in production.",
+        "Move symfony/web-profiler-bundle to require-dev and deploy with composer install --no-dev.",
+        "Block /_profiler and /_wdt at the reverse proxy until the deploy is fixed, then rotate any secret the profiler could have shown.",
+      ],
+    },
+    {
+      // Grafana answers /api/search with 401 unless anonymous access is on.
+      // The shape is checked strictly, because an empty array or some other
+      // application's JSON on the same path is not Grafana.
+      path: "/api/search?limit=5",
+      verify: (status, body, ct) => {
+        if (status !== 200 || !/json/i.test(ct)) return null;
+        let items: unknown;
+        try {
+          items = JSON.parse(body);
+        } catch {
+          return null;
+        }
+        if (!Array.isArray(items)) return null;
+        const dashboards = items.filter(
+          (item): item is { uid: string; title?: string; type: string } =>
+            typeof item === "object" &&
+            item !== null &&
+            typeof (item as { uid?: unknown }).uid === "string" &&
+            ["dash-db", "dash-folder"].includes(
+              String((item as { type?: unknown }).type),
+            ),
+        );
+        if (dashboards.length === 0) return null;
+        return `Grafana's search API listed ${dashboards.length} dashboard or folder entr${dashboards.length === 1 ? "y" : "ies"} to an unauthenticated request. Titles omitted.`;
+      },
+      def: A.grafanaDashboardsReadableWithoutLogin,
+      description:
+        "Grafana's anonymous access is enabled: its API lists dashboards to a visitor who has not signed in.",
+      riskImpact:
+        "Dashboards are usually internal telemetry: hostnames, service names, error rates, customer counts and query text against the data sources behind them. Anonymous viewers can also run a dashboard's panel queries, so the data sources are readable to the extent those panels allow. This is sometimes intended for a public status board, which is why it is reported at medium rather than higher.",
+      fixSteps: [
+        "If no dashboard is meant to be public, set [auth.anonymous] enabled = false in grafana.ini.",
+        "For a deliberate public board, use Grafana's public dashboards feature for that one board instead of anonymous access to the whole instance.",
+        "Check which organization and role [auth.anonymous] grants, and that no data source is shared with it.",
+      ],
+    },
   ];
 
   const runProbe = async (probe: FileProbe): Promise<Vulnerability | null> => {

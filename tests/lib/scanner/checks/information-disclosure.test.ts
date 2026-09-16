@@ -597,6 +597,52 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+
+  "elasticsearch-api-unauthenticated": [
+    {
+      description:
+        "an Elasticsearch root document answered without credentials",
+      body: '{\n  "name" : "node-1",\n  "cluster_name" : "prod-logs",\n  "cluster_uuid" : "abc",\n  "version" : {\n    "number" : "7.17.9",\n    "build_flavor" : "default"\n  },\n  "tagline" : "You Know, for Search"\n}\n',
+      expect: "fire",
+      evidenceIncludes:
+        'Elasticsearch 7.17.9 answered its root document without authentication (cluster "prod-logs")',
+    },
+    {
+      description: "an OpenSearch root document is named as OpenSearch",
+      body: '{"name":"os-1","cluster_name":"search","version":{"distribution":"opensearch","number":"2.11.0"},"tagline":"The OpenSearch Project: https://opensearch.org/"}',
+      expect: "fire",
+      evidenceIncludes: "OpenSearch 2.11.0",
+    },
+    {
+      description: "a docs page quoting the root document in HTML",
+      body: '<html><body><pre>{"cluster_name":"docs","tagline":"You Know, for Search"}</pre></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "JSON that mentions the tagline without being a cluster root",
+      body: '{"title":"Our search is great","tagline":"You Know, for Search"}',
+      expect: "skip",
+    },
+  ],
+
+  "jupyter-server-unauthenticated": [
+    {
+      description: "JupyterLab served with no login",
+      body: '<!doctype html><html><head><title>JupyterLab</title><script id="jupyter-config-data" type="application/json">{"baseUrl":"/","appName":"JupyterLab"}</script></head><body></body></html>',
+      expect: "fire",
+    },
+    {
+      description: "the login page of a server with auth on",
+      body: '<!doctype html><html><head><title>Jupyter Server</title><script id="jupyter-config-data" type="application/json">{"baseUrl":"/"}</script></head><body><form action="/login?next=%2Flab" method="post"><input type="password" name="password" id="password_input"></form></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "a tutorial showing the config script as escaped text",
+      body: '<html><body><pre><code>&lt;script id="jupyter-config-data"&gt;</code></pre></body></html>',
+      expect: "skip",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

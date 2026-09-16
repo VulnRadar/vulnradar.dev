@@ -1932,6 +1932,103 @@ describe("checkLiveFetch", () => {
   });
 });
 
+describe("checkLiveFetch: service exposure probes", () => {
+  /** Answers one path with a body; every other probe gets a 404. */
+  function answer(path: string, status: number, body: string, ct: string) {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (input: unknown) => {
+        const href = typeof input === "string" ? input : String(input);
+        const u = new URL(href);
+        if (`${u.pathname}${u.search}` === path) {
+          return {
+            ok: status < 400,
+            status,
+            text: async () => body,
+            headers: {
+              get: (name: string) =>
+                name.toLowerCase() === "content-type" ? ct : null,
+            },
+          };
+        }
+        return {
+          ok: false,
+          status: 404,
+          text: async () => "",
+          headers: { get: () => null },
+        };
+      },
+    );
+  }
+
+  const titles = async () =>
+    (await checkLiveFetch("https://example.com", "host")).map((f) => f.title);
+
+  it("reports the Go pprof index", async () => {
+    answer(
+      "/debug/pprof/",
+      200,
+      "<html><head><title>/debug/pprof/</title></head><body>/debug/pprof/<br><p>Set debug=1 as a query parameter to export in legacy text format</p><br>Types of profiles available:<table><tr><td>3</td><td><a href='goroutine?debug=1'>goroutine</a></td></tr></table></body></html>",
+      "text/html; charset=utf-8",
+    );
+    expect(await titles()).toContain("Go pprof Debug Endpoints Exposed");
+  });
+
+  it("does not report an SPA shell that answers every path", async () => {
+    answer(
+      "/debug/pprof/",
+      200,
+      "<!doctype html><html><head><title>My App</title></head><body><div id=root></div></body></html>",
+      "text/html",
+    );
+    expect(await titles()).not.toContain("Go pprof Debug Endpoints Exposed");
+  });
+
+  it("reports a reachable Symfony profiler", async () => {
+    answer(
+      "/_profiler/",
+      200,
+      '<!DOCTYPE html><html><head><title>Symfony Profiler</title></head><body><div class="sf-toolbar"></div></body></html>',
+      "text/html; charset=UTF-8",
+    );
+    expect(await titles()).toContain("Symfony Profiler Exposed");
+  });
+
+  it("reports Grafana dashboards listed to an anonymous request, without their titles", async () => {
+    answer(
+      "/api/search?limit=5",
+      200,
+      JSON.stringify([
+        {
+          id: 1,
+          uid: "abc123",
+          title: "Payments production",
+          type: "dash-db",
+          url: "/d/abc123/payments",
+        },
+      ]),
+      "application/json",
+    );
+    const findings = await checkLiveFetch("https://example.com", "host");
+    const grafana = findings.find(
+      (f) => f.title === "Grafana Dashboards Readable Without Login",
+    );
+    expect(grafana).toBeDefined();
+    expect(grafana!.evidence).not.toContain("Payments production");
+  });
+
+  it("does not take another application's JSON at /api/search for Grafana", async () => {
+    answer(
+      "/api/search?limit=5",
+      200,
+      JSON.stringify([{ id: 1, name: "a product", type: "product" }]),
+      "application/json",
+    );
+    expect(await titles()).not.toContain(
+      "Grafana Dashboards Readable Without Login",
+    );
+  });
+});
+
 // ── checkActiveCORS / checkActiveHttpMethods / checkXForwardedHostInjection ──
 // These moved out of checkLiveFetch's unconditional bundle and now run only
 // from buildBranches' active-probes branch (see the checkLiveFetch exclusion

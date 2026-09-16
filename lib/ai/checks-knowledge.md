@@ -18,16 +18,16 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 802
+- **Total checks:** 804
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
   - medium: 222
-  - high: 197
+  - high: 198
   - low: 184
+  - critical: 100
   - info: 100
-  - critical: 99
 - **By type:**
-  - body-pattern: 460
+  - body-pattern: 462
   - header: 155
   - combined: 60
   - header-missing: 42
@@ -16569,7 +16569,7 @@ if (req.query.state !== req.session.oauthState) {
 
 ---
 
-## Category: information-disclosure (42 checks)
+## Category: information-disclosure (44 checks)
 
 ### `rails-cookie-httponly` [information-disclosure / medium / body-pattern]
 **Rails Session Cookie Missing HttpOnly Flag**
@@ -18027,6 +18027,54 @@ go func() {
   // Internal-only listener, never the public-facing port
   log.Fatal(http.ListenAndServe("127.0.0.1:9100", mux))
 }()
+```
+
+### `elasticsearch-api-unauthenticated` [information-disclosure / high / body-pattern]
+**Elasticsearch or OpenSearch API reachable without authentication**
+
+The scanned address is an Elasticsearch or OpenSearch HTTP endpoint that answered its root document without credentials, so its security features are off or it is published without an authenticating proxy.
+
+**Risk:** An open search cluster is one of the most common sources of large data breaches: anyone who can reach it can list every index, read the documents in them, and usually write and delete them too. Exposed clusters are found by automated scanning within hours and are routinely wiped and held for ransom.
+
+**Why it matters:** Elasticsearch has enabled security by default since 8.0 and returns 401 to an unauthenticated request for its root document, as does OpenSearch with its security plugin. A 200 carrying the cluster name and the product tagline means that request was not authenticated. The tagline is only accepted inside a JSON body, so documentation that quotes it does not trigger this.
+
+**References:**
+- https://www.elastic.co/guide/en/elasticsearch/reference/current/security-minimal-setup.html
+- https://opensearch.org/docs/latest/security/
+
+**Fix:**
+- Enable security: xpack.security.enabled: true for Elasticsearch, or the security plugin for OpenSearch, and set passwords for the built-in users.
+- Bind the HTTP interface to a private address (network.host) and firewall port 9200 from the internet.
+- If the cluster must be reachable from outside, put it behind an authenticating reverse proxy and require TLS.
+- Review index contents and access logs, since an open cluster should be treated as already read.
+- **elasticsearch.yml** (yaml):
+```yaml
+xpack.security.enabled: true
+xpack.security.http.ssl.enabled: true
+network.host: 10.0.0.5
+```
+
+### `jupyter-server-unauthenticated` [information-disclosure / critical / body-pattern]
+**Jupyter server interface reachable without a login**
+
+The scanned page is a Jupyter Notebook or JupyterLab interface that loaded without asking for a token or password.
+
+**Risk:** Jupyter runs code. Anyone who can open this page can start a kernel or a terminal and execute arbitrary commands as the user running the server, read and change every file it can reach, and use its network position to move further in. Unauthenticated notebooks are actively hunted for cryptomining and data theft.
+
+**Why it matters:** Jupyter servers require a token or password by default. When auth is on, an unauthenticated visit is redirected to the login page, which also carries the config script but includes a password field. This check fires only on the interface itself with no password form, which is what a server started with an empty token or with authentication disabled serves.
+
+**References:**
+- https://jupyter-server.readthedocs.io/en/latest/operators/security.html
+
+**Fix:**
+- Restart the server with authentication: remove --NotebookApp.token='' or --ServerApp.token='' and set a password with jupyter server password.
+- Bind it to localhost (--ip=127.0.0.1) and reach it through an SSH tunnel, or place it behind an authenticating proxy such as JupyterHub.
+- Assume the host is compromised if the server was reachable: check running processes, cron entries and authorized SSH keys.
+- **jupyter_server_config.py** (python):
+```python
+c.ServerApp.ip = "127.0.0.1"
+c.IdentityProvider.token = "<long random value>"
+c.ServerApp.allow_remote_access = False
 ```
 
 ---

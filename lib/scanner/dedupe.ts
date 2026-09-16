@@ -144,6 +144,11 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "api-graphql-introspection-enabled": "graphql-introspection",
   "async-graphql-introspection-enabled": "graphql-introspection",
 
+  // Symfony's profiler: the debug-token header that points at it, and the
+  // probe that confirms the profiler UI answers.
+  "symfony-debug-token": "symfony-profiler",
+  "async-symfony-profiler-exposed": "symfony-profiler",
+
   // A library version with a published advisory: the live OSV.dev lookup and
   // the offline snapshot (page-outdated-vulnerable-library, which declares
   // this group itself). Scoped per component, so each library stays its own
@@ -162,6 +167,7 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
 const CONFIRMING_CHECKS: ReadonlySet<string> = new Set([
   "osv-vulnerable-library",
   "async-graphql-introspection-enabled",
+  "async-symfony-profiler-exposed",
 ]);
 
 /** The check ID a finding came from, recovered from its stable finding ID. */

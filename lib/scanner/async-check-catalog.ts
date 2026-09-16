@@ -465,6 +465,21 @@ export const ASYNC_CHECKS = {
     "medium",
     "information-disclosure",
   ),
+  goPprofDebugEndpointsExposed: def(
+    "Go pprof Debug Endpoints Exposed",
+    "high",
+    "information-disclosure",
+  ),
+  symfonyProfilerExposed: def(
+    "Symfony Profiler Exposed",
+    "high",
+    "information-disclosure",
+  ),
+  grafanaDashboardsReadableWithoutLogin: def(
+    "Grafana Dashboards Readable Without Login",
+    "medium",
+    "information-disclosure",
+  ),
 
   // Publicly listable object-storage buckets, one per provider
   publiclyListableAwsS3Bucket: def(

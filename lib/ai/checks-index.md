@@ -619,7 +619,7 @@ remediation documentation in the docs.
 - [medium  ] `url-import-ssrf-request-input-no-validation` [body-pattern] - URL-Import Field From Request Passed to Outbound Call Unvalidated
 - [medium  ] `oauth-authorize-missing-state-param` [url-check] - OAuth Authorization Request Missing State Parameter
 
-### information-disclosure (42)
+### information-disclosure (44)
 - [medium  ] `rails-cookie-httponly` [body-pattern] - Rails Session Cookie Missing HttpOnly Flag
 - [info    ] `server-header-truncated` [header] - Server header truncated
 - [info    ] `php-version-exposed-in-cookie` [header] - PHP session cookie naming exposes runtime
@@ -662,6 +662,8 @@ remediation documentation in the docs.
 - [high    ] `consul-api-exposed` [combined] - Consul HTTP API Reachable Without Authentication
 - [critical] `etcd-api-exposed` [body-pattern] - etcd API Reachable Without Client Certificate Authentication
 - [medium  ] `prometheus-metrics-exposed` [body-pattern] - Prometheus /metrics Endpoint Exposed Without Authentication
+- [high    ] `elasticsearch-api-unauthenticated` [body-pattern] - Elasticsearch or OpenSearch API reachable without authentication
+- [critical] `jupyter-server-unauthenticated` [body-pattern] - Jupyter server interface reachable without a login
 
 ### reputation (3)
 - [critical] `url-flagged-malware` [url-check] - URL Flagged as Malware Distribution
@@ -857,16 +859,16 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **802**
+- Total checks: **804**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
   - medium: 222
-  - high: 197
+  - high: 198
   - low: 184
+  - critical: 100
   - info: 100
-  - critical: 99
 - By type:
-  - body-pattern: 460
+  - body-pattern: 462
   - header: 155
   - combined: 60
   - header-missing: 42

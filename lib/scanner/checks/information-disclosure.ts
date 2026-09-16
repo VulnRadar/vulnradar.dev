@@ -476,6 +476,51 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
+  // The scanned address is an Elasticsearch or OpenSearch HTTP endpoint and
+  // it answered its root document. With security enabled that request gets a
+  // 401 and no body, so the document itself is the proof. The tagline is only
+  // trusted inside a JSON body, never in a page that quotes it.
+  "elasticsearch-api-unauthenticated": (_url, _headers, body) => {
+    const head = body.trimStart();
+    if (!head.startsWith("{")) return null;
+    const tagline =
+      /"tagline"\s*:\s*"(You Know, for Search|The OpenSearch Project: https:\/\/opensearch\.org\/)"/.exec(
+        head.slice(0, 4096),
+      );
+    if (!tagline) return null;
+    let doc: {
+      cluster_name?: unknown;
+      version?: { number?: unknown; distribution?: unknown };
+    };
+    try {
+      doc = JSON.parse(head);
+    } catch {
+      return null;
+    }
+    if (typeof doc.cluster_name !== "string") return null;
+    const product =
+      doc.version?.distribution === "opensearch" ||
+      tagline[1].startsWith("The OpenSearch")
+        ? "OpenSearch"
+        : "Elasticsearch";
+    const version =
+      typeof doc.version?.number === "string" ? ` ${doc.version.number}` : "";
+    return `${product}${version} answered its root document without authentication (cluster "${doc.cluster_name.slice(0, 80)}").`;
+  },
+
+  // A Jupyter server's own UI, loaded without a login. With token or
+  // password auth on, the same request lands on /login, whose page carries
+  // the same config script plus a password field.
+  "jupyter-server-unauthenticated": (_url, _headers, body) => {
+    if (!hasTagWith(body, "script", /\bid\s*=\s*["']?jupyter-config-data\b/i))
+      return null;
+    if (hasTagWith(body, "input", /\b(?:name|type)\s*=\s*["']?password\b/i))
+      return null;
+    if (hasTagWith(body, "form", /\baction\s*=\s*["'][^"']*\/login\b/i))
+      return null;
+    return "The page is a Jupyter server interface served without a login: its jupyter-config-data script is present and there is no password form.";
+  },
+
   "grafana-version-exposure": (_url, headers, body) => {
     const gv = getHeader(headers, "x-grafana-version");
     // Where Grafana itself puts the version: buildInfo inside the

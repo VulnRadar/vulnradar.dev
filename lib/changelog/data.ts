@@ -387,6 +387,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: FileSearch,
+        label: "Five Exposed Services Are Now Recognised",
+        desc: "Five exposures that show up in real breaches had no check. A Go service that imports its profiler publishes heap dumps, stack traces and its command line at /debug/pprof/ on the public port without anyone choosing to; that is now reported as high. Symfony's profiler, which records other visitors' requests including their session cookies, was only inferred from a debug header; the profiler page itself is now probed and confirmed, and the two merge into one finding. Grafana with anonymous access turned on is reported when its API lists dashboards to a visitor who has not signed in, without copying the dashboard titles into the report. And a scan of an Elasticsearch or OpenSearch address that answers its root document without credentials, or of a Jupyter server whose interface loads with no login, which lets anyone run code on that machine, is reported from the response the scan already has. Each is matched on what only the real product serves, so a site that answers every path with its own page does not trigger them.",
+        category: "engine",
+      },
+      {
         icon: ShieldAlert,
         label: "A Certificate for the Wrong Site Is Now a Finding",
         desc: "A certificate that did not cover the scanned hostname, or that chained to an untrusted root, dropped the TLS grade to F with no finding explaining why, because only expired and self-signed certificates had one. Both are reported at high severity now, and the hostname case lists the names the certificate does cover. SPF records were also counted short: bare a, mx and ptr mechanisms each cost one of the ten allowed DNS lookups and were not counted, so the common v=spf1 a mx include: record could exceed the limit unreported. A record ending in ?all, which publishes no policy, is reported instead of passing.",

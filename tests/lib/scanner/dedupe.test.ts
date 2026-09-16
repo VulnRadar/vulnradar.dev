@@ -131,6 +131,16 @@ describe("dedupeFindings", () => {
     ]);
   });
 
+  it("keeps the confirmed Symfony profiler over the header that points at it", () => {
+    const { findings } = dedupeFindings([
+      finding("symfony-debug-token", { severity: "medium", confidence: 95 }),
+      finding("async-symfony-profiler-exposed", { severity: "high" }),
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(checkIdOf(findings[0])).toBe("async-symfony-profiler-exposed");
+    expect(findings[0].alsoReportedBy).toEqual(["symfony-debug-token"]);
+  });
+
   it("keeps findings with no group entirely untouched", () => {
     const input = [finding("hsts-missing"), finding("xcto-missing")];
     const { findings, merged } = dedupeFindings(input);
