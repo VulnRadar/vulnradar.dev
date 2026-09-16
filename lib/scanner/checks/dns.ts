@@ -22,6 +22,7 @@ export const detectors: Record<string, DetectFn> = {
   "dns-ns-record-count": () => null,
   "dns-mx-record-missing": () => null,
   "dns-mx-backup-record": () => null,
+  "dns-mx-host-does-not-exist": () => null,
   "dns-soa-refresh-high": () => null,
   "dns-tlsa-record-missing": () => null,
   "dns-dangling-cname": () => null,

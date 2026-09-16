@@ -96,6 +96,7 @@ import {
   checkDMARC,
   checkDKIM,
   checkDanglingCNAME,
+  checkDanglingMX,
   checkDNSSEC,
   checkDSRecord,
   checkDNSKEYRecord,
@@ -623,6 +624,71 @@ describe("checkDanglingCNAME", () => {
     expect(
       await checkDanglingCNAME("shop.example.com", "https://shop.example.com"),
     ).toEqual([]);
+  });
+});
+
+// ── checkDanglingMX ──────────────────────────────────────────────────
+
+describe("checkDanglingMX", () => {
+  function hosts(existing: Record<string, "v4" | "v6">) {
+    dnsMock.resolve4.mockImplementation(async (host: string) => {
+      if (existing[host] === "v4") return ["192.0.2.10"];
+      throw dnsError(existing[host] === "v6" ? "ENODATA" : "ENOTFOUND");
+    });
+    dnsMock.resolve6.mockImplementation(async (host: string) => {
+      if (existing[host] === "v6") return ["2001:db8::10"];
+      throw dnsError(existing[host] === "v4" ? "ENODATA" : "ENOTFOUND");
+    });
+  }
+
+  it("reports a missing host under another domain as high, since someone could register it", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mx.gone-provider.example", priority: 10 },
+      { exchange: "mail.example.com", priority: 20 },
+    ]);
+    hosts({ "mail.example.com": "v4" });
+    const [finding] = await checkDanglingMX(
+      "example.com",
+      "https://example.com",
+    );
+    expect(finding.title).toBe("Mail Server Host Does Not Exist");
+    expect(finding.severity).toBe("high");
+    expect(finding.description).toContain("mx.gone-provider.example");
+    expect(finding.description).toContain("under another domain");
+  });
+
+  it("reports a missing host under the domain itself as medium", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "old-mail.example.com.", priority: 10 },
+    ]);
+    hosts({});
+    const [finding] = await checkDanglingMX(
+      "example.com",
+      "https://example.com",
+    );
+    expect(finding.severity).toBe("medium");
+    expect(finding.description).toContain("cannot be delivered");
+  });
+
+  it("does not count an IPv6-only mail server as missing", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mx6.example.net", priority: 10 },
+    ]);
+    hosts({ "mx6.example.net": "v6" });
+    expect(await checkDanglingMX("example.com", "https://example.com")).toEqual(
+      [],
+    );
+  });
+
+  it("does not treat a lookup that timed out as a missing host", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "slow.example.net", priority: 10 },
+    ]);
+    dnsMock.resolve4.mockRejectedValue(dnsError("ETIMEOUT"));
+    dnsMock.resolve6.mockRejectedValue(dnsError("ENOTFOUND"));
+    expect(await checkDanglingMX("example.com", "https://example.com")).toEqual(
+      [],
+    );
   });
 });
 

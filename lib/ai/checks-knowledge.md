@@ -18,10 +18,10 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 804
+- **Total checks:** 805
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 222
+  - medium: 223
   - high: 198
   - low: 184
   - critical: 100
@@ -31,7 +31,7 @@ in this file and quote the title, description, and fix steps.
   - header: 155
   - combined: 60
   - header-missing: 42
-  - network-probe: 39
+  - network-probe: 40
   - url-check: 19
   - header-value: 18
   - header-present: 9
@@ -11309,7 +11309,7 @@ res.setHeader('Set-Cookie', `session=abc123; Max-Age=<value>; Expires=<value>; S
 
 ---
 
-## Category: dns (28 checks)
+## Category: dns (29 checks)
 
 ### `dns-caa-record-missing` [dns / medium / header]
 **CAA Record Missing**
@@ -12041,6 +12041,27 @@ dig +cd A example.com @1.1.1.1    # answered once checking is disabled
 ```bash
 dig +short DS example.com
 dig +short +cd DNSKEY example.com
+```
+
+### `dns-mx-host-does-not-exist` [dns / medium / network-probe]
+**Mail Server Host Does Not Exist**
+
+One or more of the domain's MX records name a mail server host that does not exist. When that host is under a different domain, the finding is raised to high, because whoever registers that domain can receive this domain's email.
+
+**Risk:** Mail to the domain is delayed or bounces when its mail servers do not exist. When a missing host belongs to another domain, anyone able to register that domain can publish the host and receive email meant for this one, including password reset and verification messages.
+
+**Why it matters:** MX records usually outlive a change of email provider or a decommissioned server. Only a definite NXDOMAIN answer for both address types counts as missing: a timeout or server failure is not treated as evidence. Whether the other domain is actually available to register is not checked.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc5321#section-5.1
+
+**Fix:**
+- Remove MX records that name hosts which no longer exist, or point them at the mail servers the domain uses now.
+- Confirm the expected MX hosts and priorities with your current email provider.
+- **See which mail servers are published** (bash):
+```bash
+dig +short MX example.com
+dig +short A mail.old-provider.example
 ```
 
 ---

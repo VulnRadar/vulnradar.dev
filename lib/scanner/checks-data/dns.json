@@ -886,5 +886,31 @@
     "cwe": "CWE-345",
     "owasp": "A05:2021",
     "_idx": 28
+  },
+  {
+    "id": "dns-mx-host-does-not-exist",
+    "type": "network-probe",
+    "title": "Mail Server Host Does Not Exist",
+    "category": "dns",
+    "severity": "medium",
+    "description": "One or more of the domain's MX records name a mail server host that does not exist. When that host is under a different domain, the finding is raised to high, because whoever registers that domain can receive this domain's email.",
+    "evidence": "MX records for {{domain}} name a host whose A and AAAA lookups both return NXDOMAIN.",
+    "riskImpact": "Mail to the domain is delayed or bounces when its mail servers do not exist. When a missing host belongs to another domain, anyone able to register that domain can publish the host and receive email meant for this one, including password reset and verification messages.",
+    "explanation": "MX records usually outlive a change of email provider or a decommissioned server. Only a definite NXDOMAIN answer for both address types counts as missing: a timeout or server failure is not treated as evidence. Whether the other domain is actually available to register is not checked.",
+    "fixSteps": [
+      "Remove MX records that name hosts which no longer exist, or point them at the mail servers the domain uses now.",
+      "Confirm the expected MX hosts and priorities with your current email provider."
+    ],
+    "codeExamples": [
+      {
+        "label": "See which mail servers are published",
+        "language": "bash",
+        "code": "dig +short MX example.com\ndig +short A mail.old-provider.example"
+      }
+    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"],
+    "cwe": "CWE-350",
+    "owasp": "A05:2021",
+    "_idx": 29
   }
 ]

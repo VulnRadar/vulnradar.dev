@@ -213,6 +213,11 @@ export const ASYNC_CHECKS = {
   ),
   mxRecordMissing: def("MX Record Missing", "medium", "configuration"),
   noBackupMxServer: def("No Backup MX Server", "low", "dns"),
+  mailServerHostDoesNotExist: def(
+    "Mail Server Host Does Not Exist",
+    "medium",
+    "dns",
+  ),
   mxHostnameIsACnameRfcViolation: def(
     "MX Hostname Is a CNAME (RFC Violation)",
     "medium",

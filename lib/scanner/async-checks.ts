@@ -1708,6 +1708,84 @@ export async function checkBackupMX(
   }
 }
 
+/**
+ * Mail exchangers that do not exist.
+ *
+ * An MX record names the hosts that receive this domain's mail. When one of
+ * those names does not exist at all (NXDOMAIN for both A and AAAA), senders
+ * skip it, and if it is the only one, mail to the domain bounces. When the
+ * name sits under a DIFFERENT domain, usually a mail provider the domain has
+ * since left or a typo, whoever registers that domain can publish the host
+ * and start receiving this domain's email, including password resets. Whether
+ * that domain is registrable is not checked here, so that case is raised to
+ * high and says so rather than claiming it.
+ *
+ * Only NXDOMAIN counts. A timeout or SERVFAIL says the resolver did not get an
+ * answer, not that the host is missing.
+ */
+export async function checkDanglingMX(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  let records: { exchange: string; priority: number }[];
+  try {
+    records = await withDnsTimeout(resolveMxOnce(domain));
+  } catch {
+    return [];
+  }
+  const self = domain.toLowerCase().replace(/\.$/, "");
+  const exchanges = [
+    ...new Set(
+      records
+        .map((r) => r.exchange.trim().toLowerCase().replace(/\.$/, ""))
+        .filter((e) => e.length > 0),
+    ),
+  ].slice(0, 5);
+
+  const codeOf = (r: PromiseSettledResult<unknown>): string =>
+    r.status === "rejected"
+      ? String((r.reason as NodeJS.ErrnoException)?.code ?? "")
+      : "OK";
+
+  const missing: string[] = [];
+  for (const host of exchanges) {
+    const [v4, v6] = await Promise.allSettled([
+      withDnsTimeout(dns.resolve4(host)),
+      withDnsTimeout(dns.resolve6(host)),
+    ]);
+    if (codeOf(v4) === "ENOTFOUND" && codeOf(v6) === "ENOTFOUND") {
+      missing.push(host);
+    }
+  }
+  if (missing.length === 0) return [];
+
+  const external = missing.filter((h) => h !== self && !h.endsWith(`.${self}`));
+  const allMissing = missing.length === exchanges.length;
+  const list = missing.join(", ");
+
+  return [
+    makeVuln(
+      url,
+      external.length > 0
+        ? asyncCheckVariant(A.mailServerHostDoesNotExist, { severity: "high" })
+        : A.mailServerHostDoesNotExist,
+      `${domain}'s MX records name ${missing.length === 1 ? "a mail server that does" : "mail servers that do"} not exist: ${list}.${allMissing ? " None of its mail servers exist, so mail sent to this domain cannot be delivered." : ""}${external.length > 0 ? ` ${external.join(", ")} ${external.length === 1 ? "is" : "are"} under another domain; if that domain can be registered, whoever registers it receives this domain's email.` : ""}`,
+      `MX lookup for ${domain} returned ${exchanges.join(", ")}; A and AAAA lookups for ${list} both returned NXDOMAIN.`,
+      external.length > 0
+        ? "Email addressed to this domain, including password resets and account verification links, can be received by whoever controls the missing host's domain. Mail senders use the next MX when one does not resolve, so the risk is greatest when the missing host has the highest priority or is the only one."
+        : "Mail delivery to this domain depends on hosts that do not exist, so messages are delayed or bounce, and a sender may give up on the domain entirely.",
+      "MX records usually outlive a change of mail provider or a decommissioned server. The record keeps pointing at a name that is gone, and nothing tells the domain owner until mail starts bouncing or someone else claims the name.",
+      [
+        `Remove the MX records for ${list}, or point them at the mail servers the domain actually uses.`,
+        "Check with your current email provider which MX hosts and priorities it expects.",
+        `Verify: dig +short MX ${domain}`,
+      ],
+      [],
+      85,
+    ),
+  ];
+}
+
 export async function checkMXHostnameCname(
   domain: string,
   url: string,
@@ -2450,6 +2528,7 @@ async function runDNSSecurityChecks(
     tlsaResult,
     backupMxResult,
     mxCnameResult,
+    danglingMxResult,
     zoneTransferResult,
     caaPermissiveResult,
     soaSerialStaleResult,
@@ -2479,6 +2558,7 @@ async function runDNSSecurityChecks(
     checkTLSARecord(domain, url),
     checkBackupMX(domain, url),
     checkMXHostnameCname(domain, url),
+    checkDanglingMX(domain, url),
     checkZoneTransfer(domain, url),
     checkCAAPermissive(domain, url),
     checkSOASerialStale(domain, url),
@@ -2542,6 +2622,7 @@ async function runDNSSecurityChecks(
       mtaStsPolicyResult,
       backupMxResult,
       mxCnameResult,
+      danglingMxResult,
       tlsaResult,
       bimiResult,
       dkimWeakKeyResult,

@@ -417,7 +417,7 @@ remediation documentation in the docs.
 - [low     ] `netscaler-cookie-exposes-internal-server` [header] - Citrix NetScaler Cookie May Expose Internal Server
 - [low     ] `cookie-maxage-expires-conflict` [header] - Cookie Max-Age and Expires Disagree
 
-### dns (28)
+### dns (29)
 - [medium  ] `dns-caa-record-missing` [header] - CAA Record Missing
 - [high    ] `dns-ns-record-count` [header] - Less Than 2 Authoritative Nameservers
 - [medium  ] `dns-mx-record-missing` [header] - MX Record Missing
@@ -446,6 +446,7 @@ remediation documentation in the docs.
 - [info    ] `dns-caa-iodef-missing` [network-probe] - CAA record names no incident reporting address
 - [info    ] `dns-txt-verification-tokens-stale` [network-probe] - Accumulated SaaS domain-verification TXT records
 - [high    ] `dns-dnssec-validation-failing` [network-probe] - DNSSEC Validation Failing
+- [medium  ] `dns-mx-host-does-not-exist` [network-probe] - Mail Server Host Does Not Exist
 
 ### email (35)
 - [info    ] `email-dmarc-rua-missing` [header] - DMARC Aggregate Report URI (rua=) Missing
@@ -859,10 +860,10 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **804**
+- Total checks: **805**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 222
+  - medium: 223
   - high: 198
   - low: 184
   - critical: 100
@@ -872,7 +873,7 @@ remediation documentation in the docs.
   - header: 155
   - combined: 60
   - header-missing: 42
-  - network-probe: 39
+  - network-probe: 40
   - url-check: 19
   - header-value: 18
   - header-present: 9
