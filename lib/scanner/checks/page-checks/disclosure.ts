@@ -48,14 +48,23 @@ function withoutExamples(body: string): string {
 }
 
 const STACK_TRACE_PATTERNS: { name: string; re: RegExp }[] = [
-  { name: "Node.js/V8", re: /at\s+[\w$.<>]+\s+\([^)]*\.(?:js|ts):\d+:\d+\)/ },
+  // Every run below is bounded. A frame is one short line, and `[^)]*` let
+  // each unclosed "at x (" rescan the rest of the body, which took 22 seconds
+  // on a 1 MB page of them.
+  {
+    name: "Node.js/V8",
+    re: /at\s+[\w$.<>]{1,300}\s+\([^)\n]{0,500}\.(?:js|ts):\d+:\d+\)/,
+  },
   { name: "Python", re: /Traceback \(most recent call last\):/ },
   {
     name: "PHP",
-    re: /(?:Fatal error|Warning|Notice):.{0,200}?\bin\s+\S+\.php(?:\s+on line\s+\d+| on line \d+)/is,
+    re: /(?:Fatal error|Warning|Notice):.{0,200}?\bin\s+\S{1,500}\.php(?:\s+on line\s+\d+| on line \d+)/is,
   },
-  { name: "Java", re: /at\s+[\w.$]+\([\w.]+\.java:\d+\)/ },
-  { name: ".NET", re: /System\.[\w.]*Exception:[^\n]*\n\s*at\s+[\w.]+/ },
+  { name: "Java", re: /at\s+[\w.$]{1,300}\([\w.]{1,300}\.java:\d+\)/ },
+  {
+    name: ".NET",
+    re: /System\.[\w.]{0,300}Exception:[^\n]{0,1000}\n[ \t]*at\s+[\w.]+/,
+  },
 ];
 
 const DEBUG_MODE_MARKERS: { name: string; re: RegExp; critical?: boolean }[] = [

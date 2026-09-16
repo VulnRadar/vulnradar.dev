@@ -17,7 +17,12 @@ import {
   stripExampleContent,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
-import { hasTagWith, openTags, stripTagElements } from "./_tag-scan";
+import {
+  hasTagWith,
+  htmlComments,
+  openTags,
+  stripTagElements,
+} from "./_tag-scan";
 
 /**
  * Whether a Grafana version is inside the range affected by CVE-2021-43798.
@@ -44,7 +49,7 @@ export const detectors: Record<string, DetectFn> = {
   // ── New JSON entries ─────────────────────────────────────────────────────
 
   "html-comment-leaks": (_url, _headers, body) => {
-    const allComments = body.match(/<!--([\s\S]*?)-->/g) || [];
+    const allComments = htmlComments(body);
     // Strip Next.js / React RSC framework markers (<!--$-->, <!--/$-->, <!--$!-->, <!--$?-->, <!--[-->, <!----> etc.)
     const comments = allComments.filter(
       (c) => !/^<!--[$!?/\[]?[\]$]?-->$/.test(c.trim()),
@@ -366,7 +371,10 @@ export const detectors: Record<string, DetectFn> = {
     // "Cannot GET /path" is Express's normal, production-safe 404 body and
     // was removed here: it isn't a stack trace and appears regardless of
     // NODE_ENV. Require an actual JS stack frame (file:line:col) instead.
-    if (/at\s+\S+\s+\(.*:\d+:\d+\)\s*$/m.test(body)) {
+    // Bounded, and [ \t\r]* rather than \s* before the line end: `.*` and
+    // `\s*` let every "at x (" rescan the rest of its line, and blank lines
+    // after it, which is quadratic on one long line of them.
+    if (/at\s+\S{1,300}\s+\([^\n]{0,500}?:\d+:\d+\)[ \t\r]*$/m.test(body)) {
       return "Express default error page / stack trace detected — set NODE_ENV=production and use a sanitized error handler.";
     }
     return null;

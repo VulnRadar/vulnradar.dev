@@ -341,7 +341,9 @@ const rawDetectors: Record<string, DetectFn> = {
       /name\s*=\s*["'](?:_csrf|csrf_token|authenticity_token)["']/i.test(
         body,
       ) ||
-      /type\s*=\s*["']hidden["'][^>]*(?:csrf|token)/i.test(body);
+      // Per tag: `type="hidden"[^>]*(?:csrf|token)` rescanned to the end of
+      // the document from every hidden field whose tag never closed.
+      hasTagWith(body, "input", /type\s*=\s*["']hidden["']/i, /csrf|token/i);
     if (!hasCsrfToken) {
       return "POST form detected without a visible CSRF token field — verify server-side CSRF protection is present.";
     }

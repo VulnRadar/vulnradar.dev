@@ -446,6 +446,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: Zap,
+        label: "A Scanned Page Can No Longer Stall the Scanner for Minutes",
+        desc: "Some checks read a page in a way that slowed down enormously on unusual pages, for example a page full of an unfinished comment, an unclosed image tag, or text that looks like the start of a login token. The time these checks needed grew with the square of the page's size, so a page built that way could hold up the scanner for many minutes and delay everyone else's scans. Eighteen checks and the sign-in form reader used by authenticated scans had this problem. They now read the page in a single pass. A new automated test now measures how each check's time grows with page size, including the page checks the older speed tests never measured, so this cannot quietly come back.",
+        category: "security",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

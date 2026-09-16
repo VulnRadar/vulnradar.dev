@@ -6,6 +6,7 @@
  */
 
 import {
+  externalEntityDeclarationAt,
   getSetCookies,
   hasHeader,
   stripProse,
@@ -162,10 +163,14 @@ function isOAuthAuthorizeEndpoint(pathname: string): boolean {
 
 // ── Verbose API error: stack trace / internal file path ────────────────────
 
+// Both are bounded. With `[\w.$<>[\] ]*` a "stack" value of "at at at ..."
+// made every "at" scan to the end of the field, which is quadratic in a field
+// the scanned site controls; a real frame's function name and path fit well
+// inside these limits.
 const STACK_FRAME_PATTERN =
-  /\bat\s+[\w.$<>[\] ]*\(?(?:[a-zA-Z]:\\|\/)[^\s"')]+:\d+:\d+\)?/;
+  /\bat\s+[\w.$<>[\] ]{0,200}\(?(?:[a-zA-Z]:\\|\/)[^\s"')]{1,500}:\d+:\d+\)?/;
 const INTERNAL_PATH_PATTERN =
-  /(?:\/(?:usr|home|opt|etc)\/|\/var\/(?:www|task|lib)\/|\/node_modules\/|site-packages[/\\]|[A-Za-z]:\\(?:Users|inetpub|Windows|Program Files)\\)[^\s"'<>]{2,}?\.[A-Za-z]{1,4}(?::\d+)?/i;
+  /(?:\/(?:usr|home|opt|etc)\/|\/var\/(?:www|task|lib)\/|\/node_modules\/|site-packages[/\\]|[A-Za-z]:\\(?:Users|inetpub|Windows|Program Files)\\)[^\s"'<>]{2,500}?\.[A-Za-z]{1,4}(?::\d+)?/i;
 const DOC_CONTEXT_PATTERN = /```|<code|<pre|\bexample\b|\bdocumentation\b/i;
 
 function precededByDocContext(body: string, matchIndex: number): boolean {
@@ -734,11 +739,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // info severity by soap-endpoint below — every ordinary (and correctly
     // hardened) SOAP call stacked a duplicate critical finding on top of it
     // with zero DOCTYPE/ENTITY evidence.
-    if (
-      /<!DOCTYPE[^>]{0,2000}\[[\s\S]*?<!ENTITY[^>]{0,2000}(?:SYSTEM|PUBLIC)/i.test(
-        body,
-      )
-    ) {
+    if (externalEntityDeclarationAt(body) !== -1) {
       return "SOAP/XML payload contains DOCTYPE with external ENTITY - XXE enabled.";
     }
     return null;

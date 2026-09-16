@@ -19,8 +19,10 @@ import { safeFetch } from "../safe-fetch";
 import { safeReadBody } from "../read-bounded-body";
 import {
   hasTagWith,
+  htmlComments,
   openingTagOf,
   stripTagElements,
+  tagElementContents,
   tagElements,
   tagsWith,
 } from "./_tag-scan";
@@ -692,16 +694,11 @@ const rawDetectors: Record<string, DetectFn> = {
         return "Directory listing indicators found in response.";
     }
     // Apache/nginx <pre>-formatted autoindex: a <pre> block containing BOTH a
-    // link and an ISO date. Extract each <pre>…</pre> block first (lazy inner,
-    // linear) and test its inner text with two simple bounded checks. The old
-    // single pattern chained four unbounded tempered-greedy groups; a body of
-    // many <a> tags with no date and no closing </pre> drove it into
-    // catastrophic backtracking (measured tens of seconds on ~18KB), letting a
-    // scanned page hang the shared scan worker. This shape is linear.
-    const preBlockRe = /<pre[^>]{0,2000}>([\s\S]*?)<\/pre>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = preBlockRe.exec(body)) !== null) {
-      const inner = m[1];
+    // link and an ISO date. The blocks come from the one-pass tag walk. A
+    // lazy /<pre[^>]{0,2000}>([\s\S]*?)<\/pre>/ replaced a catastrophic
+    // pattern here but was itself quadratic: with no </pre> anywhere, every
+    // <pre> rescanned to the end of the document.
+    for (const inner of tagElementContents(body, ["pre"])) {
       if (
         /<a\s+href="[^"]*">/i.test(inner) &&
         /\d{4}-\d{2}-\d{2}/.test(inner)
@@ -1021,7 +1018,7 @@ const rawDetectors: Record<string, DetectFn> = {
   // ── Sensitive comments / debug pages ────────────────────────────────────
 
   "sensitive-comments": (_url, _headers, body) => {
-    const comments = body.match(/<!--[\s\S]*?-->/g) || [];
+    const comments = htmlComments(body);
     // The keyword has to be attached to a value. Matching the bare word
     // "password" fired on <!-- password reset form -->, <!-- begin password
     // field --> and every other comment that labels a login form, which is
@@ -1351,11 +1348,10 @@ const rawDetectors: Record<string, DetectFn> = {
     // Inline scripts only. A URL-derived write inside a bundled framework is
     // that framework's own router doing its job; a hand-written inline
     // script is where an unescaped one actually appears.
-    const inlineScripts = [
-      ...body.matchAll(
-        /<script\b(?![^>]{0,2000}\bsrc\b)[^>]{0,2000}>([\s\S]*?)<\/script>/gi,
-      ),
-    ].map((m) => m[1]);
+    // extractScriptContents, not a lazy <script>...</script> pattern, which
+    // rescanned to the end of the document from every unclosed <script> and
+    // read data-src as src.
+    const inlineScripts = extractScriptContents(body);
     const SOURCE_TO_SINK =
       /(?:document\.write(?:ln)?\s*\(|\.(?:innerHTML|outerHTML)\s*\+?=)\s*[^;\n]{0,120}?(?:document\.(?:URL|referrer|documentURI|baseURI)|location\.(?:search|hash|href)|window\.name|\blocation\b)/i;
     for (const script of inlineScripts) {
@@ -1437,8 +1433,12 @@ const rawDetectors: Record<string, DetectFn> = {
     // privacy policy's plain-English description of an OAuth integration
     // ("Discord OAuth (Optional)... whatever repos you authorize") as if it
     // were a real, state-less redirect URL.
+    // A URL starts at a token boundary. Without the lookbehind, every
+    // "https://" inside one long unbroken token was its own start that
+    // rescanned the token for "authorize?", which is quadratic; a nested
+    // redirect URL is still read, as part of the URL that contains it.
     const urls = body.match(
-      /https?:\/\/[^\s"'<>]*(?:oauth2?\/)?(?:authorize|auth)\?[^\s"'<>]*/gi,
+      /(?<![^\s"'<>])https?:\/\/[^\s"'<>]*(?:oauth2?\/)?(?:authorize|auth)\?[^\s"'<>]*/gi,
     );
     if (!urls) return null;
     for (const u of urls) {
@@ -2108,11 +2108,12 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "svg-script-injection": (url, _headers, body) => {
-    // Match <svg ...> ... <script ...> ... </script> with the script INSIDE
-    // the svg element (before </svg>). Uses negative lookahead to prevent
-    // matching SVG icons that just happen to appear before Next.js's own
-    // streaming <script> tags further down the body.
-    if (/<svg\b[^>]{0,2000}>(?:(?!<\/svg>)[\s\S])*?<script\b/i.test(body))
+    // A <script> INSIDE an svg element, not one that merely follows an SVG
+    // icon, like Next.js's own streaming scripts further down the body. The
+    // elements come from the one-pass tag walk; the tempered
+    // (?:(?!<\/svg>)[\s\S])*? this replaced rescanned to the end of the
+    // document from every unclosed <svg>.
+    if (tagElementContents(body, ["svg"]).some((c) => /<script\b/i.test(c)))
       return "SVG with embedded <script> element detected.";
     return null;
   },
@@ -2228,7 +2229,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // sample app), and "XXX" inside any run of x's used as a rule or a
     // redaction. Those were the noise, not the annotations themselves.
     // console.log has to be an actual call, not the phrase "console log".
-    const comments = body.match(/<!--(?:[^-]|-(?!->))*-->/gi) || [];
+    const comments = htmlComments(body);
     if (
       comments.some((c) =>
         /\b(?:TODO|FIXME|XXX|HACK)\b|\bconsole\.log\s*\(|\bdebugger\b/i.test(c),
@@ -2293,27 +2294,23 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "svg-onload-handler": (url, _headers, body) => {
-    // Bound to before </svg>, same technique svg-script-injection uses --
-    // without it, an SVG icon anywhere on the page followed later by ANY
-    // element's onload= attribute (e.g. an unrelated <img onload="...">
-    // fade-in) satisfied this.
-    const matches =
-      body.match(
-        /<svg\b[^>]{0,2000}>(?:(?!<\/svg>)[\s\S])*?onload\s*=\s*["'][^"']+["']/gi,
-      ) || [];
+    // Within one svg element, as svg-script-injection reads them, so an
+    // unrelated <img onload> later on the page does not count. The svg's own
+    // opening tag is part of the element, so <svg onload="..."> counts too;
+    // the pattern this replaced started looking only after that tag.
+    const matches = tagElements(body, "svg").filter((el) =>
+      /\bonload\s*=\s*["'][^"']+["']/i.test(el),
+    );
     if (matches.length > 0)
       return `Found ${matches.length} SVG(s) with inline onload handler.`;
     return null;
   },
 
   "svg-external-entity-reference": (url, _headers, body) => {
-    // Bound to before </svg>, same technique svg-script-injection uses --
-    // without it, the lazy [\s\S]*? could span the entire rest of the
-    // response body past any <svg> open tag.
-    const matches =
-      body.match(
-        /<svg\b[^>]{0,2000}>(?:(?!<\/svg>)[\s\S])*?(?:SYSTEM\s+["'][^"']+["']|&xxe;)/gi,
-      ) || [];
+    // Within one svg element, as svg-script-injection reads them.
+    const matches = tagElementContents(body, ["svg"]).filter((c) =>
+      /SYSTEM\s+["'][^"']+["']|&xxe;/i.test(c),
+    );
     if (matches.length > 0)
       return `Found ${matches.length} SVG(s) referencing external entities (XXE).`;
     return null;

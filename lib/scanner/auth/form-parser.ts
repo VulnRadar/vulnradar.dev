@@ -14,9 +14,8 @@
  * injection escape hatch.
  */
 
-const FORM_BLOCK = /<form\b([^>]*)>([\s\S]*?)<\/form>/gi;
-const INPUT_TAG = /<input\b([^>]*?)\/?>/gi;
-const META_TAG = /<meta\b([^>]*?)\/?>/gi;
+import { openTags, openingTagOf, tagElements } from "../checks/_tag-scan";
+
 const ATTRIBUTE =
   /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
 
@@ -81,12 +80,35 @@ function decodeEntities(value: string): string {
     .replace(/&amp;/g, "&");
 }
 
+/**
+ * The attributes of each opening `<tag ...>`, and of each `<form>` its body.
+ *
+ * These came from `/<form\b([^>]*)>([\s\S]*?)<\/form>/` and
+ * `/<input\b([^>]*?)\/?>/`, which rescan to the end of the document from every
+ * tag that never closes. The page is the scanned site's, and the active
+ * probes read every form on it, so they use the scanner's one-pass tag walk.
+ */
+function tagAttributes(html: string, tag: string): Record<string, string>[] {
+  return openTags(html, tag, Infinity).map((t) =>
+    parseAttributes(t.slice(tag.length + 1, -1)),
+  );
+}
+
+function formBlocks(
+  html: string,
+): { attrs: Record<string, string>; body: string }[] {
+  return tagElements(html, "form").map((el) => {
+    const open = openingTagOf(el);
+    return {
+      attrs: parseAttributes(open.slice("<form".length, -1)),
+      body: el.slice(open.length, el.lastIndexOf("</")),
+    };
+  });
+}
+
 function parseInputs(formBody: string): ParsedInput[] {
   const inputs: ParsedInput[] = [];
-  INPUT_TAG.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = INPUT_TAG.exec(formBody)) !== null) {
-    const attrs = parseAttributes(match[1]);
+  for (const attrs of tagAttributes(formBody, "input")) {
     const name = attrs.name ?? "";
     if (!name) continue;
     inputs.push({
@@ -100,13 +122,9 @@ function parseInputs(formBody: string): ParsedInput[] {
 
 /** True when the markup contains a password input. */
 export function hasPasswordInput(html: string): boolean {
-  INPUT_TAG.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = INPUT_TAG.exec(html)) !== null) {
-    const attrs = parseAttributes(match[1]);
-    if ((attrs.type ?? "").toLowerCase() === "password") return true;
-  }
-  return false;
+  return tagAttributes(html, "input").some(
+    (attrs) => (attrs.type ?? "").toLowerCase() === "password",
+  );
 }
 
 /**
@@ -114,10 +132,7 @@ export function hasPasswordInput(html: string): boolean {
  * frameworks put it there and accept it back as an X-CSRF-Token header.
  */
 export function extractMetaCsrfToken(html: string): string | null {
-  META_TAG.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = META_TAG.exec(html)) !== null) {
-    const attrs = parseAttributes(match[1]);
+  for (const attrs of tagAttributes(html, "meta")) {
     const name = (attrs.name ?? attrs.property ?? "").toLowerCase();
     if (
       name === "csrf-token" ||
@@ -152,11 +167,7 @@ export function findLoginFormCandidates(
 ): ParsedLoginForm[] {
   const rawCandidates: Array<{ attrs: Record<string, string>; body: string }> =
     [];
-  FORM_BLOCK.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = FORM_BLOCK.exec(html)) !== null) {
-    rawCandidates.push({ attrs: parseAttributes(match[1]), body: match[2] });
-  }
+  rawCandidates.push(...formBlocks(html));
   if (rawCandidates.length === 0) return [];
 
   const results: ParsedLoginForm[] = [];
@@ -248,11 +259,9 @@ export interface DiscoveredForm {
  */
 export function findAllForms(html: string, baseUrl: string): DiscoveredForm[] {
   const results: DiscoveredForm[] = [];
-  FORM_BLOCK.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = FORM_BLOCK.exec(html)) !== null) {
-    const attrs = parseAttributes(match[1]);
-    const inputs = parseInputs(match[2]);
+  for (const form of formBlocks(html)) {
+    const attrs = form.attrs;
+    const inputs = parseInputs(form.body);
 
     const hiddenFields: Record<string, string> = {};
     const testableFields: string[] = [];

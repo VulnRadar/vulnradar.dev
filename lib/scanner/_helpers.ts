@@ -261,6 +261,24 @@ export function withDocBlocksStripped(
 }
 
 /**
+ * Where a DOCTYPE with an internal subset is followed by an external entity
+ * declaration (`<!ENTITY ... SYSTEM|PUBLIC`), or -1.
+ *
+ * This was `/<!DOCTYPE[^>]{0,2000}\[[\s\S]*?<!ENTITY[^>]{0,2000}(?:SYSTEM|PUBLIC)/i`
+ * in two checks, and the lazy bridge rescanned the rest of the document from
+ * every DOCTYPE: a page of `<!DOCTYPE x [` repeated took five seconds at
+ * 64 KB. The earliest DOCTYPE leaves the most room for an entity after it, so
+ * one DOCTYPE search and one entity search from its end decide it.
+ */
+export function externalEntityDeclarationAt(body: string): number {
+  const doctype = /<!DOCTYPE[^>[]{0,2000}\[/i.exec(body);
+  if (!doctype) return -1;
+  const entity = /<!ENTITY[^>]{0,2000}(?:SYSTEM|PUBLIC)/gi;
+  entity.lastIndex = doctype.index + doctype[0].length;
+  return entity.exec(body) ? doctype.index : -1;
+}
+
+/**
  * A `<script>` element that holds data rather than code.
  *
  * JSON-LD is structured metadata a search engine reads, and a site's own

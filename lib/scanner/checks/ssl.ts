@@ -17,7 +17,7 @@ import {
   extractScriptContents,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
-import { tagsWith } from "./_tag-scan";
+import { openTagsAt, tagsWith } from "./_tag-scan";
 
 /** A cleartext http:// URL that is not a loopback address. */
 const HTTP_NON_LOCAL =
@@ -42,6 +42,17 @@ function attrValue(tag: string, name: string): string | null {
  * any plain HTTP page that happened to contain an absolute http:// src/href,
  * which is virtually every HTTP page.
  */
+const SUBRESOURCE_TAGS = [
+  "script",
+  "img",
+  "iframe",
+  "video",
+  "audio",
+  "source",
+  "object",
+  "embed",
+];
+
 function detectMixedContent(url: string, _headers: Headers, body: string) {
   if (!body) return null;
   if (!url.startsWith("https://")) return null;
@@ -57,15 +68,18 @@ function detectMixedContent(url: string, _headers: Headers, body: string) {
   // inside <pre><code> and then loaded the identical tag for real further
   // down had every copy judged at the documentation offset, so the whole
   // page was reported clean. A silent false negative, the worse direction.
-  const srcRe =
-    /<(?:script|img|iframe|video|audio|source|object|embed)\b[^>]*\ssrc=["']http:\/\/[^"']+["']/gi;
-  const linkRe = /<link\b[^>]{0,2000}>/gi;
+  //
+  // The tags come from the one-pass tag walk. `<(?:script|img|...)\b[^>]*\ssrc=`
+  // rescanned to the end of the document from every opening tag that never
+  // closed, which took over a second on 64 KB of `<img `.
   const offsets: number[] = [];
-  for (const m of body.matchAll(srcRe)) offsets.push(m.index);
-  for (const m of body.matchAll(linkRe)) {
-    if (!/\brel=["']?stylesheet["']?/i.test(m[0])) continue;
-    if (!/\shref=["']http:\/\/[^"']+["']/i.test(m[0])) continue;
-    offsets.push(m.index);
+  for (const { index, tag } of openTagsAt(body, SUBRESOURCE_TAGS, Infinity)) {
+    if (/\ssrc=["']http:\/\/[^"']+["']/i.test(tag)) offsets.push(index);
+  }
+  for (const { index, tag } of openTagsAt(body, ["link"])) {
+    if (!/\brel=["']?stylesheet["']?/i.test(tag)) continue;
+    if (!/\shref=["']http:\/\/[^"']+["']/i.test(tag)) continue;
+    offsets.push(index);
   }
   let count = 0;
   for (const idx of offsets) {

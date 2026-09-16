@@ -32,6 +32,8 @@
  */
 import { describe, it, expect } from "vitest";
 import { allChecks } from "@/lib/scanner/registry";
+import { pageChecks } from "@/lib/scanner/checks/page-checks";
+import { buildPageContext } from "@/lib/scanner/page-context";
 import { isPathDisallowed, parseRobots } from "@/lib/scanner/crawl-discovery";
 import {
   extractScriptContents,
@@ -702,4 +704,125 @@ describe("robots.txt rule matching time budget", () => {
       `1000 rule-set evaluations took ${elapsed}ms.`,
     ).toBeLessThan(2000);
   });
+});
+
+/**
+ * Growth, not a fixed line: what every budget above missed.
+ *
+ * Every group above sets a millisecond ceiling at one body size, and every
+ * one of them passed while sixteen detectors were quadratic. Their per-start
+ * work was a fast literal search, so at 24 KB they cost 5 to 60 ms and only
+ * reached seconds at 64 KB: xml-external-entity and api-soap-xxe-enabled took
+ * about 6 s there on `<!DOCTYPE x [` repeated, jwt-in-html 3.9 s on "eyJ",
+ * source-code-comment 3.7 s on "<!--", apache-htaccess-content-leaked 3.1 s
+ * on blank lines, mixed-protocol-content 1.2 s on "<img ". At the 1 MB cap
+ * that is minutes each. Page checks were never measured at all, because
+ * allChecks holds only the legacy detectors, which is how the new
+ * page-stack-trace-disclosed shipped quadratic (22 s at 1 MB).
+ *
+ * So each check is timed at 16 KB and at 64 KB of the same shape. Four times
+ * the input should cost about four times as much; quadratic cost is sixteen
+ * times. A check is reported when the larger body costs over 100 ms and more
+ * than eight times the smaller, and only if that still holds on the fastest
+ * of three re-measurements, so a GC pause or a busy runner cannot fail it.
+ */
+const GROWTH_SMALL_BYTES = 16_000;
+const GROWTH_LARGE_BYTES = 64_000;
+const GROWTH_FLOOR_MS = 100;
+const GROWTH_RATIO = 8;
+
+/** Openers repeated with nothing that closes them. */
+const GROWTH_SHAPES: Record<string, string> = {
+  doctypeSubset: "<!DOCTYPE x [",
+  jwtPrefix: "eyJ",
+  commentOpen: "<!--",
+  blankLines: " \n",
+  imgOpen: "<img ",
+  svgOpen: "<svg>",
+  preOpen: "<pre>",
+  urlOpen: "https://",
+  scriptOpen: "<script>",
+  hiddenInput: '<input type="hidden" ',
+  formOpen: "<form ",
+  stackFrameOpen: "at foo.bar (zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+  dotnetType: "System.",
+};
+
+const GROWTH_CONTEXT: ProbeContext = {
+  // JSON on an /api/ path, so the API-response detectors run, and a query
+  // string so the URL-keyed ones do too.
+  url: "https://example.com/api/x?id=1",
+  headers: new Headers({ "content-type": "application/json" }),
+};
+
+function fastest(run: () => void, times = 3): number {
+  let best = Infinity;
+  for (let i = 0; i < times; i++) {
+    const started = performance.now();
+    try {
+      run();
+    } catch {
+      // A throwing check is engine.test.ts's concern; the time still counts.
+    }
+    best = Math.min(best, performance.now() - started);
+  }
+  return best;
+}
+
+function quadraticChecks(unit: string): string[] {
+  const small = unit.repeat(Math.ceil(GROWTH_SMALL_BYTES / unit.length));
+  const large = unit.repeat(Math.ceil(GROWTH_LARGE_BYTES / unit.length));
+  const { url, headers } = GROWTH_CONTEXT;
+  const runners: { id: string; at: (body: string) => () => void }[] = [
+    ...allChecks.map((check) => ({
+      id: check.checkId ?? "?",
+      at: (body: string) => () => check(url, headers, body),
+    })),
+    {
+      id: "buildPageContext",
+      at: (body: string) => () => buildPageContext(url, headers, body),
+    },
+  ];
+  const smallCtx = buildPageContext(url, headers, small);
+  const largeCtx = buildPageContext(url, headers, large);
+  for (const check of pageChecks) {
+    runners.push({
+      id: check.id,
+      at: (body: string) => {
+        const ctx = body === small ? smallCtx : largeCtx;
+        return () => check.run(ctx);
+      },
+    });
+  }
+
+  const out: string[] = [];
+  for (const { id, at } of runners) {
+    const a = fastest(at(small), 1);
+    if (a < 2) continue;
+    const b = fastest(at(large), 1);
+    if (b < GROWTH_FLOOR_MS || b < a * GROWTH_RATIO) continue;
+    const a3 = fastest(at(small));
+    const b3 = fastest(at(large));
+    if (b3 >= GROWTH_FLOOR_MS && b3 >= Math.max(a3, 0.5) * GROWTH_RATIO) {
+      out.push(
+        `${id}: ${a3.toFixed(0)}ms at 16 KB, ${b3.toFixed(0)}ms at 64 KB`,
+      );
+    }
+  }
+  return out;
+}
+
+describe("detector cost grows with the page, not with its square", () => {
+  for (const [name, unit] of Object.entries(GROWTH_SHAPES)) {
+    it(
+      `stays linear on ${name}`,
+      () => {
+        expect(
+          quadraticChecks(unit),
+          "Four times the body cost more than eight times as much, which is quadratic, and at the 1 MB body cap it is minutes of blocked event loop from a page any scanned site can serve. The usual cause is a pattern that rescans to the end of the document from every opener that never closes: walk tags and comments with lib/scanner/checks/_tag-scan.ts, anchor a token's first character with a lookbehind, and bound every run.",
+        ).toEqual([]);
+      },
+      SLOW_TEST_TIMEOUT_MS,
+    );
+  }
 });

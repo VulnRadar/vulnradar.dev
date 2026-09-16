@@ -9,6 +9,7 @@
  */
 
 import {
+  externalEntityDeclarationAt,
   getEffectiveCsp,
   getSetCookies,
   isDemonstratedExample,
@@ -688,18 +689,11 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "xml-external-entity": (_url, _headers, body) => {
-    const xxePattern =
-      /<!DOCTYPE[^>]{0,2000}\[[\s\S]*?<!ENTITY[^>]{0,2000}(?:SYSTEM|PUBLIC)/i;
-    if (xxePattern.test(body)) {
-      const match = body.match(xxePattern);
-      if (match) {
-        const idx = body.indexOf(match[0]);
-        const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
-        if (/<code|<pre|```|example|documentation/i.test(before)) return null;
-        return "XML external entity declaration found - potential XXE vulnerability.";
-      }
-    }
-    return null;
+    const idx = externalEntityDeclarationAt(body);
+    if (idx === -1) return null;
+    const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
+    if (/<code|<pre|```|example|documentation/i.test(before)) return null;
+    return "XML external entity declaration found - potential XXE vulnerability.";
   },
 
   "insecure-deserialization": (_url, _headers, body) => {

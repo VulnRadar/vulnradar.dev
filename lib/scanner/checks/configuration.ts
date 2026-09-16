@@ -317,7 +317,12 @@ export const detectors: Record<string, DetectFn> = {
     const ct = h(headers, "content-type") || "";
     if (/text\/html/i.test(ct)) return null;
     if (
-      /^\s*(?:RewriteEngine\s+On|Options\s+-Indexes|<Files\s)/im.test(body) &&
+      // [ \t]*, not \s*: under the m flag \s* crosses lines, so every line
+      // start rescanned all the blank lines after it (quadratic on a body of
+      // blank lines). A directive's indentation never spans a line.
+      /^[ \t]*(?:RewriteEngine\s+On|Options\s+-Indexes|<Files\s)/im.test(
+        body,
+      ) &&
       !/<html/i.test(body)
     ) {
       return "Response body looks like a raw Apache .htaccess file (RewriteEngine/Options/<Files> directives) being served as a document instead of being processed as server config.";

@@ -427,8 +427,11 @@ const rawDetectors: Record<string, DetectFn> = {
   // ── JWT / tokens / private keys ──────────────────────────────────────────
 
   "jwt-in-html": (_url, _headers, body) => {
+    // The lookbehind keeps a token from starting mid-run. Without it every
+    // "eyJ" inside one long base64url run was a fresh start that rescanned
+    // the rest of the run, which is quadratic.
     if (
-      /eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(
+      /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(
         body,
       )
     ) {

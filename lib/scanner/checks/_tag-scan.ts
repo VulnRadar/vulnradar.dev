@@ -154,6 +154,24 @@ export function openTags(
 }
 
 /**
+ * {@link openTags} for several names at once, with each tag's offset, for a
+ * caller that judges a tag by the text in front of it.
+ */
+export function openTagsAt(
+  body: string,
+  tags: readonly string[],
+  maxAttrChars: number = MAX_ATTR_CHARS,
+): { index: number; tag: string }[] {
+  if (!body) return [];
+  const wanted = new Set(tags.map((t) => t.toLowerCase()));
+  return scanOpenTags(
+    body,
+    (name) => wanted.has(name.toLowerCase()),
+    maxAttrChars,
+  ).map((t) => ({ index: t.start, tag: body.slice(t.start, t.end) }));
+}
+
+/**
  * Every opening `<name ...>` element in `body`, whatever the name.
  *
  * {@link openTags} needs a name because the caller knows it. A detector that
@@ -324,6 +342,30 @@ export function tagElementContents(
     ? regions.filter((r) => keep(body.slice(r.start, r.contentStart)))
     : regions;
   return kept.map((r) => body.slice(r.contentStart, r.contentEnd));
+}
+
+/**
+ * Every complete `<!-- ... -->` comment in `body`, delimiters included, in one
+ * forward pass.
+ *
+ * `/<!--[\s\S]*?-->/g` and `/<!--(?:[^-]|-(?!->))*-->/g` both rescan to the
+ * end of the document from every `<!--` when none of them closes, which made
+ * three comment checks quadratic: a page of unclosed `<!--` took seconds at
+ * 64 KB. A comment with no closer ends the sweep here, because nothing after
+ * it can close either.
+ */
+export function htmlComments(body: string): string[] {
+  const out: string[] = [];
+  let i = 0;
+  for (;;) {
+    const open = body.indexOf("<!--", i);
+    if (open === -1) break;
+    const close = body.indexOf("-->", open + 4);
+    if (close === -1) break;
+    out.push(body.slice(open, close + 3));
+    i = close + 3;
+  }
+  return out;
 }
 
 /** The opening tag of an element returned by {@link tagElements}. */
