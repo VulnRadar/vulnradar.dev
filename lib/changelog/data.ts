@@ -314,6 +314,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: Layout,
+        label: "The Pricing Page Fits Small Phones",
+        desc: "On a narrow phone, the plan comparison table on the pricing page made the whole page wider than the screen: the page was drawn zoomed out, and the cookie notice at the bottom ran off the right edge with its button out of reach. The same hidden table label that caused it sat in the table on the homepage, in the documentation tables and on the comparison pages, and all of them now stay inside their own scrolling area.",
+        category: "fixed",
+      },
+      {
         icon: Smartphone,
         label: "Pages No Longer Swipe Sideways on iPhone",
         desc: "Some pages could be dragged left and right on an iPhone even though nothing on screen was actually wider than the phone. This was caused by a mismatch in how two different page elements handled overflow. It is fixed, and every page now measures exactly the width of the screen.",

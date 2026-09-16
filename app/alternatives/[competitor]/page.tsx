@@ -106,7 +106,7 @@ export default async function AlternativePage({
           >
             Side by side
           </h2>
-          <div className="overflow-x-auto rounded-lg border border-border/60">
+          <div className="relative overflow-x-auto rounded-lg border border-border/60">
             <table className="w-full text-sm border-collapse min-w-136">
               {/* Without a caption and scope="col", a screen reader reading
                   cell by cell announces the value but not which product it

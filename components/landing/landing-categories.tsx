@@ -95,7 +95,7 @@ export function LandingCategories() {
           })}
         </div>
 
-        <div className="hidden sm:block overflow-x-auto rounded-xl border border-border/60">
+        <div className="relative hidden sm:block overflow-x-auto rounded-xl border border-border/60">
           <table className="w-full min-w-[560px] text-sm border-collapse">
             <caption className="sr-only">
               Scanner categories and how many checks each one contains

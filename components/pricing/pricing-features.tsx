@@ -224,7 +224,7 @@ export function PricingFeatures() {
           </p>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-border/50">
+        <div className="relative overflow-x-auto rounded-xl border border-border/50">
           <table className="w-full text-sm min-w-[560px] border-collapse">
             <caption className="sr-only">Plan limits compared</caption>
             <thead>

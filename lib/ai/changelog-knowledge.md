@@ -54,6 +54,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   In the admin area, the scanner queue used to show only a number of failed scans, with nothing behind it. That number now expands to show the failures grouped by error message, so 25 identical timeouts no longer look the same as 25 unrelated problems. The details only load when opened, rather than being sent automatically every 45 seconds, which also stops customer web addresses being sent over the network unnecessarily. On the billing overview page, the list of overdue accounts now shows as cards on a phone screen instead of a wide table you had to scroll sideways to read.
 - [Target] **[FIXED]** **Icons Now Line Up With the Text Beside Them**
   An icon placed next to a line of text was sitting slightly too high, about four pixels above where it should be, in 18 places across the app. The shared icon component has been corrected so icons now line up properly with the text beside them.
+- [Layout] **[FIXED]** **The Pricing Page Fits Small Phones**
+  On a narrow phone, the plan comparison table on the pricing page made the whole page wider than the screen: the page was drawn zoomed out, and the cookie notice at the bottom ran off the right edge with its button out of reach. The same hidden table label that caused it sat in the table on the homepage, in the documentation tables and on the comparison pages, and all of them now stay inside their own scrolling area.
 - [Smartphone] **[FIXED]** **Pages No Longer Swipe Sideways on iPhone**
   Some pages could be dragged left and right on an iPhone even though nothing on screen was actually wider than the phone. This was caused by a mismatch in how two different page elements handled overflow. It is fixed, and every page now measures exactly the width of the screen.
 - [Shield] **[FIXED]** **The Status Badge Uses the Correct Brand Colour**
@@ -2472,6 +2474,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 928
+- **Total changes documented:** 929
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

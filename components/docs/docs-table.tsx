@@ -22,7 +22,7 @@ function TableScroller({
     <div
       tabIndex={0}
       className={cn(
-        "overflow-x-auto rounded-lg border border-border/50",
+        "relative overflow-x-auto rounded-lg border border-border/50",
         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         className,
       )}
