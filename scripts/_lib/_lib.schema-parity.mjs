@@ -100,6 +100,37 @@ export const META_TABLE = "vulnradar_schema_meta";
 export const DELIBERATE_BOOT_ONLY_TABLES = Object.freeze({});
 
 /**
+ * Upserts whose ON CONFLICT target is an EXPRESSION index, keyed "file:line".
+ *
+ * An expression index is a perfectly valid ON CONFLICT target as long as the
+ * clause repeats the expression, and neither parity check can see that:
+ * parseUniqueTargets reads column tuples out of the boot schema, and the
+ * integration check reads them out of pg_indexes. Both report a real,
+ * working upsert as unmatched.
+ *
+ * Declared here rather than in either test because BOTH read it. It lived in
+ * tests/lib/database/on-conflict-parity.test.ts alone, so adding an entry
+ * there left the integration copy in tests/integration/schema.test.ts red,
+ * which is the two-sources-of-truth problem these parity checks exist to
+ * catch, in the parity checks themselves.
+ *
+ * An entry here is a claim that the clause repeats the index's expression
+ * exactly. Check that before adding one; getting it wrong is a 500 on the
+ * write path, which is what both checks are for.
+ */
+export const DELIBERATE_PARTIAL_INDEX_UPSERTS = Object.freeze([
+  // broadcast_templates' unique index is on LOWER(name), so that saving
+  // "October promo" a second time updates it instead of leaving the picker
+  // offering two entries that differ only in capitalisation. The upsert reads
+  // ON CONFLICT (LOWER(name)) against
+  // CREATE UNIQUE INDEX ... ON broadcast_templates(LOWER(name)).
+  //
+  // If a line number here drifts, the entry is what moved, not the code:
+  // re-run either parity suite and take the file:line it prints.
+  "app/api/v3/admin/features/route.ts:888",
+]);
+
+/**
  * Columns that intentionally exist on the boot path only, keyed
  * "table.column". Same contract as DELIBERATE_BOOT_ONLY_TABLES.
  */

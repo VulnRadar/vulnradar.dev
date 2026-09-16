@@ -87,6 +87,25 @@ const sampleRows = [
   },
 ];
 
+/**
+ * Queue the export's paged reads.
+ *
+ * The route used to issue one unbounded SELECT; it now walks the table in
+ * keyset pages and stops on the first empty one, because a year of admin
+ * history materialised in a single-process server's heap (twice: rows, then
+ * the serialised string) is how an admin pressing Export takes the site down.
+ * So a test supplies pages and a terminating empty page, and "the export is
+ * the whole table" is proved by the walk continuing rather than by the absence
+ * of a LIMIT.
+ */
+function queuePages(...pages: (typeof sampleRows)[]) {
+  for (const rows of pages) mockQuery.mockResolvedValueOnce({ rows });
+  mockQuery.mockResolvedValueOnce({ rows: [] });
+}
+
+/** The body, which only exists once the stream has been drained. */
+const body = (res: Response) => res.text();
+
 beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
@@ -108,12 +127,12 @@ describe("GET /api/v3/admin/audit-log/export", () => {
     expect(res.status).toBe(403);
   });
 
-  it("defaults to JSON, returns the full unpaginated table, and sets a download header", async () => {
+  it("defaults to JSON, returns every row, and sets a download header", async () => {
     withAdmin();
-    mockQuery.mockResolvedValueOnce({ rows: sampleRows });
+    queuePages(sampleRows);
 
     const res = await GET(getRequest());
-    const text = await res.text();
+    const text = await body(res);
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("application/json");
@@ -126,15 +145,73 @@ describe("GET /api/v3/admin/audit-log/export", () => {
 
     const selectCall = mockQuery.mock.calls[1] as [string, unknown[]?];
     expect(selectCall[0]).toContain("FROM admin_audit_log al");
-    expect(selectCall[0]).not.toContain("LIMIT");
+  });
+
+  it("keeps walking until a page comes back empty, so the export is the whole table", async () => {
+    // The guarantee the old "no LIMIT" assertion was standing in for. Three
+    // pages of rows, one empty; every row from all three has to appear.
+    withAdmin();
+    const pageA = [{ ...sampleRows[0], id: 30 }];
+    const pageB = [{ ...sampleRows[0], id: 20 }];
+    const pageC = [{ ...sampleRows[0], id: 10 }];
+    queuePages(pageA, pageB, pageC);
+
+    const rows = JSON.parse(await body(await GET(getRequest())));
+    expect(rows.map((r: { id: number }) => r.id)).toEqual([30, 20, 10]);
+  });
+
+  it("pages by keyset, carrying the last row of each page forward", async () => {
+    // Not OFFSET: it re-scans everything already sent, so the last page of a
+    // large export is the most expensive. And the cursor is the (created_at,
+    // id) PAIR, because created_at is not unique and two actions recorded in
+    // the same millisecond would otherwise straddle a boundary and be emitted
+    // twice or not at all.
+    withAdmin();
+    queuePages([sampleRows[0]], [sampleRows[1]]);
+
+    await body(await GET(getRequest()));
+
+    const selects = mockQuery.mock.calls.slice(1) as [string, unknown[]][];
+    expect(selects[0][0]).not.toContain("OFFSET");
+    // First page asks from the top: no cursor.
+    expect(selects[0][1][0]).toBeNull();
+    expect(selects[0][1][1]).toBeNull();
+    // Second page resumes at the last row of the first.
+    expect(selects[1][1][0]).toBe(sampleRows[0].created_at);
+    expect(selects[1][1][1]).toBe(sampleRows[0].id);
+  });
+
+  it("emits a valid, complete JSON document across page boundaries", async () => {
+    // The rows are serialised one at a time so no array of all of them ever
+    // exists, which is the whole point; the join has to still produce one
+    // parseable document.
+    withAdmin();
+    queuePages([sampleRows[0]], [sampleRows[1]]);
+    const text = await body(await GET(getRequest()));
+    expect(() => JSON.parse(text)).not.toThrow();
+    expect(JSON.parse(text)).toEqual(sampleRows);
+  });
+
+  it("emits an empty array, not a broken one, when there is nothing to export", async () => {
+    withAdmin();
+    queuePages();
+    expect(JSON.parse(await body(await GET(getRequest())))).toEqual([]);
+  });
+
+  it("emits only the header row for an empty CSV export", async () => {
+    withAdmin();
+    queuePages();
+    const text = await body(await GET(getRequest("?format=csv")));
+    expect(text.trim().split("\r\n")).toHaveLength(1);
+    expect(text).toContain("id,created_at,action");
   });
 
   it("returns CSV with a header row, RFC 4180 quoting for embedded quotes/commas, and empty cells for null fields", async () => {
     withAdmin();
-    mockQuery.mockResolvedValueOnce({ rows: sampleRows });
+    queuePages(sampleRows);
 
     const res = await GET(getRequest("?format=csv"));
-    const text = await res.text();
+    const text = await body(res);
     const lines = text.split("\r\n");
 
     expect(res.status).toBe(200);
@@ -152,9 +229,12 @@ describe("GET /api/v3/admin/audit-log/export", () => {
 
   it("records the export itself to admin_audit_log with the row count and format", async () => {
     withAdmin(7, "admin");
-    mockQuery.mockResolvedValueOnce({ rows: sampleRows });
+    queuePages(sampleRows);
 
-    await GET(getRequest("?format=csv"));
+    // Drained, not just started: the entry is written when the stream ends,
+    // because until it does nobody knows how much actually left the building,
+    // and the count is the point of the entry.
+    await body(await GET(getRequest("?format=csv")));
 
     expect(mockLogAction).toHaveBeenCalledWith(
       7,

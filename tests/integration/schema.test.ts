@@ -18,8 +18,12 @@ import { describeIntegration } from "./_db";
  * exists because the DDL ran at all, so a statement that no longer parses
  * fails the bootstrap before any assertion is reached.
  */
-const { findOnConflictTargets, readBootSchema, REPO_ROOT } =
-  await import("@/scripts/_lib/_lib.schema-parity.mjs");
+const {
+  findOnConflictTargets,
+  readBootSchema,
+  DELIBERATE_PARTIAL_INDEX_UPSERTS,
+  REPO_ROOT,
+} = await import("@/scripts/_lib/_lib.schema-parity.mjs");
 
 /**
  * What lib/database/schema says the database should contain. `npm run
@@ -206,9 +210,22 @@ describeIntegration("the schema the boot path builds", () => {
         line: number;
       }>) {
         checked += 1;
+        // An expression index is a valid target when the clause repeats
+        // the expression, and pg_indexes gives this check column tuples,
+        // so it cannot see one either. The list is shared with the static
+        // half in tests/lib/database/on-conflict-parity.test.ts: an
+        // exception that satisfied one check and not the other would be
+        // the same two-sources-of-truth bug these checks exist to catch.
+        const where = `${relative(REPO_ROOT, file).replace(/\\/g, "/")}:${target.line}`;
+        if (
+          (DELIBERATE_PARTIAL_INDEX_UPSERTS as readonly string[]).includes(
+            where,
+          )
+        ) {
+          continue;
+        }
         const known = uniqueTargets.get(target.table);
         if (!known?.has(target.columns)) {
-          const where = `${relative(REPO_ROOT, file).replace(/\\/g, "/")}:${target.line}`;
           unmatched.push(
             `${where} ON CONFLICT (${target.columns}) on ${target.table}` +
               (known
