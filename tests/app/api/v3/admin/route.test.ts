@@ -259,10 +259,34 @@ describe("GET /api/v3/admin", () => {
     expect(json.users).toHaveLength(1);
   });
 
-  it("rejects invalid pagination parameters", async () => {
+  // This asserted a 400 for `?page=abc`, which was this route's own behaviour
+  // and nothing else's: the other six paginated routes fall back to page 1.
+  // Both now go through parsePagination, so a nonsense page is a first page
+  // everywhere rather than an error on one route and a default on six.
+  it("falls back to the first page for a non-numeric page", async () => {
     queueRole("support");
+    mockQuery.mockResolvedValue({ rows: [{ count: "0" }] });
     const res = await GET(getRequest("http://localhost/api/v3/admin?page=abc"));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+  });
+
+  // The bug the old isNaN guard could not see. Number("1e21") is finite, so
+  // it cleared the guard, survived Math.max and multiplied into an offset
+  // past the range Postgres accepts for a bigint - a 500 from a query string.
+  it("does not send an out-of-range offset for an absurd page", async () => {
+    queueRole("support");
+    mockQuery.mockResolvedValue({ rows: [{ count: "0" }] });
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?page=1e21&limit=100"),
+    );
+    expect(res.status).toBe(200);
+
+    const offsets = mockQuery.mock.calls
+      .flatMap((call) => (Array.isArray(call[1]) ? call[1] : []))
+      .filter((v): v is number => typeof v === "number");
+    for (const value of offsets) {
+      expect(Number.isSafeInteger(value)).toBe(true);
+    }
   });
 
   it("section=user-detail requires a userId", async () => {

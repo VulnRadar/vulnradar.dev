@@ -29,6 +29,7 @@ import { getPaidPlans, getPlanById } from "@/lib/billing/catalog";
 
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
+import { parsePagination } from "@/lib/api/pagination";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
   ERROR_MESSAGES,
@@ -104,26 +105,22 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
-  const pageParam = searchParams.get("page");
-  const limitParam = searchParams.get("limit");
-
-  const page = Math.max(1, Number(pageParam || 1));
-  let limit = 10;
-  if (limitParam && limitParam !== "undefined") {
-    const parsedLimit = Number(limitParam);
-    if (!isNaN(parsedLimit)) {
-      limit = Math.min(100, Math.max(1, parsedLimit));
-    }
-  }
-
-  if (isNaN(page) || isNaN(limit)) {
-    return NextResponse.json(
-      { error: "Invalid pagination parameters" },
-      { status: 400 },
-    );
-  }
-
-  const offset = (page - 1) * limit;
+  // The seventh copy of the pagination parser, and the one that looked safe.
+  //
+  // It has an isNaN guard, which is why it was passed over when the other six
+  // were consolidated: `?page=abc` really does get a 400 here. What the guard
+  // does not catch is a number that is finite and absurd. Number("1e21") is
+  // 1e21, not NaN, so it clears isNaN, survives Math.max, and multiplies into
+  // an offset past the range Postgres accepts for a bigint - a 500 from a
+  // query string, on the admin user list and the audit log.
+  //
+  // parsePagination caps the page for exactly this, so the guard below is no
+  // longer reachable and is gone with it. `?page=abc` now lands on page 1
+  // rather than returning 400, which is what the other six already do.
+  const { page, limit, offset } = parsePagination(searchParams, {
+    defaultLimit: 10,
+    maxLimit: 100,
+  });
   const section = searchParams.get("section");
   const search = searchParams.get("search")?.trim() || "";
   // Escape LIKE metacharacters so admin search is exact-substring, not a
