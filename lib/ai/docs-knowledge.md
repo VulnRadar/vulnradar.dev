@@ -2031,7 +2031,7 @@ license, type-safe models, real tests against a live instance.
 package.json is
 { "node": ">=22.0.0" }. There is no
 fallback to Node 20: the Dockerfile builds and runs on
-node:22.11.0-alpine, and CI runs the full
+node:22.23.2-alpine, and CI runs the full
 lint, typecheck, test, and build matrix on Node 22 only. Match that
 locally.
 

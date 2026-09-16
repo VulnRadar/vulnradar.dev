@@ -250,9 +250,12 @@ docker compose logs -f app   # watch startup`}
         <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
             Visit <InlineCode>https://scanner.yourdomain.com/signup</InlineCode>{" "}
-            and create an account. (Running without Docker, e.g. for local
-            development? Create the schema first with{" "}
-            <InlineCode>npm run db:create</InlineCode>.)
+            and create an account. The schema creates itself the first time the
+            app boots, with or without Docker, so there is nothing to run first.
+            (This used to point at <InlineCode>npm run db:create</InlineCode>,
+            which is the side-by-side clone tool rather than a first-time setup
+            step: it prompts for an existing database to copy from and builds a
+            second, differently-named one that nothing is configured to read.)
           </li>
           <li>
             Nothing to run. The first account created on a fresh instance is

@@ -421,7 +421,7 @@ export default function DevelopersPage() {
             <InlineCode>package.json</InlineCode> is{" "}
             <InlineCode>{`{ "node": ">=22.0.0" }`}</InlineCode>. There is no
             fallback to Node 20: the Dockerfile builds and runs on{" "}
-            <InlineCode>node:22.11.0-alpine</InlineCode>, and CI runs the full
+            <InlineCode>node:22.23.2-alpine</InlineCode>, and CI runs the full
             lint, typecheck, test, and build matrix on Node 22 only. Match that
             locally.
           </p>

@@ -96,7 +96,7 @@ export default function SetupPage() {
           {[
             {
               title: "Node.js 22 LTS",
-              desc: "JavaScript runtime. package.json pins engines.node to >=22.0.0 <23.0.0 and .npmrc makes that range a hard install failure, the Dockerfile builds on node:22.11.0-alpine, and CI runs on Node 22 only. See the Node Version Policy on the Developers page.",
+              desc: "JavaScript runtime. package.json pins engines.node to >=22.0.0 <23.0.0 and .npmrc makes that range a hard install failure, the Dockerfile builds on node:22.23.2-alpine, and CI runs on Node 22 only. See the Node Version Policy on the Developers page.",
               link: "https://nodejs.org",
               cmd: "node --version",
             },

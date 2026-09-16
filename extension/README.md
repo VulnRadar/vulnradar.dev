@@ -58,7 +58,7 @@ npm run build
 
 ### Safari
 
-Not supported in v0.1. Safari Web Extensions require a separate Xcode project + native shim.
+Not currently supported. Safari Web Extensions require a separate Xcode project + native shim.
 
 ## First run
 

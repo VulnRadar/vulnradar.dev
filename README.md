@@ -4,7 +4,7 @@
 
 # VulnRadar
 
-Open-source web vulnerability scanner. Paste a URL and get 795+ deterministic
+Open-source web vulnerability scanner. Paste a URL and get 905+ deterministic
 checks back, each with the response evidence behind it, a finding ID that does
 not change between runs, and the config line that fixes it. No agent to
 install. GPL-3.0 and self-hostable.
@@ -42,7 +42,7 @@ install. GPL-3.0 and self-hostable.
   and GitHub repo. A `scan.regressed` event carries the findings that are new
   since the previous scan of the same target, so an alert can be routed to a
   person without a second API call
-- **Exports** to PDF, JSON, SARIF, Markdown, or a compliance crosswalk, so
+- **Exports** to PDF, JSON, CSV, SARIF, Markdown, or a compliance crosswalk, so
   findings go into the tool your team already uses
 - **A browser extension** for Chrome and Firefox that scans the tab you are on
 - **Runs on your own hardware** under GPL-3.0, with no telemetry. The only
@@ -92,11 +92,9 @@ cp .env.example .env
 # Rate limits, feature flags and billing limits are runtime-tier: change them
 # in Admin -> Settings after the first sign-in, no rebuild needed.
 
-# 3. Build and run
+# 3. Build and run. The schema creates itself on first boot; there is no
+#    separate init step.
 docker compose up -d
-
-# 4. Initialize the database
-docker compose exec app npm run db:create
 ```
 
 `API_KEY_ENCRYPTION_KEY` is required. Without it the app refuses to store TOTP
@@ -113,10 +111,13 @@ the [Config Reference](https://vulnradar.dev/docs/config) for every value):
 | **Environment**     | `.env` (or `docker-compose.yml` env) | A variable named exactly like the registry key pins a value without a database write. Also where secrets live.                  |
 | **Shipped default** | `lib/config/config-values.ts`        | The `CONFIG_*` constant the repo ships with. Edit and rebuild.                                                                  |
 
-Of the 287 settings in `lib/config/registry.ts`, 249 are runtime tier and take
-effect as soon as they are saved. The remaining 38 are build tier (app name,
-branding, SEO metadata) and are baked into statically generated pages, so those
-need a rebuild before the change is visible.
+Most of the settings in `lib/config/registry.ts` are runtime tier and take
+effect as soon as they are saved. The rest are build tier (app name, branding,
+SEO metadata) and are baked into statically generated pages, so those need a
+rebuild before the change is visible. `/docs/config` counts both from the
+registry itself and is the number to trust: the figures that used to be written
+out here had drifted by nine as settings were added, which is the same reason
+that page computes them rather than stating them.
 
 Secrets are environment-only and have no admin control: `DATABASE_URL`,
 `API_KEY_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, SMTP credentials, Discord OAuth.
@@ -170,7 +171,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 | `npm run test:coverage`   | Vitest with per-file coverage thresholds                     |
 | `npm run build:knowledge` | Regenerate `lib/ai/` from the docs, changelog, checks, legal |
 | `npm run db:migrate`      | Apply schema migrations                                      |
-| `npm run db:create`       | Create a fresh database                                      |
+| `npm run db:create`       | Clone the DB to a new name at a chosen schema version        |
 | `npm run db:diagnose`     | Read-only database corruption report. `db:repair` fixes      |
 | `npm run db:backup`       | Full dump. `db:restore` puts one back                        |
 
