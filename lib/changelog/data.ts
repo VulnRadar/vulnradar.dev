@@ -423,6 +423,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Lock,
+        label: "One TLS Handshake Where There Were Four",
+        desc: "The certificate check, the chain check, the OCSP stapling check and the negotiation checks each opened their own connection to the site and looked up its address first, so every scan made four TLS handshakes and four DNS lookups to read one certificate. Behind a CDN those connections could reach different servers presenting different certificates, and one report could then describe several chains at once. They now share a single handshake, so the site sees one connection and every certificate finding describes the same certificate. The probe that tests whether TLS 1.0 and 1.1 are still accepted keeps its own connection, since it has to offer only those versions.",
+        category: "engine",
+      },
+      {
         icon: CheckCheck,
         label: "Wrong Verdicts Corrected",
         desc: "Sites enforcing Trusted Types were told they were not, because the check searched the policy for the JavaScript API's name instead of the directive. Algolia's public search key, which Algolia's own documentation names ApiKey, was reported as a leaked admin key at critical. One check stated that jsonwebtoken accepts any algorithm when none is specified, which version 9 does not, and reported every verify call without one as critical; only an explicit none is reported now. Hardening guides that mention /.git/config were reported as exposing it. In the other direction: postMessage calls with a transfer list were missed, one Secure cookie hid every insecure cookie in the same response, a library pinned as jquery@1.12.4 the way jsDelivr and unpkg load it was never matched, Docker Hub organization tokens were not recognised, and neither was the /swagger-ui path.",

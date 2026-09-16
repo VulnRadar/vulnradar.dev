@@ -14,16 +14,16 @@
  * async-only. Do not import the `detectors` placeholders below from the
  * synchronous scan orchestrator.
  *
- * The three functions below (checkHttpUpgradeToHttps,
- * checkTlsCertChainCompleteness, checkOcspStapling) ARE real,
- * self-contained live-connection probes — raw HTTP / raw TLS socket work,
- * following the exact same conventions as async-checks.ts's checkTLSCert
- * (rejectUnauthorized: false + manual `authorized` inspection, a hard
- * setTimeout safety net, socket destroyed on every exit path). They are
- * written here, rather than in async-checks.ts, because this module owns
- * the `tls` category; async-checks.ts's buildBranches imports and runs
- * them alongside checkTLSCert whenever the "tls" category itself (not
- * just "ssl") is in scope for the scan.
+ * The functions below are real live-connection probes. The certificate and
+ * negotiation checks (checkTlsCertChainCompleteness, checkOcspStapling,
+ * checkTlsHandshakeDetails) read the one shared handshake in
+ * lib/scanner/tls-handshake.ts, the same one async-checks.ts's checkTLSCert
+ * reads; checkHttpUpgradeToHttps makes a plain HTTP request and
+ * checkLegacyTlsProtocolAccepted makes its own TLS 1.0/1.1-only handshake.
+ * They are written here, rather than in async-checks.ts, because this module
+ * owns the `tls` category; async-checks.ts's buildBranches runs them
+ * alongside checkTLSCert whenever the "tls" category itself (not just "ssl")
+ * is in scope for the scan.
  */
 
 import * as http from "http";
@@ -31,6 +31,7 @@ import * as tls from "tls";
 import { generateId, type EvidenceFn as DetectFn } from "../_helpers";
 import type { Vulnerability, Severity } from "../types";
 import { validateScanTarget } from "../safe-fetch";
+import { readTlsHandshake } from "../tls-handshake";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 
 const USER_AGENT = `Mozilla/5.0 (compatible; ${APP_NAME}/1.0; +${APP_URL})`;
@@ -220,10 +221,9 @@ interface ChainablePeerCert {
 }
 
 /**
- * Opens a raw TLS connection (same pattern as async-checks.ts's
- * checkTLSCert: rejectUnauthorized: false so the handshake always
- * completes, `socket.authorized` inspected manually) and checks whether
- * the server sent any certificate beyond the leaf.
+ * Reads the shared handshake (tls-handshake.ts: verification is not enforced
+ * so the handshake always completes, and `authorized` is inspected by hand)
+ * and checks whether the server sent any certificate beyond the leaf.
  *
  * Only fires when verification succeeded (`authorized === true`) AND the
  * server's own handshake included no certificate beyond the leaf. An
@@ -241,108 +241,61 @@ export async function checkTlsCertChainCompleteness(
   url: string,
   port: number = 443,
 ): Promise<Vulnerability[]> {
-  // SSRF hardening: pin the connection to a validated public IP, keeping the
-  // hostname for SNI. Connecting by hostname re-resolves DNS and is rebinding-
-  // vulnerable (see checkTLSCert in async-checks.ts for the full rationale).
-  const safety = await validateScanTarget(url);
-  if (!safety.safe || !safety.resolvedIp) return [];
-  const safeIp = safety.resolvedIp;
+  const hs = await readTlsHandshake(hostname, url, port);
+  if (!hs) return [];
+  const findings: Vulnerability[] = [];
+  try {
+    const authorized = hs.authorized;
+    const cert = hs.cert as unknown as ChainablePeerCert | null;
 
-  return new Promise((resolve) => {
-    const findings: Vulnerability[] = [];
-    let socket: tls.TLSSocket | null = null;
-
-    const timeout = setTimeout(() => {
-      socket?.destroy();
-      resolve(findings);
-    }, 5000);
-
-    try {
-      socket = tls.connect(
-        {
-          host: safeIp,
-          port,
-          servername: hostname,
-          // codeql[js/disabling-certificate-validation]
-          rejectUnauthorized: false,
-          timeout: 4500,
-        },
-        () => {
-          try {
-            const authorized = socket!.authorized;
-            const cert = socket!.getPeerCertificate(
-              true,
-            ) as unknown as ChainablePeerCert;
-
-            // An incomplete chain (leaf only, no intermediate) shows up as a
-            // MISSING or EMPTY issuerCertificate. Node's getPeerCertificate(true)
-            // terminates a peer-sent chain with a truthy but empty object (no
-            // real fields like valid_to), so `!cert.issuerCertificate` alone is
-            // never true in practice -- discriminate the empty end-of-chain
-            // marker by the absence of valid_to, the same signal the sibling
-            // chain walk in async-checks.ts uses. A self-referential leaf
-            // (issuerCertificate === cert, Node's root marker) is a self-signed
-            // cert reported by checkTLSCert, not a missing-intermediate case.
-            if (
-              authorized &&
-              cert &&
-              cert.subject &&
-              cert.issuerCertificate !== cert &&
-              (!cert.issuerCertificate || !cert.issuerCertificate.valid_to)
-            ) {
-              const subjectCN = cert.subject?.CN ?? hostname;
-              findings.push(
-                makeTlsVuln(
-                  "tls-cert-chain-incomplete",
-                  url,
-                  "TLS Certificate Chain Missing Intermediate Certificate",
-                  "medium",
-                  "The server's TLS handshake sent only the leaf certificate, with no intermediate CA certificate in the chain, even though the connection still verified successfully.",
-                  `Certificate for ${subjectCN} verified successfully, but the server sent no certificate beyond the leaf during the handshake.`,
-                  "This connection succeeded because the client already had the missing intermediate cached or trusted, or fetched it via AIA. Clients that do neither, including many non-browser HTTP libraries, older mobile OS TLS stacks, and embedded devices, cannot build a trust path and will reject the connection.",
-                  "TLS servers should send their full certificate chain (the leaf plus every intermediate CA up to, but not including, the root) on every handshake so any client can verify it without depending on a cached or separately fetched intermediate.",
-                  [
-                    "Configure the server to serve the full certificate chain (commonly the CA-provided 'fullchain.pem' or equivalent bundle), not just the leaf certificate.",
-                    `Verify with: openssl s_client -connect ${hostname}:443 -showcerts, and confirm more than one certificate is returned.`,
-                  ],
-                  70,
-                ),
-              );
-            }
-          } catch {
-            /* cert inspection failed */
-          }
-          socket!.destroy();
-          clearTimeout(timeout);
-          resolve(findings);
-        },
+    // An incomplete chain (leaf only, no intermediate) shows up as a
+    // MISSING or EMPTY issuerCertificate. Node's getPeerCertificate(true)
+    // terminates a peer-sent chain with a truthy but empty object (no
+    // real fields like valid_to), so `!cert.issuerCertificate` alone is
+    // never true in practice -- discriminate the empty end-of-chain
+    // marker by the absence of valid_to, the same signal the sibling
+    // chain walk in async-checks.ts uses. A self-referential leaf
+    // (issuerCertificate === cert, Node's root marker) is a self-signed
+    // cert reported by checkTLSCert, not a missing-intermediate case.
+    if (
+      authorized &&
+      cert &&
+      cert.subject &&
+      cert.issuerCertificate !== cert &&
+      (!cert.issuerCertificate || !cert.issuerCertificate.valid_to)
+    ) {
+      const subjectCN = cert.subject?.CN ?? hostname;
+      findings.push(
+        makeTlsVuln(
+          "tls-cert-chain-incomplete",
+          url,
+          "TLS Certificate Chain Missing Intermediate Certificate",
+          "medium",
+          "The server's TLS handshake sent only the leaf certificate, with no intermediate CA certificate in the chain, even though the connection still verified successfully.",
+          `Certificate for ${subjectCN} verified successfully, but the server sent no certificate beyond the leaf during the handshake.`,
+          "This connection succeeded because the client already had the missing intermediate cached or trusted, or fetched it via AIA. Clients that do neither, including many non-browser HTTP libraries, older mobile OS TLS stacks, and embedded devices, cannot build a trust path and will reject the connection.",
+          "TLS servers should send their full certificate chain (the leaf plus every intermediate CA up to, but not including, the root) on every handshake so any client can verify it without depending on a cached or separately fetched intermediate.",
+          [
+            "Configure the server to serve the full certificate chain (commonly the CA-provided 'fullchain.pem' or equivalent bundle), not just the leaf certificate.",
+            `Verify with: openssl s_client -connect ${hostname}:443 -showcerts, and confirm more than one certificate is returned.`,
+          ],
+          70,
+        ),
       );
-
-      socket.on("error", () => {
-        clearTimeout(timeout);
-        resolve(findings);
-      });
-      socket.on("timeout", () => {
-        socket!.destroy();
-        clearTimeout(timeout);
-        resolve(findings);
-      });
-    } catch {
-      clearTimeout(timeout);
-      resolve(findings);
     }
-  });
+  } catch {
+    /* cert inspection failed */
+  }
+  return findings;
 }
 
 // ── OCSP stapling ────────────────────────────────────────────────────────
 
 /**
- * Opens a raw TLS connection with `requestOCSP: true` and listens for the
- * socket's 'OCSPResponse' event, which Node fires during the handshake
- * when the server included a stapled OCSP response (RFC 6066 status_
- * request extension). The listener is attached before the handshake
- * completes, so by the time the connect callback runs, `stapledResponsePresent`
- * already reflects whether stapling happened.
+ * Reads whether the server stapled an OCSP response to the shared handshake,
+ * which requests one (`requestOCSP: true`) and listens for the socket's
+ * 'OCSPResponse' event (RFC 6066 status_request extension) before the
+ * handshake completes.
  *
  * Only evaluated once the certificate itself verifies successfully — an
  * already-broken cert is reported elsewhere (checkTLSCert), and OCSP
@@ -354,114 +307,67 @@ export async function checkOcspStapling(
   url: string,
   port: number = 443,
 ): Promise<Vulnerability[]> {
-  // SSRF hardening: pin to a validated public IP, keep the hostname for SNI.
-  // See checkTLSCert in async-checks.ts for the full rationale.
-  const safety = await validateScanTarget(url);
-  if (!safety.safe || !safety.resolvedIp) return [];
-  const safeIp = safety.resolvedIp;
+  const hs = await readTlsHandshake(hostname, url, port);
+  if (!hs) return [];
+  const findings: Vulnerability[] = [];
+  try {
+    const authorized = hs.authorized;
 
-  return new Promise((resolve) => {
-    const findings: Vulnerability[] = [];
-    let socket: tls.TLSSocket | null = null;
-    let stapledResponsePresent = false;
+    // Does this certificate even name an OCSP responder?
+    //
+    // A server can only staple a response it can fetch, and it fetches
+    // it from the OCSP URI in the certificate's Authority Information
+    // Access extension. A certificate that publishes no such URI
+    // cannot be stapled by anyone, at any configuration, so there is
+    // no finding to report: nothing is misconfigured and nothing can
+    // be turned on.
+    //
+    // That is now the common case rather than a corner case. The
+    // CA/Browser Forum made OCSP optional, Let's Encrypt removed the
+    // OCSP URL from its certificates in May 2025 and shut its
+    // responders off that August, and Google Trust Services issues
+    // without one. Revocation for those certificates travels by CRL,
+    // which is a working design, not a gap. Reporting it fired on
+    // most of the modern web to say "no action is available", which
+    // is the shape of finding that teaches people to stop reading
+    // the output.
+    const peer = hs.cert as {
+      infoAccess?: Record<string, string[] | undefined>;
+    } | null;
+    const ocspUris = peer?.infoAccess?.["OCSP - URI"] ?? [];
+    const certPublishesOcsp = ocspUris.length > 0;
 
-    const timeout = setTimeout(() => {
-      socket?.destroy();
-      resolve(findings);
-    }, 5000);
-
-    try {
-      socket = tls.connect(
-        {
-          host: safeIp,
-          port,
-          servername: hostname,
-          // codeql[js/disabling-certificate-validation]
-          rejectUnauthorized: false,
-          requestOCSP: true,
-          timeout: 4500,
-        },
-        () => {
-          try {
-            const authorized = socket!.authorized;
-
-            // Does this certificate even name an OCSP responder?
-            //
-            // A server can only staple a response it can fetch, and it fetches
-            // it from the OCSP URI in the certificate's Authority Information
-            // Access extension. A certificate that publishes no such URI
-            // cannot be stapled by anyone, at any configuration, so there is
-            // no finding to report: nothing is misconfigured and nothing can
-            // be turned on.
-            //
-            // That is now the common case rather than a corner case. The
-            // CA/Browser Forum made OCSP optional, Let's Encrypt removed the
-            // OCSP URL from its certificates in May 2025 and shut its
-            // responders off that August, and Google Trust Services issues
-            // without one. Revocation for those certificates travels by CRL,
-            // which is a working design, not a gap. Reporting it fired on
-            // most of the modern web to say "no action is available", which
-            // is the shape of finding that teaches people to stop reading
-            // the output.
-            const peer = socket!.getPeerCertificate(false) as {
-              infoAccess?: Record<string, string[] | undefined>;
-            } | null;
-            const ocspUris = peer?.infoAccess?.["OCSP - URI"] ?? [];
-            const certPublishesOcsp = ocspUris.length > 0;
-
-            if (authorized && !stapledResponsePresent && certPublishesOcsp) {
-              findings.push(
-                makeTlsVuln(
-                  "tls-ocsp-stapling-disabled",
-                  url,
-                  "OCSP Stapling Not Enabled",
-                  "info",
-                  "The server did not staple an OCSP response during the TLS handshake.",
-                  `TLS handshake to ${hostname}:${port} completed with a valid, trusted certificate, but no stapled OCSP response was returned (no 'OCSPResponse' event during the handshake).`,
-                  "Without OCSP stapling, clients that check revocation status must contact the CA's OCSP responder directly on every visit, adding latency and revealing the visitor's browsing activity to the CA. Some clients soft-fail this check entirely, silently accepting a revoked certificate rather than blocking on a failed OCSP lookup.",
-                  "OCSP stapling lets the server attach a timestamped, CA-signed revocation status to the handshake itself (RFC 6066), so clients don't need a separate round trip to the CA to check revocation.",
-                  [
-                    "Enable OCSP stapling in the web server/TLS terminator (ssl_stapling on; in Nginx, SSLUseStapling On in Apache).",
-                    `Verify with: openssl s_client -connect ${hostname}:443 -status < /dev/null 2>&1 | grep -A1 "OCSP Response"`,
-                  ],
-                  65,
-                ),
-              );
-            }
-          } catch {
-            /* inspection failed */
-          }
-          socket!.destroy();
-          clearTimeout(timeout);
-          resolve(findings);
-        },
+    if (authorized && !hs.stapled && certPublishesOcsp) {
+      findings.push(
+        makeTlsVuln(
+          "tls-ocsp-stapling-disabled",
+          url,
+          "OCSP Stapling Not Enabled",
+          "info",
+          "The server did not staple an OCSP response during the TLS handshake.",
+          `TLS handshake to ${hostname}:${port} completed with a valid, trusted certificate, but no stapled OCSP response was returned (no 'OCSPResponse' event during the handshake).`,
+          "Without OCSP stapling, clients that check revocation status must contact the CA's OCSP responder directly on every visit, adding latency and revealing the visitor's browsing activity to the CA. Some clients soft-fail this check entirely, silently accepting a revoked certificate rather than blocking on a failed OCSP lookup.",
+          "OCSP stapling lets the server attach a timestamped, CA-signed revocation status to the handshake itself (RFC 6066), so clients don't need a separate round trip to the CA to check revocation.",
+          [
+            "Enable OCSP stapling in the web server/TLS terminator (ssl_stapling on; in Nginx, SSLUseStapling On in Apache).",
+            `Verify with: openssl s_client -connect ${hostname}:443 -status < /dev/null 2>&1 | grep -A1 "OCSP Response"`,
+          ],
+          65,
+        ),
       );
-
-      socket.on("OCSPResponse", (response: Buffer | null) => {
-        stapledResponsePresent = Boolean(response && response.length > 0);
-      });
-      socket.on("error", () => {
-        clearTimeout(timeout);
-        resolve(findings);
-      });
-      socket.on("timeout", () => {
-        socket!.destroy();
-        clearTimeout(timeout);
-        resolve(findings);
-      });
-    } catch {
-      clearTimeout(timeout);
-      resolve(findings);
     }
-  });
+  } catch {
+    /* inspection failed */
+  }
+  return findings;
 }
 
 // ── One handshake, several certificate and negotiation checks ───────────
 //
-// checkTLSCert (async-checks.ts) already opens a socket and reads validity,
-// self-signing, chain and key size off it. These are the properties it does
-// not look at, and they all come from the SAME handshake, so the whole group
-// below costs one extra connection rather than one per check.
+// checkTLSCert (async-checks.ts) reads validity, self-signing, chain and key
+// size off the shared handshake. These are the properties it does not look
+// at, read off that same handshake, so the whole group costs no connection
+// of its own.
 
 /** DER encodings of the signature-algorithm OIDs that are no longer safe. */
 const WEAK_SIGNATURE_OIDS: [string, string][] = [
@@ -787,88 +693,29 @@ function inspectHandshake(
 }
 
 /**
- * Opens one TLS connection and derives every certificate and negotiation
- * finding that can be read off a single handshake. Same connection pattern
- * as checkTlsCertChainCompleteness above: SSRF-pinned to a validated public
- * IP with the hostname preserved for SNI, rejectUnauthorized false so the
- * handshake always completes, `authorized` inspected by hand, and a hard
- * timeout so a stalled peer cannot hold the branch open.
+ * Derives every certificate and negotiation finding that can be read off the
+ * shared handshake (tls-handshake.ts).
  */
 export async function checkTlsHandshakeDetails(
   hostname: string,
   url: string,
   port: number = 443,
 ): Promise<Vulnerability[]> {
-  const safety = await validateScanTarget(url);
-  if (!safety.safe || !safety.resolvedIp) return [];
-  const safeIp = safety.resolvedIp;
-
-  return new Promise((resolve) => {
-    let socket: tls.TLSSocket | null = null;
-    let stapled = false;
-    let settled = false;
-    const finish = (findings: Vulnerability[]) => {
-      if (settled) return;
-      settled = true;
-      resolve(findings);
-    };
-
-    const timeout = setTimeout(() => {
-      socket?.destroy();
-      finish([]);
-    }, 5000);
-
-    try {
-      socket = tls.connect(
-        {
-          host: safeIp,
-          port,
-          servername: hostname,
-          // codeql[js/disabling-certificate-validation]
-          rejectUnauthorized: false,
-          requestOCSP: true,
-          timeout: 4500,
-        },
-        () => {
-          let findings: Vulnerability[] = [];
-          try {
-            const cert = socket!.getPeerCertificate(
-              true,
-            ) as unknown as InspectablePeerCert;
-            findings = inspectHandshake(hostname, url, {
-              authorized: socket!.authorized,
-              cert,
-              cipher: socket!.getCipher?.() ?? null,
-              ephemeral: socket!.getEphemeralKeyInfo?.() ?? null,
-              protocol: socket!.getProtocol?.() ?? null,
-              stapled,
-            });
-          } catch {
-            /* inspection failed; report nothing rather than guessing */
-          }
-          socket!.destroy();
-          clearTimeout(timeout);
-          finish(findings);
-        },
-      );
-
-      socket.on("OCSPResponse", (response: Buffer | null) => {
-        stapled = Boolean(response && response.length > 0);
-      });
-      socket.on("error", () => {
-        clearTimeout(timeout);
-        finish([]);
-      });
-      socket.on("timeout", () => {
-        socket!.destroy();
-        clearTimeout(timeout);
-        finish([]);
-      });
-    } catch {
-      clearTimeout(timeout);
-      finish([]);
-    }
-  });
+  const hs = await readTlsHandshake(hostname, url, port);
+  if (!hs || !hs.cert) return [];
+  try {
+    return inspectHandshake(hostname, url, {
+      authorized: hs.authorized,
+      cert: hs.cert as unknown as InspectablePeerCert,
+      cipher: hs.cipher,
+      ephemeral: hs.ephemeral,
+      protocol: hs.protocol,
+      stapled: hs.stapled,
+    });
+  } catch {
+    /* inspection failed; report nothing rather than guessing */
+    return [];
+  }
 }
 
 /**

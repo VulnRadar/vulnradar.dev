@@ -12,7 +12,6 @@
  */
 
 import * as dns from "dns/promises";
-import * as tls from "tls";
 import * as crypto from "crypto";
 import { isIP, createConnection } from "net";
 import type { Vulnerability, Category, ScanProgressHook } from "./types";
@@ -46,6 +45,7 @@ import {
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { checkReputation } from "@/lib/scanner/reputation-lookup";
 import { checkOsvVulnerableLibraries } from "@/lib/scanner/osv-check";
+import { readTlsHandshake } from "@/lib/scanner/tls-handshake";
 import {
   checkActiveProbes,
   checkSqlInjectionProbe,
@@ -2590,513 +2590,456 @@ export async function checkTLSCert(
   port: number = 443,
   emitCategory: Category = "ssl",
 ): Promise<Vulnerability[]> {
-  // SSRF hardening: resolve the target to a validated public IP and pin the
-  // TCP connection to it, keeping the hostname only for SNI/cert. Connecting by
-  // hostname re-resolves DNS at the OS layer -- vulnerable to rebinding (public
-  // at the scan route's validation, internal by the time this detached check
-  // runs). validateScanTarget resolves + rejects private addresses; servername
-  // keeps cert validation against the real hostname.
-  const safety = await validateScanTarget(url);
-  if (!safety.safe || !safety.resolvedIp) return [];
-  const safeIp = safety.resolvedIp;
+  // The same handshake the tls-category checks read (see tls-handshake.ts,
+  // which also carries the SSRF pinning).
+  const hs = await readTlsHandshake(hostname, url, port);
+  if (!hs) return [];
+  const findings: Vulnerability[] = [];
+  try {
+    const cert = hs.cert;
+    const authorized = hs.authorized;
+    const protocol = hs.protocol;
+    // Hoisted out of the `if (!authorized)` block below so the SSL
+    // letter grade computed at the end of this callback can classify
+    // the trust failure without re-deriving it.
+    const authError = hs.authorizationError;
+    const authCode = String(
+      (authError as NodeJS.ErrnoException | null)?.code ??
+        authError?.message ??
+        "",
+    );
+    // Collected as the findings below run, then handed to the SSL
+    // grade at the end. Kept separate from the findings themselves so
+    // grading never alters what gets reported.
+    let gradeChainHasExpiredCert = false;
+    let gradeDaysUntilExpiry: number | undefined;
 
-  return new Promise((resolve) => {
-    const findings: Vulnerability[] = [];
-    let socket: tls.TLSSocket | null = null;
-
-    // Outer safety net: if the TLS handshake never completes, resolve and
-    // destroy the socket so we don't leak a file descriptor per scan.
-    const timeout = setTimeout(() => {
-      socket?.destroy();
-      resolve(findings);
-    }, 5000);
-
-    try {
-      socket = tls.connect(
-        {
-          host: safeIp,
-          port,
-          servername: hostname,
-          // rejectUnauthorized: false lets the secureConnect callback always
-          // fire so we can inspect the full cert (valid_to, bits, subject) even
-          // for self-signed or expired certificates. We validate manually below.
-          // codeql[js/disabling-certificate-validation]
-          rejectUnauthorized: false,
-          timeout: 4500,
-        },
-        () => {
-          try {
-            const cert = socket!.getPeerCertificate(true);
-            const authorized = socket!.authorized;
-            const protocol = socket!.getProtocol();
-            // Hoisted out of the `if (!authorized)` block below so the SSL
-            // letter grade computed at the end of this callback can classify
-            // the trust failure without re-deriving it.
-            const authError = socket!.authorizationError;
-            const authCode = String(
-              (authError as NodeJS.ErrnoException | null)?.code ??
-                authError?.message ??
-                "",
-            );
-            // Collected as the findings below run, then handed to the SSL
-            // grade at the end. Kept separate from the findings themselves so
-            // grading never alters what gets reported.
-            let gradeChainHasExpiredCert = false;
-            let gradeDaysUntilExpiry: number | undefined;
-
-            if (!authorized) {
-              if (authCode === "CERT_HAS_EXPIRED") {
-                const expiredOn = cert?.valid_to ?? "unknown";
-                const daysAgo = cert?.valid_to
-                  ? Math.floor(
-                      (Date.now() - new Date(cert.valid_to).getTime()) /
-                        (1000 * 60 * 60 * 24),
-                    )
-                  : null;
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.expiredTlsCertificate, {
-                      category: emitCategory,
-                    }),
-                    "The TLS certificate has expired.",
-                    `Certificate expired on ${expiredOn}${daysAgo !== null ? ` (${daysAgo} days ago)` : ""}.${cert?.subject?.CN ? ` Subject: ${cert.subject.CN}.` : ""}`,
-                    "Browsers will block access with a full-page security warning.",
-                    "An expired certificate means the server's identity can no longer be verified.",
-                    [
-                      "Renew the certificate immediately.",
-                      "Set up automatic renewal with Let's Encrypt / certbot.",
-                    ],
-                    [],
-                    94,
-                  ),
-                );
-              } else if (
-                authCode === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
-                authCode === "SELF_SIGNED_CERT_IN_CHAIN"
-              ) {
-                const issuerCN = cert?.issuer?.CN ?? "";
-                const subjectCN = cert?.subject?.CN ?? "";
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.selfSignedTlsCertificate, {
-                      category: emitCategory,
-                    }),
-                    "The server uses a self-signed TLS certificate that is not trusted by browsers.",
-                    `Certificate not issued by a trusted CA. Subject: ${subjectCN || "(unknown)"}. Issuer: ${issuerCN || "(self)"}.`,
-                    "Browsers will show security warnings, making users vulnerable to real MITM attacks.",
-                    "Self-signed certificates are not issued by a trusted CA. While they encrypt traffic, they don't verify the server's identity.",
-                    [
-                      "Obtain a certificate from a trusted CA (Let's Encrypt is free).",
-                      "Use automated cert management (certbot, Caddy, or your hosting provider).",
-                    ],
-                    [],
-                    94,
-                  ),
-                );
-              } else if (authCode === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.incompleteTlsCertificateChain, {
-                      category: emitCategory,
-                    }),
-                    "The TLS certificate chain is incomplete. Intermediate certificates may be missing.",
-                    `Certificate authorization error: ${authCode}. The leaf certificate could not be chained to a trusted root.`,
-                    "Some clients may not trust this certificate because the full chain to a root CA cannot be verified.",
-                    "TLS certificates form a chain of trust. If intermediates are missing, some clients can't verify the chain.",
-                    [
-                      "Ensure your server sends the full certificate chain (leaf + intermediates).",
-                      "Use SSL Labs (ssllabs.com/ssltest) to verify your chain.",
-                    ],
-                    [],
-                    94,
-                  ),
-                );
-              } else if (authCode === "ERR_TLS_CERT_ALTNAME_INVALID") {
-                // The certificate is valid, just not for this name. The SSL
-                // grade already capped itself to F for exactly this code
-                // (see hostnameMismatch below), and nothing told the user
-                // why: a wrong-domain certificate, the most common cause
-                // being a shared IP or load balancer serving the default
-                // site's certificate, produced a failing grade and an empty
-                // finding list.
-                const sans = String(
-                  (cert as { subjectaltname?: string } | undefined)
-                    ?.subjectaltname ?? "",
-                )
-                  .split(",")
-                  .map((n) => n.trim().replace(/^DNS:/, ""))
-                  .filter(Boolean)
-                  .slice(0, 5);
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.tlsCertificateHostnameMismatch, {
-                      category: emitCategory,
-                    }),
-                    `The TLS certificate is not valid for ${hostname}.`,
-                    `Certificate names: ${sans.length > 0 ? sans.join(", ") : cert?.subject?.CN || "(none listed)"}. Requested host: ${hostname}.`,
-                    "Browsers refuse the connection with a full-page warning, and a user who clicks through gets no assurance they reached this site rather than an interceptor.",
-                    "A certificate proves identity only for the names it lists. Serving one issued for another name is, to a client, indistinguishable from a man-in-the-middle presenting its own certificate.",
-                    [
-                      "Issue a certificate that lists this hostname in its Subject Alternative Names.",
-                      "If several sites share an IP or load balancer, confirm SNI is configured so each name gets its own certificate.",
-                      "Check whether the hostname is still meant to be served here at all; a stale DNS record pointing at shared hosting produces exactly this.",
-                    ],
-                    [],
-                    94,
-                  ),
-                );
-              } else {
-                // Everything else that failed verification: a private or
-                // enterprise CA, a revoked or not-yet-valid certificate, an
-                // unknown issuer. Reported rather than dropped, with the
-                // verifier's own code, which is the most precise statement
-                // of the problem available.
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.untrustedTlsCertificate, {
-                      category: emitCategory,
-                    }),
-                    "The TLS certificate could not be verified against a trusted certificate authority.",
-                    `Certificate verification failed: ${authCode || "unknown reason"}.${cert?.issuer?.CN ? ` Issuer: ${cert.issuer.CN}.` : ""}`,
-                    "Browsers and API clients that verify certificates will refuse the connection or warn the user.",
-                    "A certificate is only trusted when it chains to a root the client already trusts, is within its validity period and has not been revoked. This one failed at least one of those.",
-                    [
-                      "Use a certificate from a publicly trusted CA for anything served to the public internet.",
-                      "Check the certificate's validity dates and the full chain the server sends.",
-                      "Inspect the exact verification error with: openssl s_client -connect host:443 -servername host",
-                    ],
-                    [],
-                    90,
-                  ),
-                );
-              }
-            }
-
-            // Certificate expiry checks (only for validly-authorized certs;
-            // already reported above for CERT_HAS_EXPIRED)
-            if (authorized && cert && cert.valid_to) {
-              const expiryDate = new Date(cert.valid_to);
-              const daysUntilExpiry = Math.floor(
-                (expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
-              );
-              gradeDaysUntilExpiry = daysUntilExpiry;
-
-              if (daysUntilExpiry <= 14) {
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.tlsCertificateExpiringSoon, {
-                      category: emitCategory,
-                    }),
-                    "The TLS certificate will expire within 14 days.",
-                    `Certificate expires on ${cert.valid_to} (${daysUntilExpiry} days remaining).${cert.subject?.CN ? ` Subject: ${cert.subject.CN}.` : ""}`,
-                    "If the certificate expires, browsers will show security warnings and block access.",
-                    "TLS certificates have a finite validity period. Renewing before expiry prevents downtime.",
-                    [
-                      "Renew the certificate before it expires.",
-                      "Enable auto-renewal if available.",
-                    ],
-                    [],
-                    94,
-                  ),
-                );
-              } else if (daysUntilExpiry <= 30) {
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.tlsCertificateExpiringWithin30Days, {
-                      category: emitCategory,
-                    }),
-                    "The TLS certificate will expire within 30 days.",
-                    `Certificate expires on ${cert.valid_to} (${daysUntilExpiry} days remaining).`,
-                    "Plan to renew soon to avoid any disruption.",
-                    "Most CAs recommend renewing at least 30 days before expiry.",
-                    [
-                      "Schedule certificate renewal.",
-                      "Consider automating renewals with Let's Encrypt.",
-                    ],
-                    [],
-                    94,
-                  ),
-                );
-              }
-            }
-
-            // Subject Alternative Name presence — RFC 2818 deprecated CN-based
-            // hostname verification in favor of SAN, so a legacy CN-only cert
-            // fails modern verifiers regardless of chain trust.
-            if (cert && cert.subject && !cert.subjectaltname) {
-              findings.push(
-                makeVuln(
-                  url,
-                  asyncCheckVariant(A.subjectAlternativeNameSanMissing, {
-                    category: emitCategory,
-                  }),
-                  "The TLS certificate does not include a Subject Alternative Name (SAN) extension.",
-                  `Certificate for ${cert.subject?.CN ?? "(unknown)"} has no subjectAltName extension. Modern clients ignore the legacy CN field for hostname verification.`,
-                  "Certificates without SAN are treated as untrusted by current browsers and TLS libraries, breaking HTTPS for end users.",
-                  "RFC 2818 deprecated Common Name (CN) for hostname verification in favor of the SAN extension.",
-                  [
-                    "Reissue the certificate with all required hostnames in the SAN extension.",
-                    "Use certbot or acme.sh with -d flags to ensure SAN is populated.",
-                  ],
-                  [],
-                  92,
-                ),
-              );
-            }
-
-            // Expired intermediate/root in the chain — a still-valid leaf
-            // behind an expired intermediate fails strict chain validation
-            // even though the leaf's own expiry check above passes. Depth is
-            // capped and a self-reference (root's issuerCertificate points to
-            // itself) ends the walk so a malformed chain can't loop forever.
-            if (cert) {
-              let current = cert.issuerCertificate;
-              let depth = 0;
-              while (current && current.valid_to && depth < 6) {
-                if (new Date(current.valid_to).getTime() < Date.now()) {
-                  gradeChainHasExpiredCert = true;
-                  findings.push(
-                    makeVuln(
-                      url,
-                      asyncCheckVariant(A.expiredCertificateInCaChain, {
-                        category: emitCategory,
-                      }),
-                      "An intermediate or root certificate in the TLS chain has expired.",
-                      `Chain certificate "${current.subject?.CN ?? "(unknown)"}" expired on ${current.valid_to}.`,
-                      "Strict TLS clients reject the entire chain when any certificate in it, leaf, intermediate, or root, is expired, even if the leaf itself is still valid.",
-                      "Chain validation requires every certificate from leaf to trust anchor to be within its validity period.",
-                      [
-                        "Update the certificate bundle on your server to include the renewed intermediate CA certificate.",
-                        "Verify the full chain: openssl verify -CAfile ca-bundle.pem server.crt",
-                      ],
-                      [],
-                      92,
-                    ),
-                  );
-                  break;
-                }
-                if (current.issuerCertificate === current) break;
-                current = current.issuerCertificate;
-                depth++;
-              }
-            }
-
-            // RSA key size check — cert.bits is the public key size in bits,
-            // but that means something different for an EC key: a 256-bit
-            // ECDSA P-256 key (Cloudflare's own default, among many others)
-            // is not a weak RSA key, it is the modern, secure choice
-            // (~equivalent to RSA 3072). Node only populates asn1Curve /
-            // nistCurve on the peer certificate for EC keys, so use that to
-            // tell the two apart rather than assuming every certificate is
-            // RSA and flagging every EC cert as critically weak.
-            if (cert && typeof (cert as { bits?: number }).bits === "number") {
-              const certWithCurve = cert as {
-                bits: number;
-                asn1Curve?: string;
-                nistCurve?: string;
-              };
-              const bits = certWithCurve.bits;
-              const isEcKey = Boolean(
-                certWithCurve.asn1Curve || certWithCurve.nistCurve,
-              );
-              if (!isEcKey && bits < 2048) {
-                // Two different problems, the same split the DKIM key check
-                // makes. Below 1024 bits the key is within reach of published
-                // factoring work (RSA-829 was factored in 2020), so anyone
-                // who records the traffic can impersonate the site. From 1024
-                // to 2047 it is deprecated rather than broken: no public CA
-                // has issued one since 2014, so it is also a sign the
-                // certificate is self-managed or long out of date. Both used
-                // to be "high" with text saying either was "practically
-                // factorable", which is only true of the first.
-                const brokenKey = bits < 1024;
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.weakTlsCertificateKeySize, {
-                      category: emitCategory,
-                      ...(brokenKey ? { severity: "critical" as const } : {}),
-                    }),
-                    `TLS certificate uses a ${bits}-bit RSA key, below the 2048-bit minimum recommended by NIST.`,
-                    `Certificate public key size: ${bits} bits.`,
-                    brokenKey
-                      ? "RSA keys this small are within reach of published factoring work. Whoever factors it can impersonate the site and decrypt any recorded session that did not use forward secrecy."
-                      : "RSA keys below 2048 bits are deprecated and no longer issued by public certificate authorities. They are not known to be factored at this size, but their margin is gone, and the rest of the certificate's setup deserves a look.",
-                    "NIST SP 800-131A requires RSA keys of at least 2048 bits. Keys below this are considered weak by browsers and CAs.",
-                    [
-                      "Reissue the certificate with RSA 2048 or 3072 bits.",
-                      "Consider switching to ECDSA P-256 (equivalent security to RSA 3072, smaller key).",
-                    ],
-                    [
-                      {
-                        label: "Generate RSA 3072 CSR",
-                        language: "bash",
-                        code: "openssl req -newkey rsa:3072 -keyout server.key -out server.csr -nodes",
-                      },
-                    ],
-                    94,
-                  ),
-                );
-              } else if (
-                isEcKey &&
-                certWithCurve.nistCurve &&
-                !["P-256", "P-384", "P-521"].includes(certWithCurve.nistCurve)
-              ) {
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.ecdsaKeySizeBelowP256, {
-                      category: emitCategory,
-                    }),
-                    `TLS certificate uses ECDSA curve ${certWithCurve.nistCurve}, below the P-256 minimum recommended by NIST.`,
-                    `Certificate curve: ${certWithCurve.nistCurve}.`,
-                    "Smaller ECDSA curves provide weaker cryptographic guarantees than modern recommendations require.",
-                    "NIST recommends P-256 (secp256r1) as the minimum ECDSA curve for new certificates.",
-                    ["Reissue the certificate using ECDSA P-256 or P-384."],
-                    [],
-                    88,
-                  ),
-                );
-              }
-            }
-
-            if (protocol) {
-              const weakProtocols = ["TLSv1", "TLSv1.1", "SSLv3"];
-              if (weakProtocols.includes(protocol)) {
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.weakTlsProtocolVersion, {
-                      category: emitCategory,
-                    }),
-                    `The server negotiated ${protocol}, which is considered insecure.`,
-                    `Negotiated protocol: ${protocol}. TLS 1.0 and 1.1 are deprecated by RFC 8996.`,
-                    "Older TLS versions have known vulnerabilities (POODLE, BEAST, etc.).",
-                    "TLS 1.0 and 1.1 are deprecated. Only TLS 1.2 and 1.3 should be supported.",
-                    [
-                      "Disable TLS 1.0 and TLS 1.1.",
-                      "Ensure TLS 1.2 and TLS 1.3 are enabled.",
-                    ],
-                    [
-                      {
-                        label: "Nginx",
-                        language: "nginx",
-                        code: "ssl_protocols TLSv1.2 TLSv1.3;\nssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;",
-                      },
-                    ],
-                    94,
-                  ),
-                );
-              } else if (protocol === "TLSv1.2") {
-                // Server negotiated TLS 1.2 even though our client supports 1.3,
-                // indicating the server does not support TLS 1.3.
-                findings.push(
-                  makeVuln(
-                    url,
-                    asyncCheckVariant(A.tls13NotSupported, {
-                      category: emitCategory,
-                    }),
-                    "The server negotiated TLS 1.2 instead of TLS 1.3, suggesting TLS 1.3 is not enabled.",
-                    `Negotiated protocol: ${protocol}. TLS 1.3 offers improved performance (0-RTT) and stronger security guarantees.`,
-                    "TLS 1.2 is secure but lacks TLS 1.3 features: stronger key exchange, fewer round trips, and removal of legacy cipher suites.",
-                    "TLS 1.3 eliminates weak cipher suites, reduces handshake latency, and provides forward secrecy for all connections.",
-                    [
-                      "Enable TLS 1.3 on your server.",
-                      "TLS 1.2 can remain enabled alongside TLS 1.3 for backward compatibility.",
-                    ],
-                    [
-                      {
-                        label: "Nginx",
-                        language: "nginx",
-                        code: "ssl_protocols TLSv1.2 TLSv1.3;",
-                      },
-                    ],
-                    82,
-                  ),
-                );
-              }
-            }
-
-            // ── SSL/TLS letter grade ──────────────────────────────────────
-            // Score this endpoint from the same handshake signals gathered
-            // above (plus the negotiated cipher, captured here) and stash the
-            // letter in a per-host side channel that execute-scan.ts /
-            // execute-crawl-scan.ts read back into result_meta. Wrapped in its
-            // own guard so a grading hiccup can never change the findings.
-            try {
-              const cipher = socket!.getCipher();
-              const certForGrade = cert as {
-                bits?: number;
-                asn1Curve?: string;
-                nistCurve?: string;
-                subject?: unknown;
-                subjectaltname?: string;
-              } | null;
-              const graded = computeSslGrade({
-                reachedTls: true,
-                protocol,
-                authorized,
-                certExpired: authCode === "CERT_HAS_EXPIRED",
-                certSelfSigned:
-                  authCode === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
-                  authCode === "SELF_SIGNED_CERT_IN_CHAIN",
-                hostnameMismatch: authCode === "ERR_TLS_CERT_ALTNAME_INVALID",
-                incompleteChain: authCode === "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
-                chainHasExpiredCert: gradeChainHasExpiredCert,
-                missingSan: Boolean(
-                  certForGrade &&
-                  certForGrade.subject &&
-                  !certForGrade.subjectaltname,
-                ),
-                keyBits:
-                  typeof certForGrade?.bits === "number"
-                    ? certForGrade.bits
-                    : undefined,
-                isEcKey: Boolean(
-                  certForGrade?.asn1Curve || certForGrade?.nistCurve,
-                ),
-                nistCurve: certForGrade?.nistCurve,
-                cipherName: cipher?.name,
-                daysUntilExpiry: gradeDaysUntilExpiry,
-              });
-              if (graded) recordSslGrade(hostname, graded.grade);
-            } catch {
-              /* grade is best-effort and never affects findings */
-            }
-          } catch {
-            /* cert inspection failed */
-          }
-
-          socket!.destroy();
-          clearTimeout(timeout);
-          resolve(findings);
-        },
-      );
-
-      // With rejectUnauthorized: false, the error event only fires for actual
-      // network/socket errors — not for cert validation failures (those are
-      // handled in the secureConnect callback via socket.authorized).
-      socket.on("error", () => {
-        clearTimeout(timeout);
-        resolve(findings);
-      });
-      socket.on("timeout", () => {
-        socket!.destroy();
-        clearTimeout(timeout);
-        resolve(findings);
-      });
-    } catch {
-      clearTimeout(timeout);
-      resolve(findings);
+    if (!authorized) {
+      if (authCode === "CERT_HAS_EXPIRED") {
+        const expiredOn = cert?.valid_to ?? "unknown";
+        const daysAgo = cert?.valid_to
+          ? Math.floor(
+              (Date.now() - new Date(cert.valid_to).getTime()) /
+                (1000 * 60 * 60 * 24),
+            )
+          : null;
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.expiredTlsCertificate, {
+              category: emitCategory,
+            }),
+            "The TLS certificate has expired.",
+            `Certificate expired on ${expiredOn}${daysAgo !== null ? ` (${daysAgo} days ago)` : ""}.${cert?.subject?.CN ? ` Subject: ${cert.subject.CN}.` : ""}`,
+            "Browsers will block access with a full-page security warning.",
+            "An expired certificate means the server's identity can no longer be verified.",
+            [
+              "Renew the certificate immediately.",
+              "Set up automatic renewal with Let's Encrypt / certbot.",
+            ],
+            [],
+            94,
+          ),
+        );
+      } else if (
+        authCode === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+        authCode === "SELF_SIGNED_CERT_IN_CHAIN"
+      ) {
+        const issuerCN = cert?.issuer?.CN ?? "";
+        const subjectCN = cert?.subject?.CN ?? "";
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.selfSignedTlsCertificate, {
+              category: emitCategory,
+            }),
+            "The server uses a self-signed TLS certificate that is not trusted by browsers.",
+            `Certificate not issued by a trusted CA. Subject: ${subjectCN || "(unknown)"}. Issuer: ${issuerCN || "(self)"}.`,
+            "Browsers will show security warnings, making users vulnerable to real MITM attacks.",
+            "Self-signed certificates are not issued by a trusted CA. While they encrypt traffic, they don't verify the server's identity.",
+            [
+              "Obtain a certificate from a trusted CA (Let's Encrypt is free).",
+              "Use automated cert management (certbot, Caddy, or your hosting provider).",
+            ],
+            [],
+            94,
+          ),
+        );
+      } else if (authCode === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.incompleteTlsCertificateChain, {
+              category: emitCategory,
+            }),
+            "The TLS certificate chain is incomplete. Intermediate certificates may be missing.",
+            `Certificate authorization error: ${authCode}. The leaf certificate could not be chained to a trusted root.`,
+            "Some clients may not trust this certificate because the full chain to a root CA cannot be verified.",
+            "TLS certificates form a chain of trust. If intermediates are missing, some clients can't verify the chain.",
+            [
+              "Ensure your server sends the full certificate chain (leaf + intermediates).",
+              "Use SSL Labs (ssllabs.com/ssltest) to verify your chain.",
+            ],
+            [],
+            94,
+          ),
+        );
+      } else if (authCode === "ERR_TLS_CERT_ALTNAME_INVALID") {
+        // The certificate is valid, just not for this name. The SSL
+        // grade already capped itself to F for exactly this code
+        // (see hostnameMismatch below), and nothing told the user
+        // why: a wrong-domain certificate, the most common cause
+        // being a shared IP or load balancer serving the default
+        // site's certificate, produced a failing grade and an empty
+        // finding list.
+        const sans = String(
+          (cert as { subjectaltname?: string } | undefined)?.subjectaltname ??
+            "",
+        )
+          .split(",")
+          .map((n) => n.trim().replace(/^DNS:/, ""))
+          .filter(Boolean)
+          .slice(0, 5);
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.tlsCertificateHostnameMismatch, {
+              category: emitCategory,
+            }),
+            `The TLS certificate is not valid for ${hostname}.`,
+            `Certificate names: ${sans.length > 0 ? sans.join(", ") : cert?.subject?.CN || "(none listed)"}. Requested host: ${hostname}.`,
+            "Browsers refuse the connection with a full-page warning, and a user who clicks through gets no assurance they reached this site rather than an interceptor.",
+            "A certificate proves identity only for the names it lists. Serving one issued for another name is, to a client, indistinguishable from a man-in-the-middle presenting its own certificate.",
+            [
+              "Issue a certificate that lists this hostname in its Subject Alternative Names.",
+              "If several sites share an IP or load balancer, confirm SNI is configured so each name gets its own certificate.",
+              "Check whether the hostname is still meant to be served here at all; a stale DNS record pointing at shared hosting produces exactly this.",
+            ],
+            [],
+            94,
+          ),
+        );
+      } else {
+        // Everything else that failed verification: a private or
+        // enterprise CA, a revoked or not-yet-valid certificate, an
+        // unknown issuer. Reported rather than dropped, with the
+        // verifier's own code, which is the most precise statement
+        // of the problem available.
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.untrustedTlsCertificate, {
+              category: emitCategory,
+            }),
+            "The TLS certificate could not be verified against a trusted certificate authority.",
+            `Certificate verification failed: ${authCode || "unknown reason"}.${cert?.issuer?.CN ? ` Issuer: ${cert.issuer.CN}.` : ""}`,
+            "Browsers and API clients that verify certificates will refuse the connection or warn the user.",
+            "A certificate is only trusted when it chains to a root the client already trusts, is within its validity period and has not been revoked. This one failed at least one of those.",
+            [
+              "Use a certificate from a publicly trusted CA for anything served to the public internet.",
+              "Check the certificate's validity dates and the full chain the server sends.",
+              "Inspect the exact verification error with: openssl s_client -connect host:443 -servername host",
+            ],
+            [],
+            90,
+          ),
+        );
+      }
     }
-  });
+
+    // Certificate expiry checks (only for validly-authorized certs;
+    // already reported above for CERT_HAS_EXPIRED)
+    if (authorized && cert && cert.valid_to) {
+      const expiryDate = new Date(cert.valid_to);
+      const daysUntilExpiry = Math.floor(
+        (expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+      );
+      gradeDaysUntilExpiry = daysUntilExpiry;
+
+      if (daysUntilExpiry <= 14) {
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.tlsCertificateExpiringSoon, {
+              category: emitCategory,
+            }),
+            "The TLS certificate will expire within 14 days.",
+            `Certificate expires on ${cert.valid_to} (${daysUntilExpiry} days remaining).${cert.subject?.CN ? ` Subject: ${cert.subject.CN}.` : ""}`,
+            "If the certificate expires, browsers will show security warnings and block access.",
+            "TLS certificates have a finite validity period. Renewing before expiry prevents downtime.",
+            [
+              "Renew the certificate before it expires.",
+              "Enable auto-renewal if available.",
+            ],
+            [],
+            94,
+          ),
+        );
+      } else if (daysUntilExpiry <= 30) {
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.tlsCertificateExpiringWithin30Days, {
+              category: emitCategory,
+            }),
+            "The TLS certificate will expire within 30 days.",
+            `Certificate expires on ${cert.valid_to} (${daysUntilExpiry} days remaining).`,
+            "Plan to renew soon to avoid any disruption.",
+            "Most CAs recommend renewing at least 30 days before expiry.",
+            [
+              "Schedule certificate renewal.",
+              "Consider automating renewals with Let's Encrypt.",
+            ],
+            [],
+            94,
+          ),
+        );
+      }
+    }
+
+    // Subject Alternative Name presence — RFC 2818 deprecated CN-based
+    // hostname verification in favor of SAN, so a legacy CN-only cert
+    // fails modern verifiers regardless of chain trust.
+    if (cert && cert.subject && !cert.subjectaltname) {
+      findings.push(
+        makeVuln(
+          url,
+          asyncCheckVariant(A.subjectAlternativeNameSanMissing, {
+            category: emitCategory,
+          }),
+          "The TLS certificate does not include a Subject Alternative Name (SAN) extension.",
+          `Certificate for ${cert.subject?.CN ?? "(unknown)"} has no subjectAltName extension. Modern clients ignore the legacy CN field for hostname verification.`,
+          "Certificates without SAN are treated as untrusted by current browsers and TLS libraries, breaking HTTPS for end users.",
+          "RFC 2818 deprecated Common Name (CN) for hostname verification in favor of the SAN extension.",
+          [
+            "Reissue the certificate with all required hostnames in the SAN extension.",
+            "Use certbot or acme.sh with -d flags to ensure SAN is populated.",
+          ],
+          [],
+          92,
+        ),
+      );
+    }
+
+    // Expired intermediate/root in the chain — a still-valid leaf
+    // behind an expired intermediate fails strict chain validation
+    // even though the leaf's own expiry check above passes. Depth is
+    // capped and a self-reference (root's issuerCertificate points to
+    // itself) ends the walk so a malformed chain can't loop forever.
+    if (cert) {
+      let current = cert.issuerCertificate;
+      let depth = 0;
+      while (current && current.valid_to && depth < 6) {
+        if (new Date(current.valid_to).getTime() < Date.now()) {
+          gradeChainHasExpiredCert = true;
+          findings.push(
+            makeVuln(
+              url,
+              asyncCheckVariant(A.expiredCertificateInCaChain, {
+                category: emitCategory,
+              }),
+              "An intermediate or root certificate in the TLS chain has expired.",
+              `Chain certificate "${current.subject?.CN ?? "(unknown)"}" expired on ${current.valid_to}.`,
+              "Strict TLS clients reject the entire chain when any certificate in it, leaf, intermediate, or root, is expired, even if the leaf itself is still valid.",
+              "Chain validation requires every certificate from leaf to trust anchor to be within its validity period.",
+              [
+                "Update the certificate bundle on your server to include the renewed intermediate CA certificate.",
+                "Verify the full chain: openssl verify -CAfile ca-bundle.pem server.crt",
+              ],
+              [],
+              92,
+            ),
+          );
+          break;
+        }
+        if (current.issuerCertificate === current) break;
+        current = current.issuerCertificate;
+        depth++;
+      }
+    }
+
+    // RSA key size check — cert.bits is the public key size in bits,
+    // but that means something different for an EC key: a 256-bit
+    // ECDSA P-256 key (Cloudflare's own default, among many others)
+    // is not a weak RSA key, it is the modern, secure choice
+    // (~equivalent to RSA 3072). Node only populates asn1Curve /
+    // nistCurve on the peer certificate for EC keys, so use that to
+    // tell the two apart rather than assuming every certificate is
+    // RSA and flagging every EC cert as critically weak.
+    if (cert && typeof (cert as { bits?: number }).bits === "number") {
+      const certWithCurve = cert as {
+        bits: number;
+        asn1Curve?: string;
+        nistCurve?: string;
+      };
+      const bits = certWithCurve.bits;
+      const isEcKey = Boolean(
+        certWithCurve.asn1Curve || certWithCurve.nistCurve,
+      );
+      if (!isEcKey && bits < 2048) {
+        // Two different problems, the same split the DKIM key check
+        // makes. Below 1024 bits the key is within reach of published
+        // factoring work (RSA-829 was factored in 2020), so anyone
+        // who records the traffic can impersonate the site. From 1024
+        // to 2047 it is deprecated rather than broken: no public CA
+        // has issued one since 2014, so it is also a sign the
+        // certificate is self-managed or long out of date. Both used
+        // to be "high" with text saying either was "practically
+        // factorable", which is only true of the first.
+        const brokenKey = bits < 1024;
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.weakTlsCertificateKeySize, {
+              category: emitCategory,
+              ...(brokenKey ? { severity: "critical" as const } : {}),
+            }),
+            `TLS certificate uses a ${bits}-bit RSA key, below the 2048-bit minimum recommended by NIST.`,
+            `Certificate public key size: ${bits} bits.`,
+            brokenKey
+              ? "RSA keys this small are within reach of published factoring work. Whoever factors it can impersonate the site and decrypt any recorded session that did not use forward secrecy."
+              : "RSA keys below 2048 bits are deprecated and no longer issued by public certificate authorities. They are not known to be factored at this size, but their margin is gone, and the rest of the certificate's setup deserves a look.",
+            "NIST SP 800-131A requires RSA keys of at least 2048 bits. Keys below this are considered weak by browsers and CAs.",
+            [
+              "Reissue the certificate with RSA 2048 or 3072 bits.",
+              "Consider switching to ECDSA P-256 (equivalent security to RSA 3072, smaller key).",
+            ],
+            [
+              {
+                label: "Generate RSA 3072 CSR",
+                language: "bash",
+                code: "openssl req -newkey rsa:3072 -keyout server.key -out server.csr -nodes",
+              },
+            ],
+            94,
+          ),
+        );
+      } else if (
+        isEcKey &&
+        certWithCurve.nistCurve &&
+        !["P-256", "P-384", "P-521"].includes(certWithCurve.nistCurve)
+      ) {
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.ecdsaKeySizeBelowP256, {
+              category: emitCategory,
+            }),
+            `TLS certificate uses ECDSA curve ${certWithCurve.nistCurve}, below the P-256 minimum recommended by NIST.`,
+            `Certificate curve: ${certWithCurve.nistCurve}.`,
+            "Smaller ECDSA curves provide weaker cryptographic guarantees than modern recommendations require.",
+            "NIST recommends P-256 (secp256r1) as the minimum ECDSA curve for new certificates.",
+            ["Reissue the certificate using ECDSA P-256 or P-384."],
+            [],
+            88,
+          ),
+        );
+      }
+    }
+
+    if (protocol) {
+      const weakProtocols = ["TLSv1", "TLSv1.1", "SSLv3"];
+      if (weakProtocols.includes(protocol)) {
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.weakTlsProtocolVersion, {
+              category: emitCategory,
+            }),
+            `The server negotiated ${protocol}, which is considered insecure.`,
+            `Negotiated protocol: ${protocol}. TLS 1.0 and 1.1 are deprecated by RFC 8996.`,
+            "Older TLS versions have known vulnerabilities (POODLE, BEAST, etc.).",
+            "TLS 1.0 and 1.1 are deprecated. Only TLS 1.2 and 1.3 should be supported.",
+            [
+              "Disable TLS 1.0 and TLS 1.1.",
+              "Ensure TLS 1.2 and TLS 1.3 are enabled.",
+            ],
+            [
+              {
+                label: "Nginx",
+                language: "nginx",
+                code: "ssl_protocols TLSv1.2 TLSv1.3;\nssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;",
+              },
+            ],
+            94,
+          ),
+        );
+      } else if (protocol === "TLSv1.2") {
+        // Server negotiated TLS 1.2 even though our client supports 1.3,
+        // indicating the server does not support TLS 1.3.
+        findings.push(
+          makeVuln(
+            url,
+            asyncCheckVariant(A.tls13NotSupported, {
+              category: emitCategory,
+            }),
+            "The server negotiated TLS 1.2 instead of TLS 1.3, suggesting TLS 1.3 is not enabled.",
+            `Negotiated protocol: ${protocol}. TLS 1.3 offers improved performance (0-RTT) and stronger security guarantees.`,
+            "TLS 1.2 is secure but lacks TLS 1.3 features: stronger key exchange, fewer round trips, and removal of legacy cipher suites.",
+            "TLS 1.3 eliminates weak cipher suites, reduces handshake latency, and provides forward secrecy for all connections.",
+            [
+              "Enable TLS 1.3 on your server.",
+              "TLS 1.2 can remain enabled alongside TLS 1.3 for backward compatibility.",
+            ],
+            [
+              {
+                label: "Nginx",
+                language: "nginx",
+                code: "ssl_protocols TLSv1.2 TLSv1.3;",
+              },
+            ],
+            82,
+          ),
+        );
+      }
+    }
+
+    // ── SSL/TLS letter grade ──────────────────────────────────────
+    // Score this endpoint from the same handshake signals gathered
+    // above (plus the negotiated cipher, captured here) and stash the
+    // letter in a per-host side channel that execute-scan.ts /
+    // execute-crawl-scan.ts read back into result_meta. Wrapped in its
+    // own guard so a grading hiccup can never change the findings.
+    try {
+      const cipher = hs.cipher;
+      const certForGrade = cert as {
+        bits?: number;
+        asn1Curve?: string;
+        nistCurve?: string;
+        subject?: unknown;
+        subjectaltname?: string;
+      } | null;
+      const graded = computeSslGrade({
+        reachedTls: true,
+        protocol,
+        authorized,
+        certExpired: authCode === "CERT_HAS_EXPIRED",
+        certSelfSigned:
+          authCode === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+          authCode === "SELF_SIGNED_CERT_IN_CHAIN",
+        hostnameMismatch: authCode === "ERR_TLS_CERT_ALTNAME_INVALID",
+        incompleteChain: authCode === "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+        chainHasExpiredCert: gradeChainHasExpiredCert,
+        missingSan: Boolean(
+          certForGrade && certForGrade.subject && !certForGrade.subjectaltname,
+        ),
+        keyBits:
+          typeof certForGrade?.bits === "number"
+            ? certForGrade.bits
+            : undefined,
+        isEcKey: Boolean(certForGrade?.asn1Curve || certForGrade?.nistCurve),
+        nistCurve: certForGrade?.nistCurve,
+        cipherName: cipher?.name,
+        daysUntilExpiry: gradeDaysUntilExpiry,
+      });
+      if (graded) recordSslGrade(hostname, graded.grade);
+    } catch {
+      /* grade is best-effort and never affects findings */
+    }
+  } catch {
+    /* cert inspection failed */
+  }
+  return findings;
 }
 
 // ── Live Fetch Checks (robots.txt, security.txt) ─────────────────────────────
