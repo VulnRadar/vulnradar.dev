@@ -16,7 +16,10 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
   validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
 }));
 
-import { checkActiveProbes } from "@/lib/scanner/active-probes/xss-canary";
+import {
+  checkActiveProbes,
+  reflectsAsMarkup,
+} from "@/lib/scanner/active-probes/xss-canary";
 
 function htmlResponse(body: string): Response {
   return new Response(body, {
@@ -289,5 +292,40 @@ describe("cancellation", () => {
     expect(findings).toEqual([]);
     expect(mockSafeFetch).not.toHaveBeenCalled();
     expect(mockValidateScanTarget).not.toHaveBeenCalled();
+  });
+});
+
+describe("reflectsAsMarkup", () => {
+  const marker = "<vrdeadbeefxss>";
+
+  it("counts a reflection into ordinary markup", () => {
+    expect(reflectsAsMarkup(`<p>Results for: ${marker}</p>`, marker)).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    [
+      "a textarea redisplaying what was typed",
+      `<textarea name="q">${marker}</textarea>`,
+    ],
+    ["the page title", `<title>Search: ${marker}</title>`],
+    ["an HTML comment", `<!-- query: ${marker} -->`],
+    ["a quoted attribute value", `<input value="${marker}">`],
+    ["a script string", `<script>var q = "${marker}";</script>`],
+    ["inert template content", `<template>${marker}</template>`],
+  ])("does not count %s", (_label, html) => {
+    expect(reflectsAsMarkup(`<html><body>${html}</body></html>`, marker)).toBe(
+      false,
+    );
+  });
+
+  it("still counts markup when an inert copy comes first", () => {
+    expect(
+      reflectsAsMarkup(
+        `<textarea>${marker}</textarea><div>${marker}</div>`,
+        marker,
+      ),
+    ).toBe(true);
   });
 });

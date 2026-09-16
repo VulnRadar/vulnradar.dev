@@ -1,11 +1,66 @@
 import { randomBytes } from "node:crypto";
 import { safeFetch } from "../safe-fetch";
+import { stripTagElements } from "../checks/_tag-scan";
 import type { Vulnerability } from "../types";
 import {
   buildFinding,
   buildProbeRequest,
   discoverProbableForms,
 } from "./shared";
+
+/**
+ * Elements whose content the HTML parser reads as text, or parses but never
+ * renders, so a `<canary>` inside one is not a tag: textarea and title are
+ * RCDATA, script, style, xmp and noscript (with scripting on) are raw text,
+ * and template content is inert.
+ */
+const INERT_ELEMENTS = [
+  "textarea",
+  "title",
+  "script",
+  "style",
+  "xmp",
+  "noscript",
+  "template",
+];
+
+/**
+ * Whether `marker` appears where a browser would parse it as a tag.
+ *
+ * `includes` alone reported a critical XSS for a canary echoed into a
+ * textarea (the normal way a form redisplays what was typed), a page title
+ * ("Search results for <canary>"), an HTML comment, or a quoted attribute
+ * value, none of which executes. Those are the most common reflections there
+ * are, and none of them is cross-site scripting.
+ */
+export function reflectsAsMarkup(html: string, marker: string): boolean {
+  let body = stripTagElements(html, INERT_ELEMENTS);
+  // Comments, one forward pass.
+  const parts: string[] = [];
+  let i = 0;
+  while (i < body.length) {
+    const open = body.indexOf("<!--", i);
+    if (open === -1) {
+      parts.push(body.slice(i));
+      break;
+    }
+    parts.push(body.slice(i, open));
+    const close = body.indexOf("-->", open + 4);
+    if (close === -1) break;
+    i = close + 3;
+  }
+  body = parts.join("");
+  let at = body.indexOf(marker);
+  while (at !== -1) {
+    // Inside another tag's attributes: the last "<" before it is later than
+    // the last ">", so the marker is part of an attribute value.
+    const insideTag =
+      body.lastIndexOf("<", at - 1) > body.lastIndexOf(">", at - 1);
+    if (!insideTag) return true;
+    at = body.indexOf(marker, at + marker.length);
+  }
+  return false;
+}
 
 /**
  * Fetches `url`, finds every form on the page, and submits each one (up to
@@ -69,7 +124,7 @@ export async function checkActiveProbes(
       if (!contentType && /^\s*[{[]/.test(responseText)) {
         continue;
       }
-      if (responseText.includes(marker)) {
+      if (reflectsAsMarkup(responseText, marker)) {
         // form.action alone isn't a unique distinguisher: two different
         // forms on the same page (a header search box and a body search
         // form, say) can share the same action URL, which would collapse
