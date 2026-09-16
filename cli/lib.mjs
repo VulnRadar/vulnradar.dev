@@ -44,6 +44,12 @@ export const DEFAULTS = {
   crawlTimeout: 900,
   pollInterval: 5,
   json: false,
+  /** Scanner categories to run, or null for the server's default set. */
+  scanners: null,
+  /** true/false sets visibility explicitly; undefined leaves the server default. */
+  isPublic: undefined,
+  /** Teams to share the scan with. Empty means a personal scan. */
+  teamIds: [],
 };
 
 /**
@@ -57,6 +63,7 @@ export function parseArgs(argv) {
     command: undefined,
     url: undefined,
     help: false,
+    version: false,
     ...DEFAULTS,
     // Env forms sit after the spread so they override the shipped defaults
     // and are still beaten by an explicit flag below. VULNRADAR_API_BASE is
@@ -134,6 +141,9 @@ export function parseArgs(argv) {
     return n;
   };
 
+  // Fresh per call: DEFAULTS.teamIds is a shared array.
+  out.teamIds = [];
+
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
@@ -141,6 +151,44 @@ export function parseArgs(argv) {
       case "--help":
         out.help = true;
         break;
+      case "-v":
+      case "--version":
+        out.version = true;
+        break;
+      case "--scanners": {
+        const raw = takeValue(arg, argv[++i]);
+        if (raw === null) break;
+        const list = raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (list.length === 0) {
+          out.error = `${arg} expects a comma-separated list of categories.`;
+        } else {
+          out.scanners = list;
+        }
+        break;
+      }
+      case "--public":
+      case "--private": {
+        const wanted = arg === "--public";
+        if (out.isPublic !== undefined && out.isPublic !== wanted) {
+          out.error = "--public and --private cannot be used together.";
+        } else {
+          out.isPublic = wanted;
+        }
+        break;
+      }
+      case "--team-id": {
+        const n = takeNumber(arg, argv[++i]);
+        if (n === null) break;
+        if (!Number.isInteger(n) || n <= 0) {
+          out.error = `${arg} expects a positive integer team id, got ${n}.`;
+        } else if (!out.teamIds.includes(n)) {
+          out.teamIds.push(n);
+        }
+        break;
+      }
       case "--crawl":
         out.crawl = true;
         break;
@@ -194,6 +242,34 @@ export function parseArgs(argv) {
 }
 
 /**
+ * The JSON body POSTed to start a scan. Only the fields the caller set are
+ * sent, so the server's own defaults apply to everything else exactly as they
+ * do for a request from the web app. It used to be `{ url }` whatever flags
+ * existed, so a CI run could not narrow the scanners, keep a scan out of the
+ * public directory, or put the result in front of its team.
+ */
+export function buildScanBody(opts) {
+  const body = { url: opts.url };
+  if (opts.scanners && opts.scanners.length > 0) body.scanners = opts.scanners;
+  if (typeof opts.isPublic === "boolean") body.isPublic = opts.isPublic;
+  if (opts.teamIds && opts.teamIds.length > 0) body.teamIds = opts.teamIds;
+  return body;
+}
+
+/**
+ * Seconds to wait before retrying after a 429, from its Retry-After header:
+ * either a number of seconds or an HTTP date. null when absent or unusable.
+ */
+export function retryAfterSeconds(header, now = Date.now()) {
+  if (!header) return null;
+  const trimmed = String(header).trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  const at = Date.parse(trimmed);
+  if (Number.isNaN(at)) return null;
+  return Math.max(0, Math.ceil((at - now) / 1000));
+}
+
+/**
  * Decide whether the scan's severity counts breach the configured thresholds.
  * Mirrors the GitHub Action / GitLab template: critical and high always gate,
  * medium only when maxMedium >= 0. Returns { failed, reasons }.
@@ -239,7 +315,13 @@ Options:
   --timeout <seconds>    Give up waiting for the scan (default ${DEFAULTS.timeout},
                          or ${DEFAULTS.crawlTimeout} with --crawl, matching the server's budget).
   --poll-interval <s>    Seconds between status polls (default ${DEFAULTS.pollInterval}).
+  --scanners <list>      Comma-separated categories to run, e.g. headers,ssl,content
+                         (default: the server's standard set).
+  --public | --private   List the scan in the public directory, or keep it out.
+                         Omitted, your account's default applies.
+  --team-id <id>         Share the scan with a team you manage. Repeat for several.
   --json                 Print the raw completed result as JSON.
+  -v, --version          Print the CLI version.
   -h, --help             Show this help.
 
 Exit codes:

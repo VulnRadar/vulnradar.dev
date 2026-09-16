@@ -435,6 +435,12 @@ const CHANGELOG: Release[] = [
         category: "extension",
       },
       {
+        icon: Wrench,
+        label: "The CLI Can Choose Scanners, Visibility and Teams",
+        desc: "The command-line tool started every scan with nothing but the URL, whatever the web app or the API allowed. It now takes --scanners to run only the categories a pipeline cares about, --public or --private to decide whether the result is listed in the public directory, and --team-id, repeatable, to share the result with the teams that need it. A rate-limited start waits for the time the server asks and tries again instead of failing the build, every request identifies itself as the CLI, and --version prints the version. Its tests now check what the tool sends, not only how it reacts to the reply.",
+        category: "cli",
+      },
+      {
         icon: Keyboard,
         label: "Everything Draggable Now Works From the Keyboard",
         desc: "The profile picture cropper could only be repositioned by dragging, and the assistant panel's resize handles were mouse-only elements with no name and no focus. The cropper now moves with the arrow keys (hold Shift for larger steps). The resize handles are focusable, labelled separators that respond to the arrow keys, Home and End.",

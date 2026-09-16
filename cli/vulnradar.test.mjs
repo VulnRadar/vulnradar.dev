@@ -4,7 +4,14 @@ import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { parseArgs, evaluateGate, DEFAULTS, EXIT } from "./lib.mjs";
+import {
+  parseArgs,
+  evaluateGate,
+  buildScanBody,
+  retryAfterSeconds,
+  DEFAULTS,
+  EXIT,
+} from "./lib.mjs";
 
 const CLI = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -20,15 +27,38 @@ const CLI = path.join(
  */
 function runCli(args, { routes = {}, env = {} } = {}) {
   return new Promise((resolve, reject) => {
+    // Every request the CLI made, so a test can assert what was sent and not
+    // only how the CLI reacted to the reply.
+    const requests = [];
+    const hits = new Map();
     const server = createServer((req, res) => {
-      const route = Object.keys(routes).find((k) => req.url.startsWith(k));
-      if (!route) {
-        res.writeHead(404).end("{}");
-        return;
-      }
-      const { status = 200, body = {} } = routes[route];
-      res.writeHead(status, { "Content-Type": "application/json" });
-      res.end(typeof body === "string" ? body : JSON.stringify(body));
+      let raw = "";
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", () => {
+        requests.push({
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+          body: raw ? JSON.parse(raw) : undefined,
+        });
+        const route = Object.keys(routes).find((k) => req.url.startsWith(k));
+        if (!route) {
+          res.writeHead(404).end("{}");
+          return;
+        }
+        const entry = routes[route];
+        // A route may be a list of replies, served in order with the last one
+        // repeated, to script a 429 followed by success.
+        let reply = entry;
+        if (Array.isArray(entry)) {
+          const n = hits.get(route) ?? 0;
+          hits.set(route, n + 1);
+          reply = entry[Math.min(n, entry.length - 1)];
+        }
+        const { status = 200, body = {}, headers: extra = {} } = reply;
+        res.writeHead(status, { "Content-Type": "application/json", ...extra });
+        res.end(typeof body === "string" ? body : JSON.stringify(body));
+      });
     });
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address();
@@ -45,7 +75,7 @@ function runCli(args, { routes = {}, env = {} } = {}) {
         (err, stdout, stderr) => {
           server.close();
           if (err && typeof err.code !== "number") return reject(err);
-          resolve({ code: err ? err.code : 0, stdout, stderr });
+          resolve({ code: err ? err.code : 0, stdout, stderr, requests });
         },
       );
     });
@@ -641,4 +671,135 @@ test("--help succeeds and writes usage to stdout", async () => {
   const { code, stdout } = await runCli(["--help"], { routes: {} });
   assert.equal(code, EXIT.OK);
   assert.match(stdout, /Usage:/);
+});
+
+test("parseArgs: --scanners, --public/--private and repeated --team-id", () => {
+  const o = parseArgs([
+    "scan",
+    "u",
+    "--scanners",
+    "headers, ssl,,content",
+    "--private",
+    "--team-id",
+    "7",
+    "--team-id",
+    "9",
+    "--team-id",
+    "7",
+  ]);
+  assert.equal(o.error, undefined);
+  assert.deepEqual(o.scanners, ["headers", "ssl", "content"]);
+  assert.equal(o.isPublic, false);
+  assert.deepEqual(o.teamIds, [7, 9]);
+});
+
+test("parseArgs: --public with --private is an error, and team ids must be positive integers", () => {
+  assert.match(
+    parseArgs(["scan", "u", "--public", "--private"]).error,
+    /cannot be used together/,
+  );
+  assert.match(
+    parseArgs(["scan", "u", "--team-id", "1.5"]).error,
+    /positive integer/,
+  );
+  assert.match(
+    parseArgs(["scan", "u", "--scanners", ","]).error,
+    /comma-separated/,
+  );
+  // Nothing leaks between calls through the shared DEFAULTS array.
+  parseArgs(["scan", "u", "--team-id", "3"]);
+  assert.deepEqual(parseArgs(["scan", "u"]).teamIds, []);
+});
+
+test("buildScanBody sends only what the caller set", () => {
+  assert.deepEqual(buildScanBody(parseArgs(["scan", "https://x.com"])), {
+    url: "https://x.com",
+  });
+  assert.deepEqual(
+    buildScanBody(
+      parseArgs([
+        "scan",
+        "https://x.com",
+        "--scanners",
+        "headers",
+        "--public",
+        "--team-id",
+        "4",
+      ]),
+    ),
+    {
+      url: "https://x.com",
+      scanners: ["headers"],
+      isPublic: true,
+      teamIds: [4],
+    },
+  );
+});
+
+test("retryAfterSeconds reads seconds and HTTP dates", () => {
+  assert.equal(retryAfterSeconds("12"), 12);
+  const now = Date.parse("2026-01-01T00:00:00Z");
+  assert.equal(retryAfterSeconds("Thu, 01 Jan 2026 00:00:30 GMT", now), 30);
+  assert.equal(retryAfterSeconds("soon"), null);
+  assert.equal(retryAfterSeconds(null), null);
+});
+
+test("the CLI sends the chosen options and identifies itself", async () => {
+  const { code, requests } = await runCli(
+    [
+      "scan",
+      "https://x.com",
+      "--api-key",
+      "k",
+      "--scanners",
+      "headers,ssl",
+      "--private",
+      "--team-id",
+      "12",
+      "--poll-interval",
+      "0",
+    ],
+    {
+      routes: {
+        "/scan/status/": { body: completed({ critical: 0, high: 0 }) },
+        "/scan": { body: { scanId: "s1" } },
+      },
+    },
+  );
+  assert.equal(code, EXIT.OK);
+  const create = requests.find((r) => r.method === "POST");
+  assert.deepEqual(create.body, {
+    url: "https://x.com",
+    scanners: ["headers", "ssl"],
+    isPublic: false,
+    teamIds: [12],
+  });
+  assert.match(create.headers["user-agent"], /^vulnradar-cli\/\d+\.\d+\.\d+$/);
+});
+
+test("the CLI waits out a 429 and then starts the scan", async () => {
+  const { code, requests } = await runCli(
+    ["scan", "https://x.com", "--api-key", "k", "--poll-interval", "0"],
+    {
+      routes: {
+        "/scan/status/": { body: completed({ critical: 0, high: 0 }) },
+        "/scan": [
+          {
+            status: 429,
+            body: { error: "slow down" },
+            headers: { "Retry-After": "0" },
+          },
+          { body: { scanId: "s2" } },
+        ],
+      },
+    },
+  );
+  assert.equal(code, EXIT.OK);
+  assert.equal(requests.filter((r) => r.method === "POST").length, 2);
+});
+
+test("--version prints the package version", async () => {
+  const { code, stdout } = await runCli(["--version"]);
+  assert.equal(code, EXIT.OK);
+  assert.match(stdout.trim(), /^\d+\.\d+\.\d+$/);
 });

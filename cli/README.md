@@ -59,8 +59,18 @@ vulnradar scan <url> [options]
                          with --crawl, which matches the larger budget the
                          server gives a crawl.
   --poll-interval <s>    Seconds between status polls. Default: 5
+  --scanners <list>      Comma-separated categories to run, e.g.
+                         headers,ssl,content. Default: the server's standard set.
+  --public | --private   List the scan in the public directory, or keep it out.
+                         Omitted, your account's default applies.
+  --team-id <id>         Share the scan with a team you manage. Repeat for several.
   --json                 Print the raw completed result as JSON.
+  -v, --version          Print the CLI version.
   -h, --help             Show help.
+
+Starting a scan that the API rate-limits (HTTP 429) is retried after the
+`Retry-After` it sends, up to three times and never past `--timeout`. Every
+request carries `User-Agent: vulnradar-cli/<version>`.
 ```
 
 ### Exit codes

@@ -5,7 +5,20 @@
 // of the project. It used to advertise Node 18, which went end of life in
 // April 2025 and is exercised by nothing here.
 
-import { parseArgs, evaluateGate, USAGE, EXIT } from "./lib.mjs";
+import { readFileSync } from "node:fs";
+import {
+  parseArgs,
+  evaluateGate,
+  buildScanBody,
+  retryAfterSeconds,
+  USAGE,
+  EXIT,
+} from "./lib.mjs";
+
+/** package.json ships with every npm package, so this always resolves. */
+const VERSION = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+).version;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -35,6 +48,9 @@ const REQUEST_TIMEOUT_MS = 30_000;
  * the user's history anyway.
  */
 const MAX_CONSECUTIVE_POLL_FAILURES = 5;
+
+/** How many times starting a scan is retried after a 429. */
+const MAX_CREATE_RETRIES = 3;
 
 /** The overall budget ran out mid-request. */
 class DeadlineError extends Error {}
@@ -129,6 +145,10 @@ async function main() {
     console.log(USAGE);
     process.exit(EXIT.OK);
   }
+  if (opts.version) {
+    console.log(VERSION);
+    process.exit(EXIT.OK);
+  }
   if (!opts.command) {
     console.error(USAGE);
     fail(opts, "Error: a command is required.");
@@ -150,6 +170,9 @@ async function main() {
   const headers = {
     Authorization: `Bearer ${opts.apiKey}`,
     "Content-Type": "application/json",
+    // Names the client in the API's logs and rate-limit records, so a CI
+    // integration is distinguishable from a browser or a script.
+    "User-Agent": `vulnradar-cli/${VERSION}`,
   };
   const endpoint = `${opts.apiBase}/scan${opts.crawl ? "/crawl" : ""}`;
 
@@ -174,15 +197,26 @@ async function main() {
   };
 
   // 1. Start the scan (returns a scanId; findings arrive via status polling).
+  // A 429 is retried after its Retry-After, up to MAX_CREATE_RETRIES times
+  // and never past the deadline. Two pipelines starting at the same moment
+  // used to fail the second one outright, although waiting a few seconds is
+  // all the server asked for.
   let createRes;
-  try {
-    createRes = await fetchBounded(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ url: opts.url }),
-    });
-  } catch (err) {
-    fail(opts, `Could not reach ${endpoint}: ${describeFetchError(err)}`);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      createRes = await fetchBounded(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(buildScanBody(opts)),
+      });
+    } catch (err) {
+      fail(opts, `Could not reach ${endpoint}: ${describeFetchError(err)}`);
+    }
+    if (createRes.status !== 429 || attempt >= MAX_CREATE_RETRIES) break;
+    const wait = retryAfterSeconds(createRes.headers.get("retry-after"));
+    if (wait === null || Date.now() + wait * 1000 >= deadline) break;
+    say(`Rate limited; retrying in ${wait}s.`);
+    await sleep(wait * 1000);
   }
   if (!createRes.ok) {
     fail(

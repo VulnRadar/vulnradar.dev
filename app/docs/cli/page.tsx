@@ -164,9 +164,29 @@ npm install -g .`}
               def: "5",
             },
             {
+              flag: "--scanners <list>",
+              desc: "Comma-separated categories to run, e.g. headers,ssl,content. The same names the scan API's scanners field takes.",
+              def: "server's standard set",
+            },
+            {
+              flag: "--public / --private",
+              desc: "List the scan in the public scans directory, or keep it out of it.",
+              def: "account default",
+            },
+            {
+              flag: "--team-id <id>",
+              desc: "Share the scan with a team you manage. Repeat the flag for several teams.",
+              def: "personal",
+            },
+            {
               flag: "--json",
               desc: "Print the raw completed result as JSON.",
               def: "off",
+            },
+            {
+              flag: "-v, --version",
+              desc: "Print the CLI version.",
+              def: "",
             },
             { flag: "-h, --help", desc: "Show usage.", def: "" },
           ]}
