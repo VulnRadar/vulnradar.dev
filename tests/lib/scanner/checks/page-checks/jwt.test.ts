@@ -57,6 +57,12 @@ const fixtures: PageCheckFixtures = {
   ],
   "page-jwt-in-web-storage": [
     {
+      description: "regression: the call quoted in a flight payload",
+      body: '<html><body><pre>localStorage.setItem("access_token", t)</pre><script>self.__next_f.push([1,"localStorage.setItem(\"access_token\", t)"])</script></body></html>',
+      expect: "skip",
+    },
+
+    {
       description: "localStorage.setItem with a token-shaped key",
       body: `<script>localStorage.setItem("access_token", "abc123");</script>`,
       expect: "fire",

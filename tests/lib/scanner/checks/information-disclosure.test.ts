@@ -15,6 +15,19 @@ import { detectors } from "@/lib/scanner/checks/information-disclosure";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "dotnet-core-developer-exception-page": [
+    {
+      description: "the Developer Exception Page fires",
+      body: '<html><body><h1>An unhandled exception occurred while processing the request.</h1><div id="stackpage" class="page">at Microsoft.AspNetCore.Mvc.Infrastructure</div></body></html>',
+      expect: "fire",
+    },
+    {
+      description: "regression: the page described in prose",
+      body: "<p>An unhandled exception occurred while processing the request is what Microsoft.AspNetCore shows in Development.</p>",
+      expect: "skip",
+    },
+  ],
+
   "grafana-version-exposure": [
     {
       // The definition cites CVE-2021-43798, a KEV-listed unauthenticated
@@ -41,9 +54,20 @@ const fixtures: DetectorFixtures = {
     },
     {
       description: "a version parsed out of the page body, not a header",
-      body: "<html><body>Grafana v9.5.0</body></html>",
+      body: '<html><body><script>window.grafanaBootData = {"settings":{"buildInfo":{"hideVersion":false,"version":"9.5.0","commit":"abc"}}};</script></body></html>',
       expect: "fire",
       evidenceIncludes: "page body",
+    },
+    {
+      description: "the version /api/health returns",
+      body: '{"commit":"abc123","database":"ok","version":"8.3.0"}',
+      expect: "fire",
+      evidenceIncludes: "CVE-2021-43798",
+    },
+    {
+      description: "regression: a version named in a sentence",
+      body: "<p>Grafana v8.0.0 shipped the path traversal fixed in 8.3.1.</p>",
+      expect: "skip",
     },
     {
       description: "no version anywhere does not fire",
@@ -285,8 +309,13 @@ const fixtures: DetectorFixtures = {
   "nginx-version-404-disclosure": [
     {
       description: "nginx 404 page",
-      body: "<html><body>nginx/1.18.0 (Ubuntu)</body></html>",
+      body: "<html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center><hr><center>nginx/1.18.0 (Ubuntu)</center></body></html>",
       expect: "fire",
+    },
+    {
+      description: "regression: the version string in a sentence",
+      body: "<p>Upgrade anything older than nginx/1.18.0 before exposing it.</p>",
+      expect: "skip",
     },
     {
       description:
@@ -299,8 +328,18 @@ const fixtures: DetectorFixtures = {
   "apache-version-404-disclosure": [
     {
       description: "Apache 404 page",
-      body: "<html><body>Apache/2.4.41 (Ubuntu) Server at example.com Port 443</body></html>",
+      body: "<html><body><h1>Not Found</h1><hr><address>Apache/2.4.41 (Ubuntu) Server at example.com Port 443</address></body></html>",
       expect: "fire",
+    },
+    {
+      description: "the footer with ServerTokens Prod still names Apache",
+      body: "<html><body><h1>Forbidden</h1><hr><address>Apache Server at example.com Port 80</address></body></html>",
+      expect: "fire",
+    },
+    {
+      description: "regression: the signature quoted in prose",
+      body: "<p>Default pages print Apache/2.4.41 (Ubuntu) Server at example.com Port 443 unless ServerSignature is Off.</p>",
+      expect: "skip",
     },
   ],
 
@@ -398,17 +437,37 @@ const fixtures: DetectorFixtures = {
 
   "jenkins-version-exposure": [
     {
-      description: "Jenkins version",
-      body: "<html><body>Jenkins ver. 2.387.3</body></html>",
+      description: "Jenkins version on the head element",
+      body: '<html><head data-rooturl="" data-resurl="/static/abc" data-version="2.387.3"><title>Dashboard [Jenkins]</title></head><body></body></html>',
       expect: "fire",
+    },
+    {
+      description: "Jenkins version footer",
+      body: '<html><body><span class="jenkins_ver"><a href="https://www.jenkins.io/">Jenkins 2.387.3</a></span></body></html>',
+      expect: "fire",
+    },
+    {
+      description: "regression: the version and header named in prose",
+      body: "<p>Jenkins ver. 2.387.3 sends an X-Jenkins header on every response.</p>",
+      expect: "skip",
     },
   ],
 
   "aws-s3-nosuchbucket-error": [
     {
-      description: "S3 NoSuchBucket error",
-      body: "<html><body>NoSuchBucket: The specified bucket does not exist</body></html>",
+      description: "S3 NoSuchBucket XML error",
+      body: "<Error><Code>NoSuchBucket</Code><Message>The specified bucket does not exist</Message></Error>",
       expect: "fire",
+    },
+    {
+      description: "S3 website endpoint 404 page",
+      body: "<html><body><h1>404 Not Found</h1><ul><li>Code: NoSuchBucket</li><li>Message: The specified bucket does not exist</li></ul></body></html>",
+      expect: "fire",
+    },
+    {
+      description: "regression: the error code named in prose",
+      body: "<p>A NoSuchBucket: response means the bucket does not exist.</p>",
+      expect: "skip",
     },
   ],
 

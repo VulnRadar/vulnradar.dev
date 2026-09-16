@@ -17,6 +17,31 @@ import { detectors } from "@/lib/scanner/checks/vibe-code";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "vibe-insecure-deserialize": [
+    {
+      description: "node-serialize loaded in script fires",
+      body: "<html><body><script>const serialize = require('node-serialize');</script></body></html>",
+      expect: "fire",
+    },
+    {
+      description: "regression: a link whose slug names the module",
+      body: '<html><body><script src="/app.js"></script><a href="/checks/code-deser-node-serialize">node-serialize</a></body></html>',
+      expect: "skip",
+    },
+  ],
+  "vibe-debug-endpoint": [
+    {
+      description: "a debug route in script fires",
+      body: "<html><body><script>app.get('/debug', handler);</script></body></html>",
+      expect: "fire",
+    },
+    {
+      description: "regression: a debug endpoint described in prose",
+      body: "<html><body><p>Remove the /debug endpoint before launch.</p></body></html>",
+      expect: "skip",
+    },
+  ],
+
   "vibe-no-input-validation": [
     {
       // The check has never fired. Its "is there validation" test was a

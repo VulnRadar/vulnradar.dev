@@ -17,7 +17,7 @@ import {
   type Element,
   type Token,
 } from "./html/tokenizer";
-import { getSetCookies } from "./_helpers";
+import { getSetCookies, isAuthoredInlineScript } from "./_helpers";
 
 export interface ScriptRef {
   /** `src` attribute exactly as written, or null for an inline script. */
@@ -612,8 +612,17 @@ export function buildPageContext(
   const comments: string[] = [];
   for (const t of tokens) if (t.kind === "comment") comments.push(t.text);
 
+  // Authored script only, by the rule extractScriptContents applies: a
+  // JSON-LD block or a Next.js flight payload carries the page's own text,
+  // so a page documenting localStorage.setItem("token", ...) was reported as
+  // writing a token to web storage.
   const inlineScript = scripts
-    .filter((s) => !s.src && s.code.trim().length > 0)
+    .filter(
+      (s) =>
+        !s.src &&
+        s.code.trim().length > 0 &&
+        isAuthoredInlineScript(s.type, s.code),
+    )
     .map((s) => s.code)
     .join("\n");
 

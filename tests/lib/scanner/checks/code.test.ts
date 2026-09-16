@@ -210,6 +210,17 @@ const fixtures: DetectorFixtures = {
 
   "insecure-auth": [
     {
+      description: "a Basic Authorization header set in script fires",
+      body: '<html><body><script>fetch(u, { headers: { "Authorization": "Basic dXNlcjpwYXNz" } });</script></body></html>',
+      expect: "fire",
+    },
+    {
+      description: "regression: the header described in prose",
+      body: "<html><body><p>Sending Authorization: Basic over plain HTTP exposes the password.</p></body></html>",
+      expect: "skip",
+    },
+
+    {
       description:
         "an i18n/translation blob with label text for both fields does not fire",
       body: '<script>const t = { username: "Username", password: "Password" };</script>',
@@ -362,6 +373,13 @@ const fixtures: DetectorFixtures = {
   // and are already covered at "medium" by google-api-key-exposed
   // (content.json) and secret-google-maps-api-key (secrets-extended.json).
   "hardcoded-secrets": [
+    {
+      description:
+        "regression: a connection string example repeated in the flight payload",
+      body: `<html><body><pre>DATABASE_URL=postgresql://vulnradar:s3cretPassw0rd@db.internal:5432/vulnradar</pre>${'<script>self.__next_f.push([1,"DATABASE_URL=postgresql://vulnradar:s3cretPassw0rd@db.internal:5432/vulnradar\\n# next"])</script>'}</body></html>`,
+      expect: "skip",
+    },
+
     {
       description:
         "AWS access key — genuine server-only secret, stays critical",

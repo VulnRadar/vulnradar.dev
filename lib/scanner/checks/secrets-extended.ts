@@ -9,6 +9,7 @@
 import {
   redactSecret,
   stripExampleContent,
+  stripProse,
   extractScriptContents,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
@@ -344,9 +345,12 @@ const rawDetectors: Record<string, DetectFn> = {
       /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
       /\b192\.168\.\d{1,3}\.\d{1,3}\b/,
       /\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b/,
-      /\b127\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
-      /\b169\.254\.\d{1,3}\.\d{1,3}\b/,
-      /\b0\.0\.0\.0\b/,
+      // Not 169.254.169.254: that is the cloud metadata endpoint, a constant
+      // every cloud documents and aws-metadata-reference reports. Not
+      // 0.0.0.0, which means "every interface", nor 127.0.0.0/8, which is
+      // every machine's own loopback: neither describes a private network. A
+      // client script pointed at localhost is cs-hardcoded-localhost-api-url.
+      /\b169\.254\.(?!169\.254\b)\d{1,3}\.\d{1,3}\b/,
     ];
     for (const p of patterns) {
       if (p.test(stripped)) return "Internal/private IP address found in body.";
@@ -721,7 +725,9 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-supabase-anon-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:supabase[_\-]?anon[_\-]?key|anon[\s"'=:]+eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})/i.test(
+      // A JWT after the label. The label alone matched this check's own
+      // id, secret-supabase-anon-key, in any link to it.
+      /(?:supabase[_\-]?anon[_\-]?key|\banon)["']?\s*[=:]\s*["']?eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/i.test(
         body,
       )
     ) {
@@ -965,7 +971,12 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-vonage-nexmo-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:vonage|nexmo)[_\-]?(?:api[_\-]?)?(?:key|secret)[\s"'=:]+[A-Za-z0-9_-]{8,}/i.test(
+      // An assignment of a key-shaped value: Vonage API keys are 8 hex
+      // characters and secrets 16 alphanumerics. Any run of quotes, colons
+      // and spaces followed by any word used to count, so the markup
+      // secret-vonage-nexmo-key" data-severity=" read as a key named
+      // data-severity.
+      /(?:vonage|nexmo)[_\-]?(?:api[_\-]?)?(?:key|secret)["']?\s*[=:]\s*["']?(?:[a-f0-9]{8}|[A-Za-z0-9]{16})\b/i.test(
         body,
       )
     ) {
@@ -1206,10 +1217,21 @@ function secretsSearchText(body: string): string {
   return lastSecretsSearchText;
 }
 
+/**
+ * The metadata endpoint's address is a constant every cloud provider
+ * documents, so written in a page it is documentation; in code it is a
+ * request to it. That one reads the page's code, not its text.
+ */
+const READS_CODE = new Set(["aws-metadata-reference"]);
+
 export const detectors: Record<string, DetectFn> = Object.fromEntries(
   Object.entries(rawDetectors).map(([id, fn]) => [
     id,
     ((url, headers, body) =>
-      fn(url, headers, secretsSearchText(body))) as DetectFn,
+      fn(
+        url,
+        headers,
+        READS_CODE.has(id) ? stripProse(body) : secretsSearchText(body),
+      )) as DetectFn,
   ]),
 );

@@ -459,6 +459,12 @@ const fixtures: DetectorFixtures = {
 
   "supply-chain-esm-cdn-unpinned-import": [
     {
+      description: "regression: an example import carried in a flight payload",
+      body: '<html><body><pre>import confetti from "https://esm.sh/canvas-confetti"</pre><script>self.__next_f.push([1,"import confetti from \"https://esm.sh/canvas-confetti\""])</script></body></html>',
+      expect: "skip",
+    },
+
+    {
       description: "module import from esm.sh with no version",
       body: '<html><body><script type="module">import confetti from "https://esm.sh/canvas-confetti";</script></body></html>',
       expect: "fire",
@@ -492,6 +498,12 @@ const fixtures: DetectorFixtures = {
   ],
 
   "supply-chain-rawgit-cdn-reference": [
+    {
+      description: "regression: a reference link is not a dependency",
+      body: '<html><body><ul><li><a href="https://rawgit.com/">RawGit</a></li></ul></body></html>',
+      expect: "skip",
+    },
+
     {
       description: "script still pointing at cdn.rawgit.com",
       body: '<html><body><script src="https://cdn.rawgit.com/owner/repo/master/dist/widget.js"></script></body></html>',

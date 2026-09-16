@@ -34,6 +34,75 @@ const DOCKER_OAT = ["dckr", "oat", "AbCdEfGhIjKlMnOpQrStUvWxYz012345"].join(
 );
 
 const fixtures: DetectorFixtures = {
+  "hidden-password-field": [
+    {
+      description: "the hidden attribute fires",
+      body: '<input type="password" name="pw" hidden>',
+      expect: "fire",
+    },
+    {
+      description: "a hiding utility class fires",
+      body: '<input type="password" name="pw" class="hidden">',
+      expect: "fire",
+    },
+    {
+      description:
+        "regression: Tailwind outline-hidden hides an outline, not the field",
+      body: '<input type="password" name="password" class="rounded-md focus-visible:outline-hidden overflow-hidden">',
+      expect: "skip",
+    },
+  ],
+  "opengraph-injection": [
+    {
+      description: "a script scheme in og:image fires",
+      body: '<meta property="og:image" content="javascript:alert(1)">',
+      expect: "fire",
+    },
+    {
+      description: "an attribute that broke out of content fires",
+      body: '<meta property="og:title" content="x" onerror="alert(1)">',
+      expect: "fire",
+    },
+    {
+      description:
+        "regression: a description that talks about javascript: URLs",
+      body: '<meta property="og:description" content="Blocks javascript: and data: URIs and onerror= handlers.">',
+      expect: "skip",
+    },
+  ],
+  "subdomain-takeover-fingerprint": [
+    {
+      description: "an unclaimed Heroku app page fires",
+      body: "<html><head><title>No such app</title></head><body><p>There is no app configured at that hostname.</p></body></html>",
+      expect: "fire",
+    },
+    {
+      description: "regression: a long page quoting the fingerprint",
+      body: `<html><body><p>${"Release notes. ".repeat(200)}</p><p>Squarespace answers No Such Account for an unclaimed domain.</p></body></html>`,
+      expect: "skip",
+    },
+  ],
+  "xxe-server-xml": [
+    {
+      description: "regression: library names in prose",
+      body: "<html><body><p>Use DocumentBuilderFactory with external entities disabled; libxml and SAXParser too.</p></body></html>",
+      expect: "skip",
+    },
+  ],
+  "jsonp-endpoint": [
+    {
+      description: "a callback parameter in a script URL fires",
+      body: '<html><body><script src="https://api.example.com/data?callback=handle"></script></body></html>',
+      expect: "fire",
+    },
+    {
+      description:
+        "regression: the parameter written in a code sample in prose",
+      body: "<html><body><pre>GET /api?callback=cb</pre><p>A ?callback= parameter wraps JSON.</p></body></html>",
+      expect: "skip",
+    },
+  ],
+
   "docker-hub-token-exposed": [
     {
       description: "a personal access token fires",
@@ -53,6 +122,24 @@ const fixtures: DetectorFixtures = {
     },
   ],
   "swagger-docs-exposed": [
+    {
+      description: "regression: a page whose path starts with swagger",
+      url: "https://example.com/checks/swagger-docs-exposed",
+      expect: "skip",
+    },
+    {
+      description: "regression: a link to a vendor's API docs",
+      url: "https://example.com/guide",
+      body: '<a href="https://developer.hashicorp.com/consul/api-docs">Consul API</a>',
+      expect: "skip",
+    },
+    {
+      description: "this site's own spec linked absolutely fires",
+      url: "https://example.com/docs",
+      body: '<a href="https://example.com/openapi.json">Spec</a>',
+      expect: "fire",
+    },
+
     {
       description: "a link to /swagger/ui fires",
       body: `<a href="/swagger/ui">API</a>`,
@@ -235,6 +322,17 @@ const fixtures: DetectorFixtures = {
     },
   ],
   "bearer-token-exposed": [
+    {
+      description: "regression: an example repeated in the flight payload",
+      body: '<html><body><pre>Authorization: Bearer abcDEF123456ghiJKL789mno</pre><script>self.__next_f.push([1,"Authorization: Bearer abcDEF123456ghiJKL789mno"])</script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "a token only in the flight payload is a prop that leaked",
+      body: '<html><body><p>Dashboard</p><script>self.__next_f.push([1,"{\"token\":\"Bearer abcDEF123456ghiJKL789mno\"}"])</script></body></html>',
+      expect: "fire",
+    },
+
     {
       description:
         "API docs placeholder 'Bearer YOUR_ACCESS_TOKEN_HERE' does not fire",
@@ -653,10 +751,29 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
-      description: "the same path referenced outside a code block still fires",
-      body: "<p>Try hitting /api/v3/webhook directly.</p>",
+      description: "a link to the path fires",
+      body: '<a href="/api/v3/webhook">Webhook</a>',
       expect: "fire",
       evidenceIncludes: "webhook",
+    },
+    {
+      description: "an absolute URL to the path fires",
+      body: '<form action="https://example.com/phpmyadmin/index.php"></form>',
+      expect: "fire",
+      evidenceIncludes: "phpmyadmin",
+    },
+    {
+      description:
+        "regression: the path mentioned in a sentence is not a reference",
+      body: "<p>Try hitting /api/v3/webhook directly.</p>",
+      expect: "skip",
+    },
+    {
+      // The self-scan: every link in this product's check catalog.
+      description:
+        "regression: a longer path that merely contains the name does not fire",
+      body: '<a href="/checks/phpmyadmin-login-exposed">phpMyAdmin</a>',
+      expect: "skip",
     },
   ],
   "debug-endpoint": [
@@ -688,6 +805,12 @@ const fixtures: DetectorFixtures = {
       body: "<p>This email is already registered.</p>",
       expect: "fire",
       evidenceIncludes: "enumeration",
+    },
+    {
+      // The self-scan: /docs/api lists the kinds of conflict a 409 means.
+      description: "regression: the phrase inside a sentence describing errors",
+      body: "<p>409 means the request collides with the resource's current state: cancelling a scan that already finished, an email already in use, or a backup already running.</p>",
+      expect: "skip",
     },
   ],
   "dom-clobbering-vulnerable": [
@@ -741,6 +864,17 @@ const fixtures: DetectorFixtures = {
       body: "<p>Connect to 198.18.0.5 directly.</p>",
       expect: "fire",
       evidenceIncludes: "hardcoded public IP",
+    },
+    {
+      description:
+        "regression: a public DNS resolver is not the site's address",
+      body: "<p>Quad9 (9.9.9.9) is a security DNS resolver.</p>",
+      expect: "skip",
+    },
+    {
+      description: "regression: a numbered specification section",
+      body: "<p>OpenID Connect Core section 3.2.2.1 requires a nonce.</p>",
+      expect: "skip",
     },
   ],
   "weak-crypto": [
@@ -840,9 +974,14 @@ const fixtures: DetectorFixtures = {
   ],
   "asp-error-in-page": [
     {
-      description: "ASP.NET error",
-      body: "<html><body>Server Error in '/' Application. Runtime Error</body></html>",
+      description: "the ASP.NET yellow screen",
+      body: "<html><body><span><H1>Server Error in '/' Application.<hr></H1><h2><i>Runtime Error</i></h2></span><b> Exception Details: </b>System.Web.HttpException</body></html>",
       expect: "fire",
+    },
+    {
+      description: "regression: the page described in prose",
+      body: "<p>The classic Server Error in '/' Application page leaks the stack.</p>",
+      expect: "skip",
     },
   ],
   "phpinfo-exposed": [
@@ -878,9 +1017,20 @@ const fixtures: DetectorFixtures = {
   "remember-me-token": [],
   "debug-indicators": [
     {
-      description: "DEBUG=True in body",
-      body: "<html><body>DEBUG = True</body></html>",
+      description: "the Django Debug Toolbar's injected element",
+      body: '<html><body><div id="djDebug" class="djdt-hidden"></div></body></html>',
       expect: "fire",
+    },
+    {
+      // The Django debug page itself is django-debug-page's, by its markup.
+      description: "regression: the setting named in a sentence",
+      body: "<p>Never deploy with DEBUG = True, and remove debug_toolbar.</p>",
+      expect: "skip",
+    },
+    {
+      description: "regression: Laravel and a stack trace mentioned in prose",
+      body: "<p>Laravel prints a Stack trace when debug is on.</p>",
+      expect: "skip",
     },
   ],
 };

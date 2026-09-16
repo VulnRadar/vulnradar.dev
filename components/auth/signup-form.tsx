@@ -140,7 +140,10 @@ export function SignupForm({ onSuccess, initialError }: SignupFormProps) {
           name="email"
           type="email"
           inputMode="email"
-          autoComplete="email"
+          // "username", not "email": it marks the field password managers
+          // pair with the password, which is what a sign-in identifier is,
+          // whether or not it happens to be an email address.
+          autoComplete="username"
           autoCapitalize="none"
           spellCheck={false}
           placeholder="name@example.com"

@@ -8,7 +8,9 @@
 import {
   getSetCookies,
   hasHeader,
+  stripProse,
   withDocBlocksStripped,
+  withProseStripped,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 import { tagsWith } from "./_tag-scan";
@@ -231,6 +233,12 @@ function looksLikeGraphQLBatch(body: string): boolean {
   return false;
 }
 
+/**
+ * A /graphql path segment. `/\/graphql/` matched /graphql-introspection,
+ * /graphql-tutorial and every other page whose path starts with the word.
+ */
+const GRAPHQL_PATH = /\/graphql(?:[/?#]|$)/i;
+
 const rawDetectors: Record<string, DetectFn> = {
   "rate-limiting": (url, headers) => {
     // Rate-limit headers only appear on API/auth endpoints, not HTML pages.
@@ -386,7 +394,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // already fixed for content.json's graphql-introspection check. Requiring
     // the /graphql path keeps this to endpoint-level evidence.
     if (
-      /\/graphql/i.test(url) &&
+      GRAPHQL_PATH.test(url) &&
       /__schema|__type|introspectionQuery/i.test(body)
     ) {
       return "GraphQL introspection query reference found on /graphql endpoint - confirm the server actually resolves it before treating this as enabled.";
@@ -464,7 +472,7 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "api-graphql-no-rate-limit": (url, headers, _body) => {
-    if (!/\/graphql/i.test(url)) return null;
+    if (!GRAPHQL_PATH.test(url)) return null;
     const hasRate = [
       "x-ratelimit-limit",
       "x-rate-limit-limit",
@@ -908,8 +916,13 @@ const rawDetectors: Record<string, DetectFn> = {
       [/graphql-voyager[\w-]{0,20}\.(?:js|css)\b/i, "GraphQL Voyager"],
       [/\bHasura\s+Console\b|\b__hasuraConsole\b/, "Hasura Console"],
     ];
+    // The page title is text and is read from the page; every other marker
+    // is a bundle filename or a function call, which only count where the
+    // browser acts on them (a script or stylesheet reference, inline
+    // script), not where a documentation page names them.
+    const code = stripProse(body);
     for (const [pattern, name] of markers) {
-      if (pattern.test(body)) {
+      if (pattern.test(pattern.source.startsWith("<title>") ? body : code)) {
         return `${name} is served from this endpoint, so the interactive GraphQL IDE is reachable in this environment.`;
       }
     }
@@ -1316,5 +1329,22 @@ const rawDetectors: Record<string, DetectFn> = {
 // tutorial or API-docs page rendering an example payload as literal text in
 // a <pre>/<code> block would otherwise self-trigger them, matching the same
 // false-positive class already fixed for vibe-code.ts.
-export const detectors: Record<string, DetectFn> =
-  withDocBlocksStripped(rawDetectors);
+/**
+ * API detectors that look for an endpoint or a call in the page's code rather
+ * than for something the response itself is. Read as prose, a page listing
+ * XML-RPC, SOAP and jwt.sign() examples reported all three.
+ */
+const READS_CODE = new Set([
+  "xml-rpc",
+  "soap-endpoint",
+  "api-jwt-hs256-weak-secret",
+]);
+const withoutProse = withProseStripped(rawDetectors);
+const withoutExamples = withDocBlocksStripped(rawDetectors);
+
+export const detectors: Record<string, DetectFn> = Object.fromEntries(
+  Object.keys(rawDetectors).map((id) => [
+    id,
+    READS_CODE.has(id) ? withoutProse[id] : withoutExamples[id],
+  ]),
+);

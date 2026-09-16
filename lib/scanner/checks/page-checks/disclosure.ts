@@ -87,9 +87,13 @@ const DEBUG_MODE_MARKERS: { name: string; re: RegExp; critical?: boolean }[] = [
 const INTERNAL_PATH_PATTERNS: RegExp[] = [
   /[A-Za-z]:\\(?:Users|inetpub|Windows|Program Files(?: \(x86\))?)\\[\w \\.-]+/,
   /\/(?:home|Users)\/[\w.-]+\/[\w./-]*\.(?:js|ts|php|py|rb|java|log)\b/,
-  /\/var\/(?:www|log|lib)\/[\w./-]+/,
-  /\/usr\/local\/[\w./-]+/,
-  /\/opt\/[\w./-]+\/[\w./-]+/,
+  // A file, the way an error or a log line prints one. A directory on its
+  // own ("root /var/www/myapp/public;", "e.g., /var/www/html/app/...") is how
+  // configuration guides are written; an error that leaks a path names the
+  // file it failed in.
+  /\/var\/(?:www|log|lib)\/[\w./-]*\.(?:php|js|ts|mjs|cjs|py|rb|java|go|cs|pl|cgi|jsp|aspx?|log|ini|conf|json|ya?ml)\b/,
+  /\/usr\/local\/[\w./-]*\.(?:php|js|ts|mjs|cjs|py|rb|java|go|cs|pl|cgi|jsp|log|ini|conf|json|ya?ml)\b/,
+  /\/opt\/[\w./-]+\/[\w./-]*\.(?:php|js|ts|mjs|cjs|py|rb|java|go|cs|pl|cgi|jsp|log|ini|conf|json|ya?ml)\b/,
 ];
 
 export const disclosureChecks: PageCheck[] = [

@@ -16,6 +16,19 @@ import { detectors } from "@/lib/scanner/checks/api";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "api-graphql-no-rate-limit": [
+    {
+      description: "a /graphql endpoint without rate-limit headers fires",
+      url: "https://api.example.com/graphql",
+      expect: "fire",
+    },
+    {
+      description: "regression: a page whose path only starts with graphql",
+      url: "https://example.com/checks/graphql-introspection",
+      expect: "skip",
+    },
+  ],
+
   "api-openapi-security-scheme-weak": [
     {
       // It used to return "OpenAPI document reachable" at high severity for
@@ -116,6 +129,13 @@ const fixtures: DetectorFixtures = {
   // GraphQL context, and these fixtures pin both sides of that gate.
 
   "api-graphql-introspection-enabled": [
+    {
+      description: "regression: a /graphql-tutorial page quoting __schema",
+      url: "https://example.com/graphql-tutorial",
+      body: "<p>query { __schema { types { name } } }</p>",
+      expect: "skip",
+    },
+
     {
       description: "__schema resolved by an actual /graphql endpoint",
       url: "https://example.com/graphql",
@@ -276,6 +296,12 @@ const fixtures: DetectorFixtures = {
   // Each fixture puts the benign occurrence first and the real one second.
 
   "xml-rpc": [
+    {
+      description: "regression: the endpoint named in a paragraph",
+      body: "<html><body><p>Disable xmlrpc.php if you do not use pingbacks.</p></body></html>",
+      expect: "skip",
+    },
+
     {
       description:
         "doc-context mention first, a real xmlrpc.php reference further down the same page",
@@ -487,6 +513,17 @@ const fixtures: DetectorFixtures = {
   // ── API description documents served in production ────────────────────
 
   "api-graphql-ide-exposed": [
+    {
+      description: "regression: the bundle filename named in documentation",
+      body: "<p>GraphiQL ships graphiql.min.js and renderGraphiQL for the IDE.</p>",
+      expect: "skip",
+    },
+    {
+      description: "the bundle loaded by the page fires",
+      body: '<html><body><script src="/static/graphiql.min.js"></script></body></html>',
+      expect: "fire",
+    },
+
     {
       description: "GraphiQL bundle loaded from the /graphql endpoint",
       url: "https://example.com/graphql",

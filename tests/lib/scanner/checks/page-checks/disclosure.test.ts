@@ -72,6 +72,17 @@ const fixtures: PageCheckFixtures = {
   ],
   "page-internal-path-disclosed": [
     {
+      description: "regression: a directory in a configuration guide",
+      body: "<html><body><p>In Nginx: root /var/www/myapp/public; (not /var/www/myapp/)</p></body></html>",
+      expect: "skip",
+    },
+    {
+      description: "regression: an elided example path",
+      body: "<html><body><p>PHP errors reveal absolute file paths (e.g., /var/www/html/app/...).</p></body></html>",
+      expect: "skip",
+    },
+
+    {
       description: "Windows path under Users",
       body: `<pre>C:\\Users\\devuser\\project\\app.js:12</pre>`,
       expect: "fire",

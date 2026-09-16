@@ -6,10 +6,7 @@
  * tree or enable supply-chain attacks.
  */
 
-import {
-  withDocBlocksStripped,
-  type EvidenceFn as DetectFn,
-} from "../_helpers";
+import { withProseStripped, type EvidenceFn as DetectFn } from "../_helpers";
 import { tagsWith, tagElements } from "./_tag-scan";
 
 // ── Shared helpers for the manifest / CDN detectors below ─────────────────
@@ -537,9 +534,29 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "supply-chain-rawgit-cdn-reference": (_url, _headers, body) => {
     if (body.indexOf("rawgit.com") === -1) return null;
-    const ref = /https?:\/\/(?:cdn\.)?rawgit\.com\/[^"'\s]{0,200}/i.exec(body);
+    // Loaded, not linked: a script src, a stylesheet, or an import in script.
+    // A link to rawgit.com in a list of references is not a dependency on it.
+    const RAWGIT =
+      /["'](https?:\/\/(?:cdn\.)?rawgit\.com\/[^"'\s]{0,200})["']/i;
+    const loader = [
+      ...tagsWith(
+        body,
+        "script",
+        /\bsrc\s*=\s*["']https?:\/\/(?:cdn\.)?rawgit\.com\//i,
+      ),
+      ...tagsWith(
+        body,
+        "link",
+        /\bhref\s*=\s*["']https?:\/\/(?:cdn\.)?rawgit\.com\//i,
+      ),
+    ][0];
+    const imported =
+      /\b(?:import|from)\s*\(?\s*["'](https?:\/\/(?:cdn\.)?rawgit\.com\/[^"'\s]{0,200})["']/i.exec(
+        body,
+      );
+    const ref = loader ? RAWGIT.exec(loader)?.[1] : imported?.[1];
     if (!ref) return null;
-    return `Page references RawGit (${ref[0].slice(0, 160)}), a CDN that was shut down in October 2019.`;
+    return `Page loads from RawGit (${ref.slice(0, 160)}), a CDN that was shut down in October 2019.`;
   },
 
   "supply-chain-github-raw-script-source": (_url, _headers, body) => {
@@ -701,5 +718,9 @@ const rawDetectors: Record<string, DetectFn> = {
 // lockfile/.env/Dockerfile content inside a <pre>/<code> block as
 // documentation, which would otherwise satisfy these same fingerprint
 // patterns as literal page text.
+// Every detector here reads either a served manifest, which is not markup and
+// passes through the prose view untouched, or what a page loads and imports,
+// which lives in tags, attributes and script. Read as prose, a page about
+// unpinned esm.sh imports and RawGit reported both.
 export const detectors: Record<string, DetectFn> =
-  withDocBlocksStripped(rawDetectors);
+  withProseStripped(rawDetectors);

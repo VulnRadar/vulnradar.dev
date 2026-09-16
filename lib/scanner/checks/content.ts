@@ -10,6 +10,7 @@
 import {
   stripExampleContent,
   stripDocBlocks,
+  isDemonstratedExample,
   withProseStripped,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
@@ -110,6 +111,43 @@ const FORM_PROCESSOR_HOSTS = [
   "pardot.com",
   "google.com",
 ];
+
+/**
+ * Characters of text a reader would see, whitespace collapsed, with script
+ * and style removed. One forward pass over the body.
+ */
+function visibleTextLength(body: string): number {
+  const html = stripTagElements(body, ["script", "style"]);
+  let inTag = false;
+  let lastSpace = true;
+  let count = 0;
+  for (let i = 0; i < html.length; i++) {
+    const c = html.charCodeAt(i);
+    if (c === 60) {
+      inTag = true;
+      continue;
+    }
+    if (inTag) {
+      if (c === 62) inTag = false;
+      continue;
+    }
+    const space = c === 32 || c === 10 || c === 13 || c === 9;
+    if (!space || !lastSpace) count++;
+    lastSpace = space;
+  }
+  return count;
+}
+
+const PUBLIC_RESOLVERS = new Set([
+  "1.1.1.1",
+  "1.0.0.1",
+  "8.8.8.8",
+  "8.8.4.4",
+  "9.9.9.9",
+  "149.112.112.112",
+  "208.67.222.222",
+  "208.67.220.220",
+]);
 
 const rawDetectors: Record<string, DetectFn> = {
   // ── iframes ──────────────────────────────────────────────────────────────
@@ -411,11 +449,23 @@ const rawDetectors: Record<string, DetectFn> = {
       /property=["']og:[^"']+["']/i,
       /content=["'][^"']+["']/i,
     );
-    const suspicious = ogTags.filter((t) =>
-      /javascript:|(?:^|[\s"'])data:(?:text\/html)?|(?:^|[\s"'])on\w+\s*=/i.test(
-        t,
-      ),
-    );
+    // Two real shapes. A URL-valued property (og:url, og:image, og:video,
+    // og:audio and their sub-properties) whose value is a script scheme. Or
+    // an event handler attribute that broke out of the content value. A
+    // description or title that mentions javascript: URLs or onerror= is
+    // escaped text; this product's own check pages were all flagged for
+    // describing exactly those attacks in their og:description.
+    const suspicious = ogTags.filter((t) => {
+      const property = /property=["'](og:[^"']+)["']/i.exec(t)?.[1] ?? "";
+      const content = /content=(["'])([\s\S]*?)\1/i.exec(t)?.[2] ?? "";
+      if (
+        /^og:(?:url|image|video|audio)\b/i.test(property) &&
+        /^\s*(?:javascript|vbscript|data):/i.test(content)
+      )
+        return true;
+      const withoutContent = t.replace(/content=(["'])[\s\S]*?\1/i, "");
+      return /\son\w+\s*=/i.test(withoutContent);
+    });
     return suspicious.length > 0
       ? `Found ${suspicious.length} suspicious OpenGraph tag(s).`
       : null;
@@ -683,22 +733,18 @@ const rawDetectors: Record<string, DetectFn> = {
     // /docs/setup documenting /.env) doesn't flag itself -- same pairing
     // several sibling checks in this file already use.
     const html = stripExampleContent(body);
-    const endpoints = [
-      // "users" and "graphql" removed -- ubiquitous, expected REST/GraphQL
-      // surface, not itself sensitive. GraphQL endpoint discovery is
-      // already covered by the dedicated graphql-introspection check.
-      /\/api\/v\d+\/(?:admin|internal|debug|webhook)/gi,
-      /\/wp-admin/gi,
-      /\/phpmyadmin/gi,
-      /\/\.env/gi,
-      /\/actuator/gi,
-      /\/elmah\.axd/gi,
-      /\/server-status/gi,
-    ];
+    // A reference is a link, form or asset the page points at, and the path
+    // is a whole segment from the root. Matched as bare text, a paragraph
+    // mentioning /phpmyadmin and a link to /checks/phpmyadmin-login-exposed
+    // both counted, so every page about these endpoints reported itself.
+    const endpoint =
+      /(?:\/api\/v\d+\/(?:admin|internal|debug|webhook)|\/wp-admin|\/phpmyadmin|\/\.env|\/actuator|\/elmah\.axd|\/server-status)(?=[/?#"']|$)/i;
     const found: string[] = [];
-    for (const p of endpoints) {
-      const matches = html.match(p);
-      if (matches) found.push(...matches.slice(0, 2));
+    for (const m of html.matchAll(
+      /(?:href|src|action)\s*=\s*["'](?:https?:\/\/[^/"']+)?(\/[^"']*)["']/gi,
+    )) {
+      const hit = endpoint.exec(m[1]);
+      if (hit && hit.index === 0) found.push(hit[0]);
     }
     const unique = [...new Set(found)];
     return unique.length > 0
@@ -1017,11 +1063,21 @@ const rawDetectors: Record<string, DetectFn> = {
       found.push("Node.js stack trace");
     if (/SQLSTATE\[/i.test(body)) found.push("SQL error");
     if (/Fatal error:.+on line \d+/i.test(body)) found.push("PHP fatal error");
-    if (/Exception in thread/i.test(body)) found.push("Java exception");
-    if (body.includes("Laravel") && body.includes("Stack trace"))
-      found.push("Laravel debug mode");
-    if (body.includes("DEBUG = True") || body.includes("debug_toolbar"))
-      found.push("Debug mode enabled");
+    // The JVM's own format: the thread name in quotes, then the exception's
+    // class. "Exception in thread" alone is the phrase every article about
+    // it uses.
+    if (
+      /Exception in thread "[^"\n]{1,80}" [\w$.]+(?:Exception|Error)\b/.test(
+        body,
+      )
+    )
+      found.push("Java exception");
+    // Laravel's and Django's debug pages are reported by laravel-debug-page
+    // and django-debug-page, which match the pages' own markup. The branches
+    // here matched the words "Laravel" and "Stack trace" anywhere on a page,
+    // and "DEBUG = True" in any sentence explaining that setting. The Django
+    // Debug Toolbar is recognised by the element it injects, not its name.
+    if (/\bid=["']djDebug["']/.test(body)) found.push("Django Debug Toolbar");
     return found.length > 0
       ? `Debug indicators found: ${found.join(", ")}`
       : null;
@@ -1031,9 +1087,13 @@ const rawDetectors: Record<string, DetectFn> = {
     const patterns = [
       { name: "PHP error", pattern: /(?:Fatal|Parse) error:.*on line \d+/i },
       {
+        // MySQL's own sentence, or PHP's warning format for a mysql(i)_
+        // call ("mysqli_connect(): (HY000/1045): ..."). `mysql_.*error`
+        // matched any line naming a mysql_ function and, later, the word
+        // error, which is how any page about MySQL errors reads.
         name: "MySQL error",
         pattern:
-          /(?:mysql_|mysqli_).*error|You have an error in your SQL syntax/i,
+          /\bmysqli?_\w+\(\):\s|You have an error in your SQL syntax; check the manual/i,
       },
       {
         name: "PostgreSQL error",
@@ -1124,9 +1184,14 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "asp-error-in-page": (_url, _headers, body) => {
+    // The yellow screen's own markup: its title line with the application
+    // path in quotes, plus one of the bold section labels it always renders.
+    // Either phrase alone is how every write-up about the page describes it.
     if (
-      /Server Error in .* Application/i.test(body) ||
-      /ASP\.NET.*Unhandled Exception/i.test(body)
+      /Server Error in '[^'\n]{0,200}' Application/i.test(body) &&
+      /<b>\s*(?:Exception Details|Stack Trace|Version Information|Source Error):\s*<\/b>/i.test(
+        body,
+      )
     ) {
       return "ASP.NET error page detected in response.";
     }
@@ -1416,12 +1481,19 @@ const rawDetectors: Record<string, DetectFn> = {
     // "already exists"/"is taken" phrase anywhere after it, e.g. matching
     // "email" on /docs/developers all the way to an unrelated "A Python
     // SDK already exists" callout much further down the page.
-    if (
-      /email[^<]{0,60}(?:already (?:exists|registered|in use)|is taken|already has an account)/gi.test(
-        body,
-      )
-    ) {
-      return "Error message reveals email existence - user enumeration risk.";
+    // An error message is its own short piece of text: "This email is
+    // already registered." The same words inside a long sentence are prose
+    // describing such errors ("a conflict: cancelling a scan that already
+    // finished, an email already in use, or a backup already running").
+    for (const m of body.matchAll(
+      /email[^<]{0,60}(?:already (?:exists|registered|in use)|is taken|already has an account)/gi,
+    )) {
+      const start = body.lastIndexOf(">", m.index) + 1;
+      const endLt = body.indexOf("<", m.index + m[0].length);
+      const end = endLt === -1 ? body.length : endLt;
+      if (end - start <= 120) {
+        return "Error message reveals email existence - user enumeration risk.";
+      }
     }
     return null;
   },
@@ -1712,7 +1784,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const isPlaceholderToken = (token: string) =>
       /^[A-Z0-9_]+$/.test(token) || /(.)\1{9,}/.test(token);
     for (const m of body.matchAll(/Bearer\s+([A-Za-z0-9._\-+/=]{20,})/gi)) {
-      if (!isPlaceholderToken(m[1])) {
+      if (!isPlaceholderToken(m[1]) && !isDemonstratedExample(body, m[0])) {
         return "Bearer token found in page source.";
       }
     }
@@ -2055,13 +2127,21 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "hidden-password-field": (url, _headers, body) => {
     const fields = tagsWith(body, "input", /type\s*=\s*["']password["']/i);
-    const hidden = fields.filter(
-      (f) =>
-        /type\s*=\s*["']hidden["']/i.test(f) ||
-        /\bhidden\b/i.test(f) ||
+    // The boolean hidden attribute, a class that is exactly a hiding
+    // utility, or an inline style. `\bhidden\b` anywhere in the tag matched
+    // Tailwind's outline-hidden and overflow-hidden and Bootstrap's
+    // hidden-xs, which hide an outline, an overflow or a breakpoint, not the
+    // field, so every styled sign-in form was reported.
+    const hidden = fields.filter((f) => {
+      const classes =
+        /\sclass\s*=\s*["']([^"']*)["']/i.exec(f)?.[1].split(/\s+/) ?? [];
+      return (
+        /\shidden(?:\s|=|\/?>)/i.test(f) ||
+        classes.some((c) => /^(?:hidden|d-none|invisible)$/.test(c)) ||
         /display\s*:\s*none/i.test(f) ||
-        /visibility\s*:\s*hidden/i.test(f),
-    );
+        /visibility\s*:\s*hidden/i.test(f)
+      );
+    });
     if (hidden.length > 0)
       return `Found ${hidden.length} hidden password field(s).`;
     return null;
@@ -2235,7 +2315,7 @@ const rawDetectors: Record<string, DetectFn> = {
         // Introduced as a version: v1.2.3.4, version: 1.2.3.4, pkg@1.2.3.4,
         // jquery/1.2.3.4, ?ver=1.2.3.4.
         if (
-          /(?:\bv|\bver|\bversion|\brelease|\bbuild|@|[a-z]\/|=)\s*$/i.test(
+          /(?:\bv|\bver|\bversion|\brelease|\bbuild|\bsection-?|§|#|@|[a-z]\/|=)\s*$/i.test(
             before,
           )
         )
@@ -2263,6 +2343,9 @@ const rawDetectors: Record<string, DetectFn> = {
         // Multicast, reserved, and broadcast. Nothing in here is a host
         // anyone could connect to, so it cannot be an address that leaked.
         if (parts[0] >= 224) return false;
+        // Public anycast DNS resolvers. Naming 1.1.1.1 or Quad9's 9.9.9.9
+        // says which resolver a page recommends, not where a site runs.
+        if (PUBLIC_RESOLVERS.has(ip)) return false;
         return true;
       })
       .map((m) => m[0]);
@@ -2273,9 +2356,12 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "swagger-docs-exposed": (url, _headers, body) => {
     // URL check is reliable — the page IS the docs endpoint.
+    // A whole path segment. The optional group left "/swagger" alone matching,
+    // so /swagger-docs-exposed, /swaggerhub-guide and every page that merely
+    // starts with those letters was reported as being the docs endpoint.
     const urlPatterns = [
-      /\/swagger(?:\.json|\.yaml|\/ui)?/i,
-      /\/openapi(?:\.json|\.yaml)?/i,
+      /\/swagger(?:[/-]ui(?:\.html)?|\.json|\.yaml)?(?:[/?#]|$)/i,
+      /\/openapi(?:\.json|\.yaml)?(?:[/?#]|$)/i,
     ];
     for (const p of urlPatterns) {
       if (p.test(url))
@@ -2283,9 +2369,27 @@ const rawDetectors: Record<string, DetectFn> = {
     }
     // Body: only flag when the docs link appears inside an href/src attribute,
     // not when it's just mentioned in prose (would fire on developer blogs etc.).
+    // This site's own documentation: a relative link or one to the same host.
+    // A reference to a vendor's docs (developer.hashicorp.com/consul/api-docs)
+    // says nothing about what this site serves.
+    let pageHost = "";
+    try {
+      pageHost = new URL(url).hostname;
+    } catch {
+      /* unparseable URL: only relative links count */
+    }
     const attrVals = [
       ...body.matchAll(/(?:href|src|action)=["']([^"']+)["']/gi),
-    ].map((m) => m[1]);
+    ]
+      .map((m) => m[1])
+      .filter((v) => {
+        if (!/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(v)) return true;
+        try {
+          return new URL(v, url).hostname === pageHost;
+        } catch {
+          return false;
+        }
+      });
     const bodyPatterns = [
       /\/swagger(?:\.json|\.yaml|[/-]ui)/i,
       /\/openapi(?:\.json|\.yaml)/i,
@@ -2355,6 +2459,10 @@ const rawDetectors: Record<string, DetectFn> = {
       { name: "Squarespace", pattern: /No Such Account/i },
       { name: "Netlify", pattern: /Not Found - Request ID:/i },
     ];
+    // An unclaimed-domain response is the provider's whole page, a sentence or
+    // two. The same sentence inside a long page is somebody writing about
+    // takeovers; this product's own changelog quoted one.
+    if (visibleTextLength(body) > 2000) return null;
     for (const { name, pattern } of fingerprints) {
       if (pattern.test(body)) {
         return `Dangling DNS / subdomain takeover fingerprint detected (${name}): the CNAME target appears unclaimed and could be registered by an attacker.`;
@@ -2463,6 +2571,8 @@ const rawDetectors: Record<string, DetectFn> = {
  * page as served and keeps it.
  */
 const READS_CODE = new Set([
+  "xxe-server-xml",
+  "jsonp-endpoint",
   "service-worker-scope",
   "dangerous-inline-js",
   "inline-event-handlers",

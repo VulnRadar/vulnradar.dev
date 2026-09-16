@@ -39,7 +39,14 @@ const CONCURRENCY = 6;
  * keep the reason specific enough that a reader can tell when it stops being
  * true.
  */
-const ACCEPTED: Readonly<Record<string, string>> = {};
+const ACCEPTED: Readonly<Record<string, string>> = {
+  "csp-framework-required":
+    "Info. Our CSP keeps style-src 'unsafe-inline' because Radix's scroll lock (react-remove-scroll) injects <style> elements at runtime and server-rendered React style props arrive as style attributes. script-src is nonce-locked with 'strict-dynamic', which is where 'unsafe-inline' would be exploitable. Revisit if style-src ever drops 'unsafe-inline'.",
+  "inline-style-attr":
+    "Info. Severity pills set their colour through a React style prop (hsl(var(--severity-*))), which renders as a style attribute: 810 of them on /checks. They carry no user data and are permitted by the same style-src 'unsafe-inline' above; converting them would not let that directive go.",
+  "swagger-docs-exposed":
+    "Low. We publish our OpenAPI 3.1 description on purpose at /api/v3/openapi.json and link it from /docs/api and the playground. Revisit if the spec ever lists internal or admin-only operations.",
+};
 
 interface RouteResult {
   path: string;

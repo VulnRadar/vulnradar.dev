@@ -13,6 +13,61 @@ import { detectors } from "@/lib/scanner/checks/secrets-extended";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "secret-supabase-anon-key": [
+    {
+      description: "an anon JWT assigned to the key fires",
+      body: `<script>const supabaseAnonKey = "${["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "eyJpc3MiOiJzdXBhYmFzZSIsInJvbGUiOiJhbm9uIn0", "c2lnbmF0dXJlX3ZhbHVlX2hlcmVfMTIzNDU2"].join(".")}";</script>`,
+      expect: "fire",
+    },
+    {
+      description: "regression: a link to this check's own page",
+      body: '<a href="/checks/secret-supabase-anon-key">Supabase anon key in source</a>',
+      expect: "skip",
+    },
+  ],
+  "secret-vonage-nexmo-key": [
+    {
+      description: "a Vonage API key assignment fires",
+      body: '<script>const VONAGE_API_KEY = "a1b2c3d4";</script>',
+      expect: "fire",
+    },
+    {
+      description: "regression: the check id followed by another attribute",
+      body: '<li data-check="vonage nexmo key secret-vonage-nexmo-key" data-severity="critical"></li>',
+      expect: "skip",
+    },
+  ],
+  "internal-ip-exposed": [
+    {
+      description: "a private address fires",
+      body: "<p>upstream connect error to 10.0.3.14:5432</p>",
+      expect: "fire",
+    },
+    {
+      description: "regression: loopback and bind-all name no private network",
+      body: "<p>Bind to 127.0.0.1 rather than 0.0.0.0.</p>",
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: the metadata endpoint is aws-metadata-reference's",
+      body: "<p>Never let a fetch reach http://169.254.169.254/.</p>",
+      expect: "skip",
+    },
+  ],
+  "aws-metadata-reference": [
+    {
+      description: "a request to the metadata endpoint in script fires",
+      body: '<html><body><script>fetch("http://169.254.169.254/latest/meta-data/iam/");</script></body></html>',
+      expect: "fire",
+    },
+    {
+      description: "regression: the endpoint named in prose",
+      body: "<html><body><p>Reference to AWS metadata endpoint (169.254.169.254) detected.</p></body></html>",
+      expect: "skip",
+    },
+  ],
+
   "secret-algolia-admin-key": [
     {
       // Inline script used to be invisible to every detector in this file:

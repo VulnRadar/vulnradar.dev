@@ -17,7 +17,7 @@ import {
   stripExampleContent,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
-import { hasTagWith, stripTagElements } from "./_tag-scan";
+import { hasTagWith, openTags, stripTagElements } from "./_tag-scan";
 
 /**
  * Whether a Grafana version is inside the range affected by CVE-2021-43798.
@@ -313,7 +313,14 @@ export const detectors: Record<string, DetectFn> = {
     // /docs/api documents a scan result's responseHeaders shape, which
     // includes a literal "server": "nginx/1.18.0" example) doesn't flag
     // itself -- same pairing several sibling checks in content.ts use.
-    if (/nginx\/\d+\.\d+\.\d+/i.test(stripExampleContent(body))) {
+    // nginx's default error pages put the version in one place, the
+    // centred footer under the rule: <hr><center>nginx/1.18.0</center>. The
+    // string anywhere else is a sentence about nginx.
+    if (
+      /<center>\s*nginx\/\d+\.\d+\.\d+[^<]{0,40}<\/center>/i.test(
+        stripExampleContent(body),
+      )
+    ) {
       return "Body references 'nginx/X.Y.Z' — a default nginx error page is leaking the version.";
     }
     return null;
@@ -325,13 +332,17 @@ export const detectors: Record<string, DetectFn> = {
       return `Server header exposes Apache version: '${server}' — set 'ServerTokens Prod' and 'ServerSignature Off'.`;
     }
     const html = stripExampleContent(body);
-    if (/Apache\/\d+\.\d+\.\d+/i.test(html)) {
+    // Apache's server signature is always rendered inside <address>, on error
+    // pages and directory listings alike. Matching the version or "Server at"
+    // anywhere reported every page that explains ServerSignature.
+    const signature =
+      /<address>([^<]{0,300})<\/address>/i.exec(html)?.[1] ?? "";
+    if (/Apache\/\d+\.\d+\.\d+/i.test(signature)) {
       return "Body references 'Apache/X.Y.Z' — a default Apache error page is leaking the version and modules.";
     }
     if (
-      /<html/i.test(html) &&
-      /\bApache\b/i.test(html) &&
-      /Server at/i.test(html)
+      /\bApache\b/i.test(signature) &&
+      /Server at .+ Port \d+/i.test(signature)
     ) {
       return "HTML body contains the Apache 'Server at example.com Port N' footer — default error page disclosure.";
     }
@@ -448,10 +459,17 @@ export const detectors: Record<string, DetectFn> = {
     if (hasHeader(headers, "x-jenkins")) {
       return `X-Jenkins header exposes Jenkins version: '${getHeader(headers, "x-jenkins")}'.`;
     }
+    // Jenkins' own markup: the version on <head data-version> beside
+    // data-rooturl, the jenkins_ver footer, or its page title. The header
+    // name and "Jenkins ver. 2.x" written in a paragraph are how any article
+    // about Jenkins reads.
+    const jenkinsHead = openTags(body, "head").some(
+      (t) => /\bdata-rooturl=/i.test(t) && /\bdata-version=["']?\d/i.test(t),
+    );
     if (
-      /X-Jenkins/i.test(body) ||
-      /<title>\s*Jenkins\s*</i.test(body) ||
-      /Jenkins\s+(?:ver\.?|v)?\s*\d+\.\d+/i.test(body)
+      jenkinsHead ||
+      /class=["'][^"']*\bjenkins_ver\b/i.test(body) ||
+      /<title>\s*(?:Jenkins|[^<]{0,200}\[Jenkins\])\s*<\/title>/i.test(body)
     ) {
       return "Jenkins version disclosed in body — front with an authenticating reverse proxy that strips X-Jenkins.";
     }
@@ -460,8 +478,18 @@ export const detectors: Record<string, DetectFn> = {
 
   "grafana-version-exposure": (_url, headers, body) => {
     const gv = getHeader(headers, "x-grafana-version");
+    // Where Grafana itself puts the version: buildInfo inside the
+    // grafanaBootData its HTML shell serializes, or the JSON /api/health
+    // returns. "Grafana 8.0.0" in a sentence is a changelog or an advisory.
     const inBody =
-      /Grafana\s+(?:v|ver\.?|version)?\s*(\d+\.\d+(?:\.\d+)?)/i.exec(body);
+      (/grafanaBootData/.test(body)
+        ? /"buildInfo"\s*:\s*\{[^{}]{0,500}?"version"\s*:\s*"(\d+\.\d+(?:\.\d+)?)/.exec(
+            body,
+          )
+        : null) ??
+      /^\s*\{[^{}]{0,300}"database"\s*:\s*"ok"[^{}]{0,300}"version"\s*:\s*"(\d+\.\d+(?:\.\d+)?)/.exec(
+        body,
+      );
     const version = gv?.trim() || inBody?.[1];
     if (!version) return null;
     const where = gv ? "X-Grafana-Version header" : "page body";
@@ -539,10 +567,12 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "AWS S3 XML error response (NoSuchBucket / AccessDenied / SlowDown) detected — front S3 with CloudFront and genericize error pages.";
     }
+    // The S3 website endpoint's HTML error page lists its fields as
+    // <li>Code: NoSuchBucket</li>. The code names written in prose are how
+    // every article about S3 errors reads.
     if (
-      /NoSuchBucket[:\s]/i.test(body) ||
-      /The specified bucket does not exist/i.test(body) ||
-      /AccessDenied[:\s].*(?:s3|bucket)/i.test(body)
+      /<li>\s*Code:\s*(?:NoSuchBucket|AccessDenied)\s*<\/li>/i.test(body) ||
+      /<li>\s*Message:\s*The specified bucket does not exist/i.test(body)
     ) {
       return "AWS S3 error message exposed in body (NoSuchBucket / bucket does not exist) — front S3 with CloudFront and genericize error pages.";
     }
@@ -610,11 +640,15 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "dotnet-core-developer-exception-page": (_url, _headers, body) => {
+    // Plus the page's own structure: the stack tab container every
+    // Developer Exception Page renders. The two phrases alone are how every
+    // explanation of the page describes it.
     if (
       /An unhandled exception occurred while processing the request/i.test(
         body,
       ) &&
-      /Microsoft\.AspNetCore/i.test(body)
+      /Microsoft\.AspNetCore/i.test(body) &&
+      /\bid=["']stackpage["']|class=["']titleerror["']/i.test(body)
     ) {
       return "ASP.NET Core Developer Exception Page is enabled in a publicly reachable environment — restrict UseDeveloperExceptionPage() to the Development environment only.";
     }

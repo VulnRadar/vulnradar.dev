@@ -273,7 +273,9 @@ const rawDetectors: Record<string, DetectFn> = {
     const patterns = [
       /JSON\.parse\s*\(\s*(?:req\.|request\.)(?:body|params|query)/i,
       /JSON\.parse\s*\(\s*\w*[Ii]nput/i,
-      /node-serialize/i,
+      // The module being loaded, not its name anywhere: a link to a page
+      // about node-serialize is not an import of it.
+      /require\s*\(\s*["']node-serialize["']\s*\)|from\s+["']node-serialize["']/i,
       /unserialize\s*\(/i,
     ];
     for (const p of patterns) {
@@ -515,7 +517,6 @@ const rawDetectors: Record<string, DetectFn> = {
   "vibe-debug-endpoint": (_url, _headers, body) => {
     const patterns = [
       /"debug"\s*:\s*true/i,
-      /\/debug\s*(?:route|endpoint|handler|path)/i,
       /app\.(get|post)\s*\(\s*["']\/debug["']/i,
       /"environment"\s*:\s*"(?:development|test|dev)"/i,
     ];

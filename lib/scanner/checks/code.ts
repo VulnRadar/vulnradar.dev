@@ -11,7 +11,7 @@
 import {
   getEffectiveCsp,
   getSetCookies,
-  stripDocBlocks,
+  isDemonstratedExample,
   withDocBlocksStripped,
   withProseStripped,
   type EvidenceFn as DetectFn,
@@ -267,9 +267,6 @@ const LOW_RISK_SECRET_PATTERNS: SecretPattern[] = [
  * page says, and a page full of examples that also leaks one real key now
  * reports the real one.
  */
-function isDemonstratedSecret(match: string, bodyOutsideDocBlocks: string) {
-  return !bodyOutsideDocBlocks.includes(match);
-}
 
 /** Redact a matched secret to `prefix****suffix`, same shape for every tier. */
 function redactMatch(match: string): string {
@@ -287,14 +284,10 @@ function matchSecretPatterns(
   body: string,
   patterns: SecretPattern[],
 ): string[] {
-  // Stripped once for the whole call rather than once per pattern. The strip
-  // itself is memoised on the body (see _helpers.ts), so across the four
-  // tiers this costs one pass per scan.
-  const outsideDocBlocks = stripDocBlocks(body);
   const found: string[] = [];
   for (const { name, pattern, requireNearby } of patterns) {
     const occurrences = [...body.matchAll(pattern)].filter((m) => {
-      if (isDemonstratedSecret(m[0], outsideDocBlocks)) return false;
+      if (isDemonstratedExample(body, m[0])) return false;
       const lower = m[0].toLowerCase();
       if (
         lower.includes("example") ||
@@ -724,7 +717,12 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "insecure-auth": (_url, _headers, body) => {
     const patterns = [
-      { name: "Basic auth over HTTP", pattern: /Authorization:\s*Basic/gi },
+      // Quote-tolerant, so the header as a script writes it
+      // ({ "Authorization": "Basic ..." }) matches, not only as a raw dump.
+      {
+        name: "Basic auth over HTTP",
+        pattern: /Authorization["']?\s*:\s*["']?Basic\s/gi,
+      },
       {
         name: "Password in URL",
         pattern: /[?&](?:password|passwd|pwd)\s*=\s*[^&\s]{3,}/gi,
@@ -1937,7 +1935,6 @@ const READS_PAGE_TEXT = new Set([
   "ssti-indicators",
   "path-traversal-indicators",
   "ldap-injection-indicators",
-  "insecure-auth",
   "xml-external-entity",
   "code-stripe-publishable-key",
   "code-csp-missing-trusted-types",

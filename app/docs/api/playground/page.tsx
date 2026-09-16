@@ -214,6 +214,7 @@ export default function ApiPlaygroundPage() {
               />
               <Input
                 id="api-key"
+                name="apiKey"
                 type={showKey ? "text" : "password"}
                 autoComplete="off"
                 placeholder="vr_live_..."

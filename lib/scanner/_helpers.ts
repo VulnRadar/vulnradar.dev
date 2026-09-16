@@ -266,8 +266,29 @@ export function withDocBlocksStripped(
  * description text routinely ends up inside it. Speculation rules are a JSON
  * document too. Neither is source the site executes.
  */
-const DATA_SCRIPT_TYPE =
-  /\btype\s*=\s*["']?(?:application\/(?:ld\+)?json|speculationrules|text\/template|text\/x-template)["']?/i;
+const DATA_SCRIPT_TYPES =
+  "application\\/(?:ld\\+)?json|speculationrules|text\\/template|text\\/x-template";
+const DATA_SCRIPT_TYPE = new RegExp(
+  `\\btype\\s*=\\s*["']?(?:${DATA_SCRIPT_TYPES})["']?`,
+  "i",
+);
+const DATA_SCRIPT_TYPE_VALUE = new RegExp(
+  `^\\s*(?:${DATA_SCRIPT_TYPES})\\s*$`,
+  "i",
+);
+
+/**
+ * Whether an inline script, given its `type` attribute and its content, is
+ * source the site wrote, by the same rules {@link extractScriptContents}
+ * applies. For callers that have already parsed the element.
+ */
+export function isAuthoredInlineScript(
+  type: string | null,
+  content: string,
+): boolean {
+  if (type && DATA_SCRIPT_TYPE_VALUE.test(type)) return false;
+  return isAuthoredScriptContent(content);
+}
 
 /**
  * Every authored inline `<script>` element in a response body.
@@ -366,7 +387,26 @@ function isTagStartCode(code: number): boolean {
  * checks/_tag-scan.ts, so a hostile page costs linear time.
  */
 export function stripProse(body: string): string {
-  if (!body || !/^\s*</.test(body.slice(0, 512))) return body;
+  if (body === lastProseInput) return lastProseOutput;
+  lastProseOutput = buildProseView(body);
+  lastProseInput = body;
+  return lastProseOutput;
+}
+
+let lastProseInput: string | null = null;
+let lastProseOutput = "";
+
+/**
+ * An HTML document or fragment: optional doctype and comments, then an HTML
+ * element. XML is not, however much it looks like markup: a served pom.xml,
+ * WSDL or sitemap carries its evidence in text nodes, and the prose view
+ * would drop exactly that.
+ */
+const HTML_START =
+  /^\s*(?:<!--[\s\S]{0,2000}?-->\s*)*<(?:!doctype\s+html|html|head|body|meta|link|script|style|title|base|noscript|div|span|p|a|main|section|article|header|footer|nav|aside|form|input|button|table|ul|ol|li|img|svg|iframe|h[1-6]|br|hr|pre|code|template)\b/i;
+
+function buildProseView(body: string): string {
+  if (!body || !HTML_START.test(body.slice(0, 4096))) return body;
   const input = stripTagElements(body, TEXT_REGION_TAGS);
   const out: string[] = [];
   const closers: Record<string, RegExp> = {
@@ -426,13 +466,10 @@ export function stripProse(body: string): string {
   return out.join("\n");
 }
 
-let lastProseInput: string | null = null;
-let lastProseOutput = "";
-
 /**
  * Wrap a raw detector map so every detector sees {@link stripProse}'s view of
- * the body, computed once per body however many detectors read it. Same
- * one-entry memo, and the same reasoning, as {@link withDocBlocksStripped}.
+ * the body, computed once per body however many detectors read it: the view
+ * is memoised on the body, the same way {@link withDocBlocksStripped} is.
  */
 export function withProseStripped(
   raw: Record<string, EvidenceFn>,
@@ -440,15 +477,66 @@ export function withProseStripped(
   return Object.fromEntries(
     Object.entries(raw).map(([id, fn]) => [
       id,
-      ((url, headers, body) => {
-        if (body !== lastProseInput) {
-          lastProseOutput = stripProse(body);
-          lastProseInput = body;
-        }
-        return fn(url, headers, lastProseOutput);
-      }) as EvidenceFn,
+      ((url, headers, body) =>
+        fn(url, headers, stripProse(body))) as EvidenceFn,
     ]),
   );
+}
+
+interface ExampleJudge {
+  body: string;
+  /** The page with example blocks and flight payloads removed. */
+  outside: string;
+  /** Example block text, with the entities a renderer escapes decoded. */
+  examples: string;
+  /** Next.js flight payload script text. */
+  payload: string;
+}
+let lastJudge: ExampleJudge | null = null;
+
+function exampleJudge(body: string): ExampleJudge {
+  if (lastJudge?.body === body) return lastJudge;
+  const payloadScripts = tagElementContents(body, ["script"]).filter((c) =>
+    /self\.__next_f\.push\s*\(/.test(c),
+  );
+  let withoutPayload = body;
+  for (const p of payloadScripts)
+    withoutPayload = withoutPayload.split(p).join("");
+  lastJudge = {
+    body,
+    outside: stripDocBlocks(withoutPayload),
+    examples: tagElementContents(body, DOC_BLOCK_TAGS)
+      .join("\n")
+      .replace(/&quot;/g, '"')
+      .replace(/&#x27;|&#39;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&"),
+    payload: payloadScripts.join("\n"),
+  };
+  return lastJudge;
+}
+
+/**
+ * Whether a secret-shaped string matched somewhere in `body` is being shown as
+ * an example rather than leaked.
+ *
+ * Shown anywhere outside <code>, <pre>, <kbd> and <samp>, it is a finding.
+ * Inside only those, it is an example. The case that needed this helper is
+ * the third place a Next.js page carries text: the flight payload, which
+ * repeats every code example as a JSON string literal. Its copy sat outside
+ * the example blocks, so a connection string shown in a setup guide was
+ * reported as a critical leak. A value found only in the payload is therefore
+ * an example when the same value, up to the first JSON escape, is in an
+ * example block, and a finding otherwise, because a server component passing
+ * a secret to a client component puts it in the payload and nowhere else.
+ */
+export function isDemonstratedExample(body: string, match: string): boolean {
+  const judge = exampleJudge(body);
+  if (judge.outside.includes(match)) return false;
+  if (!judge.payload.includes(match)) return true;
+  const core = match.split("\\")[0];
+  return core.length >= 8 && judge.examples.includes(core);
 }
 
 /**
