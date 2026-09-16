@@ -134,7 +134,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             required: true,
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ScanRequest" },
+                schema: { $ref: "#/components/schemas/CrawlScanRequest" },
               },
             },
           },
@@ -1596,7 +1596,143 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
               // ref: AUDIT-014#apidoc-02
               example: ["headers", "ssl"],
             },
+            // The four below were read by the route and absent from this
+            // schema. That is worse than an undocumented field: anything
+            // generated from this spec - an SDK, a client, the playground -
+            // inherits the omission, so a developer working from the published
+            // contract could not discover them at all. It is a plausible
+            // reason the CLI and the extension never sent them either.
+            isPublic: {
+              type: "boolean",
+              description:
+                "Whether the result is listed publicly. Omit to take the account default; an explicit value wins over it.",
+            },
+            captureScreenshot: {
+              type: "boolean",
+              default: false,
+              description:
+                "Capture a page screenshot alongside the findings. Off unless explicitly true.",
+            },
+            teamId: {
+              type: "integer",
+              description:
+                "Share the resulting scan with this team at creation time. You must be a member. Use teamIds to share with more than one.",
+            },
+            teamIds: {
+              type: "array",
+              items: { type: "integer" },
+              description:
+                "Share the resulting scan with several teams at creation time. The first is stored as the primary.",
+            },
           },
+        },
+        // /scan/crawl used to reuse ScanRequest, so the two fields that make a
+        // crawl a crawl rather than a copy of /scan - the page selection and
+        // the login block - were documented nowhere.
+        CrawlScanRequest: {
+          allOf: [
+            { $ref: "#/components/schemas/ScanRequest" },
+            {
+              type: "object",
+              properties: {
+                urls: {
+                  type: "array",
+                  items: { type: "string" },
+                  description:
+                    "The specific pages to scan, normally taken from POST /scan/crawl/discover. Omit to let the crawler pick, up to your plan's crawl page limit.",
+                },
+                auth: { $ref: "#/components/schemas/ScanAuth" },
+              },
+            },
+          ],
+        },
+        // The real shape of `auth`, which is a discriminated union on `method`
+        // and is shared by /scan/authenticated and /scan/crawl. This was
+        // documented as one flat object carrying only the form fields, so the
+        // two other methods it advertises in the enum - header and cookie -
+        // had none of their required fields written down anywhere. A developer
+        // choosing either had to read lib/scanner/auth/request-schema.ts.
+        ScanAuth: {
+          type: "object",
+          required: ["method"],
+          description:
+            "Nothing under this key is ever written to a table, a log line, or an audit record.",
+          discriminator: { propertyName: "method" },
+          oneOf: [
+            {
+              type: "object",
+              title: "form",
+              required: ["method", "username", "password"],
+              properties: {
+                // Each variant's discriminator carries its own example.
+                // Without one the prefill builder emits "" for a string,
+                // and "" is not a member of the enum - the playground would
+                // hand a developer an auth block that cannot validate.
+                method: { type: "string", enum: ["form"], example: "form" },
+                username: { type: "string" },
+                password: { type: "string" },
+                loginUrl: {
+                  type: "string",
+                  description:
+                    "Where the login form lives. Defaults to the target's own origin.",
+                },
+                usernameField: {
+                  type: "string",
+                  description:
+                    "Override the detected username input's name attribute.",
+                },
+                passwordField: {
+                  type: "string",
+                  description:
+                    "Override the detected password input's name attribute.",
+                },
+              },
+            },
+            {
+              type: "object",
+              title: "header",
+              required: ["method", "headerValue"],
+              properties: {
+                method: {
+                  type: "string",
+                  enum: ["header"],
+                  example: "header",
+                },
+                headerName: {
+                  type: "string",
+                  default: "Authorization",
+                  description: "Header to attach to every same-origin request.",
+                },
+                headerValue: { type: "string", example: "Bearer eyJhbGci..." },
+              },
+            },
+            {
+              type: "object",
+              title: "cookie",
+              required: ["method", "cookies"],
+              properties: {
+                method: {
+                  type: "string",
+                  enum: ["cookie"],
+                  example: "cookie",
+                },
+                cookies: {
+                  type: "array",
+                  minItems: 1,
+                  description:
+                    "Cookies attached to every same-origin request. Dropped on any redirect off-origin.",
+                  items: {
+                    type: "object",
+                    required: ["name", "value"],
+                    properties: {
+                      name: { type: "string" },
+                      value: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+          ],
         },
         ScanCreated: {
           type: "object",
@@ -2195,23 +2331,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
               description:
                 "Defaults to false here, unlike every other scan-creation path: an authenticated scan sees whatever a logged-in area renders, so neither the account default nor the column default can make it public. Only an explicit true does.",
             },
-            auth: {
-              type: "object",
-              required: ["method"],
-              description:
-                "Nothing under this key is ever written to a table, a log line, or an audit record.",
-              properties: {
-                method: {
-                  type: "string",
-                  enum: ["form", "header", "cookie"],
-                  description:
-                    "form opens an ephemeral real browser session so a JavaScript-rendered login page can appear before the form is submitted; header and cookie attach the given values to every request instead.",
-                },
-                loginUrl: { type: "string" },
-                username: { type: "string" },
-                password: { type: "string" },
-              },
-            },
+            auth: { $ref: "#/components/schemas/ScanAuth" },
           },
         },
         CrawlDiscoverRequest: {

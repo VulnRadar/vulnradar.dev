@@ -224,7 +224,14 @@ jobs:
       postgres:
         # Same image as the Self-host smoke test job and docker-compose.yml,
         # so all three prove things about one PostgreSQL version.
-        image: postgres:16.4-alpine
+        #
+        # This said 16.4 while both compose files had moved to 16.15, so the
+        # claim above was false and the tests proved things about a version no
+        # self-hoster was running. Nothing would have caught it: dependabot's
+        # docker-compose ecosystem reads compose files and its docker ecosystem
+        # reads Dockerfiles, and neither one looks inside a workflow's
+        # `services:` block, so this pin only ever moves when a human notices.
+        image: postgres:16.15-alpine
         env:
           POSTGRES_USER: vulnradar
           POSTGRES_PASSWORD: ci_integration_password
@@ -350,6 +357,28 @@ jobs:
       # so a change that broke its typecheck, formatting, or build could land
       # unnoticed. This job type-checks it, enforces formatting, and builds
       # both the Chrome and Firefox targets.
+      - name: Guard the extension lockfile
+        # The same Windows trap the root lockfile is guarded against, which the
+        # extension had no equivalent check for. Its dev tree is now native-
+        # heavy - vite 8 pulls in rolldown and lightningcss, and sharp builds
+        # the icons - so a lockfile regenerated on Windows resolves only the
+        # win32 binaries. `npm ci` below still succeeds; `npm run build` then
+        # fails inside rolldown with a native-binding error that says nothing
+        # about lockfiles. CI goes red either way, so nothing ships broken -
+        # this just turns an afternoon of confusion into one line.
+        run: |
+          set -euo pipefail
+          missing=""
+          for pkg in @rolldown/binding-linux-x64-gnu lightningcss-linux-x64-gnu @img/sharp-linux-x64; do
+            grep -q "\"node_modules/${pkg}\"" package-lock.json || missing="${missing} ${pkg}"
+          done
+          if [ -n "${missing}" ]; then
+            echo "::error::extension/package-lock.json is missing Linux native bindings:${missing}. It was almost certainly regenerated on Windows. Graft the entries back rather than re-resolving."
+            exit 1
+          fi
+          echo "Extension lockfile carries the Linux native bindings."
+        working-directory: extension
+
       - name: Install extension dependencies
         run: npm ci
         working-directory: extension
@@ -466,7 +495,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16.4-alpine
+        image: postgres:16.15-alpine
         env:
           POSTGRES_USER: vulnradar
           POSTGRES_PASSWORD: ci_smoke_test_password

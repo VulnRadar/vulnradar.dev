@@ -73,3 +73,72 @@ describe("playground helpers", () => {
     ).not.toThrow();
   });
 });
+
+/**
+ * Composition keywords.
+ *
+ * The spec gained an allOf (CrawlScanRequest extends ScanRequest) and a
+ * discriminated oneOf (ScanAuth, shared by the authenticated and crawl scan
+ * routes). buildExample handled neither, and a schema with no `type` and no
+ * `properties` fell through to null - so the editor would have prefilled the
+ * literal `null` as the whole request body for both of those endpoints.
+ *
+ * That is the failure the `scanners` example in openapi-spec.ts was written to
+ * prevent: a prefilled body that looks like a valid request, is not, and costs
+ * the developer a real scan to find out.
+ */
+describe("buildExample composition", () => {
+  const spec = {
+    components: {
+      schemas: {
+        Base: {
+          type: "object",
+          properties: { url: { type: "string", example: "example.com" } },
+        },
+      },
+    },
+  } as unknown as Parameters<typeof buildExample>[0];
+
+  it("merges an allOf into one object", () => {
+    const out = buildExample(spec, {
+      allOf: [
+        { $ref: "#/components/schemas/Base" },
+        {
+          type: "object",
+          properties: { urls: { type: "array", items: { type: "string" } } },
+        },
+      ],
+    } as never) as Record<string, unknown>;
+
+    expect(out).not.toBeNull();
+    expect(out.url).toBe("example.com");
+    expect(out.urls).toEqual([""]);
+  });
+
+  it("takes the first variant of a oneOf", () => {
+    const out = buildExample(spec, {
+      oneOf: [
+        {
+          type: "object",
+          properties: { method: { type: "string", example: "form" } },
+        },
+        {
+          type: "object",
+          properties: { method: { type: "string", example: "header" } },
+        },
+      ],
+    } as never) as Record<string, unknown>;
+
+    expect(out.method).toBe("form");
+  });
+
+  it("does not return null for a composed schema", () => {
+    for (const schema of [
+      { allOf: [{ type: "object", properties: {} }] },
+      { oneOf: [{ type: "object", properties: {} }] },
+      { anyOf: [{ type: "object", properties: {} }] },
+    ]) {
+      expect(buildExample(spec, schema as never)).not.toBeNull();
+    }
+  });
+});

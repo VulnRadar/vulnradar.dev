@@ -12,7 +12,7 @@
 services:
   # PostgreSQL Database
   # infra: pin to a specific minor (16.4). Bump intentionally; for
-  # an immutable build, replace with `postgres:16.4-alpine@sha256:<digest>`
+  # an immutable build, replace with `postgres:16.15-alpine@sha256:<digest>`
   # (pull + `docker images --digests` to fetch the digest).
   postgres:
     image: postgres:16.15-alpine

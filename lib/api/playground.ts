@@ -66,6 +66,33 @@ export function buildExample(spec: Json, schema: Json, depth = 0): Json {
   }
   if (s.example !== undefined) return s.example;
 
+  // Composition. Neither of these carries `type` or `properties`, so without
+  // handling them the switch below falls through to `default: null` and the
+  // editor prefills the literal `null` for the whole body. That is the same
+  // failure mode the `scanners` example in openapi-spec.ts documents: a
+  // prefilled body that looks like a valid request, is not, and costs the
+  // developer a real scan to discover.
+  //
+  // allOf: merge every branch, later branches winning, which is what the
+  // keyword means for the object case this spec uses it for.
+  if (Array.isArray(s.allOf)) {
+    const merged: Record<string, Json> = {};
+    for (const branch of s.allOf as Json[]) {
+      const part = buildExample(spec, branch, depth + 1);
+      if (part && typeof part === "object" && !Array.isArray(part)) {
+        Object.assign(merged, part);
+      }
+    }
+    return merged;
+  }
+  // oneOf/anyOf: an example can only be one of them, so take the first. For a
+  // discriminated union that is the primary variant, which is the one a
+  // developer most likely wants prefilled.
+  const variants = (s.oneOf ?? s.anyOf) as Json[] | undefined;
+  if (Array.isArray(variants) && variants.length > 0) {
+    return buildExample(spec, variants[0], depth + 1);
+  }
+
   switch (s.type) {
     case "object": {
       const props = (s.properties as Record<string, Json>) || {};
