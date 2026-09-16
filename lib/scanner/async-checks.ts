@@ -46,6 +46,7 @@ import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { checkReputation } from "@/lib/scanner/reputation-lookup";
 import { checkOsvVulnerableLibraries } from "@/lib/scanner/osv-check";
 import { readTlsHandshake } from "@/lib/scanner/tls-handshake";
+import { readPage } from "@/lib/scanner/page-fetch";
 import {
   checkActiveProbes,
   checkSqlInjectionProbe,
@@ -4746,17 +4747,9 @@ export async function checkBucketListing(
     return [];
   }
 
-  let body: string;
-  try {
-    const res = await safeFetch(url, {
-      method: "GET",
-      headers: FETCH_OPTS.headers,
-      signal: AbortSignal.timeout(BUCKET_PROBE_TIMEOUT_MS + 1000),
-    });
-    body = (await res.text()).slice(0, 1_000_000);
-  } catch {
-    return [];
-  }
+  const page = await readPage(url);
+  if (!page) return [];
+  const body = page.body;
 
   // Ceiling on how many distinct bucket hostnames get an active listing
   // probe per scan. A page can reference (or fabricate) far more bucket-
@@ -5077,7 +5070,20 @@ export async function checkCspNonceReuse(
   }
 
   const NONCE = /'nonce-([A-Za-z0-9+/_=-]{8,})'/g;
-  const noncesOf = async (): Promise<Set<string> | null> => {
+  const noncesIn = (headers: Headers): Set<string> =>
+    new Set(
+      [...(headers.get("content-security-policy") ?? "").matchAll(NONCE)].map(
+        (m) => m[1],
+      ),
+    );
+
+  try {
+    // The first response is the page the other checks already share; only
+    // the second, which has to be a separate response, is a new request.
+    const page = await readPage(url);
+    if (!page || !page.ok) return [];
+    const first = noncesIn(page.headers);
+    if (first.size === 0) return [];
     const res = await safeFetch(url, {
       method: "GET",
       headers: FETCH_OPTS.headers,
@@ -5085,15 +5091,7 @@ export async function checkCspNonceReuse(
     });
     // Drain the body so the connection is released; only the header matters.
     await res.text().catch(() => "");
-    if (!res.ok) return null;
-    const csp = res.headers.get("content-security-policy") ?? "";
-    return new Set([...csp.matchAll(NONCE)].map((m) => m[1]));
-  };
-
-  try {
-    const first = await noncesOf();
-    if (!first || first.size === 0) return [];
-    const second = await noncesOf();
+    const second = res.ok ? noncesIn(res.headers) : null;
     if (!second) return [];
     const repeated = [...first].filter((n) => second.has(n));
     if (repeated.length === 0) return [];

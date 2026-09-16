@@ -26,7 +26,8 @@
  * all degrade to returning [] rather than failing the scan.
  */
 
-import { isPrivateHostname, safeFetch } from "./safe-fetch";
+import { isPrivateHostname } from "./safe-fetch";
+import { readPage } from "./page-fetch";
 import { openTags } from "./checks/_tag-scan";
 import { generateId } from "./_helpers";
 import { getCheckDef } from "./registry";
@@ -42,10 +43,7 @@ import {
   versionBelow,
 } from "./library-fingerprints";
 import type { Vulnerability, Category, Severity } from "./types";
-import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
-
-const USER_AGENT = `${APP_NAME}/1.0 (Security Scanner; Dependency Check; +${APP_URL})`;
-const REQUEST_TIMEOUT_MS = 8000;
+import { SEVERITY_PRIORITY } from "@/lib/config/constants";
 
 /** Caps how many distinct libraries get an OSV.dev lookup per scan -- a page
  *  can reference far more script tags than any real site would load. */
@@ -248,20 +246,10 @@ export async function checkOsvVulnerableLibraries(
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
   if (isPrivateHostname(parsed.hostname)) return [];
 
-  let html: string;
-  try {
-    const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-    const res = await safeFetch(url, {
-      headers: { "User-Agent": USER_AGENT },
-      signal: cancelSignal
-        ? AbortSignal.any([timeoutSignal, cancelSignal])
-        : timeoutSignal,
-    });
-    if (!res.ok) return [];
-    html = await res.text();
-  } catch {
-    return [];
-  }
+  // The same fetch of the page the other async checks read (page-fetch.ts).
+  const page = await readPage(url);
+  if (!page || !page.ok) return [];
+  const html = page.body;
 
   const libraries = extractDetectedLibraries(html, url);
   if (libraries.length === 0) return [];

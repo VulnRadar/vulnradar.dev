@@ -2129,6 +2129,22 @@ describe("checkCspNonceReuse", () => {
     expect(await checkCspNonceReuse("https://example.com/")).toEqual([]);
   });
 
+  it("shares one fetch of the page with the other checks that read it", async () => {
+    // The bucket-listing check and this one used to fetch the page
+    // separately, alongside the OSV lookup, in the same second.
+    respondWithNonces(null);
+    await Promise.all([
+      checkCspNonceReuse("https://example.com/"),
+      checkBucketListing("https://example.com/"),
+    ]);
+    const pageFetches = vi
+      .mocked(fetch as unknown as ReturnType<typeof vi.fn>)
+      .mock.calls.filter(([input]) =>
+        String(input).startsWith("https://example.com/"),
+      );
+    expect(pageFetches).toHaveLength(1);
+  });
+
   it("makes no second request when the page uses no nonce", async () => {
     respondWithNonces(null);
     expect(await checkCspNonceReuse("https://example.com/")).toEqual([]);
