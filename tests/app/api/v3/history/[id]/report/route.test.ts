@@ -56,8 +56,12 @@ vi.mock("@/lib/teams/scan-teams", () => ({
 // pool); the flag it sets is what the route filters on.
 const mockSuppressedIds = new Set<string>();
 vi.mock("@/lib/scanner/remediation-store", () => ({
-  attachRemediation: (_u: number, _url: string, f: unknown) => f,
-  attachFalsePositiveVerdicts: (_u: number, f: unknown) =>
+  // One function now, where this mocked two: the route chained
+  // attachRemediation into attachFalsePositiveVerdicts, and both lookups are
+  // issued together by attachOwnerFindingState. The behaviour this stub needs
+  // to reproduce is unchanged - set `suppressed` on the ids the owner marked a
+  // false positive, which is what the route filters on.
+  attachOwnerFindingState: (_u: number, _url: string, f: unknown) =>
     (f as { id: string }[]).map((finding) =>
       mockSuppressedIds.has(finding.id)
         ? { ...finding, suppressed: true }

@@ -13,10 +13,7 @@ import { getScanResourceAccess } from "@/lib/teams/scan-teams";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getSetting } from "@/lib/config/runtime-config";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
-import {
-  attachRemediation,
-  attachFalsePositiveVerdicts,
-} from "@/lib/scanner/remediation-store";
+import { attachOwnerFindingState } from "@/lib/scanner/remediation-store";
 import { severityCounts } from "@/lib/reports/severity-counts";
 import {
   ERROR_MESSAGES,
@@ -216,13 +213,10 @@ export async function GET(
   // false-positive verdicts on each finding; a team-read viewer sees the
   // stored findings as-is, since triage is private to the person who did it.
   const owned = isOwner
-    ? await attachFalsePositiveVerdicts(
+    ? await attachOwnerFindingState(
         authedUserId,
-        await attachRemediation(
-          authedUserId,
-          scan.url,
-          (scan.findings || []) as Vulnerability[],
-        ),
+        scan.url,
+        (scan.findings || []) as Vulnerability[],
       )
     : ((scan.findings || []) as Vulnerability[]);
 

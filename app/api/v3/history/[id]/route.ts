@@ -22,10 +22,7 @@ import {
 } from "@/lib/teams/scan-teams";
 import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
-import {
-  attachRemediation,
-  attachFalsePositiveVerdicts,
-} from "@/lib/scanner/remediation-store";
+import { attachOwnerFindingState } from "@/lib/scanner/remediation-store";
 import type { Vulnerability } from "@/lib/scanner/types";
 
 export async function GET(
@@ -112,18 +109,24 @@ export async function GET(
   // app/api/v3/scan/tags/route.ts) belong to the scan's owner, not
   // necessarily the requester -- a teammate viewing this scan below still
   // sees the owner's tags, same as they see the owner's notes.
-  const tagsResult = await pool.query(
-    `SELECT tag, source FROM scan_tags WHERE scan_id = $1 AND user_id = $2 ORDER BY source, tag`,
-    [scan.id, scan.user_id],
-  );
+  //
+  // Issued together with the team set below: both need only the resolved scan
+  // row and neither reads the other, so awaiting them in sequence was one
+  // round trip spent waiting for nothing on the most-requested authenticated
+  // route in the product.
+  const [tagsResult, scanTeamIds] = await Promise.all([
+    pool.query(
+      `SELECT tag, source FROM scan_tags WHERE scan_id = $1 AND user_id = $2 ORDER BY source, tag`,
+      [scan.id, scan.user_id],
+    ),
+    // Every team this scan is shared with. A scan used to carry at most one
+    // (scan_history.team_id); the set now lives in scan_history_teams, with
+    // the column kept in sync as the primary. Read once here so both the owner
+    // and the team-member branch below can report it and the team-member
+    // branch can decide access from it.
+    getScanTeamIds(scan.id),
+  ]);
   const tags = tagsResult.rows;
-
-  // Every team this scan is shared with. A scan used to carry at most one
-  // (scan_history.team_id); the set now lives in scan_history_teams, with the
-  // column kept in sync as the primary. Read once here so both the owner and
-  // the team-member branch below can report it and the team-member branch can
-  // decide access from it.
-  const scanTeamIds = await getScanTeamIds(scan.id);
 
   // Allow if it's the user's own scan
   if (scan.user_id === authedUserId) {
@@ -137,13 +140,10 @@ export async function GET(
     // finding they marked on an earlier scan of this target shows the same
     // status here. Owner-only -- deliberately NOT done in the team-member
     // branch below, since remediation tracking is private to its owner.
-    const ownedFindings = await attachFalsePositiveVerdicts(
+    const ownedFindings = await attachOwnerFindingState(
       authedUserId,
-      await attachRemediation(
-        authedUserId,
-        scan.url,
-        (scan.findings || []) as Vulnerability[],
-      ),
+      scan.url,
+      (scan.findings || []) as Vulnerability[],
     );
 
     return NextResponse.json({

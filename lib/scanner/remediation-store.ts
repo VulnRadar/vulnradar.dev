@@ -63,59 +63,71 @@ export async function getRemediationMap(
 }
 
 /**
- * Returns a copy of `findings` with each finding's current remediation
- * status attached (by stable finding_id) where the user has set one. Leaves
- * findings without a stored status untouched. Owner-only -- callers must
- * pass the authenticated owner's user id.
- */
-export async function attachRemediation(
-  userId: number,
-  findingUrl: string,
-  findings: Vulnerability[],
-): Promise<Vulnerability[]> {
-  if (!Array.isArray(findings) || findings.length === 0) return findings;
-  const map = await getRemediationMap(userId, findingUrl);
-  if (map.size === 0) return findings;
-  return findings.map((f) => {
-    const remediation = map.get(f.id);
-    return remediation ? { ...f, remediation } : f;
-  });
-}
-
-/**
- * Flag the findings this owner has marked a false positive.
+ * The finding ids this owner has marked a false positive.
  *
- * Reads the same table and the same predicate as
- * lib/scanner/recompute-scan-score.ts, which excludes these from summary,
- * findings_count and dangerScore. Keeping one source for both is the point:
- * a second rule would let the numbers and the list drift apart again.
- *
- * Owner-only, like attachRemediation. A teammate viewing the scan sees the
- * findings as scanned, since the verdict is the owner's own triage.
+ * Split out of attachFalsePositiveVerdicts so the lookup can be issued
+ * alongside getRemediationMap rather than after it. Same query, same
+ * best-effort contract: a failed read returns an empty set, so the caller
+ * shows every finding, which is the safe direction.
  */
-export async function attachFalsePositiveVerdicts(
+export async function getFalsePositiveIds(
   userId: number,
-  findings: Vulnerability[],
-): Promise<Vulnerability[]> {
-  if (!Array.isArray(findings) || findings.length === 0) return findings;
+): Promise<Set<string>> {
   try {
     const res = await pool.query<{ finding_id: string }>(
       `SELECT finding_id FROM scan_finding_feedback
        WHERE user_id = $1 AND verdict = 'false_positive'`,
       [userId],
     );
-    if (res.rows.length === 0) return findings;
-    const suppressed = new Set(res.rows.map((row) => row.finding_id));
-    return findings.map((f) =>
-      suppressed.has(f.id) ? { ...f, suppressed: true } : f,
-    );
+    return new Set(res.rows.map((row) => row.finding_id));
   } catch (err) {
-    // Best effort: a failed lookup must not cost the user their findings.
-    // The list then shows every finding, which is the safe direction.
     console.error(
-      "Failed to attach false-positive verdicts:",
+      "Failed to read false-positive verdicts:",
       err instanceof Error ? err.message : err,
     );
-    return findings;
+    return new Set();
   }
+}
+
+/**
+ * Everything the OWNER of a scan sees on their own findings that is not in the
+ * scan row: remediation status, and whether they have called a finding a false
+ * positive.
+ *
+ * Three routes wanted both - the scan detail, the report export and the scan
+ * status poll - and all three wrote the same nested pair, each awaiting the
+ * remediation lookup and then passing its result into the verdict lookup. That
+ * chain reads like a dependency and is not one: both key off `finding.id`, and
+ * neither changes an id, so the second was simply waiting on the first for no
+ * reason. Two sequential round trips per call, three times over, on the paths
+ * a user hits most.
+ *
+ * Both lookups go out together here and both are applied in one pass. Owner-
+ * only by construction, which is the other reason this belongs in one place:
+ * remediation and false-positive verdicts are private to the person who
+ * recorded them, and a teammate viewing the same scan must not receive either.
+ */
+export async function attachOwnerFindingState(
+  userId: number,
+  findingUrl: string,
+  findings: Vulnerability[],
+): Promise<Vulnerability[]> {
+  if (!Array.isArray(findings) || findings.length === 0) return findings;
+
+  const [remediationMap, suppressed] = await Promise.all([
+    getRemediationMap(userId, findingUrl),
+    getFalsePositiveIds(userId),
+  ]);
+
+  if (remediationMap.size === 0 && suppressed.size === 0) return findings;
+
+  return findings.map((f) => {
+    const remediation = remediationMap.get(f.id);
+    if (!remediation && !suppressed.has(f.id)) return f;
+    return {
+      ...f,
+      ...(remediation ? { remediation } : {}),
+      ...(suppressed.has(f.id) ? { suppressed: true } : {}),
+    };
+  });
 }

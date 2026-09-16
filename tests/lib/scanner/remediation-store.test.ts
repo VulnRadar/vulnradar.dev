@@ -7,8 +7,14 @@
  * Rather than hand back canned rows, the pool is backed by a tiny in-memory
  * store that filters exactly the way the real SELECT does (WHERE user_id=$1
  * AND finding_url=$2). That makes the assertions below meaningful: nothing in
- * attachRemediation ever sees a scan id, so two different scans of the same
- * URL necessarily resolve to the same remediation rows.
+ * attachOwnerFindingState ever sees a scan id, so two different scans of the
+ * same URL necessarily resolve to the same remediation rows.
+ *
+ * It tests attachOwnerFindingState rather than the attachRemediation wrapper
+ * it replaced, because that wrapper had no production caller left: three
+ * routes each chained it into attachFalsePositiveVerdicts, and both are now
+ * one function that issues the two lookups together. A suite pointed at the
+ * unused half would have kept passing while the shipped path went uncovered.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { Vulnerability } from "@/lib/scanner/types";
@@ -40,7 +46,7 @@ vi.mock("@/lib/database/db", () => ({
   },
 }));
 
-const { attachRemediation, getRemediationMap } =
+const { attachOwnerFindingState, getRemediationMap } =
   await import("@/lib/scanner/remediation-store");
 
 function finding(id: string): Vulnerability {
@@ -79,13 +85,17 @@ describe("attachRemediation cross-rescan persistence", () => {
     });
 
     // Scan #1 of the target (some scan_history row).
-    const scan1 = await attachRemediation(7, URL_A, [finding(FINDING_ID)]);
+    const scan1 = await attachOwnerFindingState(7, URL_A, [
+      finding(FINDING_ID),
+    ]);
     expect(scan1[0].remediation?.status).toBe("fixed");
 
     // Scan #2 of the SAME target: a brand new scan_history row, brand new
     // Vulnerability objects -- but the identical finding_id + url. The status
     // must carry over, proving it keyed on the finding identity, not the scan.
-    const scan2 = await attachRemediation(7, URL_A, [finding(FINDING_ID)]);
+    const scan2 = await attachOwnerFindingState(7, URL_A, [
+      finding(FINDING_ID),
+    ]);
     expect(scan2[0].remediation?.status).toBe("fixed");
     expect(scan2[0].remediation?.note).toBe("done in 4.2");
     expect(scan2[0].remediation?.assignee).toBe("alice");
@@ -100,7 +110,9 @@ describe("attachRemediation cross-rescan persistence", () => {
       note: null,
       assignee: null,
     });
-    const other = await attachRemediation(999, URL_A, [finding(FINDING_ID)]);
+    const other = await attachOwnerFindingState(999, URL_A, [
+      finding(FINDING_ID),
+    ]);
     expect(other[0].remediation).toBeUndefined();
   });
 
@@ -113,7 +125,7 @@ describe("attachRemediation cross-rescan persistence", () => {
       note: null,
       assignee: null,
     });
-    const findings = await attachRemediation(7, URL_A, [
+    const findings = await attachOwnerFindingState(7, URL_A, [
       finding(FINDING_ID),
       finding("other-check--zzz"),
     ]);
@@ -122,7 +134,7 @@ describe("attachRemediation cross-rescan persistence", () => {
   });
 
   it("returns findings unchanged (no DB read) when the list is empty", async () => {
-    const out = await attachRemediation(7, URL_A, []);
+    const out = await attachOwnerFindingState(7, URL_A, []);
     expect(out).toEqual([]);
     expect(mockQuery).not.toHaveBeenCalled();
   });

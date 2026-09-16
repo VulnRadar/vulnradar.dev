@@ -81,7 +81,7 @@ function findingSection(finding: Vulnerability): string[] {
     lines.push(`Risk and impact: ${mdText(finding.riskImpact)}`, "");
   }
 
-  // The owner's own triage. attachRemediation has always run on the export
+  // The owner's own triage. attachOwnerFindingState has always run on the export
   // route and no generator read it, so a finding the user closed as
   // "accepted risk" exported looking identical to an untouched one.
   if (finding.suppressed) {
