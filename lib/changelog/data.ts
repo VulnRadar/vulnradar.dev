@@ -405,6 +405,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: AlertTriangle,
+        label: "A Check That Breaks No Longer Reads as a Clean Scan",
+        desc: "When one of the checks that read a page threw an error instead of reaching a verdict, the scan counted it and moved on, and a scan with no findings still said every enabled check ran and none fired. That area was never checked. It is now reported the way a timed-out section already was: the result says the scan did not finish, the confidence figure drops, and the scan record names the checks that failed, for whoever investigates. The warning also stopped blaming the time budget for every unfinished area, since a timeout is only one of the reasons.",
+        category: "engine",
+      },
+      {
         icon: Database,
         label: "Pagination Parameters Can No Longer Break a Request",
         desc: "Seven routes each parsed page and limit on their own, and three got an edge case wrong: page=0 produced a negative offset and a 500 error, a non-numeric limit reached the database as NaN, and a value like 1e21 passed validation and overflowed. Every route now uses one parser that handles each of those cases.",

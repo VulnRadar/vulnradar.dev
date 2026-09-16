@@ -212,6 +212,9 @@ export function ScanResultDetail({
     // that came back are the signed-out surface, so the authenticated area
     // the user asked about is unchecked rather than clean.
     "authenticated-session": "The signed-in view of this page",
+    // A page check threw instead of reaching a verdict (engine.ts records
+    // which in result_meta.erroredChecks for operators).
+    "page-checks": "Some page checks",
   };
   const incompleteAreas = (result.incomplete ?? []).map(
     (area) => INCOMPLETE_LABELS[area] ?? area,
@@ -381,9 +384,7 @@ export function ScanResultDetail({
               title="No findings, but this scan did not finish"
               description={
                 <>
-                  {incompleteAreas.join(", ")}{" "}
-                  {incompleteAreas.length === 1 ? "did" : "did"} not complete
-                  within the time budget, so{" "}
+                  {incompleteAreas.join(", ")} did not complete, so{" "}
                   {incompleteAreas.length === 1
                     ? "that area was"
                     : "those areas were"}{" "}

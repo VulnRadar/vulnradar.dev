@@ -41,7 +41,10 @@ import {
   getDangerScore,
   getEngineConfidence,
 } from "@/lib/scanner/safety-rating";
-import { runSyncChecksYielding } from "@/lib/scanner/engine";
+import {
+  PAGE_CHECKS_INCOMPLETE,
+  runSyncChecksYielding,
+} from "@/lib/scanner/engine";
 import {
   getPlannedAsyncBranches,
   runAsyncChecksDetailed,
@@ -571,6 +574,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const incomplete = [
       ...asyncIncomplete,
       ...(session.lost ? ["authenticated-session"] : []),
+      ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
     ];
 
     // Headline signals, same as a normal scan (getDangerScore/getEngineConfidence
@@ -585,7 +589,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const resultMeta = {
       checksRun: syncResult.checksRun,
       ...(syncResult.checksErrored > 0
-        ? { checksErrored: syncResult.checksErrored }
+        ? {
+            checksErrored: syncResult.checksErrored,
+            erroredChecks: syncResult.erroredChecks,
+          }
         : {}),
       dangerScore,
       engineConfidence,

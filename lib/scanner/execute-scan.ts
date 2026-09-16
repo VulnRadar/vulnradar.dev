@@ -9,7 +9,7 @@
  * fire-and-forget, instead of racing a detached promise.
  */
 
-import { runSyncChecksYielding } from "./engine";
+import { PAGE_CHECKS_INCOMPLETE, runSyncChecksYielding } from "./engine";
 import {
   runAsyncChecksDetailed,
   getPlannedAsyncBranches,
@@ -596,6 +596,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           checksRun: 0,
           checksSkipped: 0,
           checksErrored: 0,
+          erroredChecks: [] as string[],
           deduped: 0,
         }
       : // Yielding variant: this is ~63ms of uninterrupted synchronous work
@@ -789,7 +790,10 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // retuned. A scan from before this existed simply has no siteGrade, and
     // getSiteGrade(findings) reproduces it. ref: AUDIT-014#comp-03
     const siteGrade = getSiteGrade(findings);
-    const incomplete = asyncResult.incomplete;
+    const incomplete = [
+      ...asyncResult.incomplete,
+      ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
+    ];
     const engineConfidence = getEngineConfidence(
       findings,
       asyncTimedOut || incomplete.length > 0,
@@ -883,7 +887,10 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         // scan ran with a broken check, which the console.error in engine.ts
         // names. ref: AUDIT-012#obs-01
         ...(syncResult.checksErrored > 0
-          ? { checksErrored: syncResult.checksErrored }
+          ? {
+              checksErrored: syncResult.checksErrored,
+              erroredChecks: syncResult.erroredChecks,
+            }
           : {}),
         dangerScore,
         siteGrade,

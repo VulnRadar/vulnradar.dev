@@ -46,9 +46,23 @@ export interface SyncCheckResult {
    * ref: AUDIT-012#obs-01
    */
   checksErrored: number;
+  /**
+   * The ids of those checks. The count alone told an operator that something
+   * broke and not what, and the console line that named it is gone by the
+   * time anyone looks at the scan.
+   */
+  erroredChecks: string[];
   /** Findings folded into another finding as duplicates of the same issue. */
   deduped: number;
 }
+
+/**
+ * The `ScanResult.incomplete` key for a scan in which at least one page check
+ * threw. Such a check reached no conclusion, so its area was not checked, and
+ * a zero-finding result must not read as clean because of it: every result
+ * surface already says so for anything listed in `incomplete`.
+ */
+export const PAGE_CHECKS_INCOMPLETE = "page-checks";
 
 /**
  * A string that differs between two hits from the same check's `run()` call
@@ -283,6 +297,7 @@ function* checkPasses(
   let legacyRun = 0;
   let checksSkipped = 0;
   let checksErrored = 0;
+  const erroredChecks: string[] = [];
 
   // Category boundaries alone are not fine-grained enough to bound the pause:
   // the categories are very unevenly sized, and the largest one on its own was
@@ -315,6 +330,7 @@ function* checkPasses(
         // not disappear either: a throwing check reached no conclusion, so it
         // is neither a finding nor evidence of a clean result.
         checksErrored++;
+        erroredChecks.push(check.checkId ?? "unknown");
         console.error(
           `[scanner] check "${check.checkId ?? "unknown"}" threw and did not run:`,
           err,
@@ -354,6 +370,7 @@ function* checkPasses(
       } catch (err) {
         // Same guarantee, and the same accounting, as the legacy loop above.
         checksErrored++;
+        erroredChecks.push(check.id);
         console.error(
           `[scanner] check "${check.id}" threw and did not run:`,
           err,
@@ -390,6 +407,7 @@ function* checkPasses(
       legacyRun + applicablePageChecks.length - checksSkipped - checksErrored,
     checksSkipped,
     checksErrored,
+    erroredChecks,
     deduped: deduped.merged,
   };
 }

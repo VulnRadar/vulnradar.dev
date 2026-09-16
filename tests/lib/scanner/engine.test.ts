@@ -133,6 +133,10 @@ describe("runSyncChecks", () => {
     // rather than silently counted as a clean pass, and its id reached the
     // log so a broken detector is findable.
     expect(result.checksErrored).toBe(1);
+    // Named on the result as well as in the log, which is gone by the time
+    // anyone looks at the stored scan.
+    expect(result.erroredChecks).toEqual(["test-throwing-detector"]);
+    expect(clean.erroredChecks).toEqual([]);
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-throwing-detector"),
       expect.any(Error),
@@ -250,6 +254,7 @@ describe("runSyncChecks progress hook", () => {
 
       expect(healthy.checksErrored).toBe(0);
       expect(withThrower.checksErrored).toBe(1);
+      expect(withThrower.erroredChecks).toEqual(["hsts-missing"]);
       expect(withThrower.checksRun).toBe(healthy.checksRun - 1);
       expect(
         errorSpy.mock.calls.some(([msg]) =>

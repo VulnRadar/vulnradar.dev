@@ -13,7 +13,11 @@ import {
   canMakeRequest,
   incrementDailyCountCapped,
 } from "@/lib/rate-limiting/daily-limits";
-import { runSyncChecksYielding, getPlannedSyncCategories } from "./engine";
+import {
+  PAGE_CHECKS_INCOMPLETE,
+  runSyncChecksYielding,
+  getPlannedSyncCategories,
+} from "./engine";
 import {
   runAsyncChecksDetailed,
   getPlannedAsyncBranches,
@@ -122,6 +126,8 @@ async function scanSingleUrl(
    * shown as "TLS is clean" when the TLS branch simply did not finish.
    */
   incomplete: string[];
+  /** Ids of the page checks that threw on this page. */
+  erroredChecks?: string[];
 }> {
   const startTime = Date.now();
 
@@ -284,7 +290,11 @@ async function scanSingleUrl(
     summary,
     duration: Date.now() - startTime,
     responseHeaders: redactedHeaders,
-    incomplete: asyncIncomplete,
+    incomplete: [
+      ...asyncIncomplete,
+      ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
+    ],
+    erroredChecks: syncResult.erroredChecks,
   };
 }
 
@@ -652,6 +662,9 @@ export async function executeCrawlScan(
         ...pageResults.flatMap((pr) => pr.incomplete),
       ]),
     ].sort();
+    const erroredChecks = [
+      ...new Set(pageResults.flatMap((pr) => pr.erroredChecks ?? [])),
+    ].sort();
 
     // Merge all findings, deduplicating by id. Host-level findings go in
     // first so their id (which folds in the URL they were raised against) is
@@ -952,6 +965,7 @@ export async function executeCrawlScan(
         ),
         ...(authReport ? { authReport } : {}),
         ...(incomplete.length > 0 ? { incomplete } : {}),
+        ...(erroredChecks.length > 0 ? { erroredChecks } : {}),
         ...(sslGrade ? { sslGrade } : {}),
         ...(dnsRecords ? { dnsRecords } : {}),
         ...(subdomains ? { subdomains } : {}),
