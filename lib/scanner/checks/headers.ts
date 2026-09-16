@@ -56,8 +56,17 @@ export const detectors: Record<string, DetectFn> = {
 
   "hsts-missing": (url, headers) => {
     if (!url.startsWith("https://")) return null;
-    if (hasHeader(headers, "strict-transport-security")) return null;
-    return "Header 'Strict-Transport-Security' is not present in the response.";
+    const hsts = h(headers, "strict-transport-security");
+    if (!hsts) {
+      return "Header 'Strict-Transport-Security' is not present in the response.";
+    }
+    // RFC 6797 section 6.1: a header without a valid max-age is ignored as a
+    // whole, so "present" and "in effect" are different claims. max-age=abc
+    // reported clean here while giving no protection at all.
+    if (!/(?:^|;)\s*max-age\s*=\s*"?\d+"?\s*(?:;|$)/i.test(hsts)) {
+      return `Header 'Strict-Transport-Security' is present but has no valid max-age, so browsers ignore it: '${hsts}'.`;
+    }
+    return null;
   },
 
   "csp-missing": (_url, headers, body) => {
@@ -75,7 +84,10 @@ export const detectors: Record<string, DetectFn> = {
     const xfo = h(headers, "x-frame-options");
     const csp = h(headers, "content-security-policy");
     if (xfo) return null;
-    if (csp && csp.includes("frame-ancestors")) return null;
+    // Directive names are ASCII case-insensitive. csp-frame-ancestors-missing
+    // matched it that way and this check did not, so the two disagreed about a
+    // policy written as "Frame-Ancestors 'self'".
+    if (csp && /frame-ancestors/i.test(csp)) return null;
     return "Neither 'X-Frame-Options' header nor CSP 'frame-ancestors' directive is set.";
   },
 
@@ -280,16 +292,16 @@ export const detectors: Record<string, DetectFn> = {
     return "CSP exists but no base-uri directive.";
   },
 
-  "csp-object-src-missing": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-object-src-missing": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     if (csp.includes("object-src")) return null;
     if (/default-src\s+'none'/.test(csp)) return null;
     return "CSP exists but no object-src directive.";
   },
 
-  "csp-no-upgrade-insecure": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-no-upgrade-insecure": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     if (csp.includes("upgrade-insecure-requests")) return null;
     return "CSP does not include 'upgrade-insecure-requests' directive.";
@@ -310,8 +322,8 @@ export const detectors: Record<string, DetectFn> = {
     return "CSP uses deprecated 'report-uri' directive without modern 'report-to'.";
   },
 
-  "csp-unsafe-hashes": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-unsafe-hashes": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     if (/'unsafe-hashes'/.test(csp)) {
       return "CSP uses 'unsafe-hashes' which allows inline event handlers.";
@@ -320,13 +332,13 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "csp-unsafe-inline-script": (_url, headers, body) => {
-    const csp = h(headers, "content-security-policy");
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     const scriptSrc = getCspDirective(csp, "script-src");
     if (!scriptSrc.includes("'unsafe-inline'")) return null;
     if (
       scriptSrc.includes("'nonce-") ||
-      scriptSrc.includes("'sha256-") ||
+      /'sha(?:256|384|512)-/.test(scriptSrc) ||
       scriptSrc.includes("'strict-dynamic'")
     )
       return null;
@@ -341,7 +353,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "csp-unsafe-eval-detected": (_url, headers, body) => {
-    const csp = h(headers, "content-security-policy");
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     if (!csp.includes("'unsafe-eval'")) return null;
     const isFramework =
@@ -359,8 +371,8 @@ export const detectors: Record<string, DetectFn> = {
     return `CSP allows 'unsafe-eval' in: ${directives.join(", ")} — permits eval(), Function(), and setTimeout with strings.`;
   },
 
-  "csp-allows-http-sources": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-allows-http-sources": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     const scriptSrc = getCspDirective(csp, "script-src");
     const defaultSrc = getCspDirective(csp, "default-src");
@@ -385,11 +397,22 @@ export const detectors: Record<string, DetectFn> = {
         return `CSP uses wildcard source: '${p}'.`;
       }
     }
+    // A bare scheme source ("https:") allows every origin on that scheme,
+    // which for scripts is a wildcard with extra steps: anyone can host a
+    // script on an https origin. Scoped to the script directives, where it
+    // matters; img-src https: is an ordinary, reasonable policy.
+    for (const p of parts) {
+      const name = p.split(/\s+/)[0]?.toLowerCase();
+      if (name !== "script-src" && name !== "default-src") continue;
+      if (/(?:^|\s)https?:(?:\s|$)/i.test(p)) {
+        return `CSP ${name} allows any origin on a scheme: '${p}'.`;
+      }
+    }
     return null;
   },
 
-  "csp-data-uri-allowed": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-data-uri-allowed": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     const scriptSrc = getCspDirective(csp, "script-src");
     if (!scriptSrc.includes("data:")) return null;
@@ -397,7 +420,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "csp-framework-required": (_url, headers, body) => {
-    const csp = h(headers, "content-security-policy");
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
 
     const isNextJs = body.includes("__NEXT_DATA__") || body.includes("/_next/");
@@ -442,48 +465,12 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "weak-csp-directives": (_url, headers, body) => {
-    const csp = h(headers, "content-security-policy");
-    if (!csp) return null;
-
-    const isFramework =
-      body.includes("__NEXT_DATA__") ||
-      body.includes("/_next/") ||
-      body.includes("__nuxt") ||
-      body.includes("/_nuxt/") ||
-      /ng-version/i.test(body);
-
-    const issues: string[] = [];
-    const scriptSrc = getCspDirective(csp, "script-src");
-
-    if (!isFramework) {
-      // Scoped to script-src, not the whole header: an ordinary
-      // style-src 'self' 'unsafe-inline' (this project's own csp-missing
-      // example recommends exactly that) is not a script-injection risk
-      // and must not be flagged as "weak".
-      if (
-        scriptSrc.includes("'unsafe-inline'") &&
-        !scriptSrc.includes("'nonce-") &&
-        !scriptSrc.includes("'strict-dynamic'")
-      ) {
-        issues.push("unsafe-inline without nonce");
-      }
-      if (csp.includes("'unsafe-eval'")) {
-        issues.push("unsafe-eval");
-      }
-    }
-
-    if (scriptSrc.includes("data:")) issues.push("data: in script-src");
-    const defaultSrc = getCspDirective(csp, "default-src");
-    if (/(?:^|\s)\*(?:\s|;|$)/.test(defaultSrc))
-      issues.push("wildcard in default-src");
-    if (/(?:^|\s)\*(?:\s|;|$)/.test(scriptSrc))
-      issues.push("wildcard in script-src");
-
-    return issues.length > 0
-      ? `Weak CSP directives: ${issues.join(", ")}`
-      : null;
-  },
+  // Retired: an umbrella that restated four dedicated checks in one finding,
+  // so a single weak policy was reported by it AND by each of them.
+  // 'unsafe-inline' is csp-unsafe-inline-script, 'unsafe-eval' is
+  // csp-unsafe-eval-detected, data: in script-src is csp-data-uri-allowed,
+  // and a wildcard in default-src or script-src is csp-wildcard-source.
+  "weak-csp-directives": () => null,
 
   // ── Referrer / Permissions / Cross-origin ────────────────────────────────
 
@@ -834,45 +821,13 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Cookies (header-level access for Set-Cookie via Headers.getSetCookie) ─
 
-  "cookie-security": (_url, headers) => {
-    const setCookies = (() => {
-      if (
-        typeof (headers as unknown as { getSetCookie?: () => string[] })
-          .getSetCookie === "function"
-      ) {
-        return (
-          headers as unknown as { getSetCookie: () => string[] }
-        ).getSetCookie();
-      }
-      const all: string[] = [];
-      headers.forEach((value, key) => {
-        if (key.toLowerCase() === "set-cookie") all.push(value);
-      });
-      return all;
-    })();
-    if (setCookies.length === 0) return null;
-    const issues: string[] = [];
-    for (const cookie of setCookies) {
-      const lower = cookie.toLowerCase();
-      const name = cookie.split("=")[0]?.trim();
-      // Only flag cookies that plausibly carry session/auth state -- a
-      // third-party analytics cookie (e.g. _ga, kndctr_*) missing these
-      // attributes isn't a session-hijacking risk. Same sensitive-name
-      // heuristic as cookies.ts's cookie-no-secure-prefix.
-      const nameLower = name?.toLowerCase() ?? "";
-      const isSensitive =
-        nameLower.includes("session") ||
-        nameLower.includes("token") ||
-        nameLower.includes("auth") ||
-        nameLower.includes("jwt");
-      if (!isSensitive) continue;
-      if (!lower.includes("httponly") && !name?.startsWith("__Host-"))
-        issues.push(`${name} missing HttpOnly`);
-      if (!lower.includes("secure")) issues.push(`${name} missing Secure`);
-      if (!lower.includes("samesite")) issues.push(`${name} missing SameSite`);
-    }
-    return issues.length > 0 ? issues.slice(0, 5).join("; ") : null;
-  },
+  // Retired, for the reason cookies.ts gives for session-cookie-flags: an
+  // umbrella that re-tested HttpOnly, Secure and SameSite on the same
+  // session-named cookies the three per-attribute checks already select, and
+  // reported the worst of the three at high. One cookie with no attributes was
+  // three findings from those checks plus this one on top. Each attribute keeps
+  // its own check, at a severity that matches that attribute.
+  "cookie-security": () => null,
 
   // ── Clear-Site-Data on logout pages ──────────────────────────────────────
 
@@ -962,12 +917,18 @@ export const detectors: Record<string, DetectFn> = {
   "csp-frame-src-missing": (_url, headers, body) => {
     const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
-    if (/frame-src/i.test(csp)) return null;
-    return "CSP lacks frame-src directive for iframe sources.";
+    // frame-src falls back to child-src and then to default-src (CSP3,
+    // "Get the effective directive for request"), so a policy with either of
+    // those already governs iframe sources. Flagging it anyway told a site
+    // with default-src 'self' that its frames were unrestricted.
+    if (/(?:^|;)\s*(?:frame-src|child-src|default-src)\b/i.test(csp)) {
+      return null;
+    }
+    return "CSP has no frame-src, child-src or default-src, so iframe sources are unrestricted.";
   },
 
-  "csp-object-src-unsafe": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-object-src-unsafe": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     const objectSrc = getCspDirective(csp, "object-src");
     if (!objectSrc) return null;
@@ -978,8 +939,8 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "csp-script-src-self-only": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-script-src-self-only": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     const scriptSrc = getCspDirective(csp, "script-src");
     if (!scriptSrc) return null;
@@ -990,8 +951,8 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "csp-incompatible-directives": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-incompatible-directives": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     // Match each directive by its exact name (split on ';', compare the
     // first token), not a raw substring search -- "script-src" as a bare

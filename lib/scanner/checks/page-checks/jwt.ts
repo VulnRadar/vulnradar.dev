@@ -244,6 +244,10 @@ export const jwtChecks: PageCheck[] = [
     severity: "high",
     method: "cookie-attribute",
     confidence: 82,
+    // A JWT cookie without HttpOnly is a cookie without HttpOnly: one missing
+    // attribute, one fix. It merges with the generic check rather than being
+    // reported beside it; the survivor keeps the others in alsoReportedBy.
+    dedupeGroup: "cookie-missing-httponly",
     description:
       "A cookie whose value decodes as a JSON Web Token is set without the HttpOnly attribute.",
     riskImpact:

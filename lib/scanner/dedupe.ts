@@ -143,6 +143,28 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   // Cross-Origin-Resource-Policy header absent.
   "corp-missing": "corp-missing",
   "cross-origin-resource-policy-report-only-missing": "corp-missing",
+
+  // The legacy half of families whose PageCheck half already declares a
+  // dedupeGroup. A merge needs BOTH sides mapped to the same group, and only
+  // the PageCheck side was, so the two never met: one session cookie with no
+  // attributes on an HTTPS page produced nine findings, and a CSP with one
+  // wildcard and one http: source produced four. The group names are the ones
+  // the PageChecks already use in lib/scanner/checks/page-checks/.
+  "cookie-secure-missing": "cookie-missing-secure",
+  "cookie-httponly-missing": "cookie-missing-httponly",
+  "cookie-jwt-value-not-httponly": "cookie-missing-httponly",
+  "cookie-samesite-missing": "cookie-missing-samesite",
+  // Fires only when a session cookie lacks SameSite=Lax/Strict, which is the
+  // condition above restated as a CSRF risk. One fix, one finding.
+  "cookie-no-csrf-token": "cookie-missing-samesite",
+  "set-cookie-samesite-none-no-secure": "cookie-samesite-none-no-secure",
+  "cookie-host-prefix-not-secure": "cookie-prefix-violation",
+  "cookie-host-prefix-wrong-path": "cookie-prefix-violation",
+  "cookie-secure-prefix-not-secure": "cookie-prefix-violation",
+  "cookie-host-prefix-attribute-mismatch": "cookie-prefix-violation",
+  "csp-wildcard-source": "csp-wildcard-source",
+  "csp-allows-http-sources": "csp-http-sources",
+  "csp-object-src-unsafe": "csp-object-src-unrestricted",
 };
 
 /** The check ID a finding came from, recovered from its stable finding ID. */

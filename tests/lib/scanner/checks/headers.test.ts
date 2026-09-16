@@ -48,6 +48,28 @@ const fixtures: DetectorFixtures = {
 
   "hsts-missing": [
     {
+      // RFC 6797 6.1: a header with no valid max-age is ignored as a whole.
+      description: "HSTS present but max-age is not a number",
+      url: "https://example.com/",
+      headers: {
+        "strict-transport-security": "max-age=abc; includeSubDomains; preload",
+      },
+      expect: "fire",
+      evidenceIncludes: "no valid max-age",
+    },
+    {
+      description: "HSTS present with no max-age at all",
+      url: "https://example.com/",
+      headers: { "strict-transport-security": "includeSubDomains" },
+      expect: "fire",
+    },
+    {
+      description: "quoted max-age is valid per the RFC grammar",
+      url: "https://example.com/",
+      headers: { "strict-transport-security": 'max-age="31536000"' },
+      expect: "skip",
+    },
+    {
       description: "no HSTS header on https page",
       url: "https://example.com/",
       expect: "fire",
@@ -164,6 +186,13 @@ const fixtures: DetectorFixtures = {
   ],
 
   "clickjack-missing": [
+    {
+      // Directive names are case-insensitive.
+      description: "frame-ancestors written with different casing",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "Frame-Ancestors 'self'" },
+      expect: "skip",
+    },
     {
       description: "no X-Frame-Options, no CSP frame-ancestors",
       url: "https://example.com/",
@@ -882,20 +911,12 @@ const fixtures: DetectorFixtures = {
 
   "cookie-security": [
     {
-      description: "session cookie missing HttpOnly/Secure/SameSite",
-      cookies: ["session=abc"],
-      expect: "fire",
-      evidenceIncludes: "HttpOnly",
-    },
-    {
-      description: "session cookie with all three attributes",
-      cookies: ["session=abc; HttpOnly; Secure; SameSite=Lax"],
-      expect: "skip",
-    },
-    {
+      // Retired: it re-tested HttpOnly, Secure and SameSite on the same
+      // session-named cookies the per-attribute checks select, at high, so one
+      // cookie with no attributes was reported by it and by all three of them.
       description:
-        "third-party analytics cookie missing the attributes is not a session-hijacking risk",
-      cookies: ["_ga=GA1.1.1234567890.1700000000; Path=/"],
+        "removed, duplicate of cookie-httponly/secure/samesite-missing",
+      cookies: ["session=abc"],
       expect: "skip",
     },
   ],
@@ -1054,6 +1075,22 @@ const fixtures: DetectorFixtures = {
 
   "csp-unsafe-inline-script": [
     {
+      description: "a sha384 hash neutralises unsafe-inline like sha256 does",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy":
+          "script-src 'self' 'unsafe-inline' 'sha384-abc123'",
+      },
+      expect: "skip",
+    },
+    {
+      // Meta-delivered CSP is enforced exactly like the header for script-src.
+      description: "unsafe-inline delivered only by a meta CSP",
+      url: "https://example.com/",
+      body: `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'">`,
+      expect: "fire",
+    },
+    {
       description:
         "CSP script-src has unsafe-inline WITHOUT nonce/hash (vulnerable)",
       url: "https://example.com/",
@@ -1118,6 +1155,23 @@ const fixtures: DetectorFixtures = {
 
   "csp-wildcard-source": [
     {
+      description: "script-src https: allows any https origin",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy": "default-src 'self'; script-src https:",
+      },
+      expect: "fire",
+      evidenceIncludes: "any origin",
+    },
+    {
+      description: "img-src https: is an ordinary policy, not a script risk",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy": "default-src 'self'; img-src https: data:",
+      },
+      expect: "skip",
+    },
+    {
       description: "CSP default-src *",
       url: "https://example.com/",
       headers: { "content-security-policy": "default-src *" },
@@ -1158,11 +1212,27 @@ const fixtures: DetectorFixtures = {
   "csp-frame-src-missing": [
     {
       description:
-        "no CSP anywhere (header or meta) and frame-src absent fires",
+        "a CSP with no frame-src, child-src or default-src leaves iframes unrestricted",
       url: "https://example.com/",
-      headers: { "content-security-policy": "default-src 'self'" },
+      headers: { "content-security-policy": "script-src 'self'" },
       expect: "fire",
       evidenceIncludes: "frame-src",
+    },
+    {
+      // This fixture used to be the "fire" case above, pinning a false
+      // positive: frame-src falls back to child-src, then default-src.
+      description: "default-src 'self' already governs iframe sources",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "default-src 'self'" },
+      expect: "skip",
+    },
+    {
+      description: "child-src also governs iframe sources",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy": "script-src 'self'; child-src 'self'",
+      },
+      expect: "skip",
     },
     {
       description: "header CSP itself declares frame-src",

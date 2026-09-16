@@ -426,3 +426,52 @@ describe("runSyncChecks against a redirected fetch", () => {
     expect(hashOf(viaRedirect)).toBe(hashOf(requestedOnly));
   });
 });
+
+/**
+ * One root cause, one finding.
+ *
+ * Detector-level fixtures cannot catch duplication: each check is right about
+ * its own condition. The failure only shows in the assembled result, where a
+ * single session cookie with no attributes came back as NINE findings (an
+ * umbrella check, three per-attribute legacy checks, three PageCheck twins,
+ * a CSRF restatement and a prefix note) because only one side of each twin
+ * was mapped to a dedupe group.
+ */
+describe("runSyncChecks reports a root cause once", () => {
+  const body = "<!doctype html><html><body>ok</body></html>";
+
+  it("reports each missing cookie attribute exactly once", () => {
+    const headers = new Headers({ "content-type": "text/html" });
+    headers.append("set-cookie", "session=abc123; Path=/");
+    const { findings } = runSyncChecks("https://example.com/", headers, body, [
+      "cookies",
+      "headers",
+    ]);
+    const perAttribute = (re: RegExp) =>
+      findings.filter((f) => re.test(f.id.split("--")[0])).length;
+    expect(perAttribute(/secure-missing|missing-secure/)).toBe(1);
+    expect(perAttribute(/httponly/)).toBe(1);
+    expect(
+      perAttribute(/samesite-missing|missing-samesite|no-csrf-token/),
+    ).toBe(1);
+    expect(findings.some((f) => f.id.startsWith("cookie-security--"))).toBe(
+      false,
+    );
+  });
+
+  it("reports a wildcard and an http: script source once each, not twice", () => {
+    const headers = new Headers({
+      "content-type": "text/html",
+      "content-security-policy":
+        "default-src 'self'; script-src * http://cdn.example.com; object-src *",
+    });
+    const ids = runSyncChecks("https://example.com/", headers, body, [
+      "headers",
+    ]).findings.map((f) => f.id.split("--")[0]);
+    const count = (re: RegExp) => ids.filter((id) => re.test(id)).length;
+    expect(count(/wildcard/)).toBe(1);
+    expect(count(/http-source|allows-http-sources/)).toBe(1);
+    expect(count(/object-src-(unsafe|unrestricted)/)).toBe(1);
+    expect(ids).not.toContain("weak-csp-directives");
+  });
+});
