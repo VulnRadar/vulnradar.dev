@@ -127,7 +127,7 @@ export default function SetupPage() {
               <div className="flex-1">
                 <h3 className="text-sm font-semibold mb-1">{item.title}</h3>
                 <p className="text-sm text-muted-foreground">
-                  {item.desc}.
+                  {item.desc}
                   {item.link && (
                     <>
                       {" "}
