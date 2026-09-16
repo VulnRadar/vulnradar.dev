@@ -417,6 +417,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Globe,
+        label: "Dangling DNS Findings Say What Was Actually Checked",
+        desc: "The dangling CNAME check counted a DNS server failure as a missing target, so a live site behind a briefly unreachable nameserver could be reported as a possible subdomain takeover, and it looked only for IPv4 addresses, so a target reachable over IPv6 alone was said to resolve to nothing. Both are fixed. A takeover warning now needs the target name not to exist at all, a target that exists without addresses is reported as stale DNS instead, the evidence no longer says NXDOMAIN when the answer was something else, and the takeover finding's confidence reflects that claiming the name was never attempted. Missing DKIM is reported at lower confidence too: DNS cannot list a domain's selectors, so the check can only try the common ones, and a domain signing with its own selector was told it had no DKIM with near certainty.",
+        category: "engine",
+      },
+      {
         icon: CheckCheck,
         label: "Wrong Verdicts Corrected",
         desc: "Sites enforcing Trusted Types were told they were not, because the check searched the policy for the JavaScript API's name instead of the directive. Algolia's public search key, which Algolia's own documentation names ApiKey, was reported as a leaked admin key at critical. One check stated that jsonwebtoken accepts any algorithm when none is specified, which version 9 does not, and reported every verify call without one as critical; only an explicit none is reported now. Hardening guides that mention /.git/config were reported as exposing it. In the other direction: postMessage calls with a transfer list were missed, one Secure cookie hid every insecure cookie in the same response, a library pinned as jquery@1.12.4 the way jsDelivr and unpkg load it was never matched, Docker Hub organization tokens were not recognised, and neither was the /swagger-ui path.",

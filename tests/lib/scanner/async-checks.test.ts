@@ -95,6 +95,7 @@ import {
   checkSPFChain,
   checkDMARC,
   checkDKIM,
+  checkDanglingCNAME,
   checkDNSSEC,
   checkDSRecord,
   checkDNSKEYRecord,
@@ -140,6 +141,12 @@ beforeEach(() => {
   dnsMock.resolveSoa.mockReset();
   dnsMock.resolveCname.mockReset();
   dnsMock.resolveCname.mockRejectedValue(dnsError("ENOTFOUND"));
+  // Back to the module-level default, so a test that answers A or AAAA
+  // lookups cannot leak that answer into whichever test runs next.
+  dnsMock.resolve4.mockReset();
+  dnsMock.resolve4.mockRejectedValue(new Error("mock: dns disabled in tests"));
+  dnsMock.resolve6.mockReset();
+  dnsMock.resolve6.mockRejectedValue(new Error("mock: dns disabled in tests"));
   dnsLookupMock.mockReset();
   dnsLookupMock.mockImplementation(async () => [
     { address: "93.184.216.34", family: 4 },
@@ -543,6 +550,79 @@ describe("checkDKIM", () => {
     });
     const findings = await checkDKIM("vulnradar.dev", "https://vulnradar.dev");
     expect(findings).toEqual([]);
+  });
+});
+
+describe("checkDKIM confidence", () => {
+  it("reports missing DKIM at low confidence, since selectors can only be guessed", async () => {
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND"));
+    dnsMock.resolveCname.mockRejectedValue(dnsError("ENOTFOUND"));
+    const [finding] = await checkDKIM("example.com", "https://example.com");
+    expect(finding.confidence).toBe(60);
+    expect(finding.explanation).toMatch(/custom selector/);
+  });
+});
+
+// ── checkDanglingCNAME ───────────────────────────────────────────────
+
+describe("checkDanglingCNAME", () => {
+  function cnameTo(target: string) {
+    dnsMock.resolveCname.mockImplementation(async (host: string) => {
+      if (host === "shop.example.com") return [target];
+      throw dnsError("ENODATA");
+    });
+  }
+
+  it("reports a potential takeover when a platform target does not exist", async () => {
+    cnameTo("old-shop.herokuapp.com");
+    dnsMock.resolve4.mockRejectedValue(dnsError("ENOTFOUND"));
+    const [finding] = await checkDanglingCNAME(
+      "shop.example.com",
+      "https://shop.example.com",
+    );
+    expect(finding.title).toMatch(/Takeover/i);
+    expect(finding.evidence).toContain("NXDOMAIN");
+    // The name is gone; claimability was never tested.
+    expect(finding.confidence).toBe(80);
+  });
+
+  it("does not call a SERVFAIL dangling: the nameserver failed, not the target", async () => {
+    cnameTo("old-shop.herokuapp.com");
+    dnsMock.resolve4.mockRejectedValue(dnsError("ESERVFAIL"));
+    expect(
+      await checkDanglingCNAME("shop.example.com", "https://shop.example.com"),
+    ).toEqual([]);
+  });
+
+  it("does not report a target reachable over IPv6 only", async () => {
+    cnameTo("v6only.example.net");
+    dnsMock.resolve4.mockRejectedValue(dnsError("ENODATA"));
+    dnsMock.resolve6.mockResolvedValue(["2001:db8::1"]);
+    expect(
+      await checkDanglingCNAME("shop.example.com", "https://shop.example.com"),
+    ).toEqual([]);
+  });
+
+  it("reports a target that exists with no addresses as stale DNS, never as a takeover", async () => {
+    cnameTo("parked.herokuapp.com");
+    dnsMock.resolve4.mockRejectedValue(dnsError("ENODATA"));
+    dnsMock.resolve6.mockRejectedValue(dnsError("ENODATA"));
+    const [finding] = await checkDanglingCNAME(
+      "shop.example.com",
+      "https://shop.example.com",
+    );
+    expect(finding.title).not.toMatch(/Takeover/i);
+    expect(finding.evidence).toContain("no A or AAAA records");
+    expect(finding.evidence).not.toContain("NXDOMAIN");
+  });
+
+  it("stays quiet when the IPv6 lookup cannot answer either", async () => {
+    cnameTo("parked.example.net");
+    dnsMock.resolve4.mockRejectedValue(dnsError("ENODATA"));
+    dnsMock.resolve6.mockRejectedValue(dnsError("ETIMEOUT"));
+    expect(
+      await checkDanglingCNAME("shop.example.com", "https://shop.example.com"),
+    ).toEqual([]);
   });
 });
 

@@ -839,11 +839,15 @@ export async function checkDKIM(
         "No DKIM (DomainKeys Identified Mail) records were found for common selectors.",
         `Checked selectors: ${selectors.join(", ")} at _domainkey.${domain}. None returned a v=DKIM1 TXT record or CNAME delegation.`,
         "Without DKIM, email receivers cannot verify that messages were actually sent by your mail servers.",
-        "DKIM adds a digital signature to outgoing emails. Note: DKIM selectors vary by provider — custom selectors are not checked here.",
+        "DKIM adds a digital signature to outgoing emails. DNS offers no way to list a domain's DKIM selectors, so this can only try the names common providers use; a domain signing with a custom selector is reported here even though its mail is signed.",
         [
           "Configure DKIM signing in your email provider (Google Workspace, Microsoft 365, etc.).",
           "Publish the DKIM public key as a TXT record at selector._domainkey.yourdomain.com.",
+          "If your mail is already signed, check the selector in a sent message's DKIM-Signature header (s=): a custom selector explains this finding.",
         ],
+        [],
+        // Absence of a guessed name is weak evidence of absence.
+        60,
       ),
     ];
   }
@@ -2198,7 +2202,22 @@ const TAKEOVER_PLATFORMS: Array<[RegExp, string]> = [
   [/\.wpengine\.com$/i, "WP Engine"],
 ];
 
-async function checkDanglingCNAME(
+/**
+ * A CNAME whose target has no address.
+ *
+ * Two outcomes, and they are not the same claim. NXDOMAIN means the target
+ * name does not exist at all; on a platform that hands out names on those
+ * suffixes, that is the shape of a claimable subdomain, but nothing here
+ * tries to claim it, so the finding says "potential" and its confidence says
+ * the same. A target that exists with no address records is stale DNS, not a
+ * name someone else can register.
+ *
+ * This used to treat SERVFAIL as dangling, which is what an unreachable or
+ * DNSSEC-broken nameserver returns for a perfectly live target, and checked
+ * only A records, so a target reachable over IPv6 alone was reported as
+ * resolving to nothing. Every outcome also said NXDOMAIN in its evidence.
+ */
+export async function checkDanglingCNAME(
   domain: string,
   url: string,
 ): Promise<Vulnerability[]> {
@@ -2217,16 +2236,28 @@ async function checkDanglingCNAME(
       return []; // CNAME target resolves — not dangling
     } catch (err: unknown) {
       const code = (err as NodeJS.ErrnoException).code ?? "";
-      if (!["ENOTFOUND", "ENODATA", "ESERVFAIL"].includes(code)) return [];
+      if (code !== "ENOTFOUND" && code !== "ENODATA") return [];
+      if (code === "ENODATA") {
+        try {
+          const v6 = await withDnsTimeout(dns.resolve6(cnameTarget));
+          if (v6.length > 0) return [];
+        } catch (err6: unknown) {
+          const code6 = (err6 as NodeJS.ErrnoException).code ?? "";
+          if (code6 !== "ENODATA" && code6 !== "ENOTFOUND") return [];
+        }
+      }
+      const nxdomain = code === "ENOTFOUND";
 
-      const platform = TAKEOVER_PLATFORMS.find(([re]) => re.test(cnameTarget));
+      const platform = nxdomain
+        ? TAKEOVER_PLATFORMS.find(([re]) => re.test(cnameTarget))
+        : undefined;
       if (platform) {
         return [
           makeVuln(
             url,
             A.potentialSubdomainTakeoverViaDanglingCname,
             `${domain} has a CNAME record pointing to ${cnameTarget} (${platform[1]}), which does not resolve. An attacker may be able to claim this target and serve content on your subdomain.`,
-            `${domain} CNAME → ${cnameTarget} (NXDOMAIN). Platform: ${platform[1]}. This subdomain may be claimable.`,
+            `${domain} CNAME → ${cnameTarget}, which does not exist (NXDOMAIN). Platform: ${platform[1]}. Whether the name can be claimed on that platform was not tested.`,
             "An attacker who claims the dangling target can serve arbitrary content under your domain, enabling phishing, session cookie theft, and CSP bypass.",
             "Dangling CNAME subdomain takeover occurs when a DNS CNAME points to an external service that is no longer claimed.",
             [
@@ -2235,7 +2266,7 @@ async function checkDanglingCNAME(
               "Audit all DNS CNAME records periodically and remove stale entries.",
             ],
             [],
-            95,
+            80,
           ),
         ];
       }
@@ -2244,7 +2275,9 @@ async function checkDanglingCNAME(
           url,
           A.danglingCnameRecord,
           `${domain} has a CNAME record pointing to ${cnameTarget}, which does not resolve to any IP address.`,
-          `${domain} CNAME → ${cnameTarget} (NXDOMAIN). Target does not resolve.`,
+          nxdomain
+            ? `${domain} CNAME → ${cnameTarget}, which does not exist (NXDOMAIN).`
+            : `${domain} CNAME → ${cnameTarget}, which exists but has no A or AAAA records.`,
           "A dangling CNAME may allow subdomain takeover if the target can be registered by a third party.",
           "CNAME records that point to non-existent hostnames indicate stale DNS configuration.",
           [
