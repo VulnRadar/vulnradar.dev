@@ -386,7 +386,7 @@ const fixtures: DetectorFixtures = {
     },
     {
       description: "a token only in the flight payload is a prop that leaked",
-      body: '<html><body><p>Dashboard</p><script>self.__next_f.push([1,"{\"token\":\"Bearer abcDEF123456ghiJKL789mno\"}"])</script></body></html>',
+      body: '<html><body><p>Dashboard</p><script>self.__next_f.push([1,"{\\"token\\":\\"Bearer abcDEF123456ghiJKL789mno\\"}"])</script></body></html>',
       expect: "fire",
     },
 

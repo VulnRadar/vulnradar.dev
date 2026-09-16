@@ -15,6 +15,7 @@ import {
   stripTagElements,
   tagElementContents,
 } from "./checks/_tag-scan";
+import { startTagAttributes } from "./html/tokenizer";
 
 /**
  * FNV-1a 32-bit hash → base-36 string.
@@ -266,16 +267,22 @@ export function withDocBlocksStripped(
  * description text routinely ends up inside it. Speculation rules are a JSON
  * document too. Neither is source the site executes.
  */
-const DATA_SCRIPT_TYPES =
-  "application\\/(?:ld\\+)?json|speculationrules|text\\/template|text\\/x-template";
-const DATA_SCRIPT_TYPE = new RegExp(
-  `\\btype\\s*=\\s*["']?(?:${DATA_SCRIPT_TYPES})["']?`,
-  "i",
-);
-const DATA_SCRIPT_TYPE_VALUE = new RegExp(
-  `^\\s*(?:${DATA_SCRIPT_TYPES})\\s*$`,
-  "i",
-);
+const DATA_SCRIPT_TYPE_VALUE =
+  /^\s*(?:application\/(?:ld\+)?json|speculationrules|text\/template|text\/x-template)\s*$/i;
+
+/**
+ * Whether a `<script>` opening tag's inline content is what the browser runs.
+ *
+ * Read from the parsed attributes, not a pattern over the tag. A pattern for
+ * `type=...json` also matched `data-type="application/json"`, and one for
+ * `src=` also matched `data-src=`, and either made the engine skip a script
+ * the browser executes.
+ */
+function scriptTagRunsInlineCode(openingTag: string): boolean {
+  const attrs = startTagAttributes(openingTag);
+  if ("src" in attrs) return false;
+  return !(attrs.type && DATA_SCRIPT_TYPE_VALUE.test(attrs.type));
+}
 
 /**
  * Whether an inline script, given its `type` attribute and its content, is
@@ -318,16 +325,79 @@ export function isAuthoredInlineScript(
  * file fixed, its siblings left on the old behaviour.
  */
 export function extractScriptContents(input: string): string[] {
-  return tagElementContents(input, ["script"], (openingTag) => {
-    return !DATA_SCRIPT_TYPE.test(openingTag) && !/\bsrc\s*=/i.test(openingTag);
-  }).filter(isAuthoredScriptContent);
+  return tagElementContents(input, ["script"], scriptTagRunsInlineCode).filter(
+    isAuthoredScriptContent,
+  );
 }
 
+/**
+ * Both exclusions below recognise the whole script, never a marker inside it.
+ * They used to be a substring test for `self.__next_f.push(` or
+ * `__CF$cv$params` anywhere in the content, so one comment line naming either
+ * one hid a script's document.write or eval from every code check.
+ */
 function isAuthoredScriptContent(content: string): boolean {
-  return (
-    !/self\.__next_f\.push\s*\(/.test(content) &&
-    !/__CF\$cv\$params/.test(content)
-  );
+  return !isFlightPayload(content) && !isCloudflareBootstrap(content);
+}
+
+const FLIGHT_PUSH_PREFIXES = [
+  "self.__next_f.push(",
+  "(self.__next_f=self.__next_f||[]).push(",
+];
+
+/**
+ * A Next.js flight-data script: nothing but `self.__next_f.push(...)` calls,
+ * each passing one JSON array. Next serializes every chunk with
+ * JSON.stringify, so any code added to the script stops the argument parsing.
+ */
+function isFlightPayload(content: string): boolean {
+  if (!content.includes("__next_f")) return false;
+  const statements = content.trim().split(/;\s*(?=\(?self\.__next_f\b)/);
+  return statements.every((raw) => {
+    const statement = raw.trim().replace(/;$/, "");
+    const prefix = FLIGHT_PUSH_PREFIXES.find((p) => statement.startsWith(p));
+    if (!prefix || !statement.endsWith(")")) return false;
+    try {
+      return Array.isArray(
+        JSON.parse(statement.slice(prefix.length, -1)),
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Every word Cloudflare's challenge-platform bootstraps are written with. */
+const CLOUDFLARE_BOOTSTRAP_WORDS = new Set([
+  "__CF$cv$params", "_cpo", "a", "absolute", "addEventListener",
+  "appendChild", "b", "body", "border", "c", "contentDocument",
+  "contentWindow", "createElement", "d", "document", "DOMContentLoaded", "e",
+  "else", "function", "getElementsByTagName", "head", "height", "hidden",
+  "if", "iframe", "innerHTML", "left", "loading", "none", "onreadystatechange",
+  "position", "readyState", "script", "src", "style", "top", "var",
+  "visibility", "width", "window",
+]);
+
+/**
+ * Cloudflare's bot-detection bootstrap, which Cloudflare injects at the edge
+ * after the origin responds. Its per-request values are removed, and what is
+ * left has to be written entirely in the words the bootstrap uses, so a script
+ * that also calls eval, write or location is the site's own.
+ */
+function isCloudflareBootstrap(content: string): boolean {
+  if (
+    content.length > 3000 ||
+    !content.includes("__CF$cv$params") ||
+    !content.includes("/cdn-cgi/challenge-platform/")
+  ) {
+    return false;
+  }
+  const words = content
+    .replace(/\b[rtm]\s*:\s*'[\w+/=.-]*'/g, "")
+    .replace(/\bnonce\s*=\s*'[\w+/=-]*'/g, "")
+    .replace(/'\/cdn-cgi\/challenge-platform\/[\w/.-]*'/g, "")
+    .match(/[A-Za-z_$][\w$]*/g);
+  return (words ?? []).every((w) => CLOUDFLARE_BOOTSTRAP_WORDS.has(w));
 }
 
 /**
@@ -467,10 +537,10 @@ function buildProseView(body: string): string {
       // One piece per element, so the element reads exactly as it was served.
       if (name === "style") {
         out.push(`${tag}${content}</style>`);
-      } else if (/\bsrc\s*=/i.test(tag)) {
+      } else if ("src" in startTagAttributes(tag)) {
         out.push(`${tag}</script>`);
       } else if (
-        !DATA_SCRIPT_TYPE.test(tag) &&
+        scriptTagRunsInlineCode(tag) &&
         isAuthoredScriptContent(content)
       ) {
         out.push(`${tag}${content}</script>`);

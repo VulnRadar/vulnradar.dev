@@ -8,6 +8,7 @@
  */
 
 import {
+  extractScriptContents,
   stripExampleContent,
   stripDocBlocks,
   isDemonstratedExample,
@@ -867,8 +868,10 @@ const rawDetectors: Record<string, DetectFn> = {
   // ── Inline JS / dangerous APIs ──────────────────────────────────────────
 
   "dangerous-inline-js": (_url, _headers, body) => {
-    const scripts =
-      body.match(/<script[^>]{0,2000}>[\s\S]*?<\/script[^>]{0,2000}>/gi) || [];
+    // Authored inline scripts only, by extractScriptContents' rules. This
+    // walked the tags itself and skipped any script whose text contained
+    // "src=", which included every script that sets an image's src.
+    const scripts = extractScriptContents(body);
     const dangerousPatterns = [
       /eval\s*\(/i,
       /document\.write\s*\(/i,
@@ -883,23 +886,6 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     const found: string[] = [];
     for (const script of scripts) {
-      if (script.includes("src=")) continue;
-      // Not authored inline scripts: JSON/JSON-LD payloads and Next.js's
-      // RSC streaming pushes (self.__next_f.push(...)) can carry
-      // arbitrary serialized page text that happens to contain these
-      // substrings without being executable code in that form.
-      if (
-        /^\s*<script[^>]{0,2000}\btype\s*=\s*["']application\/(?:json|ld\+json)["']/i.test(
-          script,
-        )
-      )
-        continue;
-      if (/self\.__next_f\.push\s*\(/.test(script)) continue;
-      // Cloudflare's own bot/challenge-platform bootstrap script,
-      // injected verbatim at the edge into any site with that feature
-      // enabled -- not something the site owner authored or can sanitize
-      // from application code.
-      if (/__CF\$cv\$params/.test(script)) continue;
       for (const p of dangerousPatterns) {
         if (p.test(script)) {
           found.push(p.source.replace(/\\s\*|\\|\['"]/g, "").slice(0, 20));

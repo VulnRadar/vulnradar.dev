@@ -219,3 +219,50 @@ describe("stripProse on a hostile opening", () => {
     expect(stripProse(body)).toBe(body);
   });
 });
+
+/**
+ * Only a script the browser does not run, or that the site did not write, is
+ * left out, and that is decided from the whole script. A marker in a comment
+ * or an attribute whose name merely ends in "type" or "src" used to hide a
+ * script's code from every check that reads authored script.
+ */
+describe("which inline scripts count as the site's code", () => {
+  const SINK = "document.write(location.hash);";
+  const page = (script: string) =>
+    `<!DOCTYPE html><html><body>${script}</body></html>`;
+
+  // Cloudflare's current challenge-platform bootstrap, as injected at the edge.
+  const CLOUDFLARE =
+    `(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'8b5f1d2e3c4a5b6c',t:'MTY5ODc2NTQzMi4xMjMwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();`;
+  const CLOUDFLARE_LEGACY = `(function(){window['__CF$cv$params']={r:'6f1c2b3a4d5e6f70',m:'aBcD.eFgH-1690000000-0-AbCd'};_cpo=document.createElement('script');_cpo.nonce='',_cpo.src='/cdn-cgi/challenge-platform/h/b/scripts/invisible.js',document.getElementsByTagName('head')[0].appendChild(_cpo);})();`;
+
+  it.each([
+    ["a comment naming the flight marker", `<script>// see self.__next_f.push( in the RSC docs\n${SINK}</script>`],
+    ["a comment naming Cloudflare's marker", `<script>/* __CF$cv$params /cdn-cgi/challenge-platform/ */ ${SINK}</script>`],
+    ["a data-type attribute with a JSON value", `<script data-type="application/json">${SINK}</script>`],
+    ["a data-src attribute", `<script data-src="/lazy.js">${SINK}</script>`],
+    ["code appended to a flight push", `<script>self.__next_f.push([1,"x"]);${SINK}</script>`],
+    ["code inside a Cloudflare-shaped wrapper", `<script>window.__CF$cv$params={r:'abc',t:'MTc'};a.src='/cdn-cgi/challenge-platform/x.js';${SINK}</script>`],
+  ])("still reads the script's code despite %s", (_label, script) => {
+    const fired = checkIds(page(script));
+    expect(fired.has("dom-xss-sinks")).toBe(true);
+    expect(stripProse(page(script))).toContain(SINK);
+  });
+
+  it.each([
+    ["a Next.js flight push", `<script>self.__next_f.push([1,${JSON.stringify(SINK)}])</script>`],
+    ["the flight bootstrap", `<script>(self.__next_f=self.__next_f||[]).push([0]);self.__next_f.push([2,null])</script>`],
+    ["Cloudflare's bootstrap", `<script>${CLOUDFLARE}</script>`],
+    ["Cloudflare's earlier bootstrap", `<script>${CLOUDFLARE_LEGACY}</script>`],
+    ["a JSON-LD block", `<script type="application/ld+json">{"a":${JSON.stringify(SINK)}}</script>`],
+  ])("leaves out %s", (_label, script) => {
+    expect(stripProse(page(script))).not.toContain("document.write");
+    expect(stripProse(page(script))).not.toContain("__CF$cv$params");
+  });
+
+  it("keeps the tag but not the content of a script with a real src", () => {
+    const view = stripProse(page(`<script src="/app.js">${SINK}</script>`));
+    expect(view).toContain(`<script src="/app.js"></script>`);
+    expect(view).not.toContain(SINK);
+  });
+});

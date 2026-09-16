@@ -84,10 +84,12 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
-      description:
-        "regression: Cloudflare's edge-injected bootstrap is not the site's code",
+      // It used to be enough to mention __CF$cv$params anywhere in a script,
+      // which is what this case asserted: an eval sitting next to the marker
+      // was skipped. Only the bootstrap itself is Cloudflare's.
+      description: "a script that names Cloudflare's marker is still read",
       body: "<script>window.__CF$cv$params={r:'abc',t:'MTc'};eval(atob(x));</script>",
-      expect: "skip",
+      expect: "fire",
     },
     {
       description: "a real inline eval still fires",

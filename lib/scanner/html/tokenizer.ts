@@ -210,6 +210,16 @@ function readStartTag(src: string, i: number): ParsedTag | null {
 }
 
 /**
+ * The attributes of one opening tag, parsed by the same rules as
+ * {@link tokenize}: names are matched whole, so `data-type` is never `type`.
+ */
+export function startTagAttributes(tag: string): Record<string, string> {
+  const lt = tag.indexOf("<");
+  if (lt === -1) return {};
+  return readStartTag(tag, lt)?.attrs ?? {};
+}
+
+/**
  * Tokenize an HTML document.
  *
  * Always returns; malformed input degrades to text tokens rather than

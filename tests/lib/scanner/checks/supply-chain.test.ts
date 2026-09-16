@@ -460,7 +460,7 @@ const fixtures: DetectorFixtures = {
   "supply-chain-esm-cdn-unpinned-import": [
     {
       description: "regression: an example import carried in a flight payload",
-      body: '<html><body><pre>import confetti from "https://esm.sh/canvas-confetti"</pre><script>self.__next_f.push([1,"import confetti from \"https://esm.sh/canvas-confetti\""])</script></body></html>',
+      body: '<html><body><pre>import confetti from "https://esm.sh/canvas-confetti"</pre><script>self.__next_f.push([1,"import confetti from \\"https://esm.sh/canvas-confetti\\""])</script></body></html>',
       expect: "skip",
     },
 

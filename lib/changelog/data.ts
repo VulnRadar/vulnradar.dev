@@ -434,6 +434,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Bug,
+        label: "Scripts Can No Longer Slip Past the Code Checks",
+        desc: "The scanner deliberately skips a few kinds of script that a site did not write itself, such as the page data a Next.js site sends along with every page and a small script Cloudflare adds for bot protection. It used to recognise those by looking for a telltale word anywhere inside a script, so a real script with that word in a comment was skipped too, and anything dangerous in it went unreported. A script with an unrelated setting whose name happened to end in \"type\" or \"src\" was skipped the same way. The scanner now only skips a script when the whole script matches what Next.js or Cloudflare actually send, and reads each script's settings properly, so these scripts are checked like any other.",
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",
