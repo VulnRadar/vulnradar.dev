@@ -58,10 +58,11 @@ describe("page check evidence never contains a secret value", () => {
         continue;
       }
       if (!result) continue;
-      const text = [
-        result.evidence,
-        ...(result.excerpts ?? []).map((e) => e.value),
-      ].join("\n");
+      // run() returns one hit or several.
+      const hits = Array.isArray(result) ? result : [result];
+      const text = hits
+        .flatMap((h) => [h.evidence, ...(h.excerpts ?? []).map((e) => e.value)])
+        .join("\n");
       for (const secret of [JWT, SESSION, PASSWORD, "TOPSECRETSIGNATURE"]) {
         if (text.includes(secret))
           leaks.push(`${check.id} leaks ${secret.slice(0, 12)}...`);
