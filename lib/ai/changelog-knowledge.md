@@ -112,6 +112,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   ALLOW_INSECURE_HTTP=1 is the documented way to run with no TLS on a trusted network, and signing in never worked with it. The session cookie, and every other sign-in cookie, was marked Secure whenever the app ran in production, and a browser discards a Secure cookie that arrives over plain HTTP. Eleven places set those cookies and decided the attribute in two different ways, neither of which read the flag. They share one rule now, with a test that fails if a cookie option decides it on its own again.
 - [Activity] **[SELFHOST]** **An Incomplete Test Run Cannot Pass Quietly**
   The guard that fails a test run when a worker never started counted only the main test folder, so a run that lost the browser extension's suites still matched the number on disk. It now counts every folder the runner collects.
+- [Mail] **[ADMIN]** **Resend a Verification Email From the Admin Panel**
+  When someone never received their verification email, staff could only mark the address verified without knowing it worked, or ask the user to find the resend link themselves. The user's page in the admin panel now has Resend Verification, which sends the same fresh single-use link as the public resend flow to the address already on the account. It is audit-logged, uses the same permission as manual verification, and refuses an address that is already verified.
 - [ShieldAlert] **[ADMIN]** **The Updater Will Not Downgrade You**
   An install newer than the latest published release, such as a build from the main branch, was offered Update now, and taking it would have installed the older release over the newer code, run its dependency install and applied its migrations to a schema they did not write. The button is off in that state and says why, and the update job itself refuses any release older than the running version, whichever way it is started.
 - [Settings] **[SELFHOST]** **Clearer Self-Hosting Configuration**
@@ -2438,6 +2440,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 911
+- **Total changes documented:** 912
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

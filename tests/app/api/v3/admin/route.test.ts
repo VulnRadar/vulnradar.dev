@@ -31,6 +31,12 @@ vi.mock("@/lib/database/db", () => ({
   },
 }));
 
+const mockSendEmailVerification = vi.fn();
+vi.mock("@/lib/auth/email-verification", () => ({
+  sendEmailVerification: (...args: unknown[]) =>
+    mockSendEmailVerification(...args),
+}));
+
 const mockGetSession = vi.fn();
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
@@ -1234,6 +1240,53 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
       patchRequest({ action: "not_a_real_action", userId: 5 }),
     );
     expect(res.status).toBe(400);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("resend_verification: sends a fresh link to the account's own address and audit-logs", async () => {
+    mockSendEmailVerification.mockReset();
+    mockSendEmailVerification.mockResolvedValue(undefined);
+    queueRole("admin");
+    queueTarget({
+      email: "unverified@example.com",
+      name: "Una",
+      role: "user",
+      email_verified_at: null,
+      unsubscribe_token: null,
+    });
+    const res = await PATCH(
+      patchRequest({ action: "resend_verification", userId: 5 }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockSendEmailVerification).toHaveBeenCalledWith(
+      5,
+      "Una",
+      "unverified@example.com",
+    );
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "resend_verification",
+      expect.stringContaining("unverified@example.com"),
+      "127.0.0.1",
+    );
+  });
+
+  it("resend_verification: refuses an address that is already verified", async () => {
+    mockSendEmailVerification.mockReset();
+    queueRole("admin");
+    queueTarget({
+      email: "done@example.com",
+      name: "Dan",
+      role: "user",
+      email_verified_at: new Date().toISOString(),
+      unsubscribe_token: null,
+    });
+    const res = await PATCH(
+      patchRequest({ action: "resend_verification", userId: 5 }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockSendEmailVerification).not.toHaveBeenCalled();
     expect(mockLogAction).not.toHaveBeenCalled();
   });
 

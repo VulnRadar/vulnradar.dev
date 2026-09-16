@@ -2515,6 +2515,25 @@ export function UserDetailPanel({
                         )
                       }
                     />
+                    {!u.email_verified_at && (
+                      <GatedActionCard
+                        action="resend_verification"
+                        callerRole={callerRole}
+                        icon={MailCheck}
+                        label="Resend Verification"
+                        description="Email a fresh verification link"
+                        color="text-primary"
+                        bg="bg-primary/10"
+                        loading={isLoading("resend_verification")}
+                        onClick={() =>
+                          queueSupportAction(
+                            "resend_verification",
+                            "Resend Verification",
+                            `Email a new verification link to ${u.email}`,
+                          )
+                        }
+                      />
+                    )}
                     <GatedActionCard
                       icon={ImageOff}
                       label="Clear Avatar"

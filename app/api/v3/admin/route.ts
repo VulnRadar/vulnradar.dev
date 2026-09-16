@@ -24,6 +24,7 @@ import {
   syncPreStaffPlanForManualPlanChange,
 } from "@/lib/billing/staff-plan";
 import { deleteUserAccountData } from "@/lib/auth/account-deletion";
+import { sendEmailVerification } from "@/lib/auth/email-verification";
 import { resolveCurrentWindow } from "@/lib/billing/ai-usage";
 import { getPaidPlans, getPlanById } from "@/lib/billing/catalog";
 
@@ -1674,6 +1675,29 @@ export async function PATCH(request: NextRequest) {
         userId,
         "verify_email",
         `Manually verified email for ${targetUser.email}`,
+        ip,
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    // A user who never received, or lost, their verification email used to
+    // leave staff two options: mark the address verified without knowing it
+    // works, or tell them to find the resend link themselves. This sends the
+    // same fresh, single-use link the public resend flow does, to the address
+    // on the account, so it cannot be pointed anywhere else.
+    case "resend_verification": {
+      if (targetUser.email_verified_at) {
+        return NextResponse.json(
+          { error: "This email address is already verified." },
+          { status: 400 },
+        );
+      }
+      await sendEmailVerification(userId, targetUser.name, targetUser.email);
+      await logAction(
+        session.userId,
+        userId,
+        "resend_verification",
+        `Sent a new verification link to ${targetUser.email}`,
         ip,
       );
       return NextResponse.json({ success: true });

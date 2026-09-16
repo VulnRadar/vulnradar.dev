@@ -315,6 +315,7 @@ export const ACTION_LABELS: Record<string, string> = {
   toggle_ai_ban: "AI chat access updated.",
   verify_email: "Email verified.",
   unverify_email: "Email unverified.",
+  resend_verification: "Verification link sent to the user.",
   send_notification: "Notification sent.",
   // No UI dispatches send_email and PATCH /api/v3/admin has no case for it,
   // so this label is unreachable: the action would 400. Kept because the
@@ -424,6 +425,7 @@ export const SUPPORT_CARD_ACTIONS = [
   "reset_free_github_trial",
   "verify_email",
   "unverify_email",
+  "resend_verification",
   "clear_avatar",
   "send_notification",
   "gift_subscription",

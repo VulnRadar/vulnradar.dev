@@ -489,6 +489,12 @@ const CHANGELOG: Release[] = [
         category: "selfhost",
       },
       {
+        icon: Mail,
+        label: "Resend a Verification Email From the Admin Panel",
+        desc: "When someone never received their verification email, staff could only mark the address verified without knowing it worked, or ask the user to find the resend link themselves. The user's page in the admin panel now has Resend Verification, which sends the same fresh single-use link as the public resend flow to the address already on the account. It is audit-logged, uses the same permission as manual verification, and refuses an address that is already verified.",
+        category: "admin",
+      },
+      {
         icon: ShieldAlert,
         label: "The Updater Will Not Downgrade You",
         desc: "An install newer than the latest published release, such as a build from the main branch, was offered Update now, and taking it would have installed the older release over the newer code, run its dependency install and applied its migrations to a schema they did not write. The button is off in that state and says why, and the update job itself refuses any release older than the running version, whichever way it is started.",

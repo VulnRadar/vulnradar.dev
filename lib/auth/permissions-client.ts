@@ -714,6 +714,16 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     icon: "Mail",
   },
   {
+    // The same grant as verify_email, whose less careful alternative this
+    // is: it proves the address works instead of declaring that it does.
+    id: "resend_verification",
+    label: "Resend Verification Email",
+    description: "Email the user a fresh verification link",
+    permission: STAFF_PERMISSIONS.EDIT_USER_EMAIL,
+    category: "user",
+    icon: "Mail",
+  },
+  {
     id: "toggle_ai_ban",
     label: "Toggle AI Chat Ban",
     description: "Block or restore AI chat access",
