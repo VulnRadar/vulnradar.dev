@@ -604,12 +604,20 @@ cd ~/vulnradar`}
               Step 2: Get <InlineCode>docker-compose.yml</InlineCode>
             </h3>
             <p className="text-sm text-muted-foreground mb-3">
-              Either pull the prebuilt image from GHCR:
+              Either pull the prebuilt image from GHCR, taking both files from
+              the release you want to run:
             </p>
             <CodeBlock
-              code={`curl -O https://raw.githubusercontent.com/${APP_REPO}/main/docker-compose.yml\ncurl -O https://raw.githubusercontent.com/${APP_REPO}/main/.env.example`}
+              code={`curl -O https://raw.githubusercontent.com/${APP_REPO}/v${APP_VERSION}/docker-compose.yml\ncurl -O https://raw.githubusercontent.com/${APP_REPO}/v${APP_VERSION}/.env.example`}
               language="bash"
             />
+            <p className="text-xs text-muted-foreground mt-2">
+              From a release tag, not from <InlineCode>main</InlineCode>. The
+              compose file pins the image to its own version, and on{" "}
+              <InlineCode>main</InlineCode> that version can be one whose image
+              has not been published yet, which fails on{" "}
+              <InlineCode>manifest unknown</InlineCode> before anything starts.
+            </p>
             <p className="text-sm text-muted-foreground mt-3">
               Or build from source locally:
             </p>
@@ -668,7 +676,10 @@ APP_PORT=3000
           <p>
             Put the app behind a reverse proxy (Caddy, Traefik, nginx) for TLS
             termination. Cookie flags (<InlineCode>secure</InlineCode>) and CSP
-            headers assume HTTPS in production.
+            headers assume HTTPS in production. On a trusted network with no TLS
+            at all, set <InlineCode>ALLOW_INSECURE_HTTP=1</InlineCode> (see{" "}
+            <InlineCode>.env.example</InlineCode>); traffic and the session
+            cookie are then unencrypted.
           </p>
         </DocsCallout>
 
@@ -689,7 +700,10 @@ APP_PORT=3000
                 cmd: "docker compose down -v",
               },
               {
-                title: "Update",
+                // The image is pinned to a version tag, so pull alone fetches
+                // the same image again. Updating means moving the pin.
+                title:
+                  "Update (after changing the image tag in docker-compose.yml to the new release)",
                 cmd: "docker compose pull && docker compose up -d",
               },
               {

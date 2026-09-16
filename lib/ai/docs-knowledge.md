@@ -84,7 +84,10 @@ are environment variables.
 > **ERROR: HTTPS required**
 > Put the app behind a reverse proxy (Caddy, Traefik, nginx) for TLS
 termination. Cookie flags (secure) and CSP
-headers assume HTTPS in production.
+headers assume HTTPS in production. On a trusted network with no TLS
+at all, set ALLOW_INSECURE_HTTP=1 (see
+.env.example); traffic and the session
+cookie are then unencrypted.
 
 ### Headings
 - {item.title}
@@ -2978,7 +2981,7 @@ individual URLs instead.
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
 | `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
-| `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 28 | 30 |
+| `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 29 | 30 |
 | `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 14 | 2 |
 | `/docs/self-hosting` | - | 16 | 9 | 0 | 14 | 0 | 0 | 28 | 3 |
 | `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 31 | 0 |
