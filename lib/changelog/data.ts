@@ -519,6 +519,12 @@ const CHANGELOG: Release[] = [
         category: "selfhost",
       },
       {
+        icon: ShieldCheck,
+        label: "A Release Is Only Published From a Commit That Passed CI",
+        desc: "Publishing a release image never checked that the commit being released had passed CI, and branch protection could not help because a tag is not a merge. A tag pushed on a failing commit, or pushed a few seconds after its commit while CI was still running, built, signed and published an image that every instance's updater would then offer. The publish workflow now waits for CI on that exact commit and stops unless it passed.",
+        category: "selfhost",
+      },
+      {
         icon: GitMerge,
         label: "CI Catches More Before It Ships",
         desc: "Integration tests ran against a different Postgres version than docker-compose installs, so they verified a database no self-hoster runs; they now match. The extension gained the same lockfile check the app has, which catches a lockfile regenerated on Windows before it breaks a Linux build. New tests keep facts that live in more than one place in agreement: the app version across package.json, the config and docker-compose; all 52 plan limits between billing and enforcement; the Stripe webhook events the app subscribes to and the ones it handles; and a single list of the database upserts both schema checks allow.",

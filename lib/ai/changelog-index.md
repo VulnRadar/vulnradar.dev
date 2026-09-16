@@ -122,6 +122,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   DATABASE_SSL_CA was documented as accepting a file path, but only the certificate contents work; a path left the app unable to connect at startup. The AI model guidance said 200K tokens of context and then recommended 128K models; the real requirement is about 300K, and the examples now show which models meet it. The placeholder Stripe publishable key is commented out, and the Stripe and Turnstile client keys now warn that a pulled Docker image must be rebuilt with docker compose build app to use them. MIGRATION_BACKUP_RETENTION_DAYS is documented for the first time.
 - [BookOpen] **[SELFHOST]** **Documentation Checked Against the Code**
   The documentation was verified claim by claim. Corrected: when the schema version check runs (at startup, not on the first scan), which permissions each staff role holds (two listed capabilities do not exist), that a scan can be shared with several teams, that a support ticket can be shared with several teammates, how AI code review scores confidence, the number of report formats, the Node and test runner version requirements, Dependabot's auto-merge rules, how long a Discord sign-in link lasts, the GitLab CI template's crawl page limit (25 to 250 by plan, not 15), and the extension's TypeScript version. The version and toolchain numbers are now checked against the code by tests.
+- [ShieldCheck] **[SELFHOST]** **A Release Is Only Published From a Commit That Passed CI**
+  Publishing a release image never checked that the commit being released had passed CI, and branch protection could not help because a tag is not a merge. A tag pushed on a failing commit, or pushed a few seconds after its commit while CI was still running, built, signed and published an image that every instance's updater would then offer. The publish workflow now waits for CI on that exact commit and stops unless it passed.
 - [GitMerge] **[SELFHOST]** **CI Catches More Before It Ships**
   Integration tests ran against a different Postgres version than docker-compose installs, so they verified a database no self-hoster runs; they now match. The extension gained the same lockfile check the app has, which catches a lockfile regenerated on Windows before it breaks a Linux build. New tests keep facts that live in more than one place in agreement: the app version across package.json, the config and docker-compose; all 52 plan limits between billing and enforcement; the Stripe webhook events the app subscribes to and the ones it handles; and a single list of the database upserts both schema checks allow.
 - [Trash2] **[REMOVED]** **Checks That Could Never Report Anything**
@@ -1200,6 +1202,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 913
+- **Total changes documented:** 914
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

@@ -22,6 +22,8 @@ jobs:
       packages: write
       # Required for cosign keyless signing (OIDC token exchange).
       id-token: write
+      # Read CI's runs for the tagged commit (the gate below).
+      actions: read
 
     steps:
       - name: Checkout repository
@@ -30,6 +32,40 @@ jobs:
           # Full history + tags: the ":latest" decision below compares this
           # tag against every other release tag in the repository.
           fetch-depth: 0
+
+      # release: nothing required the commit being published to have passed
+      # CI. A tag pushed on a red commit, or pushed seconds after the commit
+      # while CI was still running, built, signed and published an image, then
+      # release.yml turned it into a GitHub release that every instance's
+      # updater offers. Branch protection would not have helped: tags are not
+      # merges. Wait for CI on this exact commit, and publish only on success.
+      - name: Require a green CI run for the tagged commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          # CI takes about fifteen minutes; a tag pushed right after its commit
+          # has to wait for it rather than fail.
+          deadline=$(( $(date +%s) + 45 * 60 ))
+          while :; do
+            runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=20" \
+              --jq '[.workflow_runs[] | {status, conclusion}]')
+            if echo "$runs" | jq -e 'any(.[]; .conclusion == "success")' > /dev/null; then
+              echo "CI passed for ${sha}."
+              break
+            fi
+            if echo "$runs" | jq -e 'length > 0 and all(.[]; .status == "completed")' > /dev/null; then
+              echo "::error::CI did not pass for ${sha}: ${runs}. Fix main, then tag the fixed commit."
+              exit 1
+            fi
+            if [ "$(date +%s)" -ge "${deadline}" ]; then
+              echo "::error::No successful CI run for ${sha} within 45 minutes. Push the commit to main, let CI finish, then re-run this workflow."
+              exit 1
+            fi
+            echo "Waiting for CI on ${sha}: ${runs}"
+            sleep 30
+          done
 
       # No QEMU step. It was here to emulate linux/arm64 back when this job
       # built both platforms at once, and it outlived that: the build below is
