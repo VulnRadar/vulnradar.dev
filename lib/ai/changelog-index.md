@@ -175,16 +175,221 @@ The largest release since 3.0, and a pass over the whole product rather than one
 The assistant kept forgetting the changelog seconds after being handed it, and the reason was that we were handing it too much. Loading /changelog sent the complete release history, every description of every change since the first version, in a single message: half a megabyte, about 107,000 tokens, for one slash command. Nothing rejected it, which is why it went unnoticed for two releases. It simply crowded out everything else, and the request went out twice because a stale copy of the previous load was still in the array beside the fresh one. That command now sends a compact index instead, with the recent releases in full and every older one still listed, and the full history stays behind the retrieval that pulls in whatever an actual question matches. A test now measures the real files against the real budget, so the next one to outgrow it fails a build rather than quietly costing somebody the context they just loaded. The chat sheet on a phone also stopped being a desktop panel stretched to fit.
 
 ### Changes
-- [Bot] **[FIXED]** **The Assistant Forgot the Changelog Seconds After Being Handed It**
-  Typing /changelog loaded the entire release history into the conversation: every change of every version, 506 KB, about 107,000 tokens measured against the model, in one message. It had grown there one release at a time, and the last one added ninety-eight entries. Nothing errored. The request was accepted, the reply came back, and the assistant answered as though it had never seen a changelog, which is the worst way for this to fail because there is nothing to look at. The command now sends an index: the newest releases with every description intact, then change titles for the ones behind them, then a line each for the rest, so every release we have ever shipped is still named and the recent detail is still there in full. The complete history stays on disk as the retrieval corpus, so asking about a release from six months ago still pulls that entire entry in beside the question. Same trick /checks has used since it outgrew a single message, applied to the file that outgrew it next.
+- [Bot] **[FIXED]** **The Chat Assistant Forgot The Changelog Instantly**
+  Typing /changelog in the AI chat used to load the entire release history into the conversation at once, which was so much text that the assistant could not actually use it and answered as if it had never seen the changelog. It now loads a short index instead: full detail for recent releases, titles only for older ones, so every release is still listed and asking about an older one still pulls in its full details.
 - [Layers] **[FIXED]** **Every Loaded Command Was Sent Twice**
-  Both places that build the message list for the AI appended the freshly loaded context by hand, because React had not yet applied the state update that put it there, and neither removed the previous copy sitting in the array they were appending to. So each loaded command went over the wire twice. There was a deduplication step meant to prevent exactly this, and it tested a field that nothing in the codebase ever sets: a leftover from a context pill that was removed when commands were made to load silently, still read in six places, always undefined, so the guard that asks whether a command is already loaded always answered no and reloaded it. With the changelog at half a megabyte that made a request over a megabyte, which is also the default body limit of nginx, and the chat route then dropped one of the two for exceeding its context budget. Both send paths now go through one function that keeps the newest block per command, and the dead field and the pill it belonged to are gone.
-- [Gauge] **[ADDED]** **A Budget Whose Comment Was Two Releases Out of Date**
-  The chat route splits its input allowance between conversation turns and the knowledge the slash commands load, and it skips anything over the larger budget. The number was chosen to fit every command loaded at once, and the comment beside it listed their sizes: changelog around 250k, docs around 100k. The changelog was 506k by then, and the five of them together no longer fit, so loading a second command silently cost you the first. The sizes were in a comment because nothing measured them. Now a test does, against the constant itself, and it fails with the actual file sizes and the instruction to serve the biggest one from an index rather than to raise the number. It also fails if a single command ever exceeds 200 KB on its own, and if either command with an index is ever changed to read the full file first. And the loader itself now refuses to return more than a message can carry: past that it cuts the content and says in the content that it was cut, so a gap the model can report replaces a block that silently never arrived.
-- [Smartphone] **[FIXED]** **The Chat Sheet on a Phone Was a Desktop Panel Stretched to Fit**
-  The panel is a 420-pixel widget beside the page on a desktop and a full-screen sheet on a phone, and every size in it was picked for the first one. Replies were 14px, smaller than any other body text in the app, on a surface that on a phone is the whole screen. Code blocks and tables inside those replies were 11px, and the reasoning block 10px. The three context shortcuts under the greeting, the first thing the assistant shows anyone, were 10px type in a chip twenty pixels tall: too small to read and under half the width a thumb reliably hits. The send and slash buttons were 36px squares. All of it now steps up below the desktop breakpoint and is untouched above it, the two composer buttons grow their touch target past the box rather than growing the box, and the disclaimer strip folds away while the keyboard is up, which is exactly when the sheet has no room to spare and the reply being waited on is what should be on screen.
-- [CalendarClock] **[FIXED]** **A Generated File Recorded the Day It Was Generated**
-  All six knowledge compilers stamped the build date into their output, and CI regenerates every one of them and fails on any difference. That was survivable for the markdown, because the drift check ignores lines matching "compiled from" and the date sat on such a line. It was not survivable for the search index built from those files: that is one unsplittable line of JSON, the ignore rule cannot reach inside it, and the date came in anyway as indexed text. So any commit made near midnight UTC was one CI run away from failing on a diff nobody wrote, and the comment in that file already claimed it was a pure function of its inputs. The date is gone from all six. Running the compilers twice now produces byte-identical output, which is the only property the check was ever asking for.
+  Content you loaded into the AI chat, like a command's reference material, was being sent to the assistant twice, because of a bug that let a broken check silently pass. With the changelog grown very large, sending it twice could push a single request over the size limit, so the assistant would silently lose part of what it had been given. Both places that build these messages now share one corrected check.
+- [Gauge] **[ADDED]** **An Out Of Date Limit On What The AI Chat Could Load**
+  The AI chat splits its capacity between your conversation and any reference material you load, like the changelog or documentation, and silently drops anything past that limit. The limit was based on rough, outdated estimates, so loading the changelog alongside other material could push earlier content out with no warning. This is now checked automatically, and anything too large is marked as cut off instead of silently disappearing.
+- [Smartphone] **[FIXED]** **The Mobile Chat Sheet Was Sized For Desktop**
+  On a phone, the AI chat opens as a full-screen sheet, but everything inside it, replies, code snippets, and the quick-start buttons under the greeting, was sized for the much smaller desktop panel, making text hard to read and buttons hard to tap. Text and buttons are now sized up on phones, the send and menu buttons are easier to tap, and a disclaimer strip tucks away while the on-screen keyboard is open so the reply has room to show.
+- [CalendarClock] **[FIXED]** **A Generated File Recorded The Day It Was Made**
+  Some files the product generates automatically, used for search and documentation, included the exact date they were built, so rebuilding them on a different day made them look different even though nothing had actually changed, which could wrongly fail automated build checks around midnight. These files no longer include the build date, so generating them twice now produces identical results.
+
+---
+
+## v3.9.0 - September 8, 2026 **(highlights)**
+**Things That Fail Without Saying So**
+
+Ninety-eight changes, and the thread running through nearly all of them is the same: something that failed without saying so. An alert that marked itself as sent before trying, and so went quiet for the rest of the outage. A weekly email that could arrive every six hours. A scan that answered with a full report it had never saved. Workers that recorded a healthy pass when every item in it had failed. A daily limit that stopped applying the moment the database struggled, and a scan that reported four sections as clear without running them. Seventeen of the entries are security: a share link that republished the address somebody else had typed, complete with the token in it; impersonation that could change an account's email and password and leave no trace; subscription events keyed on the customer rather than the subscription, so an abandoned plan could cancel a live one; and a data export that promised everything it held on you and named a third of it. The admin panel had a header that let rows paint through it, placeholders that drew a different shape from the thing arriving, and roles that could not use the permissions they were given. Every contact link on the site went to an error page, and the fix was to stop putting addresses in the page at all. Along the way the scanner learned fourteen new checks, our own accounts got short links on our own domain, and verified domains got a page of their own.
+
+### Changes
+- [Bot] **[FIXED]** **The Chat Answer Arrived All At Once**
+  The AI assistant normally types its answer out gradually as it writes, but for anyone self-hosting VulnRadar behind their own reverse proxy, a common way to run a website, the proxy was holding the whole reply back and releasing it in one lump once the assistant had finished. It looked like the assistant had frozen for twenty seconds and then pasted a finished answer. The reply now tells the proxy not to hold it back, so self-hosted setups stream properly with no extra configuration needed.
+- [Crosshair] **[FIXED]** **A Heading That Changed Size While You Watched**
+  The email verification page shows a loading message and then swaps to a result: verified, expired, already verified, or failed. The loading heading was a different size to the result headings, so on a phone the text visibly grew or shrank the moment the answer arrived, on an otherwise still screen. The heading now stays the same size throughout. The staff invitation page had copied the same mistake and was fixed too.
+- [Layers] **[FIXED]** **Four Pages Had Each Built The Same Error Box**
+  Several pages, Assets, History, Repos and Shares, had each built their own slightly different error message for when a list fails to load, instead of sharing one, and announced it to screen readers inconsistently. They now share a single, consistent, properly announced error message. Also fixed: a too-small show or hide password button on several forms, a few badges and buttons using colours that clashed with the app's light or dark theme, and an admin error screen that had drifted from the shared design.
+- [Shield] **[SECURITY]** **A Production Backup Was Being Copied Into Every Build**
+  A configuration file meant to exclude sensitive files from the build process was excluding a folder that does not exist instead of the one that actually holds backups. As a result, an encrypted production database backup, the file holding its decryption details, and a large source archive were being pulled into every release build. None of this reached the software actually published to users, since only specifically listed files make it into the final release, but it should never have been included at all. The setup is now fixed in both places it needed to be.
+- [Eye] **[ADDED]** **Automatic Checks Against Two Kinds Of Data Leaks**
+  Our own documentation and source code have twice accidentally included information that should not have been public: a real server address left in an example configuration for several releases, a minor risk since the address itself held nothing sensitive, and separately, backup database files that ended up somewhere they should not have. Automatic checks now scan our documentation for real-looking addresses and passwords, and scan the codebase for anything shaped like a database backup, catching both kinds of mistake before they can happen again.
+- [Settings] **[FIXED]** **A Few Small Inconsistencies Fixed Across The App**
+  Several small inconsistencies were cleaned up. Scan tags had three different maximum lengths enforced in different places, so a suggested tag could pass one check and then fail to save. The same severity level showed as Info in one place and Informational in another for the same finding. A list of publicly accessible pages was written out by hand rather than generated automatically, which risked accidentally locking visitors out of pages that should stay public the next time the product's version number changes. All of these are now fixed.
+- [UserCog] **[ADDED]** **Who Blocked This Domain**
+  Domain owners can now switch scanning off for their own domain, using the same list staff use to block domains during an incident. Previously the admin list did not show who created a block, so there was no way to tell whether a domain had been blocked by our staff or opted out by its own owner, or who to ask before removing the block. The list now shows who blocked each domain, and still shows that information even if the staff member who did it has since left.
+- [Container] **[CHANGED]** **Reverse Proxy Setup Mistakes That Give No Error**
+  For anyone self-hosting VulnRadar behind a reverse proxy, the layer in front of the server that routes web traffic, the setup guide now documents four silent mistakes: a duplicated header, an unnecessary setting removed since the product does not need it, a default one-minute time limit that can cut off a long AI check the app cannot control, and a proxy setup that can leave the server reachable directly from the internet. Two errors in the guide itself were also corrected.
+- [CreditCard] **[FIXED]** **Every Payment Record Was Storing A Blank Reference**
+  Our payment processor changed how it structures some of its data, and a coding flaw let this slip through unnoticed, so every payment recorded since then was missing the reference number that links it back to the processor. Nothing looked broken to customers, but it meant a refund or a lookup in our admin tools had no way to trace back to the original transaction. This is now fixed, with a safeguard against the same kind of silent failure happening again. A related bug could also have shown a successful subscription cancellation as failed; that is fixed too.
+- [Puzzle] **[FIXED]** **Report Export Was Broken In The Chrome Extension**
+  In the Chrome version of the browser extension, exporting a scan report as a PDF, SARIF, Markdown or JSON file failed immediately, due to a Chrome-specific coding mistake; Firefox was unaffected. Four related bugs were fixed alongside it: clicking a scan in Recent Scans opened the wrong page, opening the extension's popup could use up a daily scan allowance for no reason, turning every check category off actually ran every category instead of none, and an unfinished scan was shown as clean rather than incomplete.
+- [Keyboard] **[FIXED]** **The Command Line Tool's Data Output Was Broken**
+  VulnRadar's command-line tool can print results in a structured format meant for other programs to read automatically, but ordinary status messages were being mixed in with that data, so anything reading it would fail. Status messages are now kept separate from the structured output. Several confusing error messages when using the wrong combination of options were also cleaned up, and the tool no longer accepts a wait time of zero, which used to report a timeout without checking anything.
+- [Database] **[FIXED]** **Database Updates Could Run Without A Backup**
+  Before applying a database update, VulnRadar first tries to take a backup. On certain hosting setups, that backup step could fail quietly and the update would proceed anyway, including changes that permanently alter or remove data, with no backup to fall back on. There is now always a working backup method available, so an update can no longer proceed without one. Two related repair scripts that could wrongly report success even though they had failed, or had not run at all, were also fixed.
+- [CheckCheck] **[FIXED]** **A Safeguard For Our Own Testing Process**
+  This is an internal fix with no direct effect on how VulnRadar works for you. Our automated testing system has a safeguard that catches cases where test files are accidentally skipped during a run, but that safeguard itself could theoretically be silently disabled by a future update to the testing tools we rely on. It is now anchored more reliably, so it cannot quietly stop working without being noticed.
+- [Mail] **[CHANGED]** **The Emails Were White**
+  Every email VulnRadar sends, like scan alerts and account notices, used to render as a plain white card, even though the product itself uses a dark theme everywhere else, so emails looked like they came from a different company. Emails are now dark to match the rest of the product, with extra care taken so email apps like Gmail, Apple Mail and Outlook.com display the dark colours correctly instead of auto-inverting or overriding them.
+- [Radar] **[FIXED]** **One DNS Security Fact, Reported Once**
+  A domain that had simply never turned on DNSSEC, an extra layer of protection against forged DNS answers, used to get three separate findings repeating the same underlying fact, burying the one plain-language note under two more alarming-looking ones. Checks are now precise: no DNSSEC gets one clear note, and a half-finished DNSSEC setup, which can make a domain unreachable for some visitors while looking fine to its owner, now gets its own specific warning instead of being lumped in.
+- [ShieldCheck] **[FIXED]** **Four Security Headers That Were Not Real Findings**
+  Four checks used to flag things that were not real problems. A missing Referrer-Policy header was flagged as leaking page addresses, but browsers have prevented that by default since 2020 regardless of the header. Another flagged header re-enables an old browser protection that has since been removed for having its own security bugs. Two more protected things that no longer matter: a discontinued browser plug-in, and a setting that only works somewhere else. All four are gone from reports now, so scans produce fewer irrelevant warnings.
+- [Bug] **[FIXED]** **A Security Check Was Looking For The Wrong Thing**
+  A check for cross-site scripting, a common attack where malicious code runs in a visitor's browser, was flagging a harmless, twenty-year-old coding pattern that appears on a huge share of websites and does nothing dangerous, wrongly scoring those sites as high risk. A correctly written version of the same check existed but was never actually the one running, due to a mix-up. The correct version now runs, and only flags this pattern when it is genuinely being used to read cookies or page data.
+- [FileSearch] **[FIXED]** **Several Checks Were Flagging Ordinary Text**
+  Several checks were flagging things that were not real problems, because they searched for certain words anywhere on the page instead of checking how they were used: an article mentioning a weak encryption method scored worse than a page using it, and a harmless phrase like password reset form triggered a warning meant for exposed secrets. A separate check meant to catch missing input validation had never once correctly fired, because its search terms also matched common, unrelated code, so it always wrongly assumed validation was present. All of these now look for the real thing.
+- [AlertTriangle] **[FIXED]** **An Outdated Vulnerability Flagged On Every Grafana Scan**
+  A check that detects the Grafana dashboard tool used to cite a serious, publicly known vulnerability from 2021 on every site running Grafana, regardless of version, even though that vulnerability was fixed years ago in current versions. A fully up-to-date, current Grafana installation was being told it had a critical flaw it was never exposed to, the kind of wrong result that makes a report harder to trust. The check now compares the actual version found against the versions that were genuinely affected before citing the vulnerability.
+- [MessageSquare] **[SECURITY]** **Anyone Could Rewrite Someone Else's Chat History**
+  The support chat widget saves each conversation under an identifier chosen by your browser, but saving had no check confirming you actually owned that conversation. Anyone who learned another person's conversation identifier could overwrite their chat history with their own messages, which would still appear to be from that person, including to support staff reviewing it. Saving is now restricted to the account that owns the conversation, while still letting someone who starts chatting before signing in keep that conversation once they log in.
+- [Users] **[FIXED]** **Plan Limits That Two Clicks Could Get Around**
+  Creating an API key, a webhook, a team, or a team invitation checked your plan's limit and then saved the new item as a separate step. Two such requests sent at nearly the same moment could both pass the check before either was saved, letting an account end up over its plan's limit with nothing catching it afterwards. The limit is now enforced at the moment of saving, not just checked beforehand. A related issue, where clicking the same team invitation link twice showed a generic error instead of you already accepted this, was fixed too.
+- [MailOpen] **[ADDED]** **Announcement Emails Used To Start From A Blank Box**
+  Emails VulnRadar sends automatically, like scan alerts, are built from carefully reviewed templates. Emails written by a person, like announcements to every registered user, were not: the tool for writing them was just an empty box, so what reached your inbox depended entirely on whoever wrote it that day. There are now seven ready-made templates for common announcements, and each one automatically limits who receives it based on their notification preferences, so an announcement only reaches people who actually opted in to that type of email.
+- [ShieldAlert] **[SECURITY]** **A Security Gap In New Announcement Email Templates**
+  While building the new announcement email templates described above, a security gap was found: two of the templates let the person writing the email choose the text on a button, and that text was not being safely handled before being placed into the email's underlying code, meaning specially crafted text could have injected unwanted content into an email sent to every registered user. This was caught by a newly written test before it caused any actual problem. The text is now safely handled, and any link a writer chooses is restricted to a valid web address.
+- [ScanSearch] **[ADDED]** **Fourteen New Security Checks Added**
+  Fourteen new checks were added, focused on real problems rather than box-ticking. Several check whether a site's script-blocking policy actually works rather than just existing on paper, including a security setting left as an unfilled placeholder. Others catch credentials accidentally exposed on a page, such as temporary cloud storage access links and passwords typed into a web address, a caching mistake that could hand one visitor's login session to another, and exposed configuration or status files that reveal more than they should.
+- [FileSearch] **[ADDED]** **A Security Contact File Check Now Actually Checks It**
+  Many sites publish a security.txt file that tells researchers who to contact if they find a vulnerability, and it is meant to include an expiry date so the contact details do not go stale. The check for this file only confirmed it existed, without checking whether it had actually expired, so a years-old, outdated contact file passed silently. It now checks for both a missing file and an expired one, and a few outdated-library detection rules were also improved, including one that could mistake an unrelated library for a well-known one because of a similar name.
+- [Radar] **[FIXED]** **VulnRadar Scanned By VulnRadar**
+  Our own documentation pages, which explain each check with example vulnerable code, were failing our own scan, because of a bug affecting any site with a documentation page: simply writing about a vulnerability, for example naming a risky function, could make the scanner think the page was actually using it. Separately, a rule meant to quiet warnings on API documentation pages was too broad, silently switching off checks for leaked secrets, including a critical one, on almost any page with a few common words, so a genuinely leaked key there would never have been reported. Both are fixed.
+- [Globe] **[ADDED]** **Links To Other Security Tools Added To Reports**
+  Scan results now include links to fourteen other security and reputation services for the same site: whether anyone has flagged it as malicious, what else is hosted alongside it, and independent tools that run their own grading tests. These are plain links, not automatic lookups, which would mean paying to check other people's sites and sending them to a third party without their knowledge. Links to services that visit the site themselves are marked, since clicking one leaves a trace in that service's logs, and none appear at all for a private or internal address.
+- [ShieldAlert] **[SECURITY]** **An Admin Safety Check That Could Be Bypassed**
+  Deleting an account permanently in the admin panel is meant to always require re-entering the administrator's password, as a safeguard against a stolen admin session. The check only recognised one of three ways the delete could be triggered, so a stolen session could delete an account another way without ever being asked for the password. This is fixed. Two related gaps were closed too: enabling two-factor authentication used to leave existing sessions active instead of ending them, and an access key created from a stolen session kept working even after a password reset.
+- [Eye] **[SECURITY]** **Support Staff Could Read Every Customer's Webhook Secrets**
+  Webhooks let VulnRadar notify another service automatically, like a Slack or Discord channel, and the address it posts to is itself a secret: anyone holding it can post into that channel. Opening a customer's account in the admin panel showed those addresses in full to any staff member with basic account access, even our lowest support tier with no ability to change anything, so a broad group of staff could collect every customer's webhook secrets just by browsing the user list. The panel now shows only which service each webhook points to, not the full address.
+- [Lock] **[SECURITY]** **The Lockout Message Told You Whether An Account Existed**
+  Everything about signing in is deliberately designed to never confirm whether a given email address has an account with us, since that information is useful to an attacker building a target list. One place broke that rule: the message shown after too many failed login attempts only appeared for an email that really did have an account, so repeatedly guessing wrong passwords was a reliable way to find out if an address was registered. This is fixed: the same message and behaviour now appears regardless, giving nothing away either way.
+- [CreditCard] **[FIXED]** **Two Ways To Pay Us And Get Nothing**
+  Buying add-on credits, for extra code review or browser scanning minutes, was confirmed in your browser, with a backup meant to catch a dropped connection before that confirmation completed. That backup did not actually work for two of the three credit types, so a dropped connection at the wrong moment could charge you with no credits added and no record of it. This is fixed. Separately, two features meant to be free were mistakenly charging your paid balance by default, including one that runs automatically with nothing on screen showing it happened. Both now default to not charging.
+- [Database] **[FIXED]** **A Database Backup Could Restore With Duplicate Rows**
+  The tool that produces a full database backup had a subtle bug in how it paged through large tables, which could cause it to skip some rows entirely and duplicate others, without any error appearing during the backup itself. The problem only became visible later, when someone tried to restore that backup and it failed because of the duplicated rows, which looks like a restore problem rather than what it actually was: a broken backup. This is now fixed, and backups produced going forward are reliable again.
+- [Timer] **[FIXED]** **A New Security Check Could Freeze On A Bad Page**
+  One of the credential-detection checks added earlier the same day had a coding pattern that could take an extremely long time to process on a page constructed in a particular way, nine seconds on a small test page. Since VulnRadar scans pages chosen by whoever submits a scan, a page crafted specifically to trigger this could have tied up server resources on demand. This was caught and fixed the same day: the check now runs quickly on any input, and an automated safeguard tests every new check against a batch of deliberately awkward pages before it ships.
+- [Puzzle] **[FIXED]** **Turning On Every Check In The Extension Disabled One**
+  In the browser extension, ticking every single check category in Options actually switched off Active Probing, one specific check type, due to a mismatch in how everything selected was read by the scanning engine. The settings screen showed everything on, Active Probing included, but it silently never ran. This is fixed. Two related bugs were fixed too: the extension's popup could get stuck on a loading spinner forever after a scan technically succeeded, and pasting an invalid or revoked API key could still show as Connected with no indication it had been rejected.
+- [Timer] **[FIXED]** **Fixing The Command Line Tool's Timeout Handling**
+  VulnRadar's command-line tool, often used in automated build pipelines, had a timeout setting that did not actually work: a request that was accepted but never answered could hang indefinitely, forcing the whole automated job to be killed externally. At the same time it gave up too quickly in the other direction, failing an entire run after a single temporary network hiccup, even though the scan itself was completing successfully. Temporary failures are now retried automatically, while genuine errors like a wrong access key still fail immediately.
+- [GitMerge] **[FIXED]** **A Build Check That Could Have Shipped A Broken Extension**
+  This is a fix to how we build and test the browser extension internally, with no direct impact on what shipped to users. The command used to package the extension for release was broken, but our automated checks were not actually testing that command, so this could have gone unnoticed until an attempted release failed or shipped stale content. The checks now test the real packaging step, and the extension's own test suite, previously not running anywhere at all due to a separate setup mistake, is now included too.
+- [List] **[FIXED]** **Scan History Was Capped At One Hundred Scans**
+  Your scan history only ever loaded the hundred most recent scans, so anyone with more than that could not reach their older scans at all, no matter how they searched or filtered. There is now a button to load more, so history keeps growing as you use it. Two smaller bugs were fixed alongside: changing your email address always failed because the form never actually asked for the password it has always required, and two scan options, screenshot and port checks, appeared selected on a sign-in scan but were silently ignored, since that scan type does not support them.
+- [ShieldAlert] **[SECURITY]** **A Tiny Page Could Freeze The Whole Server**
+  Three of the patterns our scanner uses to search page content had a flaw that could make them take an extremely long time on a specifically crafted page, in the worst case thirty-eight seconds for a page of only a few dozen meaningful bytes, and this needed no account to trigger. Because the check ran as one uninterruptible step, this could stall the server for every other user at the same time, not just the person who triggered it. All three are now fast regardless of the page's content, and a safeguard now checks for the same weakness elsewhere in the scanner.
+- [ShieldAlert] **[SECURITY]** **A Block Button That Blocked Nobody**
+  In the security alerts panel, a button offered to block the account an alert was raised against, but clicking it only recorded a label saying the account had been blocked, without actually blocking it or ending its sessions. The audit log then showed the account as blocked, so anyone reviewing the incident later would wrongly believe it had been handled. The button now genuinely blocks the account, and the log only records that once it has happened. A related mix-up, where one moderator action also revoked a customer's API keys under a permission only meant to end sessions, was fixed too.
+- [UserCog] **[FIXED]** **The Admin Panel Asked For A Password And Then Said No**
+  Several action buttons on the admin user page did not check whether a staff member's role actually allowed that action, so a lower-permission staff member could type in their password to confirm something, only to be told afterwards they were not allowed to do it, undermining the whole point of asking for a password. Permission checks now live in one shared place, so a button and what the server allows can no longer disagree. A couple of related display bugs, where one failed section could take down an entire admin tab or wrongly claim a feature was unavailable, were fixed too.
+- [ShieldAlert] **[FIXED]** **A Timed-Out Scan Said Three Checks Came Back Clean**
+  When part of a scan runs out of time before finishing, the report is supposed to mark whichever sections did not complete so they do not look like a clean result they never actually earned. That marking only covered three of the six sections that could be cut short, so the other three, including Active Probing, one of the more thorough and slower checks, would be reported as having run and found nothing, when really they never ran at all. All sections that were cut short are now correctly marked as incomplete rather than clean.
+- [Eye] **[SECURITY]** **A Public Page Could Publish The Link You Actually Scanned**
+  Public scan report pages, which need no account to view, were including your scan's full internal data rather than just the specific fields meant to be shown. One of those extra fields records the original address you typed in before any redirect happened, so if you scanned a link that redirects, like an invitation or password reset link, the original link, including any private token in it, could end up published on a page anyone can view. This is fixed: the public page now only ever includes a specific, intended list of fields, closing this gap.
+- [Gauge] **[FIXED]** **The Daily Scan Limit Failed Open During Database Trouble**
+  Checking how many scans you had already used today was meant to compare that count against your plan's daily limit, but if the database had trouble answering, the system treated the error as zero scans used, meaning the daily limit stopped being enforced during any database slowdown, for every kind of scan. This now fails the other way: if the count cannot be confirmed, the scan is blocked with an honest error instead of silently being let through. On the billing page, an unreadable count now shows as nothing rather than a misleading zero.
+- [BellRing] **[FIXED]** **The Alarm Switched Itself Off At The Moment It Went Off**
+  This is an internal reliability fix. Our background systems are monitored so that a repeated failure triggers an alert to our team, but the alert was being marked as sent before actually confirming it went through, and a failed delivery, for example a broken notification link, was never noticed or retried. So if the very first alert attempt failed, our team could go the rest of an outage with no further warning. Alerts now only count as sent once delivery is confirmed, so a failed one keeps trying, which helps us catch and fix problems faster.
+- [MailOpen] **[FIXED]** **The Weekly Summary Could Arrive Every Six Hours**
+  The weekly security summary records that it was sent in a separate step after actually sending it, so anything going wrong between those two steps left your account still marked as due. Since the job that sends these runs several times a day, the same weekly summary could go out again on the next run, and again, instead of only once a week. The record is now made before the email is sent, as one combined step that also double-checks you are genuinely due, so a failure now costs one skipped week at worst rather than repeated duplicates.
+- [Database] **[FIXED]** **A Scan That Was Never Saved Still Showed You A Report**
+  If a signed-in scan failed to save to your history, it still completed and showed you the full report as normal, but with no record behind it, and that silently skipped everything depending on a saved scan: auto-tagging, the scan-complete email, critical-findings alerts, and any webhook notifications you had configured. If you had an integration listening for scan results, it would have received nothing, with no indication anything had gone wrong. The response now clearly states whether the scan was actually saved, and explains why when it was not.
+- [FileDown] **[FIXED]** **Download My Data Left Out Two Thirds Of Your Data**
+  The download my data export is meant to gather everything we hold about your account, but it had fallen behind: it only pulled from 25 of the 65 places in our database that can hold your information, missing categories added over the following two years, including your support conversations, credit purchases, verified domains, and usage records. All of that is now included, and the export now explains what is deliberately left out and why, such as active password-reset links, since returning a working credential in a downloadable file would be a security risk, not a privacy benefit.
+- [Trash2] **[SECURITY]** **Deleted Accounts' Messages Could Live On A Shared Ticket**
+  Deleting your account is meant to remove or anonymise everything you wrote, which had already been fixed once for notes on individual scan findings. The same gap was still open for support tickets: a ticket you opened yourself is deleted with your account, but a reply you wrote on someone else's shared ticket was not, so your message and name could remain visible on their ticket after your account no longer existed. This is now fixed, along with an automated check that catches this kind of gap for any new database field added in future.
+- [Share2] **[ADDED]** **A Way To Follow Along, Once, Without Being Asked Twice**
+  The landing page now has a gentle invitation to follow the project on social media, deliberately built to be as unobtrusive as possible: it is not a pop-up that blocks the page, it only appears once you have scrolled partway down, it can be dismissed with the Escape key, and it does not animate if your device is set to reduce motion. Once you dismiss it, it will not appear again on that browser. A self-hosted copy with no social accounts configured shows nothing at all.
+- [Share2] **[SECURITY]** **A Shared Report Published More Than The Report**
+  A shared scan report link was returning the scan's entire internal data record instead of just the fields an actual report needs. Most of that was harmless, but not all: when a scanned page redirects, we keep the originally typed address so the report can note it. Combined with a site badge that tracks whoever scanned a URL most recently, that could have republished a link somebody else had typed, including a private token in an invitation or password-reset link. The response is now built from a specific, named list of fields, closing this gap.
+- [BarChart3] **[SECURITY]** **A Site Score Chart Had No Limit On Repeated Loads**
+  The chart on a site's page that shows its risk score over time had to search through every public scan we hold, rather than looking it up directly, which made it slow to run and easy to overuse. A similar page nearby already limited how often one visitor could load it, but this chart never had that limit, so anyone could hit it repeatedly and strain our busiest database. It now has its own separate limit, so viewing a site's page once only uses up one allowance, not two.
+- [ShieldCheck] **[FIXED]** **Badges Did Not Load Outside GitHub**
+  Every page and image we send includes a setting that stops browsers loading it on another website, which is right for normal pages but wrong for a badge, which exists to be embedded elsewhere. Badges kept working on GitHub because GitHub loads images through its own servers rather than showing them directly, so the one place everyone tested was the one place unaffected. Pasted onto your own site, a badge simply would not appear. Badge images can now be loaded anywhere. The two badge features that need you to be signed in still cannot be, to protect your account.
+- [Link2] **[FIXED]** **Revoked Share Links Kept Showing Old Previews In Chat**
+  When you paste a report link into Slack or Discord, those apps show a preview card with the site name and number of findings. We told them to store that preview for a year without checking again, so revoking the link stopped the report itself immediately, but the preview card kept showing the old information anywhere it had already appeared. A card for a site's report had the same issue after the scan behind it was made private. Both now expire after five minutes, which is still long enough to cover the burst of previews right after a link is pasted.
+- [Eye] **[SECURITY]** **The Demo Scanner Returned A Site's Own Login Data**
+  When a scan result is saved, we remove any login information and cookies from the response before storing it, since a saved record can be looked at long after the scan finishes. The free demo scanner, the only one you can run without an account, skipped that step and showed the target site's session cookies and login headers exactly as it received them. It now removes the same information as every other scan. The security checks themselves still read the real data while scanning, so what the scanner detects has not changed.
+- [Webhook] **[ADDED]** **Webhook Secret Rotation And History Are Now On The Website**
+  Webhooks let VulnRadar notify another system, like Slack or your own server, when something happens on your account. Two features already existed in our API but needed code to use: replacing a webhook's secret code, and viewing what was actually sent and received. Both are now buttons on the Webhooks page. History shows recent delivery attempts, including ones that got no response. Replacing the secret code asks you to confirm first, since it takes effect immediately, and shows the new code once; afterwards it is stored encrypted and cannot be shown again.
+- [Timer] **[FIXED]** **Stuck Scans Now Clear Automatically, Not Only At Restart**
+  A background task clears out scans that got stuck partway through, but it only ran when our server restarted, so a scan that got stuck at any other time stayed stuck until the next update. While it sat there, it still counted against the number of scans you are allowed to run at once, so a single stuck scan could quietly cost you a slot for days. This task now also runs every five minutes, not just at startup, and it still waits well past any scan's normal time limit before touching anything, so a scan that is genuinely still working is never cut short.
+- [CalendarClock] **[FIXED]** **A Failed Scheduled Scan Could Block A Slot Forever**
+  If a scheduled scan was created but something went wrong just before it actually started, nothing ever closed it out properly. It sat on your dashboard as a scan that never finishes, and it held one of your allowed concurrent scan slots until the server was restarted. Every other type of scan already handled this correctly; scheduled scans were the exception. Such a scan is now marked as failed with the real reason, so your slot is freed immediately and you can see what went wrong.
+- [RefreshCw] **[FIXED]** **Scheduled Scans Could Run And Charge You Twice**
+  When a lot of scheduled scans came due at once, we processed them in small batches, but the lock that stops a schedule being picked up twice was only held long enough for one scan, not the whole batch. Schedules near the back of a large batch had that lock expire while still waiting, so they ran again, scanned the site twice, and used two scans from your daily allowance instead of one. The lock is now extended as the batch works through, and its length is based on your actual scan time limit rather than a fixed fifteen minutes, so raising that limit cannot bring the problem back.
+- [BellRing] **[FIXED]** **Two Background Checks Reported Healthy When They Weren't**
+  Two automatic background jobs, domain re-verification and the weekly security summary, are meant to raise an alert after a run of failures. Both counted a run as successful as long as it did not crash outright, even when every item inside it failed, because each one quietly catches its own errors and moves on. A completely broken run therefore looked identical to a healthy one, the failure counter never increased, and the alert built for exactly this situation could never fire. A run that had work to do and finished none of it now correctly counts as a failure.
+- [Database] **[FIXED]** **Automatic Backups Could Silently Stop Working**
+  Only one backup can run at a time, but the lock holding that slot was not released if the backup process failed to start at all, as opposed to failing partway through. Every backup after that, whether scheduled or started by hand, was then turned away because one was supposedly already running, and each of those refusals was recorded as a successful night rather than a failure. Backups stopped happening and nothing told us. A failed start now releases the lock and is recorded as a failed backup, so the next attempt can run and an alert is raised.
+- [CreditCard] **[FIXED]** **A Cancelled Subscription Could Cancel The Wrong One**
+  If your billing record had ever ended up with two subscriptions attached, an old abandoned one alongside the one you were paying for, anything that happened to the old one was wrongly applied to your account. The clearest case was the abandoned subscription ending and taking your paid plan and supporter badge down with it. Every subscription update now checks which subscription it is about before making a change, and one you are not on is left alone. A genuinely lapsed account can still be picked up by a new subscription, so resubscribing is unaffected.
+- [Gauge] **[FIXED]** **Late-Arriving Payment Notices Could Undo A Payment**
+  Our payment provider, Stripe, does not guarantee that its notifications arrive in the order things actually happened, and it sometimes resends one if a delivery was uncertain. A notice saying your subscription had just been created could arrive after you had already paid, carrying an outdated snapshot from before the payment, and it would wrongly reset your account back to the free plan and remove your supporter badge. That notice is now treated as the oldest thing we can know about a subscription, so it can no longer overwrite anything newer.
+- [CreditCard] **[FIXED]** **Changing Plans Could Bill You Twice**
+  When you switched plans, we first asked Stripe about your existing subscription so we could move it to the new price instead of creating a second one. If that question failed, including from a timeout, we wrongly treated it as meaning you had no subscription and created a second one alongside the first, so you were billed for both every month with nothing in the app showing it. A failure now stops the plan change so you can try again, and a subscription is only treated as gone if Stripe genuinely confirms it. A few related billing checks had the same flaw and are fixed the same way.
+- [ShieldAlert] **[FIXED]** **A Slow Response From Stripe Could Downgrade You**
+  Looking up which plan a subscription belongs to would quietly swallow any error and answer as if there were no plan, which our system reads as the free plan. A single slow response from Stripe was therefore enough to drop a paying subscriber to the free plan and remove their supporter badge, on an event that was then marked as successfully handled. Errors are now passed through properly, so a failed lookup is retried instead of being treated as an answer, and we now distinguish between Stripe genuinely having nothing to report and Stripe simply being unreachable.
+- [Wrench] **[FIXED]** **Failed Payments Could Wrongly Mark Your Account Past Due**
+  A failed payment marked your whole account as past due even when it had nothing to do with your subscription: a one-off charge, an abandoned checkout's first invoice, or a retry on an account already cancelled. None of those has a later subscription payment to clear the warning, so it stayed on your billing page, and you could be emailed about a subscription you did not have. Past due is now only set when a renewal of your actual subscription fails, and clears once that renewal succeeds. A related bug that could erase a pending cancellation from your billing page was fixed the same way.
+- [CreditCard] **[FIXED]** **An Unfinished Checkout Could Cancel Your Active Plan**
+  Opening a second checkout to change plans, then not finishing it, still sends us a notice marked unpaid. We recorded that notice without checking which subscription you were actually on, so it wrongly reset your plan to free, marked your account incomplete, and pointed it at the checkout you had abandoned, even though the plan you were paying for was still active at Stripe the whole time. An unpaid checkout can no longer change an account that is on a different, still-active subscription. Your first purchase is unaffected, since there is nothing to protect at that point.
+- [LifeBuoy] **[FIXED]** **A Contact Form Message Could Be Sent And Then Lost**
+  Both contact forms sent two emails and told you we would get back to you, with the email being the only record your message existed. If our mail server was unreachable, a password had expired on our end, or the message bounced or hit a spam filter, it was lost: you were told it had arrived, and nobody here knew it existed. This matters most for the Security Issue category and the front-page form, used mainly by people with no account. Your message is now saved before sending, and you are told if it failed to send, so you can try again or email us directly.
+- [ShieldCheck] **[ADDED]** **You Can Now Turn A Badge Off Yourself**
+  A site badge could be created and its scope changed, and the ability to switch one off has technically existed since badges launched, but nothing in the product offered it to you. If you had embedded a badge on a site you no longer run, contacting us was the only option. There is now a Turn this badge off control on the Badge page. It asks you to confirm first, and it warns you that generating a new badge for that site afterwards gives it a new address, so any badge already placed elsewhere stays off rather than quietly coming back.
+- [ScanSearch] **[FIXED]** **The Demo Scan Showed Untested Sections As Clean**
+  A scan result is supposed to mark any part that did not finish, so it never looks like a clean result it did not earn. The free demo on our front page, the only scan you can run without an account, did not do this. When its checks ran out of time they came back as an empty pass rather than unfinished, so things like DNS records, certificates, reputation and exposed-file checks could be shown as run and clear when they had not completed. This was the same mistake already fixed elsewhere in this release; the demo was a leftover copy of it, and the report now names which checks ran short.
+- [CreditCard] **[FIXED]** **Pricing Page Wrongly Promised More History On Paid Plans**
+  Three places on the pricing page said paid plans keep your scan history for longer: the main heading, the explainer text, and the frequently asked questions section, which also feeds search engines and put the claim into search results too. None of it was true: scan history is unlimited on every plan, including the free one. The same wrong claim was already removed from the plan comparison cards in an earlier release, but these three copies survived that fix. All of them now show the real setting instead of a fixed number, the same way the cards and comparison table already did.
+- [Layers] **[FIXED]** **Landing Page Overstated The Free Bulk Scan Limit**
+  Two spots on the landing page advertised being able to scan up to 100 URLs in one go. That number is actually the top paid plan's limit, while a free account can only submit five at once, so following the advice on a free account got you a refusal instead of a scan. Both spots now state the free plan's real number alongside the top limit, pulled from the same source our system actually enforces.
+- [FileSearch] **[FIXED]** **Around 770 Pages Had FAQ Content Nobody Could See**
+  Around 770 pages, including the checks index, individual fix guides, category pages and two tool pages, published questions and answers meant for search engine results, but that content never appeared on the page itself. Search engines require this kind of content to be visible to visitors, and one part of the site already did it correctly. On the fix guides it was worse: the questions held answers that were never shown, so nobody could ever read them. That content now displays on every page, so the reasoning behind each check is actually readable, not just readable by search engines.
+- [Wrench] **[FIXED]** **Prices And Limits Were Typed By Hand, Not Kept In Sync**
+  The pricing page title, four pages comparing us to competitors, and our rate-limit documentation each had plan prices and daily limits typed in by hand, in some cases right next to a sentence explaining that those numbers actually come from our central pricing settings. All of them now pull from that source, so a price or limit change can no longer leave a page showing an outdated figure.
+- [Share2] **[FIXED]** **Link Previews Named No Account On Social Media**
+  When a VulnRadar link was shared on X (formerly Twitter), the preview card had no account attached, with a note in the code saying to fill it in once we had an account there, even though we already did: it is in the footer, on the landing page and in the site's own metadata. The preview card now reads the same account from that same source, so it, the footer and the site metadata cannot ever name different accounts, and anyone running their own copy of VulnRadar with a different account gets their own answer, not ours.
+- [Globe] **[FIXED]** **Two Pages Wrongly Said Scans Run In Your Browser**
+  The category pages and the API scanner page said that scans run inside your browser and that there is no extension to install. Neither is true: scans run on our servers, which is the whole reason the result matches what any stranger on the internet would see, and there is an optional browser extension available. Both pages now describe what actually happens.
+- [UserCog] **[FIXED]** **Some Staff Roles Could Not Use Their Own Permissions**
+  The staff account screen decided whether to show its Support and Danger Zone sections using one permission that had nothing to do with what those sections actually need. A billing role saw view-only access on the very screen holding the actions their role exists for, and the same flaw hid session revocation from security staff and hid chat bans from content staff. The underlying actions still worked if triggered directly; only the buttons to reach them were hidden. Each section now appears whenever staff can do at least one thing inside it, and every control still checks its own permission.
+- [Key] **[ADDED]** **Two-Factor Lockout Had No Way Back**
+  If you lost both your authenticator app and your backup codes, your account was locked out permanently: every way to turn off two-factor authentication needs you already signed in, and staff could not reset it by design. The only fix was editing our database by hand. Staff can now issue a one-time recovery code instead. It does not disable two-factor authentication: the code is emailed only to your verified address, is never shown to the staff who issued it, and getting back in still needs your password, email and a staff decision. It only works if your email was verified, and is logged.
+- [Fingerprint] **[SECURITY]** **Staff Actions During Impersonation Were Logged As Yours**
+  When a staff member signs in as you to help fix a problem, anything they did during that session used to be recorded in our activity log as you acting on your own account. The staff member's name appeared nowhere, and the only way to guess it happened was comparing timestamps against when the impersonation started, which failed if they closed the tab instead of clicking Stop. That information was always available to us internally; the log simply was not using it. The activity log now correctly records the staff member's name and which account they were acting on behalf of.
+- [FileText] **[SECURITY]** **Two Admin Actions Affected Everyone With No Record Kept**
+  Turning an AI-suggested label into a permanent scanning rule changes how every future scan for every user gets labelled, and doing so left no entry in our internal activity log. Redoing it over an existing rule silently rewrote it while still showing the original author's name, so a second edit left no trace at all. Forcing a database cleanup had the same gap, despite deleting rows across roughly fifteen tables, including the activity log itself. Both actions now record who ran them and what changed.
+- [Lock] **[SECURITY]** **Staff Invitations Had No Limit On Attempts**
+  The feature that emails someone an invitation to a staff role, including admin, had no limit on how often it could be used. The password an admin has to re-enter to send one could be guessed at endlessly, and every successful guess would email a role-granting link to whatever address was given. It now uses the same per-admin limit already used elsewhere in the admin panel for password prompts, and that limit is checked before the password, so a wrong guess still counts against it.
+- [UserCheck] **[FIXED]** **Social Login Admins Wrongly Told Their Password Was Wrong**
+  Two admin actions, sending a staff invitation and installing an update, each had their own separate password re-entry check, compared against a stored password directly. An account created by signing in with Google, GitHub or Discord has no stored password, so the check always came back wrong: those admins could never send an invite or install an update, and were told their password was incorrect every time. Both actions now use the same shared check the rest of the app relies on, which accepts an already signed-in session as confirmation when there is no password to check.
+- [Puzzle] **[FIXED]** **The Extension Applied One Page's Result To The Whole Site**
+  When you open a website, our browser extension asks us whether it has been scanned before. That question can be answered about the exact page, or fall back to the whole site, and our server always preferred the exact page, assuming the extension sent it, since it knows which tab is open. It never actually did. So scanning one page of a large site, like a single repository on GitHub, got reported as the standing of the entire site. The extension now sends the exact address, and a result is remembered against that specific page rather than the whole site.
+- [MessageSquare] **[FIXED]** **Five Admin Actions Gave No Real Confirmation Message**
+  Every action on a user's admin page is meant to confirm what it did with a specific message. Five actions had no message written for them and fell back to a generic Action completed, including the two that delete every webhook or every scheduled scan on an account, where that message was the only confirmation of what had just been destroyed. All five now say exactly what happened, and our own internal test now fails if a new action is added without one.
+- [Fingerprint] **[SECURITY]** **Impersonation Could Change A User's Password And Email**
+  When staff sign in as you to help with a problem, the rest of the app treats them as an ordinary signed-in customer, which is the point of the feature. That also meant six things were reachable that never should have been: changing your email or password, turning two-factor authentication off or on, regenerating backup codes, and deleting the account, none of it logged. Changing email is the most serious, since it redirects future password resets. All six are now blocked during impersonation, pointing staff to the correct admin action, which needs a password and is logged.
+- [CalendarClock] **[FIXED]** **Resuming A Paused Scan Ran It Immediately**
+  A scheduled scan remembers when it is next due, and pausing it did not stop that clock running. So a weekly scan paused for a month came back due four weeks ago, and resuming it triggered an immediate scan, using up one from that day's allowance, instead of waiting for the next time it was actually meant to run. Resuming now recalculates the next run from your chosen frequency and preferred time. Turning on a schedule that was never paused is unaffected, so this cannot be used to push a due scan further away.
+- [Mail] **[FIXED]** **Resending An Announcement Could Email Everyone Twice**
+  Sending an announcement is protected against being sent twice: it only works on a draft, and sending uses up the draft. Resending an already-sent announcement used the same check against a status that resending itself does not change, so it always passed and had no limit of its own. Every call re-delivered the announcement to every subscriber, so a double-click sent it to everyone twice, with nothing but someone noticing stopping a third. Resending now locks itself in as it records the attempt, with a minimum wait built in, so resending too soon is refused and tells you when it was last sent.
+- [Globe] **[ADDED]** **Every Social Link Now Goes Through Our Own Website**
+  Links to our accounts on other platforms used to be pasted in directly wherever they appeared, so when an account moved or was renamed, every copy of the old link broke, with no list of where they all were. Each one now has a short link on our own site, such as /discord for our Discord server and /github for our repository, which redirects to the real destination. Updating a link is now one setting, not a search across the site. The one place still naming the real profile is the metadata telling search engines which accounts are genuinely ours, a statement of identity, not a clickable link.
+- [Mail] **[FIXED]** **The Footer Email Button Went To An Error Page**
+  Clicking the mail icon in the footer led to a Cloudflare error page instead of opening your email app. Cloudflare hides email addresses from spam bots by replacing them and using a small script to restore them in your browser, but our pages only allow scripts we have explicitly approved for security reasons, so that script never ran and the link stayed broken. The mail icon now goes to our contact page instead, which cannot break this way and records what you send rather than depending on an email reaching us. Addresses on our legal pages are still shown as real ones.
+- [Globe] **[CHANGED]** **Managing A Domain Now Opens Its Own Page**
+  Verifying a domain unlocks controls over what other people's scans of it can show: every published scan, the option to unpublish one or cancel its share link, and a switch that stops it being scanned at all. Those controls used to open inline inside the row, pushing everything below down by a full page's height. Each verified domain now has its own page, reached by a Manage button. An unverified domain still opens in place, since that is one DNS record to add. A domain that is not yours gets the same response as an address that is not a domain, so the page never reveals which case it is.
+- [Table2] **[FIXED]** **Admin Tables Could Shrink Down To Almost Nothing**
+  Every table in the admin panel limits its own height to a portion of the browser window, so a long list scrolls inside the table instead of running down the whole page. That portion was measured against the whole window without accounting for the browser's own toolbars or how far down the page the table starts. On a short window, this worked out to barely more than the header row, leaving a thin strip of one row visible with the rest hidden below. The height can no longer shrink below a size that fits several rows, though it remains only a cap, so a table with two rows stays two rows tall.
+- [Users] **[FIXED]** **Shared Items Showed Buttons Teammates Could Not Use**
+  The webhooks list mixes ones you made with any a teammate shared into your team, and it showed every control on all of them regardless of who could use it. Someone with view-only access saw pause, edit, test, rotate and delete buttons on a webhook they could not touch, and each simply failed when clicked. Rotating the secret code was even shown to teammates who could otherwise edit the webhook, though that stays with whoever created it. Each row now shows only what you are actually allowed to do, and the same fix applies to scheduled scans and verified domains shared with your team.
+- [Layout] **[FIXED]** **Admin Panel Links Briefly Loaded The Wrong Section**
+  Opening a link straight to a specific admin section showed the overview section's loading placeholder first, then swapped it for the section you actually asked for, because the placeholder was fixed to always show the overview regardless of where you were headed. Every admin section now shows its own placeholder shape, so what you see in that first moment matches what is arriving. The one placeholder that genuinely cannot know which section is coming, shown before the page has finished loading, now shows only the shared header instead of guessing.
+- [Table2] **[FIXED]** **Admin Screens Jumped Around As Their Data Loaded**
+  Eleven admin screens showed their loading placeholder inside a padded, bordered box, while the real table sits flush against the screen with no border, so the layout jumped the moment data loaded. Four more screens, including broadcasts, security alerts, site notices and blocked rules, showed a placeholder with a header bar and round avatar icons for a list that has neither. Every placeholder now matches the shape of what it stands in for, and the screen header now stacks correctly on a phone screen from the start, instead of shifting down once data arrives.
+- [Activity] **[FIXED]** **A Health Summary Card Grew Every Time It Loaded**
+  The system health card reserved space for six rows while it actually shows eight, so the card visibly grew each time the real data arrived, and the placeholder shown before the page even loaded did not match the card's own count either. The row count is now calculated from the same logic that builds the actual list, so adding a new health check updates both the placeholder and the real card together instead of letting them drift apart.
+- [Bell] **[FIXED]** **Screen Readers Heard Nothing While Admin Pages Loaded**
+  Between clicking an admin section and its content arriving, screen readers announced nothing at all, leaving a blind or low-vision user with no idea anything was happening. Each loading placeholder now sits in a region that announces the destination's name, taken directly from the navigation menu rather than typed out separately. The email preview also stopped pulsing for anyone whose device is set to reduce motion.
+- [Table2] **[FIXED]** **A Leftover Line Appeared Over Pinned Table Headers**
+  Scrolling any table in the admin panel left a thin sliver of the row that had just scrolled past showing above the pinned column headers, in an area the table should not have been able to draw into at all. This turned out to be a browser bug in how a scrolling box clips content when a table pins its header, and switching to a different table border style fixed it without changing the layout. It was tracked down by testing directly against the running page: hiding the rows made the sliver disappear, proving it was real content rather than a screenshot glitch.
+- [Wrench] **[FIXED]** **A Warning Icon Was Misaligned With Its Own Text**
+  The security warning icon on the Updater page floated visibly above the line of text it belonged next to. Every block of text in the app is given a fixed line height regardless of its font size, and this particular notice used smaller text than usual without its own matching line height, so the text ran on a taller line than the icon beside it expected. Icons can now be told to match the line height of the text next to them automatically, which is the correct fix whenever an icon sits inside a line of text rather than beside a fixed-size block.
+- [Mail] **[FIXED]** **Every Email Link On The Site Works Again**
+  Sixteen contact links, on the legal pages, security page, contact page and several error screens, led to a Cloudflare error page instead of opening your email app. Cloudflare hides addresses from spam bots with a script restoring them in your browser, but that script is blocked here for security reasons, so every link stayed broken. Our fix: the address is no longer put on the page. Each link points to our contact form and becomes a real email link once the page loads, so scanning the page for addresses finds a form and nothing else. The link works with scripts off too, not dead.
 
 ---
 
@@ -195,227 +400,123 @@ entry is retrieved.
 
 ---
 
-## v3.9.0 - September 8, 2026 **(highlights)**
-**Things That Fail Without Saying So**
-
-- [FIXED] The Chat Answer Arrived All At Once
-- [FIXED] A Heading That Changed Size While You Watched
-- [FIXED] Four Pages Had Each Built the Same Error Box
-- [SECURITY] A Production Backup Was Being Copied Into Every Docker Build
-- [ADDED] Guards for the Two Ways This Repository Has Leaked
-- [FIXED] One Column Had Three Different Maximum Lengths
-- [ADDED] Who Blocked This Domain
-- [CHANGED] The Reverse Proxy Mistakes That Give No Error
-- [FIXED] Every Payment Record Has Been Storing a Blank Payment Reference
-- [FIXED] Report Export Was Broken in Every Chrome Build of the Extension
-- [FIXED] The CLI's JSON Output Was Not JSON
-- [FIXED] A Migration Could Run Its Destructive Steps With No Backup
-- [FIXED] The Guard Against Silent Test Loss Could Itself Fail Silently
-- [CHANGED] The Emails Were White
-- [FIXED] One Fact, Reported Once
-- [FIXED] Four Headers That Were Not Findings
-- [FIXED] The XSS Check Was Looking For The Wrong String
-- [FIXED] Checks That Fired On Prose, And One That Never Fired At All
-- [FIXED] A 2021 CVE Cited At Every Grafana Ever Scanned
-- [SECURITY] Anyone Could Rewrite Someone Else's Chat History
-- [FIXED] Plan Limits That Two Clicks Could Walk Past
-- [ADDED] Broadcasts Started From A Blank Textarea
-- [SECURITY] A Button Label Was The One String Nobody Escaped
-- [ADDED] Fourteen New Checks, Weighted Toward What Actually Goes Wrong
-- [ADDED] The security.txt Check Fetched The File And Never Read It
-- [FIXED] VulnRadar Scanned By VulnRadar
-- [ADDED] Look This Up Somewhere Else
-- [SECURITY] An Admin Delete That Answered To Three Names And Checked One
-- [SECURITY] Support Staff Could Read Every Customer's Webhook Secrets
-- [SECURITY] The Lockout Message Told You Whether An Account Existed
-- [FIXED] Two Ways To Pay Us And Get Nothing
-- [FIXED] A Backup That Restored With Duplicate Rows
-- [FIXED] A Check We Shipped This Morning Could Be Hung By The Page It Read
-- [FIXED] The Extension's Most Complete Setting Was The One That Scanned Least
-- [FIXED] The CLI Could Not Be Stopped, And Gave Up Too Easily
-- [FIXED] The Extension Build Was Broken And CI Ran Around It
-- [FIXED] Your Hundred And First Scan
-- [SECURITY] Anyone Could Freeze The Whole Server With A Four Kilobyte Page
-- [SECURITY] A Block Button That Blocked Nobody
-- [FIXED] The Admin Panel Asked For A Password And Then Said No
-- [FIXED] A Scan That Ran Out Of Time Said Three Checks Came Back Clean
-- [SECURITY] A Public Page Could Publish The Link You Actually Scanned
-- [FIXED] The Daily Scan Limit Stopped Being Enforced When The Database Struggled
-- [FIXED] The Alarm Switched Itself Off At The Moment It Went Off
-- [FIXED] The Weekly Summary Could Arrive Every Six Hours
-- [FIXED] A Scan That Was Never Saved Still Answered With A Report
-- [FIXED] Download My Data Left Out Two Thirds Of Your Data
-- [SECURITY] A Reply On A Shared Ticket Outlived The Account That Wrote It
-- [ADDED] A Way To Follow Along, Once, Without Being Asked Twice
-- [SECURITY] A Shared Report Published More Than The Report
-- [SECURITY] Anyone Could Make The Host Score Chart Read Every Public Scan
-- [FIXED] Badges Did Not Load Outside GitHub
-- [FIXED] Revoked Share Links Kept Unfurling In Chat
-- [SECURITY] The Demo Scanner Handed Back A Site's Own Cookies
-- [ADDED] Two Webhook Controls That Only Existed Over The API
-- [FIXED] Scans Stuck On Running Are Now Cleaned Up While The Server Runs
-- [FIXED] A Scheduled Scan That Failed To Start Sat There Forever
-- [FIXED] Scheduled Scans Could Run Twice And Charge Twice
-- [FIXED] Two Workers Reported A Healthy Pass With Nothing Working
-- [FIXED] Automatic Backups Went Quiet After A Failed Start
-- [FIXED] A Cancelled Subscription Could Cancel The Wrong One
-- [FIXED] Out Of Order Stripe Events Could Undo A Successful Payment
-- [FIXED] Changing Plans Could Bill You Twice
-- [FIXED] A Stripe Hiccup Could Downgrade An Active Subscriber
-- [FIXED] Payment Retries Left Accounts Stuck On Past Due
-- [FIXED] An Abandoned Checkout Could Cancel The Plan You Were Already On
-- [FIXED] A Message Sent Through The Contact Form Could Vanish
-- [ADDED] There Was No Way To Turn A Badge Off
-- [FIXED] The Demo Scan Called Four Sections Clean Without Running Them
-- [FIXED] The Pricing Page Sold A Longer History That No Plan Buys
-- [FIXED] The Landing Page Quoted The Top Plan's Bulk Limit To Everyone
-- [FIXED] Around 770 Pages Published FAQ Markup You Could Not Read
-- [FIXED] Prices And Quotas Typed Into Copy Instead Of Read From The Catalogue
-- [FIXED] Link Previews Carried No Account Attribution
-- [FIXED] Two Pages Claimed Scans Run In Your Browser
-- [FIXED] Billing And Specialist Staff Roles Could Not Use Their Own Permissions
-- [ADDED] Two-Factor Lockout Had No Way Back
-- [SECURITY] Staff Actions Taken While Impersonating Were Filed Against The User
-- [SECURITY] Two Admin Actions Changed Everyone's Data Without Leaving A Record
-- [SECURITY] Staff Invites Could Be Sent Without Limit
-- [FIXED] Admins Who Signed Up With Google, GitHub Or Discord Were Told Their Password Was Wrong
-- [FIXED] The Extension Showed One Page's Result For A Whole Site
-- [FIXED] Five Admin Actions Confirmed Themselves With Nothing In Particular
-- [SECURITY] Impersonation Could Change The Password And Email Of The Account It Was Impersonating
-- [FIXED] Resuming A Paused Scan Ran It Immediately
-- [FIXED] Resend Could Mail The Whole User Base Twice From One Double Click
-- [ADDED] Every Social Link Is Now An Address Of Ours
-- [FIXED] The Email Button In The Footer Went To A Cloudflare Error Page
-- [CHANGED] Managing A Domain Is A Page Instead Of A Drawer
-- [FIXED] Admin Tables Could Shrink To Little More Than Their Own Header
-- [FIXED] Shared Rows Offered Teammates Buttons That Always Failed
-- [FIXED] Deep Links Into The Admin Panel Loaded The Wrong Section First
-- [FIXED] Admin Panels Jumped When Their Data Landed
-- [FIXED] The System Health Card Grew Two Rows Every Time It Loaded
-- [FIXED] Screen Readers Were Told Nothing While An Admin Section Loaded
-- [FIXED] Leftover Text Sat On Top Of The Pinned Header When You Scrolled An Admin Table
-- [FIXED] A Warning Icon Sat Six Pixels Above Its Own Sentence
-- [FIXED] Every Email Link On The Site Works Again, And The Addresses Are Better Hidden Than Before
-
----
-
 ## v3.8.5 - September 6, 2026
 **Whose Domain Is It**
 
-- [ADDED] You Can Finally Do Something About Scans of Your Own Domain
-- [FIXED] The Assistant Was Answering to the Model's Name
-- [FIXED] Repo Scans Returned Nothing on an Anthropic Endpoint
-- [FIXED] The Code Review Prompt Said What to Look For and Nothing About When Not to File
-- [FIXED] The Icons Were Never Quite Lined Up With the Text
-- [FIXED] The Chat Window Was Drawn Underneath the Browser's Own Toolbars
-- [FIXED] The Repo List Is Now the Same Table as the Scan List
-- [FIXED] Asking for a Port Sweep Could Cost You the Whole Scan
-- [FIXED] Four Settings Were Being Overridden by the Literal Beside Them
-- [ADDED] The Verification Agent Can Now Be Measured Instead of Guessed At
-- [SECURITY] A Database Dump Can No Longer Be Committed Unnoticed
-- [CHANGED] Stopped Sending a Header Our Own Scanner Says Not to Bother With
-- [FIXED] The Release Build Installed an Emulator It Never Used
+- [ADDED] Control Scans Other People Run Against Your Domain
+- [FIXED] Chat Assistant Now Identifies Itself Correctly
+- [FIXED] Fixed AI Code Reviews Silently Failing on Some Setups
+- [FIXED] AI Code Review Now Skips Guesses Instead of Reporting Them
+- [FIXED] Icons Next to Text Now Line Up Properly
+- [FIXED] Fixed Chat Box Hidden Behind Phone Browser Bars
+- [FIXED] Repository List Redesigned to Match the Scan History List
+- [FIXED] Requesting an Extra Scan Option Could Cancel Your Whole Scan
+- [FIXED] Several Admin Settings Were Quietly Ignored
+- [ADDED] We Can Now Test Whether AI Verdicts Are Improving
+- [SECURITY] Extra Safeguard Against a Database Backup Being Published
+- [CHANGED] Removed an Outdated Security Header We No Longer Needed
+- [FIXED] Cleaned Up an Unnecessary Step in Our Release Process
 
 ---
 
 ## v3.8.4 - September 6, 2026
 **The AI Was Answering Without Thinking**
 
-- [FIXED] Reasoning Was Requested From Claude and Nobody Else
-- [FIXED] An Anthropic-Compatible Endpoint Was Treated as an OpenAI One
-- [ADDED] The Model List Went From 24 to 36
-- [FIXED] The Verifier Called True Findings False Positives
-- [FIXED] Every AI Timeout Was Set for a Fast Model
-- [CHANGED] Self-Hosting Note: Your Reverse Proxy Has a Timeout Too
-- [FIXED] Unreadable Backup Codes Were Reported as Fine
-- [FIXED] Deleting a Scan Mid-Verification Filled the Log With Errors
+- [FIXED] AI Now Reasons Carefully With Any AI Provider You Use
+- [FIXED] Fixed Wrong AI Request Format for Some AI Connections
+- [ADDED] More AI Models Available, and the List Is Up to Date
+- [FIXED] AI Was Wrongly Dismissing Some Real Security Findings
+- [FIXED] AI Features Were Timing Out With Slower, More Careful Models
+- [CHANGED] Self-Hosting: Raise Your Timeout for AI Scans
+- [FIXED] Broken Two-Factor Backup Codes Were Reported as Working
+- [FIXED] Fixed Errors When a Scan Was Deleted During AI Verification
 
 ---
 
 ## v3.8.3 - September 5, 2026
 **The Scanner Reported a Zone It Could Not Actually Walk**
 
-- [FIXED] Zone Walking Was Reported on Zones That Cannot Be Walked
-- [CHANGED] The AI Verification Pass Could Not Call a DNS Finding Wrong
-- [CHANGED] We Told Most of the Web to Enable Something It Cannot Enable
-- [CHANGED] DANE Is Now Checked Where Anything Actually Enforces It
-- [CHANGED] We Reported a Browser Default as a Missing Header
+- [FIXED] Fixed a False Alarm About Guessing a Site's Subdomains
+- [CHANGED] AI Could Not Flag DNS or Certificate Findings as Wrong
+- [CHANGED] A Security Tip Told You to Fix Something You Couldn't
+- [CHANGED] Moved a Security Check From Your Website to Your Mail Server
+- [CHANGED] Fixed a False Alarm About a Header Almost No Site Needs
 
 ---
 
 ## v3.8.2 - September 5, 2026
 **The Updater Stopped Refusing Installs It Had Always Updated**
 
-- [FIXED] The Updater Told Panel Installs to Pull an Image They Do Not Have
-- [CHANGED] Updates Stopped Installing Things a Running Copy Has No Use For
-- [SECURITY] An Encrypted Database Backup Was Committed to the Repository
-- [FIXED] Our Own Compose File Installed the Previous Release
+- [FIXED] Fixed the Update Button Wrongly Disabled on Some Self-Hosts
+- [CHANGED] Self-Host Updates No Longer Install Files You Don't Need
+- [SECURITY] An Encrypted Backup Was Accidentally Published
+- [FIXED] Fixed Our Setup File Pointing to an Older Version
 
 ---
 
 ## v3.8.1 - September 5, 2026
 **A Scanned Page Can No Longer Stall the Server**
 
-- [SECURITY] Making a Scan Private Did Not Revoke Its Share Link
-- [SECURITY] Subdomain Discovery Was Sold as Paid and Guarded Only in the Browser
-- [FIXED] Google Was Told Two Different Things About the Home Page
-- [FIXED] The Boot Banner Named a Schema Version That Never Existed
-- [SECURITY] Two Release Workflow Weaknesses, Found by Our Own Code Scanning
-- [SECURITY] Nested HTML Could Exhaust Memory and Kill the Process
-- [SECURITY] Two Detection Patterns Could Be Made to Run for Minutes
-- [FIXED] The Performance Test Suite Now Includes the Shapes It Missed
-- [FIXED] A Self-Host Following Our Own Setup Guide Could Never Log In
-- [SECURITY] An Invitation Could Be Taken by Someone Who Never Owned the Address
-- [SECURITY] An Authenticated Scan That Did Not Finish Showed as Clean
-- [FIXED] Form Logins Opened Browser Sessions Nothing Was Paying For
-- [FIXED] The Checks People Kept Marking Wrong
-- [ADDED] Engine Feedback Shows What a Check Actually Fired On
-- [ADDED] Findings Show Their Proof, and Triage Reaches Exports
-- [FIXED] The Live Browser Viewer Was Showing the Wrong Shape
-- [CHANGED] The Assistant Panel Rebuilt
-- [FIXED] Admin Tables Stopped Bleeding Text Through Their Headers
-- [CHANGED] Every Email Redrawn
-- [FIXED] The Backup List Counted One Backup as Two
-- [FIXED] A Backup That Could Not Be Read Was Blamed on Its Format
-- [ADDED] Four Switches for When Something Is Going Wrong
-- [FIXED] Four Ways to Run a Scan Notified Nobody
-- [ADDED] Alerts That Say What Changed, Not Just How Many
-- [SECURITY] Seven More Pages That Could Hold the Server Still
-- [FIXED] The Speed Tests Now Measure the Whole Sweep, Not Just One Check
+- [SECURITY] Making a Scan Private Did Not Actually Cancel Its Share Link
+- [SECURITY] Fixed a Paid Feature That Could Be Used for Free
+- [FIXED] Fixed a Search Engine Confusion About Our Homepage Address
+- [FIXED] Fixed a Meaningless Version Number Shown at Startup
+- [SECURITY] Fixed Two Weaknesses in Our Automated Release Process
+- [SECURITY] A Page With Deeply Nested Code Could Crash Our Scanner
+- [SECURITY] Certain Page Content Could Make Two Checks Run for Minutes
+- [FIXED] Added Tests to Catch This Kind of Slowdown Automatically
+- [FIXED] Following Our Own Setup Guide Could Lock You Out
+- [SECURITY] You Could Join a Team by Claiming an Email You Did Not Own
+- [SECURITY] A Scan That Timed Out Behind a Login Could Show as Clean
+- [FIXED] Login Scans Were Not Counted Against Your Usage Limits
+- [FIXED] A Batch of False-Alarm Fixes Based on Your Feedback
+- [ADDED] Better Internal Tools for Improving Scan Accuracy
+- [ADDED] Findings Now Show Their Proof, Reports Are More Consistent
+- [FIXED] Fixed the Live Browser Viewer Showing the Wrong Size
+- [CHANGED] The AI Chat Assistant Panel Redesigned
+- [FIXED] Fixed Text Showing Through Admin Table Headers
+- [CHANGED] All of VulnRadar's Emails Redesigned
+- [FIXED] Backup Count in the Admin Panel Was Showing Double
+- [FIXED] Fixed Misleading Errors When Restoring a Backup Failed
+- [ADDED] New Admin Controls to Pause the Service During an Incident
+- [FIXED] Some Kinds of Scans Never Sent Any Notifications
+- [ADDED] Webhook Alerts Now Include What Actually Changed
+- [SECURITY] More Pages Found That Could Freeze Scanning for Everyone
+- [FIXED] Improved Automated Tests to Catch Future Slowdowns Earlier
 
 ---
 
 ## v3.8.0 - September 3, 2026 **(highlights)**
 **Self-Hosting Works, Scans Tell the Truth, and Nothing Runs Free**
 
-- [FIXED] A Fresh Self-Host Starts on a Blank Postgres
-- [FIXED] Your .env Actually Reaches the Container
-- [FIXED] You Can Log In to a Self-Host Without Configuring Email First
-- [SECURITY] CI Builds the Real Image, Boots It, and Waits for the Test Suite
-- [ADDED] ARM64 Images, and a Latest Tag That Means the Latest Release
-- [FIXED] Creating, Cloning and Upgrading a Database Stopped Skipping Tables
-- [SECURITY] Backups and Encryption Keys Stopped Losing Data Quietly
-- [FIXED] An Unfinished Scan Is Never Reported as Clean
-- [SECURITY] Ten Checks Gave Up After the First Match on the Page
-- [FIXED] Findings That Reported the Wrong Thing
-- [SECURITY] A Hostile Page Can No Longer Stall the Scanner
-- [SECURITY] More Internal Address Ranges Blocked, and Every Redirect Re-Checked
-- [PERFORMANCE] Scans Send About Half the Requests They Used To
-- [FIXED] Scans Stopped Failing and Hanging at the Edges
-- [FIXED] Deep Scans Honour the Options You Picked
-- [FIXED] Five Ways to Run Scans That Charged Nothing
-- [FIXED] Billing Bugs That Downgraded the Wrong Account
-- [ADDED] One Page for Every Credit Balance
-- [CHANGED] The Pricing Page Says What You Get for the Money
-- [SECURITY] Sign-In, Sessions and Two-Factor Hardened
-- [SECURITY] Endpoints That Had No Rate Limit at All
-- [SECURITY] Staff Permissions That Were Not Actually Enforced
-- [SECURITY] A Private Scan No Longer Starts Public
-- [FIXED] Shared Reports Unfurl, and the Preview Carries Your Own Branding
-- [SECURITY] Webhook Secrets Are Encrypted, Rotatable, and Deliveries Are Visible
-- [CHANGED] The Scan Verdict Now Leads the Report
-- [FIXED] Sorting and Filtering a Report Is Instant and Survives the Back Button
-- [FIXED] Scan History Tells You the Real Numbers
+- [FIXED] Self-Hosted Setup No Longer Fails on First Run
+- [FIXED] Self-Hosted Settings Now Actually Take Effect
+- [FIXED] No Lockout When Self-Hosting Without Email Set Up
+- [SECURITY] Release Checks Now Test the Real Self-Hosted Setup
+- [ADDED] Self-Hosting Now Works on More Types of Hardware
+- [FIXED] Database Setup No Longer Leaves Pieces Missing
+- [SECURITY] Backups and Security Keys No Longer Fail Silently
+- [FIXED] An Incomplete Scan Is Never Shown as All Clear
+- [SECURITY] Security Checks No Longer Stop at the First Result
+- [FIXED] Eight Scan Results Corrected to Say the Right Thing
+- [SECURITY] A Malicious Page Can No Longer Freeze the Scanner
+- [SECURITY] More Protection Against the Scanner Being Misdirected
+- [PERFORMANCE] Scans Are Faster and Lighter on the Site Scanned
+- [FIXED] Scans No Longer Get Stuck or Wrongly Marked Failed
+- [FIXED] Deep Scan Options Are Actually Applied Now
+- [FIXED] Five Ways Scans Could Dodge Your Usage Limit
+- [FIXED] Billing Bugs That Could Downgrade a Paying Account
+- [ADDED] One Page Shows All Your Credit Balances
+- [CHANGED] The Pricing Page Now Explains What You Get
+- [SECURITY] Sign-In and Two-Factor Security Strengthened
+- [SECURITY] Closed Several Gaps With No Usage Limit at All
+- [SECURITY] Gaps in Staff Access Controls Closed
+- [SECURITY] Private Scans Can No Longer Start Out Public
+- [FIXED] Shared Report Links Now Show a Proper Preview
+- [SECURITY] Webhook Signing Secrets Are Now Encrypted
+- [CHANGED] The Overall Verdict Now Leads Every Report
+- [FIXED] Filtering and Sorting a Report Is Now Instant
+- [FIXED] Scan History Now Shows Accurate Numbers
 - [FIXED] A Failed Load No Longer Reads as an Empty Account
 - [FIXED] Actions That Failed in Silence Now Say So
 - [ADDED] You Can Scan Your Own Site Without an Account
@@ -425,23 +526,23 @@ entry is retrieved.
 - [FIXED] Sixteen Admin Panel Bugs
 - [FIXED] Admin Settings That Saved and Then Did Nothing
 - [FIXED] Light Mode Is Readable
-- [FIXED] Keyboard Focus Is Visible and Skip Links Actually Move Focus
+- [FIXED] Keyboard Focus Is Now Visible, and Skip Links Work
 - [FIXED] Every Dialog Behaves Like a Dialog
 - [FIXED] Nothing Scrolls Sideways on a Phone Any More
 - [FIXED] Loading Screens Match the Page That Arrives
-- [FIXED] One Navbar on Every Public Page, and Links That Go Where They Say
+- [FIXED] One Consistent Navbar, and Links That Actually Work
 - [FIXED] Badges Now Show an A+ to F Grade
-- [PERFORMANCE] Lists Stopped Loading Every Finding to Draw a Badge
-- [PERFORMANCE] A Lot Less JavaScript on First Load
+- [PERFORMANCE] Several Pages Got Much Faster to Load
+- [PERFORMANCE] The App Sends Far Less Code on First Load
 - [FIXED] The Changelog Page Stopped Downloading Every Release
-- [FIXED] Email: One-Click Unsubscribe, Real Expiry Times, No Duplicates
+- [FIXED] Email Fixes: Unsubscribe, Expiry Times, No Duplicates
 - [FIXED] PDF and CSV Reports Render What You Actually Wrote
 - [FIXED] The API Reference Documents the API That Exists
 - [FIXED] Documentation Rewritten Where It Was Wrong
 - [CHANGED] Documentation You Can Skim
 - [FIXED] The Landing Page Says Who It Is For
-- [FIXED] The Check Reference Got Search, Filters, and Titles That Do Not Collide
-- [SECURITY] The Browser Extension Can Point at Your Own Instance
+- [FIXED] Check Pages Get Search, Filters, and Unique Titles
+- [SECURITY] The Browser Extension Can Now Point at Your Own Server
 - [FIXED] The AI Assistant Answers From the Whole Document
 
 ---
@@ -1198,34 +1299,283 @@ entry is retrieved.
 
 ---
 
-## Earlier releases: one line each
+## v1.9.2 - February 24, 2026
+**Security Hardening, GDPR Compliance & Docker Production Overhaul**
 
-- **v1.9.2** (February 24, 2026) Security Hardening, GDPR Compliance & Docker Production Overhaul: 6 changes (2 security, 2 added, 2 changed)
-- **v1.9.1** (February 23, 2026) ToS Modal & Header Fixes: 2 changes (1 changed, 1 fixed)
-- **v1.9.0** (February 23, 2026) Auth-Aware Public Pages, Codebase Refactor & Performance: 9 changes (7 changed, 1 added, 1 performance)
-- **v1.8.0** (February 21, 2026) Email 2FA, Expanded Notifications & 55+ New Security Checks: 9 changes (4 added, 2 fixed, 2 changed, 1 performance)
-- **v1.7.4** (February 20, 2026) Docker Production Ready, Mobile UX Overhaul & Error Pages: 6 changes (3 added, 2 changed, 1 fixed)
-- **v1.7.3** (February 19, 2026) Unified Footer, Contact Upgrades & Error Pages: 5 changes (3 added, 2 changed)
-- **v1.7.2** (February 19, 2026) Self-Hosted Schema & Stability Fixes: 5 changes (5 fixed)
-- **v1.7.1** (February 19, 2026) Migration Tool Improvements & Documentation Overhaul: 7 changes (3 added, 2 changed, 2 fixed)
-- **v1.7.0** (February 18, 2026) Deep Crawl URL Selector, IP Rate-Limited Demo & Auto Scan Notes: 9 changes (4 changed, 3 added, 1 fixed, 1 security)
-- **v1.6.8** (February 17, 2026) Metadata & Social Preview Fixes: 3 changes (3 fixed)
-- **v1.6.7** (February 16, 2026) Scan Notes Visibility & Team Collaboration: 4 changes (2 added, 2 changed)
-- **v1.6.6** (February 16, 2026) Subdomain Discovery Depth & Deep Scan Prefix: 2 changes (2 changed)
-- **v1.6.5** (February 16, 2026) Scan Depth & Performance Improvements: 3 changes (2 changed, 1 performance)
-- **v1.6.4** (February 16, 2026) Subdomain Discovery & Real-Time Progress: 3 changes (2 added, 1 changed)
-- **v1.6.3** (February 16, 2026) Scanner Category Visualization: 2 changes (2 added)
-- **v1.6.2** (February 15, 2026) Expanded Security Coverage: 2 changes (1 added, 1 changed)
-- **v1.6.1** (February 15, 2026) Export & Sharing Enhancements: 2 changes (1 added, 1 changed)
-- **v1.6.0** (February 15, 2026) Deep Crawl Scanning: 3 changes (3 added)
-- **v1.5.0** (February 14, 2026) Scheduled Scanning & Bulk Operations: 3 changes (3 added)
-- **v1.4.0** (February 14, 2026) Team Collaboration: 3 changes (3 added)
-- **v1.3.0** (February 11, 2026) API Access & Webhooks: 3 changes (3 added)
-- **v1.2.0** (February 10, 2026) Comparison & History: 3 changes (3 added)
-- **v1.1.2** (February 10, 2026) Safety Rating Indicator: 2 changes (2 added)
-- **v1.1.1** (February 10, 2026) Metadata & Branding Polish: 3 changes (2 changed, 1 security)
-- **v1.1.0** (February 10, 2026) Contact System & UI Enhancements: 8 changes (4 added, 2 changed, 1 security, 1 performance)
-- **v1.0.0** (February 9, 2026) First Release: 14 changes (14 added)
+- [SECURITY] Stricter Password Strength Calculator
+- [SECURITY] AES-256-GCM API Key Encryption
+- [ADDED] Expanded Fix Examples for 8 Security Checks
+- [CHANGED] Docker Production Overhaul
+- [ADDED] GDPR Compliance & Data Request Links
+- [CHANGED] Privacy Policy Updates
+
+---
+
+## v1.9.1 - February 23, 2026
+**ToS Modal & Header Fixes**
+
+- [CHANGED] ToS modal wording
+- [FIXED] Centralized Route & API Constants
+
+---
+
+## v1.9.0 - February 23, 2026
+**Auth-Aware Public Pages, Codebase Refactor & Performance**
+
+- [ADDED] Auth-Aware Public Pages
+- [CHANGED] Centralized Route & API Constants
+- [CHANGED] Role Badge Deduplication
+- [PERFORMANCE] Dynamic Imports for Heavy Components
+- [CHANGED] Auth Flow UI Standardization
+- [CHANGED] Landing Page Refresh
+- [CHANGED] Dead Code Removal
+- [CHANGED] Accessibility Improvements
+- [CHANGED] Semantic Navigation in PublicPageShell
+
+---
+
+## v1.8.0 - February 21, 2026
+**Email 2FA, Expanded Notifications & 55+ New Security Checks**
+
+- [ADDED] Email-Based Two-Factor Authentication
+- [ADDED] 18 Granular Notification Preferences
+- [FIXED] Accurate Notification Routing
+- [ADDED] 55+ New Security Checks (175+ Total)
+- [CHANGED] Notification Bell in Header
+- [ADDED] Scanner Category Selector
+- [PERFORMANCE] Major Performance Improvements
+- [FIXED] Fixed /shared Page Auth Detection
+- [CHANGED] Engine Version 2.0.0
+
+---
+
+## v1.7.4 - February 20, 2026
+**Docker Production Ready, Mobile UX Overhaul & Error Pages**
+
+- [FIXED] Docker Production Ready
+- [CHANGED] Mobile Menu Overlay
+- [CHANGED] Icon-Only Buttons on Mobile
+- [ADDED] Editable Team Names
+- [ADDED] Team Member Avatars
+- [ADDED] Custom Error Page
+
+---
+
+## v1.7.3 - February 19, 2026
+**Unified Footer, Contact Upgrades & Error Pages**
+
+- [CHANGED] Version Check via GitHub Releases
+- [CHANGED] Unified Footer Across All Pages
+- [ADDED] Contact Email Auto-Fill
+- [ADDED] Staff Application via Contact Form
+- [ADDED] Error Pages
+
+---
+
+## v1.7.2 - February 19, 2026
+**Self-Hosted Schema & Stability Fixes**
+
+- [FIXED] Scan History Save Fix
+- [FIXED] Bulk Scan Notes
+- [FIXED] Silent Catch Logging
+- [FIXED] Notification Preferences Cleanup
+- [FIXED] Docs Column Name Fixes
+
+---
+
+## v1.7.1 - February 19, 2026
+**Migration Tool Improvements & Documentation Overhaul**
+
+- [ADDED] Table & Column Rename Detection
+- [CHANGED] Smarter Migration Prompts
+- [FIXED] Migration Parser Rewrite
+- [ADDED] Extra Table Detection
+- [CHANGED] Documentation Overhaul
+- [ADDED] Startup Version Check
+- [FIXED] Exact Hostname Crawl Fix
+
+---
+
+## v1.7.0 - February 18, 2026
+**Deep Crawl URL Selector, IP Rate-Limited Demo & Auto Scan Notes**
+
+- [ADDED] Deep Crawl URL Selector
+- [ADDED] Smart Crawl URL Filtering
+- [FIXED] Same-Domain Redirect Handling
+- [CHANGED] Crawl Results Separated by Page
+- [SECURITY] IP-Based Demo Rate Limiting
+- [ADDED] Auto Scan Notes
+- [CHANGED] Full URL Display in History
+- [CHANGED] Demo Subdomain Auth Message
+- [CHANGED] Code Cleanup
+
+---
+
+## v1.6.8 - February 17, 2026
+**Metadata & Social Preview Fixes**
+
+- [FIXED] Page Metadata Fixed
+- [FIXED] Consistent OG Images
+- [FIXED] Canonical & Meta Tags
+
+---
+
+## v1.6.7 - February 16, 2026
+**Scan Notes Visibility & Team Collaboration**
+
+- [ADDED] Notes Visible to Team Members
+- [CHANGED] Owner-Only Edit Permissions
+- [ADDED] Notes on Shared Scans
+- [CHANGED] Empty State Messaging
+
+---
+
+## v1.6.6 - February 16, 2026
+**Subdomain Discovery Depth & Deep Scan Prefix**
+
+- [CHANGED] Increased Subdomain Discovery Depth
+- [CHANGED] Deep Scan URL Prefix
+
+---
+
+## v1.6.5 - February 16, 2026
+**Scan Depth & Performance Improvements**
+
+- [CHANGED] Deeper Crawl Limit
+- [PERFORMANCE] Parallel Fetch with Concurrency Limit
+- [CHANGED] Consistent Fetch Timeout
+
+---
+
+## v1.6.4 - February 16, 2026
+**Subdomain Discovery & Real-Time Progress**
+
+- [ADDED] Subdomain Discovery
+- [ADDED] Real-Time Scan Progress
+- [CHANGED] Accurate Progress Tracking
+
+---
+
+## v1.6.3 - February 16, 2026
+**Scanner Category Visualization**
+
+- [ADDED] Category Breakdown Chart
+- [ADDED] Category Filtering
+
+---
+
+## v1.6.2 - February 15, 2026
+**Expanded Security Coverage**
+
+- [ADDED] 15+ New Security Checks
+- [CHANGED] Improved Severity Ratings
+
+---
+
+## v1.6.1 - February 15, 2026
+**Export & Sharing Enhancements**
+
+- [ADDED] CSV Export
+- [CHANGED] Enhanced PDF Reports
+
+---
+
+## v1.6.0 - February 15, 2026
+**Deep Crawl Scanning**
+
+- [ADDED] Deep Crawl Mode
+- [ADDED] Aggregated Findings
+- [ADDED] Link Discovery
+
+---
+
+## v1.5.0 - February 14, 2026
+**Scheduled Scanning & Bulk Operations**
+
+- [ADDED] Scheduled Scans
+- [ADDED] Bulk Scanning
+- [ADDED] Scan Tags
+
+---
+
+## v1.4.0 - February 14, 2026
+**Team Collaboration**
+
+- [ADDED] Teams & Organizations
+- [ADDED] Role-Based Access
+- [ADDED] Team Invitations
+
+---
+
+## v1.3.0 - February 11, 2026
+**API Access & Webhooks**
+
+- [ADDED] API Keys
+- [ADDED] Webhooks
+- [ADDED] Rate Limiting
+
+---
+
+## v1.2.0 - February 10, 2026
+**Comparison & History**
+
+- [ADDED] Scan Comparison
+- [ADDED] Full Scan History
+- [ADDED] Shareable Links
+
+---
+
+## v1.1.2 - February 10, 2026
+**Safety Rating Indicator**
+
+- [ADDED] Website Safety Rating
+- [ADDED] PDF Report Safety Rating
+
+---
+
+## v1.1.1 - February 10, 2026
+**Metadata & Branding Polish**
+
+- [CHANGED] Consistent Social Cards
+- [CHANGED] Unified Page Titles
+- [SECURITY] Enhanced Security Headers
+
+---
+
+## v1.1.0 - February 10, 2026
+**Contact System & UI Enhancements**
+
+- [ADDED] Enhanced Contact Form
+- [SECURITY] CAPTCHA Protection
+- [ADDED] Team Collaboration
+- [ADDED] Team Invite Emails
+- [ADDED] Professional Email Templates
+- [PERFORMANCE] Instant Response Times
+- [CHANGED] Smart Email Routing
+- [CHANGED] Improved Scanner UI
+
+---
+
+## v1.0.0 - February 9, 2026
+**First Release**
+
+- [ADDED] 65+ Security Checks
+- [ADDED] User Accounts & Auth
+- [ADDED] Admin Dashboard
+- [ADDED] Webhooks & Notifications
+- [ADDED] Scheduled & Bulk Scanning
+- [ADDED] Scan Comparison & Sharing
+- [ADDED] Scan Tags & History
+- [ADDED] PDF Export
+- [ADDED] Teams & Organizations
+- [ADDED] API Keys & Rate Limiting
+- [ADDED] Contact & Support
+- [ADDED] Self-Scan Demo
+- [ADDED] Onboarding Tour
+- [ADDED] Documentation
+
+---
+
 
 ---
 
