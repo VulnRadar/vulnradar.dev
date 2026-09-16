@@ -181,3 +181,101 @@ describe("the CLI page's Node floor", () => {
     ).toBe(true);
   });
 });
+
+/**
+ * Toolchain numbers the contributor docs transcribe.
+ *
+ * These are the ones that cannot be rendered from a constant without pulling
+ * package.json into a page bundle, so they are typed out, and every one of
+ * them had rotted: the test runner was named a major behind and quoted with an
+ * engines range containing a branch that does not exist, `.nvmrc` was quoted
+ * as the major when it pins an exact patch, the `engines` field was quoted
+ * without the upper bound in a paragraph whose entire subject is which
+ * versions are excluded, and the CI diagram promised dependabot auto-merges
+ * minors when the workflow was corrected to patch-only.
+ */
+describe("contributor docs quote the real toolchain", () => {
+  const developers = read("app/docs/developers/page.tsx");
+  const architecture = read("app/docs/architecture/page.tsx");
+  const pkg = JSON.parse(read("package.json"));
+  const vitestPkg = JSON.parse(read("node_modules/vitest/package.json"));
+
+  it("quotes package.json's engines range in full", () => {
+    expect(
+      developers,
+      "the Node callout quotes the engines field; it must be the whole " +
+        "range, since the paragraph's point is which versions are excluded",
+    ).toContain(`"node": "${pkg.engines.node}"`);
+  });
+
+  it("quotes what .nvmrc actually pins", () => {
+    const nvmrc = read(".nvmrc").trim();
+    expect(developers).toContain(nvmrc);
+    // The old text said "which says 22", which is the major, not the pin.
+    expect(developers).not.toMatch(/\.nvmrc \(which says \d+\)/);
+  });
+
+  it("names the test runner's real major", () => {
+    const major = String(vitestPkg.version).split(".")[0];
+    expect(developers).toContain(`vitest@${major}`);
+    // Nothing should still be pointing at a different one.
+    const named = [...developers.matchAll(/vitest@(\d+)/g)].map((m) => m[1]);
+    expect(new Set(named)).toEqual(new Set([major]));
+  });
+
+  it("quotes the test runner's real engines range", () => {
+    // Rendered with &gt; for the `>=` branch, so compare against that form.
+    const range = String(vitestPkg.engines.node).replace(/>/g, "&gt;");
+    expect(
+      developers,
+      "the Node version policy quotes vitest's own engines field",
+    ).toContain(range);
+  });
+
+  it("describes dependabot auto-merge the way the workflow gates it", () => {
+    const wf = read(".github/workflows/dependabot-auto-merge.yml");
+    const merges = new Set(
+      [...wf.matchAll(/version-update:semver-(patch|minor|major)/g)].map(
+        (m) => m[1],
+      ),
+    );
+    const claimed = architecture.match(/auto-merge ([a-z + ]+?) only/)?.[1];
+    expect(claimed, "the CI diagram's dependabot line").toBeTruthy();
+    const claimedSet = new Set(
+      (claimed as string).split("+").map((p) => p.trim()),
+    );
+    expect(claimedSet).toEqual(merges);
+  });
+
+  it("shows requireStaff with the arity it actually has", () => {
+    const authorization = read("lib/auth/authorization.ts");
+    const params = authorization.match(
+      /export async function requireStaff\(([^)]*)\)/,
+    )?.[1];
+    expect(params, "requireStaff's declaration").toBeDefined();
+    if ((params as string).trim() === "") {
+      expect(
+        architecture,
+        "requireStaff takes no arguments, so the helper list must not " +
+          "show it taking one",
+      ).not.toMatch(/requireStaff\([^)]+\)/);
+    }
+  });
+
+  it("states the Discord OAuth state TTL the config sets", () => {
+    const configValues = read("lib/config/config-values.ts");
+    const seconds = Number(
+      configValues.match(
+        /CONFIG_DISCORD_OAUTH_STATE_TTL_SECONDS\s*=\s*(\d+)/,
+      )?.[1],
+    );
+    expect(Number.isFinite(seconds)).toBe(true);
+    const minutes = seconds / 60;
+    // The bullet names Discord's own TTL, which is deliberately tighter than
+    // the general OAuth flow's. Quoting the general one read as correct.
+    const discordBullet = architecture.slice(
+      architecture.indexOf("Discord OAuth:"),
+    );
+    expect(discordBullet.slice(0, 600)).toContain(`${minutes}-minute TTL`);
+  });
+});

@@ -101,7 +101,7 @@ export default function AdministrationPage() {
             {
               role: "support",
               scope:
-                "Read-only. The user directory, scans, reports and subscriptions, plus the support ticket inbox. No audit log and no mutations.",
+                "Read-only. The user directory, scans and subscriptions, plus the support ticket inbox. No audit log and no mutations.",
             },
             {
               role: "billing",
@@ -111,17 +111,17 @@ export default function AdministrationPage() {
             {
               role: "security_analyst",
               scope:
-                "Sessions, 2FA resets, moderation, reports and the audit log. No billing, settings or backups.",
+                "Sessions, 2FA resets, moderation and the audit log. No billing, settings or backups.",
             },
             {
               role: "content_manager",
               scope:
-                "Moderation, reports, announcements and notifications. No sessions and no audit log.",
+                "Moderation, announcements and notifications. No sessions and no audit log.",
             },
             {
               role: "ops",
               scope:
-                "System stats, error logs, scans, engine feedback and cache control. Deliberately has no access to the user directory.",
+                "System stats, error logs, scans and engine feedback. Deliberately has no access to the user directory.",
             },
             {
               role: "moderator",

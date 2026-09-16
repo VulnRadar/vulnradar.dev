@@ -292,9 +292,11 @@ export default function ArchitecturePage() {
               <strong className="text-foreground">Discord OAuth:</strong>{" "}
               HMAC-signed state with{" "}
               <InlineCode>AUTH_SECRET || API_KEY_ENCRYPTION_KEY</InlineCode>,
-              5-minute TTL. Two actions:{" "}
-              <InlineCode>?action=connect</InlineCode> (link existing) and{" "}
-              <InlineCode>?action=login</InlineCode> (sign in via Discord).
+              1-minute TTL, tighter than the 5 minutes the general OAuth flow
+              allows because it assumes an already-signed-in user re-approving a
+              link. Two actions: <InlineCode>?action=connect</InlineCode> (link
+              existing) and <InlineCode>?action=login</InlineCode> (sign in via
+              Discord).
             </li>
             <li>
               <strong className="text-foreground">API auth:</strong> Bearer API
@@ -599,7 +601,7 @@ export default function ArchitecturePage() {
             </li>
             <li>
               <InlineCode>lib/auth/authorization.ts</InlineCode>: route-handler
-              helpers: <InlineCode>requireStaff(role?)</InlineCode>,{" "}
+              helpers: <InlineCode>requireStaff()</InlineCode>,{" "}
               <InlineCode>requireAdmin()</InlineCode>,{" "}
               <InlineCode>requirePermission()</InlineCode>,{" "}
               <InlineCode>verifyOwnership(resource, id)</InlineCode>,{" "}
@@ -663,7 +665,7 @@ On tag v*
 Weekly / on PR
   ├── Stale bot
   ├── Label (PR)
-  └── Dependabot → auto-merge patch + minor only`}
+  └── Dependabot → auto-merge patch only`}
         />
         <p className="text-sm text-muted-foreground">
           All four checks (<InlineCode>lint</InlineCode>,{" "}

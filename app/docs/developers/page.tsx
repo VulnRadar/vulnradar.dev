@@ -419,18 +419,19 @@ export default function DevelopersPage() {
           <p>
             The <InlineCode>engines</InlineCode> field in{" "}
             <InlineCode>package.json</InlineCode> is{" "}
-            <InlineCode>{`{ "node": ">=22.0.0" }`}</InlineCode>. There is no
-            fallback to Node 20: the Dockerfile builds and runs on{" "}
-            <InlineCode>node:22.23.2-alpine</InlineCode>, and CI runs the full
-            lint, typecheck, test, and build matrix on Node 22 only. Match that
-            locally.
+            <InlineCode>{`{ "node": ">=22.0.0 <23.0.0" }`}</InlineCode>. There
+            is no fallback to Node 20 and no jump to 24 either: the Dockerfile
+            builds and runs on <InlineCode>node:22.23.2-alpine</InlineCode>, and
+            CI runs the full lint, typecheck, test, and build matrix on Node 22
+            only. Match that locally.
           </p>
         </DocsCallout>
         <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground mt-4">
           <li>
             <strong className="text-foreground">Node.js 22 LTS</strong> (the{" "}
-            <InlineCode>.nvmrc</InlineCode> at the repo root says{" "}
-            <InlineCode>22</InlineCode>)
+            <InlineCode>.nvmrc</InlineCode> at the repo root pins{" "}
+            <InlineCode>22.23.2</InlineCode>, the same patch the Dockerfile and
+            CI pin)
           </li>
           <li>
             <strong className="text-foreground">npm 10+</strong> (ships with
@@ -455,11 +456,15 @@ export default function DevelopersPage() {
           {APP_NAME} targets{" "}
           <strong className="text-foreground">Node.js 22 LTS</strong>{" "}
           exclusively.
-          <InlineCode>vitest@4</InlineCode>, the test runner, additionally
-          enforces <InlineCode>^20.0.0 || ^22.0.0 || &gt;=24.0.0</InlineCode> in
-          its own <InlineCode>engines</InlineCode> field, which is why an
+          <InlineCode>vitest@5</InlineCode>, the test runner, additionally
+          enforces <InlineCode>^22.12.0 || ^24.0.0 || &gt;=26.0.0</InlineCode>{" "}
+          in its own <InlineCode>engines</InlineCode> field, which is why an
           odd-numbered release like 21 or 23 fails before a single test runs
-          rather than failing with a confusing error partway through.
+          rather than failing with a confusing error partway through. Note that
+          its floor is higher than this repo&apos;s own: a Node 22 older than{" "}
+          <InlineCode>22.12.0</InlineCode> satisfies{" "}
+          <InlineCode>package.json</InlineCode> and still fails vitest, which is
+          the one gap worth knowing about before you spend time on it.
         </p>
         <p className="text-sm text-muted-foreground mt-3">
           Confirm your version and switch if needed:
@@ -467,7 +472,7 @@ export default function DevelopersPage() {
         <CodeBlock
           language="bash"
           code={`# nvm / fnm / volta / asdf will all auto-pick this from the repo root
-nvm use          # reads .nvmrc (which says 22)
+nvm use          # reads .nvmrc (which pins 22.23.2)
 
 # or install + use explicitly
 nvm install 22
