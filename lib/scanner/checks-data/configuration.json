@@ -419,38 +419,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "vary-header-missing-user-agent",
-    "type": "header",
-    "title": "Vary Header Missing User-Agent on UA-Dependent Responses",
-    "category": "configuration",
-    "severity": "info",
-    "description": "A response appears to vary by User-Agent (e.g., serving different HTML to mobile vs. desktop) but does not include Vary: User-Agent. Caches may serve the wrong variant to the wrong device.",
-    "evidence": "Configuration-level finding for `vary-header-missing-user-agent` against {{url}}.",
-    "riskImpact": "A shared cache may serve a desktop HTML response to a mobile client (or vice versa), causing layout breakage and potentially exposing functionality not intended for that user-agent.",
-    "explanation": "When a server returns different response content based on the User-Agent (adaptive serving for mobile/desktop), it must include Vary: User-Agent so caches store separate copies per user-agent group. Without it, the first visitor's device variant is cached and served to all subsequent visitors.",
-    "fixSteps": [
-      "Add Vary: User-Agent to responses that return different HTML or assets based on the user-agent.",
-      "Prefer client-side responsive design (CSS media queries) to avoid server-side UA detection entirely.",
-      "If adaptive serving is required, use a CDN with UA grouping/normalization support."
-    ],
-    "codeExamples": [
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "# If you serve different content per UA group:\nadd_header Vary \"User-Agent\" always;"
-      },
-      {
-        "label": "Prefer responsive CSS over UA detection",
-        "language": "css",
-        "code": "/* Use media queries instead of server-side UA detection */\n@media (max-width: 768px) {\n  .desktop-only { display: none; }\n}"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary",
-      "https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.4"
-    ]
-  },
-  {
     "id": "server-timing-allow-origin-public",
     "type": "header",
     "title": "Server-Timing Exposed Without Timing-Allow-Origin Gate",

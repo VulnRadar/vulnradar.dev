@@ -135,16 +135,6 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "vary-header-missing-user-agent": [
-    {
-      description:
-        "removed — fires on every modern responsive site (can't detect UA-based serving without two requests)",
-      url: "https://example.com/mobile",
-      headers: { "content-type": "text/html; charset=utf-8" },
-      expect: "skip",
-    },
-  ],
-
   "vary-header-cookie": [
     {
       description:

@@ -392,14 +392,6 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
-  "postmessage-origin": [
-    {
-      description:
-        "disabled as a strict duplicate of client-side.ts's postmessage-no-origin-check (same evidence, same high severity, better per-handler origin scoping) -- never fires, so one unvalidated listener is no longer scored twice",
-      body: "<script>window.addEventListener('message', function(evt){ render(evt.data); });</script>",
-      expect: "skip",
-    },
-  ],
   "open-form-action": [
     {
       description:

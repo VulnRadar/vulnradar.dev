@@ -81,38 +81,21 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "csp-unsafe-eval-detected": "csp-unsafe-eval",
   "csp-unsafe-eval-script": "csp-unsafe-eval",
 
-  // CSP present but missing frame-ancestors.
-  "csp-frame-ancestors": "csp-frame-ancestors-missing",
-  "csp-frame-ancestors-missing": "csp-frame-ancestors-missing",
-
   // POST form with no anti-CSRF token.
   "sensitive-form-no-csrf": "form-missing-csrf",
   "vibe-missing-csrf": "form-missing-csrf",
 
   // Form submitting over plaintext HTTP from an HTTPS page.
   "form-action-http": "form-over-http",
-  "form-no-action-https": "form-over-http",
   "insecure-form-submission": "form-over-http",
 
   // Server software version disclosed in a response header.
   "server-header-disclosure": "server-version-disclosure",
   "server-version-detailed": "server-version-disclosure",
 
-  // X-Content-Type-Options present but not 'nosniff'.
-  "nosniff-incorrect": "nosniff-wrong-value",
-  "x-content-type-options-not-nosniff": "nosniff-wrong-value",
-
-  // ETag exposing filesystem inode data.
-  "etag-inode": "etag-inode",
-  "etag-inode-leak": "etag-inode",
-
   // Timing-Allow-Origin set to a wildcard.
   "timing-allow-origin-wide": "timing-allow-origin-wildcard",
   "server-timing-allow-origin-public": "timing-allow-origin-wildcard",
-
-  // Server-Timing leaking internal operation names.
-  "server-timing-exposure": "server-timing-leak",
-  "server-timing-sensitive-key-leak": "server-timing-leak",
 
   // Referrer-Policy weaker than strict-origin-when-cross-origin.
   "referrer-policy-unsafe": "referrer-policy-weak",
@@ -127,10 +110,6 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   // SQL error text rendered into the page.
   "sql-error-in-page": "sql-error-disclosure",
   "sql-error-exposure": "sql-error-disclosure",
-
-  // Cross-Origin-Resource-Policy header absent.
-  "corp-missing": "corp-missing",
-  "cross-origin-resource-policy-report-only-missing": "corp-missing",
 
   // The legacy half of families whose PageCheck half already declares a
   // dedupeGroup. A merge needs BOTH sides mapped to the same group, and only

@@ -120,18 +120,6 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "cookie-prefix-invalid": (_url, _headers) => {
-    // This umbrella check compared the cookie name against a lowercase
-    // "__host-" prefix, which real __Host- cookies (capital H, per
-    // RFC 6265bis and every implementation) never match, making it a dead
-    // check in practice; it also had no __Secure- branch at all. The precise,
-    // correctly-cased checks already exist separately: cookie-host-prefix-
-    // not-secure, cookie-host-prefix-wrong-path, and cookie-secure-prefix-
-    // not-secure. Disabled here rather than fixed as a second, duplicate
-    // implementation of those checks.
-    return null;
-  },
-
   "cookie-no-secure-prefix": (_url, headers) => {
     const cookies = getSetCookies(headers);
     if (cookies.length === 0) return null;
@@ -166,21 +154,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     return null;
   },
-
-  // Stubbed for the same reason as the two above it: it is a duplicate, and
-  // this one was the loudest.
-  //
-  // It re-tested HttpOnly, Secure AND SameSite on exactly the cookies the
-  // three dedicated checks below already select for, using the same
-  // session/auth/token name match. So one unflagged session cookie produced
-  // FOUR findings for one root cause, and this one was scored high, above
-  // every check it restated. A user with a single missing HttpOnly saw a
-  // high-severity finding, a medium, and a repeat of the medium.
-  //
-  // Nothing is lost by removing it: every attribute it tested has its own
-  // check, at a severity that matches that attribute rather than the worst of
-  // the three.
-  "session-cookie-flags": () => null, // duplicate of the three per-attribute checks below
 
   // ── Per-attribute detectors ───────────────────────────────────────────────
   // Fallback branches that fired for ANY cookie regardless of the actual
@@ -221,13 +194,6 @@ export const detectors: Record<string, DetectFn> = {
         }
       }
     }
-    return null;
-  },
-
-  "cookie-domain-set-too-loose": (_url, _headers) => {
-    // Setting an explicit Domain= attribute is extremely common and not a
-    // vulnerability on its own. The real issue (cross-subdomain sharing) is
-    // caught by cookie-domain-broad.
     return null;
   },
 
@@ -292,16 +258,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cookie-host-prefix-injection-subdomain": (_url, _headers) => {
-    // Cookies that use __Host- or __Secure- prefixes are correctly hardened.
-    // We cannot determine from the response whether the name was constructed
-    // from user input, so firing here produces false positives on properly-
-    // secured cookies. The real prefix violations are caught by
-    // cookie-prefix-invalid, cookie-host-prefix-not-secure, and
-    // cookie-host-prefix-wrong-path.
-    return null;
-  },
-
   "cookie-host-prefix-not-secure": (_url, headers) => {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
@@ -324,12 +280,6 @@ export const detectors: Record<string, DetectFn> = {
         }
       }
     }
-    return null;
-  },
-
-  "cookie-max-age-zero": (_url, _headers) => {
-    // Max-Age=0 is the standard mechanism for deleting a cookie (logout flows,
-    // session cleanup). This is correct behavior, not a security issue.
     return null;
   },
 
@@ -371,28 +321,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cookie-no-samesite-third-party": (_url, _headers) => {
-    // An explicit Domain= attribute does not mean a cookie is "third-party"
-    // or "cross-site" — a cookie scoped to a parent domain for subdomain SSO
-    // (Domain=example.com set by www.example.com so api.example.com can read
-    // it) is a completely ordinary, first-party pattern at any company with
-    // multiple subdomains, and is not determinable as cross-site from a
-    // single response. This also duplicated
-    // cookie-third-party-no-samesite-none-secure's firing condition whenever
-    // SameSite was absent entirely. Disabled; genuinely cross-site cookies
-    // (SameSite=None already declared) are correctly covered by
-    // set-cookie-samesite-none-no-secure. ref: AUDIT-008#scanner-08
-    return null;
-  },
-
-  "cookie-partitioned-missing": (_url, _headers) => {
-    // Same flawed premise as cookie-no-samesite-third-party: Domain= does not
-    // indicate the cookie is used in a genuinely cross-site/third-party iframe
-    // context, which is what Partitioned (CHIPS) actually targets. Cannot be
-    // determined from a single response. ref: AUDIT-008#scanner-08
-    return null;
-  },
-
   "cookie-partitioned-without-secure": (_url, headers) => {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
@@ -402,16 +330,6 @@ export const detectors: Record<string, DetectFn> = {
         return `Cookie '${parseCookieName(c)}' has Partitioned but is missing Secure (browsers will reject).`;
       }
     }
-    return null;
-  },
-
-  "cookie-path-cross-app": (_url, _headers) => {
-    // Path=/ is the most common and typically correct setting for session and
-    // auth cookies — it ensures the cookie is sent with every request to the
-    // host. Flagging Path=/ generates noise on virtually every authenticated
-    // web application. Only flag when a MORE restrictive path is needed (e.g.
-    // for multi-app hosting on the same domain), which we cannot determine
-    // from the response alone.
     return null;
   },
 
@@ -429,22 +347,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     // Removed fallback that fired for any cookie missing Secure; that is
     // already covered by cookie-secure-missing.
-    return null;
-  },
-
-  "cookie-third-party-no-samesite-none-secure": (_url, _headers) => {
-    // Same flawed premise as cookie-no-samesite-third-party: an explicit
-    // Domain= attribute alone does not make a cookie "cross-site" — it's the
-    // standard way to share a cookie across subdomains for first-party SSO,
-    // which is extremely common at any company with multiple subdomains and
-    // is not evidence the cookie needs SameSite=None. As written, this fired
-    // on ordinary Domain-scoped cookies using SameSite=Lax/Strict (a
-    // perfectly secure, arguably *more* secure configuration) and demanded
-    // SameSite=None, which is worse remediation advice, not better. The real,
-    // precise check — SameSite=None already declared but Secure missing —
-    // is covered correctly by set-cookie-samesite-none-no-secure, which
-    // doesn't depend on guessing "third-party" from Domain=.
-    // Disabled. ref: AUDIT-008#scanner-08
     return null;
   },
 

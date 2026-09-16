@@ -18,23 +18,23 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 854
+- **Total checks:** 804
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 234
-  - high: 206
-  - low: 195
-  - info: 121
+  - medium: 226
+  - high: 196
+  - low: 185
+  - info: 99
   - critical: 98
 - **By type:**
-  - body-pattern: 475
-  - header: 175
-  - combined: 64
-  - header-missing: 55
+  - body-pattern: 460
+  - header: 158
+  - combined: 60
+  - header-missing: 42
   - network-probe: 38
   - url-check: 19
   - header-value: 18
-  - header-present: 10
+  - header-present: 9
 
 ---
 
@@ -3245,7 +3245,7 @@ ws.onmessage = (event) => {
 
 ---
 
-## Category: code (120 checks)
+## Category: code (107 checks)
 
 ### `insecure-form-submission` [code / critical / combined]
 **Form Submits Data Over Insecure HTTP**
@@ -3677,35 +3677,6 @@ if (!SAFE_PATTERN.test(userInput)) {
 // Then use execFile with argument array, never exec() or shell=true
 ```
 
-### `eval-usage` [code / high / body-pattern]
-**eval() Code Injection Risk**
-
-JavaScript eval() function calls detected.
-
-**Risk:** eval executes arbitrary code, enabling code injection.
-
-**Why it matters:** eval() is one of the most dangerous JavaScript functions.
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Replace eval with JSON.parse or safer alternatives.
-- **Replace eval with a safe function map** (javascript):
-```javascript
-// Instead of: eval(userOp + "(data)")
-// Build an explicit dispatch table:
-const handlers = {
-  process: processData,
-  validate: validateData,
-  transform: transformData,
-};
-const fn = handlers[userOp];
-if (typeof fn !== "function") throw new Error("Unknown operation");
-fn(data);
-```
-
 ### `function-constructor` [code / high / body-pattern]
 **Function Constructor Usage**
 
@@ -3734,31 +3705,6 @@ const validators = {
 const validate = validators[userType];
 if (!validate) throw new Error("Unknown type");
 validate(input);
-```
-
-### `settimeout-string` [code / medium / body-pattern]
-**setTimeout/setInterval with String**
-
-Timer functions with string argument.
-
-**Risk:** String arguments are eval'd, enabling code injection.
-
-**Why it matters:** setTimeout('code', 0) is equivalent to eval('code').
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Pass functions, not strings, to setTimeout/setInterval.
-- **Pass a function reference, not a string** (javascript):
-```javascript
-// BAD: string form evaluates code like eval()
-setTimeout("doSomething()", 1000);
-
-// GOOD: pass a function reference
-setTimeout(doSomething, 1000);
-setTimeout(() => doSomethingWith(arg), 1000);
 ```
 
 ### `code-cmdi-exec` [code / critical / body-pattern]
@@ -3935,207 +3881,6 @@ self.addEventListener("fetch", (event) => {
 });
 ```
 
-### `push-api-usage` [code / info / body-pattern]
-**Push Notification API Usage**
-
-Push API/notifications usage detected.
-
-**Risk:** Privacy concern if abused.
-
-**Why it matters:** Push notifications require user consent.
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Ensure notifications are used appropriately.
-- **Require explicit user permission for Push API** (javascript):
-```javascript
-async function subscribePush() {
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") return null;
-
-  const reg = await navigator.serviceWorker.ready;
-  return reg.pushManager.subscribe({
-    userVisibleOnly: true, // must be true, prevents silent push
-    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-  });
-}
-```
-
-### `payment-request-api` [code / info / body-pattern]
-**Payment Request API Usage**
-
-Payment Request API detected.
-
-**Risk:** Ensure secure payment handling.
-
-**Why it matters:** Payment API handles financial transactions.
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Follow PCI DSS guidelines for payment handling.
-- **Payment Request API: always verify server-side** (javascript):
-```javascript
-const req = new PaymentRequest(methods, details);
-const response = await req.show();
-
-// Never trust the browser response alone
-// Always verify the payment server-side:
-const serverVerify = await fetch("/api/verify-payment", {
-  method: "POST",
-  body: JSON.stringify({ paymentId: response.requestId }),
-  headers: { "Content-Type": "application/json" },
-});
-if (!serverVerify.ok) throw new Error("Payment verification failed");
-await response.complete("success");
-```
-
-### `credential-management-api` [code / info / body-pattern]
-**Credential Management API Usage**
-
-Credential Management API detected.
-
-**Risk:** Handles sensitive credential storage.
-
-**Why it matters:** This API stores and retrieves credentials.
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Use properly with HTTPS and security best practices.
-- **Credential Management: store only after explicit login** (javascript):
-```javascript
-if ("credentials" in navigator) {
-  // Store credentials only after successful authentication
-  const cred = new PasswordCredential({
-    id: email,
-    password: password,
-  });
-  await navigator.credentials.store(cred);
-}
-```
-
-### `webauthn-usage` [code / info / body-pattern]
-**WebAuthn/Passkey Implementation**
-
-WebAuthn API usage detected.
-
-**Risk:** Strong authentication method.
-
-**Why it matters:** WebAuthn enables passwordless authentication.
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Ensure proper implementation.
-- **WebAuthn: verify attestation server-side** (typescript):
-```typescript
-// Client: create credential
-const credential = await navigator.credentials.create({ publicKey: options });
-
-// Send to server for attestation verification
-const res = await fetch("/api/auth/register", {
-  method: "POST",
-  body: JSON.stringify(credential),
-});
-// Server MUST verify the attestation using a library like SimpleWebAuthn
-// Never skip server-side verification
-```
-
-### `crypto-subtle-usage` [code / info / body-pattern]
-**SubtleCrypto API Usage**
-
-Web Crypto API usage detected.
-
-**Risk:** Ensure proper key management.
-
-**Why it matters:** Web Crypto provides cryptographic operations.
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Use secure random generation and proper key storage.
-- **Web Crypto API: use secure algorithms** (typescript):
-```typescript
-// Use AES-GCM (authenticated encryption), not AES-CBC without MAC
-const key = await crypto.subtle.generateKey(
-  { name: "AES-GCM", length: 256 },
-  false,
-  ["encrypt", "decrypt"]
-);
-const iv = crypto.getRandomValues(new Uint8Array(12)); // unique per message
-const encrypted = await crypto.subtle.encrypt(
-  { name: "AES-GCM", iv },
-  key,
-  plaintext
-);
-// Prepend iv to ciphertext for storage/transmission
-```
-
-### `wasm-usage` [code / info / body-pattern]
-**WebAssembly Usage Detected**
-
-WebAssembly modules detected.
-
-**Risk:** WASM code harder to audit.
-
-**Why it matters:** WebAssembly runs compiled code in browser.
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Ensure WASM source is trusted.
-- **Validate WASM origin and use CSP wasm-unsafe-eval policy** (typescript):
-```typescript
-// Only load WASM from your own origin
-const response = await fetch("/wasm/module.wasm");
-const { instance } = await WebAssembly.instantiateStreaming(response);
-// CSP: add wasm-unsafe-eval only if required by the module
-// Never load WASM from user-supplied URLs
-```
-
-### `console-log-production` [code / low / body-pattern]
-**Console Logging in Production**
-
-Extensive console.log statements detected.
-
-**Risk:** May expose sensitive debug information.
-
-**Why it matters:** Console logs can reveal internal state.
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Remove or disable console.log in production.
-- **Strip console.log in production builds** (javascript):
-```javascript
-// vite.config.ts or next.config.mjs
-export default {
-  esbuild: {
-    drop: process.env.NODE_ENV === "production" ? ["console", "debugger"] : [],
-  },
-};
-// Or use a logger that respects log levels:
-import log from "loglevel";
-log.setLevel(process.env.NODE_ENV === "production" ? "warn" : "debug");
-log.debug("only in dev"); // silent in production
-```
-
 ### `debugger-statement` [code / low / body-pattern]
 **Debugger Statement in Code**
 
@@ -4158,35 +3903,6 @@ grep -rn "debugger" src/ --include="*.ts" --include="*.js"
 
 # Remove them via ESLint rule no-debugger (errors in CI)
 # .eslintrc: { "rules": { "no-debugger": "error" } }
-```
-
-### `code-fetch-without-credentials` [code / low / header]
-**fetch() call without credentials mode**
-
-fetch(url, { credentials: 'omit' }) prevents cookies from being sent, but auth tokens via cookies won't work.
-
-**Risk:** Explicitly set credentials: 'include' or 'same-origin'
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Explicitly set credentials: 'include' or 'same-origin'
-- **Set credentials mode explicitly** (typescript):
-```typescript
-// BAD: credentials defaults to "same-origin"
-fetch("/api/data");
-
-// GOOD: explicit, omit for cross-origin API calls
-fetch("https://api.example.com/data", {
-  credentials: "omit", // no cookies sent cross-origin
-});
-
-// Or "include" only when you explicitly need cookies cross-origin
-fetch("/api/protected", {
-  credentials: "include", // requires CORS allow-credentials
-});
 ```
 
 ### `code-axios-defaults-baseurl` [code / info / header]
@@ -4312,28 +4028,6 @@ res.setHeader("Set-Cookie",
 );
 // HttpOnly prevents JavaScript from reading the cookie
 // Do NOT set HttpOnly=false on session, auth, or CSRF cookies
-```
-
-### `code-cookie-write-no-secure` [code / medium / header]
-**document.cookie write missing Secure flag**
-
-Cookies set via document.cookie without Secure can be sent over HTTP.
-
-**Risk:** Add Secure; to every cookie set via document.cookie
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
-
-**Fix:**
-- Add Secure; to every cookie set via document.cookie
-- **Set the Secure flag on all cookies** (typescript):
-```typescript
-res.setHeader("Set-Cookie",
-  `session=<value>; HttpOnly; Secure; SameSite=Strict; Path=/`
-);
-// Secure: cookie is only sent over HTTPS connections
-// Without Secure, cookie can be stolen over HTTP (SSL-stripping attack)
 ```
 
 ### `code-cookie-write-no-samesite` [code / low / header]
@@ -5756,33 +5450,6 @@ Pages that render user-controlled HTML but lack both a Trusted Types policy and 
 // This prevents direct string assignment to innerHTML and other XSS sinks
 ```
 
-### `code-auth-localstorage-tokens` [code / high / body-pattern]
-**Auth tokens stored in localStorage**
-
-localStorage.setItem('token', jwt) makes the JWT accessible to any script that runs in the same origin. A single XSS payload can exfiltrate it via fetch.
-
-**Risk:** XSS enables full account takeover by reading the JWT from localStorage.
-
-**Why it matters:** The code-auth-localstorage-tokens check verifies that the server does not expose the auth-localstorage-tokens weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
-
-**References:**
-- https://owasp.org/www-community/HttpOnly
-
-**Fix:**
-- Move auth tokens to HttpOnly; Secure; SameSite=Strict cookies set by the server.
-- If a token must live client-side, encrypt it with a server-issued key before storage.
-- Adopt BFF pattern so the browser never sees raw tokens.
-- **Store auth tokens in HttpOnly cookies, not localStorage** (typescript):
-```typescript
-// BAD: tokens in localStorage are XSS-accessible
-// localStorage.setItem("access_token", token);
-
-// GOOD: server sets HttpOnly cookie on login
-res.setHeader("Set-Cookie",
-  `access_token=<value>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`
-);
-```
-
 ### `code-auth-sessionstorage-passwords` [code / critical / body-pattern]
 **Passwords stored in sessionStorage**
 
@@ -5924,35 +5591,6 @@ Pages without X-Frame-Options: DENY (or a CSP frame-ancestors 'none') can be emb
 res.setHeader("X-Frame-Options", "DENY");
 // Or use CSP frame-ancestors (more flexible):
 res.setHeader("Content-Security-Policy", "frame-ancestors 'none';");
-```
-
-### `code-timing-no-constant-time-compare` [code / high / body-pattern]
-**Non-constant-time signature comparison**
-
-if (providedSig === storedSig) compares HMACs or tokens with JavaScript ===, which short-circuits on the first differing byte. Attackers measure timing to recover the signature byte-by-byte.
-
-**Risk:** Timing oracle leaks signature bytes, allowing an attacker to forge valid signatures or replay tokens.
-
-**Why it matters:** The code-timing-no-constant-time-compare check verifies that the server does not expose the timing-no-constant-time-compare weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
-
-**References:**
-- https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b
-
-**Fix:**
-- Use crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)) for any secret comparison.
-- Hash both sides with SHA-256 first if lengths differ, then compare.
-- Add a unit test that fails if comparison timing varies by input.
-- **Use crypto.timingSafeEqual for token comparison** (typescript):
-```typescript
-import { timingSafeEqual, createHmac } from "crypto";
-
-function verifyToken(provided: string, expected: string): boolean {
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  // Lengths must match before timing-safe comparison
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
 ```
 
 ### `code-timing-hmac-equality` [code / high / body-pattern]
@@ -6613,7 +6251,7 @@ data = JSON.parse(params[:payload])
 
 ---
 
-## Category: configuration (24 checks)
+## Category: configuration (23 checks)
 
 ### `ratelimit-policy-missing` [configuration / medium / combined]
 **No Rate-Limit Policy Detected**
@@ -7055,36 +6693,6 @@ sub vcl_deliver {
 }
 ```
 
-### `vary-header-missing-user-agent` [configuration / info / header]
-**Vary Header Missing User-Agent on UA-Dependent Responses**
-
-A response appears to vary by User-Agent (e.g., serving different HTML to mobile vs. desktop) but does not include Vary: User-Agent. Caches may serve the wrong variant to the wrong device.
-
-**Risk:** A shared cache may serve a desktop HTML response to a mobile client (or vice versa), causing layout breakage and potentially exposing functionality not intended for that user-agent.
-
-**Why it matters:** When a server returns different response content based on the User-Agent (adaptive serving for mobile/desktop), it must include Vary: User-Agent so caches store separate copies per user-agent group. Without it, the first visitor's device variant is cached and served to all subsequent visitors.
-
-**References:**
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
-- https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.4
-
-**Fix:**
-- Add Vary: User-Agent to responses that return different HTML or assets based on the user-agent.
-- Prefer client-side responsive design (CSS media queries) to avoid server-side UA detection entirely.
-- If adaptive serving is required, use a CDN with UA grouping/normalization support.
-- **Nginx** (nginx):
-```nginx
-# If you serve different content per UA group:
-add_header Vary "User-Agent" always;
-```
-- **Prefer responsive CSS over UA detection** (css):
-```css
-/* Use media queries instead of server-side UA detection */
-@media (max-width: 768px) {
-  .desktop-only { display: none; }
-}
-```
-
 ### `server-timing-allow-origin-public` [configuration / low / header]
 **Server-Timing Exposed Without Timing-Allow-Origin Gate**
 
@@ -7309,7 +6917,7 @@ location /phpmyadmin {
 
 ---
 
-## Category: content (144 checks)
+## Category: content (143 checks)
 
 ### `open-redirect` [content / medium / body-pattern]
 **Potential Open Redirect Parameters**
@@ -10444,37 +10052,6 @@ const wss = new WebSocketServer({
 });
 ```
 
-### `postmessage-origin` [content / high / body-pattern]
-**postMessage receiver does not validate origin**
-
-A message event listener processes messages without checking event.origin, accepting messages from any window.
-
-**Risk:** Without origin validation, any malicious page in the same browser can send postMessage events to your page and have them processed, potentially triggering privileged actions, passing tokens, or modifying application state.
-
-**Why it matters:** Every postMessage receiver must validate event.origin against a trusted allowlist before processing the message.
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
-
-**Fix:**
-- Add an origin check: if (event.origin !== "https://trusted.example.com") return;
-- Use a Set of allowed origins for multiple trusted partners
-- Never use "*" as targetOrigin when sending sensitive data
-- **Validate origin in postMessage handler** (javascript):
-```javascript
-// Unsafe: accepts messages from any origin
-window.addEventListener('message', (event) => {
-  processMessage(event.data);
-});
-
-// Safe: check origin before processing
-window.addEventListener('message', (event) => {
-  if (event.origin !== 'https://trusted.example.com') return;
-  processMessage(event.data);
-});
-```
-
 ### `dom-xss-sinks` [content / high / body-pattern]
 **DOM XSS sinks with user-controlled input**
 
@@ -11255,7 +10832,7 @@ export default {
 
 ---
 
-## Category: cookies (29 checks)
+## Category: cookies (20 checks)
 
 ### `cookie-domain-broad` [cookies / low / combined]
 **Cookie Domain Attribute Is Too Broad**
@@ -11313,27 +10890,6 @@ res.cookie('session', token, {
   sameSite: 'lax',
   path: '/',
 });
-```
-
-### `cookie-partitioned-missing` [cookies / info / combined]
-**Third-Party Cookie Missing Partitioned Attribute**
-
-A third-party cookie is set without the Partitioned attribute (CHIPS). Browsers are phasing out third-party cookies without Partitioned, which will break this cookie's functionality in Chrome and other browsers.
-
-**Risk:** Unpartitioned third-party cookies will be blocked by Chrome and other browsers. Services relying on them for embed functionality (widgets, analytics, support chat) will silently stop working for users in these browsers.
-
-**Why it matters:** CHIPS (Cookies Having Independent Partitioned State) is a privacy-preserving third-party cookie mechanism. Partitioned cookies are keyed by both the cookie name and the top-level site, preventing cross-site tracking while allowing legitimate embed use cases.
-
-**References:**
-- https://developer.chrome.com/docs/privacy-sandbox/chips/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes
-
-**Fix:**
-- Add the Partitioned attribute alongside SameSite=None; Secure to all third-party cookies.
-- Test in Chrome with Privacy Sandbox settings enabled to confirm the cookie is set correctly.
-- **Partitioned Set-Cookie** (http):
-```http
-Set-Cookie: embed-session=xyz; SameSite=None; Secure; Partitioned; Path=/
 ```
 
 ### `cookie-host-prefix-not-secure` [cookies / high / header]
@@ -11452,27 +11008,6 @@ session_name('__Host-sid');
 session_start();
 ```
 
-### `cookie-path-cross-app` [cookies / medium / header]
-**Cookie Path Crosses Application Boundary**
-
-A cookie with Path=/ is accessible to every route on the host, including routes served by different applications (e.g., /admin, /api, /blog). This broadens the cookie's exposure across trust boundaries.
-
-**Risk:** An XSS vulnerability in a low-privilege application route (e.g., /blog) can steal session cookies intended only for /admin because all routes share the same cookie jar with Path=/.
-
-**Why it matters:** Path=/ makes the cookie available to every route on the host. When a server runs multiple applications under different path prefixes, this means a cookie from one application is sent to all others, widening the XSS blast radius.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc6265#section-5.2.1
-
-**Fix:**
-- Set the narrowest Path that the application actually needs.
-- Use Path=/admin for admin-only cookies, Path=/api for API tokens, etc.
-- For cookies that genuinely must be site-wide, ensure all paths enforce the same security controls.
-- **Narrowly scoped path** (http):
-```http
-Set-Cookie: admin-session=abc123; HttpOnly; Secure; SameSite=Strict; Path=/admin
-```
-
 ### `cookie-expires-in-past` [cookies / info / header]
 **Cookie Expires Is in the Past**
 
@@ -11494,53 +11029,6 @@ A Set-Cookie header has an Expires value in the past, causing the browser to del
 Set-Cookie: __Host-session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0
 ```
 
-### `cookie-max-age-zero` [cookies / info / header]
-**Cookie Max-Age=0 Deletion Pattern**
-
-Max-Age=0 instructs the browser to delete the named cookie immediately. This is the canonical cookie deletion pattern used on logout. Repeated occurrences outside logout endpoints may indicate a double-delete bug.
-
-**Risk:** If Max-Age=0 is emitted on non-logout routes, it may unexpectedly delete user sessions or other cookies, causing functionality failures. If the same cookie is set and deleted in the same response, the deletion takes precedence in some browsers.
-
-**Why it matters:** Max-Age=0 is the correct and portable way to delete a cookie. However, emitting it outside dedicated logout or session-reset endpoints indicates either a bug or a race condition where a cookie is being both set and deleted in the same response.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.1
-
-**Fix:**
-- Restrict Max-Age=0 Set-Cookie emission to logout and session-reset endpoints only.
-- Verify no response sets and deletes the same cookie in the same response.
-- **Logout endpoint cookie deletion** (typescript):
-```typescript
-// Only on the logout endpoint
-res.setHeader('Set-Cookie', '__Host-session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0');
-res.redirect('/');
-```
-
-### `cookie-no-samesite-third-party` [cookies / medium / header]
-**Third-Party Cookie Without SameSite**
-
-A cookie set in a third-party context (iframe, cross-site redirect) does not specify a SameSite attribute. Modern browsers default to SameSite=Lax and block the cookie in third-party contexts.
-
-**Risk:** The cookie will be blocked by modern browsers (Chrome, Firefox, Safari) in third-party contexts, breaking embedded widget functionality, OAuth flows, or cross-site forms.
-
-**Why it matters:** When a cookie is omitted SameSite, Chrome 80+ defaults to SameSite=Lax, which blocks the cookie in cross-site subresource requests. For intentional third-party cookies, SameSite=None; Secure is required. For first-party cookies, SameSite=Lax or Strict is safer.
-
-**References:**
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite
-- https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7
-
-**Fix:**
-- For first-party cookies: add SameSite=Lax (default for most login flows) or SameSite=Strict.
-- For intentional third-party cookies: add SameSite=None; Secure; Partitioned.
-- **Third-party cookie (CHIPS)** (http):
-```http
-Set-Cookie: embed-token=xyz; SameSite=None; Secure; Partitioned; Path=/
-```
-- **First-party SameSite=Lax** (http):
-```http
-Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/
-```
-
 ### `cookie-partitioned-without-secure` [cookies / high / header]
 **Partitioned Cookie Missing Secure Attribute**
 
@@ -11560,53 +11048,6 @@ A cookie carrying the Partitioned attribute (CHIPS) does not also carry the Secu
 - **Correct CHIPS cookie** (http):
 ```http
 Set-Cookie: embed-session=xyz; SameSite=None; Secure; Partitioned; HttpOnly; Path=/
-```
-
-### `cookie-third-party-no-samesite-none-secure` [cookies / high / header]
-**Third-Party Cookie Missing SameSite=None; Secure**
-
-A cross-site cookie does not have both SameSite=None and Secure set. Without this combination, modern browsers will block the cookie in cross-site contexts.
-
-**Risk:** The cookie is silently dropped in third-party contexts by Chrome, Firefox, and Safari. Cross-site embed functionality (payment widgets, analytics, OAuth flows) breaks for these users.
-
-**Why it matters:** SameSite=None signals to the browser that the cookie is intentionally cross-site. The Secure requirement was added alongside SameSite=None to prevent cross-site cookies from being transmitted over HTTP where they could be stolen.
-
-**References:**
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite
-- https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7
-
-**Fix:**
-- Add SameSite=None; Secure to every cross-site cookie.
-- Add Partitioned if the cookie is for embedded content (CHIPS requirement).
-- **Cross-site cookie** (http):
-```http
-Set-Cookie: cross-site-token=xyz; SameSite=None; Secure; HttpOnly; Path=/
-# If embedded content, also add: Partitioned
-```
-
-### `cookie-host-prefix-injection-subdomain` [cookies / high / header]
-**Cookie Prefix Injection via User-Controlled Subdomain**
-
-If user-controlled values (subdomain names, host headers, redirect targets) flow into cookie names without validation, an attacker can craft __Host- or __Secure- prefixed cookies from a controlled subdomain, enabling cookie fixation attacks.
-
-**Risk:** An attacker who controls a subdomain or can inject a Host header can set __Host- prefixed cookies, which may overwrite the application's legitimate __Host- session cookie and fix a known session ID for session hijacking.
-
-**Why it matters:** User-controlled values should never be used as cookie names. An attacker who can set a cookie named __Host-session from a compromised subdomain can fix a session ID and wait for an admin to log in with that fixed session.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3.2
-
-**Fix:**
-- Never let user input flow into cookie names.
-- Hard-code __Host-/__Secure- cookie names on the server; never derive them from request data.
-- Audit subdomain takeover surface and co-tenanted subdomains.
-- **Validate cookie names server-side** (typescript):
-```typescript
-// Never dynamically derive cookie names from user input
-const COOKIE_NAME = '__Host-session'; // Hard-coded constant
-
-res.setHeader('Set-Cookie',
-  `<value>=<value>; Path=/; Secure; HttpOnly; SameSite=Lax`);
 ```
 
 ### `cookie-httponly-missing` [cookies / medium / header]
@@ -11665,32 +11106,6 @@ Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/
 Set-Cookie: __Host-admin-token=xyz; HttpOnly; Secure; SameSite=Strict; Path=/admin
 ```
 
-### `cookie-prefix-invalid` [cookies / high / header]
-**Cookie Prefix Used Incorrectly**
-
-A cookie uses the __Host- or __Secure- prefix but does not satisfy the prefix's requirements (Secure attribute, Path=/, no Domain= attribute for __Host-). The browser will reject or ignore the prefix semantics.
-
-**Risk:** Invalid prefix usage means the browser does not enforce the security properties the prefix is supposed to guarantee, leaving the cookie vulnerable to subdomain override, HTTP transmission, or path-based injection attacks.
-
-**Why it matters:** __Host- requires: Secure, Path=/, and no Domain=. __Secure- requires: Secure. If any required attribute is missing, compliant browsers either reject the cookie entirely or ignore the prefix, stripping its security guarantees.
-
-**References:**
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes
-- https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3
-
-**Fix:**
-- For __Host-: ensure Secure; Path=/; no Domain= is set.
-- For __Secure-: ensure Secure is present.
-- Validate all prefixed cookie names at startup with a unit test.
-- **Correct __Host- cookie** (http):
-```http
-Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/
-```
-- **Correct __Secure- cookie** (http):
-```http
-Set-Cookie: __Secure-prefs=dark-mode; Secure; SameSite=Lax; Path=/settings
-```
-
 ### `cookie-no-secure-prefix` [cookies / info / header]
 **Sensitive Cookie Without __Secure- or __Host- Prefix**
 
@@ -11732,64 +11147,6 @@ A cookie is set with SameSite=None but without the Secure attribute. Modern brow
 - **Correct SameSite=None cookie** (http):
 ```http
 Set-Cookie: embed-token=xyz; SameSite=None; Secure; HttpOnly; Path=/
-```
-
-### `session-cookie-flags` [cookies / high / header]
-**Session Cookie Missing Security Flags**
-
-A session cookie (identified by name pattern: session, sid, auth, token) is missing one or more critical security attributes: HttpOnly, Secure, or SameSite.
-
-**Risk:** A session cookie without HttpOnly is stealable via XSS. Without Secure it can be intercepted on HTTP. Without SameSite it is vulnerable to CSRF. Missing any one of these flags weakens the session's resistance to common attacks.
-
-**Why it matters:** Session cookies are the primary authentication token in most web applications. They require all three protections: HttpOnly (no JS access), Secure (HTTPS only), and SameSite (CSRF protection). Omitting any one creates a gap that specific attacks exploit.
-
-**References:**
-- https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies
-
-**Fix:**
-- Ensure session cookies have HttpOnly; Secure; SameSite=Lax (minimum) or SameSite=Strict.
-- Use the __Host- prefix to enforce these properties at the browser level.
-- **Fully secured session cookie** (http):
-```http
-Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/
-```
-- **Node.js (express-session)** (javascript):
-```javascript
-app.use(session({
-  name: '__Host-sid',
-  secret: process.env.SESSION_SECRET,
-  cookie: {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  },
-  resave: false,
-  saveUninitialized: false,
-}));
-```
-
-### `cookie-domain-set-too-loose` [cookies / medium / header]
-**Cookie Domain Scoped to Parent Domain**
-
-A cookie is set with Domain= pointing to a parent domain rather than the exact host. This makes the cookie available to all subdomains of the parent domain, including potentially compromised or third-party subdomains.
-
-**Risk:** Any subdomain of the parent domain can read this cookie. A subdomain that is vulnerable to XSS or subject to subdomain takeover can steal the session cookie for the entire domain.
-
-**Why it matters:** Setting Domain=example.com sends the cookie to every subdomain: www.example.com, api.example.com, dev.example.com, staging.example.com, etc. Each of these subdomains is a potential attack vector. Omitting Domain= restricts the cookie to the exact host that set it.
-
-**References:**
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies
-- https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.3
-
-**Fix:**
-- Remove the Domain= attribute to make the cookie host-only.
-- If cross-subdomain sharing is required, use __Host- prefix where possible and audit all receiving subdomains.
-- **Host-only (no Domain=)** (http):
-```http
-Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/
 ```
 
 ### `cookie-no-csrf-token` [cookies / medium / header]
@@ -13591,7 +12948,7 @@ dig +short TXT _dmarc.example.com
 
 ---
 
-## Category: headers (138 checks)
+## Category: headers (118 checks)
 
 ### `hsts-missing` [headers / high / combined]
 **Missing HTTP Strict Transport Security (HSTS)**
@@ -13786,131 +13143,6 @@ app.onAfterHandle(({ set }) => {
 });
 ```
 
-### `x-content-type-options-not-nosniff` [headers / low / header-missing]
-**X-Content-Type-Options Set to Invalid Value (disabled duplicate)**
-
-Disabled: exact duplicate of nosniff-incorrect, which checks the same 'header present but not nosniff' condition on the same header. The 'header missing' case is covered separately by xcto-missing.
-
-**Risk:** Browsers may interpret files as a different MIME type than declared, which can lead to XSS attacks.
-
-**Why it matters:** MIME sniffing is when browsers try to determine the content type by examining the content rather than trusting the Content-Type header. Setting X-Content-Type-Options to 'nosniff' prevents this.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Add the header X-Content-Type-Options: nosniff to all responses.
-- Ensure all resources are served with the correct Content-Type header.
-- **Next.js** (javascript):
-```javascript
-const nextConfig = {
-  async headers() {
-    return [{
-      source: '/(.*)',
-      headers: [{ key: 'X-Content-Type-Options', value: 'nosniff' }],
-    }];
-  },
-};
-```
-- **Nginx** (nginx):
-```nginx
-add_header X-Content-Type-Options "nosniff" always;
-```
-- **Apache** (apache):
-```apache
-Header always set X-Content-Type-Options "nosniff"
-```
-- **Caddy** (plaintext):
-```plaintext
-header X-Content-Type-Options "nosniff"
-```
-- **Express (Node.js)** (javascript):
-```javascript
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  next();
-});
-```
-- **Deno (Hono)** (typescript):
-```typescript
-app.use('*', async (c, next) => {
-  await next();
-  c.header('X-Content-Type-Options', 'nosniff');
-});
-```
-- **Bun (Elysia)** (typescript):
-```typescript
-app.onAfterHandle(({ set }) => {
-  set.headers['X-Content-Type-Options'] = 'nosniff';
-});
-```
-
-### `referrer-policy-missing` [headers / low / header-missing]
-**Missing Referrer-Policy Header**
-
-The Referrer-Policy header is not set. This controls how much referrer information is sent with requests.
-
-**Risk:** Sensitive information in URLs (tokens, IDs) may be leaked to third-party sites through the Referer header.
-
-**Why it matters:** By default, browsers send the full URL in the Referer header when navigating between pages. If your URLs contain sensitive data, this data leaks to any external site the user visits next.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Add Referrer-Policy: strict-origin-when-cross-origin (recommended).
-- For maximum privacy, use no-referrer or same-origin.
-- Avoid using unsafe-url which sends the full URL to all origins.
-- **Next.js** (javascript):
-```javascript
-const nextConfig = {
-  async headers() {
-    return [{
-      source: '/(.*)',
-      headers: [{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }],
-    }];
-  },
-};
-```
-- **Nginx** (nginx):
-```nginx
-add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-```
-- **Apache** (apache):
-```apache
-Header always set Referrer-Policy "strict-origin-when-cross-origin"
-```
-- **Caddy** (plaintext):
-```plaintext
-header Referrer-Policy "strict-origin-when-cross-origin"
-```
-- **Express (Node.js)** (javascript):
-```javascript
-app.use((req, res, next) => {
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  next();
-});
-```
-- **Deno (Hono)** (typescript):
-```typescript
-app.use('*', async (c, next) => {
-  await next();
-  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
-});
-```
-- **Bun (Elysia)** (typescript):
-```typescript
-app.onAfterHandle(({ set }) => {
-  set.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin';
-});
-```
-- **HTML Meta Tag** (html):
-```html
-<meta name="referrer" content="strict-origin-when-cross-origin">
-```
-
 ### `permissions-policy-missing` [headers / low / combined]
 **Missing Permissions-Policy Header**
 
@@ -14035,28 +13267,6 @@ app.use(cors({
 }));
 ```
 
-### `xxss-protection-missing` [headers / low / combined]
-**Missing X-XSS-Protection Header**
-
-The X-XSS-Protection header is not set and no Content-Security-Policy is present.
-
-**Risk:** Older browsers that still support the XSS auditor won't have it activated.
-
-**Why it matters:** While the XSS auditor is deprecated in modern browsers, having protection headers is still recommended.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Implement a strong Content-Security-Policy (preferred approach).
-- Set X-XSS-Protection: 0 (to avoid the buggy auditor).
-- Focus on input validation and output encoding.
-- **CSP preferred** (text):
-```text
-Content-Security-Policy: default-src 'self'; script-src 'self'
-```
-
 ### `cors-credentials-wildcard` [headers / medium / combined]
 **Dangerous CORS Configuration**
 
@@ -14125,29 +13335,6 @@ CSP-Report-Only is set but no enforcing CSP header exists.
 ```text
 Content-Security-Policy: default-src 'self'; script-src 'self'
 Content-Security-Policy-Report-Only: default-src 'self'; report-uri /csp-report
-```
-
-### `weak-csp-directives` [headers / medium / combined]
-**Content Security Policy Contains Weak Directives**
-
-The CSP header contains weak directives that reduce its effectiveness.
-
-**Risk:** Weak directives create exploitable gaps that allow attackers to bypass the policy.
-
-**Why it matters:** A CSP is only as strong as its weakest directive.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Replace 'unsafe-inline' with nonce-based or hash-based script loading.
-- Remove 'unsafe-eval' and refactor code.
-- Replace wildcard sources with explicit trusted domains.
-- Remove data: from script-src.
-- **Strong CSP** (text):
-```text
-Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{random}'; style-src 'self' 'nonce-{random}'; img-src 'self' data:;
 ```
 
 ### `csp-framework-required` [headers / info / combined]
@@ -14564,34 +13751,6 @@ export default {
 // and only the origin for cross-origin HTTPS requests, nothing for HTTP downgrades
 ```
 
-### `x-xss-protection-disabled` [headers / low / header-present]
-**X-XSS-Protection Explicitly Disabled**
-
-X-XSS-Protection set to 0.
-
-**Risk:** While deprecated, explicitly disabling XSS filter removes a defense layer in older browsers.
-
-**Why it matters:** Setting X-XSS-Protection to 0 turns off the built-in XSS auditor.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Remove the header entirely or set to 1; mode=block.
-- **Remove X-XSS-Protection: 0 and use CSP instead** (javascript):
-```javascript
-// X-XSS-Protection is deprecated in modern browsers
-// The header X-XSS-Protection: 0 disables the old browser XSS filter
-// Replace with a strong Content-Security-Policy instead:
-// next.config.mjs
-export default {
-  async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'; object-src 'none';" }] }];
-  },
-};
-```
-
 ### `csp-unsafe-hashes` [headers / medium / header-value]
 **CSP Uses unsafe-hashes**
 
@@ -14699,37 +13858,6 @@ const nonce = randomBytes(16).toString("base64");
 res.setHeader("Content-Security-Policy",
   `script-src 'nonce-<value>' 'strict-dynamic'; object-src 'none'; base-uri 'none';`
 );
-```
-
-### `csp-frame-ancestors` [headers / medium / combined]
-**Missing Clickjacking Protection (disabled duplicate)**
-
-Disabled: this fired only when neither CSP frame-ancestors nor X-Frame-Options was set, a strict subset of clickjack-missing's condition, so it always double-counted the same evidence.
-
-**Risk:** Older browsers may not support headers.
-
-**Why it matters:** JavaScript frame busting provides backup.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Add JS frame busting for legacy browser support.
-- **Set frame-ancestors to restrict embedding** (javascript):
-```javascript
-// frame-ancestors controls who can embed your page in a frame
-// Use 'none' to block all framing (replaces X-Frame-Options: DENY)
-export default {
-  async headers() {
-    return [{ source: "/(.*)", headers: [{
-      key: "Content-Security-Policy",
-      value: "frame-ancestors 'none'; default-src 'self'; object-src 'none';"
-    }]}];
-  },
-};
-// Or allow specific origins:
-// frame-ancestors 'self' https://dashboard.partner.com
 ```
 
 ### `x-frame-options-invalid` [headers / medium / header-present]
@@ -14876,34 +14004,6 @@ export default {
 // same-origin: isolates your browsing context from cross-origin windows
 // Enables SharedArrayBuffer and high-resolution timers (required for some APIs)
 // same-origin-allow-popups: allows popups but isolates main page
-```
-
-### `corp-missing` [headers / info / header]
-**Missing Cross-Origin-Resource-Policy (CORP) Header (disabled duplicate)**
-
-Disabled: exact duplicate of cross-origin-resource-policy-report-only-missing, which checks the same real Cross-Origin-Resource-Policy header (CORP has no separate Report-Only variant).
-
-**Risk:** See cross-origin-resource-policy-report-only-missing.
-
-**Why it matters:** See cross-origin-resource-policy-report-only-missing.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Add 'Cross-Origin-Resource-Policy: same-origin' (or same-site/cross-origin as appropriate).
-- **Add Cross-Origin-Resource-Policy header** (javascript):
-```javascript
-// next.config.mjs
-export default {
-  async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Cross-Origin-Resource-Policy", value: "same-origin" }] }];
-  },
-};
-// same-origin: only allow same-origin pages to embed this resource
-// same-site: allow same-site pages (includes subdomains)
-// cross-origin: allow any origin (use only for public CDN resources)
 ```
 
 ### `charset-meta-missing` [headers / info / header]
@@ -15597,31 +14697,6 @@ export default {
 // Disables the Window Management API (multi-screen window placement)
 ```
 
-### `server-timing-sensitive-key-leak` [headers / low / header]
-**Server-Timing exposes sensitive key**
-
-The Server-Timing response header includes custom keys that may expose internal metrics like db, sql, redis, cache, or query durations.
-
-**Risk:** Drop or sanitize Server-Timing entries with sensitive names in production
-
-**References:**
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing
-
-**Fix:**
-- Drop or sanitize Server-Timing entries with sensitive names in production
-- **Remove sensitive metric names from Server-Timing** (typescript):
-```typescript
-// BAD: Server-Timing: db;dur=150, cache-miss;dur=5
-// Reveals internal architecture: database, cache layer
-
-// GOOD: use opaque names or omit timing in production
-const timings: string[] = [];
-if (process.env.NODE_ENV !== "production") {
-  timings.push(`db;dur=<value>`);
-}
-if (timings.length) res.setHeader("Server-Timing", timings.join(", "));
-```
-
 ### `cookie-host-prefix-attribute-mismatch` [headers / medium / header]
 **__Host- cookie prefix with wrong attributes**
 
@@ -15726,35 +14801,6 @@ export default {
       { source: "/(dashboard|account|admin)(.*)", headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }] },
       { source: "/_next/static/(.*)", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
     ];
-  },
-};
-```
-
-### `nel-header-missing` [headers / info / header-missing]
-**NEL header not configured**
-
-Network Error Logging is not configured via the NEL header, preventing automatic collection of network-level failures.
-
-**Risk:** Network failures like DNS resolution errors, connection timeouts, and TLS handshake failures that affect real users remain invisible without NEL reporting.
-
-**Why it matters:** NEL collects client-side network failure events and reports them to your specified endpoint.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Configure a Report-To header with a Nel reporting group
-- Add NEL header referencing that group
-- Monitor reports for patterns indicating infrastructure issues
-- **NEL setup** (javascript):
-```javascript
-export default {
-  async headers() {
-    return [{ source: "/(.*)", headers: [
-      { key: "Report-To", value: JSON.stringify({ group: "nel", max_age: 86400, endpoints: [{ url: "/api/nel" }] }) },
-      { key: "NEL", value: JSON.stringify({ report_to: "nel", max_age: 86400 }) },
-    ]}];
   },
 };
 ```
@@ -15914,33 +14960,6 @@ Content-Security-Policy: script-src 'self' http://cdn.example.com;
 
 # After (safe)
 Content-Security-Policy: script-src 'self' https://cdn.example.com; upgrade-insecure-requests;
-```
-
-### `excessive-permissions` [headers / medium / header-missing]
-**Permissions-Policy grants excessive browser feature access (disabled duplicate)**
-
-Disabled: exact duplicate of the permissions-policy-camera-blocked, -microphone-blocked, -geolocation-blocked, -payment-blocked, and -usb-blocked checks, which cover the same five features individually. This check's dangerous-feature list only ever contained those same five, so a single misconfigured header double-fired both.
-
-**Risk:** Granting access to sensitive features to all origins means any third-party iframe embedded on the page can request those permissions from the user, without the user understanding it is the iframe, not your site, making the request.
-
-**Why it matters:** Follow least-privilege: only allow the specific origins that need each feature.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Audit which features your application actually uses
-- Disable features you do not use: feature=()
-- Limit features you do use to your own origin: feature=(self)
-- **Restrictive Permissions-Policy** (javascript):
-```javascript
-// next.config.mjs
-export default {
-  async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()" }] }];
-  },
-};
 ```
 
 ### `feature-policy-deprecated` [headers / info / header-missing]
@@ -16205,27 +15224,6 @@ The X-Runtime header is present, exposing per-request server processing time in 
 proxy_hide_header X-Runtime;
 ```
 
-### `x-request-id-exposed` [headers / info / header-missing]
-**X-Request-Id header exposed to clients**
-
-The X-Request-Id header is returned in the response and exposes internal request tracking identifiers.
-
-**Risk:** Internal request IDs may leak details about infrastructure, help attackers correlate requests across systems, or reveal predictable ID schemes that enable enumeration or replay attacks.
-
-**Why it matters:** Request IDs used for internal logging can be stripped from client-facing responses.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Remove X-Request-Id from client responses while keeping it in internal logs
-- If needed for debugging, only return it to authenticated users
-- **Strip in Nginx** (nginx):
-```nginx
-proxy_hide_header X-Request-Id;
-```
-
 ### `x-backend-server-exposed` [headers / low / header-missing]
 **X-Backend-Server header reveals backend hostname**
 
@@ -16247,30 +15245,6 @@ The X-Backend-Server header discloses the internal hostname or IP of the backend
 proxy_hide_header X-Backend-Server;
 proxy_hide_header X-Real-Server;
 proxy_hide_header X-Node-Id;
-```
-
-### `age-header-reveals-cdn` [headers / info / header-missing]
-**Age header reveals CDN cache age**
-
-The Age header is present and reveals how long the response has been cached at a CDN or proxy.
-
-**Risk:** Age headers reveal CDN infrastructure is in use and indicate whether a response is served from cache, helping attackers time cache-poisoning attacks or infer when cached entries will expire.
-
-**Why it matters:** Age is a standard HTTP header; consider removing it for sensitive responses if it reveals operational details.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- For sensitive responses, set Cache-Control: no-store (CDN will not cache them, so Age will not appear)
-- For public resources, Age is expected behavior and low risk
-- **Remove Age for sensitive endpoints** (nginx):
-```nginx
-location /api/ {
-  proxy_hide_header Age;
-  add_header Cache-Control "no-store, max-age=0";
-}
 ```
 
 ### `x-debug-header-exposed` [headers / medium / header-missing]
@@ -16297,101 +15271,6 @@ proxy_hide_header X-Debug-Token-Link;
 proxy_hide_header X-Debug-Info;
 ```
 
-### `x-amz-request-id` [headers / info / header-missing]
-**X-Amz-Request-Id reveals AWS infrastructure**
-
-The X-Amz-Request-Id header is present, revealing that the response is served from AWS infrastructure.
-
-**Risk:** While low severity on its own, revealing AWS infrastructure enables attackers to tailor attacks to AWS-specific vulnerabilities, targeting S3 public bucket access, EC2 metadata endpoints, or IAM misconfigurations.
-
-**Why it matters:** Strip AWS-specific headers at your edge proxy before they reach clients.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Configure your CDN or reverse proxy to strip X-Amz-* headers
-- Ensure S3 bucket responses are proxied and not directly accessed
-- **Nginx: strip AWS headers** (nginx):
-```nginx
-proxy_hide_header X-Amz-Request-Id;
-proxy_hide_header X-Amz-Id-2;
-proxy_hide_header X-Amz-Version-Id;
-```
-
-### `cf-ray-header` [headers / info / header]
-**Cloudflare CF-Ray request identifier present**
-
-The Cloudflare CF-Ray response header exposes the request identifier that Cloudflare assigns to every proxied request.
-
-**Risk:** CF-Ray alone does not leak sensitive information, but it confirms your origin sits behind Cloudflare and lets attackers correlate request IDs to logs.
-
-**Why it matters:** CF-Ray is informational: it lets support teams trace a specific request through Cloudflare's edge. It does not contain user data, PII, or session tokens.
-
-**References:**
-- https://developers.cloudflare.com/fundamentals/reference/http-request-headers/
-- https://blog.cloudflare.com/cloudflare-ray-id/
-
-**Fix:**
-- CF-Ray cannot be removed from Cloudflare responses. If you want to hide CDN usage, terminate the proxy at the origin (no Cloudflare).
-- If you want to keep Cloudflare but reduce fingerprinting, ensure all other Cloudflare-specific headers (cf-ray, cf-cache-status, cf-worker) are also present so attackers cannot easily distinguish them.
-- **Cloudflare Transform Rule** (http):
-```http
-# Disable if you migrate off Cloudflare. Otherwise leave it for traceability.
-# In Cloudflare dashboard → Rules → Transform Rules → Modify Response Header
-# Action: Remove Header → Name: cf-ray
-```
-
-### `x-vercel-id` [headers / info / header-missing]
-**X-Vercel-Id reveals deployment platform**
-
-The X-Vercel-Id header is present and reveals the application is hosted on Vercel.
-
-**Risk:** Revealing the deployment platform enables targeted attacks specific to Vercel's architecture, including serverless function cold-start timing attacks, deployment URL enumeration, or platform-specific configuration issues.
-
-**Why it matters:** Vercel headers can be suppressed via custom Next.js middleware.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- In Next.js middleware, you can strip headers before they are forwarded
-- **Next.js middleware: strip Vercel headers** (typescript):
-```typescript
-import { NextResponse, type NextRequest } from "next/server";
-
-export function middleware(req: NextRequest) {
-  const res = NextResponse.next();
-  res.headers.delete("x-vercel-id");
-  res.headers.delete("x-vercel-cache");
-  return res;
-}
-```
-
-### `x-cache-header` [headers / info / header-missing]
-**X-Cache header reveals CDN cache status**
-
-The X-Cache header (e.g., X-Cache: HIT or MISS) is present and reveals CDN caching details.
-
-**Risk:** Cache HIT/MISS status can be used to probe CDN behavior, aid cache poisoning attacks by identifying when poison entries are cached, and reveal which resources are cached by CDN nodes.
-
-**Why it matters:** X-Cache is an informational header; strip it for sensitive responses.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Configure your CDN to not forward X-Cache to end users
-- Most CDNs have a header suppression option in their dashboard
-- **Nginx** (nginx):
-```nginx
-proxy_hide_header X-Cache;
-proxy_hide_header X-Cache-Hit;
-```
-
 ### `etag-inode` [headers / low / header-missing]
 **ETag reveals server inode number**
 
@@ -16413,30 +15292,6 @@ The ETag header format suggests it includes a file inode number, potentially rev
 # In httpd.conf or .htaccess:
 FileETag MTime Size
 # The default "FileETag All" includes inode; this removes it
-```
-
-### `etag-inode-leak` [headers / low / header-missing]
-**ETag value may contain inode information**
-
-The ETag response header contains a value that appears to embed inode numbers from the server filesystem.
-
-**Risk:** Exposing inode numbers helps attackers fingerprint the exact web server software version and may reveal filesystem structure that aids in targeted path traversal or LFI attacks.
-
-**Why it matters:** Change Apache's ETag configuration to exclude inode values.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Apache: "FileETag MTime Size" in httpd.conf or .htaccess removes inode from ETags
-- Alternatively, disable ETags entirely: "FileETag None"
-- **Apache: disable inode in ETags** (apache):
-```apache
-FileETag MTime Size
-# Or disable ETags entirely if not needed:
-# FileETag None
-# Header unset ETag
 ```
 
 ### `server-timing-exposure` [headers / low / header-missing]
@@ -16650,32 +15505,6 @@ A CSS stylesheet loaded from a third-party CDN does not have a Subresource Integ
 />
 ```
 
-### `cookie-security` [headers / high / header-missing]
-**Cookies missing security attributes**
-
-One or more cookies are set without required security attributes (Secure, HttpOnly, SameSite).
-
-**Risk:** Cookies without Secure can be sent over HTTP (interceptable). Without HttpOnly, scripts can steal session cookies via XSS. Without SameSite, cookies are sent on cross-site requests, enabling CSRF attacks.
-
-**Why it matters:** All session and authentication cookies must have Secure, HttpOnly, and SameSite attributes set.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Add Secure to prevent sending over HTTP
-- Add HttpOnly to prevent JavaScript access
-- Add SameSite=Strict or Lax to prevent CSRF
-- **Secure cookie attributes** (typescript):
-```typescript
-res.setHeader("Set-Cookie",
-  `session=<value>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`
-);
-// For session cookies: omit Max-Age (expires on browser close)
-// For remember-me: Max-Age=2592000 (30 days)
-```
-
 ### `frame-busting-header-only` [headers / low / header-missing]
 **Frame-busting relies on header only without JS fallback**
 
@@ -16786,31 +15615,6 @@ add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; prelo
 - **Apache** (apache):
 ```apache
 Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-```
-
-### `form-no-action-https` [headers / high / header-missing]
-**Form submits to a non-HTTPS URL (disabled duplicate)**
-
-Disabled: exact duplicate of form-action-http, which matches the same <form action="http://..."> pattern but correctly scopes to HTTPS pages (the actual mixed-content-relevant scenario). This check lacked that scope, so a single offending form double-fired both checks.
-
-**Risk:** Data submitted through the form travels unencrypted and can be intercepted by a network observer, exposing passwords, payment data, or personal information.
-
-**Why it matters:** All form actions must use HTTPS.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
-
-**Fix:**
-- Update the form action to use https://
-- Ensure the destination server has a valid TLS certificate
-- Enable HSTS on the destination to prevent protocol downgrades
-- **Secure form action** (html):
-```html
-<form action="https://yoursite.com/submit" method="POST">
-  <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
-  <button type="submit">Submit</button>
-</form>
 ```
 
 ### `meta-redirect-no-url` [headers / low / header-missing]
@@ -17042,36 +15846,6 @@ export default {
 - **Nginx** (nginx):
 ```nginx
 add_header X-Permitted-Cross-Domain-Policies "none" always;
-```
-
-### `origin-agent-cluster-missing` [headers / info / header-missing]
-**Missing Origin-Agent-Cluster header**
-
-The server does not send Origin-Agent-Cluster: ?1, so the browser may place this page in a shared, document.domain-relaxable agent cluster instead of an origin-isolated one.
-
-**Risk:** Without origin isolation, this page stays eligible for document.domain relaxation and shares its agent cluster (process, in Chromium) with same-site-but-different-origin pages, widening the blast radius of a Spectre-style side-channel and keeping the legacy document.domain same-origin downgrade available.
-
-**Why it matters:** Origin-Agent-Cluster: ?1 asks the browser to give this exact origin its own agent cluster, separate from other origins on the same site. It also permanently disables document.domain relaxation for pages that send it, closing off a decades-old way for two subdomains to opt into treating themselves as same-origin.
-
-**References:**
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin-Agent-Cluster
-- https://web.dev/articles/origin-agent-cluster
-
-**Fix:**
-- Add Origin-Agent-Cluster: ?1 to all responses.
-- If any page relies on document.domain relaxation to communicate with a sibling subdomain, migrate that communication to postMessage before enabling this header, since it disables the relaxation for good on that origin.
-- **Next.js** (javascript):
-```javascript
-// next.config.mjs
-export default {
-  async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Origin-Agent-Cluster", value: "?1" }] }];
-  },
-};
-```
-- **Nginx** (nginx):
-```nginx
-add_header Origin-Agent-Cluster "?1" always;
 ```
 
 ### `permissions-policy-browsing-topics-blocked` [headers / info / header]
@@ -17834,7 +16608,7 @@ if (req.query.state !== req.session.oauthState) {
 
 ---
 
-## Category: information-disclosure (47 checks)
+## Category: information-disclosure (42 checks)
 
 ### `rails-cookie-httponly` [information-disclosure / medium / body-pattern]
 **Rails Session Cookie Missing HttpOnly Flag**
@@ -18182,75 +16956,6 @@ server {
 }
 ```
 
-### `recaptcha-key-leaked` [information-disclosure / info / header]
-**reCAPTCHA site key exposure**
-
-A Google reCAPTCHA site key was found in the page source. reCAPTCHA site keys are intentionally public (they must be embedded in the browser to work), but their exposure is worth noting for rotation policy awareness.
-
-**Risk:** reCAPTCHA site keys are not secret by design and do not grant API access. However, a disclosed site key can be used by third parties to load reCAPTCHA widgets on their own pages under your property, potentially consuming your quota or generating noise in your reCAPTCHA dashboard. Secret keys (used server-side for token verification) are the sensitive component and must never appear in client-side code.
-
-**Why it matters:** Google reCAPTCHA uses a two-key system: the site key (public, embedded in HTML) and the secret key (server-side, used to verify tokens). Only the site key is expected to appear in browser-visible source. This finding is informational unless the secret key is also exposed.
-
-**References:**
-- https://developers.google.com/recaptcha/docs/v3
-- https://cwe.mitre.org/data/definitions/200.html
-
-**Fix:**
-- Confirm only the site key (6L...) is embedded in client-side code, never the secret key.
-- Rotate site keys if you suspect abuse (e.g., spam or unusual reCAPTCHA token requests).
-- Store secret keys in environment variables on the server side only.
-- Monitor reCAPTCHA analytics for unusual traffic patterns that might indicate key abuse.
-- **Safe usage (site key in frontend, secret key server-side only)** (javascript):
-```javascript
-// Frontend (public: site key is intentionally visible)
-grecaptcha.ready(() => {
-  grecaptcha.execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'submit' })
-    .then(token => { /* send token to server */ });
-});
-
-// Server-side (secret key must NEVER reach the browser)
-const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
-  method: 'POST',
-  body: new URLSearchParams({
-    secret: process.env.RECAPTCHA_SECRET_KEY, // env var, not NEXT_PUBLIC_
-    response: tokenFromClient,
-  }),
-});
-```
-
-### `ga-tracking-id-leaked` [information-disclosure / info / header]
-**Google Analytics tracking ID exposed**
-
-A Google Analytics tracking ID (UA-XXXX or G-XXXX) was found in the page source. Analytics tracking IDs are public by design and must be present in the browser to work, but their exposure allows third parties to identify the analytics property.
-
-**Risk:** Google Analytics tracking IDs are not secret by design. Their disclosure may allow a third party to send fake traffic or events to your analytics property (referrer spam), inflating metrics or triggering alerts. This does not expose user data or grant access to analytics reports, which are protected by Google account credentials.
-
-**Why it matters:** The UA-XXXX (Universal Analytics) and G-XXXX (GA4) IDs must appear in page source for client-side tracking to function. Unlike API keys, they do not grant access to any backend service. The main concern is analytics spam from parties who find your tracking ID.
-
-**References:**
-- https://developers.google.com/analytics/devguides/collection/ga4
-- https://cwe.mitre.org/data/definitions/200.html
-
-**Fix:**
-- This is informational: no immediate action required.
-- Monitor your Google Analytics reports for unusual spikes in bot or referrer traffic.
-- Use server-side analytics or the Measurement Protocol with API secrets to reduce client-side tracking ID exposure.
-- Enable bot filtering in Google Analytics settings.
-- **Next.js (server-side analytics with GA Measurement Protocol)** (javascript):
-```javascript
-// Server-side event: tracking ID not exposed in browser source
-const GA_MEASUREMENT_ID = process.env.GA_MEASUREMENT_ID;
-const GA_API_SECRET = process.env.GA_API_SECRET;
-
-await fetch(
-  `https://www.google-analytics.com/mp/collect?measurement_id=<value>&api_secret=<value>`,
-  {
-    method: 'POST',
-    body: JSON.stringify({ client_id: clientId, events: [{ name: 'page_view' }] }),
-  }
-);
-```
-
 ### `nginx-version-404-disclosure` [information-disclosure / low / body-pattern]
 **nginx version disclosed in 404 / error pages**
 
@@ -18492,89 +17197,6 @@ resource "aws_cloudfront_distribution" "site" {
     }
   ]
 }
-```
-
-### `privacy-policy-missing` [information-disclosure / low / body-pattern]
-**Privacy Policy page not found**
-
-No privacy policy link or page was detected on the site. A privacy policy is legally required in many jurisdictions (GDPR, CCPA).
-
-**Risk:** Absence of a privacy policy may constitute a legal violation under GDPR, CCPA, and similar regulations, resulting in regulatory fines, user complaints, and reduced user trust.
-
-**Why it matters:** Most jurisdictions require websites that collect user data to publish a privacy policy explaining what data is collected, how it is used, and how users can exercise their rights.
-
-**References:**
-- https://gdpr.eu/privacy-notice/
-- https://oag.ca.gov/privacy/ccpa
-- https://cwe.mitre.org/data/definitions/200.html
-
-**Fix:**
-- Create a /privacy-policy page explaining data collection and use
-- Link to it from the site footer on every page
-- Ensure it covers GDPR, CCPA, and other applicable regulations
-- Keep it up to date as your data practices change
-- **Footer link** (html):
-```html
-<footer>
-  <a href="/privacy-policy">Privacy Policy</a>
-  <a href="/terms-of-service">Terms of Service</a>
-</footer>
-```
-
-### `terms-of-service-missing` [information-disclosure / low / body-pattern]
-**Terms of Service page not found**
-
-No terms of service or terms of use page was detected. Terms of service are recommended for all web services that accept users.
-
-**Risk:** Without published terms of service, the site has no legal basis for enforcing usage restrictions, handling disputes, or limiting liability, exposing the operator to legal risk.
-
-**Why it matters:** Terms of service define the rules for using the service, limit operator liability, and set expectations for both parties. They are especially important for sites that collect user data or offer paid services.
-
-**References:**
-- https://www.ftc.gov/business-guidance/blog/2023/05/digital-dark-patterns-are-you-deceiving-your-consumers
-- https://cwe.mitre.org/data/definitions/200.html
-
-**Fix:**
-- Create a /terms-of-service (or /terms) page
-- Link to it from the site footer
-- Include acceptable use policy, limitation of liability, and dispute resolution clauses
-- Consult a lawyer to ensure compliance with applicable law
-- **Footer link** (html):
-```html
-<footer>
-  <a href="/privacy-policy">Privacy Policy</a>
-  <a href="/terms-of-service">Terms of Service</a>
-</footer>
-```
-
-### `sitemap-missing` [information-disclosure / info / body-pattern]
-**XML sitemap not found**
-
-No XML sitemap was found at /sitemap.xml or referenced in robots.txt. A sitemap helps search engines index the site correctly.
-
-**Risk:** Without a sitemap, search engines may incompletely index the site, missing important pages or discovering sensitive paths through link crawling rather than controlled disclosure.
-
-**Why it matters:** A sitemap.xml file tells search engines which pages exist and their relative importance. The absence of a sitemap can lead to poor SEO and may cause crawlers to discover sensitive paths through other means.
-
-**References:**
-- https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview
-- https://cwe.mitre.org/data/definitions/200.html
-
-**Fix:**
-- Create a /sitemap.xml listing all public pages
-- Reference it in robots.txt: Sitemap: https://yoursite.com/sitemap.xml
-- Submit it to Google Search Console and Bing Webmaster Tools
-- Exclude sensitive or authenticated pages from the sitemap
-- **Basic sitemap.xml** (xml):
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://yoursite.com/</loc>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
-  </url>
-</urlset>
 ```
 
 ### `html-comment-leaks` [information-disclosure / medium / body-pattern]
@@ -21417,7 +20039,7 @@ const apiKey = process.env.THIRD_PARTY_API_KEY!;
 
 ---
 
-## Category: ssl (15 checks)
+## Category: ssl (14 checks)
 
 ### `ssl-https-only-cookie-on-http` [ssl / high / url-check]
 **Secure Cookie Set on HTTP Endpoint**
@@ -21484,28 +20106,6 @@ server {
   ssl_certificate /etc/ssl/certs/example.com.pem;
   ssl_certificate_key /etc/ssl/private/example.com.key;
 }
-```
-
-### `expect-ct-missing` [ssl / info / header]
-**Expect-CT Header Not Present**
-
-The Expect-CT header is absent. This is informational, not something to fix: Chrome deprecated and removed Expect-CT support, and Certificate Transparency is now enforced unconditionally by browsers at certificate-validation time, independent of any response header. Essentially no site, including well-secured ones, sends this header anymore.
-
-**Risk:** None from the header's absence specifically. CT enforcement no longer depends on it, so not sending Expect-CT does not weaken CT protection in any current browser.
-
-**Why it matters:** Expect-CT let a site opt into CT enforcement and violation reporting before browsers enforced CT by default. Chrome has required CT for all publicly trusted certificates since 2018 and has since removed Expect-CT support entirely (MDN marks it deprecated, not for use in new sites). This finding is kept at info purely for completeness; there is no meaningful action to take.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc9163
-- https://certificate.transparency.dev/
-
-**Fix:**
-- No action needed. Expect-CT is deprecated and no longer enforced by any major browser.
-- Rely on your CA's CT log submission (automatic for all publicly trusted CAs) instead.
-- **No header needed** (text):
-```text
-# Expect-CT is deprecated (removed from Chrome). CT is enforced automatically
-# via your CA's log submission during certificate issuance -- nothing to configure.
 ```
 
 ### `https-unusual-port` [ssl / low / url-check]

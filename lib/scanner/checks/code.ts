@@ -497,21 +497,10 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "eval-usage": (_url, _headers, _body) => {
-    // eval() is already caught by eval-in-scripts (which scopes to inline scripts
-    // and excludes JSON.parse callers). A global match fires on every minified
-    // bundle that contains third-party code with eval(). Removed to reduce noise.
-    return null;
-  },
-
   "function-constructor": (_url, _headers, body) => {
     if (/new\s+Function\s*\(/.test(inlineScriptContent(body))) {
       return "Function constructor used - similar risks to eval().";
     }
-    return null;
-  },
-
-  "settimeout-string": (_url, _headers, _body) => {
     return null;
   },
 
@@ -982,45 +971,6 @@ const rawDetectors: Record<string, DetectFn> = {
     if (/navigator\.serviceWorker\.register\s*\(\s*["']http:\/\//i.test(body)) {
       return "Service worker registered over insecure HTTP origin.";
     }
-    return null;
-  },
-
-  "push-api-usage": (_url, _headers, _body) => {
-    // Push / notification permission flows are legitimate on countless sites.
-    // Presence alone is not a security finding.
-    return null;
-  },
-
-  "payment-request-api": (_url, _headers, _body) => {
-    // Payment Request API is a browser standard — presence alone is not a finding.
-    return null;
-  },
-
-  "credential-management-api": (_url, _headers, _body) => {
-    // Credential Management API (navigator.credentials) is a browser security feature.
-    // Its presence improves security; flagging it creates noise.
-    return null;
-  },
-
-  "webauthn-usage": (_url, _headers, _body) => {
-    // WebAuthn / Passkey usage is a security improvement. Not a finding.
-    return null;
-  },
-
-  "crypto-subtle-usage": (_url, _headers, _body) => {
-    // SubtleCrypto is the preferred secure crypto API. Its presence is not a risk.
-    return null;
-  },
-
-  "wasm-usage": (_url, _headers, _body) => {
-    // WebAssembly is widely used by legitimate applications (image codecs, games,
-    // compression). Presence alone is not a security finding.
-    return null;
-  },
-
-  "console-log-production": (_url, _headers, _body) => {
-    // console.* calls appear in virtually every production bundle via third-party
-    // libraries. Flagging them produces noise without identifying actual data leaks.
     return null;
   },
 
@@ -1584,10 +1534,6 @@ const rawDetectors: Record<string, DetectFn> = {
 
   // ── Auth / storage / cookies (code-auth-*, code-cookie-*) ────────────────
 
-  "code-auth-localstorage-tokens": (_url, _headers, _body) => {
-    return null;
-  },
-
   "code-auth-sessionstorage-passwords": (_url, _headers, body) => {
     // The key must be an EXACT password/passwd/pwd match (closing quote
     // right after), not a prefix -- a plain prefix match also fired on the
@@ -1687,12 +1633,6 @@ const rawDetectors: Record<string, DetectFn> = {
 
   // ── Timing-safe compare (code-timing-*) ──────────────────────────────────
 
-  "code-timing-no-constant-time-compare": (_url, _headers, _body) => {
-    // Cannot reliably detect non-constant-time comparisons from minified/
-    // transpiled client-side JS without 100% false positive rate.
-    return null;
-  },
-
   "code-timing-hmac-equality": (_url, _headers, body) => {
     if (/hmac\s*\([^)]+\)\s*===/.test(body) || /HMAC[^=]*===/.test(body)) {
       return "HMAC comparison via === - byte-by-byte timing leak.";
@@ -1741,10 +1681,6 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   // ── Code-prefixed entries with category=headers (placed in code.ts) ──────
-
-  "code-fetch-without-credentials": (_url, _headers, _body) => {
-    return null;
-  },
 
   "code-axios-defaults-baseurl": (_url, headers, body) => {
     if (/axios\.defaults\.baseURL\s*=/i.test(body)) {
@@ -1797,10 +1733,6 @@ const rawDetectors: Record<string, DetectFn> = {
     ) {
       return "Set-Cookie header lacks HttpOnly - readable from JavaScript.";
     }
-    return null;
-  },
-
-  "code-cookie-write-no-secure": (_url, _headers, _body) => {
     return null;
   },
 

@@ -457,32 +457,6 @@
     "owasp": "A03:2021"
   },
   {
-    "id": "eval-usage",
-    "type": "body-pattern",
-    "title": "eval() Code Injection Risk",
-    "category": "code",
-    "severity": "high",
-    "description": "JavaScript eval() function calls detected.",
-    "evidence": "Source-code pattern matched for `code-eval-usage`.",
-    "riskImpact": "eval executes arbitrary code, enabling code injection.",
-    "explanation": "eval() is one of the most dangerous JavaScript functions.",
-    "fixSteps": ["Replace eval with JSON.parse or safer alternatives."],
-    "codeExamples": [
-      {
-        "label": "Replace eval with a safe function map",
-        "language": "javascript",
-        "code": "// Instead of: eval(userOp + \"(data)\")\n// Build an explicit dispatch table:\nconst handlers = {\n  process: processData,\n  validate: validateData,\n  transform: transformData,\n};\nconst fn = handlers[userOp];\nif (typeof fn !== \"function\") throw new Error(\"Unknown operation\");\nfn(data);"
-      }
-    ],
-    "_idx": 22,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "cwe": "CWE-94",
-    "owasp": "A03:2021"
-  },
-  {
     "id": "function-constructor",
     "type": "body-pattern",
     "title": "Function Constructor Usage",
@@ -503,32 +477,6 @@
       }
     ],
     "_idx": 23,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "cwe": "CWE-94",
-    "owasp": "A03:2021"
-  },
-  {
-    "id": "settimeout-string",
-    "type": "body-pattern",
-    "title": "setTimeout/setInterval with String",
-    "category": "code",
-    "severity": "medium",
-    "description": "Timer functions with string argument.",
-    "evidence": "Timer with string argument.",
-    "riskImpact": "String arguments are eval'd, enabling code injection.",
-    "explanation": "setTimeout('code', 0) is equivalent to eval('code').",
-    "fixSteps": ["Pass functions, not strings, to setTimeout/setInterval."],
-    "codeExamples": [
-      {
-        "label": "Pass a function reference, not a string",
-        "language": "javascript",
-        "code": "// BAD: string form evaluates code like eval()\nsetTimeout(\"doSomething()\", 1000);\n\n// GOOD: pass a function reference\nsetTimeout(doSomething, 1000);\nsetTimeout(() => doSomethingWith(arg), 1000);"
-      }
-    ],
-    "_idx": 24,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
@@ -692,176 +640,6 @@
     ]
   },
   {
-    "id": "push-api-usage",
-    "type": "body-pattern",
-    "title": "Push Notification API Usage",
-    "category": "code",
-    "severity": "info",
-    "description": "Push API/notifications usage detected.",
-    "evidence": "Source-code pattern matched for `code-push-api-usage`.",
-    "riskImpact": "Privacy concern if abused.",
-    "explanation": "Push notifications require user consent.",
-    "fixSteps": ["Ensure notifications are used appropriately."],
-    "codeExamples": [
-      {
-        "label": "Require explicit user permission for Push API",
-        "language": "javascript",
-        "code": "async function subscribePush() {\n  const permission = await Notification.requestPermission();\n  if (permission !== \"granted\") return null;\n\n  const reg = await navigator.serviceWorker.ready;\n  return reg.pushManager.subscribe({\n    userVisibleOnly: true, // must be true, prevents silent push\n    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),\n  });\n}"
-      }
-    ],
-    "_idx": 36,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
-  },
-  {
-    "id": "payment-request-api",
-    "type": "body-pattern",
-    "title": "Payment Request API Usage",
-    "category": "code",
-    "severity": "info",
-    "description": "Payment Request API detected.",
-    "evidence": "Source-code pattern matched for `code-payment-request-api`.",
-    "riskImpact": "Ensure secure payment handling.",
-    "explanation": "Payment API handles financial transactions.",
-    "fixSteps": ["Follow PCI DSS guidelines for payment handling."],
-    "codeExamples": [
-      {
-        "label": "Payment Request API: always verify server-side",
-        "language": "javascript",
-        "code": "const req = new PaymentRequest(methods, details);\nconst response = await req.show();\n\n// Never trust the browser response alone\n// Always verify the payment server-side:\nconst serverVerify = await fetch(\"/api/verify-payment\", {\n  method: \"POST\",\n  body: JSON.stringify({ paymentId: response.requestId }),\n  headers: { \"Content-Type\": \"application/json\" },\n});\nif (!serverVerify.ok) throw new Error(\"Payment verification failed\");\nawait response.complete(\"success\");"
-      }
-    ],
-    "_idx": 37,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
-  },
-  {
-    "id": "credential-management-api",
-    "type": "body-pattern",
-    "title": "Credential Management API Usage",
-    "category": "code",
-    "severity": "info",
-    "description": "Credential Management API detected.",
-    "evidence": "Credential API usage.",
-    "riskImpact": "Handles sensitive credential storage.",
-    "explanation": "This API stores and retrieves credentials.",
-    "fixSteps": ["Use properly with HTTPS and security best practices."],
-    "codeExamples": [
-      {
-        "label": "Credential Management: store only after explicit login",
-        "language": "javascript",
-        "code": "if (\"credentials\" in navigator) {\n  // Store credentials only after successful authentication\n  const cred = new PasswordCredential({\n    id: email,\n    password: password,\n  });\n  await navigator.credentials.store(cred);\n}"
-      }
-    ],
-    "_idx": 38,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
-  },
-  {
-    "id": "webauthn-usage",
-    "type": "body-pattern",
-    "title": "WebAuthn/Passkey Implementation",
-    "category": "code",
-    "severity": "info",
-    "description": "WebAuthn API usage detected.",
-    "evidence": "Source-code pattern matched for `code-webauthn-usage`.",
-    "riskImpact": "Strong authentication method.",
-    "explanation": "WebAuthn enables passwordless authentication.",
-    "fixSteps": ["Ensure proper implementation."],
-    "codeExamples": [
-      {
-        "label": "WebAuthn: verify attestation server-side",
-        "language": "typescript",
-        "code": "// Client: create credential\nconst credential = await navigator.credentials.create({ publicKey: options });\n\n// Send to server for attestation verification\nconst res = await fetch(\"/api/auth/register\", {\n  method: \"POST\",\n  body: JSON.stringify(credential),\n});\n// Server MUST verify the attestation using a library like SimpleWebAuthn\n// Never skip server-side verification"
-      }
-    ],
-    "_idx": 39,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
-  },
-  {
-    "id": "crypto-subtle-usage",
-    "type": "body-pattern",
-    "title": "SubtleCrypto API Usage",
-    "category": "code",
-    "severity": "info",
-    "description": "Web Crypto API usage detected.",
-    "evidence": "Source-code pattern matched for `code-subtle-crypto-usage`.",
-    "riskImpact": "Ensure proper key management.",
-    "explanation": "Web Crypto provides cryptographic operations.",
-    "fixSteps": ["Use secure random generation and proper key storage."],
-    "codeExamples": [
-      {
-        "label": "Web Crypto API: use secure algorithms",
-        "language": "typescript",
-        "code": "// Use AES-GCM (authenticated encryption), not AES-CBC without MAC\nconst key = await crypto.subtle.generateKey(\n  { name: \"AES-GCM\", length: 256 },\n  false,\n  [\"encrypt\", \"decrypt\"]\n);\nconst iv = crypto.getRandomValues(new Uint8Array(12)); // unique per message\nconst encrypted = await crypto.subtle.encrypt(\n  { name: \"AES-GCM\", iv },\n  key,\n  plaintext\n);\n// Prepend iv to ciphertext for storage/transmission"
-      }
-    ],
-    "_idx": 40,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
-  },
-  {
-    "id": "wasm-usage",
-    "type": "body-pattern",
-    "title": "WebAssembly Usage Detected",
-    "category": "code",
-    "severity": "info",
-    "description": "WebAssembly modules detected.",
-    "evidence": "Source-code pattern matched for `code-wasm-usage`.",
-    "riskImpact": "WASM code harder to audit.",
-    "explanation": "WebAssembly runs compiled code in browser.",
-    "fixSteps": ["Ensure WASM source is trusted."],
-    "codeExamples": [
-      {
-        "label": "Validate WASM origin and use CSP wasm-unsafe-eval policy",
-        "language": "typescript",
-        "code": "// Only load WASM from your own origin\nconst response = await fetch(\"/wasm/module.wasm\");\nconst { instance } = await WebAssembly.instantiateStreaming(response);\n// CSP: add wasm-unsafe-eval only if required by the module\n// Never load WASM from user-supplied URLs"
-      }
-    ],
-    "_idx": 41,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
-  },
-  {
-    "id": "console-log-production",
-    "type": "body-pattern",
-    "title": "Console Logging in Production",
-    "category": "code",
-    "severity": "low",
-    "description": "Extensive console.log statements detected.",
-    "evidence": "Console logging found.",
-    "riskImpact": "May expose sensitive debug information.",
-    "explanation": "Console logs can reveal internal state.",
-    "fixSteps": ["Remove or disable console.log in production."],
-    "codeExamples": [
-      {
-        "label": "Strip console.log in production builds",
-        "language": "javascript",
-        "code": "// vite.config.ts or next.config.mjs\nexport default {\n  esbuild: {\n    drop: process.env.NODE_ENV === \"production\" ? [\"console\", \"debugger\"] : [],\n  },\n};\n// Or use a logger that respects log levels:\nimport log from \"loglevel\";\nlog.setLevel(process.env.NODE_ENV === \"production\" ? \"warn\" : \"debug\");\nlog.debug(\"only in dev\"); // silent in production"
-      }
-    ],
-    "_idx": 42,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "cwe": "CWE-489",
-    "owasp": "A05:2021"
-  },
-  {
     "id": "debugger-statement",
     "type": "body-pattern",
     "title": "Debugger Statement in Code",
@@ -886,30 +664,6 @@
     ],
     "cwe": "CWE-489",
     "owasp": "A05:2021"
-  },
-  {
-    "id": "code-fetch-without-credentials",
-    "type": "header",
-    "title": "fetch() call without credentials mode",
-    "category": "code",
-    "severity": "low",
-    "description": "fetch(url, { credentials: 'omit' }) prevents cookies from being sent, but auth tokens via cookies won't work.",
-    "evidence": "Source-code pattern matched for `code-fetch-without-credentials`.",
-    "riskImpact": "Explicitly set credentials: 'include' or 'same-origin'",
-    "explanation": "fetch(url, { credentials: 'omit' }) prevents cookies from being sent, but auth tokens via cookies won't work.",
-    "fixSteps": ["Explicitly set credentials: 'include' or 'same-origin'"],
-    "codeExamples": [
-      {
-        "label": "Set credentials mode explicitly",
-        "language": "typescript",
-        "code": "// BAD: credentials defaults to \"same-origin\"\nfetch(\"/api/data\");\n\n// GOOD: explicit, omit for cross-origin API calls\nfetch(\"https://api.example.com/data\", {\n  credentials: \"omit\", // no cookies sent cross-origin\n});\n\n// Or \"include\" only when you explicitly need cookies cross-origin\nfetch(\"/api/protected\", {\n  credentials: \"include\", // requires CORS allow-credentials\n});"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "_idx": 45
   },
   {
     "id": "code-axios-defaults-baseurl",
@@ -1043,32 +797,6 @@
     ],
     "_idx": 52,
     "cwe": "CWE-1004",
-    "owasp": "A05:2021"
-  },
-  {
-    "id": "code-cookie-write-no-secure",
-    "type": "header",
-    "title": "document.cookie write missing Secure flag",
-    "category": "code",
-    "severity": "medium",
-    "description": "Cookies set via document.cookie without Secure can be sent over HTTP.",
-    "evidence": "Source-code pattern matched for `code-cookie-write-without-secure`.",
-    "riskImpact": "Add Secure; to every cookie set via document.cookie",
-    "explanation": "Cookies set via document.cookie without Secure can be sent over HTTP.",
-    "fixSteps": ["Add Secure; to every cookie set via document.cookie"],
-    "codeExamples": [
-      {
-        "label": "Set the Secure flag on all cookies",
-        "language": "typescript",
-        "code": "res.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/`\n);\n// Secure: cookie is only sent over HTTPS connections\n// Without Secure, cookie can be stolen over HTTP (SSL-stripping attack)"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "_idx": 53,
-    "cwe": "CWE-614",
     "owasp": "A05:2021"
   },
   {
@@ -2474,33 +2202,6 @@
     "owasp": "A03:2021"
   },
   {
-    "id": "code-auth-localstorage-tokens",
-    "type": "body-pattern",
-    "title": "Auth tokens stored in localStorage",
-    "category": "code",
-    "severity": "high",
-    "description": "localStorage.setItem('token', jwt) makes the JWT accessible to any script that runs in the same origin. A single XSS payload can exfiltrate it via fetch.",
-    "evidence": "Source-code pattern matched for `code-auth-localstorage-tokens`.",
-    "riskImpact": "XSS enables full account takeover by reading the JWT from localStorage.",
-    "explanation": "The `code-auth-localstorage-tokens` check verifies that the server does not expose the `auth-localstorage-tokens` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
-    "fixSteps": [
-      "Move auth tokens to HttpOnly; Secure; SameSite=Strict cookies set by the server.",
-      "If a token must live client-side, encrypt it with a server-issued key before storage.",
-      "Adopt BFF pattern so the browser never sees raw tokens."
-    ],
-    "codeExamples": [
-      {
-        "label": "Store auth tokens in HttpOnly cookies, not localStorage",
-        "language": "typescript",
-        "code": "// BAD: tokens in localStorage are XSS-accessible\n// localStorage.setItem(\"access_token\", token);\n\n// GOOD: server sets HttpOnly cookie on login\nres.setHeader(\"Set-Cookie\",\n  `access_token=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`\n);"
-      }
-    ],
-    "references": ["https://owasp.org/www-community/HttpOnly"],
-    "_idx": 116,
-    "cwe": "CWE-312",
-    "owasp": "A02:2021"
-  },
-  {
     "id": "code-auth-sessionstorage-passwords",
     "type": "body-pattern",
     "title": "Passwords stored in sessionStorage",
@@ -2642,35 +2343,6 @@
     "_idx": 121,
     "cwe": "CWE-1021",
     "owasp": "A05:2021"
-  },
-  {
-    "id": "code-timing-no-constant-time-compare",
-    "type": "body-pattern",
-    "title": "Non-constant-time signature comparison",
-    "category": "code",
-    "severity": "high",
-    "description": "if (providedSig === storedSig) compares HMACs or tokens with JavaScript ===, which short-circuits on the first differing byte. Attackers measure timing to recover the signature byte-by-byte.",
-    "evidence": "Source-code pattern matched for `code-timing-no-constant-time-compare`.",
-    "riskImpact": "Timing oracle leaks signature bytes, allowing an attacker to forge valid signatures or replay tokens.",
-    "explanation": "The `code-timing-no-constant-time-compare` check verifies that the server does not expose the `timing-no-constant-time-compare` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
-    "fixSteps": [
-      "Use crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)) for any secret comparison.",
-      "Hash both sides with SHA-256 first if lengths differ, then compare.",
-      "Add a unit test that fails if comparison timing varies by input."
-    ],
-    "codeExamples": [
-      {
-        "label": "Use crypto.timingSafeEqual for token comparison",
-        "language": "typescript",
-        "code": "import { timingSafeEqual, createHmac } from \"crypto\";\n\nfunction verifyToken(provided: string, expected: string): boolean {\n  const a = Buffer.from(provided);\n  const b = Buffer.from(expected);\n  // Lengths must match before timing-safe comparison\n  if (a.length !== b.length) return false;\n  return timingSafeEqual(a, b);\n}"
-      }
-    ],
-    "references": [
-      "https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b"
-    ],
-    "_idx": 122,
-    "cwe": "CWE-208",
-    "owasp": "A02:2021"
   },
   {
     "id": "code-timing-hmac-equality",

@@ -113,31 +113,6 @@ export const detectors: Record<string, DetectFn> = {
     return `X-Permitted-Cross-Domain-Policies is '${v}', not 'none'.`;
   },
 
-  // Origin-Agent-Cluster asks the browser to give the origin its own agent
-  // cluster, which isolates it for memory and performance reasons and
-  // deliberately does not change the origin's security boundary: the spec
-  // calls it a hint, and a browser is free to ignore it in either direction.
-  // The same header already reads as a performance hint in
-  // checks/configuration.ts's "origin-agent-cluster", which is stubbed for
-  // exactly this reason; this id was the other half of that pair, still
-  // firing.
-  "origin-agent-cluster-missing": () => null,
-
-  // What this reported ("full URL in Referer on external navigation") stopped
-  // being true in 2020. Chrome 85, Firefox 87, Safari 14 and every browser
-  // since default to strict-origin-when-cross-origin with no header at all:
-  // a cross-origin navigation sends the origin and nothing else, and an
-  // HTTPS-to-HTTP downgrade sends no Referer. The path and query string a
-  // reset token or a session id would sit in are already not being sent.
-  //
-  // Setting the header can still tighten things to no-referrer, and that is
-  // worth doing, but it is hardening rather than a defect: the site is not
-  // leaking anything, and every site on the internet was being told it was.
-  // Mozilla's own Observatory scores a missing Referrer-Policy at zero for
-  // the same reason. An explicitly unsafe value is a real finding and is
-  // reported separately by referrer-policy-unsafe.
-  "referrer-policy-missing": () => null,
-
   "permissions-policy-missing": (_url, headers) => {
     if (
       hasHeader(headers, "permissions-policy") ||
@@ -152,29 +127,10 @@ export const detectors: Record<string, DetectFn> = {
     return "Header 'Cross-Origin-Opener-Policy' is not present.";
   },
 
-  "corp-missing": (_url, _headers) => {
-    // Exact duplicate of cross-origin-resource-policy-report-only-missing
-    // (same header, same condition — CORP has no separate Report-Only
-    // variant, so both ids were really checking the one real header).
-    // Disabled to avoid double-firing the same evidence.
-    // ref: AUDIT-008#scanner-05
-    return null;
-  },
-
   "coep-missing": (_url, headers) => {
     if (hasHeader(headers, "cross-origin-embedder-policy")) return null;
     return "Header 'Cross-Origin-Embedder-Policy' is not present.";
   },
-
-  // This contradicted x-xss-protection-disabled, three hundred lines down in
-  // this same file, which declines to flag X-XSS-Protection: 0 because 0 is
-  // the value OWASP and Mozilla both recommend. A site that took this
-  // finding's advice and set '1; mode=block' would then be told nothing,
-  // having re-enabled a filter that no browser still ships and that
-  // introduced its own exploitable XSS and information-disclosure bugs
-  // before it was removed. Missing CSP is a real finding and csp-missing
-  // already reports it, without attaching a dead header to the fix.
-  "xxss-protection-missing": () => null,
 
   "cache-control-missing": (url, headers) => {
     if (hasHeader(headers, "cache-control") || hasHeader(headers, "pragma"))
@@ -186,12 +142,6 @@ export const detectors: Record<string, DetectFn> = {
     // cache-control-no-store-missing's sensitive-path gate.
     if (!isSensitivePath(url)) return null;
     return "Neither 'Cache-Control' nor 'Pragma' headers are present.";
-  },
-
-  "nel-header-missing": (_url, _headers) => {
-    // NEL is an optional browser reporting API, not a security requirement.
-    // Its absence is not a vulnerability.
-    return null;
   },
 
   // ── CORS ──────────────────────────────────────────────────────────────────
@@ -262,19 +212,6 @@ export const detectors: Record<string, DetectFn> = {
     const enforcing = hasHeader(headers, "content-security-policy");
     if (reportOnly && !enforcing)
       return "CSP-Report-Only is set but no enforcing CSP header exists.";
-    return null;
-  },
-
-  "csp-frame-ancestors": (_url, _headers) => {
-    // Every condition under which this fired (CSP present, no frame-ancestors,
-    // no X-Frame-Options) is a strict subset of clickjack-missing's firing
-    // condition (no X-Frame-Options and no CSP frame-ancestors, regardless of
-    // whether CSP is present at all) — so this always double-counted the same
-    // "site has zero clickjacking protection" evidence as a second finding.
-    // Its metadata also didn't describe this condition; it described a
-    // different, unrelated "header present but no JS fallback" scenario that
-    // belongs to frame-busting-header-only. Disabled in favor of
-    // clickjack-missing. ref: AUDIT-008#scanner-05
     return null;
   },
 
@@ -465,13 +402,6 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  // Retired: an umbrella that restated four dedicated checks in one finding,
-  // so a single weak policy was reported by it AND by each of them.
-  // 'unsafe-inline' is csp-unsafe-inline-script, 'unsafe-eval' is
-  // csp-unsafe-eval-detected, data: in script-src is csp-data-uri-allowed,
-  // and a wildcard in default-src or script-src is csp-wildcard-source.
-  "weak-csp-directives": () => null,
-
   // ── Referrer / Permissions / Cross-origin ────────────────────────────────
 
   "referrer-policy-unsafe": (_url, headers) => {
@@ -487,31 +417,10 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "excessive-permissions": (_url, _headers) => {
-    // Exact duplicate of the five permissions-policy-{camera,microphone,
-    // geolocation,payment,usb}-blocked checks below (all via
-    // ppAllowsFeature) -- this list only ever covered those same five
-    // features, so a single misconfigured header fired both this and the
-    // per-feature check for the identical evidence. Disabled in favor of
-    // the more specific per-feature checks.
-    return null;
-  },
-
   "feature-policy-deprecated": (_url, headers) => {
     if (!hasHeader(headers, "feature-policy")) return null;
     if (hasHeader(headers, "permissions-policy")) return null;
     return "Feature-Policy header is set but not Permissions-Policy. Feature-Policy is deprecated; use Permissions-Policy instead.";
-  },
-
-  "x-xss-protection-disabled": (_url, _headers) => {
-    // X-XSS-Protection: 0 is the value OWASP's Secure Headers Project and
-    // Mozilla's HTTP Observatory recommend. The legacy XSS Auditor/filter
-    // this header controls was found to introduce its own exploitable XSS
-    // and info-disclosure bugs and has been removed from every modern
-    // browser (Chrome dropped it in Chrome 78); Helmet.js has sent
-    // X-XSS-Protection: 0 by default since v4. Flagging '0' would push
-    // sites toward re-enabling a filter that's actively worse than off.
-    return null;
   },
 
   "nosniff-incorrect": (_url, headers) => {
@@ -589,13 +498,6 @@ export const detectors: Record<string, DetectFn> = {
     return `X-Runtime header exposes request processing time: ${h(headers, "x-runtime")}ms.`;
   },
 
-  "x-request-id-exposed": (_url, _headers) => {
-    // X-Request-Id is standard distributed tracing infrastructure (used by
-    // nginx, Heroku, AWS API Gateway, etc.). It is intentionally client-visible
-    // for support/debugging purposes and is not a security vulnerability.
-    return null;
-  },
-
   "x-backend-server-exposed": (_url, headers) => {
     for (const name of [
       "x-backend-server",
@@ -606,13 +508,6 @@ export const detectors: Record<string, DetectFn> = {
       if (hasHeader(headers, name))
         return `Header '${name}' exposes backend server info: '${h(headers, name)}'.`;
     }
-    return null;
-  },
-
-  "age-header-reveals-cdn": (_url, _headers) => {
-    // The Age header is defined in RFC 7234 and is a standard part of HTTP
-    // caching. Its presence simply indicates the response was served from a
-    // cache, which is expected behavior and not a security vulnerability.
     return null;
   },
 
@@ -629,41 +524,11 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "x-amz-request-id": (_url, _headers) => {
-    // X-Amz-Request-Id/X-Amz-Id-2 are standard AWS infrastructure headers
-    // added automatically by ALB, API Gateway, S3, and CloudFront -- the
-    // same class of unavoidable, standard header as CF-Ray, X-Vercel-Id,
-    // and X-Cache below. Not a vulnerability.
-    return null;
-  },
-
-  "cf-ray-header": (_url, _headers) => {
-    // CF-Ray is a standard Cloudflare header intentionally included in every
-    // response. Its presence means the site uses Cloudflare — not a vulnerability.
-    return null;
-  },
-
-  "x-vercel-id": (_url, _headers) => {
-    // X-Vercel-Id is a standard Vercel deployment header included on every
-    // Vercel-hosted response. Not a vulnerability.
-    return null;
-  },
-
-  "x-cache-header": (_url, _headers) => {
-    // X-Cache: HIT/MISS is standard CDN behavior and not a security vulnerability.
-    return null;
-  },
-
   "etag-inode": (_url, headers) => {
     const etag = h(headers, "etag");
     if (etag && /^["']?[0-9a-f]+-[0-9a-f]+-[0-9a-f]+["']?$/i.test(etag)) {
       return "ETag appears to contain inode information - filesystem disclosure.";
     }
-    return null;
-  },
-
-  "etag-inode-leak": (_url, _headers) => {
-    // Duplicate of etag-inode with the same pattern. Disabled to avoid double-firing.
     return null;
   },
 
@@ -818,16 +683,6 @@ export const detectors: Record<string, DetectFn> = {
       ? `Found ${noSRI.length} external stylesheet(s) without integrity attribute.`
       : null;
   },
-
-  // ── Cookies (header-level access for Set-Cookie via Headers.getSetCookie) ─
-
-  // Retired, for the reason cookies.ts gives for session-cookie-flags: an
-  // umbrella that re-tested HttpOnly, Secure and SameSite on the same
-  // session-named cookies the three per-attribute checks already select, and
-  // reported the worst of the three at high. One cookie with no attributes was
-  // three findings from those checks plus this one on top. Each attribute keeps
-  // its own check, at a severity that matches that attribute.
-  "cookie-security": () => null,
 
   // ── Clear-Site-Data on logout pages ──────────────────────────────────────
 
@@ -1106,19 +961,6 @@ export const detectors: Record<string, DetectFn> = {
     return "Cross-Origin-Resource-Policy header is not set.";
   },
 
-  // ── Server-Timing coverage ──────────────────────────────────────────────
-
-  "server-timing-sensitive-key-leak": (_url, _headers) => {
-    // Duplicate of server-timing-exposure on the same header, and its keyword
-    // list included "cache" — which matches the completely benign, extremely
-    // common `cache;dur=12` / `edge;dur=4` CDN timing entries that
-    // configuration.ts's server-timing-cache-timings already covers
-    // correctly under its own (accurate) title. Disabled in favor of
-    // server-timing-exposure, which uses a tighter, genuinely-sensitive
-    // keyword list. ref: AUDIT-008#scanner-05
-    return null;
-  },
-
   // ── Referrer-Policy strict variants ─────────────────────────────────────
 
   "referrer-policy-no-referrer-strict-origin-when-cross-origin": (
@@ -1146,17 +988,6 @@ export const detectors: Record<string, DetectFn> = {
     if (!v) return null;
     if (/includeSubDomains/i.test(v)) return null;
     return "HSTS is set but does not include the includeSubDomains directive.";
-  },
-
-  // ── X-Content-Type-Options coverage ─────────────────────────────────────
-
-  "x-content-type-options-not-nosniff": (_url, _headers) => {
-    // Duplicate of nosniff-incorrect (identical "present but not nosniff"
-    // condition on the same header). This id's JSON metadata also described
-    // the unrelated "header missing" scenario (already covered by
-    // xcto-missing), not what this detector actually checked. Disabled in
-    // favor of nosniff-incorrect. ref: AUDIT-008#scanner-05
-    return null;
   },
 
   // ── Cookie __Host- prefix attribute check ───────────────────────────────
@@ -1268,15 +1099,6 @@ export const detectors: Record<string, DetectFn> = {
     return ppAllowsFeature(headers, "window-management");
   },
   // ── Form / HTML element checks ──────────────────────────────────────────
-  "form-no-action-https": (_url, _headers, _body) => {
-    // Exact duplicate of form-action-http's condition (same <form
-    // action="http://..."> match), minus the url.startsWith("https://")
-    // gate -- so on the common case of scanning an HTTPS page, one
-    // offending form fired both checks for the same evidence. Disabled in
-    // favor of form-action-http, which correctly scopes to HTTPS pages
-    // (the actually mixed-content-relevant scenario).
-    return null;
-  },
   "meta-redirect-no-url": (_url, _headers, body) => {
     if (!body) return null;
     // Every refresh tag on the page is judged, not just the first. Reading

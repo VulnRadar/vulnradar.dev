@@ -121,25 +121,6 @@ const fixtures: DetectorFixtures = {
   ],
 
   // ── HSTS / Expect-CT ──────────────────────────────────────────────
-  "expect-ct-missing": [
-    {
-      description:
-        "deprecated header, no longer honored by any browser -- never fires, even on a plain https site with no header at all",
-      url: "https://example.com/",
-      expect: "skip",
-    },
-    {
-      description: "https site WITH Expect-CT still does not fire",
-      url: "https://example.com/",
-      headers: { "expect-ct": "max-age=86400, enforce" },
-      expect: "skip",
-    },
-    {
-      description: "http site (Expect-CT doesn't apply)",
-      url: "http://example.com/",
-      expect: "skip",
-    },
-  ],
 
   // ── HTTP method override ──────────────────────────────────────────
   "x-forwarded-method-override": [

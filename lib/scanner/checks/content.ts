@@ -894,22 +894,6 @@ export const detectors: Record<string, DetectFn> = {
     return `Found ${wsConnections.length} WebSocket connection(s) without apparent origin validation.`;
   },
 
-  // Always null: a strict duplicate of client-side.ts's
-  // postmessage-no-origin-check, which fires on the same evidence (an
-  // addEventListener("message", ...) handler with no origin comparison) at
-  // the same "high" severity, so a single unvalidated listener was scored
-  // twice. That version is also the better detector: it bounds the
-  // origin search to each handler's own following region and matches any
-  // identifier's `.origin`, where this one tested the WHOLE body for only
-  // the literal names event/e/msg -- so an unrelated `location.origin`
-  // anywhere on the page suppressed it (false negative) and a handler
-  // naming its parameter `evt` or `ev` did not (false positive).
-  // Kept as a null stub rather than deleted so content.json's entry (and
-  // its /checks catalog page) still resolves a detector, the same
-  // stub-in-the-sync-map pattern sourcemap-sourcescontent-exposed uses.
-  // ref: AUDIT-008#content-09
-  "postmessage-origin": () => null,
-
   "postmessage-star-origin": (_url, _headers, body) => {
     // [,)] rather than \) after the origin: postMessage takes an optional
     // third argument, the transfer list, and `win.postMessage(msg, "*", [port])`

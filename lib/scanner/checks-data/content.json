@@ -3179,36 +3179,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "postmessage-origin",
-    "type": "body-pattern",
-    "title": "postMessage receiver does not validate origin",
-    "category": "content",
-    "severity": "high",
-    "description": "A message event listener processes messages without checking event.origin, accepting messages from any window.",
-    "evidence": "Message event handler without origin validation detected at {{url}}.",
-    "riskImpact": "Without origin validation, any malicious page in the same browser can send postMessage events to your page and have them processed, potentially triggering privileged actions, passing tokens, or modifying application state.",
-    "explanation": "Every postMessage receiver must validate event.origin against a trusted allowlist before processing the message.",
-    "fixSteps": [
-      "Add an origin check: if (event.origin !== \"https://trusted.example.com\") return;",
-      "Use a Set of allowed origins for multiple trusted partners",
-      "Never use \"*\" as targetOrigin when sending sensitive data"
-    ],
-    "codeExamples": [
-      {
-        "label": "Validate origin in postMessage handler",
-        "language": "javascript",
-        "code": "// Unsafe: accepts messages from any origin\nwindow.addEventListener('message', (event) => {\n  processMessage(event.data);\n});\n\n// Safe: check origin before processing\nwindow.addEventListener('message', (event) => {\n  if (event.origin !== 'https://trusted.example.com') return;\n  processMessage(event.data);\n});"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 309,
-    "cwe": "CWE-346",
-    "owasp": "A05:2021"
-  },
-  {
     "id": "dom-xss-sinks",
     "type": "body-pattern",
     "title": "DOM XSS sinks with user-controlled input",

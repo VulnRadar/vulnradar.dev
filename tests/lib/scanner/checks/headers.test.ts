@@ -238,18 +238,6 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "x-content-type-options-not-nosniff": [
-    {
-      // Disabled: exact duplicate of nosniff-incorrect on the same
-      // condition. ref: AUDIT-008#scanner-05
-      description:
-        "disabled duplicate of nosniff-incorrect — never fires even with an invalid value present",
-      url: "https://example.com/",
-      headers: { "x-content-type-options": "sniff" },
-      expect: "skip",
-    },
-  ],
-
   "xpcdp-missing": [
     {
       // Flash, the only thing that ever read a crossdomain.xml policy file,
@@ -271,23 +259,6 @@ const fixtures: DetectorFixtures = {
       headers: { "x-permitted-cross-domain-policies": "all" },
       expect: "fire",
       evidenceIncludes: "not 'none'",
-    },
-  ],
-
-  "origin-agent-cluster-missing": [
-    {
-      // A memory and performance hint the spec says a browser may ignore in
-      // either direction, and not a security boundary. The same header is
-      // already stubbed as a performance hint in checks/configuration.ts.
-      description: "no Origin-Agent-Cluster",
-      url: "https://example.com/",
-      expect: "skip",
-    },
-    {
-      description: "Origin-Agent-Cluster present",
-      url: "https://example.com/",
-      headers: { "origin-agent-cluster": "?1" },
-      expect: "skip",
     },
   ],
 
@@ -400,25 +371,6 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "referrer-policy-missing": [
-    {
-      // Every browser since 2020 defaults to strict-origin-when-cross-origin
-      // with no header set: the origin goes cross-origin, the path and query
-      // do not, and a downgrade sends nothing. The leak this reported does
-      // not happen. referrer-policy-unsafe still catches a policy that opts
-      // back into it.
-      description: "no Referrer-Policy",
-      url: "https://example.com/",
-      expect: "skip",
-    },
-    {
-      description: "Referrer-Policy present",
-      url: "https://example.com/",
-      headers: { "referrer-policy": "no-referrer" },
-      expect: "skip",
-    },
-  ],
-
   "referrer-policy-unsafe": [
     {
       description: "unsafe-url leaks full URL",
@@ -488,23 +440,6 @@ const fixtures: DetectorFixtures = {
       description: "COOP present",
       url: "https://example.com/",
       headers: { "cross-origin-opener-policy": "same-origin" },
-      expect: "skip",
-    },
-  ],
-
-  "corp-missing": [
-    {
-      // Disabled: exact duplicate of cross-origin-resource-policy-report-only-missing
-      // (same header, same condition — CORP has no separate Report-Only
-      // variant). ref: AUDIT-008#scanner-05
-      description: "disabled duplicate — never fires even with CORP absent",
-      url: "https://example.com/",
-      expect: "skip",
-    },
-    {
-      description: "CORP present",
-      url: "https://example.com/",
-      headers: { "cross-origin-resource-policy": "same-origin" },
       expect: "skip",
     },
   ],
@@ -602,24 +537,6 @@ const fixtures: DetectorFixtures = {
       description: "COEP present",
       url: "https://example.com/",
       headers: { "cross-origin-embedder-policy": "require-corp" },
-      expect: "skip",
-    },
-  ],
-
-  "xxss-protection-missing": [
-    {
-      // Taking this finding's advice means setting '1; mode=block', which
-      // re-enables a filter no browser still ships and that shipped its own
-      // exploitable XSS bugs. x-xss-protection-disabled, in the same file,
-      // declines to flag the '0' this would have argued against.
-      description: "no X-XSS-Protection AND no CSP",
-      url: "https://example.com/",
-      expect: "skip",
-    },
-    {
-      description: "CSP present (sufficient)",
-      url: "https://example.com/",
-      headers: { "content-security-policy": "default-src 'self'" },
       expect: "skip",
     },
   ],
@@ -823,15 +740,6 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "x-request-id-exposed": [
-    {
-      description: "X-Request-Id is standard tracing infra, not a finding",
-      url: "https://example.com/",
-      headers: { "x-request-id": "abc-123" },
-      expect: "skip",
-    },
-  ],
-
   // ── Cache / ETag / Date ─────────────────────────────────────────────
 
   "etag-inode": [
@@ -840,21 +748,6 @@ const fixtures: DetectorFixtures = {
       url: "https://example.com/",
       headers: { etag: '"65d4a-1234-5f0a9bcd"' },
       expect: "fire",
-    },
-  ],
-
-  "age-header-reveals-cdn": [
-    {
-      description: "Age header is standard caching behavior, not a finding",
-      url: "https://example.com/",
-      headers: { age: "300" },
-      expect: "skip",
-    },
-    {
-      description: "Age: 0 (just-fetched)",
-      url: "https://example.com/",
-      headers: { age: "0" },
-      expect: "skip",
     },
   ],
 
@@ -908,18 +801,6 @@ const fixtures: DetectorFixtures = {
   // cookies.ts used to carry a second, dead implementation of this id that
   // flagged every cookie. It was deleted, and these fixtures moved here so the
   // detector that actually runs is the one under test. ref: AUDIT-009#dup-09
-
-  "cookie-security": [
-    {
-      // Retired: it re-tested HttpOnly, Secure and SameSite on the same
-      // session-named cookies the per-attribute checks select, at high, so one
-      // cookie with no attributes was reported by it and by all three of them.
-      description:
-        "removed, duplicate of cookie-httponly/secure/samesite-missing",
-      cookies: ["session=abc"],
-      expect: "skip",
-    },
-  ],
 
   // ── Clear-site-data / Critical ──────────────────────────────────────
 
@@ -1029,47 +910,7 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "server-timing-sensitive-key-leak": [
-    {
-      // Disabled: duplicate of server-timing-exposure, and its keyword list
-      // included "cache" — which matched the benign, extremely common
-      // cache;dur=NN CDN timing entry. ref: AUDIT-008#scanner-05
-      description: "disabled duplicate of server-timing-exposure — never fires",
-      url: "https://example.com/",
-      headers: { "server-timing": "db;dur=42" },
-      expect: "skip",
-    },
-  ],
-
-  "cf-ray-header": [
-    {
-      description: "CF-Ray is standard Cloudflare header, not a finding",
-      url: "https://example.com/",
-      headers: { "cf-ray": "12345abc-SJC" },
-      expect: "skip",
-    },
-  ],
-
   // ── Deprecated / bad ────────────────────────────────────────────────
-
-  "x-xss-protection-disabled": [
-    {
-      // X-XSS-Protection: 0 is the OWASP/Mozilla-recommended value (and
-      // Helmet.js's default) -- the legacy filter it disables was itself an
-      // XSS/info-disclosure risk and no modern browser implements it anymore.
-      description:
-        "X-XSS-Protection: 0 (current best-practice value) does not fire",
-      url: "https://example.com/",
-      headers: { "x-xss-protection": "0" },
-      expect: "skip",
-    },
-    {
-      description: "X-XSS-Protection: 1; mode=block (older XSS auditor)",
-      url: "https://example.com/",
-      headers: { "x-xss-protection": "1; mode=block" },
-      expect: "skip",
-    },
-  ],
 
   // ── CSP substrategies ───────────────────────────────────────────────
 
@@ -1255,20 +1096,6 @@ const fixtures: DetectorFixtures = {
         "meta CSP value containing single-quoted tokens ('self') is read in full, not truncated at the first quote",
       url: "https://example.com/",
       body: "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; frame-src 'self'\">",
-      expect: "skip",
-    },
-  ],
-
-  "csp-frame-ancestors": [
-    {
-      // Disabled: every case this fired was a strict subset of
-      // clickjack-missing's condition, so it always double-counted the same
-      // "no clickjacking protection at all" evidence.
-      // ref: AUDIT-008#scanner-05
-      description:
-        "disabled duplicate of clickjack-missing — never fires even with no CSP frame-ancestors and no X-Frame-Options",
-      url: "https://example.com/",
-      headers: { "content-security-policy": "default-src 'self'" },
       expect: "skip",
     },
   ],
@@ -1887,28 +1714,6 @@ const fixtures: DetectorFixtures = {
       description: "X-Debug-Token present",
       headers: { "x-debug-token": "abc-123" },
       expect: "fire",
-    },
-  ],
-  "x-vercel-id": [
-    {
-      description:
-        "removed — CDN presence is not actionable security information",
-      headers: { "x-vercel-id": "iad1::abc123" },
-      expect: "skip",
-    },
-  ],
-  "x-cache-header": [
-    {
-      description: "removed — cache state is not a security finding",
-      headers: { "x-cache": "HIT from cache.example.com" },
-      expect: "skip",
-    },
-  ],
-  "nel-header-missing": [
-    {
-      description:
-        "retired: NEL is an optional reporting API, not a security control",
-      expect: "skip",
     },
   ],
   "access-control-expose-broad": [

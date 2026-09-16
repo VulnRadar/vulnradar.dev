@@ -254,6 +254,12 @@ const CHANGELOG: Release[] = [
         category: "security",
       },
       {
+        icon: Lock,
+        label: "Findings No Longer Store Live Cookie Values",
+        desc: "The newer cookie and token checks attached the exact Set-Cookie line as proof, and for a session cookie that line is the session. The form check quoted pre-filled input values the same way. Proof is saved with the scan, shown on the results page and in exports, and passed to the AI verifier. Cookie values are now replaced with their length and input values are masked, while the attributes each finding is actually about stay visible. A test runs every page check against a response full of secrets and fails if any of them reaches a finding.",
+        category: "security",
+      },
+      {
         icon: Mail,
         label: "Send a Broadcast to Yourself Before Sending It to Everyone",
         desc: "The broadcast composer had a preview and a send button and nothing in between, and the preview cannot show what Gmail or Outlook will actually do with the message. Send test to me delivers the composed message to your own inbox through the same email layout, with your own unsubscribe link. It writes nothing: no draft, no recipient records, no history entry, so an unsaved draft can be tested as often as needed. The subject is prefixed [TEST] so it cannot be confused with the real send, and it is rate limited.",
@@ -339,6 +345,48 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: ScanSearch,
+        label: "Secret Checks Now See Inline Scripts",
+        desc: "The provider-specific secret checks removed every script element before searching, so that code examples on documentation pages would not trigger them. That also removed the page's own inline scripts, which is where a leaked key usually sits, so a key assigned in a bootstrap script was never reported. They now search inline scripts too, leaving out structured data, the framework payloads that carry page text, and code examples, so documentation still does not report itself.",
+        category: "engine",
+      },
+      {
+        icon: Globe,
+        label: "Checks Judge the Page That Was Actually Fetched",
+        desc: "A scan of an http:// address that redirected to https judged the https page as if it had arrived over plain HTTP. The HSTS check, which only applies to HTTPS, never fired, the plain-HTTP transport finding fired at high severity against a site that does redirect, and the mixed-content and form checks were skipped. Single scans, crawls and authenticated scans now evaluate the final URL. Finding ids are still keyed on the address you asked for, so triage marks and regression baselines carry over.",
+        category: "engine",
+      },
+      {
+        icon: Layers,
+        label: "One Misconfiguration, One Finding",
+        desc: "Newer checks declared which older checks they duplicate, but the older checks never got the matching entry, so the two never merged. One session cookie with no attributes produced nine findings, one policy with a wildcard and an http: source produced four, and a frameable page, a target=_blank link and an http:// image were each reported two or three times. They now merge into one finding that lists the other checks that agreed. Tests fail on a merge rule naming a check that does not exist or a group with a single member, which is how seven rules had quietly stopped doing anything.",
+        category: "engine",
+      },
+      {
+        icon: ShieldCheck,
+        label: "Content Security Policy Is Read From Both Places It Can Be Set",
+        desc: "Eleven policy checks read only the response header, so a site delivering its policy in a meta tag was told it had no object-src, no upgrade-insecure-requests, and so on. They now read both, and directives a meta policy is not allowed to set, such as frame-ancestors and sandbox, stay header-only. Also corrected: a missing frame-src is not reported when child-src or default-src covers it, a directive written in capitals is recognised, sha384 and sha512 hashes count as hashes, a bare https: source in script-src is reported as the wildcard it is, and an HSTS header with an invalid max-age is treated as absent, because browsers ignore it.",
+        category: "engine",
+      },
+      {
+        icon: FileSearch,
+        label: "Writing About a Vulnerability No Longer Scores as Having One",
+        desc: "The source-code checks read tutorial snippets inside pre and code blocks as the site's own code, so a documentation page showing a vulnerable example was reported as vulnerable. The debug-mode, stack-trace and internal-path checks did the same with example output. They now skip code examples, the way the API, supply-chain and AI-generated-code checks already did, and a real stack trace printed into the page is still found. The Django debug marker also matches the page Django actually renders.",
+        category: "engine",
+      },
+      {
+        icon: ShieldAlert,
+        label: "A Certificate for the Wrong Site Is Now a Finding",
+        desc: "A certificate that did not cover the scanned hostname, or that chained to an untrusted root, dropped the TLS grade to F with no finding explaining why, because only expired and self-signed certificates had one. Both are reported at high severity now, and the hostname case lists the names the certificate does cover. SPF records were also counted short: bare a, mx and ptr mechanisms each cost one of the ten allowed DNS lookups and were not counted, so the common v=spf1 a mx include: record could exceed the limit unreported. A record ending in ?all, which publishes no policy, is reported instead of passing.",
+        category: "engine",
+      },
+      {
+        icon: CheckCheck,
+        label: "Wrong Verdicts Corrected",
+        desc: "Sites enforcing Trusted Types were told they were not, because the check searched the policy for the JavaScript API's name instead of the directive. Algolia's public search key, which Algolia's own documentation names ApiKey, was reported as a leaked admin key at critical. One check stated that jsonwebtoken accepts any algorithm when none is specified, which version 9 does not, and reported every verify call without one as critical; only an explicit none is reported now. Hardening guides that mention /.git/config were reported as exposing it. In the other direction: postMessage calls with a transfer list were missed, one Secure cookie hid every insecure cookie in the same response, a library pinned as jquery@1.12.4 the way jsDelivr and unpkg load it was never matched, Docker Hub organization tokens were not recognised, and neither was the /swagger-ui path.",
+        category: "engine",
+      },
+      {
         icon: Database,
         label: "Pagination Parameters Can No Longer Break a Request",
         desc: "Seven routes each parsed page and limit on their own, and three got an edge case wrong: page=0 produced a negative offset and a 500 error, a non-numeric limit reached the database as NaN, and a value like 1e21 passed validation and overflowed. Every route now uses one parser that handles each of those cases.",
@@ -400,9 +448,21 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Trash2,
+        label: "Checks That Could Never Report Anything",
+        desc: "Fifty checks had been retired over earlier releases, each for a sound reason: a duplicate of another check, a header browsers no longer use, a key that is public by design. Their detectors were reduced to returning nothing, but the checks stayed defined, so they were still counted in the advertised total and still had a page in the checks catalog, a few with titles admitting they were disabled duplicates. They are gone, and the count moves from 905+ to 855+, the number a scan actually runs. Separately, 111 detectors that could not run at all were deleted: 38 had no definition, and 73 were second or third copies of a check implemented in another file, some with tests that passed while the code they tested never ran. Tests now fail on all three.",
+        category: "removed",
+      },
+      {
+        icon: Trash2,
         label: "Code Nothing Used",
         desc: "About 260 lines removed after checking every import, script, worker and test. Eight of the animation module's thirteen exports had no users, including a second, weaker copy of the class-name helper that was easy to import by mistake. A deprecated IP address helper still had three callers five months after its deprecation; those now call the real function and the wrapper is gone. Several other unused exports and types went with them.",
         category: "removed",
+      },
+      {
+        icon: Gauge,
+        label: "Four Findings Lowered to Low Severity",
+        desc: "Access-Control-Allow-Origin: * (browsers never send credentials to a wildcard), published Swagger or OpenAPI documentation, TRACE listed in an Allow header, and GraphQL introspection text found by keyword. Each overstated what the check can observe. The confirmed versions, from the active HTTP method probe and the live introspection query, keep medium severity. A CI gate set to fail on medium no longer trips on these four.",
+        category: "changed",
       },
       {
         icon: Package,

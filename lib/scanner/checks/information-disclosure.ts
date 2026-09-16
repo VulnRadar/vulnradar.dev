@@ -41,26 +41,6 @@ function hasGrafanaPathTraversal(version: string): boolean {
 }
 
 export const detectors: Record<string, DetectFn> = {
-  // ── privacy / compliance ─────────────────────────────────────────────────
-
-  "privacy-policy-missing": (_url, _headers, _body) => {
-    // Absence of a privacy policy link is a legal/compliance concern, not a
-    // security vulnerability. Removed to avoid noise on every homepage.
-    return null;
-  },
-
-  "terms-of-service-missing": (_url, _headers, _body) => {
-    // Absence of ToS is a legal concern, not a security vulnerability.
-    return null;
-  },
-
-  // ── Robots / site map ────────────────────────────────────────────────────
-
-  "sitemap-missing": (_url, _headers, _body) => {
-    // A missing sitemap is an SEO concern, not a security vulnerability.
-    return null;
-  },
-
   // ── New JSON entries ─────────────────────────────────────────────────────
 
   "html-comment-leaks": (_url, _headers, body) => {
@@ -319,20 +299,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     // Removed second branch: absence of CORS headers on an API subdomain is the safe default,
     // not a vulnerability. Firing on every api.* URL with no ACAO generated FPs on every API.
-    return null;
-  },
-
-  // ── Public-but-fingerprintable keys ──────────────────────────────────────
-
-  "recaptcha-key-leaked": (_url, _headers, _body) => {
-    // reCAPTCHA SITE keys are public by design — they must be included in
-    // client-side code and are visible to every visitor. Not a security finding.
-    return null;
-  },
-
-  "ga-tracking-id-leaked": (_url, _headers, _body) => {
-    // Google Analytics tracking IDs are public by design (embedded in client JS).
-    // Exposing them is intentional and required for GA to function. Not a finding.
     return null;
   },
 

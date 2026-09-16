@@ -116,7 +116,7 @@ remediation documentation in the docs.
 - [medium  ] `cs-document-domain-relaxation` [body-pattern] - document.domain Reassigned to Relax the Same-Origin Policy
 - [high    ] `cs-websocket-eval-message-data` [body-pattern] - WebSocket Message Data Passed Directly to eval()
 
-### code (120)
+### code (107)
 - [critical] `insecure-form-submission` [combined] - Form Submits Data Over Insecure HTTP
 - [medium  ] `prototype-pollution` [body-pattern] - Potential Prototype Pollution Sinks Detected
 - [high    ] `command-injection` [body-pattern] - Potential Command Injection Vectors
@@ -133,30 +133,19 @@ remediation documentation in the docs.
 - [high    ] `path-traversal-indicators` [body-pattern] - Path Traversal Indicators
 - [high    ] `ssti-indicators` [body-pattern] - Template Injection Indicators
 - [medium  ] `command-injection-indicators` [body-pattern] - Command Injection Parameter Names
-- [high    ] `eval-usage` [body-pattern] - eval() Code Injection Risk
 - [high    ] `function-constructor` [body-pattern] - Function Constructor Usage
-- [medium  ] `settimeout-string` [body-pattern] - setTimeout/setInterval with String
 - [critical] `code-cmdi-exec` [body-pattern] - child_process.exec with concatenated command string
 - [medium  ] `localstorage-sensitive` [body-pattern] - Sensitive Data in localStorage
 - [medium  ] `sessionstorage-tokens` [body-pattern] - Tokens in sessionStorage
 - [low     ] `indexeddb-sensitive` [body-pattern] - IndexedDB Storing Sensitive Data
 - [medium  ] `window-name-storage` [body-pattern] - Data Storage in window.name
 - [info    ] `service-worker-insecure` [body-pattern] - Service Worker Registration
-- [info    ] `push-api-usage` [body-pattern] - Push Notification API Usage
-- [info    ] `payment-request-api` [body-pattern] - Payment Request API Usage
-- [info    ] `credential-management-api` [body-pattern] - Credential Management API Usage
-- [info    ] `webauthn-usage` [body-pattern] - WebAuthn/Passkey Implementation
-- [info    ] `crypto-subtle-usage` [body-pattern] - SubtleCrypto API Usage
-- [info    ] `wasm-usage` [body-pattern] - WebAssembly Usage Detected
-- [low     ] `console-log-production` [body-pattern] - Console Logging in Production
 - [low     ] `debugger-statement` [body-pattern] - Debugger Statement in Code
-- [low     ] `code-fetch-without-credentials` [header] - fetch() call without credentials mode
 - [info    ] `code-axios-defaults-baseurl` [header] - axios.defaults.baseURL set to dev server
 - [high    ] `code-eval-setinterval-string` [header] - setInterval with string arg
 - [medium  ] `code-object-assign-from-user` [header] - Object.assign source from user input
 - [low     ] `code-spread-into-globals` [header] - Spread into globals
 - [medium  ] `code-cookie-without-httponly` [header] - document.cookie write missing HttpOnly
-- [medium  ] `code-cookie-write-no-secure` [header] - document.cookie write missing Secure flag
 - [low     ] `code-cookie-write-no-samesite` [header] - document.cookie write missing SameSite
 - [medium  ] `code-window-open-without-noopener` [header] - window.open() without noopener
 - [high    ] `code-jquery-html` [header] - jQuery .html() with user input
@@ -208,13 +197,11 @@ remediation documentation in the docs.
 - [critical] `code-jwt-none-algorithm` [body-pattern] - JWT verifier allows alg: none
 - [medium  ] `code-csp-no-trustedtypes` [body-pattern] - No Trusted Types policy created
 - [medium  ] `code-csp-missing-trusted-types` [body-pattern] - No Content-Security-Policy enforces Trusted Types
-- [high    ] `code-auth-localstorage-tokens` [body-pattern] - Auth tokens stored in localStorage
 - [critical] `code-auth-sessionstorage-passwords` [body-pattern] - Passwords stored in sessionStorage
 - [high    ] `code-cookie-samesite-none-http` [body-pattern] - SameSite=None cookie on HTTP page
 - [medium  ] `code-cookie-missing-secure-http` [body-pattern] - Cookie written without Secure flag on HTTP
 - [high    ] `code-clickjack-target-blank-js-href` [body-pattern] - target=_blank with javascript: href
 - [medium  ] `code-clickjack-x-frame-options` [body-pattern] - Missing X-Frame-Options / frame-ancestors CSP
-- [high    ] `code-timing-no-constant-time-compare` [body-pattern] - Non-constant-time signature comparison
 - [high    ] `code-timing-hmac-equality` [body-pattern] - HMAC verification with === operator
 - [critical] `code-cloud-aws-hardcoded-credentials` [body-pattern] - Hardcoded AWS credentials in @aws-sdk
 - [high    ] `code-cloud-aws-s3-upload-no-acl` [body-pattern] - S3 upload without ACL restriction
@@ -238,7 +225,7 @@ remediation documentation in the docs.
 - [critical] `code-deser-java-objectinputstream` [body-pattern] - Java ObjectInputStream Deserializes Request Data
 - [critical] `code-deser-ruby-marshal-load` [body-pattern] - Ruby Marshal.load() Called With Request Data
 
-### configuration (24)
+### configuration (23)
 - [medium  ] `ratelimit-policy-missing` [combined] - No Rate-Limit Policy Detected
 - [medium  ] `vary-header-cookie` [header] - Vary: Cookie Missing on Cookie-Bearing Response
 - [low     ] `cookie-too-large` [header] - Set-Cookie Header Exceeds 4 KB
@@ -253,7 +240,6 @@ remediation documentation in the docs.
 - [info    ] `x-nextjs-cache` [header-value] - X-Nextjs-Cache Reveals Next.js ISR Cache State
 - [info    ] `x-netlify-cache` [header-value] - X-Netlify-Cache Exposes CDN Cache State
 - [info    ] `x-cache-hits` [header-value] - X-Cache-Hits Exposes Cache Hit Count
-- [info    ] `vary-header-missing-user-agent` [header] - Vary Header Missing User-Agent on UA-Dependent Responses
 - [low     ] `server-timing-allow-origin-public` [header] - Server-Timing Exposed Without Timing-Allow-Origin Gate
 - [medium  ] `debug-via-cookie` [header] - Debug Mode Toggled via Cookie
 - [info    ] `x-cache-status-cloudflare` [header] - CF-Cache-Status Exposes Cloudflare Cache State
@@ -264,7 +250,7 @@ remediation documentation in the docs.
 - [critical] `spring-boot-h2-console-exposed` [body-pattern] - Spring Boot H2 Database Console Reachable
 - [high    ] `phpmyadmin-login-exposed` [body-pattern] - phpMyAdmin Login Page Publicly Reachable
 
-### content (144)
+### content (143)
 - [medium  ] `open-redirect` [body-pattern] - Potential Open Redirect Parameters
 - [high    ] `directory-listing` [body-pattern] - Directory Listing Appears Enabled
 - [medium  ] `sensitive-files` [body-pattern] - Sensitive File References Detected
@@ -380,7 +366,6 @@ remediation documentation in the docs.
 - [info    ] `wp-login-exposed` [body-pattern] - WordPress login page publicly accessible
 - [high    ] `websocket-unencrypted` [body-pattern] - WebSocket connection uses unencrypted ws:// protocol
 - [high    ] `cross-site-websocket` [body-pattern] - WebSocket connection without origin validation
-- [high    ] `postmessage-origin` [body-pattern] - postMessage receiver does not validate origin
 - [high    ] `dom-xss-sinks` [body-pattern] - DOM XSS sinks with user-controlled input
 - [medium  ] `exposed-stack-trace` [body-pattern] - Stack trace exposed in HTTP response
 - [high    ] `sql-error-in-page` [body-pattern] - SQL error message in page content
@@ -410,29 +395,20 @@ remediation documentation in the docs.
 - [low     ] `clipboard-hijack-pattern` [body-pattern] - Copy Event Listener Rewrites Clipboard Content
 - [high    ] `sourcemap-sourcescontent-exposed` [network-probe] - Source Map Publicly Exposes Original Source Code
 
-### cookies (29)
+### cookies (20)
 - [low     ] `cookie-domain-broad` [combined] - Cookie Domain Attribute Is Too Broad
 - [low     ] `cookie-secure-missing` [combined] - Cookie Missing Secure Attribute
-- [info    ] `cookie-partitioned-missing` [combined] - Third-Party Cookie Missing Partitioned Attribute
 - [high    ] `cookie-host-prefix-not-secure` [header] - __Host- Prefix Cookie Missing Secure Attribute
 - [high    ] `cookie-host-prefix-wrong-path` [header] - __Host- Prefix Cookie with Non-Root Path
 - [high    ] `cookie-secure-prefix-not-secure` [header] - __Secure- Prefix Cookie Missing Secure Attribute
 - [low     ] `cookie-expires-too-far` [header] - Cookie Expires/Max-Age Exceeds 1 Year
 - [info    ] `cookie-name-disclosure` [header] - Cookie Name Leaks Framework or Language
-- [medium  ] `cookie-path-cross-app` [header] - Cookie Path Crosses Application Boundary
 - [info    ] `cookie-expires-in-past` [header] - Cookie Expires Is in the Past
-- [info    ] `cookie-max-age-zero` [header] - Cookie Max-Age=0 Deletion Pattern
-- [medium  ] `cookie-no-samesite-third-party` [header] - Third-Party Cookie Without SameSite
 - [high    ] `cookie-partitioned-without-secure` [header] - Partitioned Cookie Missing Secure Attribute
-- [high    ] `cookie-third-party-no-samesite-none-secure` [header] - Third-Party Cookie Missing SameSite=None; Secure
-- [high    ] `cookie-host-prefix-injection-subdomain` [header] - Cookie Prefix Injection via User-Controlled Subdomain
 - [medium  ] `cookie-httponly-missing` [header] - Cookie Missing HttpOnly Attribute
 - [medium  ] `cookie-samesite-missing` [header] - Cookie Missing SameSite Attribute
-- [high    ] `cookie-prefix-invalid` [header] - Cookie Prefix Used Incorrectly
 - [info    ] `cookie-no-secure-prefix` [header] - Sensitive Cookie Without __Secure- or __Host- Prefix
 - [high    ] `set-cookie-samesite-none-no-secure` [header] - SameSite=None Cookie Missing Secure Attribute
-- [high    ] `session-cookie-flags` [header] - Session Cookie Missing Security Flags
-- [medium  ] `cookie-domain-set-too-loose` [header] - Cookie Domain Scoped to Parent Domain
 - [medium  ] `cookie-no-csrf-token` [header] - No CSRF Token Cookie Detected
 - [low     ] `cookie-samesite-invalid-value` [header] - Cookie Has an Invalid SameSite Value
 - [low     ] `cookie-duplicate-name-different-path` [header] - Cookie Set Multiple Times With Different Paths
@@ -510,19 +486,15 @@ remediation documentation in the docs.
 - [medium  ] `email-mta-sts-mx-mismatch` [network-probe] - MTA-STS policy does not cover every published MX host
 - [info    ] `email-bimi-without-vmc` [network-probe] - BIMI record publishes a logo with no verified mark certificate
 
-### headers (138)
+### headers (118)
 - [high    ] `hsts-missing` [combined] - Missing HTTP Strict Transport Security (HSTS)
 - [high    ] `csp-missing` [header-missing] - Missing Content Security Policy (CSP)
 - [medium  ] `clickjack-missing` [combined] - Missing Clickjacking Protection
-- [low     ] `x-content-type-options-not-nosniff` [header-missing] - X-Content-Type-Options Set to Invalid Value (disabled duplicate)
-- [low     ] `referrer-policy-missing` [header-missing] - Missing Referrer-Policy Header
 - [low     ] `permissions-policy-missing` [combined] - Missing Permissions-Policy Header
 - [low     ] `cors-wildcard` [combined] - Wildcard CORS Policy
-- [low     ] `xxss-protection-missing` [combined] - Missing X-XSS-Protection Header
 - [medium  ] `cors-credentials-wildcard` [combined] - Dangerous CORS Configuration
 - [info    ] `cross-origin-resource-policy-report-only-missing` [header-missing] - Missing Cross-Origin-Resource-Policy (CORP)
 - [medium  ] `csp-report-only` [combined] - CSP Report-Only Without Enforcement
-- [medium  ] `weak-csp-directives` [combined] - Content Security Policy Contains Weak Directives
 - [info    ] `csp-framework-required` [combined] - CSP Contains Framework-Required Directives
 - [info    ] `dns-prefetch-on` [combined] - DNS Prefetch Explicitly Enabled
 - [medium  ] `csp-frame-ancestors-missing` [combined] - Missing CSP frame-ancestors Directive
@@ -539,18 +511,15 @@ remediation documentation in the docs.
 - [low     ] `csp-no-default-src` [combined] - CSP Missing default-src Fallback
 - [low     ] `timing-allow-origin-wide` [header] - Timing-Allow-Origin wildcard
 - [medium  ] `referrer-policy-unsafe` [header-present] - Unsafe Referrer-Policy Value
-- [low     ] `x-xss-protection-disabled` [header-present] - X-XSS-Protection Explicitly Disabled
 - [medium  ] `csp-unsafe-hashes` [header-value] - CSP Uses unsafe-hashes
 - [low     ] `csp-frame-src-missing` [combined] - CSP Missing frame-src Directive
 - [medium  ] `csp-object-src-unsafe` [combined] - CSP Allows Object/Embed Sources
 - [info    ] `csp-script-src-self-only` [combined] - CSP script-src Too Restrictive
-- [medium  ] `csp-frame-ancestors` [combined] - Missing Clickjacking Protection (disabled duplicate)
 - [medium  ] `x-frame-options-invalid` [header-present] - Invalid X-Frame-Options Value
 - [medium  ] `cache-control-no-store-missing` [combined] - Sensitive Page Missing no-store
 - [info    ] `pragma-no-cache-legacy` [header-present] - Legacy Pragma Header Used
 - [info    ] `expires-past` [header-present] - Expires Header Set to Past
 - [info    ] `coop-missing` [header] - Missing Cross-Origin-Opener-Policy (COOP) Header
-- [info    ] `corp-missing` [header] - Missing Cross-Origin-Resource-Policy (CORP) Header (disabled duplicate)
 - [info    ] `charset-meta-missing` [header] - Missing <meta charset> Declaration
 - [medium  ] `access-control-allow-headers-wildcard` [header] - CORS Allow-Headers Wildcard
 - [medium  ] `cors-null-origin-allowed` [header] - CORS Allows 'null' Origin
@@ -579,19 +548,16 @@ remediation documentation in the docs.
 - [info    ] `permissions-policy-picture-in-picture-blocked` [header] - Permissions-Policy picture-in-picture allowed
 - [info    ] `permissions-policy-storage-access-blocked` [header] - Permissions-Policy storage-access allowed
 - [info    ] `permissions-policy-window-management-blocked` [header] - Permissions-Policy window-management allowed
-- [low     ] `server-timing-sensitive-key-leak` [header] - Server-Timing exposes sensitive key
 - [medium  ] `cookie-host-prefix-attribute-mismatch` [header] - __Host- cookie prefix with wrong attributes
 - [medium  ] `xcto-missing` [header-missing] - Missing X-Content-Type-Options header
 - [info    ] `coep-missing` [header-missing] - Missing Cross-Origin-Embedder-Policy header
 - [low     ] `cache-control-missing` [header-missing] - Missing Cache-Control header
-- [info    ] `nel-header-missing` [header-missing] - NEL header not configured
 - [low     ] `access-control-expose` [header-missing] - Sensitive header exposed via Access-Control-Expose-Headers
 - [low     ] `access-control-expose-broad` [header-missing] - Access-Control-Expose-Headers lists many response headers
 - [low     ] `access-control-max-age-long` [header-missing] - CORS preflight cache time is too long
 - [low     ] `csp-no-upgrade-insecure` [header-missing] - CSP missing upgrade-insecure-requests directive
 - [medium  ] `csp-data-uri-allowed` [header-missing] - CSP allows data: URIs in script or object sources
 - [medium  ] `csp-allows-http-sources` [header] - CSP script-src allows HTTP sources
-- [medium  ] `excessive-permissions` [header-missing] - Permissions-Policy grants excessive browser feature access (disabled duplicate)
 - [info    ] `feature-policy-deprecated` [header-missing] - Deprecated Feature-Policy header in use
 - [medium  ] `nosniff-incorrect` [header-missing] - X-Content-Type-Options set to an invalid value
 - [low     ] `hsts-no-preload` [header-missing] - HSTS header has weak directives (missing preload and/or low max-age)
@@ -602,16 +568,9 @@ remediation documentation in the docs.
 - [low     ] `x-aspnetmvc-version-exposed` [header-missing] - X-AspNetMvc-Version header exposes MVC version
 - [low     ] `via-header-exposed` [header-missing] - Via header reveals proxy infrastructure
 - [low     ] `x-runtime-exposed` [header-missing] - X-Runtime header reveals request processing time
-- [info    ] `x-request-id-exposed` [header-missing] - X-Request-Id header exposed to clients
 - [low     ] `x-backend-server-exposed` [header-missing] - X-Backend-Server header reveals backend hostname
-- [info    ] `age-header-reveals-cdn` [header-missing] - Age header reveals CDN cache age
 - [medium  ] `x-debug-header-exposed` [header-missing] - Debug header present in production response
-- [info    ] `x-amz-request-id` [header-missing] - X-Amz-Request-Id reveals AWS infrastructure
-- [info    ] `cf-ray-header` [header] - Cloudflare CF-Ray request identifier present
-- [info    ] `x-vercel-id` [header-missing] - X-Vercel-Id reveals deployment platform
-- [info    ] `x-cache-header` [header-missing] - X-Cache header reveals CDN cache status
 - [low     ] `etag-inode` [header-missing] - ETag reveals server inode number
-- [low     ] `etag-inode-leak` [header-missing] - ETag value may contain inode information
 - [low     ] `server-timing-exposure` [header-missing] - Server-Timing header exposes internal metrics
 - [info    ] `date-time-skew` [header-missing] - Server Date header shows clock skew
 - [high    ] `cache-control-public-sensitive` [header-missing] - Cache-Control: public on sensitive resource
@@ -620,12 +579,10 @@ remediation documentation in the docs.
 - [high    ] `form-action-http` [header-missing] - Form submits data over unencrypted HTTP
 - [low     ] `sri-missing` [header-missing] - External script loaded without Subresource Integrity
 - [low     ] `sri-stylesheet-missing` [header-missing] - External stylesheet without SRI
-- [high    ] `cookie-security` [header-missing] - Cookies missing security attributes
 - [low     ] `frame-busting-header-only` [header-missing] - Frame-busting relies on header only without JS fallback
 - [medium  ] `cors-methods-too-permissive` [header-missing] - CORS allows overly broad HTTP methods
 - [low     ] `referrer-policy-no-referrer-strict-origin-when-cross-origin` [header-missing] - Referrer-Policy not set to strict-origin-when-cross-origin
 - [medium  ] `strict-transport-security-include-subdomains` [header-missing] - HSTS header missing includeSubDomains directive
-- [high    ] `form-no-action-https` [header-missing] - Form submits to a non-HTTPS URL (disabled duplicate)
 - [low     ] `meta-redirect-no-url` [header-missing] - Meta refresh redirect with empty content or empty URL target
 - [info    ] `autocomplete-username` [header-missing] - Username field missing autocomplete="username"
 - [low     ] `image-protocol-relative` [header-missing] - Image URL uses protocol-relative scheme (//)
@@ -635,7 +592,6 @@ remediation documentation in the docs.
 - [low     ] `target-blank-no-noopener` [body-pattern] - Reverse Tabnabbing: target=_blank without rel=noopener
 - [low     ] `iframe-third-party-without-sandbox` [header-missing] - Third-party iframe without sandbox attribute
 - [low     ] `xpcdp-missing` [header-missing] - Missing X-Permitted-Cross-Domain-Policies header
-- [info    ] `origin-agent-cluster-missing` [header-missing] - Missing Origin-Agent-Cluster header
 - [info    ] `permissions-policy-browsing-topics-blocked` [header] - Permissions-Policy Browsing-Topics allowed
 - [low     ] `coop-unsafe-none` [header-value] - Cross-Origin-Opener-Policy Explicitly Set to unsafe-none
 - [medium  ] `coop-report-only-without-enforcing` [combined] - COOP Report-Only Without Enforcement
@@ -665,7 +621,7 @@ remediation documentation in the docs.
 - [medium  ] `url-import-ssrf-request-input-no-validation` [body-pattern] - URL-Import Field From Request Passed to Outbound Call Unvalidated
 - [medium  ] `oauth-authorize-missing-state-param` [url-check] - OAuth Authorization Request Missing State Parameter
 
-### information-disclosure (47)
+### information-disclosure (42)
 - [medium  ] `rails-cookie-httponly` [body-pattern] - Rails Session Cookie Missing HttpOnly Flag
 - [info    ] `server-header-truncated` [header] - Server header truncated
 - [info    ] `php-version-exposed-in-cookie` [header] - PHP session cookie naming exposes runtime
@@ -674,16 +630,11 @@ remediation documentation in the docs.
 - [info    ] `sitemap-public` [header] - Sitemap.xml publicly accessible
 - [info    ] `open-api-schema-version-leak` [header] - OpenAPI schema version exposed in URL
 - [low     ] `cdn-cors-exposes-internal` [header] - CORS exposes internal CDN hostname
-- [info    ] `recaptcha-key-leaked` [header] - reCAPTCHA site key exposure
-- [info    ] `ga-tracking-id-leaked` [header] - Google Analytics tracking ID exposed
 - [low     ] `nginx-version-404-disclosure` [body-pattern] - nginx version disclosed in 404 / error pages
 - [low     ] `apache-version-404-disclosure` [body-pattern] - Apache version disclosed in 404 / error pages
 - [low     ] `iis-version-404-disclosure` [body-pattern] - IIS version disclosed in 404 / error pages
 - [medium  ] `mysql-access-denied-error` [body-pattern] - MySQL Access Denied Error Exposed
 - [low     ] `aws-s3-nosuchbucket-error` [body-pattern] - AWS S3 NoSuchBucket error pattern exposed
-- [low     ] `privacy-policy-missing` [body-pattern] - Privacy Policy page not found
-- [low     ] `terms-of-service-missing` [body-pattern] - Terms of Service page not found
-- [info    ] `sitemap-missing` [body-pattern] - XML sitemap not found
 - [medium  ] `html-comment-leaks` [body-pattern] - Credentials or keys embedded in HTML comments
 - [high    ] `sql-error-exposure` [body-pattern] - SQL error message in response
 - [info    ] `rails-version-exposure` [header] - Rails default session cookie name reveals framework
@@ -779,10 +730,9 @@ remediation documentation in the docs.
 - [high    ] `secret-linear-api-key` [body-pattern] - Linear API key in source
 - [medium  ] `secret-generic-high-entropy-value` [body-pattern] - High-entropy value assigned to a secret-shaped variable in source
 
-### ssl (15)
+### ssl (14)
 - [high    ] `ssl-https-only-cookie-on-http` [url-check] - Secure Cookie Set on HTTP Endpoint
 - [critical] `unencrypted-connection` [url-check] - Site Served Over Unencrypted HTTP
-- [info    ] `expect-ct-missing` [header] - Expect-CT Header Not Present
 - [low     ] `https-unusual-port` [url-check] - HTTPS Served on Non-Standard Port
 - [info    ] `x-forwarded-method-override` [header] - X-HTTP-Method-Override / X-Forwarded-Method Header in Response
 - [info    ] `ssl-strip-detected` [header] - HSTS Present on HTTP Response (SSL-Strip Indicator)
@@ -909,20 +859,20 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **854**
+- Total checks: **804**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 234
-  - high: 206
-  - low: 195
-  - info: 121
+  - medium: 226
+  - high: 196
+  - low: 185
+  - info: 99
   - critical: 98
 - By type:
-  - body-pattern: 475
-  - header: 175
-  - combined: 64
-  - header-missing: 55
+  - body-pattern: 460
+  - header: 158
+  - combined: 60
+  - header-missing: 42
   - network-probe: 38
   - url-check: 19
   - header-value: 18
-  - header-present: 10
+  - header-present: 9

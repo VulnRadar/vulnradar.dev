@@ -112,30 +112,6 @@ const fixtures: DetectorFixtures = {
 
   // outdated-jquery and outdated-angular — handled by content.ts; smoke-only here
 
-  "privacy-policy-missing": [
-    {
-      description: "legal concern, not a security vulnerability (removed)",
-      body: "<html><body><h1>About</h1></body></html>",
-      expect: "skip",
-    },
-  ],
-
-  "terms-of-service-missing": [
-    {
-      description: "legal concern, not a security vulnerability (removed)",
-      body: "<html><body><h1>Welcome</h1></body></html>",
-      expect: "skip",
-    },
-  ],
-
-  "sitemap-missing": [
-    {
-      description: "SEO concern, not a security vulnerability (removed)",
-      body: "<html><body><h1>Welcome</h1></body></html>",
-      expect: "skip",
-    },
-  ],
-
   "html-comment-leaks": [
     {
       // TODO/FIXME/XXX/HACK are deliberately NOT flagged: they show up in
@@ -425,22 +401,6 @@ const fixtures: DetectorFixtures = {
       description: "Jenkins version",
       body: "<html><body>Jenkins ver. 2.387.3</body></html>",
       expect: "fire",
-    },
-  ],
-
-  "recaptcha-key-leaked": [
-    {
-      description: "reCAPTCHA site keys are public by design (removed)",
-      body: "<html><body>site_key=6Lc-abc123</body></html>",
-      expect: "skip",
-    },
-  ],
-
-  "ga-tracking-id-leaked": [
-    {
-      description: "GA tracking IDs are public by design (removed)",
-      body: "<html><body>UA-12345-67</body></html>",
-      expect: "skip",
     },
   ],
 

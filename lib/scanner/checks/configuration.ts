@@ -57,14 +57,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "vary-header-missing-user-agent": (_url, _headers) => {
-    // Removed: fires for every responsive HTML page that uses CSS media queries
-    // instead of server-side UA detection — i.e. almost every modern site.
-    // Only meaningful when the server actually serves different HTML per UA,
-    // which cannot be detected without two separate requests.
-    return null;
-  },
-
   "vary-header-cookie": (url, headers) => {
     const cookies = getSetCookies(headers);
     const vary = h(headers, "vary");

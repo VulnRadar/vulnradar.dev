@@ -188,132 +188,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "x-content-type-options-not-nosniff",
-    "type": "header-missing",
-    "targetHeader": "x-content-type-options",
-    "title": "X-Content-Type-Options Set to Invalid Value (disabled duplicate)",
-    "category": "headers",
-    "severity": "low",
-    "description": "Disabled: exact duplicate of nosniff-incorrect, which checks the same 'header present but not nosniff' condition on the same header. The 'header missing' case is covered separately by xcto-missing.",
-    "evidence": "Header 'X-Content-Type-Options' is not present in the response.",
-    "riskImpact": "Browsers may interpret files as a different MIME type than declared, which can lead to XSS attacks.",
-    "explanation": "MIME sniffing is when browsers try to determine the content type by examining the content rather than trusting the Content-Type header. Setting X-Content-Type-Options to 'nosniff' prevents this.",
-    "fixSteps": [
-      "Add the header X-Content-Type-Options: nosniff to all responses.",
-      "Ensure all resources are served with the correct Content-Type header."
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'X-Content-Type-Options', value: 'nosniff' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header X-Content-Type-Options \"nosniff\" always;"
-      },
-      {
-        "label": "Apache",
-        "language": "apache",
-        "code": "Header always set X-Content-Type-Options \"nosniff\""
-      },
-      {
-        "label": "Caddy",
-        "language": "plaintext",
-        "code": "header X-Content-Type-Options \"nosniff\""
-      },
-      {
-        "label": "Express (Node.js)",
-        "language": "javascript",
-        "code": "app.use((req, res, next) => {\n  res.setHeader('X-Content-Type-Options', 'nosniff');\n  next();\n});"
-      },
-      {
-        "label": "Deno (Hono)",
-        "language": "typescript",
-        "code": "app.use('*', async (c, next) => {\n  await next();\n  c.header('X-Content-Type-Options', 'nosniff');\n});"
-      },
-      {
-        "label": "Bun (Elysia)",
-        "language": "typescript",
-        "code": "app.onAfterHandle(({ set }) => {\n  set.headers['X-Content-Type-Options'] = 'nosniff';\n});"
-      }
-    ],
-    "_idx": 3,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "cwe": "CWE-693",
-    "owasp": "A05:2021"
-  },
-  {
-    "id": "referrer-policy-missing",
-    "type": "header-missing",
-    "targetHeader": "referrer-policy",
-    "title": "Missing Referrer-Policy Header",
-    "category": "headers",
-    "severity": "low",
-    "description": "The Referrer-Policy header is not set. This controls how much referrer information is sent with requests.",
-    "evidence": "Header 'Referrer-Policy' is not present in the response.",
-    "riskImpact": "Sensitive information in URLs (tokens, IDs) may be leaked to third-party sites through the Referer header.",
-    "explanation": "By default, browsers send the full URL in the Referer header when navigating between pages. If your URLs contain sensitive data, this data leaks to any external site the user visits next.",
-    "fixSteps": [
-      "Add Referrer-Policy: strict-origin-when-cross-origin (recommended).",
-      "For maximum privacy, use no-referrer or same-origin.",
-      "Avoid using unsafe-url which sends the full URL to all origins."
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
-      },
-      {
-        "label": "Apache",
-        "language": "apache",
-        "code": "Header always set Referrer-Policy \"strict-origin-when-cross-origin\""
-      },
-      {
-        "label": "Caddy",
-        "language": "plaintext",
-        "code": "header Referrer-Policy \"strict-origin-when-cross-origin\""
-      },
-      {
-        "label": "Express (Node.js)",
-        "language": "javascript",
-        "code": "app.use((req, res, next) => {\n  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');\n  next();\n});"
-      },
-      {
-        "label": "Deno (Hono)",
-        "language": "typescript",
-        "code": "app.use('*', async (c, next) => {\n  await next();\n  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');\n});"
-      },
-      {
-        "label": "Bun (Elysia)",
-        "language": "typescript",
-        "code": "app.onAfterHandle(({ set }) => {\n  set.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin';\n});"
-      },
-      {
-        "label": "HTML Meta Tag",
-        "language": "html",
-        "code": "<meta name=\"referrer\" content=\"strict-origin-when-cross-origin\">"
-      }
-    ],
-    "_idx": 4,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "cwe": "CWE-200",
-    "owasp": "A05:2021"
-  },
-  {
     "id": "permissions-policy-missing",
     "type": "combined",
     "title": "Missing Permissions-Policy Header",
@@ -429,36 +303,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "xxss-protection-missing",
-    "type": "combined",
-    "title": "Missing X-XSS-Protection Header",
-    "category": "headers",
-    "severity": "low",
-    "description": "The X-XSS-Protection header is not set and no Content-Security-Policy is present.",
-    "evidence": "Header 'X-XSS-Protection' is not present and no CSP fallback exists.",
-    "riskImpact": "Older browsers that still support the XSS auditor won't have it activated.",
-    "explanation": "While the XSS auditor is deprecated in modern browsers, having protection headers is still recommended.",
-    "fixSteps": [
-      "Implement a strong Content-Security-Policy (preferred approach).",
-      "Set X-XSS-Protection: 0 (to avoid the buggy auditor).",
-      "Focus on input validation and output encoding."
-    ],
-    "codeExamples": [
-      {
-        "label": "CSP preferred",
-        "language": "text",
-        "code": "Content-Security-Policy: default-src 'self'; script-src 'self'"
-      }
-    ],
-    "_idx": 7,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "cwe": "CWE-693",
-    "owasp": "A05:2021"
-  },
-  {
     "id": "cors-credentials-wildcard",
     "type": "combined",
     "title": "Dangerous CORS Configuration",
@@ -541,37 +385,6 @@
       }
     ],
     "_idx": 11,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "cwe": "CWE-693",
-    "owasp": "A05:2021"
-  },
-  {
-    "id": "weak-csp-directives",
-    "type": "combined",
-    "title": "Content Security Policy Contains Weak Directives",
-    "category": "headers",
-    "severity": "medium",
-    "description": "The CSP header contains weak directives that reduce its effectiveness.",
-    "evidence": "Weak CSP directives detected.",
-    "riskImpact": "Weak directives create exploitable gaps that allow attackers to bypass the policy.",
-    "explanation": "A CSP is only as strong as its weakest directive.",
-    "fixSteps": [
-      "Replace 'unsafe-inline' with nonce-based or hash-based script loading.",
-      "Remove 'unsafe-eval' and refactor code.",
-      "Replace wildcard sources with explicit trusted domains.",
-      "Remove data: from script-src."
-    ],
-    "codeExamples": [
-      {
-        "label": "Strong CSP",
-        "language": "text",
-        "code": "Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{random}'; style-src 'self' 'nonce-{random}'; img-src 'self' data:;"
-      }
-    ],
-    "_idx": 13,
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
@@ -1031,32 +844,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "x-xss-protection-disabled",
-    "type": "header-present",
-    "title": "X-XSS-Protection Explicitly Disabled",
-    "category": "headers",
-    "severity": "low",
-    "description": "X-XSS-Protection set to 0.",
-    "evidence": "X-XSS-Protection: 0 detected.",
-    "riskImpact": "While deprecated, explicitly disabling XSS filter removes a defense layer in older browsers.",
-    "explanation": "Setting X-XSS-Protection to 0 turns off the built-in XSS auditor.",
-    "fixSteps": ["Remove the header entirely or set to 1; mode=block."],
-    "codeExamples": [
-      {
-        "label": "Remove X-XSS-Protection: 0 and use CSP instead",
-        "language": "javascript",
-        "code": "// X-XSS-Protection is deprecated in modern browsers\n// The header X-XSS-Protection: 0 disables the old browser XSS filter\n// Replace with a strong Content-Security-Policy instead:\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Content-Security-Policy\", value: \"default-src 'self'; script-src 'self'; object-src 'none';\" }] }];\n  },\n};"
-      }
-    ],
-    "_idx": 39,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "cwe": "CWE-693",
-    "owasp": "A05:2021"
-  },
-  {
     "id": "csp-unsafe-hashes",
     "type": "header-value",
     "title": "CSP Uses unsafe-hashes",
@@ -1157,32 +944,6 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ]
-  },
-  {
-    "id": "csp-frame-ancestors",
-    "type": "combined",
-    "title": "Missing Clickjacking Protection (disabled duplicate)",
-    "category": "headers",
-    "severity": "medium",
-    "description": "Disabled: this fired only when neither CSP frame-ancestors nor X-Frame-Options was set, a strict subset of clickjack-missing's condition, so it always double-counted the same evidence.",
-    "evidence": "Header-only frame protection.",
-    "riskImpact": "Older browsers may not support headers.",
-    "explanation": "JavaScript frame busting provides backup.",
-    "fixSteps": ["Add JS frame busting for legacy browser support."],
-    "codeExamples": [
-      {
-        "label": "Set frame-ancestors to restrict embedding",
-        "language": "javascript",
-        "code": "// frame-ancestors controls who can embed your page in a frame\n// Use 'none' to block all framing (replaces X-Frame-Options: DENY)\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{\n      key: \"Content-Security-Policy\",\n      value: \"frame-ancestors 'none'; default-src 'self'; object-src 'none';\"\n    }]}];\n  },\n};\n// Or allow specific origins:\n// frame-ancestors 'self' https://dashboard.partner.com"
-      }
-    ],
-    "_idx": 49,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "cwe": "CWE-1021",
-    "owasp": "A05:2021"
   },
   {
     "id": "x-frame-options-invalid",
@@ -1311,34 +1072,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 57,
-    "cwe": "CWE-693",
-    "owasp": "A05:2021"
-  },
-  {
-    "id": "corp-missing",
-    "type": "header",
-    "title": "Missing Cross-Origin-Resource-Policy (CORP) Header (disabled duplicate)",
-    "category": "headers",
-    "severity": "info",
-    "description": "Disabled: exact duplicate of cross-origin-resource-policy-report-only-missing, which checks the same real Cross-Origin-Resource-Policy header (CORP has no separate Report-Only variant).",
-    "evidence": "Disabled: see cross-origin-resource-policy-report-only-missing.",
-    "riskImpact": "See cross-origin-resource-policy-report-only-missing.",
-    "explanation": "See cross-origin-resource-policy-report-only-missing.",
-    "fixSteps": [
-      "Add 'Cross-Origin-Resource-Policy: same-origin' (or same-site/cross-origin as appropriate)."
-    ],
-    "codeExamples": [
-      {
-        "label": "Add Cross-Origin-Resource-Policy header",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Cross-Origin-Resource-Policy\", value: \"same-origin\" }] }];\n  },\n};\n// same-origin: only allow same-origin pages to embed this resource\n// same-site: allow same-site pages (includes subdomains)\n// cross-origin: allow any origin (use only for public CDN resources)"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 58,
     "cwe": "CWE-693",
     "owasp": "A05:2021"
   },
@@ -2089,33 +1822,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "server-timing-sensitive-key-leak",
-    "type": "header",
-    "title": "Server-Timing exposes sensitive key",
-    "category": "headers",
-    "severity": "low",
-    "description": "The Server-Timing response header includes custom keys that may expose internal metrics like db, sql, redis, cache, or query durations.",
-    "evidence": "Header absent or misconfigured for `headers-server-timing-sensitive-key-leak`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Drop or sanitize Server-Timing entries with sensitive names in production",
-    "explanation": "The Server-Timing response header includes custom keys that may expose internal metrics like db, sql, redis, cache, or query durations.",
-    "fixSteps": [
-      "Drop or sanitize Server-Timing entries with sensitive names in production"
-    ],
-    "codeExamples": [
-      {
-        "label": "Remove sensitive metric names from Server-Timing",
-        "language": "typescript",
-        "code": "// BAD: Server-Timing: db;dur=150, cache-miss;dur=5\n// Reveals internal architecture: database, cache layer\n\n// GOOD: use opaque names or omit timing in production\nconst timings: string[] = [];\nif (process.env.NODE_ENV !== \"production\") {\n  timings.push(`db;dur=${dbMs}`);\n}\nif (timings.length) res.setHeader(\"Server-Timing\", timings.join(\", \"));"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing"
-    ],
-    "_idx": 100,
-    "cwe": "CWE-200",
-    "owasp": "A05:2021"
-  },
-  {
     "id": "cookie-host-prefix-attribute-mismatch",
     "type": "header",
     "title": "__Host- cookie prefix with wrong attributes",
@@ -2231,34 +1937,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 337
-  },
-  {
-    "id": "nel-header-missing",
-    "type": "header-missing",
-    "title": "NEL header not configured",
-    "category": "headers",
-    "severity": "info",
-    "description": "Network Error Logging is not configured via the NEL header, preventing automatic collection of network-level failures.",
-    "evidence": "NEL header is absent from the response at {{url}}.",
-    "riskImpact": "Network failures like DNS resolution errors, connection timeouts, and TLS handshake failures that affect real users remain invisible without NEL reporting.",
-    "explanation": "NEL collects client-side network failure events and reports them to your specified endpoint.",
-    "fixSteps": [
-      "Configure a Report-To header with a Nel reporting group",
-      "Add NEL header referencing that group",
-      "Monitor reports for patterns indicating infrastructure issues"
-    ],
-    "codeExamples": [
-      {
-        "label": "NEL setup",
-        "language": "javascript",
-        "code": "export default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [\n      { key: \"Report-To\", value: JSON.stringify({ group: \"nel\", max_age: 86400, endpoints: [{ url: \"/api/nel\" }] }) },\n      { key: \"NEL\", value: JSON.stringify({ report_to: \"nel\", max_age: 86400 }) },\n    ]}];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 342
   },
   {
     "id": "access-control-expose",
@@ -2434,36 +2112,6 @@
     ],
     "cwe": "CWE-319",
     "owasp": "A02:2021"
-  },
-  {
-    "id": "excessive-permissions",
-    "type": "header-missing",
-    "title": "Permissions-Policy grants excessive browser feature access (disabled duplicate)",
-    "category": "headers",
-    "severity": "medium",
-    "description": "Disabled: exact duplicate of the permissions-policy-camera-blocked, -microphone-blocked, -geolocation-blocked, -payment-blocked, and -usb-blocked checks, which cover the same five features individually. This check's dangerous-feature list only ever contained those same five, so a single misconfigured header double-fired both.",
-    "evidence": "Overly permissive Permissions-Policy detected at {{url}}.",
-    "riskImpact": "Granting access to sensitive features to all origins means any third-party iframe embedded on the page can request those permissions from the user, without the user understanding it is the iframe, not your site, making the request.",
-    "explanation": "Follow least-privilege: only allow the specific origins that need each feature.",
-    "fixSteps": [
-      "Audit which features your application actually uses",
-      "Disable features you do not use: feature=()",
-      "Limit features you do use to your own origin: feature=(self)"
-    ],
-    "codeExamples": [
-      {
-        "label": "Restrictive Permissions-Policy",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()\" }] }];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 348,
-    "cwe": "CWE-693",
-    "owasp": "A05:2021"
   },
   {
     "id": "feature-policy-deprecated",
@@ -2779,33 +2427,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "x-request-id-exposed",
-    "type": "header-missing",
-    "title": "X-Request-Id header exposed to clients",
-    "category": "headers",
-    "severity": "info",
-    "description": "The X-Request-Id header is returned in the response and exposes internal request tracking identifiers.",
-    "evidence": "X-Request-Id header detected in response at {{url}}.",
-    "riskImpact": "Internal request IDs may leak details about infrastructure, help attackers correlate requests across systems, or reveal predictable ID schemes that enable enumeration or replay attacks.",
-    "explanation": "Request IDs used for internal logging can be stripped from client-facing responses.",
-    "fixSteps": [
-      "Remove X-Request-Id from client responses while keeping it in internal logs",
-      "If needed for debugging, only return it to authenticated users"
-    ],
-    "codeExamples": [
-      {
-        "label": "Strip in Nginx",
-        "language": "nginx",
-        "code": "proxy_hide_header X-Request-Id;"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 359
-  },
-  {
     "id": "x-backend-server-exposed",
     "type": "header-missing",
     "title": "X-Backend-Server header reveals backend hostname",
@@ -2833,33 +2454,6 @@
     "_idx": 360,
     "cwe": "CWE-200",
     "owasp": "A05:2021"
-  },
-  {
-    "id": "age-header-reveals-cdn",
-    "type": "header-missing",
-    "title": "Age header reveals CDN cache age",
-    "category": "headers",
-    "severity": "info",
-    "description": "The Age header is present and reveals how long the response has been cached at a CDN or proxy.",
-    "evidence": "Age header detected in response at {{url}}.",
-    "riskImpact": "Age headers reveal CDN infrastructure is in use and indicate whether a response is served from cache, helping attackers time cache-poisoning attacks or infer when cached entries will expire.",
-    "explanation": "Age is a standard HTTP header; consider removing it for sensitive responses if it reveals operational details.",
-    "fixSteps": [
-      "For sensitive responses, set Cache-Control: no-store (CDN will not cache them, so Age will not appear)",
-      "For public resources, Age is expected behavior and low risk"
-    ],
-    "codeExamples": [
-      {
-        "label": "Remove Age for sensitive endpoints",
-        "language": "nginx",
-        "code": "location /api/ {\n  proxy_hide_header Age;\n  add_header Cache-Control \"no-store, max-age=0\";\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 361
   },
   {
     "id": "x-debug-header-exposed",
@@ -2892,112 +2486,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "x-amz-request-id",
-    "type": "header-missing",
-    "title": "X-Amz-Request-Id reveals AWS infrastructure",
-    "category": "headers",
-    "severity": "info",
-    "description": "The X-Amz-Request-Id header is present, revealing that the response is served from AWS infrastructure.",
-    "evidence": "X-Amz-Request-Id header detected in response at {{url}}.",
-    "riskImpact": "While low severity on its own, revealing AWS infrastructure enables attackers to tailor attacks to AWS-specific vulnerabilities, targeting S3 public bucket access, EC2 metadata endpoints, or IAM misconfigurations.",
-    "explanation": "Strip AWS-specific headers at your edge proxy before they reach clients.",
-    "fixSteps": [
-      "Configure your CDN or reverse proxy to strip X-Amz-* headers",
-      "Ensure S3 bucket responses are proxied and not directly accessed"
-    ],
-    "codeExamples": [
-      {
-        "label": "Nginx: strip AWS headers",
-        "language": "nginx",
-        "code": "proxy_hide_header X-Amz-Request-Id;\nproxy_hide_header X-Amz-Id-2;\nproxy_hide_header X-Amz-Version-Id;"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 363
-  },
-  {
-    "id": "cf-ray-header",
-    "type": "header",
-    "title": "Cloudflare CF-Ray request identifier present",
-    "category": "headers",
-    "severity": "info",
-    "description": "The Cloudflare CF-Ray response header exposes the request identifier that Cloudflare assigns to every proxied request.",
-    "evidence": "Cloudflare CF-Ray header present - reveals CDN usage.",
-    "riskImpact": "CF-Ray alone does not leak sensitive information, but it confirms your origin sits behind Cloudflare and lets attackers correlate request IDs to logs.",
-    "explanation": "CF-Ray is informational: it lets support teams trace a specific request through Cloudflare's edge. It does not contain user data, PII, or session tokens.",
-    "fixSteps": [
-      "CF-Ray cannot be removed from Cloudflare responses. If you want to hide CDN usage, terminate the proxy at the origin (no Cloudflare).",
-      "If you want to keep Cloudflare but reduce fingerprinting, ensure all other Cloudflare-specific headers (cf-ray, cf-cache-status, cf-worker) are also present so attackers cannot easily distinguish them."
-    ],
-    "codeExamples": [
-      {
-        "label": "Cloudflare Transform Rule",
-        "language": "http",
-        "code": "# Disable if you migrate off Cloudflare. Otherwise leave it for traceability.\n# In Cloudflare dashboard → Rules → Transform Rules → Modify Response Header\n# Action: Remove Header → Name: cf-ray"
-      }
-    ],
-    "references": [
-      "https://developers.cloudflare.com/fundamentals/reference/http-request-headers/",
-      "https://blog.cloudflare.com/cloudflare-ray-id/"
-    ]
-  },
-  {
-    "id": "x-vercel-id",
-    "type": "header-missing",
-    "title": "X-Vercel-Id reveals deployment platform",
-    "category": "headers",
-    "severity": "info",
-    "description": "The X-Vercel-Id header is present and reveals the application is hosted on Vercel.",
-    "evidence": "X-Vercel-Id header detected at {{url}}.",
-    "riskImpact": "Revealing the deployment platform enables targeted attacks specific to Vercel's architecture, including serverless function cold-start timing attacks, deployment URL enumeration, or platform-specific configuration issues.",
-    "explanation": "Vercel headers can be suppressed via custom Next.js middleware.",
-    "fixSteps": [
-      "In Next.js middleware, you can strip headers before they are forwarded"
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js middleware: strip Vercel headers",
-        "language": "typescript",
-        "code": "import { NextResponse, type NextRequest } from \"next/server\";\n\nexport function middleware(req: NextRequest) {\n  const res = NextResponse.next();\n  res.headers.delete(\"x-vercel-id\");\n  res.headers.delete(\"x-vercel-cache\");\n  return res;\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 364
-  },
-  {
-    "id": "x-cache-header",
-    "type": "header-missing",
-    "title": "X-Cache header reveals CDN cache status",
-    "category": "headers",
-    "severity": "info",
-    "description": "The X-Cache header (e.g., X-Cache: HIT or MISS) is present and reveals CDN caching details.",
-    "evidence": "X-Cache header detected in response at {{url}}.",
-    "riskImpact": "Cache HIT/MISS status can be used to probe CDN behavior, aid cache poisoning attacks by identifying when poison entries are cached, and reveal which resources are cached by CDN nodes.",
-    "explanation": "X-Cache is an informational header; strip it for sensitive responses.",
-    "fixSteps": [
-      "Configure your CDN to not forward X-Cache to end users",
-      "Most CDNs have a header suppression option in their dashboard"
-    ],
-    "codeExamples": [
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "proxy_hide_header X-Cache;\nproxy_hide_header X-Cache-Hit;"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 365
-  },
-  {
     "id": "etag-inode",
     "type": "header-missing",
     "title": "ETag reveals server inode number",
@@ -3023,35 +2511,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 366,
-    "cwe": "CWE-200",
-    "owasp": "A05:2021"
-  },
-  {
-    "id": "etag-inode-leak",
-    "type": "header-missing",
-    "title": "ETag value may contain inode information",
-    "category": "headers",
-    "severity": "low",
-    "description": "The ETag response header contains a value that appears to embed inode numbers from the server filesystem.",
-    "evidence": "ETag with inode-style format detected at {{url}}.",
-    "riskImpact": "Exposing inode numbers helps attackers fingerprint the exact web server software version and may reveal filesystem structure that aids in targeted path traversal or LFI attacks.",
-    "explanation": "Change Apache's ETag configuration to exclude inode values.",
-    "fixSteps": [
-      "Apache: \"FileETag MTime Size\" in httpd.conf or .htaccess removes inode from ETags",
-      "Alternatively, disable ETags entirely: \"FileETag None\""
-    ],
-    "codeExamples": [
-      {
-        "label": "Apache: disable inode in ETags",
-        "language": "apache",
-        "code": "FileETag MTime Size\n# Or disable ETags entirely if not needed:\n# FileETag None\n# Header unset ETag"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 367,
     "cwe": "CWE-200",
     "owasp": "A05:2021"
   },
@@ -3293,36 +2752,6 @@
     "owasp": "A08:2021"
   },
   {
-    "id": "cookie-security",
-    "type": "header-missing",
-    "title": "Cookies missing security attributes",
-    "category": "headers",
-    "severity": "high",
-    "description": "One or more cookies are set without required security attributes (Secure, HttpOnly, SameSite).",
-    "evidence": "Cookies without security attributes detected at {{url}}.",
-    "riskImpact": "Cookies without Secure can be sent over HTTP (interceptable). Without HttpOnly, scripts can steal session cookies via XSS. Without SameSite, cookies are sent on cross-site requests, enabling CSRF attacks.",
-    "explanation": "All session and authentication cookies must have Secure, HttpOnly, and SameSite attributes set.",
-    "fixSteps": [
-      "Add Secure to prevent sending over HTTP",
-      "Add HttpOnly to prevent JavaScript access",
-      "Add SameSite=Strict or Lax to prevent CSRF"
-    ],
-    "codeExamples": [
-      {
-        "label": "Secure cookie attributes",
-        "language": "typescript",
-        "code": "res.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`\n);\n// For session cookies: omit Max-Age (expires on browser close)\n// For remember-me: Max-Age=2592000 (30 days)"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 381,
-    "cwe": "CWE-614",
-    "owasp": "A05:2021"
-  },
-  {
     "id": "frame-busting-header-only",
     "type": "header-missing",
     "title": "Frame-busting relies on header only without JS fallback",
@@ -3447,36 +2876,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 393,
-    "cwe": "CWE-319",
-    "owasp": "A02:2021"
-  },
-  {
-    "id": "form-no-action-https",
-    "type": "header-missing",
-    "title": "Form submits to a non-HTTPS URL (disabled duplicate)",
-    "category": "headers",
-    "severity": "high",
-    "description": "Disabled: exact duplicate of form-action-http, which matches the same <form action=\"http://...\"> pattern but correctly scopes to HTTPS pages (the actual mixed-content-relevant scenario). This check lacked that scope, so a single offending form double-fired both checks.",
-    "evidence": "Form with non-HTTPS action at {{url}}.",
-    "riskImpact": "Data submitted through the form travels unencrypted and can be intercepted by a network observer, exposing passwords, payment data, or personal information.",
-    "explanation": "All form actions must use HTTPS.",
-    "fixSteps": [
-      "Update the form action to use https://",
-      "Ensure the destination server has a valid TLS certificate",
-      "Enable HSTS on the destination to prevent protocol downgrades"
-    ],
-    "codeExamples": [
-      {
-        "label": "Secure form action",
-        "language": "html",
-        "code": "<form action=\"https://yoursite.com/submit\" method=\"POST\">\n  <input type=\"hidden\" name=\"_csrf\" value=\"{{ csrfToken }}\" />\n  <button type=\"submit\">Submit</button>\n</form>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 401,
     "cwe": "CWE-319",
     "owasp": "A02:2021"
   },
@@ -3744,38 +3143,6 @@
     "_idx": 413,
     "cwe": "CWE-942",
     "owasp": "A05:2021"
-  },
-  {
-    "id": "origin-agent-cluster-missing",
-    "type": "header-missing",
-    "title": "Missing Origin-Agent-Cluster header",
-    "category": "headers",
-    "severity": "info",
-    "description": "The server does not send Origin-Agent-Cluster: ?1, so the browser may place this page in a shared, document.domain-relaxable agent cluster instead of an origin-isolated one.",
-    "evidence": "Header Origin-Agent-Cluster is absent from the response at {{url}}.",
-    "riskImpact": "Without origin isolation, this page stays eligible for document.domain relaxation and shares its agent cluster (process, in Chromium) with same-site-but-different-origin pages, widening the blast radius of a Spectre-style side-channel and keeping the legacy document.domain same-origin downgrade available.",
-    "explanation": "Origin-Agent-Cluster: ?1 asks the browser to give this exact origin its own agent cluster, separate from other origins on the same site. It also permanently disables document.domain relaxation for pages that send it, closing off a decades-old way for two subdomains to opt into treating themselves as same-origin.",
-    "fixSteps": [
-      "Add Origin-Agent-Cluster: ?1 to all responses.",
-      "If any page relies on document.domain relaxation to communicate with a sibling subdomain, migrate that communication to postMessage before enabling this header, since it disables the relaxation for good on that origin."
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Origin-Agent-Cluster\", value: \"?1\" }] }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Origin-Agent-Cluster \"?1\" always;"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin-Agent-Cluster",
-      "https://web.dev/articles/origin-agent-cluster"
-    ],
-    "_idx": 414
   },
   {
     "id": "permissions-policy-browsing-topics-blocked",

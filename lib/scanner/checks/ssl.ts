@@ -105,17 +105,6 @@ export const detectors: Record<string, DetectFn> = {
   "mixed-protocol-content": (url, _headers, body) =>
     detectMixedContent(url, _headers, body || ""),
 
-  // ── HSTS / Expect-CT / Alt-Svc hints (header-level) ─────────────────
-  "expect-ct-missing": (_url, _headers) => {
-    // Chrome removed Expect-CT support in 2022 and MDN marks it deprecated;
-    // CT is now enforced unconditionally by browsers at certificate-
-    // validation time, independent of this header. Essentially no site,
-    // including well-secured ones, sends it anymore, so its absence is not
-    // a finding (same rationale as nel-header-missing / age-header-reveals-cdn
-    // in headers.ts).
-    return null;
-  },
-
   // ── HTTP method override ────────────────────────────────────────────
   "x-forwarded-method-override": (_url, headers) => {
     if (hasHeader(headers, "x-http-method-override")) {

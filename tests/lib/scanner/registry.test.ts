@@ -14,6 +14,9 @@
  * VulnRadar ships as "checks".
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import ts from "typescript";
 import { describe, it, expect } from "vitest";
 import {
   allCheckDefs,
@@ -96,14 +99,14 @@ describe("detection registry", () => {
 
   // ── Regression: detector collisions resolve to the category owner ─────
   //
-  // 78 check IDs were defined in more than one checks/*.ts module (copy-
+  // 78 check IDs were once defined in more than one checks/*.ts module (copy-
   // pasted, then one copy tightened to fix false positives without the
   // other being removed). The registry used to flatten every module's
   // detector map in BUNDLES declaration order, so whichever module loaded
   // last silently won, never the module matching the check's own
-  // category, which meant the tightened, category-owned fix was
-  // unreachable dead code. These pin down three concrete cases so the
-  // collision can't quietly regress.
+  // category. The extra copies are deleted and "no check id is implemented
+  // in more than one detector file" below keeps it that way; these pin the
+  // behaviour of three of the ids that were affected.
 
   it("open-redirect (owned by content.json) uses the tightened content.ts detector, not code.ts's looser copy", () => {
     // content.ts only fires when the redirect target is absolute
@@ -297,42 +300,77 @@ describe("detection coverage (no silent no-ops)", () => {
     }
   });
 
-  it("inline detectors are not obviously broken (synchronous null-only is fine)", () => {
-    // Catches detectors that are *structurally* dead — e.g. async-stub
-    // functions that always return null because they were registered
-    // to make the coverage test pass but never wired to a real probe.
-    //
-    // Many of our inline detectors are deliberately narrow (e.g. only
-    // fire on a 401 response, a specific header value, a SQL error
-    // string). We can't tell "narrow but real" from "dead code" from
-    // text alone, so this test is intentionally a weak smoke test:
-    // each detector's source must contain at least one `return <string>`
-    // with a non-empty literal. This catches the common failure mode
-    // where someone pastes a placeholder like `() => null` and forgets
-    // to implement it.
-    const PLACEHOLDER_RETURN_NULL = /=>\s*null\s*[;,)]/;
-    const PLACEHOLDER_ARROW_NULL = /^\s*\(\s*\)\s*=>\s*null\s*[,;}]/m;
-    const suspicious: string[] = [];
-    for (const [id, fn] of Object.entries(ALL_INLINE_DETECTORS)) {
-      const src = fn.toString();
-      // Single-line arrow that is literally `() => null` (a true
-      // placeholder) is suspicious. Multi-line detectors that always
-      // resolve to null via different paths are real (e.g. async-only
-      // categories have stub placeholders that the registry test
-      // accepts; we just want to make sure the inline categories don't
-      // have stray one-liners).
-      if (PLACEHOLDER_ARROW_NULL.test(src)) {
-        suspicious.push(id);
+  // A check whose detector can only return null is a definition that is
+  // published on /checks and counted in the advertised total, and that no scan
+  // will ever report. 50 had built up, each retired for a sound reason (a
+  // duplicate, a deprecated header, a public-by-design key) but left defined,
+  // several with titles ending "(disabled duplicate)". The guard this replaces
+  // matched fn.toString() against a pattern that needed a character after
+  // `null`, which `() => null` never has, so it never caught one.
+  //
+  // Read from the source rather than by calling each detector: "always null"
+  // is a property of the code, and no set of inputs proves it.
+  it("no defined inline check has a detector that can only return null", () => {
+    // Registered only to satisfy the coverage test above; the finding is built
+    // by an async step the synchronous detector contract cannot express.
+    const ASYNC_BACKED = new Set([
+      "sourcemap-sourcescontent-exposed", // execute-scan.ts .map follow-up fetch
+      "osv-vulnerable-library", // osv-check.ts
+    ]);
+    const moduleFiles = [...CATEGORIES_WITH_INLINE_DETECTORS].map((c) =>
+      path.resolve("lib/scanner/checks", `${c}.ts`),
+    );
+    const onlyNull = (fn: ts.Node): boolean => {
+      if (!ts.isArrowFunction(fn) && !ts.isFunctionExpression(fn)) return false;
+      if (!ts.isBlock(fn.body)) {
+        return fn.body.kind === ts.SyntaxKind.NullKeyword;
       }
-    }
-    if (suspicious.length > 0) {
-      throw new Error(
-        `Detectors look like one-liner placeholders: ${suspicious.join(", ")}. ` +
-          "Either implement them or move the JSON entry to async-only (tls/email/dns).",
+      let returnsSomethingElse = false;
+      const walk = (n: ts.Node) => {
+        if (ts.isFunctionLike(n)) return;
+        if (
+          ts.isReturnStatement(n) &&
+          n.expression?.kind !== ts.SyntaxKind.NullKeyword
+        ) {
+          returnsSomethingElse = true;
+        }
+        ts.forEachChild(n, walk);
+      };
+      ts.forEachChild(fn.body, walk);
+      return !returnsSomethingElse;
+    };
+    const stubs: string[] = [];
+    for (const file of moduleFiles) {
+      const source = ts.createSourceFile(
+        file,
+        fs.readFileSync(file, "utf8"),
+        ts.ScriptTarget.Latest,
+        true,
       );
+      const visit = (n: ts.Node) => {
+        if (
+          ts.isVariableDeclaration(n) &&
+          ts.isIdentifier(n.name) &&
+          (n.name.text === "detectors" || n.name.text === "rawDetectors") &&
+          n.initializer &&
+          ts.isObjectLiteralExpression(n.initializer)
+        ) {
+          for (const prop of n.initializer.properties) {
+            if (!ts.isPropertyAssignment(prop)) continue;
+            const id = ts.isStringLiteral(prop.name) ? prop.name.text : "";
+            if (!ASYNC_BACKED.has(id) && onlyNull(prop.initializer)) {
+              stubs.push(`${path.basename(file)}:${id}`);
+            }
+          }
+        }
+        ts.forEachChild(n, visit);
+      };
+      visit(source);
     }
-    // Reference PLACEHOLDER_RETURN_NULL to avoid the linter complaining.
-    void PLACEHOLDER_RETURN_NULL;
+    expect(
+      stubs,
+      "retire the definition along with the detector, or implement it",
+    ).toEqual([]);
   });
 });
 

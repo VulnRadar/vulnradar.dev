@@ -68,33 +68,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "cookie-partitioned-missing",
-    "type": "combined",
-    "title": "Third-Party Cookie Missing Partitioned Attribute",
-    "category": "cookies",
-    "severity": "info",
-    "description": "A third-party cookie is set without the Partitioned attribute (CHIPS). Browsers are phasing out third-party cookies without Partitioned, which will break this cookie's functionality in Chrome and other browsers.",
-    "evidence": "Unpartitioned third-party cookie.",
-    "riskImpact": "Unpartitioned third-party cookies will be blocked by Chrome and other browsers. Services relying on them for embed functionality (widgets, analytics, support chat) will silently stop working for users in these browsers.",
-    "explanation": "CHIPS (Cookies Having Independent Partitioned State) is a privacy-preserving third-party cookie mechanism. Partitioned cookies are keyed by both the cookie name and the top-level site, preventing cross-site tracking while allowing legitimate embed use cases.",
-    "fixSteps": [
-      "Add the Partitioned attribute alongside SameSite=None; Secure to all third-party cookies.",
-      "Test in Chrome with Privacy Sandbox settings enabled to confirm the cookie is set correctly."
-    ],
-    "codeExamples": [
-      {
-        "label": "Partitioned Set-Cookie",
-        "language": "http",
-        "code": "Set-Cookie: embed-session=xyz; SameSite=None; Secure; Partitioned; Path=/"
-      }
-    ],
-    "_idx": 4,
-    "references": [
-      "https://developer.chrome.com/docs/privacy-sandbox/chips/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes"
-    ]
-  },
-  {
     "id": "cookie-host-prefix-not-secure",
     "type": "header",
     "title": "__Host- Prefix Cookie Missing Secure Attribute",
@@ -241,33 +214,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "cookie-path-cross-app",
-    "type": "header",
-    "title": "Cookie Path Crosses Application Boundary",
-    "category": "cookies",
-    "severity": "medium",
-    "description": "A cookie with Path=/ is accessible to every route on the host, including routes served by different applications (e.g., /admin, /api, /blog). This broadens the cookie's exposure across trust boundaries.",
-    "evidence": "Cookie issue for `cookies-path-cross-app`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "An XSS vulnerability in a low-privilege application route (e.g., /blog) can steal session cookies intended only for /admin because all routes share the same cookie jar with Path=/.",
-    "explanation": "Path=/ makes the cookie available to every route on the host. When a server runs multiple applications under different path prefixes, this means a cookie from one application is sent to all others, widening the XSS blast radius.",
-    "fixSteps": [
-      "Set the narrowest Path that the application actually needs.",
-      "Use Path=/admin for admin-only cookies, Path=/api for API tokens, etc.",
-      "For cookies that genuinely must be site-wide, ensure all paths enforce the same security controls."
-    ],
-    "codeExamples": [
-      {
-        "label": "Narrowly scoped path",
-        "language": "http",
-        "code": "Set-Cookie: admin-session=abc123; HttpOnly; Secure; SameSite=Strict; Path=/admin"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc6265#section-5.2.1"
-    ],
-    "_idx": 13
-  },
-  {
     "id": "cookie-expires-in-past",
     "type": "header",
     "title": "Cookie Expires Is in the Past",
@@ -293,66 +239,6 @@
       "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.1"
     ],
     "_idx": 14
-  },
-  {
-    "id": "cookie-max-age-zero",
-    "type": "header",
-    "title": "Cookie Max-Age=0 Deletion Pattern",
-    "category": "cookies",
-    "severity": "info",
-    "description": "Max-Age=0 instructs the browser to delete the named cookie immediately. This is the canonical cookie deletion pattern used on logout. Repeated occurrences outside logout endpoints may indicate a double-delete bug.",
-    "evidence": "Cookie issue for `cookies-max-age-zero`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If Max-Age=0 is emitted on non-logout routes, it may unexpectedly delete user sessions or other cookies, causing functionality failures. If the same cookie is set and deleted in the same response, the deletion takes precedence in some browsers.",
-    "explanation": "Max-Age=0 is the correct and portable way to delete a cookie. However, emitting it outside dedicated logout or session-reset endpoints indicates either a bug or a race condition where a cookie is being both set and deleted in the same response.",
-    "fixSteps": [
-      "Restrict Max-Age=0 Set-Cookie emission to logout and session-reset endpoints only.",
-      "Verify no response sets and deletes the same cookie in the same response."
-    ],
-    "codeExamples": [
-      {
-        "label": "Logout endpoint cookie deletion",
-        "language": "typescript",
-        "code": "// Only on the logout endpoint\nres.setHeader('Set-Cookie', '__Host-session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0');\nres.redirect('/');"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.1"
-    ],
-    "_idx": 15
-  },
-  {
-    "id": "cookie-no-samesite-third-party",
-    "type": "header",
-    "title": "Third-Party Cookie Without SameSite",
-    "category": "cookies",
-    "severity": "medium",
-    "description": "A cookie set in a third-party context (iframe, cross-site redirect) does not specify a SameSite attribute. Modern browsers default to SameSite=Lax and block the cookie in third-party contexts.",
-    "evidence": "Cookie issue for `cookies-no-samesite-third-party`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "The cookie will be blocked by modern browsers (Chrome, Firefox, Safari) in third-party contexts, breaking embedded widget functionality, OAuth flows, or cross-site forms.",
-    "explanation": "When a cookie is omitted SameSite, Chrome 80+ defaults to SameSite=Lax, which blocks the cookie in cross-site subresource requests. For intentional third-party cookies, SameSite=None; Secure is required. For first-party cookies, SameSite=Lax or Strict is safer.",
-    "fixSteps": [
-      "For first-party cookies: add SameSite=Lax (default for most login flows) or SameSite=Strict.",
-      "For intentional third-party cookies: add SameSite=None; Secure; Partitioned."
-    ],
-    "codeExamples": [
-      {
-        "label": "Third-party cookie (CHIPS)",
-        "language": "http",
-        "code": "Set-Cookie: embed-token=xyz; SameSite=None; Secure; Partitioned; Path=/"
-      },
-      {
-        "label": "First-party SameSite=Lax",
-        "language": "http",
-        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite",
-      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7"
-    ],
-    "_idx": 17,
-    "cwe": "CWE-1275",
-    "owasp": "A05:2021"
   },
   {
     "id": "cookie-partitioned-without-secure",
@@ -382,64 +268,6 @@
     "_idx": 18,
     "cwe": "CWE-614",
     "owasp": "A05:2021"
-  },
-  {
-    "id": "cookie-third-party-no-samesite-none-secure",
-    "type": "header",
-    "title": "Third-Party Cookie Missing SameSite=None; Secure",
-    "category": "cookies",
-    "severity": "high",
-    "description": "A cross-site cookie does not have both SameSite=None and Secure set. Without this combination, modern browsers will block the cookie in cross-site contexts.",
-    "evidence": "Cookie issue for `cookies-third-party-no-samesite-none-secure`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "The cookie is silently dropped in third-party contexts by Chrome, Firefox, and Safari. Cross-site embed functionality (payment widgets, analytics, OAuth flows) breaks for these users.",
-    "explanation": "SameSite=None signals to the browser that the cookie is intentionally cross-site. The Secure requirement was added alongside SameSite=None to prevent cross-site cookies from being transmitted over HTTP where they could be stolen.",
-    "fixSteps": [
-      "Add SameSite=None; Secure to every cross-site cookie.",
-      "Add Partitioned if the cookie is for embedded content (CHIPS requirement)."
-    ],
-    "codeExamples": [
-      {
-        "label": "Cross-site cookie",
-        "language": "http",
-        "code": "Set-Cookie: cross-site-token=xyz; SameSite=None; Secure; HttpOnly; Path=/\n# If embedded content, also add: Partitioned"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite",
-      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7"
-    ],
-    "_idx": 20,
-    "cwe": "CWE-1275",
-    "owasp": "A05:2021"
-  },
-  {
-    "id": "cookie-host-prefix-injection-subdomain",
-    "type": "header",
-    "title": "Cookie Prefix Injection via User-Controlled Subdomain",
-    "category": "cookies",
-    "severity": "high",
-    "description": "If user-controlled values (subdomain names, host headers, redirect targets) flow into cookie names without validation, an attacker can craft __Host- or __Secure- prefixed cookies from a controlled subdomain, enabling cookie fixation attacks.",
-    "evidence": "Cookie issue for `cookies-host-prefix-injection-subdomain`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "An attacker who controls a subdomain or can inject a Host header can set __Host- prefixed cookies, which may overwrite the application's legitimate __Host- session cookie and fix a known session ID for session hijacking.",
-    "explanation": "User-controlled values should never be used as cookie names. An attacker who can set a cookie named __Host-session from a compromised subdomain can fix a session ID and wait for an admin to log in with that fixed session.",
-    "fixSteps": [
-      "Never let user input flow into cookie names.",
-      "Hard-code __Host-/__Secure- cookie names on the server; never derive them from request data.",
-      "Audit subdomain takeover surface and co-tenanted subdomains."
-    ],
-    "codeExamples": [
-      {
-        "label": "Validate cookie names server-side",
-        "language": "typescript",
-        "code": "// Never dynamically derive cookie names from user input\nconst COOKIE_NAME = '__Host-session'; // Hard-coded constant\n\nres.setHeader('Set-Cookie',\n  `${COOKIE_NAME}=${sessionId}; Path=/; Secure; HttpOnly; SameSite=Lax`);"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3.2"
-    ],
-    "_idx": 21,
-    "cwe": "CWE-384",
-    "owasp": "A07:2021"
   },
   {
     "id": "cookie-httponly-missing",
@@ -509,38 +337,6 @@
     "owasp": "A05:2021"
   },
   {
-    "id": "cookie-prefix-invalid",
-    "type": "header",
-    "title": "Cookie Prefix Used Incorrectly",
-    "category": "cookies",
-    "severity": "high",
-    "description": "A cookie uses the __Host- or __Secure- prefix but does not satisfy the prefix's requirements (Secure attribute, Path=/, no Domain= attribute for __Host-). The browser will reject or ignore the prefix semantics.",
-    "evidence": "Cookie issue for `cookie-prefix-invalid`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Invalid prefix usage means the browser does not enforce the security properties the prefix is supposed to guarantee, leaving the cookie vulnerable to subdomain override, HTTP transmission, or path-based injection attacks.",
-    "explanation": "__Host- requires: Secure, Path=/, and no Domain=. __Secure- requires: Secure. If any required attribute is missing, compliant browsers either reject the cookie entirely or ignore the prefix, stripping its security guarantees.",
-    "fixSteps": [
-      "For __Host-: ensure Secure; Path=/; no Domain= is set.",
-      "For __Secure-: ensure Secure is present.",
-      "Validate all prefixed cookie names at startup with a unit test."
-    ],
-    "codeExamples": [
-      {
-        "label": "Correct __Host- cookie",
-        "language": "http",
-        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
-      },
-      {
-        "label": "Correct __Secure- cookie",
-        "language": "http",
-        "code": "Set-Cookie: __Secure-prefs=dark-mode; Secure; SameSite=Lax; Path=/settings"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
-      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3"
-    ]
-  },
-  {
     "id": "cookie-no-secure-prefix",
     "type": "header",
     "title": "Sensitive Cookie Without __Secure- or __Host- Prefix",
@@ -596,65 +392,6 @@
     ],
     "cwe": "CWE-1275",
     "owasp": "A05:2021"
-  },
-  {
-    "id": "session-cookie-flags",
-    "type": "header",
-    "title": "Session Cookie Missing Security Flags",
-    "category": "cookies",
-    "severity": "high",
-    "description": "A session cookie (identified by name pattern: session, sid, auth, token) is missing one or more critical security attributes: HttpOnly, Secure, or SameSite.",
-    "evidence": "Cookie issue for `session-cookie-flags`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "A session cookie without HttpOnly is stealable via XSS. Without Secure it can be intercepted on HTTP. Without SameSite it is vulnerable to CSRF. Missing any one of these flags weakens the session's resistance to common attacks.",
-    "explanation": "Session cookies are the primary authentication token in most web applications. They require all three protections: HttpOnly (no JS access), Secure (HTTPS only), and SameSite (CSRF protection). Omitting any one creates a gap that specific attacks exploit.",
-    "fixSteps": [
-      "Ensure session cookies have HttpOnly; Secure; SameSite=Lax (minimum) or SameSite=Strict.",
-      "Use the __Host- prefix to enforce these properties at the browser level."
-    ],
-    "codeExamples": [
-      {
-        "label": "Fully secured session cookie",
-        "language": "http",
-        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
-      },
-      {
-        "label": "Node.js (express-session)",
-        "language": "javascript",
-        "code": "app.use(session({\n  name: '__Host-sid',\n  secret: process.env.SESSION_SECRET,\n  cookie: {\n    httpOnly: true,\n    secure: true,\n    sameSite: 'lax',\n    path: '/',\n    maxAge: 7 * 24 * 60 * 60 * 1000,\n  },\n  resave: false,\n  saveUninitialized: false,\n}));"
-      }
-    ],
-    "references": [
-      "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"
-    ],
-    "cwe": "CWE-614",
-    "owasp": "A07:2021"
-  },
-  {
-    "id": "cookie-domain-set-too-loose",
-    "type": "header",
-    "title": "Cookie Domain Scoped to Parent Domain",
-    "category": "cookies",
-    "severity": "medium",
-    "description": "A cookie is set with Domain= pointing to a parent domain rather than the exact host. This makes the cookie available to all subdomains of the parent domain, including potentially compromised or third-party subdomains.",
-    "evidence": "Cookie issue for `cookie-domain-set-too-loose`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Any subdomain of the parent domain can read this cookie. A subdomain that is vulnerable to XSS or subject to subdomain takeover can steal the session cookie for the entire domain.",
-    "explanation": "Setting Domain=example.com sends the cookie to every subdomain: www.example.com, api.example.com, dev.example.com, staging.example.com, etc. Each of these subdomains is a potential attack vector. Omitting Domain= restricts the cookie to the exact host that set it.",
-    "fixSteps": [
-      "Remove the Domain= attribute to make the cookie host-only.",
-      "If cross-subdomain sharing is required, use __Host- prefix where possible and audit all receiving subdomains."
-    ],
-    "codeExamples": [
-      {
-        "label": "Host-only (no Domain=)",
-        "language": "http",
-        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.3"
-    ]
   },
   {
     "id": "cookie-no-csrf-token",

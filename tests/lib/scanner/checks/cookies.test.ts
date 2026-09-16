@@ -113,20 +113,6 @@ const fixtures: DetectorFixtures = {
 
   // ── Cookie prefix ────────────────────────────────────────────────────
 
-  "cookie-prefix-invalid": [
-    {
-      description:
-        "disabled — redundant with cookie-host-prefix-not-secure/-wrong-path and cookie-secure-prefix-not-secure, never fires",
-      cookies: ["__host-id=abc; Path=/"],
-      expect: "skip",
-    },
-    {
-      description: "disabled — __Host- cookie with Secure, also not a finding",
-      cookies: ["__host-id=abc; Secure; Path=/"],
-      expect: "skip",
-    },
-  ],
-
   "cookie-no-secure-prefix": [
     {
       description: "sensitive cookie without __Host- prefix",
@@ -137,20 +123,6 @@ const fixtures: DetectorFixtures = {
     {
       description: "sensitive cookie with __Host- prefix",
       cookies: ["__Host-session=abc; HttpOnly; Secure; Path=/"],
-      expect: "skip",
-    },
-  ],
-
-  "cookie-host-prefix-injection-subdomain": [
-    {
-      description: "__Host- cookie is properly secured, not a finding",
-      cookies: ["__Host-session=abc; Secure; Path=/"],
-      expect: "skip",
-    },
-    {
-      description:
-        "cookie without host-prefix (normal; old fallback removed to reduce FPs)",
-      cookies: ["session=abc; HttpOnly; Secure; SameSite=Lax"],
       expect: "skip",
     },
   ],
@@ -234,14 +206,6 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "cookie-domain-set-too-loose": [
-    {
-      description: "explicit Domain= is common and not a finding on its own",
-      cookies: ["session=abc; Domain=example.com"],
-      expect: "skip",
-    },
-  ],
-
   // ── Expires / Max-Age ───────────────────────────────────────────────
 
   "cookie-expires-too-far": [
@@ -279,28 +243,7 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "cookie-max-age-zero": [
-    {
-      description: "Max-Age=0 is standard cookie deletion, not a finding",
-      cookies: ["session=; Max-Age=0"],
-      expect: "skip",
-    },
-  ],
-
   // ── Session / CSRF ──────────────────────────────────────────────────
-
-  "session-cookie-flags": [
-    {
-      // Removed because it restated all three per-attribute checks below, on
-      // the same cookies, at a HIGHER severity than any of them. One session
-      // cookie missing HttpOnly produced four findings for one root cause,
-      // and the loudest of the four was the duplicate.
-      description:
-        "removed — duplicate of cookie-httponly/secure/samesite-missing",
-      cookies: ["SESSIONID=abc"],
-      expect: "skip",
-    },
-  ],
 
   "cookie-no-csrf-token": [
     {
@@ -348,14 +291,6 @@ const fixtures: DetectorFixtures = {
 
   // ── Path ────────────────────────────────────────────────────────────
 
-  "cookie-path-cross-app": [
-    {
-      description: "Path=/ is the standard correct setting, not a finding",
-      cookies: ["session=abc; Path=/"],
-      expect: "skip",
-    },
-  ],
-
   // ── Disclosures ─────────────────────────────────────────────────────
 
   "cookie-name-disclosure": [
@@ -389,19 +324,6 @@ const fixtures: DetectorFixtures = {
 
   // ── Partitioned (CHIPS) ─────────────────────────────────────────────
 
-  "cookie-partitioned-missing": [
-    {
-      // Disabled: a Domain= attribute does not indicate a cookie is used in
-      // a genuinely cross-site/third-party iframe context (what Partitioned
-      // actually targets) — that can't be determined from a single
-      // response. ref: AUDIT-008#scanner-08
-      description:
-        "disabled — Domain= alone does not imply third-party/CHIPS applicability",
-      cookies: ["tracking=abc; Domain=example.com"],
-      expect: "skip",
-    },
-  ],
-
   "cookie-partitioned-without-secure": [
     {
       description: "Partitioned without Secure (browsers reject)",
@@ -412,36 +334,6 @@ const fixtures: DetectorFixtures = {
   ],
 
   // ── Third-party ─────────────────────────────────────────────────────
-
-  "cookie-no-samesite-third-party": [
-    {
-      // Disabled: a Domain= attribute alone does not mean a cookie is
-      // "third-party" — it's the standard way to share a session cookie
-      // across subdomains for first-party SSO, which is completely ordinary
-      // at any multi-subdomain company. This condition also always
-      // overlapped with cookie-third-party-no-samesite-none-secure.
-      // ref: AUDIT-008#scanner-08
-      description:
-        "disabled — Domain= alone does not imply the cookie is third-party",
-      cookies: ["tracking=abc; Domain=example.com"],
-      expect: "skip",
-    },
-  ],
-
-  "cookie-third-party-no-samesite-none-secure": [
-    {
-      // Disabled: same flawed "Domain= implies third-party" premise. A
-      // Domain-scoped SSO cookie using SameSite=Lax is a normal, secure
-      // configuration — this check demanded SameSite=None instead, which is
-      // worse advice, not better. The precise, real check (SameSite=None
-      // declared without Secure) is set-cookie-samesite-none-no-secure.
-      // ref: AUDIT-008#scanner-08
-      description:
-        "disabled — Domain= alone does not imply the cookie needs SameSite=None",
-      cookies: ["tracking=abc; Domain=example.com; SameSite=Lax"],
-      expect: "skip",
-    },
-  ],
 };
 
 runDetectorTests(detectors, fixtures);

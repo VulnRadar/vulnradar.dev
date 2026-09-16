@@ -291,29 +291,11 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "eval-usage": [
-    {
-      description:
-        "eval() — covered by eval-in-scripts; removed to reduce noise from minified bundles",
-      body: "<html><body><script>eval(userInput);</script></body></html>",
-      expect: "skip",
-    },
-  ],
-
   "function-constructor": [
     {
       description: "new Function() constructor",
       body: "<html><body><script>const fn = new Function('a', 'b', code);</script></body></html>",
       expect: "fire",
-    },
-  ],
-
-  "settimeout-string": [
-    {
-      description:
-        "covered by code-eval-setinterval-string; removed to avoid duplicate",
-      body: "<html><body><script>setTimeout('alert(1)', 100);</script></body></html>",
-      expect: "skip",
     },
   ],
 
@@ -364,15 +346,6 @@ const fixtures: DetectorFixtures = {
         '</p>\n<script>\nconst q = "SELECT * FROM users WHERE id = 1" + req.query.id;\n</script></body></html>',
       expect: "fire",
       evidenceIncludes: "SQL patterns in inline scripts",
-    },
-  ],
-
-  "code-timing-no-constant-time-compare": [
-    {
-      description:
-        "detector disabled (100% false positive rate on client-side JS)",
-      body: "<html><body><script>if (token === stored) { allow = true; }</script></body></html>",
-      expect: "skip",
     },
   ],
 
