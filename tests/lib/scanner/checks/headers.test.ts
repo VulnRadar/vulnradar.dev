@@ -1015,7 +1015,9 @@ const fixtures: DetectorFixtures = {
     {
       description: "CSP connect-src *",
       url: "https://example.com/",
-      headers: { "content-security-policy": "default-src 'self'; connect-src *" },
+      headers: {
+        "content-security-policy": "default-src 'self'; connect-src *",
+      },
       expect: "fire",
       evidenceIncludes: "connect-src *",
     },
@@ -1038,7 +1040,9 @@ const fixtures: DetectorFixtures = {
       // page-csp-wildcard-host-source reports these, including *.example.com.
       description: "default-src * belongs to the wildcard host check",
       url: "https://example.com/",
-      headers: { "content-security-policy": "default-src *; script-src * 'self'" },
+      headers: {
+        "content-security-policy": "default-src *; script-src * 'self'",
+      },
       expect: "skip",
     },
   ],

@@ -358,9 +358,7 @@ function isFlightPayload(content: string): boolean {
     const prefix = FLIGHT_PUSH_PREFIXES.find((p) => statement.startsWith(p));
     if (!prefix || !statement.endsWith(")")) return false;
     try {
-      return Array.isArray(
-        JSON.parse(statement.slice(prefix.length, -1)),
-      );
+      return Array.isArray(JSON.parse(statement.slice(prefix.length, -1)));
     } catch {
       return false;
     }
@@ -369,13 +367,46 @@ function isFlightPayload(content: string): boolean {
 
 /** Every word Cloudflare's challenge-platform bootstraps are written with. */
 const CLOUDFLARE_BOOTSTRAP_WORDS = new Set([
-  "__CF$cv$params", "_cpo", "a", "absolute", "addEventListener",
-  "appendChild", "b", "body", "border", "c", "contentDocument",
-  "contentWindow", "createElement", "d", "document", "DOMContentLoaded", "e",
-  "else", "function", "getElementsByTagName", "head", "height", "hidden",
-  "if", "iframe", "innerHTML", "left", "loading", "none", "onreadystatechange",
-  "position", "readyState", "script", "src", "style", "top", "var",
-  "visibility", "width", "window",
+  "__CF$cv$params",
+  "_cpo",
+  "a",
+  "absolute",
+  "addEventListener",
+  "appendChild",
+  "b",
+  "body",
+  "border",
+  "c",
+  "contentDocument",
+  "contentWindow",
+  "createElement",
+  "d",
+  "document",
+  "DOMContentLoaded",
+  "e",
+  "else",
+  "function",
+  "getElementsByTagName",
+  "head",
+  "height",
+  "hidden",
+  "if",
+  "iframe",
+  "innerHTML",
+  "left",
+  "loading",
+  "none",
+  "onreadystatechange",
+  "position",
+  "readyState",
+  "script",
+  "src",
+  "style",
+  "top",
+  "var",
+  "visibility",
+  "width",
+  "window",
 ]);
 
 /**

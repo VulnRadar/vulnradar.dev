@@ -436,7 +436,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Bug,
         label: "Scripts Can No Longer Slip Past the Code Checks",
-        desc: "The scanner deliberately skips a few kinds of script that a site did not write itself, such as the page data a Next.js site sends along with every page and a small script Cloudflare adds for bot protection. It used to recognise those by looking for a telltale word anywhere inside a script, so a real script with that word in a comment was skipped too, and anything dangerous in it went unreported. A script with an unrelated setting whose name happened to end in \"type\" or \"src\" was skipped the same way. The scanner now only skips a script when the whole script matches what Next.js or Cloudflare actually send, and reads each script's settings properly, so these scripts are checked like any other.",
+        desc: 'The scanner deliberately skips a few kinds of script that a site did not write itself, such as the page data a Next.js site sends along with every page and a small script Cloudflare adds for bot protection. It used to recognise those by looking for a telltale word anywhere inside a script, so a real script with that word in a comment was skipped too, and anything dangerous in it went unreported. A script with an unrelated setting whose name happened to end in "type" or "src" was skipped the same way. The scanner now only skips a script when the whole script matches what Next.js or Cloudflare actually send, and reads each script\'s settings properly, so these scripts are checked like any other.',
         category: "fixed",
       },
       {

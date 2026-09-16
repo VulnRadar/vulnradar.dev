@@ -1729,7 +1729,9 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
     expect(res.status).toBe(403);
     expect(mockLogAction).not.toHaveBeenCalled();
     expect(
-      mockQuery.mock.calls.some((c) => String(c[0]).includes("ai_credit_balance")),
+      mockQuery.mock.calls.some((c) =>
+        String(c[0]).includes("ai_credit_balance"),
+      ),
     ).toBe(false);
   }, 20000);
 
