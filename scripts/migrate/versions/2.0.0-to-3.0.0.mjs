@@ -1385,6 +1385,18 @@ export const upgrade = {
   ],
 
   addIndexes: [
+    // The public scans directory's own filter. Unauthenticated, linked from
+    // the sitemap, and previously unsupported by any index: the scanned_at
+    // index ordered the whole table and then discarded every row that was
+    // not a live public share. Partial, so it holds only rows the directory
+    // can show. The expiry test is not in the predicate because it compares
+    // against NOW() and a partial predicate has to be immutable.
+    {
+      name: "idx_scan_history_public_listed",
+      table: "scan_history",
+      columns: "scanned_at DESC",
+      where: "share_token IS NOT NULL AND share_publicly_listed = true",
+    },
     {
       name: "idx_ai_conversations_user_id",
       table: "ai_conversations",
