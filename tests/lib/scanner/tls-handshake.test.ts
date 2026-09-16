@@ -100,7 +100,10 @@ describe("readTlsHandshake", () => {
   it("pins the connection to the validated IP and keeps the hostname for SNI", async () => {
     answeringSocket();
     await readTlsHandshake("example.com", "https://example.com");
-    const opts = tlsMock.connect.mock.calls[0][0] as Record<string, unknown>;
+    const opts = tlsMock.connect.mock.calls[0][0] as unknown as Record<
+      string,
+      unknown
+    >;
     expect(opts.host).toBe("93.184.216.34");
     expect(opts.servername).toBe("example.com");
     expect(opts.requestOCSP).toBe(true);
