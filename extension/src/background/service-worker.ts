@@ -18,14 +18,9 @@
 //       survives that. handleScanUrl() also mirrors its progress/outcome
 //       into storage (scanInProgress / lastScanCompletion) so a popup that
 //       reopens after being closed mid-scan can recover accurate state.
-//     { kind: "history:list"  }
-//     { kind: "history:detail", id: number }
-//     { kind: "auth:status"   }
-//     { kind: "auth:paste",   apiKey: string }
-//     { kind: "auth:clear"    }
-//     { kind: "settings:get"  }
-//     { kind: "settings:set", patch: Partial<Settings> }
-//     { kind: "tab:url"       } → { url: string | null }
+//     { kind: "report:export", id: number, format, host }
+//   The popup and options pages read and write auth, history and settings
+//   through lib/ modules and chrome.storage directly; nothing sends them here.
 //   From content script:
 //     { kind: "page:loaded",  url: string, title: string }
 //     { kind: "reputation:scan",        url: string }
@@ -38,17 +33,12 @@
 
 import browser from "webextension-polyfill";
 import type Browser from "webextension-polyfill";
-import { api, fetchReport, VulnRadarApiError } from "../lib/api";
-import {
-  clear as clearAuth,
-  pasteKey as authPasteKey,
-  refreshMe,
-} from "../lib/auth";
+import { fetchReport, VulnRadarApiError } from "../lib/api";
+import { refreshMe } from "../lib/auth";
 import { get, getApiKey, loadAll, saveAll, set } from "../lib/storage";
 import {
   canAutoScanNow,
   noteAutoScanRan,
-  refreshHistoryFromServer,
   runScanSafe,
   shouldAutoScanPolicy,
 } from "../lib/scan";
@@ -223,36 +213,12 @@ browser.runtime.onMessage.addListener(
           m.mode as "quick" | "deep" | undefined,
         );
         break;
-      case "history:list":
-        promise = refreshHistoryFromServer();
-        break;
-      case "history:detail":
-        promise = handleHistoryDetail(m.id as number);
-        break;
       case "report:export":
         promise = handleReportExport(
           m.id as number,
           m.format as ReportFormat,
           m.host as string,
         );
-        break;
-      case "auth:status":
-        promise = refreshMe();
-        break;
-      case "auth:paste":
-        promise = authPasteKey(m.apiKey as string);
-        break;
-      case "auth:clear":
-        promise = clearAuth();
-        break;
-      case "settings:get":
-        promise = handleSettingsGet();
-        break;
-      case "settings:set":
-        promise = handleSettingsSet(m.patch as Partial<Settings>);
-        break;
-      case "tab:url":
-        promise = handleTabUrl();
         break;
       case "page:loaded":
         // Auto-scan pipeline: use sender.tab.url (reliable cross-browser).
@@ -628,23 +594,6 @@ async function handleSnoozeSite(host: string): Promise<{ ok: true }> {
   return { ok: true };
 }
 
-async function handleHistoryDetail(
-  id: number,
-): Promise<ScanResult | { error: string }> {
-  await refreshMe();
-  const apiKey = await getApiKey();
-  if (!apiKey) return { error: "Not connected" };
-  try {
-    const res = await api.historyDetail(apiKey, id);
-    return res.body;
-  } catch (err) {
-    if (err instanceof VulnRadarApiError) {
-      return { error: err.body.error || `API error ${err.status}` };
-    }
-    return { error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
 /** How long to keep a report's blob URL alive waiting on the browser's
  *  save dialog before giving up and revoking it (5 minutes). */
 const REPORT_DOWNLOAD_SETTLE_MS = 5 * 60 * 1000;
@@ -740,36 +689,6 @@ async function handleReportExport(
       return { error: err.body.error || `API error ${err.status}` };
     }
     return { error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-async function handleSettingsGet(): Promise<{ settings: Settings }> {
-  const storage = await loadAll();
-  return { settings: storage.settings };
-}
-
-async function handleSettingsSet(
-  patch: Partial<Settings>,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const storage = await loadAll();
-  const merged: Settings = {
-    ...storage.settings,
-    ...patch,
-    families: { ...storage.settings.families, ...(patch.families ?? {}) },
-  };
-  await saveAll({ ...storage, settings: merged });
-  return { ok: true };
-}
-
-async function handleTabUrl(): Promise<{ url: string | null }> {
-  try {
-    const [active] = await browser.tabs.query({
-      active: true,
-      lastFocusedWindow: true, // currentWindow: true fails in Firefox background pages (windowId = -1)
-    });
-    return { url: active?.url ?? null };
-  } catch {
-    return { url: null };
   }
 }
 

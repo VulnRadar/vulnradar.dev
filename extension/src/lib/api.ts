@@ -18,7 +18,6 @@ import type {
   ScanHistoryRow,
   ScanJobStarted,
   ScanRequest,
-  ScanResult,
   ScanStatusResponse,
   VersionResponse,
 } from "./types";
@@ -257,9 +256,6 @@ export const api = {
       undefined,
       apiKey,
     ),
-
-  historyDetail: (apiKey: string, id: number) =>
-    call<ScanResult>("GET", `/api/v3/history/${id}`, undefined, apiKey),
 
   // `url` is optional in the signature and always sent in practice. The
   // endpoint checks for an exact-page record first and only falls back to the

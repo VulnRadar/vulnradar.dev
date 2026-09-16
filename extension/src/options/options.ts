@@ -1,8 +1,8 @@
 // Options page. Loads the user's settings + auth, then renders a
 // sticky sidebar nav + a column of 8 sections (Authentication, Auto-
 // Scan, Scan Families, Port Sweep, Notifications, Appearance,
-// Privacy). Every change writes back to chrome.storage.local via the
-// settings:set message in the background.
+// Privacy). Every change writes straight back to chrome.storage.local
+// through lib/storage.
 //
 // All sections are inline here (rather than split into per-section
 // files) for v0.1 - this keeps the surface area small while we figure

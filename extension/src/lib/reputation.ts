@@ -226,8 +226,7 @@ export function willAutoScanHandleSilently(
 // ---- Mute settings ----
 //
 // Two independent levels: a pair of global toggles (Settings.showScanResults
-// / showScanPrompts, round-trip through settings:set like every other
-// setting) and a per-site mute list. The per-site list has two
+// / showScanPrompts, saved to storage like every other setting) and a per-site mute list. The per-site list has two
 // storage-level mechanisms
 // that both get checked, never merged: `mutedHosts` (a plain host->true
 // map, exact hostname, scheme-agnostic - the original mechanism, now
