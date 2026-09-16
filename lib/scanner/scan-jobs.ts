@@ -263,12 +263,13 @@ export function startWatchdog(
     // that controller from the map, so a requestCancel afterwards would find
     // nothing left to abort. ref: AUDIT-012#abuse-06
     requestCancel(scanId);
-    // Guard the rejection: the watchdog fires precisely when a scan is stuck,
-    // which is disproportionately because the DB is already unhealthy -- the
-    // moment finalizeScanFailure's query is most likely to reject. A bare
-    // `void` here would surface as an unhandled rejection from a timer with no
-    // handler and, on Node's default, terminate the whole persistent process.
-    finalizeScanFailure(scanId, reason).catch(() => {});
+    // The quiet form, and this is the site that most needs it: the watchdog
+    // fires precisely when a scan is stuck, which is disproportionately
+    // because the DB is already unhealthy, the moment the write is most
+    // likely to reject. An unguarded rejection here would surface from a
+    // timer with no handler above it and, on Node's default, terminate the
+    // whole persistent process.
+    void finalizeScanFailureQuietly(scanId, reason);
   }, timeoutMs);
 }
 
@@ -500,6 +501,43 @@ export async function finalizeScanFailure(
   );
   clearCancel(scanId);
   return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * finalizeScanFailure where the caller cannot afford to throw.
+ *
+ * Seven call sites wrote `.catch(() => {})` and none of them logged. Not
+ * throwing is correct at every one: the watchdog's is a timer callback with no
+ * handler above it, so a bare rejection would terminate the whole persistent
+ * process, and the route-level ones are already inside the handler for the
+ * error they are recording. Not LOGGING is not correct, and it is the same
+ * mistake seven times.
+ *
+ * What it costs: this UPDATE is most likely to fail exactly when the database
+ * is unhealthy, which is also when a scan is most likely to be stuck, so the
+ * outcome was a row left `pending`/`running` with no trace anywhere of why the
+ * failure-recording itself failed. The stale-scan sweep eventually notices and
+ * alerts an admin, but it can only say "this scan is stale", not "the write
+ * that would have marked it failed was rejected, here is the error".
+ *
+ * console.error rather than a silent swallow because
+ * lib/database/error-log-capture.ts persists console.error into
+ * system_error_logs with its redaction pass, so this reaches the admin error
+ * log the operator is already reading.
+ */
+export function finalizeScanFailureQuietly(
+  scanId: number,
+  reason: string,
+): Promise<void> {
+  return finalizeScanFailure(scanId, reason).then(
+    () => {},
+    (err) => {
+      console.error(
+        `[scan-jobs] could not mark scan ${scanId} failed (${reason}):`,
+        err,
+      );
+    },
+  );
 }
 
 /**

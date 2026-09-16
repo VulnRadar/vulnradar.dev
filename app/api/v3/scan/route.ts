@@ -34,7 +34,7 @@ import {
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
-import { finalizeScanFailure } from "@/lib/scanner/scan-jobs";
+import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
 import { reserveConcurrentScanSlot } from "@/lib/rate-limiting/concurrent-scans";
@@ -501,7 +501,7 @@ export async function POST(request: NextRequest) {
       const message =
         err instanceof Error ? err.message : "Scan failed to start.";
       console.error(`[${APP_NAME}] executeScan dispatch failed:`, message);
-      await finalizeScanFailure(scanHistoryId, message).catch(() => {});
+      await finalizeScanFailureQuietly(scanHistoryId, message);
     });
 
     // Add rate limit headers from the SAME quota row the gate consumed at the

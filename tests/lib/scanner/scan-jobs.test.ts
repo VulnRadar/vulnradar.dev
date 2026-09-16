@@ -61,6 +61,7 @@ const {
   startWatchdog,
   finalizeScanSuccess,
   finalizeScanFailure,
+  finalizeScanFailureQuietly,
   markScanRunning,
   sweepStaleScans,
 } = await import("@/lib/scanner/scan-jobs");
@@ -704,5 +705,62 @@ describe("sweepStaleScans", () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: null });
     const count = await sweepStaleScans();
     expect(count).toBe(0);
+  });
+});
+
+/**
+ * The write that records a failure, for callers that cannot throw.
+ *
+ * Seven call sites wrote `.catch(() => {})` and none logged. Not throwing is
+ * right at every one; not logging left a scan stuck `pending`/`running` with
+ * no trace anywhere of why the write that would have marked it failed did
+ * not. This UPDATE is most likely to reject exactly when the database is
+ * unhealthy, which is the same moment a scan is most likely to be stuck.
+ */
+describe("finalizeScanFailureQuietly", () => {
+  it("does not reject when the underlying write does", async () => {
+    mockQuery.mockRejectedValueOnce(new Error("connection terminated"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // The watchdog calls this from a setTimeout with no handler above it, so
+    // a rejection here would surface as an unhandled rejection and, on Node's
+    // default, take the whole persistent process down.
+    await expect(finalizeScanFailureQuietly(7, "Timed out")).resolves.toBe(
+      undefined,
+    );
+    spy.mockRestore();
+  });
+
+  it("says which scan, and why it was being failed, and what went wrong", async () => {
+    const boom = new Error("connection terminated");
+    mockQuery.mockRejectedValueOnce(boom);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await finalizeScanFailureQuietly(7, "Timed out");
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [message, err] = spy.mock.calls[0];
+    // All three, because the stale-scan sweep can already tell an admin that
+    // a scan is stale; what it cannot tell them is this.
+    expect(String(message)).toContain("7");
+    expect(String(message)).toContain("Timed out");
+    expect(err).toBe(boom);
+    spy.mockRestore();
+  });
+
+  it("stays silent when the write succeeds", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 7 }], rowCount: 1 });
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await finalizeScanFailureQuietly(7, "Timed out");
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("stays silent when the row was already terminal", async () => {
+    // A no-op is a normal outcome, not an error: the guard is
+    // `WHERE status IN ('pending','running')`, so a watchdog racing a real
+    // completion loses and that is the design.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await finalizeScanFailureQuietly(7, "Timed out");
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

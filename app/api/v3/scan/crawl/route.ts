@@ -12,7 +12,7 @@ import {
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
 import { executeCrawlScan } from "@/lib/scanner/execute-crawl-scan";
-import { finalizeScanFailure } from "@/lib/scanner/scan-jobs";
+import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
 import {
   APP_NAME,
   BEARER_PREFIX,
@@ -550,7 +550,7 @@ export async function POST(request: NextRequest) {
     const message =
       err instanceof Error ? err.message : "Crawl scan failed to start.";
     console.error(`[${APP_NAME}] executeCrawlScan dispatch failed:`, message);
-    await finalizeScanFailure(scanHistoryId, message).catch(() => {});
+    await finalizeScanFailureQuietly(scanHistoryId, message);
   });
 
   // Audit the non-secret fact that an authenticated crawl ran: origin, method,

@@ -16,7 +16,8 @@ vi.mock("@/lib/scanner/execute-scan", () => ({
 
 const mockFinalizeScanFailure = vi.fn();
 vi.mock("@/lib/scanner/scan-jobs", () => ({
-  finalizeScanFailure: (...args: unknown[]) => mockFinalizeScanFailure(...args),
+  finalizeScanFailureQuietly: (...args: unknown[]) =>
+    mockFinalizeScanFailure(...args),
 }));
 
 const { runBulkBatch } = await import("@/lib/scanner/execute-bulk-scan");
@@ -137,16 +138,16 @@ describe("runBulkBatch", () => {
   });
 
   it("leaves no row pending when the loop itself throws", async () => {
-    // finalizeScanFailure's own rejection must not stop the remaining rows
-    // from being closed out either.
+    // This used to drive the close-out call into rejecting, because the
+    // tolerance lived in a `.catch(() => {})` right here. It lives in
+    // finalizeScanFailureQuietly now, which never rejects and logs instead,
+    // and tests/lib/scanner/scan-jobs.test.ts pins that. What is left for
+    // this suite to prove is the part that is actually this module's job:
+    // a throwing executeScan does not leave scan_history holding a row at
+    // 'pending' forever.
     mockExecuteScan.mockImplementation(async () => {
       throw new Error("boom");
     });
-    mockFinalizeScanFailure.mockRejectedValue(new Error("db down"));
-
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
 
     await expect(
       runBulkBatch({
@@ -156,6 +157,6 @@ describe("runBulkBatch", () => {
       }),
     ).resolves.toBeUndefined();
 
-    consoleErrorSpy.mockRestore();
+    expect(mockFinalizeScanFailure).toHaveBeenCalledWith(1, expect.any(String));
   });
 });

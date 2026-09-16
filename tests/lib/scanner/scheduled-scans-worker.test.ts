@@ -52,14 +52,15 @@ vi.mock("@/lib/scanner/execute-scan", () => ({
 /**
  * The worker closes out its own scan_history row when the dispatch throws
  * before executeScan has armed the watchdog that would otherwise release it.
- * Mocked here (finalizeScanFailure's SQL and its
+ * Mocked here (finalizeScanFailureQuietly's SQL and its
  * `WHERE status IN ('pending','running')` guard have their own suite in
  * tests/lib/scanner/scan-jobs.test.ts) so these cases assert the contract this
  * module is responsible for: that the row is closed at all.
  */
 const mockFinalizeScanFailure = vi.fn();
 vi.mock("@/lib/scanner/scan-jobs", () => ({
-  finalizeScanFailure: (...args: unknown[]) => mockFinalizeScanFailure(...args),
+  finalizeScanFailureQuietly: (...args: unknown[]) =>
+    mockFinalizeScanFailure(...args),
 }));
 
 const mockUserMeetsScheduleFrequency = vi.fn();

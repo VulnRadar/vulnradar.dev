@@ -42,7 +42,7 @@ import {
   runBulkBatch,
   type BulkQueuedScan,
 } from "@/lib/scanner/execute-bulk-scan";
-import { finalizeScanFailure } from "@/lib/scanner/scan-jobs";
+import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
 import {
   APP_NAME,
   BEARER_PREFIX,
@@ -582,9 +582,7 @@ export async function POST(request: NextRequest) {
       // instead of issuing a doomed charge per remaining URL.
       const abandoned = reservation.scanIds.slice(i);
       await Promise.all(
-        abandoned.map((id) =>
-          finalizeScanFailure(id, refusal!).catch(() => {}),
-        ),
+        abandoned.map((id) => finalizeScanFailureQuietly(id, refusal!)),
       );
       for (let j = i; j < admissible.length; j++) {
         results.push({

@@ -60,7 +60,7 @@ import {
   isRawIpv4,
   getProtocolType,
 } from "./execute-scan";
-import { finalizeScanFailure } from "./scan-jobs";
+import { finalizeScanFailureQuietly } from "./scan-jobs";
 import {
   computeNextRunAt,
   isScheduleFrequency,
@@ -530,7 +530,7 @@ export async function processSchedule(
     // `WHERE status IN ('pending','running')`, so a row executeScan already
     // finalized is untouched.
     if (scanHistoryId !== null) {
-      await finalizeScanFailure(scanHistoryId, message).catch(() => {});
+      await finalizeScanFailureQuietly(scanHistoryId, message);
     }
     // A transient failure (DB hiccup, executeScan throwing) is not a
     // permanent target problem -- retry at the normal cadence rather than

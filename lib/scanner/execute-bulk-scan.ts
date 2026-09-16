@@ -24,7 +24,7 @@
  */
 
 import { executeScan, type ProtocolType } from "./execute-scan";
-import { finalizeScanFailure } from "./scan-jobs";
+import { finalizeScanFailureQuietly } from "./scan-jobs";
 import { APP_NAME } from "@/lib/config/constants";
 
 /** One admitted URL: its reserved row plus everything executeScan needs. */
@@ -91,7 +91,7 @@ export async function runBulkBatch({
         const message =
           err instanceof Error ? err.message : "Scan failed to start.";
         console.error(`[${APP_NAME}] Bulk scan job failed:`, message);
-        await finalizeScanFailure(scan.scanId, message).catch(() => {});
+        await finalizeScanFailureQuietly(scan.scanId, message);
       }
     }
   } finally {
@@ -102,7 +102,7 @@ export async function runBulkBatch({
         : "The bulk scan batch this URL belonged to stopped before it ran.";
       await Promise.all(
         [...unstarted].map((scanId) =>
-          finalizeScanFailure(scanId, reason).catch(() => {}),
+          finalizeScanFailureQuietly(scanId, reason),
         ),
       );
     }

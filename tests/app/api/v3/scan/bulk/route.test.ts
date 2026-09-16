@@ -124,7 +124,8 @@ vi.mock("@/lib/scanner/execute-bulk-scan", () => ({
 
 const mockFinalizeScanFailure = vi.fn();
 vi.mock("@/lib/scanner/scan-jobs", () => ({
-  finalizeScanFailure: (...args: unknown[]) => mockFinalizeScanFailure(...args),
+  finalizeScanFailureQuietly: (...args: unknown[]) =>
+    mockFinalizeScanFailure(...args),
 }));
 
 // reserveConcurrentScanBatch performs every row's INSERT inside one locked
