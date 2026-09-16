@@ -54,9 +54,19 @@ jobs:
     # Only when the amd64 publish actually succeeded. A failed or cancelled
     # run means there is no index to merge into, and pushing arm64 on its own
     # would leave the tag resolving for arm64 and nothing else.
+    #
+    # security: and only for a run that was a push to THIS repository. This
+    # job holds packages:write and an OIDC token and checks out the run's ref,
+    # so it must never build code a fork chose. docker-publish only triggers
+    # on tag pushes today, which a fork cannot make, but that guarantee lived
+    # in another file's trigger list; stating it here keeps it true if that
+    # list ever grows a pull_request trigger. (CodeQL
+    # actions/untrusted-checkout/high, alert 191.)
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     permissions:
