@@ -3,6 +3,7 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp } from "@/lib/api/request-utils";
+import { parsePagination } from "@/lib/api/pagination";
 import {
   requirePermission,
   requireAdmin,
@@ -27,12 +28,10 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search") || "";
   const searchEscaped = search.replace(/[\\%_]/g, "\\$&");
-  const page = parseInt(searchParams.get("page") || "1", 10);
-  const limit = Math.min(
-    100,
-    Math.max(1, parseInt(searchParams.get("limit") || "10", 10)),
-  );
-  const offset = (page - 1) * limit;
+  const { page, limit, offset } = parsePagination(searchParams, {
+    defaultLimit: 10,
+    maxLimit: 100,
+  });
 
   // audit: this GET is not written to admin_audit_log, matching the paged
   // user list in app/api/v3/admin/route.ts. Both are browse surfaces the

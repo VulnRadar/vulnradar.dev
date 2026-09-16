@@ -9,6 +9,7 @@ import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
+import { parsePagination } from "@/lib/api/pagination";
 
 interface PublicScanRow {
   url: string;
@@ -64,16 +65,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
 
   const { searchParams } = new URL(request.url);
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
-  const requestedLimit = parseInt(
-    searchParams.get("limit") || String(CONFIG_PAGINATION_DEFAULT_PAGE_SIZE),
-    10,
-  );
-  const limit = Math.min(
-    CONFIG_PAGINATION_MAX_PAGE_SIZE,
-    Math.max(1, requestedLimit || CONFIG_PAGINATION_DEFAULT_PAGE_SIZE),
-  );
-  const offset = (page - 1) * limit;
+  const { page, limit, offset } = parsePagination(searchParams);
 
   const WHERE = `WHERE sh.share_token IS NOT NULL AND sh.share_publicly_listed = true
      AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())`;

@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
+import { parsePagination } from "@/lib/api/pagination";
 import { requirePermission, logAction } from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
-import {
-  CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
-  CONFIG_PAGINATION_MAX_PAGE_SIZE,
-} from "@/lib/config/config-values";
 
 // Content moderation (purge cached host reputation, unlist/revoke public
 // shares) -- gated by MODERATE_CONTENT so the content_manager and
@@ -19,19 +16,6 @@ import {
 // and genuinely is admin-only, which is exactly how the pair misleads.
 async function requireContentModerator() {
   return requirePermission(STAFF_PERMISSIONS.MODERATE_CONTENT);
-}
-
-function parsePagination(searchParams: URLSearchParams) {
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
-  const requestedLimit = parseInt(
-    searchParams.get("limit") || String(CONFIG_PAGINATION_DEFAULT_PAGE_SIZE),
-    10,
-  );
-  const limit = Math.min(
-    CONFIG_PAGINATION_MAX_PAGE_SIZE,
-    Math.max(1, requestedLimit || CONFIG_PAGINATION_DEFAULT_PAGE_SIZE),
-  );
-  return { page, limit, offset: (page - 1) * limit };
 }
 
 /**

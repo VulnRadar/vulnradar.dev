@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { requireStaff } from "@/lib/auth/authorization";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
+import { parsePagination } from "@/lib/api/pagination";
 
 // A chat conversation blob is capped at 100 KB; reject anything materially
 // larger before we even parse it, so a hostile caller can't force a big JSON
@@ -171,13 +172,11 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-  const limit = Math.min(
-    200,
-    Math.max(1, parseInt(searchParams.get("limit") || "50", 10)),
-  );
+  const { page, limit, offset } = parsePagination(searchParams, {
+    defaultLimit: 50,
+    maxLimit: 200,
+  });
   const userIdFilter = searchParams.get("userId");
-  const offset = (page - 1) * limit;
 
   const conditions: string[] = [];
   const params: (string | number)[] = [];

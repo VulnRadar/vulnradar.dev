@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { requireAdmin, logAction } from "@/lib/auth/authorization";
 import { getClientIp } from "@/lib/api/request-utils";
+import { parsePagination } from "@/lib/api/pagination";
 import {
   CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
   CONFIG_PAGINATION_MAX_PAGE_SIZE,
@@ -84,19 +85,10 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
-  const requestedLimit = parseInt(
-    searchParams.get("limit") || String(CONFIG_PAGINATION_DEFAULT_PAGE_SIZE),
-    10,
-  );
-  const limit = Math.min(
-    CONFIG_PAGINATION_MAX_PAGE_SIZE,
-    Math.max(1, requestedLimit || CONFIG_PAGINATION_DEFAULT_PAGE_SIZE),
-  );
+  const { page, limit, offset } = parsePagination(searchParams);
   const search = (searchParams.get("search") || "").trim();
   const statusParam = searchParams.get("status") || "";
   const status = VALID_STATUSES.has(statusParam) ? statusParam : "";
-  const offset = (page - 1) * limit;
 
   try {
     const conditions: string[] = [];
