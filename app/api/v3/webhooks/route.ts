@@ -372,24 +372,32 @@ export async function DELETE(request: NextRequest) {
   );
   const webhook = webhookResult.rows[0];
 
-  if (webhook) {
-    const access = await getTeamResourceAccess(
-      session.userId,
-      webhook.user_id,
-      webhook.team_id,
+  // An id that matches nothing is a 404, like every sibling route. It used to
+  // fall through to a DELETE that removed no rows and then answer 200, which
+  // inverted the very thing the line below is for: a webhook that EXISTS and
+  // is not yours already answers 404 rather than 403 so that a caller cannot
+  // tell one from the other, and answering 200 for "no such id" handed back
+  // exactly that distinction.
+  if (!webhook) {
+    return NextResponse.json({ error: "Webhook not found." }, { status: 404 });
+  }
+
+  const access = await getTeamResourceAccess(
+    session.userId,
+    webhook.user_id,
+    webhook.team_id,
+  );
+  if (!access.canWrite) {
+    return NextResponse.json(
+      { error: "You don't have permission to delete this webhook." },
+      { status: access.canRead ? 403 : 404 },
     );
-    if (!access.canWrite) {
-      return NextResponse.json(
-        { error: "You don't have permission to delete this webhook." },
-        { status: access.canRead ? 403 : 404 },
-      );
-    }
   }
 
   await pool.query("DELETE FROM webhooks WHERE id = $1", [id]);
 
-  // Send notification email if webhook was found
-  if (webhookResult.rows.length > 0) {
+  // The row existed: anything else returned 404 above.
+  {
     // audit-log: trusted client IP only.
     const ip = (await getClientIp()) || "Unknown";
     const userAgent = request.headers.get("user-agent") || "Unknown";

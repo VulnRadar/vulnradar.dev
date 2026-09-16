@@ -50,6 +50,7 @@ const endpoints: Endpoint[] = [
 }`,
     notes: [
       "url accepts a bare hostname (auto-prepended https://), a full URL with any of the 15 supported schemes, or a public IPv4 literal (probe-only mode). The full set (SUPPORTED_PROTOCOLS in lib/scanner/execute-scan.ts) is http, https, ws, wss, ftp, ftps, ssh, sftp, smtp, smtps, imap, imaps, pop3, pop3s, mongodb. The 400 body this route returns on a rejected scheme is built from that same list, so it names all fifteen.",
+      "teamIds (number[], optional) shares the resulting scan with those teams at once, and teamId (number, optional) is the original single-team form of the same thing. You may only name teams you hold manage_scans in. Neither appeared here before, so the capability existed and was invisible to anyone working from this page, which is a plausible reason nothing outside the web app ever sends them.",
       "Raw IPv4: web checks (headers, ssl, tls, cookies, content, info, configuration, code, secrets, api) are skipped, because there is no hostname context for them. DNS, email, and the portScan sweep still run.",
       "portScan is a boolean. Set it to true to run a curated sweep of common ports and services (the previous per-service probes array was removed and consolidated into this single flag). Each reachable service has its banner read and is reported for version disclosure and reachability.",
       "portScan is held to the same verified-domain gate as active-probes: port scanning from shared infrastructure is abuse, so a request setting portScan against a domain you have not verified is rejected with 403 before the scan starts.",
@@ -169,6 +170,7 @@ const endpoints: Endpoint[] = [
       "isPublic (boolean, optional) defaults to FALSE here, unlike every other scan-creation path. An authenticated scan sees whatever a logged-in area renders, so it is private unless this request explicitly passes true: neither the account's 'scans are private by default' setting nor the normal is_public default can make it public from either direction.",
       "The response also carries dangerScore (0-10 aggregate risk, anchored to the safety tier) and engineConfidence (50-100, an integer percent), both computed over the same findings array.",
       'auth.method is "form", "header", or "cookie". Form auth opens an ephemeral, real browser session (via BrowserBase) so a JavaScript-rendered login page gets a chance to appear before the login form is located and submitted as a normal HTTP POST; header and cookie auth attach the given values directly to every request instead of logging in.',
+      "teamIds (number[], optional) shares the resulting scan with those teams at once, and teamId (number, optional) is the original single-team form of the same thing. You may only name teams you hold manage_scans in. Neither appeared here before, so the capability existed and was invisible to anyone working from this page, which is a plausible reason nothing outside the web app ever sends them.",
       "Nothing under auth is ever written to a database table, a log line, or an audit record. The audit log and scan_history only record the non-secret fact that an authenticated scan ran, its method, and its outcome.",
       'authReport.status is "authenticated" on a normal run, "lost" if the authenticated session appears to have dropped partway through (e.g. a redirect back to the login page), or "failed" if login itself never succeeded, in which case authReport.reason explains why and no scan runs.',
       "If the login page turns out to be a Cloudflare challenge or a CAPTCHA, that is reported as a failed login with a reason describing the block, not silently treated like a wrong password.",
@@ -228,6 +230,7 @@ const endpoints: Endpoint[] = [
       "Max 100 URLs per request as an absolute server ceiling (CONFIG_MAX_URLS_BULK); your plan's own bulkScanUrls limit is usually lower and applies first.",
       "Returns as soon as every URL is queued, not when the scans finish. Each result carries a scanId to poll on /scan/status/{id}; the batch drains one scan at a time under CONFIG_BULK_SCAN_TIMEOUT_SECONDS.",
       "URLs beyond your remaining daily quota are reported in results with success: false rather than being scanned.",
+      "teamIds (number[], optional) shares every scan in the batch with those teams at once, and teamId (number, optional) is the original single-team form. You may only name teams you hold manage_scans in.",
     ],
     errors: [
       { code: 400, description: "Missing or invalid urls array" },
@@ -994,7 +997,57 @@ format=json       -> application/json            vulnradar-example.com.json`,
       { code: 403, description: "That session belongs to another user" },
       {
         code: 502,
-        description: "BrowserBase read failed (network or upstream error)",
+        description:
+          "Stated as 502 for convenience, but a BrowserBase failure is forwarded with ITS OWN status, which may be 401, 404, 429 or 500. Read the status from the response rather than assuming this one.",
+      },
+      {
+        code: 503,
+        description: "BrowserBase is not configured on this server",
+      },
+    ],
+  },
+  {
+    id: "get-browser-sessions-logs",
+    method: "GET",
+    path: "/browser/sessions/logs?id={id}",
+    title: "Browser Session Network Log",
+    description:
+      "The requests a browser session has made, for the network panel on the session viewer. Live CDP capture is the primary source; a session that has just ended falls back to BrowserBase's own post-session log, which is why the same call works during and shortly after a session.",
+    queryParams: [
+      {
+        name: "id",
+        type: "string",
+        required: true,
+        description: "The session id returned by POST /browser/sessions",
+      },
+    ],
+    responseExample: `{
+  "requests": [
+    {
+      "requestId": "1000012.5",
+      "url": "https://example.com/api/me",
+      "method": "GET",
+      "host": "example.com",
+      "path": "/api/me",
+      "status": 200,
+      "mimeType": "application/json",
+      "timestamp": 1757942400123
+    }
+  ]
+}`,
+    notes: [
+      "This endpoint existed and was documented nowhere, while its three siblings were. It is the one named in the repo's own CLAUDE.md alongside them.",
+      "requests is empty rather than an error while a session is still warming up: the live capture simply has nothing yet.",
+      "failed: true appears instead of a status when the request never completed.",
+      "Ownership fails CLOSED, unlike the other session endpoints' best-effort ownership row. This streams live traffic (hosts, paths and query strings), so a session whose ownership row is missing or unreadable is refused rather than served: losing the network panel is the right trade against serving somebody else's browsing.",
+    ],
+    errors: [
+      { code: 400, description: "Missing session id" },
+      { code: 401, description: "Unauthorized" },
+      {
+        code: 403,
+        description:
+          "That session belongs to another user, or its ownership could not be established",
       },
       {
         code: 503,
@@ -1139,6 +1192,7 @@ format=json       -> application/json            vulnradar-example.com.json`,
       "last_used_at": "2026-03-10T16:00:00.000Z",
       "revoked_at": null,
       "scopes": ["scan:write", "scan:read"],
+      "bound_ip": null,
       "usage_today": 12
     }
   ]
@@ -1147,6 +1201,7 @@ format=json       -> application/json            vulnradar-example.com.json`,
       "The prefix field is named key_prefix, not prefix.",
       "usage_today counts requests in the last 24 hours, not since midnight.",
       "scopes is null on keys created before scopes existed. A null there means the key behaves as if it had every scope.",
+      "bound_ip is the network the key pinned itself to the first time it was used, or null. It only exists when the deployment has API_KEY_IP_BINDING_ENABLED on, and it is the answer to the most confusing failure this API has: a key that worked yesterday returning 403 today because the request came from somewhere else. POST /keys/{id}/reset-binding clears it.",
     ],
     errors: [{ code: 401, description: "Unauthorized (session required)" }],
   },
@@ -1188,6 +1243,10 @@ format=json       -> application/json            vulnradar-example.com.json`,
       {
         code: 403,
         description: "API keys are disabled on this deployment",
+      },
+      {
+        code: 429,
+        description: "Too many keys created too quickly; carries Retry-After",
       },
     ],
   },
@@ -1688,6 +1747,11 @@ format=json       -> application/json            vulnradar-example.com.json`,
     errors: [
       { code: 401, description: "Unauthorized" },
       { code: 403, description: "No write access to this webhook" },
+      {
+        code: 404,
+        description:
+          "No webhook with that id, or one you cannot see. Both answer 404 on purpose, so a caller cannot use the status to learn which ids exist.",
+      },
     ],
   },
 ];

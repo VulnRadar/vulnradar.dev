@@ -1502,6 +1502,37 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           },
         },
       },
+      "/browser/sessions/logs": {
+        get: {
+          tags: ["Browser"],
+          summary: "Read a browser session's network log",
+          description:
+            "The requests a session has made, for the viewer's network panel. Live CDP capture is the primary source and the provider's post-session log is the fallback, which is why one call works both during a session and shortly after it ends. Ownership fails CLOSED here, unlike the sibling endpoints: this streams live traffic, so a session whose ownership row is missing or unreadable is refused rather than served. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: "id",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+              description: "The session id returned by POST.",
+            },
+          ],
+          responses: {
+            "200": {
+              description:
+                "{ requests: [...] }. Empty while a session is still warming up, which is not an error: the live capture simply has nothing yet.",
+            },
+            "400": { description: "Missing session id" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description:
+                "That session belongs to another user, or its ownership could not be established",
+            },
+            "503": { description: "Not configured on this server" },
+          },
+        },
+      },
       "/health": {
         get: {
           tags: ["System"],

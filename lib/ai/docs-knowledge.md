@@ -1070,6 +1070,27 @@ Fetch the latest BrowserBase session metadata (status, current URL, viewer URL).
 }
 ```
 
+#### `GET /browser/sessions/logs?id={id}`: Browser Session Network Log
+The requests a browser session has made, for the network panel on the session viewer. Live CDP capture is the primary source; a session that has just ended falls back to BrowserBase's own post-session log, which is why the same call works during and shortly after a session.
+
+- **Response (200):**
+```json
+{
+  "requests": [
+    {
+      "requestId": "1000012.5",
+      "url": "https://example.com/api/me",
+      "method": "GET",
+      "host": "example.com",
+      "path": "/api/me",
+      "status": 200,
+      "mimeType": "application/json",
+      "timestamp": 1757942400123
+    }
+  ]
+}
+```
+
 #### `DELETE /browser/sessions?id={id}`: End Browser Session
 End a BrowserBase session early. Idempotent, so it is safe to call from window.onbeforeunload.
 
@@ -1161,6 +1182,7 @@ List API keys for the authenticated user. Secret values are never returned.
       "last_used_at": "2026-03-10T16:00:00.000Z",
       "revoked_at": null,
       "scopes": ["scan:write", "scan:read"],
+      "bound_ip": null,
       "usage_today": 12
     }
   ]
@@ -2961,7 +2983,7 @@ individual URLs instead.
 | `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 14 | 2 |
 | `/docs/self-hosting` | - | 16 | 9 | 0 | 14 | 0 | 0 | 28 | 3 |
 | `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 31 | 0 |
-| `/docs/api` | - | 8 | 5 | 0 | 6 | 41 | 0 | 17 | 5 |
+| `/docs/api` | - | 8 | 5 | 0 | 6 | 42 | 0 | 17 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |
 | `/docs/webhooks` | ✓ | 7 | 0 | 0 | 4 | 0 | 0 | 13 | 6 |
 | `/docs/rate-limits` | - | 6 | 6 | 0 | 4 | 0 | 0 | 11 | 3 |

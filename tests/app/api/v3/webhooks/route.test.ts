@@ -203,14 +203,20 @@ describe("PATCH /api/v3/webhooks (send a test payload)", () => {
 });
 
 describe("DELETE /api/v3/webhooks", () => {
-  it("returns 404 when the webhook doesn't exist (idempotent no-op)", async () => {
+  it("returns 404 when the webhook doesn't exist", async () => {
+    // This test's NAME always said 404; its body asserted 200, which is what
+    // the route did. The name was the right one. Answering 200 for "no such
+    // id" while answering 404 for "exists, not yours" (the test below) handed
+    // a caller exactly the distinction that 404 is there to hide: a 200 meant
+    // the id is free, a 404 meant somebody has it.
     mockQuery.mockResolvedValueOnce({ rows: [] }); // SELECT: no row
-    mockQuery.mockResolvedValueOnce({ rowCount: 0 }); // DELETE: no-op
 
     const res = await DELETE(deleteRequest({ id: 999 }));
     const json = await res.json();
-    expect(res.status).toBe(200);
-    expect(json.success).toBe(true);
+    expect(res.status).toBe(404);
+    expect(json.error).toMatch(/not found/i);
+    // And nothing is deleted: the SELECT is the only query issued.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
   it("blocks deletion by a caller with no access", async () => {
