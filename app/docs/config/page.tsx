@@ -1257,9 +1257,12 @@ export default function ConfigPage() {
           </li>
           <li>
             Start the app (<InlineCode>npm run dev</InlineCode> or{" "}
-            <InlineCode>docker compose up app</InlineCode>). Schema auto-creates
-            on first boot; meta row is written on first scan via{" "}
-            <InlineCode>db:migrate</InlineCode>.
+            <InlineCode>docker compose up app</InlineCode>). The schema and its
+            <InlineCode>vulnradar_schema_meta</InlineCode> row are both created
+            on first boot, with nothing to run by hand.{" "}
+            <InlineCode>db:migrate</InlineCode> is the recovery path for a
+            database that already has tables but no recorded version, not a step
+            in a fresh install.
           </li>
           <li>
             Sign up the first user via <InlineCode>/signup</InlineCode>, then
@@ -1308,11 +1311,16 @@ export default function ConfigPage() {
             before any request is served.
           </li>
           <li>
-            <strong className="text-foreground">First scan:</strong>{" "}
+            <strong className="text-foreground">
+              Server startup, before the first request:
+            </strong>{" "}
             <InlineCode>instrumentation.ts</InlineCode> reads{" "}
             <InlineCode>vulnradar_schema_meta</InlineCode> and refuses to start
             if <InlineCode>schema_version</InlineCode> is below{" "}
-            <InlineCode>CONFIG_MIN_SCHEMA_VERSION</InlineCode>.
+            <InlineCode>CONFIG_MIN_SCHEMA_VERSION</InlineCode>. This runs in the
+            same <InlineCode>register()</InlineCode> pass as the env validation
+            above, ahead of any table creation, so a database too old to serve
+            is caught at boot rather than on whatever request reaches it first.
           </li>
         </ol>
       </DocsSection>

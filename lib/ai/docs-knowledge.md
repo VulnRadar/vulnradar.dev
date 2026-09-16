@@ -2972,7 +2972,7 @@ individual URLs instead.
 | `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 19 | 0 |
 | `/docs/billing` | - | 8 | 7 | 0 | 0 | 0 | 0 | 21 | 0 |
 | `/docs/cli` | - | 6 | 1 | 0 | 5 | 0 | 0 | 11 | 0 |
-| `/docs/github` | ✓ | 8 | 4 | 0 | 1 | 0 | 0 | 25 | 0 |
+| `/docs/github` | ✓ | 8 | 4 | 0 | 1 | 0 | 0 | 24 | 0 |
 | `/docs/reports` | - | 7 | 3 | 0 | 4 | 0 | 0 | 15 | 0 |
 | `/docs/scheduled-scans` | - | 9 | 6 | 0 | 0 | 0 | 0 | 22 | 0 |
 | `/docs/sharing` | ✓ | 8 | 4 | 0 | 2 | 0 | 0 | 27 | 0 |

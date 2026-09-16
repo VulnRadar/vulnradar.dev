@@ -325,17 +325,20 @@ export default function TeamsPage() {
 
       <DocsSection id="sharing" title="Sharing Scans">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
-          A scan is personal by default: its <InlineCode>team_id</InlineCode> is
-          null and only its owner can see it, even between teammates. To share
-          it, the owner assigns it to a team with{" "}
-          <InlineCode>PATCH /api/v3/history/{`{id}`}</InlineCode> and a{" "}
-          <InlineCode>teamId</InlineCode> in the body. Only the scan&apos;s own
-          owner may change that assignment, and only to a team where they hold{" "}
-          <InlineCode>manage_scans</InlineCode>.
+          A scan is personal by default: it belongs to no team and only its
+          owner can see it, even between teammates. To share it, the owner sends{" "}
+          <InlineCode>PATCH /api/v3/history/{`{id}`}</InlineCode> with{" "}
+          <InlineCode>teamIds</InlineCode>, an array that REPLACES the
+          scan&apos;s current set, so one scan can be shared with several teams
+          at once. The older <InlineCode>teamId</InlineCode> is still accepted
+          and means the same as a one-element array, or a zero-element one when
+          it is null. Only the scan&apos;s own owner may change that set, and
+          only to teams where they hold <InlineCode>manage_scans</InlineCode>.
         </p>
         <p className="max-w-[68ch] text-sm text-muted-foreground">
-          Once a scan carries a <InlineCode>team_id</InlineCode>, access follows
-          one shared rule (<InlineCode>getTeamResourceAccess</InlineCode>):
+          Once a scan is shared with a team, access to it through that team
+          follows one shared rule (
+          <InlineCode>getTeamResourceAccess</InlineCode>):
         </p>
         <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>

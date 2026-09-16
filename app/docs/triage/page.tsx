@@ -440,12 +440,14 @@ remediation key = (user_id, finding_id, finding_url)`}
         <DocsSubSection id="sharing" title="Sharing a ticket with a teammate">
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
             A ticket can be shared, but narrowly on purpose. Only the owner can
-            share it, only with a specific{" "}
+            share it, and only with a specific{" "}
             <strong className="text-foreground">teammate</strong> (someone who
-            shares a team with you), and one person at a time. There is no
-            share-with-the-whole-team button and no way to share with an
+            shares a team with you), chosen one at a time. There is no cap on
+            how many teammates end up with access, but there is no
+            share-with-the-whole-team button either, and no way to share with an
             arbitrary account: the picker only lists people you already share a
-            team with.
+            team with, and it empties out once they all have access. Each share
+            is its own row, so revoking one does not touch the others.
           </p>
           <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>

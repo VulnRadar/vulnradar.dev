@@ -210,10 +210,16 @@ export default function GithubScanningPage() {
             hardcoded secret in a public repo is treated as already compromised
             and needing rotation now, while the same secret in a private repo is
             a real risk that is not yet publicly disclosed. Findings come back
-            with confidence <InlineCode>60</InlineCode>, category{" "}
-            <InlineCode>code</InlineCode>, and detection method{" "}
-            <InlineCode>AI code review</InlineCode>, and only findings that name
-            a file the scan actually sent are kept.
+            with category <InlineCode>code</InlineCode>, detection method{" "}
+            <InlineCode>AI code review</InlineCode>, and the confidence the
+            model reported for that specific finding, clamped to 0-100. Anything
+            under
+            <InlineCode>60</InlineCode> is dropped rather than shown, so what
+            you see is 60 to 100 and it is real per-finding data worth sorting
+            on.
+            <InlineCode>60</InlineCode> is also what a finding scores when the
+            model omits the field. Only findings naming a file the scan actually
+            sent are kept.
           </p>
           <DocsCallout variant="warning" title="No AI endpoint, no AI findings">
             <p>
