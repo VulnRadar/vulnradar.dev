@@ -46,6 +46,7 @@ import {
 import { cn } from "@/lib/ui/utils";
 import { formatTimestamp } from "@/components/admin/utils";
 import { toLocalDatetimeInputValue } from "@/lib/notifications/local-datetime";
+import { API } from "@/lib/config/client-constants";
 
 interface AdminNotification {
   id: number;
@@ -131,7 +132,7 @@ const VARIANT_CONFIG = {
  * inside the same 7-day window isExpiringSoon() counts.
  */
 const CHIP =
-  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap";
+  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap";
 const CHIP_QUIET = "border-border/60 text-muted-foreground";
 const CHIP_FACT = "border-border bg-muted/50 text-foreground";
 const CHIP_WARN =
@@ -166,7 +167,7 @@ function isExpiringSoon(notif: AdminNotification): boolean {
 // tuned to sit just above AA, which put this label under it on every surface.
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-4 sm:px-5 pt-5 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground first:pt-0">
+    <p className="px-4 sm:px-5 pt-5 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground first:pt-0">
       {children}
     </p>
   );
@@ -253,7 +254,7 @@ export function NotificationsManager() {
     setRefreshing(true);
     setError(null);
     try {
-      const res = await fetch("/api/v3/admin/notifications");
+      const res = await fetch(`${API.ADMIN}/notifications`);
       if (!res.ok) throw new Error("Failed to fetch notifications");
       const data = await res.json();
       setNotifications(data.notifications || []);
@@ -361,8 +362,8 @@ export function NotificationsManager() {
         priority: parseInt(formData.priority) || 0,
       };
       const url = editingNotification
-        ? `/api/v3/admin/notifications/${editingNotification.id}`
-        : "/api/v3/admin/notifications";
+        ? `${API.ADMIN}/notifications/${editingNotification.id}`
+        : `${API.ADMIN}/notifications`;
       const res = await fetch(url, {
         method: editingNotification ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -383,7 +384,7 @@ export function NotificationsManager() {
     setDeleting(true);
     try {
       const res = await fetch(
-        `/api/v3/admin/notifications/${pendingDelete.id}`,
+        `${API.ADMIN}/notifications/${pendingDelete.id}`,
         { method: "DELETE" },
       );
       if (!res.ok) throw new Error("Failed to delete");
@@ -401,7 +402,7 @@ export function NotificationsManager() {
 
   const handleToggleActive = async (notif: AdminNotification) => {
     try {
-      const res = await fetch(`/api/v3/admin/notifications/${notif.id}`, {
+      const res = await fetch(`${API.ADMIN}/notifications/${notif.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...notif, is_active: !notif.is_active }),
@@ -1113,7 +1114,9 @@ export function NotificationsManager() {
                 {
                   field: "type",
                   label: "Type",
-                  oldValue: pendingDelete.type,
+                  oldValue:
+                    TYPE_CONFIG[pendingDelete.type]?.label ??
+                    pendingDelete.type,
                   newValue: null,
                 },
                 {

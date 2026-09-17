@@ -39,9 +39,13 @@ import {
   StatBar,
   Toast,
   AdminPanelHeader,
+  StatBarSkeleton,
+  StatusPill,
 } from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
-import { pluralize } from "@/lib/ui/plural";
+import { plural, pluralize } from "@/lib/ui/plural";
+import { API } from "@/lib/config/client-constants";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 interface BlockedRule {
   id: number;
@@ -102,16 +106,16 @@ function MatchingScansList({ scans }: { scans: MatchingScan[] }) {
           <Table>
             <TableHeader className="sticky top-0 z-20 bg-muted">
               <TableRow className="border-y border-border/50 hover:bg-transparent">
-                <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   URL
                 </TableHead>
-                <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   User
                 </TableHead>
-                <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Type
                 </TableHead>
-                <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Date
                 </TableHead>
               </TableRow>
@@ -135,7 +139,7 @@ function MatchingScansList({ scans }: { scans: MatchingScan[] }) {
                   <TableCell className="px-4 py-2.5">
                     <Badge
                       className={cn(
-                        "text-[10px] px-1.5 py-0 font-medium capitalize",
+                        "text-[11px] px-1.5 py-0 font-medium capitalize",
                         sourceBadgeClass(scan.source),
                       )}
                     >
@@ -165,7 +169,7 @@ function MatchingScansList({ scans }: { scans: MatchingScan[] }) {
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
               <Badge
                 className={cn(
-                  "text-[10px] px-1.5 py-0 font-medium capitalize",
+                  "text-[11px] px-1.5 py-0 font-medium capitalize",
                   sourceBadgeClass(scan.source),
                 )}
               >
@@ -225,7 +229,7 @@ export function BlockedDataManager() {
     setLoading(true);
     setFetchError(null);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "access_rules" }),
@@ -259,7 +263,7 @@ export function BlockedDataManager() {
   const fetchMatchingScans = async (ruleId: number, value: string) => {
     setLoadingScans(ruleId);
     try {
-      const res = await fetch("/api/v3/admin/blocked-data", {
+      const res = await fetch(`${API.ADMIN}/blocked-data`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "find_scans", value }),
@@ -295,7 +299,7 @@ export function BlockedDataManager() {
     if (!pendingDelete) return;
     setDeletingScans(pendingDelete.ruleId);
     try {
-      const res = await fetch("/api/v3/admin/blocked-data", {
+      const res = await fetch(`${API.ADMIN}/blocked-data`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -340,7 +344,7 @@ export function BlockedDataManager() {
     setLookupLoading(true);
     setLookupScans(null);
     try {
-      const res = await fetch("/api/v3/admin/blocked-data", {
+      const res = await fetch(`${API.ADMIN}/blocked-data`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "find_scans", value }),
@@ -363,7 +367,7 @@ export function BlockedDataManager() {
     if (!pendingLookupDelete) return;
     setDeletingLookupScans(true);
     try {
-      const res = await fetch("/api/v3/admin/blocked-data", {
+      const res = await fetch(`${API.ADMIN}/blocked-data`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -399,7 +403,7 @@ export function BlockedDataManager() {
     if (!pendingPurgeHost) return;
     setPurgingHost(true);
     try {
-      const res = await fetch("/api/v3/admin/blocked-data", {
+      const res = await fetch(`${API.ADMIN}/blocked-data`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -496,7 +500,7 @@ export function BlockedDataManager() {
             ? `This will permanently delete ${pendingDelete.scanCount} scan${pendingDelete.scanCount !== 1 ? "s" : ""} of history for "${pendingDelete.value}". This action cannot be undone.`
             : undefined
         }
-        confirmLabel="Delete All Data"
+        confirmText="Delete All Data"
         changes={deleteChangeItems}
         loading={deletingScans !== null}
         variant="destructive"
@@ -513,7 +517,7 @@ export function BlockedDataManager() {
             ? `This will permanently delete ${pendingLookupDelete.scanCount} scan${pendingLookupDelete.scanCount !== 1 ? "s" : ""} of history for "${pendingLookupDelete.value}". This action cannot be undone.`
             : undefined
         }
-        confirmLabel="Delete All Data"
+        confirmText="Delete All Data"
         changes={lookupDeleteChangeItems}
         loading={deletingLookupScans}
         variant="destructive"
@@ -540,34 +544,38 @@ export function BlockedDataManager() {
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
 
       <div className="space-y-6">
-        {/* Stats */}
-        <StatBar
-          items={[
-            {
-              label: "Blocked Rules",
-              value: blockedRules.length,
-              icon: Ban,
-              tone: "destructive",
-            },
-            {
-              // Only the rules an operator has expanded contribute to this:
-              // the panel never fetches match counts for rules nobody opened,
-              // so it read 0 on load and crept up as you clicked. The label
-              // says what the number is instead of implying a platform-wide
-              // total the client does not have.
-              label: "Scans Found So Far",
-              value: totalScansFound,
-              icon: FileSearch,
-              tone: "primary",
-            },
-            {
-              label: "Block Attempts",
-              value: blockedRules.reduce((sum, r) => sum + r.hit_count, 0),
-              icon: AlertTriangle,
-              tone: "orange",
-            },
-          ]}
-        />
+        {/* Stats, as a skeleton until the rules arrive: see ip-rules-manager. */}
+        {loading && blockedRules.length === 0 ? (
+          <StatBarSkeleton segments={3} />
+        ) : (
+          <StatBar
+            items={[
+              {
+                label: "Blocked Rules",
+                value: blockedRules.length,
+                icon: Ban,
+                tone: "destructive",
+              },
+              {
+                // Only the rules an operator has expanded contribute to this:
+                // the panel never fetches match counts for rules nobody opened,
+                // so it read 0 on load and crept up as you clicked. The label
+                // says what the number is instead of implying a platform-wide
+                // total the client does not have.
+                label: "Scans Found So Far",
+                value: totalScansFound,
+                icon: FileSearch,
+                tone: "primary",
+              },
+              {
+                label: "Block Attempts",
+                value: blockedRules.reduce((sum, r) => sum + r.hit_count, 0),
+                icon: AlertTriangle,
+                tone: "orange",
+              },
+            ]}
+          />
+        )}
 
         {/* Info Card */}
         <Card className="border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10">
@@ -605,7 +613,7 @@ export function BlockedDataManager() {
               <div className="relative flex-1">
                 <Search
                   aria-hidden="true"
-                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
                 />
                 <Input
                   placeholder="example.com or https://example.com/path"
@@ -615,7 +623,9 @@ export function BlockedDataManager() {
                     if (e.key === "Enter") handleLookupSearch();
                   }}
                   aria-label="Host or URL to look up"
-                  className="pl-10 bg-background/50 border-border/40"
+                  // Same box as ListSearchInput. It is not one because Enter
+                  // runs the lookup, where a list filter just filters.
+                  className="h-10 bg-card/50 pl-9"
                 />
               </div>
               <Button
@@ -650,7 +660,7 @@ export function BlockedDataManager() {
                       <span className="font-medium text-foreground tabular-nums">
                         {lookupScans.length}
                       </span>{" "}
-                      scan{lookupScans.length !== 1 ? "s" : ""} for{" "}
+                      {plural(lookupScans.length, "scan")} for{" "}
                       <span className="font-mono text-foreground">
                         {lookupValue.trim()}
                       </span>
@@ -730,12 +740,9 @@ export function BlockedDataManager() {
               // Hidden on a failed load, so a header count can never read as
               // "nothing is blocked" when the list simply did not arrive.
               fetchError ? null : (
-                <Badge
-                  variant="secondary"
-                  className="text-[11px] font-medium h-5 px-2 tabular-nums"
-                >
-                  {blockedRules.length}
-                </Badge>
+                <StatusPill tone="neutral">
+                  {pluralize(blockedRules.length, "rule")}
+                </StatusPill>
               )
             }
             actions={
@@ -755,19 +762,12 @@ export function BlockedDataManager() {
               </Button>
             }
           >
-            <div className="relative">
-              <Search
-                aria-hidden="true"
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
-              />
-              <Input
-                placeholder="Search blocked URLs or IPs..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                aria-label="Search blocked URLs or IPs"
-                className="pl-10 bg-background/50 border-border/40"
-              />
-            </div>
+            <ListSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search blocked URLs or IPs"
+              label="Search blocked URLs or IPs"
+            />
           </AdminPanelHeader>
 
           <CardContent className="p-0">
@@ -846,7 +846,7 @@ export function BlockedDataManager() {
                               hits stays grey. */}
                           <Badge
                             className={cn(
-                              "text-[10px] px-2 py-0.5 font-medium tabular-nums",
+                              "text-[11px] px-2 py-0.5 font-medium tabular-nums",
                               rule.hit_count > 0
                                 ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25"
                                 : "bg-muted/50 text-muted-foreground border-border",
@@ -857,13 +857,13 @@ export function BlockedDataManager() {
                           {matchingScans[rule.id] && (
                             <Badge
                               className={cn(
-                                "text-[10px] px-2 py-0.5 font-medium tabular-nums",
+                                "text-[11px] px-2 py-0.5 font-medium tabular-nums",
                                 scans.length > 0
                                   ? "bg-destructive/10 text-destructive border-destructive/20"
                                   : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
                               )}
                             >
-                              {scans.length} scan{scans.length !== 1 ? "s" : ""}
+                              {pluralize(scans.length, "scan")}
                             </Badge>
                           )}
                           {isLoadingThisRule ? (
@@ -917,8 +917,8 @@ export function BlockedDataManager() {
                                   <span className="font-medium text-foreground tabular-nums">
                                     {scans.length}
                                   </span>{" "}
-                                  scan{scans.length !== 1 ? "s" : ""} matching
-                                  this blocked entry
+                                  {plural(scans.length, "scan")} matching this
+                                  blocked entry
                                 </p>
                                 {/* Same delete as the lookup card runs, so the
                                     same treatment: it used to be solid here and

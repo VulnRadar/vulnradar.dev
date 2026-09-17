@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -46,6 +45,7 @@ import {
   type SortDirection,
 } from "@/components/admin/shared";
 import type { AdminStats, AdminUser } from "@/components/admin/types";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 /**
  * Admin > People > Users: the growth strip, the directory table and its
@@ -204,19 +204,12 @@ export function UsersTab({
             </Button>
           }
         >
-          <div className="relative">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-              aria-hidden="true"
-            />
-            <Input
-              placeholder="Search by name or email..."
-              value={searchQuery}
-              onChange={(e) => onSearchQueryChange(e.target.value)}
-              aria-label="Search users by name or email"
-              className="pl-9 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-            />
-          </div>
+          <ListSearchInput
+            value={searchQuery}
+            onChange={onSearchQueryChange}
+            placeholder="Search by name or email"
+            label="Search users by name or email"
+          />
         </AdminPanelHeader>
         <CardContent className="p-0">
           {/* Desktop table */}
@@ -358,7 +351,7 @@ export function UsersTab({
                               now the normal state. */}
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {u.disabled_at && (
-                              <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-2 py-0.5 font-medium">
+                              <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[11px] px-2 py-0.5 font-medium">
                                 Disabled
                               </Badge>
                             )}
@@ -368,7 +361,7 @@ export function UsersTab({
                                 <Badge
                                   className={cn(
                                     ROLE_BADGE_STYLES[u.role],
-                                    "text-[10px] px-2 py-0.5 font-medium",
+                                    "text-[11px] px-2 py-0.5 font-medium",
                                   )}
                                 >
                                   {STAFF_ROLE_LABELS[u.role] || u.role}
@@ -383,7 +376,7 @@ export function UsersTab({
                                 return (
                                   <Badge
                                     className={cn(
-                                      "text-[10px] px-2 py-0.5 font-medium",
+                                      "text-[11px] px-2 py-0.5 font-medium",
                                       // --warning, not amber-500. The detail
                                       // panel already paints a gifted plan
                                       // from the token; this copy was the
@@ -402,7 +395,7 @@ export function UsersTab({
                               return null;
                             })()}
                             {u.totp_enabled && (
-                              <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[10px] px-2 py-0.5 font-medium">
+                              <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[11px] px-2 py-0.5 font-medium">
                                 2FA
                               </Badge>
                             )}
@@ -516,7 +509,7 @@ export function UsersTab({
                       {u.name || "Unnamed"}
                     </p>
                     {u.disabled_at && (
-                      <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 shrink-0">
+                      <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[11px] px-1.5 shrink-0">
                         Disabled
                       </Badge>
                     )}
@@ -526,7 +519,7 @@ export function UsersTab({
                         <Badge
                           className={cn(
                             ROLE_BADGE_STYLES[u.role],
-                            "text-[10px] px-1.5 shrink-0",
+                            "text-[11px] px-1.5 shrink-0",
                           )}
                         >
                           {STAFF_ROLE_LABELS[u.role]}
@@ -562,7 +555,7 @@ export function UsersTab({
                         return (
                           <Badge
                             className={cn(
-                              "text-[10px] px-1.5 py-0",
+                              "text-[11px] px-1.5 py-0",
                               u.gifted_plan
                                 ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20"
                                 : "bg-primary/10 text-primary border-primary/20",

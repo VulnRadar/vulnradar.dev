@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import {
+  API,
   APP_NAME,
   APP_URL,
   LOGO_URL,
@@ -140,7 +141,7 @@ export function MassEmailManager() {
   async function fetchMessages() {
     setLoading(true);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "broadcast" }),
@@ -170,7 +171,7 @@ export function MassEmailManager() {
     if (!title || !content) return;
     setTesting(true);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -212,7 +213,7 @@ export function MassEmailManager() {
    */
   async function fetchTemplates() {
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "template_list", section: "broadcast" }),
@@ -228,7 +229,7 @@ export function MassEmailManager() {
     if (!templateName.trim() || !title || !content) return;
     setSavingTemplate(true);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -268,7 +269,7 @@ export function MassEmailManager() {
 
   async function handleDeleteTemplate(template: SavedTemplate) {
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -311,7 +312,7 @@ export function MassEmailManager() {
         segmentFilter.preference_col = category;
       }
 
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -355,7 +356,7 @@ export function MassEmailManager() {
   async function handleSend(id: string) {
     setSending(id);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "send", section: "broadcast", id }),
@@ -377,7 +378,7 @@ export function MassEmailManager() {
   async function handleResend(id: string) {
     setSending(id);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "resend", section: "broadcast", id }),
@@ -403,7 +404,7 @@ export function MassEmailManager() {
     if (!pendingDelete) return { ok: false };
     setDeleting(pendingDelete.id);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -553,24 +554,6 @@ export function MassEmailManager() {
                 ))}
               </select>
             </div>
-            {segment === "specific" && (
-              <div>
-                <label
-                  htmlFor={specificEmailId}
-                  className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
-                >
-                  Email Address
-                </label>
-                <Input
-                  id={specificEmailId}
-                  type="email"
-                  placeholder="user@example.com"
-                  value={specificEmail}
-                  onChange={(e) => setSpecificEmail(e.target.value)}
-                  className="h-10 bg-background/50 border-border/40 focus:border-primary/50"
-                />
-              </div>
-            )}
             <div>
               <label
                 htmlFor={categoryId}
@@ -593,6 +576,27 @@ export function MassEmailManager() {
                 ))}
               </select>
             </div>
+            {/* After Category and across both columns. It sat between the two
+                selects, so picking "Specific email" pushed Category from the
+                right column to the next row, out from under the pointer. */}
+            {segment === "specific" && (
+              <div className="sm:col-span-2">
+                <label
+                  htmlFor={specificEmailId}
+                  className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+                >
+                  Email Address
+                </label>
+                <Input
+                  id={specificEmailId}
+                  type="email"
+                  placeholder="user@example.com"
+                  value={specificEmail}
+                  onChange={(e) => setSpecificEmail(e.target.value)}
+                  className="h-10 bg-background/50 border-border/40 focus:border-primary/50"
+                />
+              </div>
+            )}
           </div>
 
           {/* The recipient readout escalates with the blast radius. It was

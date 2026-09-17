@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/ui/utils";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { API } from "@/lib/config/client-constants";
 
 interface UpdaterStatus {
   current: string;
@@ -161,7 +162,7 @@ export function UpdaterManager() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/v3/admin/updater/status");
+      const res = await fetch(`${API.ADMIN}/updater/status`);
       if (!res.ok) {
         setLoadFailed(true);
       } else {
@@ -199,7 +200,7 @@ export function UpdaterManager() {
   const pollJob = useCallback(async (jobId: string) => {
     try {
       const res = await fetch(
-        `/api/v3/admin/updater/apply?jobId=${encodeURIComponent(jobId)}`,
+        `${API.ADMIN}/updater/apply?jobId=${encodeURIComponent(jobId)}`,
       );
       if (res.ok) {
         const data = (await res.json()) as { job: UpdaterJob };
@@ -231,7 +232,7 @@ export function UpdaterManager() {
 
   const startUpdate = async (password: string) => {
     try {
-      const res = await fetch("/api/v3/admin/updater/apply", {
+      const res = await fetch(`${API.ADMIN}/updater/apply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -361,7 +362,7 @@ export function UpdaterManager() {
               line up digit for digit; the two host tools carry a tone. */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Running
               </p>
               <p className="font-medium font-mono tabular-nums mt-0.5">
@@ -369,7 +370,7 @@ export function UpdaterManager() {
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Latest
               </p>
               <p
@@ -384,7 +385,7 @@ export function UpdaterManager() {
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 cosign
               </p>
               <StatusValue
@@ -401,7 +402,7 @@ export function UpdaterManager() {
               </StatusValue>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 tar
               </p>
               <StatusValue

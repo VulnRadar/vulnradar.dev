@@ -140,6 +140,10 @@ The largest release since 3.0, and a pass over the whole product rather than one
   About forty settings, such as the app name, logo and social links, are built into the app, so saving them in the admin panel was recorded but never used. They are now shown read-only, with the exact setting to change in the configuration file and the environment variable that overrides it. Two settings that nothing used at all, a footer text and a light background colour, have been removed.
 - [Bug] **[EXTENSION]** **Clearer Extension Messages When Something Goes Wrong**
   When the browser extension could not reach VulnRadar, because you were offline or a network blocked it, it showed a technical browser error like "Failed to fetch". It now says it could not reach VulnRadar or that the request took too long. On browser pages that cannot be scanned, such as settings or new tab pages, the popup now says so up front instead of offering a Scan button that could never work. The small Scanning badge on pages is also easier to read, and the privacy section now explains what the extension runs on each page and why it needs each permission.
+- [Shield] **[ADMIN]** **Security Alerts Show Which Account They Are About**
+  Each security alert in the admin panel now names the account it concerns, links to that account, and gives the alert a readable name instead of an internal code. The Block user confirmation lists the account being blocked, so nobody is blocked without being named first.
+- [Wrench] **[ADMIN]** **A Tidier, More Predictable Admin Panel**
+  A sweep across every admin section. Buttons for viewing and renaming teams and staff are visible without hovering, and deleting a team is no longer the most prominent button in its row. Revoking a staff invite now asks first. Search boxes, table headers, dates and small labels look the same in every section, and no admin text is smaller than 11 pixels. Counts no longer flash zero while a page loads, lists that show only part of their results say so, the broadcast composer no longer moves a field when you pick a recipient, and pop-up messages on phones appear at the top of the screen instead of covering the Contents button.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -1310,6 +1314,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 952
+- **Total changes documented:** 954
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

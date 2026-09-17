@@ -22,7 +22,6 @@ import {
 import {
   Gauge,
   Sparkles,
-  Search,
   RefreshCw,
   AlertTriangle,
   ArrowUpCircle,
@@ -49,9 +48,11 @@ import type { ToastState } from "@/components/admin/types";
 import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
 import { SeverityBadge, toSeverity } from "@/components/scanner/severity-badge";
 import { ModalShell } from "@/components/ui/modal-shell";
-import { APP_SLUG } from "@/lib/config/client-constants";
+import { API, APP_SLUG, SEVERITY_LABELS } from "@/lib/config/client-constants";
 import { downloadBlob, escapeCsv } from "@/lib/ui/download";
 import { cn } from "@/lib/ui/utils";
+import { formatDay } from "@/components/admin/utils";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 interface AiTagCandidateExample {
   scanId: number;
@@ -111,7 +112,7 @@ type TagSortColumn = "tag" | "totalFired" | "dismissalRate";
 function FlaggedBadge({ flagged }: { flagged: boolean }) {
   if (!flagged) return null;
   return (
-    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 py-0.5 font-medium gap-1">
+    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[11px] px-1.5 py-0.5 font-medium gap-1">
       <AlertTriangle className="h-2.5 w-2.5" aria-hidden="true" />
       Flagged
     </Badge>
@@ -128,7 +129,7 @@ function FlaggedBadge({ flagged }: { flagged: boolean }) {
 function NeverConfirmedBadge({ neverConfirmed }: { neverConfirmed: boolean }) {
   if (!neverConfirmed) return null;
   return (
-    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 py-0.5 font-medium gap-1">
+    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[11px] px-1.5 py-0.5 font-medium gap-1">
       <EyeOff className="h-2.5 w-2.5" aria-hidden="true" />
       Never confirmed
     </Badge>
@@ -253,9 +254,9 @@ export function EngineFeedbackManager() {
     else setRefreshing(true);
     try {
       const [checksRes, tagsRes, aiCandidatesRes] = await Promise.all([
-        fetch("/api/v3/admin/engine-feedback/checks"),
-        fetch("/api/v3/admin/engine-feedback/tags"),
-        fetch("/api/v3/admin/engine-feedback/ai-tag-candidates"),
+        fetch(`${API.ADMIN}/engine-feedback/checks`),
+        fetch(`${API.ADMIN}/engine-feedback/tags`),
+        fetch(`${API.ADMIN}/engine-feedback/ai-tag-candidates`),
       ]);
       if (checksRes.ok) {
         const data = await checksRes.json();
@@ -304,7 +305,7 @@ export function EngineFeedbackManager() {
           params.append("checkId", id);
         params.set("perCheck", String(perCheck));
         const res = await fetch(
-          `/api/v3/admin/engine-feedback/checks/verdicts?${params}`,
+          `${API.ADMIN}/engine-feedback/checks/verdicts?${params}`,
         );
         if (!res.ok) return null;
         const data = await res.json();
@@ -352,7 +353,7 @@ export function EngineFeedbackManager() {
       minCount: number;
     }) => {
       const res = await fetch(
-        "/api/v3/admin/engine-feedback/ai-tag-candidates",
+        `${API.ADMIN}/engine-feedback/ai-tag-candidates`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -729,19 +730,12 @@ export function EngineFeedbackManager() {
           }
         >
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="relative flex-1">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-                aria-hidden="true"
-              />
-              <Input
-                placeholder="Search by check name, id, or category..."
-                value={checkSearch}
-                onChange={(e) => setCheckSearch(e.target.value)}
-                aria-label="Search checks"
-                className="pl-9 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-              />
-            </div>
+            <ListSearchInput
+              value={checkSearch}
+              onChange={setCheckSearch}
+              placeholder="Search by check name, id, or category"
+              label="Search checks"
+            />
             <FlaggedOnlyPill
               pressed={checkFlaggedOnly}
               count={attentionCheckCount}
@@ -773,7 +767,7 @@ export function EngineFeedbackManager() {
               <div className="hidden md:block">
                 <TableScrollArea maxHeight="60vh">
                   <Table>
-                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
+                    <TableHeader className="sticky top-0 z-20 bg-muted">
                       <TableRow className="border-y border-border/50 hover:bg-transparent">
                         <TableHead className="px-5 h-10">
                           <SortableHeader
@@ -1101,7 +1095,7 @@ export function EngineFeedbackManager() {
               <div className="hidden md:block">
                 <TableScrollArea maxHeight="40vh">
                   <Table className="min-w-[600px]">
-                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
+                    <TableHeader className="sticky top-0 z-20 bg-muted">
                       <TableRow className="border-y border-border/50 hover:bg-transparent">
                         <TableHead className="px-5 h-10">
                           <SortableHeader
@@ -1247,7 +1241,7 @@ export function EngineFeedbackManager() {
               <div className="hidden md:block">
                 <TableScrollArea maxHeight="40vh">
                   <Table className="min-w-[600px]">
-                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
+                    <TableHeader className="sticky top-0 z-20 bg-muted">
                       <TableRow className="border-y border-border/50 hover:bg-transparent">
                         {/* Tag, Examples and Action carried no className, so
                             they fell back to ui/table.tsx's h-12 14px
@@ -1288,7 +1282,7 @@ export function EngineFeedbackManager() {
                               {c.examples.map((ex) => (
                                 <a
                                   key={ex.scanId}
-                                  href={`/api/v3/history/${ex.scanId}`}
+                                  href={`${API.HISTORY}/${ex.scanId}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-xs text-primary hover:underline inline-flex items-center gap-1 w-fit"
@@ -1339,7 +1333,7 @@ export function EngineFeedbackManager() {
                       {c.examples.map((ex) => (
                         <a
                           key={ex.scanId}
-                          href={`/api/v3/history/${ex.scanId}`}
+                          href={`${API.HISTORY}/${ex.scanId}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-primary hover:underline inline-flex items-center gap-1"
@@ -1452,11 +1446,7 @@ function VerdictDetail({
                 {v.findingUrl || "(no URL recorded)"}
               </span>
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {new Date(v.createdAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
+                {formatDay(v.createdAt)}
               </span>
             </div>
             {v.notes && (
@@ -1624,7 +1614,7 @@ function PromoteTagModal({
           >
             {SEVERITY_OPTIONS.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {SEVERITY_LABELS[s]}
               </option>
             ))}
           </select>
@@ -1648,7 +1638,7 @@ function PromoteTagModal({
           />
         </div>
       </div>
-      <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+      <label className="flex items-center gap-2 py-1.5 text-xs text-muted-foreground cursor-pointer select-none">
         <input
           type="checkbox"
           checked={requireBoth}

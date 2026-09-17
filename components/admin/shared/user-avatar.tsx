@@ -22,7 +22,7 @@ export function UserAvatar({
   const colorIdx = getAvatarColorIndex(email);
 
   const sizeClasses = {
-    sm: "h-7 w-7 text-[10px]",
+    sm: "h-7 w-7 text-[11px]",
     md: "h-9 w-9 text-xs",
     lg: "h-12 w-12 text-sm",
   };

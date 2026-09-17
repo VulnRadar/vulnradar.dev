@@ -573,6 +573,18 @@ const CHANGELOG: Release[] = [
         category: "extension",
       },
       {
+        icon: Shield,
+        label: "Security Alerts Show Which Account They Are About",
+        desc: "Each security alert in the admin panel now names the account it concerns, links to that account, and gives the alert a readable name instead of an internal code. The Block user confirmation lists the account being blocked, so nobody is blocked without being named first.",
+        category: "admin",
+      },
+      {
+        icon: Wrench,
+        label: "A Tidier, More Predictable Admin Panel",
+        desc: "A sweep across every admin section. Buttons for viewing and renaming teams and staff are visible without hovering, and deleting a team is no longer the most prominent button in its row. Revoking a staff invite now asks first. Search boxes, table headers, dates and small labels look the same in every section, and no admin text is smaller than 11 pixels. Counts no longer flash zero while a page loads, lists that show only part of their results say so, the broadcast composer no longer moves a field when you pick a recipient, and pop-up messages on phones appear at the top of the screen instead of covering the Contents button.",
+        category: "admin",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

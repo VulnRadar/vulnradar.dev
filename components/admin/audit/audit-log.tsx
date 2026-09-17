@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo } from "react";
 import {
-  Search,
   History,
   ChevronDown,
   Shield,
@@ -16,7 +15,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -37,7 +35,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/ui/utils";
 import { downloadBlob } from "@/lib/ui/download";
-import { APP_SLUG } from "@/lib/config/client-constants";
+import { API, APP_SLUG } from "@/lib/config/client-constants";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
   SkeletonRegion,
@@ -55,12 +53,14 @@ import {
 } from "@/components/admin/shared";
 import {
   formatRelativeTime,
+  formatTimestamp,
   getActionSentence,
   parseChangeDiff,
   AUDIT_FILTER_CATEGORIES,
 } from "@/components/admin/utils";
 import { ACTION_META } from "@/components/admin/config";
 import type { AuditEntry } from "@/components/admin/types";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 interface AuditLogProps {
   auditLogs: AuditEntry[];
@@ -144,9 +144,7 @@ export function AuditLog({
   const handleExport = async (format: "csv" | "json") => {
     setExportingFormat(format);
     try {
-      const res = await fetch(
-        `/api/v3/admin/audit-log/export?format=${format}`,
-      );
+      const res = await fetch(`${API.ADMIN}/audit-log/export?format=${format}`);
       if (!res.ok) return;
       const blob = await res.blob();
       downloadBlob(
@@ -353,19 +351,12 @@ export function AuditLog({
           </div>
 
           {/* Search */}
-          <div className="relative">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-              aria-hidden="true"
-            />
-            <Input
-              placeholder="Search by admin, user, or action..."
-              value={auditSearch}
-              onChange={(e) => setAuditSearch(e.target.value)}
-              aria-label="Search audit log by admin, user, or action"
-              className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
-            />
-          </div>
+          <ListSearchInput
+            value={auditSearch}
+            onChange={setAuditSearch}
+            placeholder="Search by admin, user, or action"
+            label="Search audit log by admin, user, or action"
+          />
         </AdminPanelHeader>
       </Card>
 
@@ -603,7 +594,7 @@ export function AuditLog({
                                           />
                                         </div>
                                         <div className="min-w-0">
-                                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                                          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
                                             Admin
                                           </p>
                                           <p className="text-sm font-medium text-foreground truncate">
@@ -625,7 +616,7 @@ export function AuditLog({
                                             />
                                           </div>
                                           <div className="min-w-0">
-                                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                                            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
                                               Target
                                             </p>
                                             <p className="text-sm font-medium text-foreground truncate">
@@ -647,40 +638,24 @@ export function AuditLog({
                                           />
                                         </div>
                                         <div className="min-w-0">
-                                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                                          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
                                             Timestamp
                                           </p>
                                           <p className="text-sm font-medium text-foreground">
-                                            {logDate.toLocaleDateString(
-                                              "en-US",
-                                              {
-                                                weekday: "short",
-                                                month: "short",
-                                                day: "numeric",
-                                              },
-                                            )}
+                                            {formatTimestamp(log.created_at)}
                                           </p>
-                                          <p className="text-xs text-muted-foreground">
-                                            {logDate.toLocaleTimeString(
-                                              "en-US",
-                                              {
-                                                hour: "2-digit",
-                                                minute: "2-digit",
-                                              },
-                                            )}
-                                            {log.ip_address && (
-                                              <span className="ml-2 font-mono break-all">
-                                                IP: {log.ip_address}
-                                              </span>
-                                            )}
-                                          </p>
+                                          {log.ip_address && (
+                                            <p className="text-xs text-muted-foreground font-mono break-all">
+                                              IP: {log.ip_address}
+                                            </p>
+                                          )}
                                         </div>
                                       </div>
                                     </div>
 
                                     {log.details && (
                                       <div className="p-3 rounded-lg bg-card/60 border border-border/50">
-                                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+                                        <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
                                           {diff?.field || "Details"}
                                         </p>
                                         {diff ? (
@@ -778,7 +753,7 @@ export function AuditLog({
                                   {log.admin_name ||
                                     log.admin_email.split("@")[0]}
                                 </p>
-                                <p className="text-[10px] text-muted-foreground">
+                                <p className="text-[11px] text-muted-foreground">
                                   {formatRelativeTime(logDate)}
                                 </p>
                               </div>
@@ -849,13 +824,10 @@ export function AuditLog({
                               </div>
                             )}
 
-                            <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
+                            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <Clock className="h-3 w-3" aria-hidden="true" />
-                                {logDate.toLocaleString("en-US", {
-                                  dateStyle: "medium",
-                                  timeStyle: "short",
-                                })}
+                                {formatTimestamp(log.created_at)}
                               </span>
                               {log.ip_address && (
                                 <span className="flex items-center gap-1 font-mono">

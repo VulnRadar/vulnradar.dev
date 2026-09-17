@@ -411,20 +411,26 @@ export async function POST(req: NextRequest) {
         const { limit: rawLimit = 50, offset = 0, severity, user_id } = body;
         const limit = Math.min(500, Math.max(1, Number(rawLimit) || 50));
 
-        let query = `SELECT * FROM security_alerts WHERE 1=1`;
+        // The account each alert is about. The panel's "Block user" action
+        // blocks this user, and the row used to show only the alert type, an
+        // IP and a time, so an operator confirmed a block without seeing who.
+        let query = `SELECT sa.*, u.email AS user_email, u.name AS user_name
+          FROM security_alerts sa
+          LEFT JOIN users u ON u.id = sa.user_id
+          WHERE 1=1`;
         const params: unknown[] = [];
 
         if (severity) {
-          query += ` AND severity = $${params.length + 1}`;
+          query += ` AND sa.severity = $${params.length + 1}`;
           params.push(severity);
         }
 
         if (user_id) {
-          query += ` AND user_id = $${params.length + 1}`;
+          query += ` AND sa.user_id = $${params.length + 1}`;
           params.push(user_id);
         }
 
-        query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        query += ` ORDER BY sa.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
         params.push(limit, offset);
 
         const result = await pool.query(query, params);

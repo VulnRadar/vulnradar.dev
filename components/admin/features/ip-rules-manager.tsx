@@ -44,10 +44,12 @@ import {
   AdminPanelHeader,
   StatusPill,
   type SortDirection,
+  StatBarSkeleton,
 } from "@/components/admin/shared";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { cn } from "@/lib/ui/utils";
 import { pluralize } from "@/lib/ui/plural";
+import { API } from "@/lib/config/client-constants";
 
 /**
  * Expiry presets for a new rule. A temporary block is the normal case on this
@@ -156,7 +158,7 @@ export function IPRulesManager() {
     setLoading(true);
     setFetchError(null);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -215,7 +217,7 @@ export function IPRulesManager() {
       const normalizedValue =
         valueType === "url" ? normalizeDomain(newValue) : newValue.trim();
 
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -259,7 +261,7 @@ export function IPRulesManager() {
     setDeleting(true);
     setActionError(null);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -297,7 +299,7 @@ export function IPRulesManager() {
     setTogglingActive(true);
     setActionError(null);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -484,7 +486,7 @@ export function IPRulesManager() {
                   <p className="text-2xl font-semibold tabular-nums text-foreground">
                     {selectedRule.hit_count}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground">
                     Total Hits
                   </p>
                 </div>
@@ -495,7 +497,7 @@ export function IPRulesManager() {
                       { month: "short", day: "numeric", year: "numeric" },
                     )}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">Created</p>
+                  <p className="text-[11px] text-muted-foreground">Created</p>
                 </div>
               </div>
             </div>
@@ -602,7 +604,7 @@ export function IPRulesManager() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-11 w-11 sm:h-7 sm:w-7 p-0 shrink-0"
+              className="h-11 w-11 sm:h-8 sm:w-8 p-0 shrink-0"
               onClick={() => setActionError(null)}
               aria-label="Dismiss"
             >
@@ -611,41 +613,47 @@ export function IPRulesManager() {
           </div>
         )}
 
-        {/* Stats */}
-        <StatBar
-          items={[
-            {
-              label: "All Rules",
-              value: rules.length,
-              icon: ListChecks,
-              tone: "muted",
-              onClick: () => setTypeFilter("all"),
-              active: typeFilter === "all",
-            },
-            {
-              label: "Blocked (Blacklist)",
-              value: blacklistCount,
-              icon: Ban,
-              tone: "destructive",
-              onClick: () => setTypeFilter("blacklist"),
-              active: typeFilter === "blacklist",
-            },
-            {
-              label: "Allowed (Whitelist)",
-              value: whitelistCount,
-              icon: ShieldCheck,
-              tone: "success",
-              onClick: () => setTypeFilter("whitelist"),
-              active: typeFilter === "whitelist",
-            },
-            {
-              label: "Total Hits",
-              value: totalHits,
-              icon: AlertTriangle,
-              tone: "orange",
-            },
-          ]}
-        />
+        {/* Stats. A skeleton while the first load is in flight: rendered
+            straight away, the strip read "0 rules, 0 blocked" before the real
+            counts arrived, the same false all-clear the empty state avoids. */}
+        {loading && rules.length === 0 ? (
+          <StatBarSkeleton segments={4} />
+        ) : (
+          <StatBar
+            items={[
+              {
+                label: "All Rules",
+                value: rules.length,
+                icon: ListChecks,
+                tone: "muted",
+                onClick: () => setTypeFilter("all"),
+                active: typeFilter === "all",
+              },
+              {
+                label: "Blocked (Blacklist)",
+                value: blacklistCount,
+                icon: Ban,
+                tone: "destructive",
+                onClick: () => setTypeFilter("blacklist"),
+                active: typeFilter === "blacklist",
+              },
+              {
+                label: "Allowed (Whitelist)",
+                value: whitelistCount,
+                icon: ShieldCheck,
+                tone: "success",
+                onClick: () => setTypeFilter("whitelist"),
+                active: typeFilter === "whitelist",
+              },
+              {
+                label: "Total Hits",
+                value: totalHits,
+                icon: AlertTriangle,
+                tone: "orange",
+              },
+            ]}
+          />
+        )}
 
         {/* Add Rule Card */}
         <Card className="border-border/50 bg-card/50">
@@ -809,12 +817,9 @@ export function IPRulesManager() {
               // be the same false all-clear the empty state below is careful
               // not to render.
               fetchError ? null : (
-                <Badge
-                  variant="secondary"
-                  className="text-[11px] font-medium h-5 px-2 shrink-0 tabular-nums"
-                >
+                <StatusPill tone="neutral">
                   {rules.filter((r) => r.is_active).length} active
-                </Badge>
+                </StatusPill>
               )
             }
             actions={
@@ -976,7 +981,7 @@ export function IPRulesManager() {
                                       {rule.created_by_name && (
                                         <span
                                           title={`Added by ${rule.created_by_name}`}
-                                          className="shrink-0 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                                          className="shrink-0 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
                                         >
                                           {rule.created_by_name}
                                         </span>
@@ -993,7 +998,7 @@ export function IPRulesManager() {
                               <TableCell className="px-4 py-2.5">
                                 <Badge
                                   className={cn(
-                                    "text-[10px] px-2 py-0.5 font-medium",
+                                    "text-[11px] px-2 py-0.5 font-medium",
                                     rule.rule_type === "whitelist"
                                       ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
                                       : "bg-destructive/10 text-destructive border-destructive/20",
@@ -1153,7 +1158,7 @@ export function IPRulesManager() {
                             </p>
                             <Badge
                               className={cn(
-                                "text-[10px] px-1.5 py-0 font-medium shrink-0",
+                                "text-[11px] px-1.5 py-0 font-medium shrink-0",
                                 rule.rule_type === "whitelist"
                                   ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
                                   : "bg-destructive/10 text-destructive border-destructive/20",
@@ -1182,8 +1187,11 @@ export function IPRulesManager() {
                             <span className="tabular-nums">
                               {pluralize(rule.hit_count, "hit")}
                             </span>
-                            <span className="text-border" aria-hidden="true">
-                              |
+                            <span
+                              className="text-muted-foreground/40"
+                              aria-hidden="true"
+                            >
+                              &middot;
                             </span>
                             <span className="tabular-nums">
                               {new Date(rule.created_at).toLocaleDateString(

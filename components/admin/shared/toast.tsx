@@ -34,8 +34,13 @@ export function Toast({ toast, onClose, duration = 5000 }: ToastProps) {
         // bottom offsets by --vr-cookie-h (components/shared/cookie-notice.tsx)
         // so a toast is not published underneath the z-60 cookie bar, which is
         // roughly 125px tall on a phone.
-        "fixed bottom-[calc(1rem+var(--vr-cookie-h,0px))] right-4 z-50 flex items-center gap-2.5 rounded-lg border px-4 py-3 shadow-lg animate-in slide-in-from-bottom-2",
-        "max-w-[calc(100vw-2rem)] sm:max-w-sm",
+        //
+        // Below lg it sits at the top instead. The bottom-right corner there
+        // belongs to the floating "Contents" pill and the save bars, and a
+        // toast fired by the very save that raised them landed on top of the
+        // pill.
+        "fixed left-4 right-4 top-4 z-[70] flex items-center gap-2.5 rounded-lg border px-4 py-3 shadow-lg animate-in slide-in-from-top-2",
+        "lg:left-auto lg:top-auto lg:bottom-[calc(1rem+var(--vr-cookie-h,0px))] lg:max-w-sm lg:slide-in-from-bottom-2",
         toast.type === "success"
           ? "bg-[hsl(var(--success))]/10 border-[hsl(var(--success))]/30 text-[hsl(var(--success))]"
           : "bg-destructive/10 border-destructive/30 text-destructive",
@@ -53,7 +58,8 @@ export function Toast({ toast, onClose, duration = 5000 }: ToastProps) {
         onClick={onClose}
         aria-label="Dismiss notification"
         className={cn(
-          "ml-2 opacity-60 hover:opacity-100 transition-opacity rounded-sm",
+          // p-1.5 around the 14px mark: a 26px target, where it was 14px.
+          "ml-auto -mr-1.5 shrink-0 p-1.5 opacity-60 hover:opacity-100 transition-opacity rounded-sm",
           "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
         )}
       >

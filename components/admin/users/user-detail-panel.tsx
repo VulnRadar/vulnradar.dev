@@ -98,11 +98,21 @@ import {
   StatBarSkeleton,
   StatusPill,
   AdminPasswordConfirmDialog,
+  EmptyState,
   type AdminTocItem,
 } from "@/components/admin/shared";
 import { useAdminPermissions } from "@/components/admin/hooks";
 import { GiftSubscriptionModal } from "./gift-subscription-modal";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { Textarea } from "@/components/ui/textarea";
+
+/**
+ * The panel had three native selects styled three ways (h-8 text-xs, h-9
+ * text-xs, h-10 rounded-lg), so Plan, Staff Role and credit Type looked like
+ * three kinds of control. One recipe, sized like the inputs beside them.
+ */
+const NATIVE_SELECT_CLASS =
+  "h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
 
 interface UserDetailPanelProps {
   detail: UserDetail;
@@ -712,19 +722,19 @@ export function UserDetailPanel({
                     <Badge
                       className={cn(
                         ROLE_BADGE_STYLES[u.role],
-                        "text-[10px] font-medium",
+                        "text-[11px] font-medium",
                       )}
                     >
                       {STAFF_ROLE_LABELS[u.role] || u.role}
                     </Badge>
                   )}
                   {u.disabled_at && (
-                    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] font-medium">
+                    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[11px] font-medium">
                       Disabled
                     </Badge>
                   )}
                   {u.ai_chat_banned && (
-                    <Badge className="bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20 text-[10px] font-medium">
+                    <Badge className="bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20 text-[11px] font-medium">
                       AI banned
                     </Badge>
                   )}
@@ -858,7 +868,7 @@ export function UserDetailPanel({
 
               {/* Security status */}
               <div className="mt-4 pt-4 border-t border-border/50">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Security
                 </p>
                 {/* One tone vocabulary: green is satisfied, amber wants a
@@ -921,7 +931,7 @@ export function UserDetailPanel({
 
               {/* Connected accounts */}
               <div className="mt-4 pt-4 border-t border-border/50">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Connected Accounts
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -1123,7 +1133,7 @@ export function UserDetailPanel({
                           <>
                             {label}
                             {u.gifted_plan && (
-                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border border-[hsl(var(--warning))]/25">
+                              <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border border-[hsl(var(--warning))]/25">
                                 Gifted
                               </span>
                             )}
@@ -1155,7 +1165,7 @@ export function UserDetailPanel({
                         Display Name
                       </span>
                       {pendingChanges.name && (
-                        <span className="text-[10px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
+                        <span className="text-[11px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
                           Modified
                         </span>
                       )}
@@ -1200,7 +1210,7 @@ export function UserDetailPanel({
                           Email Address
                         </span>
                         {pendingChanges.email && (
-                          <span className="text-[10px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
+                          <span className="text-[11px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
                             Modified
                           </span>
                         )}
@@ -1236,7 +1246,7 @@ export function UserDetailPanel({
                         <p
                           id="admin-user-email-error"
                           role="alert"
-                          className="text-[10px] text-destructive"
+                          className="text-[11px] text-destructive"
                         >
                           Email is required
                         </p>
@@ -1265,12 +1275,12 @@ export function UserDetailPanel({
                           Subscription Plan
                         </span>
                         {u.gifted_plan && (
-                          <span className="text-[10px] text-[hsl(var(--warning))] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--warning))]/10">
+                          <span className="text-[11px] text-[hsl(var(--warning))] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--warning))]/10">
                             Gifted
                           </span>
                         )}
                         {pendingChanges.plan && !u.gifted_plan && (
-                          <span className="text-[10px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
+                          <span className="text-[11px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
                             Modified
                           </span>
                         )}
@@ -1281,7 +1291,7 @@ export function UserDetailPanel({
                             <Gift className="h-3.5 w-3.5" aria-hidden="true" />
                             {getPlanById(u.gifted_plan)?.name || u.gifted_plan}
                           </div>
-                          <p className="text-[10px] text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             Gifted until{" "}
                             {u.gift_end_date
                               ? new Date(u.gift_end_date).toLocaleDateString(
@@ -1308,7 +1318,7 @@ export function UserDetailPanel({
                               u.plan || "free",
                             );
                           }}
-                          className="h-8 text-xs rounded-md border border-border bg-background px-2"
+                          className={NATIVE_SELECT_CLASS}
                         >
                           {PLANS.map((plan) => (
                             <option key={plan.id} value={plan.id}>
@@ -1365,7 +1375,7 @@ export function UserDetailPanel({
                   <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
                   <p className="text-sm font-medium">Staff Role</p>
                   {pendingChanges.role && (
-                    <span className="text-[10px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
+                    <span className="text-[11px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
                       Modified
                     </span>
                   )}
@@ -1385,7 +1395,7 @@ export function UserDetailPanel({
                     setEditRole(e.target.value);
                     addPendingChange("role", e.target.value, u.role || "user");
                   }}
-                  className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  className={cn(NATIVE_SELECT_CLASS, "w-full")}
                 >
                   {Object.values(STAFF_ROLES)
                     .filter(
@@ -1415,7 +1425,7 @@ export function UserDetailPanel({
                   <p className="text-sm font-medium">Badges</p>
                   <Badge
                     variant="secondary"
-                    className="text-[10px] h-5 ml-auto"
+                    className="text-[11px] h-5 ml-auto"
                   >
                     {detail.badges.length} awarded
                   </Badge>
@@ -1486,7 +1496,7 @@ export function UserDetailPanel({
                   </p>
                 )}
                 {pendingBadgeRevokes.length > 0 && (
-                  <p className="text-[10px] text-destructive">
+                  <p className="text-[11px] text-destructive">
                     {pluralize(pendingBadgeRevokes.length, "badge")} will be
                     removed on save
                   </p>
@@ -1613,7 +1623,7 @@ export function UserDetailPanel({
                         </p>
                       )}
                       {pendingBadgeAwards.length > 0 && (
-                        <p className="text-[10px] text-primary">
+                        <p className="text-[11px] text-primary">
                           {pluralize(pendingBadgeAwards.length, "badge")} queued
                           to award on save
                         </p>
@@ -2011,7 +2021,7 @@ export function UserDetailPanel({
             <div className="flex items-center gap-2">
               <StickyNote className="h-4 w-4 text-primary" aria-hidden="true" />
               <p className="text-sm font-medium">Admin Notes</p>
-              <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
+              <Badge variant="secondary" className="text-[11px] h-5 ml-auto">
                 {detail.notes?.length || 0}
               </Badge>
             </div>
@@ -2074,7 +2084,7 @@ export function UserDetailPanel({
                         <span className="text-xs font-medium text-foreground">
                           {note.admin_name || note.admin_email.split("@")[0]}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {formatRelativeTime(new Date(note.created_at))}
                         </span>
                       </div>
@@ -2198,7 +2208,7 @@ export function UserDetailPanel({
               <div className="flex flex-col gap-4">
                 {/* Session & Security */}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Session &amp; Security
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -2404,7 +2414,7 @@ export function UserDetailPanel({
 
                 {/* Usage & Limits */}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Usage &amp; Limits
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -2511,13 +2521,13 @@ export function UserDetailPanel({
                   STAFF_PERMISSIONS.GRANT_CREDITS,
                 ) && (
                   <div id="credits">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Credits
                     </p>
                     <div className="rounded-lg border border-border/50 bg-card/50 p-4 sm:p-5 flex flex-col gap-3">
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
-                          <p className="text-[10px] text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             AI tokens
                           </p>
                           <p className="text-sm font-medium text-foreground">
@@ -2527,7 +2537,7 @@ export function UserDetailPanel({
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             GitHub review tokens
                           </p>
                           <p className="text-sm font-medium text-foreground">
@@ -2537,7 +2547,7 @@ export function UserDetailPanel({
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             Browser minutes
                           </p>
                           <p className="text-sm font-medium text-foreground">
@@ -2552,7 +2562,7 @@ export function UserDetailPanel({
                         <div className="flex flex-col gap-1 pt-3 sm:pt-0">
                           <label
                             htmlFor={creditTypeFieldId}
-                            className="text-[10px] text-muted-foreground"
+                            className="text-xs font-medium text-muted-foreground"
                           >
                             Type
                           </label>
@@ -2564,7 +2574,7 @@ export function UserDetailPanel({
                                 e.target.value as "ai" | "github" | "browser",
                               )
                             }
-                            className="h-9 text-xs rounded-md border border-border bg-background px-2"
+                            className={NATIVE_SELECT_CLASS}
                           >
                             <option value="ai">AI tokens</option>
                             <option value="github">GitHub review tokens</option>
@@ -2574,7 +2584,7 @@ export function UserDetailPanel({
                         <div className="flex flex-col gap-1">
                           <label
                             htmlFor={creditAmountFieldId}
-                            className="text-[10px] text-muted-foreground"
+                            className="text-xs font-medium text-muted-foreground"
                           >
                             Amount (
                             {creditGrantType === "browser"
@@ -2592,13 +2602,13 @@ export function UserDetailPanel({
                             onChange={(e) =>
                               setCreditGrantAmount(e.target.value)
                             }
-                            className="h-9 text-xs w-28"
+                            className="h-9 w-28 text-sm"
                           />
                         </div>
                         <div className="flex flex-col gap-1 flex-1">
                           <label
                             htmlFor={creditReasonFieldId}
-                            className="text-[10px] text-muted-foreground"
+                            className="text-xs font-medium text-muted-foreground"
                           >
                             Reason
                           </label>
@@ -2610,7 +2620,7 @@ export function UserDetailPanel({
                             }
                             placeholder="Why is this being granted?"
                             maxLength={200}
-                            className="h-9 text-xs"
+                            className="h-9 text-sm"
                           />
                         </div>
                         <Button
@@ -2644,7 +2654,7 @@ export function UserDetailPanel({
                     offers it as a destination, so two groups with the same
                     heading sent the reader to the wrong one. */}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Account State
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -2753,7 +2763,7 @@ export function UserDetailPanel({
                         <div className="flex flex-col gap-1.5">
                           <label
                             htmlFor={notifTitleId}
-                            className="text-sm font-medium"
+                            className="text-xs font-medium text-muted-foreground"
                           >
                             Title
                           </label>
@@ -2768,17 +2778,17 @@ export function UserDetailPanel({
                         <div className="flex flex-col gap-1.5">
                           <label
                             htmlFor={notifMessageId}
-                            className="text-sm font-medium"
+                            className="text-xs font-medium text-muted-foreground"
                           >
                             Message
                           </label>
-                          <textarea
+                          <Textarea
                             id={notifMessageId}
-                            placeholder="Message to send to the user..."
+                            placeholder="Message to send to the user"
                             value={notifMessage}
                             onChange={(e) => setNotifMessage(e.target.value)}
                             rows={4}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-hidden focus:ring-2 focus:ring-ring"
+                            className="resize-none"
                           />
                         </div>
                         <p className="text-xs text-muted-foreground">
@@ -2828,7 +2838,7 @@ export function UserDetailPanel({
 
                 {/* Gifted Subscription */}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Gifted Subscription
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -3103,7 +3113,7 @@ export function UserDetailPanel({
                   <p className="text-sm font-medium">Recent Scans</p>
                   <Badge
                     variant="secondary"
-                    className="text-[10px] h-5 ml-auto"
+                    className="text-[11px] h-5 ml-auto"
                   >
                     {detail.recentScans?.length || 0}
                   </Badge>
@@ -3129,7 +3139,7 @@ export function UserDetailPanel({
                               row that says whether the scan is interesting,
                               and it used to be the same 10px grey as the word
                               "findings" beside it, so 0 and 47 read the same. */}
-                          <p className="text-[10px] text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             <span
                               className={cn(
                                 "font-mono tabular-nums",
@@ -3143,7 +3153,7 @@ export function UserDetailPanel({
                             {scan.source}
                           </p>
                         </div>
-                        <span className="text-[10px] text-muted-foreground shrink-0">
+                        <span className="text-[11px] text-muted-foreground shrink-0">
                           {new Date(scan.scanned_at).toLocaleDateString(
                             "en-US",
                             {
@@ -3156,15 +3166,11 @@ export function UserDetailPanel({
                     ))}
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <Activity
-                      className="h-8 w-8 text-muted-foreground/30 mb-2"
-                      aria-hidden="true"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      No recent scans.
-                    </p>
-                  </div>
+                  <EmptyState
+                    icon={Activity}
+                    title="No recent scans"
+                    className="py-8"
+                  />
                 )}
               </CardContent>
             </Card>
@@ -3182,7 +3188,7 @@ export function UserDetailPanel({
                   <p className="text-sm font-medium">API Keys</p>
                   <Badge
                     variant="secondary"
-                    className="text-[10px] h-5 ml-auto"
+                    className="text-[11px] h-5 ml-auto"
                   >
                     {detail.apiKeys?.filter((k) => !k.revoked_at)?.length || 0}
                   </Badge>
@@ -3207,7 +3213,7 @@ export function UserDetailPanel({
                             <p className="text-xs font-medium">
                               {key.name || "Unnamed Key"}
                             </p>
-                            <p className="text-[10px] text-muted-foreground font-mono">
+                            <p className="text-[11px] text-muted-foreground font-mono">
                               {key.key_prefix}...
                             </p>
                           </div>
@@ -3216,7 +3222,7 @@ export function UserDetailPanel({
                               "3 days ago". */}
                           <span
                             className={cn(
-                              "text-[10px] shrink-0 tabular-nums",
+                              "text-[11px] shrink-0 tabular-nums",
                               key.last_used_at
                                 ? "text-muted-foreground"
                                 : "text-[hsl(var(--warning))]",
@@ -3230,15 +3236,7 @@ export function UserDetailPanel({
                       ))}
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <Key
-                      className="h-8 w-8 text-muted-foreground/30 mb-2"
-                      aria-hidden="true"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      No API keys.
-                    </p>
-                  </div>
+                  <EmptyState icon={Key} title="No API keys" className="py-8" />
                 )}
               </CardContent>
             </Card>
@@ -3250,7 +3248,7 @@ export function UserDetailPanel({
               <div className="flex items-center gap-2">
                 <Webhook className="h-4 w-4 text-primary" aria-hidden="true" />
                 <p className="text-sm font-medium">Webhooks</p>
-                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
+                <Badge variant="secondary" className="text-[11px] h-5 ml-auto">
                   {detail.webhooks?.length || 0}
                 </Badge>
               </div>
@@ -3269,7 +3267,7 @@ export function UserDetailPanel({
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium">{webhook.name}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono truncate">
+                        <p className="text-[11px] text-muted-foreground font-mono truncate">
                           {webhook.url_host}
                         </p>
                       </div>
@@ -3280,7 +3278,7 @@ export function UserDetailPanel({
                           on the account above it whispered. */}
                       <StatusPill
                         tone={webhook.active ? "ok" : "neutral"}
-                        className="shrink-0 text-[10px]"
+                        className="shrink-0 text-[11px]"
                       >
                         {webhook.active ? "Active" : "Inactive"}
                       </StatusPill>
@@ -3288,15 +3286,11 @@ export function UserDetailPanel({
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Webhook
-                    className="h-8 w-8 text-muted-foreground/30 mb-2"
-                    aria-hidden="true"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    No webhooks configured.
-                  </p>
-                </div>
+                <EmptyState
+                  icon={Webhook}
+                  title="No webhooks configured"
+                  className="py-8"
+                />
               )}
             </CardContent>
           </Card>
@@ -3313,7 +3307,7 @@ export function UserDetailPanel({
                   <p className="text-sm font-medium">Active Sessions</p>
                   <Badge
                     variant="secondary"
-                    className="text-[10px] h-5 ml-auto"
+                    className="text-[11px] h-5 ml-auto"
                   >
                     {detail.activeSessions?.length || 0}
                   </Badge>
@@ -3335,17 +3329,19 @@ export function UserDetailPanel({
                           <p className="text-xs font-medium font-mono">
                             {session.id.slice(0, 12)}...
                           </p>
-                          <p className="text-[10px] text-muted-foreground truncate">
+                          <p className="text-[11px] text-muted-foreground truncate">
                             <span className="font-mono">
                               {session.ip_address || "Unknown IP"}
                             </span>{" "}
                             &middot;{" "}
-                            {session.user_agent?.slice(0, 40) ||
-                              "Unknown device"}
-                            ...
+                            {session.user_agent
+                              ? session.user_agent.length > 40
+                                ? `${session.user_agent.slice(0, 40)}…`
+                                : session.user_agent
+                              : "Unknown device"}
                           </p>
                         </div>
-                        <span className="text-[10px] text-muted-foreground shrink-0">
+                        <span className="text-[11px] text-muted-foreground shrink-0">
                           expires{" "}
                           {new Date(session.expires_at).toLocaleDateString(
                             "en-US",
@@ -3356,15 +3352,11 @@ export function UserDetailPanel({
                     ))}
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <Globe
-                      className="h-8 w-8 text-muted-foreground/30 mb-2"
-                      aria-hidden="true"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      No active sessions.
-                    </p>
-                  </div>
+                  <EmptyState
+                    icon={Globe}
+                    title="No active sessions"
+                    className="py-8"
+                  />
                 )}
               </CardContent>
             </Card>
@@ -3391,7 +3383,7 @@ export function UserDetailPanel({
                     {modalChanges.length !== 1 ? "s" : ""}
                   </p>
                   {hasEmailError && (
-                    <p role="alert" className="text-[10px] text-destructive">
+                    <p role="alert" className="text-[11px] text-destructive">
                       Email address is required
                     </p>
                   )}

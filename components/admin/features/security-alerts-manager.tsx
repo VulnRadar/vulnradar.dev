@@ -24,7 +24,7 @@ import {
   StatusPill,
 } from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
-import { SEVERITY_PRIORITY } from "@/lib/config/client-constants";
+import { API, ROUTES, SEVERITY_PRIORITY } from "@/lib/config/client-constants";
 import { formatTimestamp } from "@/components/admin/utils";
 
 interface SecurityAlert {
@@ -38,6 +38,35 @@ interface SecurityAlert {
   resolved_at?: string;
   action_taken?: string;
   created_at: string;
+  /** Joined from users by the list action; null if the account is gone. */
+  user_email?: string | null;
+  user_name?: string | null;
+}
+
+/**
+ * The wire value is a snake_case identifier, and it was the row's heading.
+ * Unknown types (anything added later) fall back to a spaced, capitalised
+ * version of the identifier rather than the raw string.
+ */
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  session_ip_mismatch: "Session used from a new network",
+  api_key_ip_mismatch: "API key used from a new network",
+  brute_force: "Repeated failed sign-ins",
+  new_device_login: "Sign-in from a new device",
+};
+
+function alertTypeLabel(type: string): string {
+  if (ALERT_TYPE_LABELS[type]) return ALERT_TYPE_LABELS[type];
+  const spaced = type.replace(/_/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function alertAccount(alert: SecurityAlert): string {
+  return alert.user_email
+    ? alert.user_name
+      ? `${alert.user_name} (${alert.user_email})`
+      : alert.user_email
+    : `User #${alert.user_id}`;
 }
 
 const severityConfig = {
@@ -115,7 +144,7 @@ export function SecurityAlertsManager() {
     setLoading(true);
     setFetchError(null);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -157,7 +186,7 @@ export function SecurityAlertsManager() {
     setResolving(true);
     setActionError(null);
     try {
-      const res = await fetch("/api/v3/admin/features", {
+      const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -259,7 +288,7 @@ export function SecurityAlertsManager() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-11 w-11 sm:h-7 sm:w-7 p-0 shrink-0"
+            className="h-11 w-11 sm:h-8 sm:w-8 p-0 shrink-0"
             onClick={() => setActionError(null)}
             aria-label="Dismiss"
           >
@@ -419,11 +448,11 @@ export function SecurityAlertsManager() {
                             isMajor ? "font-semibold" : "font-medium",
                           )}
                         >
-                          {alert.alert_type}
+                          {alertTypeLabel(alert.alert_type)}
                         </h3>
                         <Badge
                           className={cn(
-                            "text-[10px] px-2 py-0.5 font-medium capitalize",
+                            "text-[11px] px-2 py-0.5 font-medium capitalize",
                             config.badge,
                           )}
                         >
@@ -434,7 +463,15 @@ export function SecurityAlertsManager() {
                         {alert.description}
                       </p>
 
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mb-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mb-3">
+                        {/* Who this is about, first: "Block user" below
+                            blocks this account. */}
+                        <a
+                          href={`${ROUTES.ADMIN}?tab=users&user=${alert.user_id}`}
+                          className="min-w-0 max-w-full truncate font-medium text-foreground hover:underline rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {alertAccount(alert)}
+                        </a>
                         {alert.ip_address && (
                           <div className="flex items-center gap-1">
                             <span className="text-muted-foreground">IP:</span>
@@ -463,7 +500,7 @@ export function SecurityAlertsManager() {
                               action: "manual_review",
                             })
                           }
-                          className="h-8 gap-1.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 transition-opacity border-border/40"
+                          className="h-8 gap-1.5 border-border/40"
                         >
                           <CheckCircle2
                             className="h-3 w-3"
@@ -477,7 +514,7 @@ export function SecurityAlertsManager() {
                           onClick={() =>
                             setPendingResolve({ alert, action: "block_user" })
                           }
-                          className="h-8 gap-1.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 transition-opacity border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         >
                           <Ban className="h-3 w-3" aria-hidden="true" />
                           Block user
@@ -511,9 +548,18 @@ export function SecurityAlertsManager() {
           pendingResolve
             ? [
                 {
+                  field: "account",
+                  label: "Account",
+                  oldValue: alertAccount(pendingResolve.alert),
+                  newValue:
+                    pendingResolve.action === "block_user"
+                      ? "Blocked"
+                      : "No change",
+                },
+                {
                   field: "alert_type",
-                  label: "Alert Type",
-                  oldValue: pendingResolve.alert.alert_type,
+                  label: "Alert",
+                  oldValue: alertTypeLabel(pendingResolve.alert.alert_type),
                   newValue: "Resolved",
                 },
                 {

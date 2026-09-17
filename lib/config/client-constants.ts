@@ -366,6 +366,8 @@ export const API = {
    *  category, severity, description) plus per-category counts. */
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   AI_INFO: `/api/${API_VERSION}/ai/info`,
+  /** The signed-in user's assistant conversations (GET list or ?id=, POST), and staff review. */
+  AI_CONVERSATIONS: `/api/${API_VERSION}/ai/conversations`,
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   COMPARE: `/api/${API_VERSION}/compare`,
   BILLING: `/api/${API_VERSION}/billing`,

@@ -33,9 +33,9 @@ import {
   DataTableSkeleton,
   Toast,
 } from "@/components/admin/shared";
-import { formatTimestamp } from "@/components/admin/utils";
+import { formatDay, formatTimestamp } from "@/components/admin/utils";
 import { cn } from "@/lib/ui/utils";
-import { ROUTES } from "@/lib/config/client-constants";
+import { API, ROUTES } from "@/lib/config/client-constants";
 
 /**
  * The 0-4 safe / 5-7 caution / 8-10 unsafe bands that getDangerScore anchors
@@ -85,7 +85,7 @@ function isExpired(row: ShareRow): boolean {
 }
 
 async function postAction(body: Record<string, unknown>) {
-  const res = await fetch("/api/v3/admin/content", {
+  const res = await fetch(`${API.ADMIN}/content`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -123,7 +123,7 @@ export function ContentManager() {
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/v3/admin/content?type=${t}&page=${p}&limit=${limit}`,
+        `${API.ADMIN}/content?type=${t}&page=${p}&limit=${limit}`,
       );
       const data = await res.json();
       if (reqId !== fetchReqRef.current) return;
@@ -356,16 +356,16 @@ export function ContentManager() {
                       <Table>
                         <TableHeader className="sticky top-0 z-20 bg-muted">
                           <TableRow className="border-y border-border/50 hover:bg-transparent">
-                            <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                               Host
                             </TableHead>
-                            <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                               Danger
                             </TableHead>
-                            <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                               Last Scanned
                             </TableHead>
-                            <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" />
+                            <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -388,7 +388,7 @@ export function ContentManager() {
                                 <Badge
                                   variant="outline"
                                   className={cn(
-                                    "text-[10px] px-1.5 py-0 tabular-nums",
+                                    "text-[11px] px-1.5 py-0 tabular-nums",
                                     dangerBandClass(row.danger_score),
                                   )}
                                 >
@@ -396,13 +396,7 @@ export function ContentManager() {
                                 </Badge>
                               </TableCell>
                               <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                                {new Date(
-                                  row.last_scanned_at,
-                                ).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                })}
+                                {formatDay(row.last_scanned_at)}
                               </TableCell>
                               <TableCell className="px-4 py-2.5 text-right">
                                 {/* Purging a host's reputation is the
@@ -453,7 +447,7 @@ export function ContentManager() {
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-[10px] px-1.5 py-0 shrink-0 tabular-nums",
+                              "text-[11px] px-1.5 py-0 shrink-0 tabular-nums",
                               dangerBandClass(row.danger_score),
                             )}
                           >
@@ -462,14 +456,7 @@ export function ContentManager() {
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-3">
                           <span className="text-xs text-muted-foreground">
-                            {new Date(row.last_scanned_at).toLocaleDateString(
-                              "en-US",
-                              {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              },
-                            )}
+                            {formatDay(row.last_scanned_at)}
                           </span>
                           <Button
                             variant="outline"
@@ -510,19 +497,19 @@ export function ContentManager() {
                     <Table className="min-w-[720px]">
                       <TableHeader className="sticky top-0 z-20 bg-muted">
                         <TableRow className="border-y border-border/50 hover:bg-transparent">
-                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Share
                           </TableHead>
-                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Owner
                           </TableHead>
                           <TableHead className="px-4 h-9 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Findings
                           </TableHead>
-                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Status
                           </TableHead>
-                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" />
+                          <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" />
                         </TableRow>
                       </TableHeader>
                       <TableBody>

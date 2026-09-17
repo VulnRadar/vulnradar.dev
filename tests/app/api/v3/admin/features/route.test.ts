@@ -272,6 +272,10 @@ describe("POST /api/v3/admin/features — security_alerts", () => {
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json.alerts).toHaveLength(1);
+    // The panel names the account an alert concerns before offering to block it.
+    const sql = String(mockQuery.mock.calls[1][0]);
+    expect(sql).toMatch(/JOIN users u ON u\.id = sa\.user_id/);
+    expect(sql).toMatch(/u\.email AS user_email/);
   });
 
   it("resolves an alert and audit-logs it", async () => {

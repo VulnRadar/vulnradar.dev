@@ -181,12 +181,7 @@ export function GiftSubscriptionModal({
         </DialogBody>
 
         <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={onClose}
-            disabled={isLoading}
-            className="text-muted-foreground hover:text-foreground"
-          >
+          <Button variant="outline" onClick={onClose} disabled={isLoading}>
             Cancel
           </Button>
           <Button

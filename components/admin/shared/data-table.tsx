@@ -126,7 +126,9 @@ export function SortableHeader({
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors rounded-sm",
+        // -my-2 py-2: the header cell is 40px tall and looked clickable across
+        // all of it, while only the ~16px line box answered a tap.
+        "-my-2 inline-flex items-center gap-1 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors rounded-sm",
         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
         align === "right" && "flex-row-reverse",
         align === "center" && "mx-auto",

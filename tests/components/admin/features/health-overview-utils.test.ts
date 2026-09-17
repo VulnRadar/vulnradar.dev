@@ -249,6 +249,18 @@ describe("other checks", () => {
     ).toBe("crit");
   });
 
+  it("says how many alerts are severe in grammatical English", () => {
+    const detail = (unresolved: number, unresolvedSevere: number) =>
+      rowFor(
+        metrics({ securityAlerts: { unresolved, unresolvedSevere } }),
+        "security-alerts",
+      )?.detail;
+    expect(detail(5, 1)).toBe("1 of them is high or critical.");
+    expect(detail(5, 2)).toBe("2 of them are high or critical.");
+    expect(detail(3, 3)).toBe("All of them are high or critical.");
+    expect(detail(1, 1)).toBe("It is high or critical.");
+  });
+
   it("flags staff invites that expired without ever being accepted", () => {
     expect(
       rowFor(

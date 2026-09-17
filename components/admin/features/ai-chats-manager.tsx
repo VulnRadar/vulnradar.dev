@@ -12,7 +12,6 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -40,6 +39,8 @@ import {
   type SortDirection,
 } from "@/components/admin/shared";
 import { formatRelativeTime } from "@/components/admin/utils";
+import { API } from "@/lib/config/client-constants";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 type Conversation = {
   id: number;
@@ -81,7 +82,7 @@ export function AIChatsManager() {
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/v3/ai/conversations?page=${p}&limit=${limit}`,
+        `${API.AI_CONVERSATIONS}?page=${p}&limit=${limit}`,
       );
       if (!res.ok) return;
       const data = (await res.json()) as {
@@ -227,19 +228,12 @@ export function AIChatsManager() {
           }
         >
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="relative flex-1">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-                aria-hidden="true"
-              />
-              <Input
-                placeholder="Search this page by name, email, or session id..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                aria-label="Search conversations on this page"
-                className="pl-9 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-              />
-            </div>
+            <ListSearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Search this page by name, email, or session id"
+              label="Search conversations on this page"
+            />
             <Button
               variant="outline"
               size="sm"

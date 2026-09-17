@@ -29,7 +29,7 @@ import {
 } from "@/components/shared/save-confirmation-modal";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
 import { downloadBlob } from "@/lib/ui/download";
-import { APP_SLUG } from "@/lib/config/client-constants";
+import { API, APP_SLUG } from "@/lib/config/client-constants";
 import {
   SkeletonRegion,
   AdminPanelHeader,
@@ -127,7 +127,7 @@ function deCamel(key: string): string {
 async function callFeaturesApi(
   body: Record<string, unknown>,
 ): Promise<{ ok: boolean; data: Record<string, unknown> }> {
-  const res = await fetch("/api/v3/admin/features", {
+  const res = await fetch(`${API.ADMIN}/features`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -520,7 +520,7 @@ export function SystemSettingsManager() {
     setCleanupRunning(true);
     setCleanupResult(null);
     try {
-      const res = await fetch("/api/v3/admin/cleanup", { method: "POST" });
+      const res = await fetch(`${API.ADMIN}/cleanup`, { method: "POST" });
       const data = await res.json();
       setCleanupResult(data);
     } catch {

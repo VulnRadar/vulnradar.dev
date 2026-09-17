@@ -16,7 +16,7 @@ export function ActionBadge({ action }: ActionBadgeProps) {
   const cls = meta?.cls || "bg-muted text-muted-foreground border-border";
 
   return (
-    <Badge className={cn("text-[10px] px-2 py-0.5 font-medium", cls)}>
+    <Badge className={cn("text-[11px] px-2 py-0.5 font-medium", cls)}>
       {label}
     </Badge>
   );

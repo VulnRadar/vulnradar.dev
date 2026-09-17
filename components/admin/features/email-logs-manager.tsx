@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
   Dialog,
@@ -14,7 +13,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   Mail,
-  Search,
   RefreshCw,
   Trash2,
   CheckCircle2,
@@ -43,6 +41,8 @@ import {
 } from "@/components/admin/utils";
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
+import { API } from "@/lib/config/client-constants";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 // Log views want second precision; the shared formatter defaults to minutes.
 const formatTimestamp = (iso: string) => formatAdminTimestamp(iso, true);
@@ -175,7 +175,7 @@ export function EmailLogsManager() {
         });
         if (s.trim()) params.set("search", s.trim());
         if (st) params.set("status", st);
-        const res = await fetch(`/api/v3/admin/email-logs?${params}`);
+        const res = await fetch(`${API.ADMIN}/email-logs?${params}`);
         if (res.ok) {
           const data = await res.json();
           setLogs(data.logs || []);
@@ -220,7 +220,7 @@ export function EmailLogsManager() {
     setLoadRemote(false);
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/v3/admin/email-logs?id=${log.id}`);
+      const res = await fetch(`${API.ADMIN}/email-logs?id=${log.id}`);
       const data = await res.json();
       if (res.ok && data.log) setDetail(data.log as EmailLogDetail);
       else setDetailError(true);
@@ -253,7 +253,7 @@ export function EmailLogsManager() {
 
   const handleClear = async () => {
     try {
-      const res = await fetch("/api/v3/admin/email-logs", {
+      const res = await fetch(`${API.ADMIN}/email-logs`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -324,19 +324,12 @@ export function EmailLogsManager() {
             </>
           }
         >
-          <div className="relative">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-              aria-hidden="true"
-            />
-            <Input
-              placeholder="Search recipient or subject..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search email logs"
-              className="pl-9 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-            />
-          </div>
+          <ListSearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search recipient or subject"
+            label="Search email logs"
+          />
 
           <div className="flex items-center gap-1.5 flex-wrap">
             {STATUS_FILTERS.map((f) => (
@@ -549,7 +542,7 @@ export function EmailLogsManager() {
               <>
                 <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 rounded-lg border border-border/50 bg-muted/20 px-4 py-3">
                   <MetaField label="Recipient">
-                    <span className="font-mono text-[13px]">
+                    <span className="font-mono text-sm">
                       {viewLog.recipient}
                     </span>
                   </MetaField>

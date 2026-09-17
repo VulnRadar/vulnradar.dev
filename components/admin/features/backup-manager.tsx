@@ -23,7 +23,8 @@ import {
 import {
   SkeletonRegion,
   AdminPanelHeader,
-  FactPanelSkeleton,
+  PanelSkeleton,
+  ADMIN_PANEL_SHAPES,
   StatusPill,
   StatusValue,
   type AdminStatusTone,
@@ -33,6 +34,7 @@ import {
   BACKUP_STALE_INTERVALS_CRIT,
 } from "./health-overview-utils";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { API } from "@/lib/config/client-constants";
 
 interface BackupJob {
   id: string;
@@ -142,7 +144,7 @@ export function BackupManager() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/v3/admin/backup");
+      const res = await fetch(`${API.ADMIN}/backup`);
       if (res.ok) {
         const data = (await res.json()) as BackupStatus;
         setStatus(data);
@@ -187,7 +189,7 @@ export function BackupManager() {
     setStarting(true);
     setStartError(null);
     try {
-      const res = await fetch("/api/v3/admin/backup", { method: "POST" });
+      const res = await fetch(`${API.ADMIN}/backup`, { method: "POST" });
       const data = await res.json();
       if (res.ok) {
         await fetchStatus();
@@ -207,7 +209,10 @@ export function BackupManager() {
     // jumped the moment the status arrived.
     return (
       <SkeletonRegion label="Loading backup status">
-        <FactPanelSkeleton facts={3} />
+        {/* The route-level shape, not a hand-written one: it draws both
+            cards the loaded panel shows, where facts={3} drew only the first
+            and the second popped in after the fetch. */}
+        <PanelSkeleton {...ADMIN_PANEL_SHAPES.backup} />
       </SkeletonRegion>
     );
   }
@@ -295,7 +300,7 @@ export function BackupManager() {
           <div className="space-y-2.5">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Last backup
                 </p>
                 {/* Age first, absolute second. This printed only the absolute
@@ -316,13 +321,13 @@ export function BackupManager() {
                 )}
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Local backups
                 </p>
                 <p className="font-medium mt-0.5 tabular-nums">{backupCount}</p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Status
                 </p>
                 <StatusValue tone={runTone} className="block mt-0.5">

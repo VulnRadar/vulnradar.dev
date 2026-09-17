@@ -28,6 +28,7 @@ import { cn } from "@/lib/ui/utils";
 import { focus } from "@/lib/ui/animations";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
+  API,
   AI_BOT_NAME,
   APP_NAME,
   AI_CHAT_HISTORY_DAYS,
@@ -270,7 +271,7 @@ function persistConversation(sessionId: string, messages: ChatMessage[]) {
     .filter((m) => !m.contextCmd || m.contextCmd === "help")
     .map((m) => ({ role: m.role, content: m.content }));
   if (payload.length === 0) return;
-  fetch("/api/v3/ai/conversations", {
+  fetch(API.AI_CONVERSATIONS, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId, messages: payload }),

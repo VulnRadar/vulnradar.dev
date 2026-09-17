@@ -54,6 +54,7 @@ import {
   RowListSkeleton,
   StatBarSkeleton,
   AdminPasswordConfirmDialog,
+  ConfirmDialog,
   AdminPanelHeader,
   StatusPill,
   type SortDirection,
@@ -61,6 +62,7 @@ import {
 import { formatRelativeTime } from "@/components/admin/utils";
 import { ModalShell } from "@/components/ui/modal-shell";
 import {
+  API,
   STAFF_ROLES,
   STAFF_ROLE_LABELS,
   ROLE_BADGE_STYLES,
@@ -186,7 +188,7 @@ export function StaffList({
   const fetchPendingInvites = useCallback(async () => {
     setInvitesLoading(true);
     try {
-      const res = await fetch("/api/v3/admin/staff-invites");
+      const res = await fetch(`${API.ADMIN}/staff-invites`);
       if (!res.ok) return;
       const data = await res.json();
       setPendingInvites(Array.isArray(data.invites) ? data.invites : []);
@@ -239,7 +241,7 @@ export function StaffList({
     setInviteSuccess("");
     setInviting(true);
     try {
-      const res = await fetch("/api/v3/admin/staff-invites", {
+      const res = await fetch(`${API.ADMIN}/staff-invites`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -265,11 +267,19 @@ export function StaffList({
     }
   }
 
+  // Revoking kills the link in someone's inbox and cannot be taken back, and
+  // it fired on the first click. Delete Team, the same class of action one tab
+  // over, has always confirmed.
+  const [revokeTarget, setRevokeTarget] = useState<{
+    id: number;
+    email: string;
+  } | null>(null);
+
   async function handleRevokeInvite(id: number) {
     setRevokingId(id);
     setInviteError("");
     try {
-      const res = await fetch("/api/v3/admin/staff-invites", {
+      const res = await fetch(`${API.ADMIN}/staff-invites`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -394,7 +404,7 @@ export function StaffList({
           <div className="flex items-center gap-2 flex-wrap">
             <Badge
               className={cn(
-                "text-[10px] px-2 py-0.5 font-medium",
+                "text-[11px] px-2 py-0.5 font-medium",
                 ROLE_BADGE_STYLES[selectedAdmin.role] || ROLE_BADGE_STYLES.user,
               )}
             >
@@ -405,7 +415,7 @@ export function StaffList({
               return (
                 <Badge
                   className={cn(
-                    "text-[10px] px-2 py-0.5 font-medium flex items-center gap-1",
+                    "text-[11px] px-2 py-0.5 font-medium flex items-center gap-1",
                     PRESENCE_BADGE[presence],
                   )}
                 >
@@ -415,7 +425,7 @@ export function StaffList({
               );
             })()}
             {selectedAdmin.totp_enabled && (
-              <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[10px] px-2 py-0.5 font-medium">
+              <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[11px] px-2 py-0.5 font-medium">
                 2FA
               </Badge>
             )}
@@ -431,7 +441,7 @@ export function StaffList({
                 <p className="text-xl font-semibold leading-tight tabular-nums">
                   {selectedAdmin.active_sessions}
                 </p>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
                   Sessions
                 </span>
               </div>
@@ -450,23 +460,22 @@ export function StaffList({
                 <p className="text-xl font-semibold leading-tight tabular-nums">
                   {selectedAdmin.total_actions}
                 </p>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
                   Total Actions
                 </span>
               </div>
             </div>
             <div className="p-3 rounded-lg bg-muted/30 border border-border/50 flex items-center gap-3">
-              <div className="h-8 w-8 rounded-lg bg-[hsl(var(--warning))]/10 flex items-center justify-center shrink-0">
-                <Zap
-                  className="h-4 w-4 text-[hsl(var(--warning))]"
-                  aria-hidden="true"
-                />
+              {/* Primary, not --warning: in the admin panel amber means "needs
+                  a human", and a count of today's actions is not a problem. */}
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <Zap className="h-4 w-4 text-primary" aria-hidden="true" />
               </div>
               <div className="min-w-0">
                 <p className="text-xl font-semibold leading-tight tabular-nums">
                   {selectedAdmin.actions_24h}
                 </p>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
                   Today
                 </span>
               </div>
@@ -482,7 +491,7 @@ export function StaffList({
                 <p className="text-xl font-semibold leading-tight tabular-nums">
                   {selectedAdmin.recent_actions || 0}
                 </p>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
                   Last 5 min
                 </span>
               </div>
@@ -517,7 +526,7 @@ export function StaffList({
                     aria-hidden="true"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider">
                       User ID
                     </p>
                     {/* break-all: an id is one unbreakable token. */}
@@ -532,7 +541,7 @@ export function StaffList({
                     aria-hidden="true"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider">
                       Admin Since
                     </p>
                     <p className="text-sm">
@@ -553,7 +562,7 @@ export function StaffList({
                     aria-hidden="true"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider">
                       2FA Status
                     </p>
                     {/* The same bit is a coloured badge in this modal's
@@ -586,7 +595,7 @@ export function StaffList({
                       aria-hidden="true"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wider">
                         Last IP
                       </p>
                       {/* break-all: a full IPv6 is 39 mono characters, wider
@@ -604,7 +613,7 @@ export function StaffList({
                       aria-hidden="true"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wider">
                         Last Session Created
                       </p>
                       <p className="text-sm">
@@ -628,7 +637,7 @@ export function StaffList({
                         aria-hidden="true"
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-wider">
                           Last Seen
                         </p>
                         {/* formatRelativeTime, not a raw minute count:
@@ -806,7 +815,7 @@ export function StaffList({
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <Badge
                             className={cn(
-                              "text-[10px] px-1.5 py-0 font-medium",
+                              "text-[11px] px-1.5 py-0 font-medium",
                               ROLE_BADGE_STYLES[invite.role] ||
                                 ROLE_BADGE_STYLES.user,
                             )}
@@ -836,7 +845,12 @@ export function StaffList({
                         variant="outline"
                         size="sm"
                         className="h-8 gap-1.5 shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => handleRevokeInvite(invite.id)}
+                        onClick={() =>
+                          setRevokeTarget({
+                            id: invite.id,
+                            email: invite.email,
+                          })
+                        }
                         disabled={revokingId === invite.id}
                         aria-label={`Revoke invite for ${invite.email}`}
                       >
@@ -1110,7 +1124,7 @@ export function StaffList({
                                       </p>
                                       <Badge
                                         className={cn(
-                                          "text-[10px] px-1.5 py-0 font-medium",
+                                          "text-[11px] px-1.5 py-0 font-medium",
                                           ROLE_BADGE_STYLES[admin.role] ||
                                             ROLE_BADGE_STYLES.user,
                                         )}
@@ -1129,7 +1143,7 @@ export function StaffList({
                                 <div className="flex flex-col gap-1">
                                   <Badge
                                     className={cn(
-                                      "text-[10px] px-2 py-0.5 font-medium flex items-center gap-1 w-fit",
+                                      "text-[11px] px-2 py-0.5 font-medium flex items-center gap-1 w-fit",
                                       PRESENCE_BADGE[presence],
                                     )}
                                   >
@@ -1140,7 +1154,7 @@ export function StaffList({
                                     {statusDisplay}
                                   </Badge>
                                   {isActive && admin.current_section && (
-                                    <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                    <span className="text-[11px] text-muted-foreground flex items-center gap-1">
                                       <Monitor
                                         className="h-3 w-3"
                                         aria-hidden="true"
@@ -1199,7 +1213,7 @@ export function StaffList({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                    className="h-8 gap-1.5 text-muted-foreground group-hover:text-foreground group-focus-within:text-foreground transition-colors"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedAdmin(admin);
@@ -1258,7 +1272,7 @@ export function StaffList({
                             <Badge
                               className={cn(
                                 ROLE_BADGE_STYLES[admin.role],
-                                "text-[10px] px-1.5 shrink-0",
+                                "text-[11px] px-1.5 shrink-0",
                               )}
                             >
                               {STAFF_ROLE_LABELS[admin.role] || admin.role}
@@ -1270,7 +1284,7 @@ export function StaffList({
                           <div className="flex items-center gap-2 mt-1.5">
                             <Badge
                               className={cn(
-                                "text-[10px] px-1.5 py-0 font-medium flex items-center gap-1",
+                                "text-[11px] px-1.5 py-0 font-medium flex items-center gap-1",
                                 PRESENCE_BADGE[presence],
                               )}
                             >
@@ -1318,6 +1332,23 @@ export function StaffList({
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title="Revoke this invite?"
+        description={
+          revokeTarget
+            ? `The invite link sent to ${revokeTarget.email} stops working. To give them access later, send a new invite.`
+            : ""
+        }
+        confirmLabel="Revoke invite"
+        danger
+        onConfirm={() => {
+          if (revokeTarget) void handleRevokeInvite(revokeTarget.id);
+          setRevokeTarget(null);
+        }}
+        onCancel={() => setRevokeTarget(null)}
+      />
 
       <AdminPasswordConfirmDialog
         open={invitePasswordOpen}

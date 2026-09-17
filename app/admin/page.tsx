@@ -539,7 +539,7 @@ function AdminContent() {
         });
         const searchTerm = search !== undefined ? search : teamsSearch;
         if (searchTerm.trim()) params.set("search", searchTerm.trim());
-        // API.ADMIN_TEAMS rather than the literal, and a res.ok branch.
+        // A res.ok branch.
         //
         // The tab is opened by anyone at moderator or above, and the route
         // needs VIEW_ALL_TEAMS, which moderators do not hold. The 403 was
@@ -547,7 +547,7 @@ function AdminContent() {
         // "No teams yet: teams created by users will appear here", which is a
         // confident factual claim about the product manufactured out of a
         // permission denial.
-        const res = await fetch(`/api/v3/admin/teams?${params}`);
+        const res = await fetch(`${API.ADMIN}/teams?${params}`);
         const data: AdminTeamsResponse = await res.json();
         if (!res.ok) {
           setTeams([]);
@@ -627,7 +627,7 @@ function AdminContent() {
     if (isInitial) setHealthLoading(true);
     else setHealthRefreshing(true);
     try {
-      const res = await fetch("/api/v3/admin/health");
+      const res = await fetch(`${API.ADMIN}/health`);
       if (res.ok) {
         setHealth((await res.json()) as HealthMetrics);
         setHealthFailed(false);
@@ -702,7 +702,7 @@ function AdminContent() {
     fetchHealth(true);
     // Lightweight, once-per-page-load check so the "Updater" nav item can
     // show a dot without every admin having to open that tab first.
-    fetch("/api/v3/admin/updater/status")
+    fetch(`${API.ADMIN}/updater/status`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setUpdateAvailable(data?.status === "behind"))
       .catch(() => {});
@@ -726,7 +726,7 @@ function AdminContent() {
   async function fetchTeamMembers(teamId: number) {
     setTeamMembersLoading(true);
     try {
-      const res = await fetch(`/api/v3/admin/teams/${teamId}`);
+      const res = await fetch(`${API.ADMIN}/teams/${teamId}`);
       const data: AdminTeamDetailResponse = await res.json();
       setTeamMembers(data);
     } catch {
@@ -738,7 +738,7 @@ function AdminContent() {
   async function handleTeamRename(teamId: number, newName: string) {
     setActionLoading(`team-rename-${teamId}`);
     try {
-      const res = await fetch(`/api/v3/admin/teams`, {
+      const res = await fetch(`${API.ADMIN}/teams`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId, name: newName }),
@@ -759,7 +759,7 @@ function AdminContent() {
   async function handleTeamDelete(teamId: number) {
     setActionLoading(`team-delete-${teamId}`);
     try {
-      const res = await fetch(`/api/v3/admin/teams`, {
+      const res = await fetch(`${API.ADMIN}/teams`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId }),
@@ -1038,7 +1038,7 @@ function AdminContent() {
           {twoFactorLockout ? (
             <div>
               <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
-                Two-Factor Authentication Required
+                Two-factor authentication required
               </h1>
               <p className="text-sm text-muted-foreground mt-1 max-w-xs">
                 This instance requires 2FA for staff accounts, and yours
@@ -1049,7 +1049,7 @@ function AdminContent() {
           ) : (
             <div>
               <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
-                Access Denied
+                Access denied
               </h1>
               <p className="text-sm text-muted-foreground mt-1 max-w-xs">
                 You do not have administrator privileges to access this panel.
@@ -1171,7 +1171,7 @@ function AdminContent() {
         {(worstHealth === "crit" || worstHealth === "warn") &&
           activeTab !== "overview" && (
             <a
-              href="/admin?tab=overview"
+              href={`${ROUTES.ADMIN}?tab=overview`}
               onClick={(e) => {
                 if (!e.ctrlKey && !e.metaKey) {
                   e.preventDefault();
@@ -1251,7 +1251,7 @@ function AdminContent() {
             <nav className="hidden lg:flex flex-col gap-5 sticky top-[calc(5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] self-start transition-[top] duration-300">
               {NAV_GROUPS.map((group) => (
                 <div key={group.label}>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest px-2 mb-1.5">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1.5">
                     {group.label}
                   </p>
                   <div className="flex flex-col gap-0.5">
@@ -1272,7 +1272,7 @@ function AdminContent() {
                           // onClick handler below -- it has to be the actual
                           // ?tab= query param the page reads on load, not a
                           // hash fragment nothing here ever parses.
-                          href={`/admin?tab=${tab.key}`}
+                          href={`${ROUTES.ADMIN}?tab=${tab.key}`}
                           onClick={(e) => {
                             if (!e.ctrlKey && !e.metaKey) {
                               e.preventDefault();
@@ -1285,7 +1285,7 @@ function AdminContent() {
                             activeTab === tab.key ? "page" : undefined
                           }
                           className={cn(
-                            "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg transition-all",
+                            "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-md transition-colors",
                             "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                             activeTab === tab.key
                               ? "bg-primary/10 text-primary font-medium"
@@ -1305,19 +1305,25 @@ function AdminContent() {
                               here like every other signal instead of teaching
                               the operator a second colour. */}
                           {showDot && (
-                            <span
-                              className={cn(
-                                "h-1.5 w-1.5 rounded-full shrink-0",
-                                tabHealth === "crit"
-                                  ? "bg-destructive"
-                                  : "bg-[hsl(var(--warning))]",
-                              )}
-                              aria-label={
-                                tabHealth === "crit"
-                                  ? `${tab.label}: critical`
-                                  : `${tab.label}: needs attention`
-                              }
-                            />
+                            <>
+                              {/* A bare span does not reliably carry an
+                                  aria-label, so the state is real text, the
+                                  same pattern the mobile section list uses. */}
+                              <span
+                                aria-hidden="true"
+                                className={cn(
+                                  "h-1.5 w-1.5 rounded-full shrink-0",
+                                  tabHealth === "crit"
+                                    ? "bg-destructive"
+                                    : "bg-[hsl(var(--warning))]",
+                                )}
+                              />
+                              <span className="sr-only">
+                                {tabHealth === "crit"
+                                  ? ", critical"
+                                  : ", needs attention"}
+                              </span>
+                            </>
                           )}
                         </a>
                       );

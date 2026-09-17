@@ -286,7 +286,11 @@ function securityAlertsRow(
       m.unresolved === 0
         ? "Every security alert has been resolved."
         : m.unresolvedSevere > 0
-          ? `${m.unresolvedSevere} of them are high or critical.`
+          ? m.unresolvedSevere === m.unresolved
+            ? m.unresolved === 1
+              ? "It is high or critical."
+              : "All of them are high or critical."
+            : `${m.unresolvedSevere} of them ${m.unresolvedSevere === 1 ? "is" : "are"} high or critical.`
           : "All low or medium severity.",
     state,
     tab: "security-alerts",

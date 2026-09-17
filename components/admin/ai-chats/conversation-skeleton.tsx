@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { ROUTES } from "@/lib/config/client-constants";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,10 +21,10 @@ export function ConversationHeader() {
         size="sm"
         className="h-8 gap-1.5 mb-3 border-border/60 bg-muted/40"
       >
-        <a href="/admin?tab=ai-chats">
+        <Link href={`${ROUTES.ADMIN}?tab=ai-chats`}>
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
           Back to AI Chats
-        </a>
+        </Link>
       </Button>
       <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
         Conversation

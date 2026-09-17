@@ -2,7 +2,6 @@
 
 import React, { useMemo, useState } from "react";
 import {
-  Search,
   Loader2,
   RefreshCw,
   X,
@@ -42,6 +41,7 @@ import {
 } from "@/components/admin/shared";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { useAdminPermissions } from "@/components/admin/hooks";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 const focusRing =
   "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
@@ -183,7 +183,7 @@ export function TeamsList({
           description={
             teamMembersLoading
               ? "Loading members..."
-              : `${teamMembers?.members.length ?? 0} member${(teamMembers?.members.length ?? 0) !== 1 ? "s" : ""}`
+              : pluralize(teamMembers?.members.length ?? 0, "member")
           }
           icon={
             <UsersRound
@@ -200,6 +200,10 @@ export function TeamsList({
             <SkeletonRegion label="Loading team members">
               <RowListSkeleton rows={4} lead="avatar" lines={1} boxed />
             </SkeletonRegion>
+          ) : (teamMembers?.members ?? []).length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              This team has no members.
+            </p>
           ) : (
             <div className="space-y-2">
               {(teamMembers?.members ?? []).map((member) => (
@@ -224,7 +228,7 @@ export function TeamsList({
                   <Badge
                     variant="outline"
                     className={cn(
-                      "text-[10px] px-2 py-0.5 font-medium capitalize",
+                      "text-[11px] px-2 py-0.5 font-medium capitalize",
                       ROLE_COLORS[member.role] ||
                         "bg-muted text-muted-foreground border-border",
                     )}
@@ -269,19 +273,12 @@ export function TeamsList({
               </Button>
             }
           >
-            <div className="relative">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-                aria-hidden="true"
-              />
-              <Input
-                placeholder="Search teams by name..."
-                value={teamsSearch}
-                onChange={(e) => setTeamsSearch(e.target.value)}
-                aria-label="Search teams by name"
-                className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
-              />
-            </div>
+            <ListSearchInput
+              value={teamsSearch}
+              onChange={setTeamsSearch}
+              placeholder="Search teams by name"
+              label="Search teams by name"
+            />
           </AdminPanelHeader>
           <CardContent className="p-0">
             {teamsLoading ? (
@@ -449,15 +446,15 @@ export function TeamsList({
                                     {team.owner_name ||
                                       team.owner_email.split("@")[0]}
                                   </p>
-                                  <p className="text-xs text-muted-foreground/80 truncate max-w-[140px] font-mono">
+                                  <p className="text-xs text-muted-foreground truncate max-w-[140px] font-mono">
                                     {team.owner_email}
                                   </p>
                                 </div>
                               </div>
                             </TableCell>
                             <TableCell className="px-4 py-4 text-center">
-                              <Badge className="text-xs font-medium tabular-nums bg-primary/10 text-primary border-primary/20">
-                                {team.member_count}
+                              <Badge className="px-2 py-0.5 text-[11px] font-medium tabular-nums bg-primary/10 text-primary border-primary/20">
+                                {pluralize(team.member_count, "member")}
                               </Badge>
                             </TableCell>
                             <TableCell className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap tabular-nums">
@@ -475,7 +472,7 @@ export function TeamsList({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                  className="h-8 gap-1.5 text-muted-foreground group-hover:text-foreground group-focus-within:text-foreground transition-colors"
                                   onClick={() => openTeamModal(team)}
                                   aria-label={`View members of ${team.name}`}
                                 >
@@ -488,7 +485,7 @@ export function TeamsList({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                  className="h-8 w-8 p-0 text-muted-foreground group-hover:text-foreground group-focus-within:text-foreground transition-colors"
                                   onClick={() =>
                                     setEditingTeam({
                                       id: team.id,
@@ -502,17 +499,18 @@ export function TeamsList({
                                     aria-hidden="true"
                                   />
                                 </Button>
-                                {/* Delete stays visible while View and Rename
-                                    are hover-revealed: it cascades to every
-                                    member, so it is not the same class of
-                                    action as the two beside it and should not
-                                    appear at the same moment in the same
-                                    shape. */}
+                                {/* All three are visible at rest. View and
+                                    Rename used to be opacity-0 until hover,
+                                    which left Delete, the one action that
+                                    cascades to every member, as the only thing
+                                    showing in the row. Delete is now the
+                                    quietest of the three and only turns red
+                                    under the pointer, and it still confirms. */}
                                 {perms.canDeleteUsers && (
                                   <Button
-                                    variant="outline"
+                                    variant="ghost"
                                     size="sm"
-                                    className="h-8 w-8 p-0 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    className="h-8 w-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
                                     onClick={() =>
                                       setConfirmDialog({
                                         title: "Delete Team",
@@ -637,7 +635,7 @@ export function TeamsList({
                           <p className="text-sm text-muted-foreground truncate">
                             {team.owner_name || team.owner_email.split("@")[0]}
                           </p>
-                          <p className="text-xs text-muted-foreground/80 truncate font-mono">
+                          <p className="text-xs text-muted-foreground truncate font-mono">
                             {team.owner_email}
                           </p>
                         </div>

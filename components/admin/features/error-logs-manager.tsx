@@ -3,17 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PaginationControl } from "@/components/ui/pagination-control";
-import {
-  Bug,
-  Search,
-  RefreshCw,
-  Trash2,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { Bug, RefreshCw, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import {
   SkeletonRegion,
   AdminPanelHeader,
@@ -32,6 +24,8 @@ import {
 const formatTimestamp = (iso: string) => formatAdminTimestamp(iso, true);
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
+import { API } from "@/lib/config/client-constants";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 interface ErrorLogEntry {
   id: number;
@@ -74,7 +68,7 @@ export function ErrorLogsManager() {
           limit: String(limit),
         });
         if (s.trim()) params.set("search", s.trim());
-        const res = await fetch(`/api/v3/admin/error-logs?${params}`);
+        const res = await fetch(`${API.ADMIN}/error-logs?${params}`);
         if (res.ok) {
           const data = await res.json();
           setLogs(data.logs || []);
@@ -114,7 +108,7 @@ export function ErrorLogsManager() {
 
   const handleClear = async () => {
     try {
-      const res = await fetch("/api/v3/admin/error-logs", {
+      const res = await fetch(`${API.ADMIN}/error-logs`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -194,19 +188,12 @@ export function ErrorLogsManager() {
             </>
           }
         >
-          <div className="relative">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-              aria-hidden="true"
-            />
-            <Input
-              placeholder="Search error message or detail..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search error logs"
-              className="pl-9 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-            />
-          </div>
+          <ListSearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search error message or detail"
+            label="Search error logs"
+          />
         </AdminPanelHeader>
 
         <CardContent className="p-0">

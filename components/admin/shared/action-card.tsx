@@ -47,7 +47,7 @@ export function ActionCard({
   return (
     <button
       className={cn(
-        "flex items-center gap-3 p-3.5 rounded-md border transition-all text-left",
+        "flex items-center gap-3 p-3.5 rounded-md border transition-colors text-left",
         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
         disabled
           ? "border-border/40 bg-muted/20 opacity-50 cursor-not-allowed"

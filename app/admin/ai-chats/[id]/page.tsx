@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react";
 import { MessageCircle, ShieldOff, User, UserX } from "lucide-react";
 import { AppPageShell } from "@/components/shared/app-page-shell";
-import { UserAvatar } from "@/components/admin/shared";
+import { EmptyState, UserAvatar } from "@/components/admin/shared";
 import { formatTimestamp } from "@/components/admin/utils";
 import { MessageContent } from "@/components/ai-chat/message-content";
 import {
@@ -11,6 +11,7 @@ import {
   ConversationSkeleton,
 } from "@/components/admin/ai-chats/conversation-skeleton";
 import { cn } from "@/lib/ui/utils";
+import { API } from "@/lib/config/client-constants";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -68,7 +69,7 @@ export default function AdminConversationPage({ params }: PageProps) {
       setForbidden(false);
       setNotFound(false);
       try {
-        const res = await fetch(`/api/v3/ai/conversations?id=${id}`);
+        const res = await fetch(`${API.AI_CONVERSATIONS}?id=${id}`);
         if (cancelled) return;
         if (res.status === 403) {
           setForbidden(true);
@@ -106,37 +107,22 @@ export default function AdminConversationPage({ params }: PageProps) {
       {loading && <ConversationSkeleton />}
 
       {!loading && forbidden && (
-        <div className="flex flex-col items-center gap-4 py-24 text-center">
-          <div className="h-14 w-14 rounded-lg bg-destructive/10 flex items-center justify-center">
-            <ShieldOff
-              className="h-7 w-7 text-destructive"
-              aria-hidden="true"
-            />
-          </div>
-          <div>
-            <p className="text-lg font-semibold">Access Denied</p>
-            <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-              You do not have staff privileges to view AI conversations.
-            </p>
-          </div>
-        </div>
+        <EmptyState
+          icon={ShieldOff}
+          tone="error"
+          title="Access denied"
+          description="You do not have staff privileges to view AI conversations."
+          className="py-24"
+        />
       )}
 
       {!loading && notFound && (
-        <div className="flex flex-col items-center gap-4 py-24 text-center">
-          <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center">
-            <MessageCircle
-              className="h-7 w-7 text-muted-foreground"
-              aria-hidden="true"
-            />
-          </div>
-          <div>
-            <p className="text-lg font-semibold">Conversation not found</p>
-            <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-              It may have expired and been cleaned up, or the id is wrong.
-            </p>
-          </div>
-        </div>
+        <EmptyState
+          icon={MessageCircle}
+          title="Conversation not found"
+          description="It may have expired and been cleaned up, or the id is wrong."
+          className="py-24"
+        />
       )}
 
       {!loading && detail && (
@@ -199,7 +185,7 @@ export default function AdminConversationPage({ params }: PageProps) {
                   {formatTimestamp(detail.lastMessageAt)}
                 </span>
               </span>
-              <span className="font-mono text-[11px] break-all">
+              <span className="font-mono text-xs break-all">
                 Session {detail.sessionId}
               </span>
             </div>

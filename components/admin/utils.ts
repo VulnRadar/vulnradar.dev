@@ -269,6 +269,19 @@ export function formatTimestamp(iso: string, withSeconds = false): string {
 }
 
 /**
+ * The date half of formatTimestamp, for a column that is about the day and not
+ * the minute ("Sep 16, 2026"). Four panels hand-wrote this with slightly
+ * different options, so one date read three ways across admin.
+ */
+export function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/**
  * Truncate text with ellipsis
  */
 export function truncate(text: string, maxLength: number): string {

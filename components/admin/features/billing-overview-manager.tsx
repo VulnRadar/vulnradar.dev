@@ -35,6 +35,9 @@ import { formatTimestamp } from "@/components/admin/utils";
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
 import { getPlanById } from "@/lib/billing/catalog";
+import { API } from "@/lib/config/client-constants";
+
+const RECENT_EVENTS_SHOWN = 8;
 
 interface PlanMixEntry {
   planId: string;
@@ -129,7 +132,7 @@ export function BillingOverviewManager() {
     if (isInitial) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await fetch("/api/v3/admin/billing-overview");
+      const res = await fetch(`${API.ADMIN}/billing-overview`);
       if (res.ok) {
         setData(await res.json());
       } else {
@@ -575,22 +578,34 @@ export function BillingOverviewManager() {
                 Recent webhook deliveries
               </p>
               <ul className="space-y-1.5">
-                {data.failedPayments.recentEvents.slice(0, 8).map((evt) => (
-                  <li
-                    key={evt.eventId}
-                    // Stacked below sm: a Stripe event id is about 30 mono
-                    // characters and the timestamp opposite it is shrink-0.
-                    className="flex flex-col text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-                  >
-                    <span title={evt.eventId} className="font-mono truncate">
-                      {evt.eventId}
-                    </span>
-                    <span className="shrink-0 tabular-nums">
-                      {formatTimestamp(evt.processedAt)}
-                    </span>
-                  </li>
-                ))}
+                {data.failedPayments.recentEvents
+                  .slice(0, RECENT_EVENTS_SHOWN)
+                  .map((evt) => (
+                    <li
+                      key={evt.eventId}
+                      // Stacked below sm: a Stripe event id is about 30 mono
+                      // characters and the timestamp opposite it is shrink-0.
+                      className="flex flex-col text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                    >
+                      <span title={evt.eventId} className="font-mono truncate">
+                        {evt.eventId}
+                      </span>
+                      <span className="shrink-0 tabular-nums">
+                        {formatTimestamp(evt.processedAt)}
+                      </span>
+                    </li>
+                  ))}
               </ul>
+              {/* Said out loud, like every other capped list in admin: the
+                  route returns up to 20 and this shows 8, so a quiet cut read
+                  as "that is all of them". */}
+              {data.failedPayments.recentEvents.length >
+                RECENT_EVENTS_SHOWN && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Showing the {RECENT_EVENTS_SHOWN} newest of{" "}
+                  {data.failedPayments.recentEvents.length} returned.
+                </p>
+              )}
             </div>
           )}
         </div>

@@ -295,7 +295,7 @@ export function QueueStatusManager() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {oldestPending && (
                     <div className="rounded-md border border-border/40 bg-muted/20 px-3 py-2.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                         Oldest pending
                       </p>
                       <StatusValue
@@ -313,7 +313,7 @@ export function QueueStatusManager() {
                   )}
                   {oldestRunning && (
                     <div className="rounded-md border border-border/40 bg-muted/20 px-3 py-2.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                         Oldest running
                       </p>
                       <StatusValue

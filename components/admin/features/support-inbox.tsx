@@ -564,6 +564,11 @@ export function SupportInbox() {
 
               <div
                 ref={messagesRef}
+                // role="log": a sent reply (or one arriving on refresh) is
+                // appended here, and nothing announced it.
+                role="log"
+                aria-live="polite"
+                aria-label="Ticket messages"
                 // The pane has no fixed height below lg, so the history needs
                 // its own cap there or a long thread pushes the reply box off
                 // the bottom of the phone screen.
