@@ -1452,7 +1452,11 @@ function VerdictDetail({
                 {v.findingUrl || "(no URL recorded)"}
               </span>
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {new Date(v.createdAt).toLocaleDateString()}
+                {new Date(v.createdAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
               </span>
             </div>
             {v.notes && (

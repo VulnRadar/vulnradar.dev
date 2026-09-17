@@ -1284,7 +1284,14 @@ export function UserDetailPanel({
                           <p className="text-[10px] text-muted-foreground">
                             Gifted until{" "}
                             {u.gift_end_date
-                              ? new Date(u.gift_end_date).toLocaleDateString()
+                              ? new Date(u.gift_end_date).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  },
+                                )
                               : "N/A"}
                             . Use the Gift button above to modify.
                           </p>

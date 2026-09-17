@@ -25,7 +25,8 @@ import {
   API,
 } from "@/lib/config/client-constants";
 import { Sparkles } from "lucide-react";
-import { apiGet, apiPost, apiPatch } from "@/lib/api/client";
+import { apiGet, apiPost, apiPatch, ApiError } from "@/lib/api/client";
+import { useToast } from "@/components/ui/use-toast";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
@@ -191,6 +192,7 @@ const VARIANT_CONFIG: Record<
 export function NotificationBell() {
   const pathname = usePathname();
   const router = useRouter();
+  const { toast } = useToast();
   const { me } = useAuth();
   const clientConfig = useClientConfig();
   const [open, setOpen] = useState(false);
@@ -338,6 +340,10 @@ export function NotificationBell() {
   // route still requires the invitee's email to match the invite before
   // accepting, so a notification only ever lets its intended recipient
   // act on it.
+  //
+  // A failure used to reach only the console: the button came back and the
+  // card stayed, which looks the same as "still working". Both actions now
+  // say so, as app/teams/page.tsx already does for the same invite.
   const acceptTeamInvite = useCallback(
     async (n: UserNotification) => {
       if (!n.related_id) return;
@@ -348,28 +354,42 @@ export function NotificationBell() {
         setOpen(false);
         router.push(ROUTES.TEAMS);
       } catch (err) {
-        console.error("Failed to accept team invite:", err);
+        toast({
+          variant: "destructive",
+          title: "Could not join the team",
+          description:
+            err instanceof ApiError && err.message
+              ? err.message
+              : "The invite could not be accepted. Try again, or open it from Teams.",
+        });
       } finally {
         setActingOnId(null);
       }
     },
-    [router],
+    [router, toast],
   );
 
   // Dismiss a user notification without acting on it (e.g. declining a
   // team invite just means walking away from it, same as the "Decline"
   // link on the emailed invite page).
-  const dismissUserNotification = useCallback(async (n: UserNotification) => {
-    setActingOnId(n.id);
-    try {
-      await apiPatch(API.NOTIFICATIONS, { id: n.id });
-      setUserNotifications((prev) => prev.filter((x) => x.id !== n.id));
-    } catch (err) {
-      console.error("Failed to dismiss notification:", err);
-    } finally {
-      setActingOnId(null);
-    }
-  }, []);
+  const dismissUserNotification = useCallback(
+    async (n: UserNotification) => {
+      setActingOnId(n.id);
+      try {
+        await apiPatch(API.NOTIFICATIONS, { id: n.id });
+        setUserNotifications((prev) => prev.filter((x) => x.id !== n.id));
+      } catch {
+        toast({
+          variant: "destructive",
+          title: "Could not dismiss the notification",
+          description: "Try again in a moment.",
+        });
+      } finally {
+        setActingOnId(null);
+      }
+    },
+    [toast],
+  );
 
   // Mark component as hydrated after client mount
   useEffect(() => {

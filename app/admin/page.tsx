@@ -339,6 +339,7 @@ function AdminContent() {
   const [teamMembersLoading, setTeamMembersLoading] = useState(false);
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([]);
   const [adminsLoading, setAdminsLoading] = useState(false);
+  const [adminsError, setAdminsError] = useState<string | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [callerRole, setCallerRole] = useState<string>("user");
   const [auditPaging, setAuditPaging] = useState(false);
@@ -504,16 +505,24 @@ function AdminContent() {
       // `|| []` on its own turns a permission denial into the confident claim
       // that this deployment has no staff. Distinguishing them is the point:
       // an empty list means there is nobody, a failure means we could not
-      // ask.
+      // ask. It said so here and then set [] anyway, and the early return
+      // skipped setAdminsLoading(false), so a failure left the skeleton up.
       if (!res.ok) {
         setActiveAdmins([]);
+        setAdminsError(
+          res.status === 403
+            ? "Your role cannot view the staff directory."
+            : "Couldn't load the staff directory.",
+        );
         return;
       }
+      setAdminsError(null);
       setActiveAdmins(Array.isArray(data.admins) ? data.admins : []);
-    } catch (error) {
-      console.error("Failed to fetch active admins", error);
+    } catch {
+      setAdminsError("Couldn't load the staff directory.");
+    } finally {
+      setAdminsLoading(false);
     }
-    setAdminsLoading(false);
   }, []);
 
   const fetchTeams = useCallback(
@@ -554,9 +563,12 @@ function AdminContent() {
         setTeamsPage(data.page || 1);
         setTeamsTotalPages(data.totalPages || 1);
       } catch {
-        /* ignore */
+        setTeamsError("Couldn't load teams.");
+      } finally {
+        // In finally: the early return above skipped this, so the 403 a
+        // moderator gets kept the skeleton up and teamsError never showed.
+        setTeamsLoading(false);
       }
-      setTeamsLoading(false);
     },
     [teamsSearch, teamsPageSize],
   );
@@ -1430,6 +1442,7 @@ function AdminContent() {
               <StaffList
                 activeAdmins={activeAdmins}
                 adminsLoading={adminsLoading}
+                adminsError={adminsError}
                 fetchActiveAdmins={fetchActiveAdmins}
               />
             )}

@@ -122,18 +122,26 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
   const teamLabel = (teamId: number) =>
     teams.all.find((team) => team.id === teamId)?.name ?? "A team";
 
+  // A failed load used to read as "No domains yet", the same words an empty
+  // account sees, on the page whose whole purpose is these domains. The
+  // webhooks, API keys and schedules loaders in app/profile/page.tsx already
+  // tell the two apart; this one said it matched them and did not.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      setLoading(true);
+      setLoadFailed(false);
       try {
         const res = await fetch(API.DOMAINS);
         const data = await res.json();
-        if (!cancelled && res.ok) {
-          setDomains(data.domains ?? []);
-        }
+        if (cancelled) return;
+        if (res.ok) setDomains(data.domains ?? []);
+        else setLoadFailed(true);
       } catch {
-        // Non-fatal: the section just shows an empty list, same as
-        // WebhooksSection's own silent-fail-to-empty on a load error.
+        if (!cancelled) setLoadFailed(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -142,7 +150,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   async function handleAddDomain() {
     if (!newDomain.trim()) return;
@@ -349,6 +357,21 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                 className="h-5 w-5 animate-spin text-muted-foreground"
                 aria-hidden="true"
               />
+            </div>
+          ) : loadFailed ? (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-3 py-2 text-sm text-destructive"
+            >
+              <span>Couldn&apos;t load your domains.</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() => setReloadKey((k) => k + 1)}
+              >
+                Try again
+              </Button>
             </div>
           ) : domains.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2 max-w-prose leading-relaxed">

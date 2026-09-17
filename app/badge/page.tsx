@@ -8,6 +8,9 @@ import { useState, useEffect, useRef } from "react";
 // surface uses. The shell now stays mounted while the scans load, so the
 // loading state and the loaded page cannot disagree about the top bar.
 import { AppPageShell } from "@/components/shared/app-page-shell";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle } from "lucide-react";
 import { API } from "@/lib/config/client-constants";
 import {
   BadgeScanList,
@@ -20,6 +23,9 @@ import {
 export default function BadgePage() {
   const [scans, setScans] = useState<ScanEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed load is not "nothing to badge": that state tells the user to
+  // run a scan, which cannot fix a request that failed.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<ScanEntry | null>(null);
   const [generating, setGenerating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -28,32 +34,35 @@ export default function BadgePage() {
   // selection (out-of-order network responses).
   const selectionRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    const fetchBadgeScans = async () => {
-      try {
-        const res = await fetch(API.BADGE_SCANS);
-        if (!res.ok) {
-          setScans([]);
-          setLoading(false);
-          return;
-        }
-        const data = await res.json();
-        // The route returns { scans }. The bare-array form is still accepted
-        // so a cached client or a self-hoster mid-upgrade keeps working.
-        setScans(
-          Array.isArray(data)
-            ? data
-            : Array.isArray(data?.scans)
-              ? data.scans
-              : [],
-        );
-      } catch {
-        setScans([]);
-      } finally {
-        setLoading(false);
+  const fetchBadgeScans = async () => {
+    setLoading(true);
+    setLoadFailed(false);
+    try {
+      const res = await fetch(API.BADGE_SCANS);
+      if (!res.ok) {
+        setLoadFailed(true);
+        return;
       }
-    };
-    fetchBadgeScans();
+      const data = await res.json();
+      // The route returns { scans }. The bare-array form is still accepted
+      // so a cached client or a self-hoster mid-upgrade keeps working.
+      setScans(
+        Array.isArray(data)
+          ? data
+          : Array.isArray(data?.scans)
+            ? data.scans
+            : [],
+      );
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the initial load; the same function is the retry
+    void fetchBadgeScans();
   }, []);
 
   async function handleSelect(scan: ScanEntry) {
@@ -130,6 +139,18 @@ export default function BadgePage() {
 
       {loading ? (
         <BadgeDataSkeleton />
+      ) : loadFailed ? (
+        <EmptyState
+          icon={AlertTriangle}
+          tone="error"
+          title="Couldn't load your scans"
+          description="Your scans and any badges already embedded are unaffected. This only stopped the list from loading."
+          action={
+            <Button variant="outline" size="sm" onClick={fetchBadgeScans}>
+              Try again
+            </Button>
+          }
+        />
       ) : scans.length === 0 ? (
         <BadgeEmptyState />
       ) : (

@@ -25,6 +25,7 @@ import {
 } from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
 import { SEVERITY_PRIORITY } from "@/lib/config/client-constants";
+import { formatTimestamp } from "@/components/admin/utils";
 
 interface SecurityAlert {
   id: number;
@@ -444,7 +445,7 @@ export function SecurityAlertsManager() {
                         )}
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" aria-hidden="true" />
-                          {new Date(alert.created_at).toLocaleString()}
+                          {formatTimestamp(alert.created_at)}
                         </div>
                       </div>
 

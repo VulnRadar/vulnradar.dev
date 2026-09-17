@@ -71,6 +71,8 @@ import type { ActiveAdmin } from "@/components/admin/types";
 interface StaffListProps {
   activeAdmins: ActiveAdmin[];
   adminsLoading: boolean;
+  /** Set when the directory could not be loaded, which is not "no staff". */
+  adminsError?: string | null;
   fetchActiveAdmins: () => void;
 }
 
@@ -150,6 +152,7 @@ const PRESENCE_DOT: Record<Presence, string> = {
 export function StaffList({
   activeAdmins,
   adminsLoading,
+  adminsError = null,
   fetchActiveAdmins,
 }: StaffListProps) {
   const [staffPage, setStaffPage] = useState(1);
@@ -977,6 +980,23 @@ export function StaffList({
               <SkeletonRegion label="Loading staff directory">
                 <DataTableSkeleton rows={6} />
               </SkeletonRegion>
+            ) : adminsError ? (
+              <EmptyState
+                icon={Shield}
+                tone="error"
+                title="Couldn't load staff"
+                description={adminsError}
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={fetchActiveAdmins}
+                  >
+                    Try again
+                  </Button>
+                }
+              />
             ) : activeAdmins.length === 0 ? (
               <EmptyState
                 icon={Shield}
