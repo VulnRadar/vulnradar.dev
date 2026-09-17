@@ -13,8 +13,28 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockQuery = vi.fn();
+// generateApiKey serializes a CAPPED create behind a per-user advisory lock,
+// so that path runs on a pooled client rather than on the pool itself. The
+// client forwards the real statement to the same mockQuery every expectation
+// here queues against; BEGIN, the lock and COMMIT are transaction plumbing
+// with no result worth queueing, so they are answered locally instead of
+// consuming a queued row.
+const TX_PLUMBING = /^(BEGIN|COMMIT|ROLLBACK)$|pg_advisory_xact_lock/i;
+const mockConnect = vi.fn(async () => ({
+  query: async (...args: unknown[]) => {
+    if (TX_PLUMBING.test(String(args[0] ?? "").trim())) {
+      return { rows: [], rowCount: 0 };
+    }
+    return mockQuery(...(args as [string, unknown[]?]));
+  },
+  release: vi.fn(),
+}));
+
 vi.mock("@/lib/database/db", () => ({
-  default: { query: (...args: unknown[]) => mockQuery(...args) },
+  default: {
+    query: (...args: unknown[]) => mockQuery(...args),
+    connect: () => mockConnect(),
+  },
 }));
 
 const mockGetSession = vi.fn();

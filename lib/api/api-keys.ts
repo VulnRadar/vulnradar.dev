@@ -91,14 +91,13 @@ export async function generateApiKey(
   dailyLimit?: number,
   scopes: ApiKeyScope[] = DEFAULT_NEW_KEY_SCOPES,
   /**
-   * The caller's plan cap on active keys, re-applied inside the INSERT.
+   * The caller's plan cap on active keys, re-applied around the INSERT.
    *
    * Counting keys in the route and inserting here is check-then-act: two
    * requests that both read the same count before either writes both pass
    * the gate, and the account ends up holding more live keys than its plan
-   * allows. Passing the number down lets one statement do both. Undefined or
-   * null means unlimited, which is also what a caller that predates this
-   * parameter gets.
+   * allows. Undefined or null means unlimited, which is also what a caller
+   * that predates this parameter gets.
    */
   activeKeyCap?: number | null,
 ) {
@@ -125,35 +124,67 @@ export async function generateApiKey(
   // that have not been revoked. getUserApiKeys selects every row and filters
   // revoked_at in JavaScript, so this is where that predicate has to be
   // written out in SQL.
-  const result = await pool.query(
-    `INSERT INTO api_keys (user_id, key_hash, key_locator, key_prefix, name, daily_limit, key_encrypted, scopes)
+  const insertSql = `INSERT INTO api_keys (user_id, key_hash, key_locator, key_prefix, name, daily_limit, key_encrypted, scopes)
      SELECT $1, $2, $3, $4, $5, $6, $7, $8
      WHERE $9::int IS NULL
         OR (SELECT COUNT(*) FROM api_keys
              WHERE user_id = $1 AND revoked_at IS NULL) < $9::int
-     RETURNING id, key_prefix, name, daily_limit, created_at, scopes`,
-    [
-      userId,
-      keyHash,
-      locator,
-      prefix,
-      name,
-      limit,
-      keyEncrypted,
-      JSON.stringify(scopes),
-      activeKeyCap ?? null,
-    ],
-  );
+     RETURNING id, key_prefix, name, daily_limit, created_at, scopes`;
+  const params = [
+    userId,
+    keyHash,
+    locator,
+    prefix,
+    name,
+    limit,
+    keyEncrypted,
+    JSON.stringify(scopes),
+    activeKeyCap ?? null,
+  ];
 
-  // The guard refused: another request took the last slot. Null rather than
-  // a throw, so the caller answers with its own plan-limit message instead
-  // of a 500.
-  if (result.rows.length === 0) return null;
+  // Uncapped: no counting, so nothing to serialize.
+  if (activeKeyCap == null) {
+    const result = await pool.query(insertSql, params);
+    return { ...result.rows[0], raw_key: raw };
+  }
 
-  return {
-    ...result.rows[0],
-    raw_key: raw, // Only returned on creation, never stored in plaintext
-  };
+  // Capped: the statement above counts and inserts in one go, which is what
+  // it was written for, and that is still not enough. Under READ COMMITTED,
+  // which is Postgres's default and what this pool runs, the COUNT subquery
+  // is evaluated against the snapshot taken when the statement STARTED, so
+  // two creates arriving together each see `cap - 1` live keys, neither sees
+  // the other's uncommitted row, and both insert: an account on a two-key
+  // plan ends up holding three. One statement is not the same thing as one
+  // at a time.
+  //
+  // Same fix as reserveConcurrentScanSlot: a transaction-scoped advisory
+  // lock keyed per user, which auto-releases on COMMIT or ROLLBACK and never
+  // makes two different accounts wait for each other. Not a row lock on
+  // users, which would also block an unrelated profile save.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `api-key-create:${userId}`,
+    ]);
+    const result = await client.query(insertSql, params);
+    await client.query("COMMIT");
+
+    // The guard refused: another request took the last slot. Null rather
+    // than a throw, so the caller answers with its own plan-limit message
+    // instead of a 500.
+    if (result.rows.length === 0) return null;
+
+    return {
+      ...result.rows[0],
+      raw_key: raw, // Only returned on creation, never stored in plaintext
+    };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // Hash the API key with bcrypt for secure storage
