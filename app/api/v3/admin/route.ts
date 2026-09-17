@@ -55,6 +55,7 @@ import {
 } from "@/lib/email/email";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
+import { clearUserRateLimitBuckets } from "@/lib/rate-limiting/clear-user-buckets";
 
 // Helper to send email only if user notification is enabled
 async function sendNotificationIfEnabled(
@@ -1545,15 +1546,17 @@ export async function PATCH(request: NextRequest) {
       // userId that's a numeric prefix/suffix of another key's number
       // (e.g. clearing user 5 must not also touch a key for user 50)
       // never matches.
-      const clearResult = await pool.query(
-        "DELETE FROM rate_limits WHERE key ~ ('(^|:)' || $1::text || '($|:)')",
-        [String(userId)],
-      );
+      //
+      // The statement itself lives in lib/rate-limiting/clear-user-buckets.ts
+      // so it can be pointed at a real database without a staff session:
+      // whether the anchoring holds is decided by Postgres, and a mocked pool
+      // answers a weakened pattern exactly as it answers this one.
+      const cleared = await clearUserRateLimitBuckets(userId);
       await logAction(
         session.userId,
         userId,
         "clear_rate_limits",
-        `Cleared ${clearResult.rowCount ?? 0} rate limit bucket(s) for ${targetUser.email}`,
+        `Cleared ${cleared} rate limit bucket(s) for ${targetUser.email}`,
         ip,
       );
       return NextResponse.json({ success: true });
