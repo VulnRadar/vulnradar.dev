@@ -16,7 +16,8 @@ function AnchorLink({ id, label }: { id: string; label: string }) {
       href={`#${id}`}
       aria-label={`Link to ${label}`}
       className={cn(
-        "ml-2 inline-flex align-middle text-muted-foreground opacity-0 transition-opacity",
+        // h-6 w-6: the icon alone is 14px, under the 24px target minimum.
+        "ml-1 inline-flex h-6 w-6 items-center justify-center align-middle text-muted-foreground opacity-0 transition-opacity",
         "group-hover:opacity-100 focus-visible:opacity-100",
         "hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
       )}

@@ -17,7 +17,10 @@ export function DemoError({ error, details, onRetry }: DemoErrorProps) {
   return (
     <section className="pt-16 pb-20 sm:pt-24">
       <div className="max-w-2xl mx-auto px-4 sm:px-6">
-        <p className="font-mono text-xs uppercase tracking-wider text-destructive mb-3">
+        <p
+          role="alert"
+          className="font-mono text-xs uppercase tracking-wider text-destructive mb-3"
+        >
           {isBlocked ? "Target refused" : "Scan failed"}
         </p>
 

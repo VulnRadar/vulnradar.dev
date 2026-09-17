@@ -47,6 +47,7 @@ export function DemoResultsHeader({
     <section className="border-b border-border/50">
       <div className="mx-auto max-w-6xl px-4 pb-8 pt-12 sm:px-6 sm:pt-16">
         <p
+          role="status"
           className={`mb-3 font-mono text-xs uppercase tracking-wider ${
             isPassing
               ? "text-[hsl(var(--success))]"

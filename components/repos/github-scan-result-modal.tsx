@@ -92,6 +92,17 @@ export function GithubScanResultModal({
           the wrapped stat row and the two footnote paragraphs reachable on a
           short viewport. */}
       <DialogContent variant="shell" size="md">
+        {/* The dialog stays open from "Scanning" to the result, which can
+            take a minute, and swaps its whole body; this says when it ends. */}
+        <span role="status" aria-live="polite" className="sr-only">
+          {loading
+            ? ""
+            : error
+              ? "The scan failed."
+              : outcome
+                ? "The scan finished."
+                : ""}
+        </span>
         {loading ? (
           // border-b-0: the header band is the only band in this state, so its
           // divider would land a hairline above the panel's own edge.

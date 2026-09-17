@@ -211,6 +211,9 @@ export function WebhooksSection({
               )}
               {copiedSecret ? "Copied to clipboard" : "Copy secret"}
             </Button>
+            <p className="sr-only" role="status" aria-live="polite">
+              {copiedSecret ? "Signing secret copied to clipboard." : ""}
+            </p>
             <Button
               variant="ghost"
               className="ml-auto text-muted-foreground"
@@ -379,6 +382,7 @@ export function WebhooksSection({
                     >
                       {wh.type === "discord" ? (
                         <svg
+                          aria-hidden="true"
                           className="h-4 w-4 text-[#5865F2] shrink-0"
                           viewBox="0 0 24 24"
                           fill="currentColor"
@@ -387,6 +391,7 @@ export function WebhooksSection({
                         </svg>
                       ) : wh.type === "slack" ? (
                         <svg
+                          aria-hidden="true"
                           className="h-4 w-4 text-[#E01E5A] shrink-0"
                           viewBox="0 0 24 24"
                           fill="currentColor"

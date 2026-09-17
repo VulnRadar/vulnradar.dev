@@ -188,8 +188,9 @@ export function TeamDetailHeader({
                 size="sm"
                 className="gap-1.5"
                 onClick={onToggleInvite}
+                aria-label="Invite people"
               >
-                <UserPlus className="h-4 w-4" />
+                <UserPlus className="h-4 w-4" aria-hidden="true" />
                 <span className="hidden sm:inline">Invite</span>
               </Button>
             )}

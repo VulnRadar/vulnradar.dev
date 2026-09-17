@@ -810,6 +810,7 @@ export function SystemSettingsManager() {
                   size="sm"
                   onClick={discardTabChanges}
                   disabled={saving}
+                  aria-label="Discard changes"
                   className="h-8 gap-1.5"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden="true" />

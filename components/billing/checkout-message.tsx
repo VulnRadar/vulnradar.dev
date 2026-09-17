@@ -28,7 +28,8 @@ const TONE: Record<
     role?: "status" | "alert";
   }
 > = {
-  neutral: {},
+  // Still a status: it replaces a page the reader was already on.
+  neutral: { role: "status" },
   success: {
     icon: Check,
     mark: "text-[hsl(var(--success))]",

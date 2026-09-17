@@ -171,7 +171,10 @@ function UnsubscribeContent() {
 
   if (unsubscribedAll) {
     return (
-      <div className="space-y-4">
+      // role="status": this replaces the preferences, including the button
+      // that had focus, so it is announced rather than left for the reader
+      // to go looking for.
+      <div className="space-y-4" role="status">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-[hsl(var(--success))]">
             Unsubscribed.
@@ -279,18 +282,21 @@ function UnsubscribeContent() {
           <div className="flex items-start justify-between gap-4 pt-2">
             {/* Check `saving` first: otherwise, once savedAt is set on the first
             save, the "Saving..." indicator never shows again on later saves. */}
-            {saving ? (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                <span>Saving...</span>
-              </div>
-            ) : saveError ? (
-              <p className="text-xs text-destructive">{saveError}</p>
-            ) : savedAt ? (
-              <p className="text-xs text-[hsl(var(--success))]">Saved.</p>
-            ) : (
-              <span />
-            )}
+            <div role="status" aria-live="polite">
+              {saving ? (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60">
+                  <Loader2
+                    className="h-3 w-3 animate-spin"
+                    aria-hidden="true"
+                  />
+                  <span>Saving...</span>
+                </div>
+              ) : saveError ? (
+                <p className="text-xs text-destructive">{saveError}</p>
+              ) : savedAt ? (
+                <p className="text-xs text-[hsl(var(--success))]">Saved.</p>
+              ) : null}
+            </div>
 
             {/* Was a ~16px, 60%-opacity text target. It is the destructive action
             on this screen, so it gets a real 44px button. */}

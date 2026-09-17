@@ -507,9 +507,9 @@ export function StaffList({
           {/* Details grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Account Details
-              </h4>
+              </h3>
               <div className="space-y-2">
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
                   <User
@@ -575,9 +575,9 @@ export function StaffList({
             </div>
 
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Session & Activity
-              </h4>
+              </h3>
               <div className="space-y-2">
                 {selectedAdmin.last_ip && (
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
@@ -648,9 +648,9 @@ export function StaffList({
           {/* Last action */}
           {selectedAdmin.last_admin_action && (
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Last Admin Action
-              </h4>
+              </h3>
               <div className="p-4 rounded-lg bg-muted/20 border border-border/40">
                 <div className="flex items-center gap-3">
                   <ActionBadge action={selectedAdmin.last_action_type || ""} />
@@ -754,9 +754,9 @@ export function StaffList({
                   the emailed link stops resolving the moment it is gone. */}
           <div className="pt-4 border-t border-border/50">
             <div className="flex items-center justify-between gap-2 mb-3">
-              <h4 className="text-sm font-semibold text-foreground">
+              <h3 className="text-sm font-semibold text-foreground">
                 Pending invites
-              </h4>
+              </h3>
               {pendingInvites.length > 0 && (
                 <Badge
                   variant="secondary"
@@ -955,6 +955,7 @@ export function StaffList({
                   size="sm"
                   className="h-9 px-3 gap-2"
                   onClick={() => setInviteOpen(true)}
+                  aria-label="Invite staff"
                 >
                   <UserPlus className="h-4 w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">Invite staff</span>

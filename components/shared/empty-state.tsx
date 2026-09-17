@@ -96,7 +96,11 @@ export function EmptyState({
       // this replaced carried role="alert" and the other three did not, so
       // putting it on the tone rather than on the call site is also how the
       // four stop disagreeing.
-      role={tone === "error" ? "alert" : undefined}
+      // A success verdict (a message sent, a scan clean) replaces the thing
+      // the user just acted on, so it is announced as a status.
+      role={
+        tone === "error" ? "alert" : tone === "success" ? "status" : undefined
+      }
       className={cn(
         // A fade rather than nothing: this element almost always replaces a
         // list that was just there (a filter cleared, a scan finished), and

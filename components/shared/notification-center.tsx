@@ -397,6 +397,20 @@ export function NotificationBell() {
     setHydrated(true);
   }, []);
 
+  // Escape closes the panel, as it does every other popup here. This one is
+  // hand-rolled rather than Radix, and the only ways out were a second click
+  // on the bell or a click outside it.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      ref.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
   // Close on outside click
   useEffect(() => {
     function handle(e: MouseEvent) {

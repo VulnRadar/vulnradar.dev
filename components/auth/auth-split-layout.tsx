@@ -104,12 +104,14 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
               the fold. */}
           <div className="hidden max-w-md lg:block">
             {/* On the type scale, not an arbitrary 28px: text-3xl's own
-                line-height is already tight enough for the two-line break. */}
-            <h2 className="text-3xl font-semibold tracking-tight text-foreground">
+                line-height is already tight enough for the two-line break.
+                A paragraph, not a heading: it came before the form's h1, so
+                the page's first heading was a marketing line. */}
+            <p className="text-3xl font-semibold tracking-tight text-foreground">
               Paste a URL. Get findings,
               <br />
               not a grade out of ten.
-            </h2>
+            </p>
             <p className="mt-3.5 text-sm leading-relaxed text-muted-foreground">
               {TOTAL_CHECKS_LABEL} checks run in parallel against the live
               response. Every finding comes back with a stable ID you can

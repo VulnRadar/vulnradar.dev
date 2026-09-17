@@ -222,7 +222,7 @@ export function ScanTags({
               placeholder="tag"
               maxLength={Math.min(SERVER_TAG_LENGTH, MAX_CLIENT_TAG_LENGTH)}
               disabled={pending}
-              className="w-20 text-base sm:text-[10px] px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-hidden disabled:opacity-60"
+              className="w-20 text-base sm:text-[10px] px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring disabled:opacity-60"
               autoFocus
             />
           </span>

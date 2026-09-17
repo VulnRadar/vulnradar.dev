@@ -503,13 +503,16 @@ function OperationCard({
           </div>
 
           {sendError && (
-            <p className="text-xs text-[hsl(var(--severity-high))]">
+            <p
+              role="alert"
+              className="text-xs text-[hsl(var(--severity-high))]"
+            >
               {sendError}
             </p>
           )}
 
           {result && (
-            <div className="flex flex-col gap-1">
+            <div role="status" className="flex flex-col gap-1">
               <span
                 className={cn(
                   "w-fit rounded px-2 py-0.5 text-[11px] font-semibold",

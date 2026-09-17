@@ -330,7 +330,7 @@ function CopyButton({ text }: { text: string }) {
       // and copying a reply was impossible on a phone. The after: overlay
       // widens the tap area from 20px to 44px without moving the 20px icon
       // box, which would otherwise sit on top of the first line of the reply.
-      className="absolute top-1 right-1 h-5 w-5 flex items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted after:absolute after:-inset-3 sm:after:hidden sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-all touch-manipulation"
+      className="absolute top-1 right-1 h-6 w-6 flex items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted after:absolute after:-inset-3 sm:after:hidden sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-all touch-manipulation"
       title={copied ? "Copied" : "Copy"}
       aria-label={copied ? "Copied" : "Copy message"}
     >
@@ -359,7 +359,13 @@ function useTypewriter(raw: string, active: boolean): string {
   }, [suffix, active]);
 
   useEffect(() => {
-    if (!active) {
+    // Reduced motion shows the reply at once. The global CSS clamp cannot
+    // reach this: it is a JS interval, and it also rewrote the log region
+    // word by word for however long a reply took.
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!active || reduceMotion) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the typewriter position when the active prop turns off, gated by that dependency
       setPos(Infinity);
       return;

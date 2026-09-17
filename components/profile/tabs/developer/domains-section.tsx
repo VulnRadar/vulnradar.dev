@@ -578,12 +578,16 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                               )
                             }
                             title="Copy record name"
-                            aria-label="Copy record name"
+                            aria-label={
+                              copiedField === `name-${d.id}`
+                                ? "Record name copied"
+                                : "Copy record name"
+                            }
                           >
                             {copiedField === `name-${d.id}` ? (
-                              <Check className="h-3.5 w-3.5" />
+                              <Check aria-hidden className="h-3.5 w-3.5" />
                             ) : (
-                              <Copy className="h-3.5 w-3.5" />
+                              <Copy aria-hidden className="h-3.5 w-3.5" />
                             )}
                           </Button>
                         </div>
@@ -607,12 +611,16 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                                   )
                                 }
                                 title="Copy record value"
-                                aria-label="Copy record value"
+                                aria-label={
+                                  copiedField === `value-${d.id}`
+                                    ? "Record value copied"
+                                    : "Copy record value"
+                                }
                               >
                                 {copiedField === `value-${d.id}` ? (
-                                  <Check className="h-3.5 w-3.5" />
+                                  <Check aria-hidden className="h-3.5 w-3.5" />
                                 ) : (
-                                  <Copy className="h-3.5 w-3.5" />
+                                  <Copy aria-hidden className="h-3.5 w-3.5" />
                                 )}
                               </Button>
                             </div>

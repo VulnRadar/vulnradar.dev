@@ -400,7 +400,10 @@ export function CommandPalette() {
       description={`Search ${APP_NAME} and jump to any section.`}
     >
       <Command loop>
-        <CommandInput placeholder="Jump to..." />
+        <CommandInput
+          aria-label="Search pages and settings"
+          placeholder="Jump to..."
+        />
         <CommandList>
           <CommandEmpty>Nothing matches that.</CommandEmpty>
           {groups.map((group) => (

@@ -656,17 +656,23 @@ export function SiteNotifications({
           (components/shared/cookie-notice.tsx) because that bar is z-60 and
           mounted after this one, so at a flat bottom-4 a toast landed behind
           it on a first visit, which is exactly when a toast is most likely. */}
-      {toastQueue.length > 0 && (
-        <div className="fixed bottom-[calc(1rem+var(--vr-cookie-h,0px))] right-4 left-4 sm:left-auto z-50 flex flex-col gap-2 pointer-events-none transition-[bottom] duration-300">
-          {toastQueue.slice(0, 3).map((notification) => (
-            <SiteToast
-              key={notification.id}
-              notification={notification}
-              onDismiss={() => removeToast(notification.id)}
-            />
-          ))}
-        </div>
-      )}
+      {/* Always mounted, and a polite live region: these toasts dismiss
+          themselves after six seconds and had no role, so a screen reader
+          never heard one. A region inserted together with its first toast is
+          not reliably announced, which is why it does not wait for one. */}
+      <div
+        aria-live="polite"
+        aria-relevant="additions"
+        className="fixed bottom-[calc(1rem+var(--vr-cookie-h,0px))] right-4 left-4 sm:left-auto z-50 flex flex-col gap-2 pointer-events-none transition-[bottom] duration-300"
+      >
+        {toastQueue.slice(0, 3).map((notification) => (
+          <SiteToast
+            key={notification.id}
+            notification={notification}
+            onDismiss={() => removeToast(notification.id)}
+          />
+        ))}
+      </div>
     </>
   );
 }

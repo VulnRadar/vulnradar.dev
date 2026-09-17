@@ -54,7 +54,9 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
         <Button
           variant="ghost"
           size="sm"
-          aria-label={`Copy ${label} snippet`}
+          aria-label={
+            copied ? `${label} snippet copied` : `Copy ${label} snippet`
+          }
           onClick={async () => {
             if (await copyToClipboard(code)) {
               setCopied(true);
@@ -64,9 +66,9 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
           className="h-7 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
           {copied ? (
-            <Check className="h-3.5 w-3.5 text-primary" />
+            <Check aria-hidden className="h-3.5 w-3.5 text-primary" />
           ) : (
-            <Copy className="h-3.5 w-3.5" />
+            <Copy aria-hidden className="h-3.5 w-3.5" />
           )}
           <span className="sr-only sm:not-sr-only">
             {copied ? "Copied" : "Copy"}

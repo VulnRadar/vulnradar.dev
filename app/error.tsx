@@ -89,7 +89,9 @@ export default function Error({
                   error.digest
                 </span>
                 <button
+                  type="button"
                   onClick={copyErrorId}
+                  aria-label={copied ? "Error ID copied" : "Copy error ID"}
                   className={`flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-sm ${focus.ring}`}
                 >
                   {copied ? (

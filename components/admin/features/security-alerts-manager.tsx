@@ -413,14 +413,14 @@ export function SecurityAlertsManager() {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <h4
+                        <h3
                           className={cn(
                             "text-sm text-foreground",
                             isMajor ? "font-semibold" : "font-medium",
                           )}
                         >
                           {alert.alert_type}
-                        </h4>
+                        </h3>
                         <Badge
                           className={cn(
                             "text-[10px] px-2 py-0.5 font-medium capitalize",

@@ -90,7 +90,13 @@ export function PricingCards({
   const proSupporterRank = planRank.get("pro_supporter") ?? 0;
 
   return (
-    <section className={PRICING_RAIL_SECTION} aria-label="Plans">
+    <section
+      className={PRICING_RAIL_SECTION}
+      aria-labelledby="pricing-plans-heading"
+    >
+      <h2 id="pricing-plans-heading" className="sr-only">
+        Plans
+      </h2>
       <div className="overflow-hidden rounded-xl border border-border/60 bg-card/40">
         {/* One row of four at lg, a single stack below it. No 2-up
             breakpoint on purpose: two columns cannot be compared across a

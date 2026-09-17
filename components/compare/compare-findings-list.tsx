@@ -77,7 +77,7 @@ function Group({
   return (
     <section className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
       <header className="px-5 py-3.5 border-b border-border/50 flex items-baseline gap-2 flex-wrap">
-        <h3 className={cn("font-semibold text-sm", tone)}>{heading}</h3>
+        <h2 className={cn("font-semibold text-sm", tone)}>{heading}</h2>
         <span className="text-sm tabular-nums text-muted-foreground">
           {count}
         </span>

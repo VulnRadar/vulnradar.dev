@@ -438,7 +438,7 @@ export function SubdomainDiscovery({
                     onClick={() => handleDiscover(true)}
                     disabled={refreshing}
                     className={cn(
-                      "inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50",
+                      "relative inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-['']",
                       canRefreshDNS
                         ? "text-foreground hover:bg-muted"
                         : "text-primary hover:bg-primary/10",

@@ -328,6 +328,7 @@ export function ProfileAiSettingsTab({
           <button
             type="button"
             onClick={() => setUseOwn(false)}
+            aria-pressed={!useOwn}
             className={cn(
               "text-left p-4 rounded-xl border transition-all",
               !useOwn
@@ -346,6 +347,7 @@ export function ProfileAiSettingsTab({
           <button
             type="button"
             onClick={() => setUseOwn(true)}
+            aria-pressed={useOwn}
             className={cn(
               "text-left p-4 rounded-xl border transition-all",
               useOwn
@@ -502,7 +504,7 @@ export function ProfileAiSettingsTab({
                         <button
                           type="button"
                           onClick={() => setShowApiKeyText((v) => !v)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors"
                           aria-label={
                             showApiKeyText ? "Hide API key" : "Show API key"
                           }

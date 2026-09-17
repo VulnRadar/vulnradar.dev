@@ -5,6 +5,7 @@ import { Check, FileJson, FileSpreadsheet, Link2 } from "lucide-react";
 import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
 import { APP_SLUG } from "@/lib/config/client-constants";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { toast } from "@/components/ui/use-toast";
 import { downloadBlob, escapeCsv } from "@/lib/ui/download";
 import { displayUrl, type DiffResult } from "./compare-types";
 
@@ -51,10 +52,19 @@ export function CompareActionsMenu({ result }: CompareActionsMenuProps) {
     downloadBlob(blob, `${APP_SLUG}-compare-${hostname}-${date}.csv`);
   }
 
+  // The menu closes on select, so the item's own "Link copied" label was
+  // never seen, and never announced: a toast is the confirmation.
   async function copyLink() {
     if (await copyToClipboard(window.location.href)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      toast({ title: "Comparison link copied" });
+    } else {
+      toast({
+        variant: "destructive",
+        title: "Could not copy the link",
+        description: "Copy it from the address bar instead.",
+      });
     }
   }
 
