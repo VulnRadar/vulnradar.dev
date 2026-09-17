@@ -26,6 +26,7 @@ import {
   LOCATION_CHANGE_EVENT,
   removeQueryParam,
   setQueryParam,
+  setQueryParams,
   useQuerySeededState,
 } from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -49,6 +50,9 @@ import {
 } from "@/components/history";
 import {
   DEFAULT_HISTORY_QUERY,
+  historyQueryFromParams,
+  historyQueryKey,
+  historyQueryToParams,
   activeFilterCount,
   filterHistory,
   type HistoryQuery,
@@ -83,11 +87,18 @@ export default function HistoryPage() {
   const [matchedScans, setMatchedScans] = useState(0);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
-  const [query, setQuery] = useState<HistoryQuery>(DEFAULT_HISTORY_QUERY);
+  // Seeded from the URL like ?page=, and written back below, so a reload or a
+  // shared link keeps the filters the page number belongs to.
+  const seededQueryKey = useRef<string | null>(null);
+  const [query, setQuery] = useQuerySeededState<HistoryQuery>(() => {
+    const seeded = historyQueryFromParams(getQueryParam);
+    seededQueryKey.current = historyQueryKey(seeded);
+    return seeded;
+  }, DEFAULT_HISTORY_QUERY);
   const updateQuery = useCallback(
     (patch: Partial<HistoryQuery>) =>
       setQuery((prev) => ({ ...prev, ...patch })),
-    [],
+    [setQuery],
   );
   const [allTags, setAllTags] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useQuerySeededState(
@@ -680,14 +691,37 @@ export default function HistoryPage() {
 
   // Skip the very first run: it fires on mount too, and resetting there
   // would immediately wipe out a deep-linked ?page=N before it ever renders.
+  // The same goes for the render that applies filters read from the URL: they
+  // arrive with their page, so only a change after that goes back to page 1.
   const isFirstFilterRun = useRef(true);
+  const filtersChangedByUser = useRef(false);
   useEffect(() => {
     if (isFirstFilterRun.current) {
       isFirstFilterRun.current = false;
       return;
     }
+    if (
+      !filtersChangedByUser.current &&
+      historyQueryKey(query) === seededQueryKey.current
+    ) {
+      return;
+    }
+    filtersChangedByUser.current = true;
     handlePageChange(1);
   }, [query, handlePageChange]);
+
+  // Filters go into the URL with replaceState, so the back button still moves
+  // between pages and scans rather than through every keystroke of a search.
+  // Skipped on the first render, which still holds the defaults and would
+  // otherwise erase the parameters it is about to be seeded from.
+  const isFirstQueryWrite = useRef(true);
+  useEffect(() => {
+    if (isFirstQueryWrite.current) {
+      isFirstQueryWrite.current = false;
+      return;
+    }
+    setQueryParams(historyQueryToParams(query), { replace: true });
+  }, [query]);
 
   const { totalPages, getPage } = usePagination(filtered, pageSize);
   // Clamp to the current page count. When the list shrinks below currentPage

@@ -11,6 +11,9 @@ import {
   DEFAULT_HISTORY_QUERY,
   activeFilterCount,
   filterHistory,
+  historyQueryFromParams,
+  historyQueryKey,
+  historyQueryToParams,
   severityRank,
   type HistoryQuery,
 } from "@/components/history/history-filter-utils";
@@ -200,5 +203,61 @@ describe("activeFilterCount", () => {
 
   it("ignores a search that is only whitespace", () => {
     expect(activeFilterCount(query({ search: "   " }))).toBe(0);
+  });
+});
+
+describe("history query in the URL", () => {
+  const params = (qs: string) => {
+    const p = new URLSearchParams(qs);
+    return (name: string) => p.get(name);
+  };
+
+  it("round-trips every non-default filter", () => {
+    const q = query({
+      search: "shop",
+      tag: "prod",
+      severity: "critical",
+      date: "30d",
+      sort: "host",
+    });
+    const written = historyQueryToParams(q);
+    const qs = new URLSearchParams(
+      Object.entries(written).filter(([, v]) => v !== null) as [
+        string,
+        string,
+      ][],
+    ).toString();
+    expect(historyQueryFromParams(params(qs))).toEqual(q);
+  });
+
+  it("writes nothing for the default query, so /history stays plain", () => {
+    expect(
+      Object.values(historyQueryToParams(DEFAULT_HISTORY_QUERY)).every(
+        (v) => v === null,
+      ),
+    ).toBe(true);
+  });
+
+  it("reads anything unrecognised as the default instead of trusting it", () => {
+    expect(
+      historyQueryFromParams(
+        params("severity=everything&date=forever&sort=__proto__"),
+      ),
+    ).toEqual(DEFAULT_HISTORY_QUERY);
+  });
+
+  it("caps an absurdly long search", () => {
+    expect(
+      historyQueryFromParams(params(`q=${"a".repeat(5000)}`)).search,
+    ).toHaveLength(200);
+  });
+
+  it("keys two queries that filter the same way equally", () => {
+    expect(historyQueryKey(query({ search: " shop " }))).toBe(
+      historyQueryKey(query({ search: "shop" })),
+    );
+    expect(historyQueryKey(query({ sort: "oldest" }))).not.toBe(
+      historyQueryKey(DEFAULT_HISTORY_QUERY),
+    );
   });
 });

@@ -64,6 +64,65 @@ export const SORT_LABELS: Record<HistorySort, string> = {
   host: "Host A to Z",
 };
 
+/**
+ * The URL form of a history query. Only non-default values are written, so a
+ * plain /history stays plain. `q` matches the API's own search parameter.
+ *
+ * The page number was already in the URL and these were not, so a reload, a
+ * bookmark or a shared link kept ?page=2 and dropped the filters that page
+ * belonged to: page 2 of the unfiltered list, with nothing saying so.
+ */
+export const HISTORY_QUERY_PARAMS = [
+  "q",
+  "tag",
+  "severity",
+  "date",
+  "sort",
+] as const;
+
+const MAX_SEARCH_CHARS = 200;
+
+function oneOf<T extends string>(
+  value: string | null,
+  allowed: Record<T, string>,
+  fallback: T,
+): T {
+  return value !== null && Object.hasOwn(allowed, value)
+    ? (value as T)
+    : fallback;
+}
+
+/** A query read from URL parameters; anything unrecognised is the default. */
+export function historyQueryFromParams(
+  get: (name: string) => string | null,
+): HistoryQuery {
+  return {
+    search: (get("q") ?? "").slice(0, MAX_SEARCH_CHARS),
+    tag: get("tag") || null,
+    severity: oneOf(get("severity"), SEVERITY_FILTER_LABELS, "any"),
+    date: oneOf(get("date"), DATE_FILTER_LABELS, "any"),
+    sort: oneOf(get("sort"), SORT_LABELS, "newest"),
+  };
+}
+
+/** URL parameters for a query: null removes a parameter at its default. */
+export function historyQueryToParams(
+  query: HistoryQuery,
+): Record<(typeof HISTORY_QUERY_PARAMS)[number], string | null> {
+  return {
+    q: query.search.trim() || null,
+    tag: query.tag,
+    severity: query.severity === "any" ? null : query.severity,
+    date: query.date === "any" ? null : query.date,
+    sort: query.sort === "newest" ? null : query.sort,
+  };
+}
+
+/** Equal for two queries that filter and order the same way. */
+export function historyQueryKey(query: HistoryQuery): string {
+  return JSON.stringify(historyQueryToParams(query));
+}
+
 const DAY_MS = 86_400_000;
 
 function counts(scan: ScanRecord) {
