@@ -282,7 +282,7 @@ export function BackupManager() {
           {!status && loadFailed && (
             <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
               <LeadingIcon
-                line="p"
+                line="sm"
                 icon={AlertTriangle}
                 className="text-destructive"
               />
@@ -375,13 +375,13 @@ export function BackupManager() {
             >
               {job.status === "success" ? (
                 <LeadingIcon
-                  line="p"
+                  line="sm"
                   icon={CheckCircle2}
                   className="text-[hsl(var(--success))]"
                 />
               ) : (
                 <LeadingIcon
-                  line="p"
+                  line="sm"
                   icon={XCircle}
                   className="text-destructive"
                 />

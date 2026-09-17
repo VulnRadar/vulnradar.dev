@@ -543,6 +543,12 @@ const CHANGELOG: Release[] = [
         category: "selfhost",
       },
       {
+        icon: Bug,
+        label: "Small Text No Longer Double-Spaced",
+        desc: "Short descriptions and help text under settings, cards and forms had far too much space between their lines, so a two-line note looked like two separate notes and long explanations stretched down the page. Text now uses the normal spacing for its size, so the same sentence looks the same wherever it appears.",
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

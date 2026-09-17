@@ -35,7 +35,7 @@ export function MaintenanceScreen({ message }: { message: string }) {
         </div>
 
         <div className="flex flex-col items-center gap-3 text-center border-y border-border/50 py-8 w-full">
-          <p className="font-mono text-6xl leading-none font-semibold text-foreground tabular-nums">
+          <p className="font-mono text-6xl font-semibold text-foreground tabular-nums">
             503
           </p>
           <h1 className="text-lg font-semibold text-foreground">

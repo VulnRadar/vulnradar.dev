@@ -847,9 +847,14 @@
     }
   }
 
-  /* Paragraph and prose */
+  /* Paragraph and prose. A plain line-height for the same reason as the
+     headings above: `@apply leading-7` set --tw-leading on every <p>, so
+     `<p class="text-xs">` rendered 12px type in a 28px line and every
+     paragraph that named a size ignored that size's own leading. Admin
+     help text read as double-spaced, and the same text in a <span> sat
+     at 16px, so identical copy had two rhythms depending on its tag. */
   p {
-    @apply leading-7;
+    line-height: 1.75rem;
   }
 
   /* Focus styles - accessible and minimal.

@@ -65,7 +65,7 @@ export default function Error({
             className="h-8 w-8 text-destructive mb-1"
             aria-hidden="true"
           />
-          <p className="font-mono text-6xl leading-none font-semibold text-foreground tabular-nums">
+          <p className="font-mono text-6xl font-semibold text-foreground tabular-nums">
             500
           </p>
           <h1 className="text-lg font-semibold text-foreground text-balance">

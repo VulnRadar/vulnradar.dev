@@ -481,7 +481,7 @@ export function IPRulesManager() {
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="p-2 rounded-lg bg-muted/30 border border-border/50">
-                  <p className="text-2xl leading-8 font-semibold tabular-nums text-foreground">
+                  <p className="text-2xl font-semibold tabular-nums text-foreground">
                     {selectedRule.hit_count}
                   </p>
                   <p className="text-[10px] text-muted-foreground">

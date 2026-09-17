@@ -107,7 +107,7 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
                 line-height is already tight enough for the two-line break.
                 A paragraph, not a heading: it came before the form's h1, so
                 the page's first heading was a marketing line. */}
-            <p className="text-3xl leading-tight font-semibold tracking-tight text-foreground">
+            <p className="text-3xl font-semibold tracking-tight text-foreground">
               Paste a URL. Get findings,
               <br />
               not a grade out of ten.

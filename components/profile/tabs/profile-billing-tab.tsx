@@ -983,7 +983,7 @@ export function ProfileBillingTab({
                   <>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-2xl leading-8 font-bold text-foreground">
+                        <p className="text-2xl font-bold text-foreground">
                           {billingInfo.usage.used}{" "}
                           <span className="text-muted-foreground text-base font-normal">
                             / {billingInfo.usage.limit}
@@ -1088,7 +1088,7 @@ export function ProfileBillingTab({
                   <>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-2xl leading-8 font-bold text-foreground">
+                        <p className="text-2xl font-bold text-foreground">
                           {billingInfo.aiUsage.used.toLocaleString()}{" "}
                           <span className="text-muted-foreground text-base font-normal">
                             / {billingInfo.aiUsage.limit.toLocaleString()}
@@ -1255,7 +1255,7 @@ export function ProfileBillingTab({
                   <>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-2xl leading-8 font-bold text-foreground">
+                        <p className="text-2xl font-bold text-foreground">
                           {billingInfo.githubReviewUsage.used.toLocaleString()}{" "}
                           <span className="text-muted-foreground text-base font-normal">
                             /{" "}
@@ -1424,7 +1424,7 @@ export function ProfileBillingTab({
                   <>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-2xl leading-8 font-bold text-foreground">
+                        <p className="text-2xl font-bold text-foreground">
                           {formatMinutes(
                             billingInfo.browserbaseUsage.usedSeconds,
                           )}{" "}

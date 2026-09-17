@@ -17,10 +17,8 @@ import { cn } from "@/lib/ui/utils";
  * the hand-written nudge it replaced. Stating the line size here means the
  * result does not depend on what an ancestor five levels up happens to set.
  *
- * Use `line="inherit"` when the flex row is itself the text element, which in
- * practice means a <p>. Every <p> in this app carries leading-7 from the base
- * layer whatever its font size, so naming a size there describes a line box the
- * text does not have.
+ * Use `line="inherit"` when the flex row is itself the text element, so the
+ * icon takes that element's own font-size and line-height.
  *
  * The default is the pairing the old `mt-0.5` was tuned for, so a call site
  * that was already correct stays pixel-identical. What changes is the two
@@ -34,31 +32,15 @@ const LINE_BOX = {
    *
    * For the usual case the type is declared on the text CHILD, not on the flex
    * row, which is why every other value here is stated rather than inherited.
-   * When the row IS the text element the opposite holds, and stating it is how
-   * this goes wrong: app/globals.css's base layer gives every <p> leading-7,
-   * and the theme defines no line-height for text-xs, so a
-   * `<p class="text-xs">` renders at 12px over a 28px line box. An icon told
-   * `line="xs"` builds a 16px box against that and lands 6px high, which is
-   * what the Updater's cosign warning did.
+   * When the row IS the text element, inheriting is exact.
+   *
+   * There used to be a `p` entry here, a 28px box for a <p> at any size,
+   * because app/globals.css applied `leading-7` to every <p> through
+   * --tw-leading and that overrode the paragraph's own size class. The base
+   * rule is a plain line-height now, so a `<p class="text-sm">` has text-sm's
+   * 20px line like any other element and `sm` is the right name for it.
    */
   inherit: "text-[length:inherit] leading-[inherit]",
-  /**
-   * A <p> that has not been given a leading- of its own: 28px line, at any
-   * font size.
-   *
-   * This is the sibling case of `inherit`, and it is the one the default got
-   * wrong. `inherit` covers a row that IS the <p>; this covers the far more
-   * common shape, a flex row whose text child is a <p>. The base layer in
-   * app/globals.css gives every <p> `leading-7`, and leading-7 is an absolute
-   * 1.75rem rather than a multiplier, so the box is 28px whether the paragraph
-   * runs at text-sm or text-xs -- which is why this entry sets no font size.
-   *
-   * An icon told `line="sm"` beside one of these builds a 20px box against a
-   * 28px line and lands 4px high. That is the "icons are slightly above the
-   * text" report, and it was the default, so it was every call site that did
-   * not think to override it.
-   */
-  p: "leading-7",
   /** 12px text, 16px line. Helper rows, captions, dense meta lines. */
   xs: "text-xs",
   /** 12px text, 19.5px line. A helper row set relaxed. */

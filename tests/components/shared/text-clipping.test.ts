@@ -38,10 +38,10 @@ const lineOf = (src: string, index: number) =>
   src.slice(0, index).split("\n").length;
 
 describe("text clipping", () => {
-  it("base heading rules do not apply leading or size utilities", () => {
+  it("base heading and paragraph rules do not apply leading or size utilities", () => {
     const css = fs.readFileSync(path.join(ROOT, "app/globals.css"), "utf8");
     const offenders: string[] = [];
-    for (const m of css.matchAll(/^\s*(h[1-6])\s*\{([^}]*)\}/gm)) {
+    for (const m of css.matchAll(/^\s*(h[1-6]|p)\s*\{([^}]*)\}/gm)) {
       if (
         /@apply[^;]*\b(?:leading-|text-(?:xs|sm|base|lg|[0-9]?xl))/.test(m[2])
       ) {
@@ -68,29 +68,6 @@ describe("text clipping", () => {
         if (
           tokens.some((t) => TIGHT.test(t)) &&
           tokens.some((t) => CLIP.test(t))
-        ) {
-          offenders.push(`${rel(file)}:${lineOf(src, m.index)}`);
-        }
-      }
-    }
-    expect(offenders).toEqual([]);
-  });
-
-  it("a paragraph set at text-2xl or larger names its own leading", () => {
-    // The base layer gives every <p> leading-7, and it leaks the same way the
-    // heading rule did: 28px whatever the paragraph's size. At text-3xl that
-    // is a 28px line under 30px type, which is what the sign-in page's
-    // "Paste a URL. Get findings," did to its second line.
-    const P =
-      /<p\b((?:[^<>"'{}]|"[^"]*"|'[^']*'|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*?)>/g;
-    const offenders: string[] = [];
-    for (const file of TSX) {
-      const src = fs.readFileSync(file, "utf8");
-      for (const m of src.matchAll(P)) {
-        const attrs = m[1];
-        if (
-          /(?:^|[\s"'`:])text-(?:[2-9]xl)(?=[\s"'`])/.test(attrs) &&
-          !/leading-/.test(attrs)
         ) {
           offenders.push(`${rel(file)}:${lineOf(src, m.index)}`);
         }

@@ -1069,7 +1069,7 @@ export function IssueDetail({
             verdict.tone,
           )}
         >
-          <LeadingIcon line="p" icon={BotMessageSquare} />
+          <LeadingIcon line="sm" icon={BotMessageSquare} />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">
               {verdict.headline}

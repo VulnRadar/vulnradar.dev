@@ -235,7 +235,7 @@ export function ScanResultDetail({
       {result.redirect && !result.authenticated && (
         <div className="flex items-start gap-2.5 rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 px-3.5 py-3">
           <LeadingIcon
-            line="p"
+            line="sm"
             icon={AlertTriangle}
             className="text-[hsl(var(--warning))]"
           />

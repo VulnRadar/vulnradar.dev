@@ -229,7 +229,7 @@ export function QueueStatusManager() {
           {!data && loadFailed ? (
             <div className="flex items-start gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/10">
               <LeadingIcon
-                line="p"
+                line="sm"
                 icon={AlertTriangle}
                 className="text-destructive"
               />

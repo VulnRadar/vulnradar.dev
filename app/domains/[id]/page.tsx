@@ -144,7 +144,7 @@ export default function DomainPage({
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-6">
           <div className="flex items-start gap-3">
             <LeadingIcon
-              line="p"
+              line="sm"
               icon={Globe}
               className="text-muted-foreground"
             />
