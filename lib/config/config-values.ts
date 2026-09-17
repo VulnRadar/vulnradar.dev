@@ -8,9 +8,9 @@
 // roundDownForLabel) so the "N+ checks" marketing number can never drift from
 // the real, current check count the way a hand-typed "750+" eventually did. It
 // is the value the app actually renders. TOTAL_CHECKS_LABEL in
-// lib/config/registry.ts is a build-tier entry, which means the admin panel
-// stores what you type there and nothing reads it: this generated label is
-// what ships. See the SettingTier doc comment in registry.ts.
+// lib/config/registry.ts is a build-tier entry, which the admin panel shows
+// read-only: this generated label is what ships. See the SettingTier doc
+// comment in registry.ts.
 import { OG_IMAGE_HASH } from "./og-image.generated";
 import { GENERATED_CHECKS_LABEL } from "./check-stats.generated";
 
@@ -291,8 +291,6 @@ export const CONFIG_LOGO_URL = "/favicon.svg";
 // (hsl(213 94% 68%)). Used for the PWA theme colour and the browser UI tint.
 export const CONFIG_PRIMARY_COLOR = "#60a5fa";
 export const CONFIG_BACKGROUND_COLOR_DARK = "#0d1117";
-export const CONFIG_BACKGROUND_COLOR_LIGHT = "#f5f7fa";
-export const CONFIG_FOOTER_TEXT = `${CONFIG_APP_NAME} - Security Scanner`;
 
 // SEO - UPDATE THESE FOR YOUR DEPLOYMENT
 //

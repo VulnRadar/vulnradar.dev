@@ -134,6 +134,10 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Short descriptions and help text under settings, cards and forms had far too much space between their lines, so a two-line note looked like two separate notes and long explanations stretched down the page. Text now uses the normal spacing for its size, so the same sentence looks the same wherever it appears.
 - [Shield] **[SECURITY]** **Admin Settings No Longer Show or Log Secrets**
   Two admin settings hold secrets: the signing secret for admin alert webhooks and the client secret for staff single sign-on. The settings page used to load them into the browser and show them in plain text, and every change wrote the old and new secret into the admin audit log. Now the page only says whether a secret is saved, the box is write-only, the audit log records that it changed but not what it is, and settings exports leave it out. If you saved either secret before this update, older audit log entries still contain it, so replace that secret with a new one.
+- [Wrench] **[ADMIN]** **A Settings Page You Can Actually Find Things In**
+  The admin settings page was a long column of 294 fields, with each description squeezed into a narrow strip and its control floating at the far edge of the screen. It now has a search box that looks through every setting's name and description at once, a Changed only filter, and a side list of sections instead of a strip of tabs that wrapped onto two lines. Plan limits are a single table with a column per plan instead of sixty separate rows, and each rate limit and its time window sit on one line. Unsaved changes on any section are saved together, instead of only the section you happened to have open.
+- [Wrench] **[ADMIN]** **Settings That Could Not Change Anything Are Now Read-Only**
+  About forty settings, such as the app name, logo and social links, are built into the app, so saving them in the admin panel was recorded but never used. They are now shown read-only, with the exact setting to change in the configuration file and the environment variable that overrides it. Two settings that nothing used at all, a footer text and a light background colour, have been removed.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -1304,6 +1308,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 949
+- **Total changes documented:** 951
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

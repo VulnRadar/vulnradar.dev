@@ -555,6 +555,18 @@ const CHANGELOG: Release[] = [
         category: "security",
       },
       {
+        icon: Wrench,
+        label: "A Settings Page You Can Actually Find Things In",
+        desc: "The admin settings page was a long column of 294 fields, with each description squeezed into a narrow strip and its control floating at the far edge of the screen. It now has a search box that looks through every setting's name and description at once, a Changed only filter, and a side list of sections instead of a strip of tabs that wrapped onto two lines. Plan limits are a single table with a column per plan instead of sixty separate rows, and each rate limit and its time window sit on one line. Unsaved changes on any section are saved together, instead of only the section you happened to have open.",
+        category: "admin",
+      },
+      {
+        icon: Wrench,
+        label: "Settings That Could Not Change Anything Are Now Read-Only",
+        desc: "About forty settings, such as the app name, logo and social links, are built into the app, so saving them in the admin panel was recorded but never used. They are now shown read-only, with the exact setting to change in the configuration file and the environment variable that overrides it. Two settings that nothing used at all, a footer text and a light background colour, have been removed.",
+        category: "admin",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

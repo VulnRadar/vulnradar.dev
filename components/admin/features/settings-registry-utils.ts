@@ -6,8 +6,8 @@
 // node environment, with no jsdom/React-Testing-Library set up for the
 // .tsx components themselves).
 //
-// system-settings-manager.tsx and settings-field.tsx are the only
-// consumers. Every tab, and every field on every tab, comes from the
+// system-settings-manager.tsx, settings-field.tsx and settings-blocks.tsx
+// are the only consumers. Every tab, and every field on every tab, comes from the
 // exports below rather than a hardcoded list, so a new SETTINGS_REGISTRY
 // entry (even one with a brand new `group`) appears with zero UI changes.
 
@@ -49,15 +49,6 @@ export const FIELDS_BY_GROUP: Record<
   }
   return buckets;
 })();
-
-/**
- * True when any field on this tab is build-tier, meaning the running app
- * reads the compiled constant rather than the saved row. Not "applies on the
- * next deploy": no build step reads system_settings at all.
- */
-export function tabHasBuildTierFields(group: string): boolean {
-  return (FIELDS_BY_GROUP[group] ?? []).some(([, def]) => def.tier === "build");
-}
 
 /** Human display of a resolved value: booleans read as Yes/No, else String(). */
 export function formatFieldValue(value: FieldValue): string {
@@ -163,7 +154,6 @@ const MULTILINE_SETTING_KEYS: ReadonlySet<string> = new Set([
   "APP_DESCRIPTION",
   "SEO_TAGLINE",
   "TERMS_CHANGE_SUMMARY",
-  "FOOTER_TEXT",
 ]);
 
 export function isMultilineSetting(key: string): boolean {
@@ -171,138 +161,159 @@ export function isMultilineSetting(key: string): boolean {
 }
 
 // ---------------------------------------------------------------------
-// Related-settings clustering
+// Read-only (compiled) settings
 // ---------------------------------------------------------------------
 
-export interface SettingCluster {
-  /** null renders the keys inline with no subheading, e.g. a lone field
-   *  that shares no naming prefix with any sibling on its tab. */
-  label: string | null;
-  keys: SettingKey[];
-}
-
-const ACRONYMS = new Set([
-  "IP",
-  "API",
-  "URL",
-  "URLS",
-  "SEO",
-  "AI",
-  "PDF",
-  "TTL",
-  "ID",
-  "HTML",
-  "JSON",
-  "CSS",
-  "OG",
-  "TOTP",
-  "JWT",
-  "CORS",
-  "CSRF",
-  "2FA",
-  "TLS",
-  "SSL",
-  "DNS",
-  "CDN",
-  "MS",
-]);
-
-function humanizeToken(token: string): string {
-  if (ACRONYMS.has(token.toUpperCase())) return token.toUpperCase();
-  return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
-}
-
-function tokensOf(key: string): string[] {
-  return key.split("_");
-}
-
 /**
- * Length of the shared leading-token run across every token list given.
- * Only ever called with 2+ non-empty lists (a just-formed multi-member
- * cluster), so there is no empty-input case to guard against.
+ * Where a compiled value actually comes from, for the read-only row that
+ * replaces an input nothing would read. Every build-tier entry's default is
+ * the CONFIG_ constant of the same name (registry.test.ts holds the registry
+ * to that), and `env` is the build-time override when there is one.
  */
-function commonPrefixLength(tokenLists: string[][]): number {
-  let i = 0;
-  outer: while (true) {
-    const candidate = tokenLists[0][i];
-    if (candidate === undefined) break;
-    for (const tokens of tokenLists) {
-      if (tokens[i] !== candidate) break outer;
-    }
-    i++;
-  }
-  return i;
+export function compiledSourceFor(key: SettingKey): {
+  constant: string;
+  env: string | null;
+} {
+  return {
+    constant: `CONFIG_${key}`,
+    env: (SETTINGS_REGISTRY[key] as SettingDefinition).env ?? null,
+  };
 }
 
-function bucketByDepth(
-  keys: SettingKey[],
-  depth: number,
-): Map<string, SettingKey[]> {
-  const map = new Map<string, SettingKey[]>();
-  for (const key of keys) {
-    const tokens = tokensOf(key);
-    const bucketKey = tokens.slice(0, Math.min(depth, tokens.length)).join("_");
-    const bucket = map.get(bucketKey);
-    if (bucket) bucket.push(key);
-    else map.set(bucketKey, [key]);
-  }
-  return map;
-}
-
-/** A bucket this large relative to its tab is really just restating the
- *  tab's own domain word (e.g. "RATE_LIMIT" covers nearly every Rate
- *  Limits field) rather than telling two fields apart. Worth trying one
- *  more name segment before accepting it as a single cluster. */
-const DOMINANCE_RATIO = 0.7;
+// ---------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------
 
 /**
- * Splits one settings tab's fields into small related clusters purely from
- * their key names, e.g. every RATE_LIMIT_LOGIN_* key becomes a "Rate Limit
- * Login" group, every SEO_OG_IMAGE* key becomes an "SEO OG Image" group. A
- * field with no sibling sharing its first two name segments keeps
- * `label: null` and renders flat, exactly like before this existed.
+ * Case-insensitive match on the label, the key and the help text, every word
+ * of the query required. Two hundred and ninety settings across thirteen
+ * tabs is past the point where anyone finds "session lifetime" by guessing
+ * which tab it lives on.
+ */
+export function settingMatchesQuery(key: SettingKey, query: string): boolean {
+  const words = query.toLowerCase().split(" ").filter(Boolean);
+  if (words.length === 0) return true;
+  const def = SETTINGS_REGISTRY[key] as SettingDefinition;
+  const haystack =
+    `${def.label} ${key} ${key.replaceAll("_", " ")} ${def.help}`.toLowerCase();
+  return words.every((word) => haystack.includes(word));
+}
+
+// ---------------------------------------------------------------------
+// Layout blocks: plan matrix, rate-limit pairs, single fields
+// ---------------------------------------------------------------------
+
+/** Registry key token for each plan, in the order plans are sold. */
+export const PLAN_KEY_TOKENS = [
+  "FREE",
+  "CORE_SUPPORTER",
+  "PRO_SUPPORTER",
+  "ELITE_SUPPORTER",
+] as const;
+export type PlanKeyToken = (typeof PLAN_KEY_TOKENS)[number];
+
+const PLAN_KEY_PATTERN = new RegExp(
+  `^BILLING_(${PLAN_KEY_TOKENS.join("|")})_(.+)$`,
+);
+
+export interface PlanMetric {
+  /** The shared suffix, e.g. "LIMIT" or "API_KEYS". */
+  metric: string;
+  /** "Daily scans", from the free plan's label without its plan prefix. */
+  label: string;
+  /** The free plan's help, reworded to describe any plan. */
+  help: string;
+  keys: Record<PlanKeyToken, SettingKey>;
+}
+
+/**
+ * The free plan's help text, reworded so it reads for every column. The
+ * per-plan wording differs only in which plan it names plus the occasional
+ * aside, and the full per-plan text stays on each input for assistive tech.
+ */
+export function generalizePlanHelp(help: string): string {
+  return help
+    .replaceAll("a free-plan user", "a user on this plan")
+    .replaceAll("free-plan user", "user on this plan")
+    .replaceAll("on the free plan", "on this plan")
+    .replaceAll("the free plan", "this plan");
+}
+
+export type SettingBlock =
+  | { kind: "field"; key: SettingKey }
+  | { kind: "plans"; metrics: PlanMetric[] }
+  | { kind: "rate"; limit: SettingKey; window: SettingKey };
+
+/**
+ * Turns one tab's keys into what the page renders, in registry order.
  *
- * This is a naming-convention heuristic, not registry metadata (the
- * registry has no concept of sub-groups), so it is deliberately
- * conservative: it only clusters, never reorders across a dominance split
- * in a way that loses fields, and a tab where nothing shares a prefix
- * behaves exactly as it did before (everything flat, in registry order).
+ * - Per-plan billing limits, BILLING_<PLAN>_<METRIC> for all four plans,
+ *   become one matrix: fifteen rows with a column per plan instead of sixty
+ *   rows reading "Free plan daily scans", "Core supporter daily scans"...
+ * - A rate limit's count and its window (RATE_LIMIT_X_ATTEMPTS or _REQUESTS
+ *   beside RATE_LIMIT_X_WINDOW_MINUTES) become one row, "10 per 15 minutes",
+ *   since neither number means anything without the other.
+ * - Everything else is a single field.
+ *
+ * A metric missing any plan, or a count with no window, falls back to single
+ * fields, so a partial registry change degrades to the plain list rather than
+ * losing a setting.
  */
-export function clusterSettingKeys(keys: SettingKey[]): SettingCluster[] {
-  const initial = bucketByDepth(keys, 2);
-  const clusters: SettingCluster[] = [];
+export function buildSettingBlocks(keys: SettingKey[]): SettingBlock[] {
+  const keySet = new Set(keys);
+  const consumed = new Set<SettingKey>();
+  const blocks: SettingBlock[] = [];
+  let planBlock: { kind: "plans"; metrics: PlanMetric[] } | null = null;
 
-  for (const members of initial.values()) {
-    if (members.length === 1) {
-      clusters.push({ label: null, keys: members });
-      continue;
-    }
+  for (const key of keys) {
+    if (consumed.has(key)) continue;
 
-    let groups = [members];
-    if (members.length / keys.length >= DOMINANCE_RATIO) {
-      const deeper = Array.from(bucketByDepth(members, 3).values());
-      // Only accept the deeper split if it actually found sub-structure
-      // (at least one multi-member group). Otherwise every member is
-      // unique past this point and splitting would just shatter a
-      // perfectly good cluster into meaningless singletons.
-      if (deeper.some((group) => group.length >= 2)) {
-        groups = deeper;
-      }
-    }
-
-    for (const group of groups) {
-      if (group.length === 1) {
-        clusters.push({ label: null, keys: group });
+    const planMatch = PLAN_KEY_PATTERN.exec(key);
+    if (planMatch) {
+      const metric = planMatch[2];
+      const planKeys = Object.fromEntries(
+        PLAN_KEY_TOKENS.map((plan) => [plan, `BILLING_${plan}_${metric}`]),
+      ) as Record<PlanKeyToken, SettingKey>;
+      if (Object.values(planKeys).every((k) => keySet.has(k))) {
+        const free = SETTINGS_REGISTRY[planKeys.FREE] as SettingDefinition;
+        const bare = free.label.replace(/^Free plan /, "");
+        const metricEntry: PlanMetric = {
+          metric,
+          label: bare.charAt(0).toUpperCase() + bare.slice(1),
+          help: generalizePlanHelp(free.help),
+          keys: planKeys,
+        };
+        for (const k of Object.values(planKeys)) consumed.add(k);
+        if (!planBlock) {
+          planBlock = { kind: "plans", metrics: [] };
+          blocks.push(planBlock);
+        }
+        planBlock.metrics.push(metricEntry);
         continue;
       }
-      const lcp = commonPrefixLength(group.map(tokensOf));
-      const label = tokensOf(group[0])
-        .slice(0, lcp)
-        .map(humanizeToken)
-        .join(" ");
-      clusters.push({ label, keys: group });
     }
+
+    const rateMatch = /^(RATE_LIMIT_.+)_(ATTEMPTS|REQUESTS)$/.exec(key);
+    if (rateMatch) {
+      const window = `${rateMatch[1]}_WINDOW_MINUTES` as SettingKey;
+      if (keySet.has(window) && !consumed.has(window)) {
+        consumed.add(key);
+        consumed.add(window);
+        blocks.push({ kind: "rate", limit: key, window });
+        continue;
+      }
+    }
+
+    consumed.add(key);
+    blocks.push({ kind: "field", key });
   }
 
-  return clusters;
+  return blocks;
+}
+
+/** Every setting key a block renders, for counting and filtering. */
+export function blockKeys(block: SettingBlock): SettingKey[] {
+  if (block.kind === "field") return [block.key];
+  if (block.kind === "rate") return [block.limit, block.window];
+  return block.metrics.flatMap((m) => Object.values(m.keys));
 }

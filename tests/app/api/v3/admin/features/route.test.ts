@@ -351,6 +351,40 @@ describe("POST /api/v3/admin/features — system_settings", () => {
     expect(upsertParams[1]).toBe("10");
   });
 
+  it("refuses to save a compiled (build-tier) value, which nothing would read", async () => {
+    queueRole("admin");
+    const res = await POST(
+      postRequest({
+        section: "system_settings",
+        action: "set",
+        key: "APP_NAME",
+        value: "Renamed",
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/CONFIG_APP_NAME/);
+    // Only requireAdmin's role lookup: no SELECT, no upsert, no audit row.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("still saves APP_URL, the one build-tier key read live", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await POST(
+      postRequest({
+        section: "system_settings",
+        action: "set",
+        key: "APP_URL",
+        value: "https://scanner.example.com",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockInvalidateSettingsCache).toHaveBeenCalledTimes(1);
+  });
+
   describe("credentials", () => {
     const SECRET = "oidc-client-secret-value-7f3a";
 

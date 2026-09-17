@@ -257,9 +257,6 @@ export default function ConfigPage() {
               <InlineCode>--primary</InlineCode> CSS variable in{" "}
               <InlineCode>app/globals.css</InlineCode>)
             </li>
-            <li>
-              <InlineCode>CONFIG_FOOTER_TEXT</InlineCode>
-            </li>
           </ul>
         </DocsSubSection>
 
@@ -598,8 +595,7 @@ export default function ConfigPage() {
 
         <DocsSubSection title="Runtime vs. build tier">
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            Every setting on the page is one of two tiers, shown as a badge per
-            tab rather than repeated on every field:
+            Every setting on the page is one of two tiers:
           </p>
           <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
@@ -617,16 +613,12 @@ export default function ConfigPage() {
               colours, footer text, the {BUILD_TIER_SOCIAL_COUNT}{" "}
               <InlineCode>SOCIAL_*</InlineCode> account URLs, the{" "}
               {BUILD_TIER_SEO_COUNT} <InlineCode>SEO_*</InlineCode> keys) plus a
-              couple of client-side limits. These are compiled into the app.
-              Saving one writes the database row and the admin panel shows it
-              back to you, but{" "}
-              <strong className="text-foreground">
-                nothing reads that row
-              </strong>
-              : the running app keeps using the{" "}
-              <InlineCode>CONFIG_*</InlineCode> constant or its{" "}
-              <InlineCode>NEXT_PUBLIC_*</InlineCode> environment override. The
-              Settings page shows a banner on these tabs saying so.
+              couple of client-side limits. These are compiled into the app: the
+              running app uses the <InlineCode>CONFIG_*</InlineCode> constant or
+              its <InlineCode>NEXT_PUBLIC_*</InlineCode> environment override,
+              and nothing reads the database for them. The Settings page shows
+              them read-only, naming the constant (and the variable, where there
+              is one) to change, and the admin API refuses to save one.
             </li>
           </ul>
           <DocsCallout
@@ -661,10 +653,11 @@ export default function ConfigPage() {
           </DocsCallout>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
             A build-tier registry entry is therefore a reference record of a
-            compiled value: it documents the constant, validates what an admin
-            types, and stores it. If a value has to be admin-editable, it needs
-            a <InlineCode>getSetting()</InlineCode> reader and a{" "}
+            compiled value. If a value has to be admin-editable, it needs a{" "}
+            <InlineCode>getSetting()</InlineCode> reader and a{" "}
             <InlineCode>runtime</InlineCode> tier, not a build-tier row.
+            <InlineCode>APP_URL</InlineCode> is the one build-tier key the panel
+            still saves, for the OAuth redirect described above.
           </p>
         </DocsSubSection>
 

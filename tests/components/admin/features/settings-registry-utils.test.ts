@@ -4,7 +4,6 @@ import { SETTINGS_REGISTRY, type SettingKey } from "@/lib/config/registry";
 import {
   SETTINGS_TABS,
   FIELDS_BY_GROUP,
-  tabHasBuildTierFields,
   formatFieldValue,
   isDestructiveToggle,
   looksLikeEmail,
@@ -12,8 +11,15 @@ import {
   effectiveValueFor,
   isListSetting,
   isMultilineSetting,
-  clusterSettingKeys,
+  buildSettingBlocks,
+  blockKeys,
+  compiledSourceFor,
+  generalizePlanHelp,
+  settingMatchesQuery,
+  PLAN_KEY_TOKENS,
 } from "@/components/admin/features/settings-registry-utils";
+import fs from "node:fs";
+import path from "node:path";
 
 const REGISTRY_KEYS = Object.keys(SETTINGS_REGISTRY) as SettingKey[];
 
@@ -61,28 +67,6 @@ describe("FIELDS_BY_GROUP", () => {
     expect(new Set(Object.keys(FIELDS_BY_GROUP))).toEqual(
       new Set(SETTINGS_TABS),
     );
-  });
-});
-
-describe("tabHasBuildTierFields", () => {
-  it("is true for a tab made entirely of build-tier fields", () => {
-    expect(tabHasBuildTierFields("Branding")).toBe(true);
-    expect(tabHasBuildTierFields("SEO")).toBe(true);
-  });
-
-  it("is false for a tab made entirely of runtime-tier fields", () => {
-    expect(tabHasBuildTierFields("Rate Limits")).toBe(false);
-    expect(tabHasBuildTierFields("Billing")).toBe(false);
-  });
-
-  it("is false for a group that does not exist", () => {
-    expect(tabHasBuildTierFields("Not A Real Group")).toBe(false);
-  });
-
-  it("General is mixed tier (contact emails are runtime, app metadata is build) and reports true", () => {
-    // General holds both APP_NAME (build) and SUPPORT_EMAIL (runtime); the
-    // banner should show because at least one field on the tab is build-tier.
-    expect(tabHasBuildTierFields("General")).toBe(true);
   });
 });
 
@@ -200,7 +184,6 @@ describe("isMultilineSetting", () => {
     expect(isMultilineSetting("APP_DESCRIPTION")).toBe(true);
     expect(isMultilineSetting("SEO_TAGLINE")).toBe(true);
     expect(isMultilineSetting("TERMS_CHANGE_SUMMARY")).toBe(true);
-    expect(isMultilineSetting("FOOTER_TEXT")).toBe(true);
   });
 
   it("does not flag a short single-token string setting", () => {
@@ -215,141 +198,141 @@ describe("isMultilineSetting", () => {
   });
 });
 
-describe("clusterSettingKeys", () => {
-  it("returns an empty array for an empty input", () => {
-    expect(clusterSettingKeys([])).toEqual([]);
-  });
+describe("buildSettingBlocks", () => {
+  const keysOf = (tab: string) =>
+    (FIELDS_BY_GROUP[tab] ?? []).map(([key]) => key);
 
-  it("gives a lone key an unlabeled singleton cluster", () => {
-    const result = clusterSettingKeys(["APP_NAME"] as SettingKey[]);
-    expect(result).toEqual([{ label: null, keys: ["APP_NAME"] }]);
-  });
-
-  it("leaves two keys with no shared first-two-token prefix as separate unlabeled singletons", () => {
-    const result = clusterSettingKeys([
-      "APP_NAME",
-      "SUPPORT_EMAIL",
-    ] as SettingKey[]);
-    expect(result).toHaveLength(2);
-    expect(result.every((c) => c.label === null)).toBe(true);
-    expect(result.flatMap((c) => c.keys).sort()).toEqual(
-      ["APP_NAME", "SUPPORT_EMAIL"].sort(),
-    );
-  });
-
-  it("clusters two keys sharing a two-token prefix under a humanized label", () => {
-    const result = clusterSettingKeys([
-      "BILLING_FREE_LIMIT",
-      "BILLING_FREE_RETENTION",
-    ] as SettingKey[]);
-    expect(result).toEqual([
-      {
-        label: "Billing Free",
-        keys: ["BILLING_FREE_LIMIT", "BILLING_FREE_RETENTION"],
-      },
-    ]);
-  });
-
-  it("keeps an acronym token upper-cased in the label instead of title-casing it", () => {
-    const result = clusterSettingKeys([
-      "SEO_OG_IMAGE",
-      "SEO_OG_IMAGE_WIDTH",
-      "SEO_OG_IMAGE_HEIGHT",
-    ] as SettingKey[]);
-    expect(result).toEqual([
-      {
-        label: "SEO OG Image",
-        keys: ["SEO_OG_IMAGE", "SEO_OG_IMAGE_WIDTH", "SEO_OG_IMAGE_HEIGHT"],
-      },
-    ]);
-  });
-
-  it("escalates one segment deeper when a two-token prefix dominates the whole set, instead of merging everything into one bucket", () => {
-    // Every key here starts with RATE_LIMIT, so a plain two-token bucket
-    // would be one giant, useless "Rate Limit" cluster covering the whole
-    // group. The escalation should split it into per-category clusters.
-    const keys = [
-      "RATE_LIMIT_LOGIN_ATTEMPTS",
-      "RATE_LIMIT_LOGIN_WINDOW_MINUTES",
-      "RATE_LIMIT_SIGNUP_ATTEMPTS",
-      "RATE_LIMIT_SIGNUP_WINDOW_MINUTES",
-    ] as SettingKey[];
-    const result = clusterSettingKeys(keys);
-    expect(result).toEqual(
-      expect.arrayContaining([
-        {
-          label: "Rate Limit Login",
-          keys: [
-            "RATE_LIMIT_LOGIN_ATTEMPTS",
-            "RATE_LIMIT_LOGIN_WINDOW_MINUTES",
-          ],
-        },
-        {
-          label: "Rate Limit Signup",
-          keys: [
-            "RATE_LIMIT_SIGNUP_ATTEMPTS",
-            "RATE_LIMIT_SIGNUP_WINDOW_MINUTES",
-          ],
-        },
-      ]),
-    );
-    expect(result).toHaveLength(2);
-  });
-
-  it("keeps a dominant bucket intact when escalating one segment deeper finds no further structure", () => {
-    // All three keys share "AI_VERIFY" and none of them share a third
-    // token, so escalating must not shatter this into three singletons.
-    const keys = [
-      "AI_VERIFY_MAX_TOKENS",
-      "AI_VERIFY_CALL_TIMEOUT_MS",
-      "AI_VERIFY_PROBE_TIMEOUT_MS",
-      "AI_VERIFY_TOTAL_TIMEOUT_MS",
-    ] as SettingKey[];
-    const result = clusterSettingKeys(keys);
-    expect(result).toEqual([{ label: "AI Verify", keys }]);
-  });
-
-  it("keeps unescalatable leftovers as unlabeled singletons alongside a successfully escalated cluster", () => {
-    // "FOO_BAR" dominates 4 of these 5 keys, so it escalates one segment
-    // deeper. Two of those four share a deeper prefix and become a real
-    // cluster; the other two don't share anything past "FOO_BAR" with
-    // each other and must fall back to unlabeled singletons rather than
-    // disappearing or getting folded into the "Foo Bar Baz" cluster.
-    const keys = [
-      "FOO_BAR_BAZ_ONE",
-      "FOO_BAR_BAZ_TWO",
-      "FOO_BAR_QUX",
-      "FOO_BAR_ZAP",
-      "OTHER_THING",
-    ] as unknown as SettingKey[];
-    const result = clusterSettingKeys(keys);
-    expect(result).toEqual(
-      expect.arrayContaining([
-        { label: "Foo Bar Baz", keys: ["FOO_BAR_BAZ_ONE", "FOO_BAR_BAZ_TWO"] },
-        { label: null, keys: ["FOO_BAR_QUX"] },
-        { label: null, keys: ["FOO_BAR_ZAP"] },
-        { label: null, keys: ["OTHER_THING"] },
-      ]),
-    );
-    expect(result).toHaveLength(4);
-  });
-
-  it("gives every key on a real, crowded tab exactly one home, none dropped or duplicated", () => {
+  it("renders every setting on every tab exactly once", () => {
     for (const tab of SETTINGS_TABS) {
-      const keys = FIELDS_BY_GROUP[tab].map(([key]) => key);
-      const clusters = clusterSettingKeys(keys);
-      const clusteredKeys = clusters.flatMap((c) => c.keys);
-      expect(clusteredKeys.sort(), tab).toEqual([...keys].sort());
+      const rendered = buildSettingBlocks(keysOf(tab)).flatMap(blockKeys);
+      expect(new Set(rendered).size, tab).toBe(rendered.length);
+      expect([...rendered].sort(), tab).toEqual([...keysOf(tab)].sort());
     }
   });
 
-  it("only labels a cluster when it actually has more than one member", () => {
-    for (const tab of SETTINGS_TABS) {
-      const keys = FIELDS_BY_GROUP[tab].map(([key]) => key);
-      for (const cluster of clusterSettingKeys(keys)) {
-        if (cluster.keys.length === 1) expect(cluster.label).toBeNull();
-        else expect(cluster.label).not.toBeNull();
+  it("folds every four-plan billing limit into one matrix", () => {
+    const blocks = buildSettingBlocks(keysOf("Billing"));
+    const plans = blocks.filter((b) => b.kind === "plans");
+    expect(plans).toHaveLength(1);
+    const metrics = plans[0].kind === "plans" ? plans[0].metrics : [];
+    // Every free-plan limit has all four plans, so each becomes a matrix row.
+    const freeKeys = keysOf("Billing").filter((k) =>
+      k.startsWith("BILLING_FREE_"),
+    );
+    expect(metrics.map((m) => m.keys.FREE).sort()).toEqual(freeKeys.sort());
+    for (const metric of metrics) {
+      expect(metric.label).not.toMatch(/free plan/i);
+      expect(metric.help).not.toMatch(/free[- ]plan/i);
+      for (const token of PLAN_KEY_TOKENS) {
+        expect(metric.keys[token]).toBe(`BILLING_${token}_${metric.metric}`);
       }
+    }
+    // The plan-less billing settings stay ordinary rows.
+    expect(
+      blocks.some((b) => b.kind === "field" && b.key === "BILLING_ENABLED"),
+    ).toBe(true);
+  });
+
+  it("leaves a limit that is missing a plan as separate fields", () => {
+    const partial: SettingKey[] = [
+      "BILLING_FREE_LIMIT",
+      "BILLING_CORE_SUPPORTER_LIMIT",
+      "BILLING_PRO_SUPPORTER_LIMIT",
+    ];
+    expect(buildSettingBlocks(partial).map((b) => b.kind)).toEqual([
+      "field",
+      "field",
+      "field",
+    ]);
+  });
+
+  it("pairs each rate limit with its own window", () => {
+    const blocks = buildSettingBlocks(keysOf("Rate Limits"));
+    const pairs = blocks.filter((b) => b.kind === "rate");
+    expect(pairs.length).toBeGreaterThanOrEqual(20);
+    for (const pair of pairs) {
+      if (pair.kind !== "rate") continue;
+      const prefix = pair.limit.replace(/_(ATTEMPTS|REQUESTS)$/, "");
+      expect(pair.window).toBe(`${prefix}_WINDOW_MINUTES`);
+    }
+  });
+});
+
+describe("generalizePlanHelp", () => {
+  it("rewords the free plan's help to describe any plan", () => {
+    expect(
+      generalizePlanHelp(
+        "Scans per day on the free plan. Use -1 for unlimited.",
+      ),
+    ).toBe("Scans per day on this plan. Use -1 for unlimited.");
+    expect(
+      generalizePlanHelp("Max scans a free-plan user may have running."),
+    ).toBe("Max scans a user on this plan may have running.");
+  });
+});
+
+describe("settingMatchesQuery", () => {
+  it("matches label, key and help, and requires every word", () => {
+    expect(
+      settingMatchesQuery("SESSION_TIMEOUT_DAYS", "session lifetime"),
+    ).toBe(true);
+    expect(
+      settingMatchesQuery("RATE_LIMIT_LOGIN_ATTEMPTS", "rate_limit_login"),
+    ).toBe(true);
+    expect(
+      settingMatchesQuery("RATE_LIMIT_LOGIN_ATTEMPTS", "rate limit login"),
+    ).toBe(true);
+    expect(settingMatchesQuery("SESSION_TIMEOUT_DAYS", "session webhook")).toBe(
+      false,
+    );
+    expect(settingMatchesQuery("SESSION_TIMEOUT_DAYS", "   ")).toBe(true);
+  });
+});
+
+describe("compiledSourceFor", () => {
+  it("names the constant, and the env override when one exists", () => {
+    expect(compiledSourceFor("APP_NAME")).toEqual({
+      constant: "CONFIG_APP_NAME",
+      env: null,
+    });
+    expect(compiledSourceFor("SOCIAL_X_URL")).toEqual({
+      constant: "CONFIG_SOCIAL_X_URL",
+      env: "NEXT_PUBLIC_SOCIAL_X_URL",
+    });
+  });
+
+  // The read-only row tells an operator which constant and which variable to
+  // change, so both have to be real. Source-text checks, since the constant
+  // name is gone once the registry is imported.
+  const ROOT = path.resolve(__dirname, "../../../..");
+  const registrySource = fs.readFileSync(
+    path.join(ROOT, "lib/config/registry.ts"),
+    "utf8",
+  );
+  const configSources = ["constants.ts", "client-constants.ts"]
+    .map((f) => fs.readFileSync(path.join(ROOT, "lib/config", f), "utf8"))
+    .join("\n");
+
+  it("every build-tier default is the CONFIG_ constant of the same name", () => {
+    for (const key of REGISTRY_KEYS) {
+      if (SETTINGS_REGISTRY[key].tier !== "build") continue;
+      const start = registrySource.indexOf(`  ${key}: {`);
+      const entry = registrySource.slice(
+        start,
+        registrySource.indexOf("\n  },", start),
+      );
+      // SEO_KEYWORDS is the constant joined, so the name may be followed by a call.
+      expect(entry, key).toMatch(new RegExp(`default: CONFIG_${key}[,.]`));
+    }
+  });
+
+  it("every env override named in the registry is actually read", () => {
+    for (const key of REGISTRY_KEYS) {
+      const env = compiledSourceFor(key).env;
+      if (!env) continue;
+      expect(configSources, `${key} names ${env}`).toContain(
+        `process.env.${env}`,
+      );
     }
   });
 });

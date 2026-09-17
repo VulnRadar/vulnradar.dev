@@ -17,6 +17,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   isSettingKey,
   isSecretSetting,
+  isWritableSetting,
   validateSettingValue,
   SETTINGS_REGISTRY,
   type SettingKey,
@@ -566,6 +567,18 @@ export async function POST(req: NextRequest) {
         // are legacy free-form rows and pass through as before.
         let storedValue = value;
         if (isSettingKey(key)) {
+          // A build-tier value is compiled into the app and nothing reads the
+          // saved row, so accepting the write would record a change that never
+          // happens and show it back as "Customized". APP_URL is the one
+          // exception: OAuth redirect building reads it live.
+          if (!isWritableSetting(key)) {
+            return NextResponse.json(
+              {
+                error: `${key} is compiled into the app, so saving it here would change nothing. Change CONFIG_${key} in lib/config/config-values.ts and redeploy.`,
+              },
+              { status: 400 },
+            );
+          }
           const validated = validateSettingValue(key, value);
           if (!validated.ok) {
             return NextResponse.json(

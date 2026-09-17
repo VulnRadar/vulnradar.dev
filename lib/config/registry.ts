@@ -40,8 +40,6 @@ import {
   CONFIG_LOGO_URL,
   CONFIG_PRIMARY_COLOR,
   CONFIG_BACKGROUND_COLOR_DARK,
-  CONFIG_BACKGROUND_COLOR_LIGHT,
-  CONFIG_FOOTER_TEXT,
   CONFIG_SEO_TAGLINE,
   CONFIG_SEO_KEYWORDS,
   CONFIG_SEO_OG_IMAGE,
@@ -320,12 +318,12 @@ import {
  * system_settings at build time: `prebuild` only compiles the knowledge
  * files and `next build` compiles the config-values.ts literals, so a
  * rebuild picks up the source constant, never the saved row. A build-tier
- * entry is a *reference* record of a compiled value: it documents the
- * constant, validates what an admin types, and stores it, but the running
- * app keeps using the compiled default (or, for a few keys, an env
- * override) until someone edits lib/config/config-values.ts and rebuilds.
- * Each build-tier entry's `help` says so, and says which constant or env
- * var to change. APP_URL is the one exception: resolveAppUrl() in
+ * entry is a *reference* record of a compiled value: the running app uses
+ * the compiled default (or, for keys with `env`, that build-time override)
+ * until someone edits lib/config/config-values.ts and rebuilds. The admin
+ * settings page shows these read-only, naming CONFIG_<KEY> and `env`, and
+ * the admin API refuses to save one (see isWritableSetting). APP_URL is the
+ * one exception: resolveAppUrl() in
  * lib/config/runtime-config.ts reads the saved row live for OAuth
  * redirect_uri building, so an edit there does take effect for that one
  * use.
@@ -372,6 +370,12 @@ export interface SettingDefinition {
   /** Allowed values for `type: "enum"`. */
   options?: readonly string[];
   /**
+   * Build tier only: the environment variable that overrides the compiled
+   * constant at build time, when one exists. The settings page names it next
+   * to the constant so an operator knows both ways to change the value.
+   */
+  env?: string;
+  /**
    * A credential. The admin API never returns it (the settings page learns
    * only whether one is stored), never writes it into the audit log, and
    * leaves it out of a settings export. Writing is unchanged: an admin can
@@ -382,12 +386,12 @@ export interface SettingDefinition {
 
 /**
  * Help text for one social-account entry. Nine of them say the same three
- * things (what it does, that empty means off, and that the running app reads
- * the compiled constant), so they are built rather than pasted; only the
- * platform name and the example URL differ.
+ * things (what it does, where it appears, and that empty means off), so they
+ * are built rather than pasted; only the platform name and the example URL
+ * differ.
  */
-function socialHelp(platform: string, envKey: string, example: string): string {
-  return `Public ${platform} profile shown as an icon link in the footer and on the landing page, and published in the JSON-LD Organization node's sameAs array, which asserts the account is this organisation. Leave empty to omit ${platform} everywhere; a value must be an absolute https URL (${example}) or it is ignored. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_SOCIAL_${envKey}_URL in the environment, or CONFIG_SOCIAL_${envKey}_URL in lib/config/config-values.ts, and rebuild instead.`;
+function socialHelp(platform: string, example: string): string {
+  return `Your ${platform} account, shown as an icon link in the footer and on the landing page and listed in the site's structured data as an account of this organisation. Leave empty to hide it. Must be an absolute https URL, such as ${example}.`;
 }
 
 export const SETTINGS_REGISTRY = {
@@ -480,7 +484,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_NAME,
     group: "General",
     label: "Application name",
-    help: "Shown in page titles, emails, and the TOTP issuer. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_APP_NAME in lib/config/config-values.ts and rebuild instead.",
+    help: "Shown in page titles, emails, and the TOTP issuer.",
     min: 1,
     max: 64,
   },
@@ -490,7 +494,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_SLUG,
     group: "General",
     label: "Application slug",
-    help: "Lowercase identifier used in generated filenames and machine-readable output. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_APP_SLUG in lib/config/config-values.ts and rebuild instead.",
+    help: "Lowercase identifier used in generated filenames and machine-readable output.",
     min: 1,
     max: 64,
   },
@@ -500,7 +504,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_DESCRIPTION,
     group: "General",
     label: "Application description",
-    help: "Default meta description for pages that do not set their own. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_APP_DESCRIPTION in lib/config/config-values.ts and rebuild instead.",
+    help: "Default meta description for pages that do not set their own.",
     min: 1,
     max: 500,
   },
@@ -510,7 +514,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_TOTAL_CHECKS_LABEL,
     group: "General",
     label: "Total checks label",
-    help: 'Marketing count of scanner checks, for example "750+". Reference only: nothing reads the saved value. The shipped label is regenerated from the real check count by scripts/knowledge/compile-checks-knowledge.mjs on every build, so it cannot drift.',
+    help: 'Marketing count of scanner checks, for example "750+". The shipped label is regenerated from the real check count on every build, so it cannot drift.',
     min: 1,
     max: 32,
   },
@@ -528,7 +532,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_REPO,
     group: "General",
     label: "Source repository",
-    help: 'GitHub "owner/name" used for the releases feed and the version check. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_APP_REPO in lib/config/config-values.ts and rebuild instead.',
+    help: 'GitHub "owner/name" used for the releases feed and the version check.',
     min: 3,
     max: 128,
   },
@@ -538,7 +542,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_DISCORD_INVITE_URL,
     group: "General",
     label: "Discord invite URL",
-    help: "Community link shown in the footer and support pages. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_DISCORD_INVITE_URL in the environment, or CONFIG_DISCORD_INVITE_URL in lib/config/config-values.ts, and rebuild instead.",
+    help: "Community link shown in the footer and support pages.",
+    env: "NEXT_PUBLIC_DISCORD_INVITE_URL",
   },
   CHROME_WEB_STORE_URL: {
     tier: "build",
@@ -546,7 +551,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_CHROME_WEB_STORE_URL,
     group: "General",
     label: "Chrome Web Store listing URL",
-    help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_CHROME_WEB_STORE_URL in the environment, or CONFIG_CHROME_WEB_STORE_URL in lib/config/config-values.ts, and rebuild instead.",
+    help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download.",
+    env: "NEXT_PUBLIC_CHROME_WEB_STORE_URL",
   },
   FIREFOX_ADDON_URL: {
     tier: "build",
@@ -554,7 +560,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_FIREFOX_ADDON_URL,
     group: "General",
     label: "Firefox Add-ons listing URL",
-    help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_FIREFOX_ADDON_URL in the environment, or CONFIG_FIREFOX_ADDON_URL in lib/config/config-values.ts, and rebuild instead.",
+    help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download.",
+    env: "NEXT_PUBLIC_FIREFOX_ADDON_URL",
   },
   // Social accounts. Every one is `type: "string"`, not `type: "url"`, and
   // that is deliberate: `url` compiles to z.url(), which rejects "", so a
@@ -568,7 +575,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SOCIAL_YOUTUBE_URL,
     group: "Social",
     label: "YouTube channel URL",
-    help: socialHelp("YouTube", "YOUTUBE", "https://www.youtube.com/@handle"),
+    help: socialHelp("YouTube", "https://www.youtube.com/@handle"),
+    env: "NEXT_PUBLIC_SOCIAL_YOUTUBE_URL",
     max: 200,
   },
   SOCIAL_TIKTOK_URL: {
@@ -577,7 +585,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SOCIAL_TIKTOK_URL,
     group: "Social",
     label: "TikTok profile URL",
-    help: socialHelp("TikTok", "TIKTOK", "https://www.tiktok.com/@handle"),
+    help: socialHelp("TikTok", "https://www.tiktok.com/@handle"),
+    env: "NEXT_PUBLIC_SOCIAL_TIKTOK_URL",
     max: 200,
   },
   SOCIAL_INSTAGRAM_URL: {
@@ -586,11 +595,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SOCIAL_INSTAGRAM_URL,
     group: "Social",
     label: "Instagram profile URL",
-    help: socialHelp(
-      "Instagram",
-      "INSTAGRAM",
-      "https://www.instagram.com/handle/",
-    ),
+    help: socialHelp("Instagram", "https://www.instagram.com/handle/"),
+    env: "NEXT_PUBLIC_SOCIAL_INSTAGRAM_URL",
     max: 200,
   },
   SOCIAL_X_URL: {
@@ -599,7 +605,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SOCIAL_X_URL,
     group: "Social",
     label: "X (Twitter) profile URL",
-    help: socialHelp("X", "X", "https://x.com/handle"),
+    help: socialHelp("X", "https://x.com/handle"),
+    env: "NEXT_PUBLIC_SOCIAL_X_URL",
     max: 200,
   },
   SOCIAL_MASTODON_URL: {
@@ -608,11 +615,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SOCIAL_MASTODON_URL,
     group: "Social",
     label: "Mastodon profile URL",
-    help: socialHelp(
-      "Mastodon",
-      "MASTODON",
-      "https://infosec.exchange/@handle",
-    ),
+    help: socialHelp("Mastodon", "https://infosec.exchange/@handle"),
+    env: "NEXT_PUBLIC_SOCIAL_MASTODON_URL",
     max: 200,
   },
   SOCIAL_BLUESKY_URL: {
@@ -621,7 +625,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SOCIAL_BLUESKY_URL,
     group: "Social",
     label: "Bluesky profile URL",
-    help: socialHelp("Bluesky", "BLUESKY", "https://bsky.app/profile/handle"),
+    help: socialHelp("Bluesky", "https://bsky.app/profile/handle"),
+    env: "NEXT_PUBLIC_SOCIAL_BLUESKY_URL",
     max: 200,
   },
   SOCIAL_LINKEDIN_URL: {
@@ -630,11 +635,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SOCIAL_LINKEDIN_URL,
     group: "Social",
     label: "LinkedIn page URL",
-    help: socialHelp(
-      "LinkedIn",
-      "LINKEDIN",
-      "https://www.linkedin.com/company/handle",
-    ),
+    help: socialHelp("LinkedIn", "https://www.linkedin.com/company/handle"),
+    env: "NEXT_PUBLIC_SOCIAL_LINKEDIN_URL",
     max: 200,
   },
   SOCIAL_REDDIT_URL: {
@@ -643,7 +645,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SOCIAL_REDDIT_URL,
     group: "Social",
     label: "Reddit community URL",
-    help: socialHelp("Reddit", "REDDIT", "https://www.reddit.com/r/community"),
+    help: socialHelp("Reddit", "https://www.reddit.com/r/community"),
+    env: "NEXT_PUBLIC_SOCIAL_REDDIT_URL",
     max: 200,
   },
   SOCIAL_RSS_URL: {
@@ -652,7 +655,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SOCIAL_RSS_URL,
     group: "Social",
     label: "RSS feed URL",
-    help: "Feed shown alongside the social icons in the footer and on the landing page. This is the one entry that is NOT published in the JSON-LD sameAs array: sameAs asserts identity, and a feed is a document this site publishes rather than an account that is this site. Leave empty to omit it; a value must be an absolute https URL or it is ignored. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_SOCIAL_RSS_URL in the environment, or CONFIG_SOCIAL_RSS_URL in lib/config/config-values.ts, and rebuild instead.",
+    help: "Feed shown alongside the social icons in the footer and on the landing page. This is the one entry that is NOT published in the JSON-LD sameAs array: sameAs asserts identity, and a feed is a document this site publishes rather than an account that is this site. Leave empty to omit it; a value must be an absolute https URL or it is ignored.",
+    env: "NEXT_PUBLIC_SOCIAL_RSS_URL",
     max: 200,
   },
   TERMS_UPDATED_AT: {
@@ -715,7 +719,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_LOGO_URL,
     group: "Branding",
     label: "Logo URL",
-    help: "Absolute URL or a path relative to the app root. Used in emails and structured data. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set LOGO_URL in the environment, or CONFIG_LOGO_URL in lib/config/config-values.ts, and rebuild instead.",
+    help: "Absolute URL or a path relative to the app root. Used in emails and structured data.",
+    env: "LOGO_URL",
     min: 1,
     max: 512,
   },
@@ -725,7 +730,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_PRIMARY_COLOR,
     group: "Branding",
     label: "Primary colour",
-    help: "Hex colour for the PWA theme and browser UI tint. Keep it in sync with --primary in globals.css. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_PRIMARY_COLOR in lib/config/config-values.ts and rebuild instead.",
+    help: "Hex colour for the PWA theme and browser UI tint. Keep it in sync with --primary in globals.css.",
     min: 4,
     max: 9,
   },
@@ -735,29 +740,9 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BACKGROUND_COLOR_DARK,
     group: "Branding",
     label: "Dark background colour",
-    help: "Hex colour reported to the browser for dark mode. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_BACKGROUND_COLOR_DARK in lib/config/config-values.ts and rebuild instead.",
+    help: "Hex colour reported to the browser for dark mode.",
     min: 4,
     max: 9,
-  },
-  BACKGROUND_COLOR_LIGHT: {
-    tier: "build",
-    type: "string",
-    default: CONFIG_BACKGROUND_COLOR_LIGHT,
-    group: "Branding",
-    label: "Light background colour",
-    help: "Hex colour reported to the browser for light mode. Reference only: no code reads this value anywhere, here or from the compiled config, so editing it changes nothing.",
-    min: 4,
-    max: 9,
-  },
-  FOOTER_TEXT: {
-    tier: "build",
-    type: "string",
-    default: CONFIG_FOOTER_TEXT,
-    group: "Branding",
-    label: "Footer text",
-    help: "Short line rendered in the site footer. Reference only: no code reads this value anywhere, here or from the compiled config, so editing it changes nothing.",
-    min: 1,
-    max: 200,
   },
 
   // SEO
@@ -768,7 +753,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_TAGLINE,
     group: "SEO",
     label: "Tagline",
-    help: "Short pitch used as the default meta description and OpenGraph description. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_TAGLINE in lib/config/config-values.ts and rebuild instead.",
+    help: "Short pitch used as the default meta description and OpenGraph description.",
     min: 1,
     max: 200,
   },
@@ -780,7 +765,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_KEYWORDS.join(", "),
     group: "SEO",
     label: "Keywords",
-    help: "Comma-separated terms to rank for. Keep them honest: stuffing unrelated terms is penalised. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_KEYWORDS in lib/config/config-values.ts and rebuild instead.",
+    help: "Comma-separated terms to rank for. Keep them honest: stuffing unrelated terms is penalised.",
     max: 1000,
   },
   SEO_OG_IMAGE: {
@@ -789,7 +774,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_OG_IMAGE,
     group: "SEO",
     label: "Social card image",
-    help: "Path relative to the app root. 1200x630 renders without cropping on every major network. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_OG_IMAGE in lib/config/config-values.ts and rebuild instead.",
+    help: "Path relative to the app root. 1200x630 renders without cropping on every major network.",
     min: 1,
     max: 512,
   },
@@ -799,7 +784,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_OG_IMAGE_WIDTH,
     group: "SEO",
     label: "Social card width",
-    help: "Pixel width declared to social networks. Must match the real image. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_OG_IMAGE_WIDTH in lib/config/config-values.ts and rebuild instead.",
+    help: "Pixel width declared to social networks. Must match the real image.",
     min: 200,
     max: 4096,
   },
@@ -809,7 +794,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_OG_IMAGE_HEIGHT,
     group: "SEO",
     label: "Social card height",
-    help: "Pixel height declared to social networks. Must match the real image. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_OG_IMAGE_HEIGHT in lib/config/config-values.ts and rebuild instead.",
+    help: "Pixel height declared to social networks. Must match the real image.",
     min: 200,
     max: 4096,
   },
@@ -819,7 +804,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_TWITTER_HANDLE,
     group: "SEO",
     label: "Twitter handle",
-    help: "Leave empty to omit the Twitter card attribution tags entirely. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_SEO_TWITTER_HANDLE in the environment, or CONFIG_SEO_TWITTER_HANDLE in lib/config/config-values.ts, and rebuild instead.",
+    help: "Leave empty to omit the Twitter card attribution tags entirely.",
+    env: "NEXT_PUBLIC_SEO_TWITTER_HANDLE",
     max: 64,
   },
   SEO_GITHUB_URL: {
@@ -828,7 +814,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_GITHUB_URL,
     group: "SEO",
     label: "GitHub URL",
-    help: "Repository link used in structured data and the footer. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_GITHUB_URL in lib/config/config-values.ts and rebuild instead.",
+    help: "Repository link used in structured data and the footer.",
   },
   SEO_GOOGLE_VERIFICATION: {
     tier: "build",
@@ -836,7 +822,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_GOOGLE_VERIFICATION,
     group: "SEO",
     label: "Google verification token",
-    help: "Search Console ownership token. Leave empty to skip the meta tag. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION in the environment, or CONFIG_SEO_GOOGLE_VERIFICATION in lib/config/config-values.ts, and rebuild instead.",
+    help: "Search Console ownership token. Leave empty to skip the meta tag.",
+    env: "NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION",
     max: 128,
   },
   SEO_BING_VERIFICATION: {
@@ -845,7 +832,8 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_BING_VERIFICATION,
     group: "SEO",
     label: "Bing verification token",
-    help: "Bing Webmaster ownership token. Leave empty to skip the meta tag. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_BING_SITE_VERIFICATION in the environment, or CONFIG_SEO_BING_VERIFICATION in lib/config/config-values.ts, and rebuild instead.",
+    help: "Bing Webmaster ownership token. Leave empty to skip the meta tag.",
+    env: "NEXT_PUBLIC_BING_SITE_VERIFICATION",
     max: 128,
   },
   SEO_LOCALE: {
@@ -854,7 +842,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_LOCALE,
     group: "SEO",
     label: "OpenGraph locale",
-    help: 'Locale the content targets, for example "en_US". Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_LOCALE in lib/config/config-values.ts and rebuild instead.',
+    help: 'Locale the content targets, for example "en_US".',
     min: 2,
     max: 16,
   },
@@ -864,7 +852,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_LANGUAGE,
     group: "SEO",
     label: "HTML language",
-    help: 'Value of the lang attribute on the html element, for example "en". Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_LANGUAGE in lib/config/config-values.ts and rebuild instead.',
+    help: 'Value of the lang attribute on the html element, for example "en".',
     min: 2,
     max: 16,
   },
@@ -874,7 +862,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_ORG_FOUNDING_YEAR,
     group: "SEO",
     label: "Founding year",
-    help: "Year used in the JSON-LD Organization node. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_ORG_FOUNDING_YEAR in lib/config/config-values.ts and rebuild instead.",
+    help: "Year used in the JSON-LD Organization node.",
     min: 4,
     max: 4,
   },
@@ -884,7 +872,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_LICENSE,
     group: "SEO",
     label: "Licence",
-    help: "SPDX identifier published in the structured data. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_LICENSE in lib/config/config-values.ts and rebuild instead.",
+    help: "SPDX identifier published in the structured data.",
     min: 1,
     max: 64,
   },
@@ -2362,7 +2350,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BULK_SCAN_CLIENT_URL_LIMIT,
     group: "Scanning",
     label: "Bulk scan form URL limit",
-    help: "Client-enforced cap on how many URLs may be pasted into the bulk-scan form. Deliberately independent of the server-enforced maximum URLs per bulk scan above; the form fans out one request per URL. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_BULK_SCAN_CLIENT_URL_LIMIT in lib/config/config-values.ts and rebuild instead.",
+    help: "Client-enforced cap on how many URLs may be pasted into the bulk-scan form. Deliberately independent of the server-enforced maximum URLs per bulk scan above; the form fans out one request per URL.",
     min: 1,
     max: 1000,
   },
@@ -3221,7 +3209,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_MAX_AVATAR_UPLOAD_BYTES,
     group: "Advanced",
     label: "Avatar upload max size (bytes)",
-    help: "Server-enforced avatar upload cap, after base64 decode; the profile page's client-side pre-check uses this exact value too. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_MAX_AVATAR_UPLOAD_BYTES in lib/config/config-values.ts and rebuild instead.",
+    help: "Server-enforced avatar upload cap, after base64 decode; the profile page's client-side pre-check uses this exact value too.",
     min: 65536,
     max: 20971520,
   },
@@ -3524,6 +3512,15 @@ export type SettingValue<K extends SettingKey> = ValueForType<
 
 export function isSettingKey(key: string): key is SettingKey {
   return Object.prototype.hasOwnProperty.call(SETTINGS_REGISTRY, key);
+}
+
+/**
+ * Whether an admin write to this key can change anything. Every runtime-tier
+ * key, plus APP_URL, which resolveAppUrl() reads live for OAuth redirects.
+ * The rest of the build tier is compiled in; see SettingTier.
+ */
+export function isWritableSetting(key: SettingKey): boolean {
+  return SETTINGS_REGISTRY[key].tier === "runtime" || key === "APP_URL";
 }
 
 /** True for a registry key holding a credential. See SettingDefinition.secret. */

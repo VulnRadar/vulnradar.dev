@@ -531,9 +531,9 @@ before pointing AI features at a local model.
 - Disable demo mode entirely with CONFIG_FEATURE_DEMO_MODE = false.
 - Plan catalogs (limits per plan) live in lib/billing/catalog.ts. The values below only configure the upper bounds and the retention window.
 - of the values above also have a row in the system_settings database table and a control on /admin &rsquo;s Settings tab, sign in as an admin to reach it. The tab list there () and every field on it is generated from the same registry that generates the reference tables below, so the two cannot drift apart. Read the next subsection before you rely on a value you saved there: a control existing on that page does not mean the running app reads it.
-- Every setting on the page is one of two tiers, shown as a badge per tab rather than repeated on every field:
+- Every setting on the page is one of two tiers:
 - APP_URL is the single exception. resolveAppUrl() in lib/config/runtime-config.ts reads the saved row live when it builds the OAuth redirect_uri for the GitHub, Google, and Discord sign-in routes, so an edit there does take effect for that one use with no rebuild. Canonical URLs, social cards, and email links still read the compiled value.
-- A build-tier registry entry is therefore a reference record of a compiled value: it documents the constant, validates what an admin types, and stores it. If a value has to be admin-editable, it needs a getSetting() reader and a runtime tier, not a build-tier row.
+- A build-tier registry entry is therefore a reference record of a compiled value. If a value has to be admin-editable, it needs a getSetting() reader and a runtime tier, not a build-tier row. APP_URL is the one build-tier key the panel still saves, for the OAuth redirect described above.
 
 ### Code examples
 ```text
