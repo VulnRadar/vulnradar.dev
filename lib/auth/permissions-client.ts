@@ -287,6 +287,19 @@ export function isStaffRole(role: string | null | undefined): boolean {
 }
 
 /**
+ * The role a PUBLIC surface may show for an account: "staff" or "user".
+ *
+ * The public share and public-scans endpoints returned the sharer's exact
+ * role, so anyone holding a share link learned which account on the instance
+ * was the super_admin, which was an admin and which only had billing access:
+ * a ready-made target list. Being staff is the trust signal a reader needs;
+ * which rung of the ladder is not theirs to know.
+ */
+export function publicRole(role: string | null | undefined): "staff" | "user" {
+  return isStaffRole(role) ? "staff" : "user";
+}
+
+/**
  * Check if roleA can manage roleB (based on hierarchy)
  */
 export function canManageRole(

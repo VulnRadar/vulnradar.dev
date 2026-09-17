@@ -9,6 +9,7 @@ import {
   canManageRole,
   getRoleLevel,
   isStaffRole,
+  publicRole,
   getStaffPermissions,
   canPerformAction,
   ADMIN_ACTIONS,
@@ -440,5 +441,21 @@ describe("the admin panel's user-detail cards are gated on their permissions", (
     ]) {
       expect(hasStaffPermission(STAFF_ROLES.BILLING, perm)).toBe(false);
     }
+  });
+});
+
+describe("publicRole", () => {
+  it("never reveals which staff role an account holds", () => {
+    for (const role of Object.values(STAFF_ROLES)) {
+      expect(publicRole(role)).toBe(
+        role === STAFF_ROLES.USER ? "user" : "staff",
+      );
+    }
+  });
+
+  it("treats a missing or unknown role as a user", () => {
+    expect(publicRole(null)).toBe("user");
+    expect(publicRole(undefined)).toBe("user");
+    expect(publicRole("root")).toBe("user");
   });
 });

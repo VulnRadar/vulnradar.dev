@@ -87,6 +87,37 @@ describe("GET /api/v3/shared/[token]", () => {
     expect(params[0]).not.toBe(token);
   });
 
+  it("shows a staff sharer as staff, never as their exact role", async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 9,
+            url: "https://example.com",
+            scanned_at: "2026-02-01T00:00:00.000Z",
+            duration: 800,
+            summary: {},
+            findings: [],
+            findings_count: 0,
+            response_headers: null,
+            notes: null,
+            user_id: 1,
+            scanned_by: "Owner",
+            scanned_by_avatar: null,
+            scanned_by_role: "super_admin",
+          },
+        ],
+      })
+      .mockResolvedValue({ rows: [] });
+
+    const res = await callGet("c".repeat(64));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.scannedByRole).toBe("staff");
+    expect(JSON.stringify(json)).not.toContain("super_admin");
+  });
+
   it("excludes an expired share link in SQL, so it 404s the same as a revoked one", async () => {
     const token = "1".repeat(64);
     // The WHERE clause itself filters out an expired row -- simulated here
@@ -320,7 +351,8 @@ describe("GET /api/v3/shared/[token]", () => {
       authenticated: true,
       scannedBy: "Alice",
       scannedByAvatar: "https://example.com/a.png",
-      scannedByRole: "admin",
+      // publicRole: an admin sharer is "staff" publicly.
+      scannedByRole: "staff",
       scannedByBadges: [
         {
           id: 1,

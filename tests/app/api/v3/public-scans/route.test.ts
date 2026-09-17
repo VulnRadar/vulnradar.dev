@@ -184,7 +184,8 @@ describe("GET /api/v3/public-scans", () => {
         findingsCount: 1,
         scannedBy: "Alice",
         scannedByAvatar: "https://example.com/a.png",
-        scannedByRole: "admin",
+        // Only "staff": the exact role is not public (publicRole).
+        scannedByRole: "staff",
         tags: [{ tag: "SQL Injection Risk", source: "auto" }],
       },
     ]);

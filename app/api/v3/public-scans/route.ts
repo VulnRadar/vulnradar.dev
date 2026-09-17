@@ -6,6 +6,7 @@ import {
   CONFIG_PAGINATION_MAX_PAGE_SIZE,
 } from "@/lib/config/config-values";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
+import { publicRole } from "@/lib/auth/permissions-client";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
@@ -119,7 +120,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     findingsCount: row.findings_count,
     scannedBy: row.scanned_by || "Anonymous",
     scannedByAvatar: row.scanned_by_avatar || null,
-    scannedByRole: row.scanned_by_role || "user",
+    scannedByRole: publicRole(row.scanned_by_role),
     tags: row.tags || [],
   }));
 

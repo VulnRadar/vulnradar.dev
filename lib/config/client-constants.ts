@@ -156,6 +156,9 @@ export const STAFF_ROLE_LABELS: Record<string, string> = {
   moderator: "Moderator",
   admin: "Admin",
   super_admin: "Super Admin",
+  // What public pages show for any staff role (publicRole in
+  // lib/auth/permissions-client.ts).
+  staff: "Staff",
 };
 
 // ROLE BADGE STYLES (used across admin, shared, staff pages)
@@ -181,6 +184,9 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
   // active-staff panel.
   super_admin: "bg-violet-500/10 text-violet-500 border-violet-500/20",
   admin: "bg-primary/10 text-primary border-primary/20",
+  // The public label for every staff role. Same classes as admin, which are
+  // built from --primary and used in scanned files, so no safelist entry.
+  staff: "bg-primary/10 text-primary border-primary/20",
   moderator:
     "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
   billing: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",

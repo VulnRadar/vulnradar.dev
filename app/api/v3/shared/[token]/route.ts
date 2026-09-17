@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { withErrorHandling } from "@/lib/api/api-utils";
+import { publicRole } from "@/lib/auth/permissions-client";
 import { getCachedSubdomainSnapshot } from "@/lib/scanner/subdomain-cache";
 
 /**
@@ -221,7 +222,7 @@ export const GET = withErrorHandling(
         ? "Community scan"
         : row.scanned_by || "Anonymous",
       scannedByAvatar: isForeignScan ? null : row.scanned_by_avatar || null,
-      scannedByRole: isForeignScan ? "user" : row.scanned_by_role || "user",
+      scannedByRole: isForeignScan ? "user" : publicRole(row.scanned_by_role),
       scannedByBadges: badgesResult.rows,
       subdomainCache,
       tags: tagsResult.rows,
