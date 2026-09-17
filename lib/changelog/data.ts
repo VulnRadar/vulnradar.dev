@@ -477,6 +477,36 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: ShieldCheck,
+        label: "Shared Reports No Longer Reveal Staff Roles",
+        desc: "A shared report and the public scans list showed the exact role of the person who shared it, such as Super Admin or Billing. That told anyone with the link which accounts have the most power, which makes them easier to target. Public pages now only say Staff.",
+        category: "security",
+      },
+      {
+        icon: Layout,
+        label: "Pages Say When Something Failed to Load",
+        desc: "Several pages treated a failed request as if there was simply nothing there. The badge page said you had no scans to badge, the attack surface page said you had no domains, and the admin staff list said there were no staff members. Two admin lists also kept showing their loading placeholder forever when a request was refused. Each now says the list could not be loaded and offers a Try again button. Accepting a team invite or dismissing a notification from the bell also now tells you when it did not work, instead of quietly doing nothing.",
+        category: "fixed",
+      },
+      {
+        icon: Users,
+        label: "Easier to Use With a Screen Reader or Keyboard",
+        desc: "A review of every page found places where people using a screen reader or a keyboard were left out. Pop-up notices, demo scan results, API test responses and copy confirmations are now announced. Buttons that showed only an icon on phones have names. The notification panel closes with Escape. Headings are in a sensible order on the sign-in, pricing and comparison pages. Several small buttons were enlarged to be easier to tap, and the support chat no longer types replies out word by word for people who have asked their device to reduce motion.",
+        category: "improved",
+      },
+      {
+        icon: Search,
+        label: "History Filters Survive a Reload",
+        desc: "Filtering your scan history and moving to page 2 remembered the page but not the filters, so reloading or sharing the link showed page 2 of everything. The search, tag, severity, date and sort choices are now kept in the address too.",
+        category: "fixed",
+      },
+      {
+        icon: Layout,
+        label: "Small Visual Fixes Across the Product",
+        desc: "The pricing page showed visitors who were not signed in a greyed-out Current Plan button on the free plan instead of a way to sign up. The scanned web address at the top of a finished scan was smaller on the dashboard and in history than on shared reports, and all four now match. The support chat button could float in the middle of the screen on a first visit. Warning notices, such as the one saying a scanned page redirected, were almost invisible in the light theme and now stand out as they do in the dark theme.",
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",
