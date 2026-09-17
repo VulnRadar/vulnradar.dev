@@ -221,6 +221,10 @@ export const API = {
     OAUTH_INFO: `/api/${API_VERSION}/auth/oauth/info`,
     OAUTH_START: (provider: string) =>
       `/api/${API_VERSION}/auth/oauth/${provider}`,
+    /** Start (or restart) the Discord sign-in/link flow. Discord is not a
+     *  Google/GitHub-style OAUTH_START provider: it has its own route rather
+     *  than living under /auth/oauth/. */
+    DISCORD_CONNECT: `/api/${API_VERSION}/auth/discord?action=connect`,
     /** One staff invite, addressed by its token: GET reads the invite back
      *  (role, inviter, expiry) so the page can render it, POST accepts it and
      *  creates the account. Token-authenticated, no session: the invitee does
@@ -340,9 +344,14 @@ export const API = {
   /** Account-level posture-digest email opt-in. */
   ACCOUNT_POSTURE_DIGEST: `/api/${API_VERSION}/account/posture-digest`,
   ACCOUNT_AI_CONFIG: `/api/${API_VERSION}/account/ai-config`,
+  /** Disconnect a linked Google/GitHub sign-in identity (DELETE). */
+  ACCOUNT_OAUTH_DISCONNECT: (provider: string) =>
+    `/api/${API_VERSION}/account/oauth/${provider}`,
   ACCOUNT_GITHUB: `/api/${API_VERSION}/account/github`,
   ACCOUNT_GITHUB_CONNECT: `/api/${API_VERSION}/account/github/connect`,
   ACCOUNT_GITHUB_REPOS: `/api/${API_VERSION}/account/github/repos`,
+  /** The caller's Discord connection details (GET), or disconnect it (DELETE). */
+  ACCOUNT_DISCORD: `/api/${API_VERSION}/account/discord`,
   SCAN_GITHUB: `/api/${API_VERSION}/scan/github`,
   SCAN_GITHUB_HISTORY: `/api/${API_VERSION}/scan/github/history`,
   /** File a scan's findings as a GitHub issue (VulnRadar GitHub Scanner). */

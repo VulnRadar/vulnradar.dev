@@ -1,12 +1,12 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-const NAV_LABEL_WIDTHS = ["w-16", "w-20", "w-28", "w-16"];
+const NAV_LABEL_WIDTHS = ["w-16", "w-20", "w-28"];
 
 /**
  * Mirrors ProfileDeveloperTab's real layout (the API Keys / Webhooks /
- * Scheduled Scans / GitHub sub-tab nav, then the active section's list) so
- * the preload fetch's loading state doesn't reflow into a differently
- * shaped tab once it resolves.
+ * Scheduled Scans sub-tab nav, then the active section's list) so the
+ * preload fetch's loading state doesn't reflow into a differently shaped tab
+ * once it resolves.
  */
 export function DeveloperTabSkeleton() {
   return (
@@ -18,8 +18,8 @@ export function DeveloperTabSkeleton() {
     >
       {/* overflow-x-auto to match the real strip in
           components/profile/tabs/profile-developer-tab.tsx: without it the
-          four items squashed on a phone and then jumped to a scrolled row the
-          moment the real tabs replaced them. */}
+          three items squashed on a phone and then jumped to a scrolled row
+          the moment the real tabs replaced them. */}
       <div className="flex gap-4 scroll-x-only scrollbar-hide border-b border-border/80 -mx-1 px-1">
         {NAV_LABEL_WIDTHS.map((width, i) => (
           <div key={i} className="flex items-center gap-2 px-1 py-2.5">

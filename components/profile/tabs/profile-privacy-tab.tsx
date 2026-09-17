@@ -8,6 +8,8 @@ import { Switch } from "@/components/ui/switch";
 import { AlertTriangle, Clock, Download, Trash2, Loader2 } from "lucide-react";
 import { API, APP_SLUG } from "@/lib/config/client-constants";
 import { downloadBlob } from "@/lib/ui/download";
+import { formatDate } from "@/lib/ui/format-date";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import type { ProfileTabProps } from "@/components/profile/types";
 
 export function ProfilePrivacyTab({
@@ -36,7 +38,11 @@ export function ProfilePrivacyTab({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteCurrentPassword, setDeleteCurrentPassword] = useState("");
-  const [deleting, setDeleting] = useState(false);
+  // Routed through ConfirmDialog's own `error` prop rather than the page-wide
+  // banner: that banner auto-clears after 8 seconds while the dialog can
+  // still be open, which used to make a rejected deletion look identical to
+  // a slow one once the banner timed out.
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // "Scans are private by default" -- the account-level counterpart to the
   // per-scan "Keep this scan private" toggle on the scan form (see
@@ -209,8 +215,7 @@ export function ProfilePrivacyTab({
   }
 
   async function handleDeleteAccount() {
-    setDeleting(true);
-    setError(null);
+    setDeleteError(null);
     try {
       const res = await fetch(API.ACCOUNT, {
         method: "POST",
@@ -224,23 +229,21 @@ export function ProfilePrivacyTab({
           window.location.href = "/login";
         }, 1500);
       } else {
-        setError(data.error || "Failed to delete account.");
+        setDeleteError(data.error || "Failed to delete account.");
       }
     } catch {
-      setError("Failed to delete account.");
-    } finally {
-      setDeleting(false);
+      setDeleteError("Failed to delete account.");
     }
   }
 
-  function formatDate(date: string) {
-    return new Date(date).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
+  // lib/ui/relative-time.ts's formatRefreshAvailability covers this same
+  // "time until available" shape, but its longest unit is hours ("Available
+  // to refresh in 30h") -- fine for the refresh-capped panels it was written
+  // for, which cap out around a day. The data-export cooldown
+  // (CONFIG_DATA_EXPORT_COOLDOWN_DAYS in lib/config/config-values.ts) is 30
+  // days, so reusing it here would print three-digit hour counts instead of
+  // "29d 4h". Kept local rather than stretched to cover a scale it wasn't
+  // built for.
   function getTimeRemaining(endDate: string) {
     const now = new Date();
     const end = new Date(endDate);
@@ -261,7 +264,10 @@ export function ProfilePrivacyTab({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary mx-auto mb-3" />
+          <Loader2
+            className="h-6 w-6 animate-spin text-primary mx-auto mb-3"
+            aria-hidden="true"
+          />
           <p className="text-sm text-muted-foreground">
             Loading privacy settings...
           </p>
@@ -496,93 +502,78 @@ export function ProfilePrivacyTab({
             </Button>
           )}
         </div>
+      </section>
 
-        {showDeleteConfirm && (
-          <div className="mt-4 flex flex-col gap-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-            <div>
-              <p className="text-sm font-semibold text-foreground">
-                Permanently delete{" "}
-                {user?.email ? (
-                  <span className="font-mono break-all">{user.email}</span>
-                ) : (
-                  "this account"
-                )}
-                ?
-              </p>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Every API key, scan, and export tied to it is deleted with it.
-                Type{" "}
-                <span className="font-mono font-semibold text-destructive">
-                  DELETE
-                </span>{" "}
-                below to confirm.
-              </p>
-            </div>
-            <div className="flex flex-col gap-1.5 max-w-sm">
-              <Label htmlFor="delete-account-confirm" className="sr-only">
-                Type DELETE to confirm account deletion
-              </Label>
-              <Input
-                id="delete-account-confirm"
-                placeholder="Type DELETE to confirm"
-                value={deleteConfirmText}
-                onChange={(e) => setDeleteConfirmText(e.target.value)}
-                className="bg-card font-mono"
-                autoComplete="off"
-              />
-            </div>
-            {user?.hasPassword !== false && (
-              <div className="flex flex-col gap-1.5 max-w-sm">
-                <Label htmlFor="delete-account-password" className="text-xs">
-                  Current password
-                </Label>
-                <Input
-                  id="delete-account-password"
-                  type="password"
-                  placeholder="Re-enter your password"
-                  value={deleteCurrentPassword}
-                  onChange={(e) => setDeleteCurrentPassword(e.target.value)}
-                  className="bg-card"
-                  autoComplete="current-password"
-                />
-              </div>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Permanently delete this account?"
+        description={
+          <>
+            Permanently delete{" "}
+            {user?.email ? (
+              <span className="font-mono break-all">{user.email}</span>
+            ) : (
+              "this account"
             )}
-            <div className="flex items-center gap-2">
-              <Button
-                variant="destructive"
-                disabled={
-                  deleteConfirmText !== "DELETE" ||
-                  (user?.hasPassword !== false && !deleteCurrentPassword) ||
-                  deleting
-                }
-                onClick={handleDeleteAccount}
-                className="gap-2"
-              >
-                {deleting ? (
-                  <Loader2
-                    className="h-4 w-4 animate-spin"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                )}
-                {deleting ? "Deleting..." : "Permanently delete account"}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowDeleteConfirm(false);
-                  setDeleteConfirmText("");
-                  setDeleteCurrentPassword("");
-                }}
-                disabled={deleting}
-              >
-                Cancel
-              </Button>
-            </div>
+            ? Every API key, scan, and export tied to it is deleted with it.
+            Type{" "}
+            <span className="font-mono font-semibold text-destructive">
+              DELETE
+            </span>{" "}
+            below to confirm.
+          </>
+        }
+        confirmLabel="Permanently delete account"
+        danger
+        error={deleteError}
+        confirmDisabled={
+          deleteConfirmText !== "DELETE" ||
+          (user?.hasPassword !== false && !deleteCurrentPassword)
+        }
+        onConfirm={handleDeleteAccount}
+        onCancel={() => {
+          setShowDeleteConfirm(false);
+          setDeleteConfirmText("");
+          setDeleteCurrentPassword("");
+          setDeleteError(null);
+        }}
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label
+            htmlFor="delete-account-confirm"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            Type DELETE to confirm
+          </Label>
+          <Input
+            id="delete-account-confirm"
+            placeholder="Type DELETE to confirm"
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+            className="bg-card font-mono"
+            autoComplete="off"
+          />
+        </div>
+        {user?.hasPassword !== false && (
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="delete-account-password"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Current password
+            </Label>
+            <Input
+              id="delete-account-password"
+              type="password"
+              placeholder="Re-enter your password"
+              value={deleteCurrentPassword}
+              onChange={(e) => setDeleteCurrentPassword(e.target.value)}
+              className="bg-card"
+              autoComplete="current-password"
+            />
           </div>
         )}
-      </section>
+      </ConfirmDialog>
     </div>
   );
 }

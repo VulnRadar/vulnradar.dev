@@ -40,7 +40,6 @@ import type {
   PendingChanges,
 } from "@/components/profile/types";
 import {
-  Check,
   Key,
   AlertTriangle,
   Shield,
@@ -61,6 +60,9 @@ import {
   SaveConfirmationModal,
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
+import { InlineAlert } from "@/components/shared/inline-alert";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { pluralize } from "@/lib/ui/plural";
 
 // Types imported from @/components/profile/types
 
@@ -116,8 +118,35 @@ function ProfileContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Freshly issued 2FA backup codes are shown exactly once, and the Security
+  // tab that renders them unmounts (losing its local state) on every
+  // profile-tab switch. This tracks whether an unsaved set is currently
+  // showing there, so handleProfileTabChange below can confirm before
+  // letting a switch destroy it. Stable ref, same pattern as patchUser.
+  const [hasUnsavedBackupCodes, setHasUnsavedBackupCodes] = useState(false);
+  const handleUnsavedBackupCodesChange = useCallback(
+    (hasUnsaved: boolean) => setHasUnsavedBackupCodes(hasUnsaved),
+    [],
+  );
+
+  // The tab a confirmed "leave anyway" will switch to, or null. Native
+  // window.confirm was the first version of this and it is the one thing the
+  // app has one dialog for: it cannot be styled, it blocks the tab, and it
+  // reads as a browser warning rather than as part of the page.
+  const [pendingTabSwitch, setPendingTabSwitch] = useState<ProfileTab | null>(
+    null,
+  );
+
   // Change tab: just update the query param, no page reload
   const handleProfileTabChange = (tab: ProfileTab) => {
+    // Leaving the Security tab right now would unmount it and destroy the
+    // one-time backup codes it is holding with no way back. Smaller than
+    // lifting the codes themselves up here: it keeps the plaintext codes out
+    // of a second, longer-lived component instead of duplicating them.
+    if (hasUnsavedBackupCodes && tab !== "security") {
+      setPendingTabSwitch(tab);
+      return;
+    }
     // Clear any pending changes when switching tabs
     if (Object.keys(pendingChanges).length > 0 || showSaveModal) {
       setPendingChanges({});
@@ -864,31 +893,17 @@ function ProfileContent() {
       {(error || success) && (
         <div
           ref={statusBannerRef}
-          role={error ? "alert" : "status"}
-          aria-live={error ? "assertive" : "polite"}
-          className={cn(
-            "sticky top-[calc(4.5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-30 flex items-center gap-3 px-4 py-3 rounded-xl text-sm border backdrop-blur-sm transition-[top] duration-300",
-            error
-              ? "bg-destructive/10 text-destructive border-destructive/20"
-              : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
-          )}
+          className="sticky top-[calc(4.5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-30 backdrop-blur-sm transition-[top] duration-300"
         >
-          {error ? (
-            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-          ) : (
-            <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
-          )}
-          <span className="flex-1">{error || success}</span>
-          <button
-            type="button"
-            onClick={() => {
+          <InlineAlert
+            tone={error ? "error" : "success"}
+            onDismiss={() => {
               setError(null);
               setSuccess(null);
             }}
-            className="text-xs font-medium hover:underline opacity-70 hover:opacity-100 transition-opacity rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
-            Dismiss
-          </button>
+            {error || success}
+          </InlineAlert>
         </div>
       )}
 
@@ -923,7 +938,7 @@ function ProfileContent() {
                     activeProfileTabSafe === tab.id ? "page" : undefined
                   }
                   className={cn(
-                    "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
+                    "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-colors whitespace-nowrap border-b-2 -mb-px",
                     activeProfileTabSafe === tab.id
                       ? "border-primary text-foreground"
                       : "border-transparent text-muted-foreground hover:text-foreground",
@@ -1059,6 +1074,7 @@ function ProfileContent() {
                   pendingChanges={pendingChanges}
                   setPendingChanges={setPendingChanges}
                   onUserPatch={patchUser}
+                  onUnsavedBackupCodesChange={handleUnsavedBackupCodesChange}
                 />
               )}
 
@@ -1169,8 +1185,7 @@ function ProfileContent() {
               <div className="flex items-center gap-3">
                 <Save className="h-4 w-4 text-primary" aria-hidden="true" />
                 <p className="text-sm font-medium text-foreground">
-                  {pendingChangeItems.length} unsaved change
-                  {pendingChangeItems.length !== 1 ? "s" : ""}
+                  {pluralize(pendingChangeItems.length, "unsaved change")}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1187,6 +1202,25 @@ function ProfileContent() {
       )}
 
       {/* Save Confirmation Modal */}
+      {/* Switching tabs unmounts the Security tab and takes the one-time
+          backup codes with it. The same dialog every other "this cannot be
+          undone" in the app uses. */}
+      <ConfirmDialog
+        open={pendingTabSwitch !== null}
+        title="Leave without saving your backup codes?"
+        description="Your two-factor backup codes are on screen and have not been copied or downloaded. Leaving this tab is the last time you can see them: recovering an account without them means contacting support."
+        confirmLabel="Leave anyway"
+        cancelLabel="Stay here"
+        danger
+        onConfirm={() => {
+          const tab = pendingTabSwitch;
+          setPendingTabSwitch(null);
+          setHasUnsavedBackupCodes(false);
+          if (tab) handleProfileTabChange(tab);
+        }}
+        onCancel={() => setPendingTabSwitch(null)}
+      />
+
       <SaveConfirmationModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}

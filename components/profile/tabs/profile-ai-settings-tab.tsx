@@ -2,14 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,6 +62,7 @@ export function ProfileAiSettingsTab({
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   // A failed load leaves config null, and every default below it is a
   // statement of fact about someone's account: aiDisabled=false renders "AI
@@ -186,16 +180,15 @@ export function ProfileAiSettingsTab({
   // the 12px text link at the bottom of the form, went straight through with
   // no warning.
   async function handleReset() {
-    setConfirmReset(false);
     setResetting(true);
-    setError(null);
+    setResetError(null);
     try {
       const res = await fetch(API.ACCOUNT_AI_CONFIG, {
         method: "DELETE",
       });
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error || "Failed to reset AI config.");
+        setResetError(data.error || "Failed to reset AI config.");
         return;
       }
       setConfig((prev) => ({
@@ -212,8 +205,9 @@ export function ProfileAiSettingsTab({
       setApiKey("");
       setShowKeyInput(false);
       setSuccess(`Reset to ${APP_NAME} AI.`);
+      setConfirmReset(false);
     } catch {
-      setError("Failed to reset AI config.");
+      setResetError("Failed to reset AI config.");
     } finally {
       setResetting(false);
     }
@@ -227,7 +221,10 @@ export function ProfileAiSettingsTab({
   // below reads as settled fact, so say what happened instead.
   if (!config) {
     return (
-      <div className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex flex-col gap-4">
+      <div
+        role="alert"
+        className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex flex-col gap-4"
+      >
         <div className="flex items-start gap-3">
           <LeadingIcon
             icon={AlertTriangle}
@@ -330,7 +327,7 @@ export function ProfileAiSettingsTab({
             onClick={() => setUseOwn(false)}
             aria-pressed={!useOwn}
             className={cn(
-              "text-left p-4 rounded-xl border transition-all",
+              "text-left p-4 rounded-xl border transition-colors",
               !useOwn
                 ? "border-primary bg-primary/5 ring-1 ring-primary/20"
                 : "border-border bg-card hover:border-border/80 hover:bg-muted/30",
@@ -349,7 +346,7 @@ export function ProfileAiSettingsTab({
             onClick={() => setUseOwn(true)}
             aria-pressed={useOwn}
             className={cn(
-              "text-left p-4 rounded-xl border transition-all",
+              "text-left p-4 rounded-xl border transition-colors",
               useOwn
                 ? "border-primary bg-primary/5 ring-1 ring-primary/20"
                 : "border-border bg-card hover:border-border/80 hover:bg-muted/30",
@@ -377,7 +374,10 @@ export function ProfileAiSettingsTab({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setConfirmReset(true)}
+                    onClick={() => {
+                      setResetError(null);
+                      setConfirmReset(true);
+                    }}
                     disabled={resetting}
                     className="shrink-0 gap-2"
                   >
@@ -551,11 +551,14 @@ export function ProfileAiSettingsTab({
               </div>
 
               {/* Save */}
-              <div className="flex items-center justify-between gap-3 pt-1">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                 {config && !config.useVulnradarAi && (
                   <button
                     type="button"
-                    onClick={() => setConfirmReset(true)}
+                    onClick={() => {
+                      setResetError(null);
+                      setConfirmReset(true);
+                    }}
                     disabled={resetting}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
                   >
@@ -588,44 +591,25 @@ export function ProfileAiSettingsTab({
         )}
       </section>
 
-      <AlertDialog
+      <ConfirmDialog
         open={confirmReset}
-        onOpenChange={(open) => {
-          if (!open && !resetting) setConfirmReset(false);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove your AI provider config?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Your {config?.provider ? `${config.provider} ` : ""}API key and
-              model choice are deleted. We never show a saved key back, so you
-              will have to paste it again from your provider to set this up once
-              more. Scans go back to using {APP_NAME} AI.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmReset(false)}
-              disabled={resetting}
-            >
-              Keep my provider
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleReset}
-              disabled={resetting}
-              className="gap-2"
-            >
-              {resetting && (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              )}
-              Remove and use {APP_NAME} AI
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        danger
+        busy={resetting}
+        error={resetError}
+        title="Remove your AI provider config?"
+        description={
+          <>
+            Your {config?.provider ? `${config.provider} ` : ""}API key and
+            model choice are deleted. We never show a saved key back, so you
+            will have to paste it again from your provider to set this up once
+            more. Scans go back to using {APP_NAME} AI.
+          </>
+        }
+        confirmLabel={`Remove and use ${APP_NAME} AI`}
+        cancelLabel="Keep my provider"
+        onConfirm={handleReset}
+        onCancel={() => setConfirmReset(false)}
+      />
     </div>
   );
 }

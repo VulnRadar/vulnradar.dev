@@ -603,6 +603,12 @@ const CHANGELOG: Release[] = [
         category: "improved",
       },
       {
+        icon: UserCog,
+        label: "Your Settings Pages, Reviewed Screen by Screen",
+        desc: "A pass over every tab of your account settings. Confirmations that could fail silently now stay open and say why, so a disconnect or a delete that did not work no longer looks like it did. Dates across the tabs are written the same way instead of three ways. Copy buttons announce themselves to screen readers, password and code fields point at their own error messages, and pressing Enter submits the password form from any of its three fields. Leaving the Security tab while your one-time backup codes are on screen now asks first, because leaving was the last chance to see them. Panels that failed to load announce themselves, the schedule and webhook rows stop showing raw internal names, and a progress bar that could overflow its track is capped.",
+        category: "fixed",
+      },
+      {
         icon: Bug,
         label: "Payment and Account Dialogs Behave",
         desc: "The billing verification step no longer jumps to 'check your email' before the code has actually been sent, and pressing Continue twice no longer sends two emails. Pressing Escape or clicking outside a dialog while it is saving no longer closes it and loses what you typed. Subscription prices show as $5/mo like the credit prices, instead of $5.00/mo. The upgrade prompt uses the full plan name, such as Pro Supporter, so it matches the pricing page. Back links on checkout pages are easier to tap on phones, the credit meter shows your remaining free allowance as its own section, and the terms prompt's full terms link now opens the Terms of Service instead of the disclaimer.",

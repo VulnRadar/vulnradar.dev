@@ -22,6 +22,7 @@ import {
   Sparkles,
   ExternalLink,
   Monitor,
+  Check,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import { cn } from "@/lib/ui/utils";
@@ -35,6 +36,7 @@ import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { getPaidPlans } from "@/lib/billing/plans";
 import { getPlanById } from "@/lib/billing/catalog";
 import { createBillingPortalSession } from "@/app/actions/stripe";
+import { formatDate } from "@/lib/ui/format-date";
 import type { ProfileTabProps, BillingInfo } from "../types";
 import {
   BillingVerificationModal,
@@ -233,7 +235,10 @@ export function ProfileBillingTab({
   // action that can fix it.
   if (!billingInfo) {
     return (
-      <div className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex flex-col gap-4">
+      <div
+        role="alert"
+        className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex flex-col gap-4"
+      >
         <div className="flex items-start gap-3">
           <LeadingIcon
             icon={AlertTriangle}
@@ -397,14 +402,9 @@ export function ProfileBillingTab({
                               Next Billing Date
                             </span>
                             <span className="text-sm font-medium text-foreground">
-                              {new Date(
+                              {formatDate(
                                 billingInfo.subscription.nextBillingDate,
-                              ).toLocaleDateString(undefined, {
-                                weekday: "short",
-                                year: "numeric",
-                                month: "short",
-                                day: "numeric",
-                              })}
+                              )}
                             </span>
                           </div>
                         )}
@@ -426,9 +426,9 @@ export function ProfileBillingTab({
                                 billingInfo.subscription.lastPaymentAmount,
                               )}{" "}
                             on{" "}
-                            {new Date(
+                            {formatDate(
                               billingInfo.subscription.lastPaymentDate,
-                            ).toLocaleDateString()}
+                            )}
                             {billingInfo.subscription.lastPaymentStatus ===
                               "paid" && (
                               <Badge className="ml-2 bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25 text-xs">
@@ -448,9 +448,9 @@ export function ProfileBillingTab({
                           <p className="text-sm text-[hsl(var(--warning))]">
                             Your subscription will end on{" "}
                             {billingInfo.subscription.currentPeriodEnd
-                              ? new Date(
+                              ? formatDate(
                                   billingInfo.subscription.currentPeriodEnd,
-                                ).toLocaleDateString()
+                                )
                               : "the end of your billing period"}
                             . You&apos;ll keep access until then.
                           </p>
@@ -481,16 +481,16 @@ export function ProfileBillingTab({
                               setShowVerificationModal(true);
                             }
                           }}
-                          className="text-xs"
+                          className="text-xs gap-1"
                         >
                           {sensitiveInfoVisible ? (
                             <>
-                              <EyeOff className="h-4 w-4 mr-1" />
+                              <EyeOff className="h-4 w-4" />
                               Hide
                             </>
                           ) : (
                             <>
-                              <Eye className="h-4 w-4 mr-1" />
+                              <Eye className="h-4 w-4" />
                               Reveal
                             </>
                           )}
@@ -551,8 +551,12 @@ export function ProfileBillingTab({
                                     <span className="text-muted-foreground">
                                       Security
                                     </span>
-                                    <span className="text-foreground">
-                                      ✓ 3D Secure
+                                    <span className="text-foreground inline-flex items-center gap-1">
+                                      <Check
+                                        className="h-3.5 w-3.5 text-[hsl(var(--success))]"
+                                        aria-hidden="true"
+                                      />
+                                      3D Secure
                                     </span>
                                   </div>
                                 )}
@@ -572,9 +576,7 @@ export function ProfileBillingTab({
                                     Created
                                   </span>
                                   <span className="text-foreground">
-                                    {new Date(
-                                      sensitiveData.created,
-                                    ).toLocaleDateString()}
+                                    {formatDate(sensitiveData.created)}
                                   </span>
                                 </div>
                               )}
@@ -584,9 +586,7 @@ export function ProfileBillingTab({
                                     Billing Period Ends
                                   </span>
                                   <span className="text-foreground">
-                                    {new Date(
-                                      sensitiveData.currentPeriodEnd,
-                                    ).toLocaleDateString()}
+                                    {formatDate(sensitiveData.currentPeriodEnd)}
                                   </span>
                                 </div>
                               )}
@@ -595,10 +595,18 @@ export function ProfileBillingTab({
                                   <span className="text-muted-foreground">
                                     Trial
                                   </span>
-                                  <span className="text-foreground">
-                                    {sensitiveData.isOnTrial
-                                      ? "✓ Active"
-                                      : "Ended"}
+                                  <span className="text-foreground inline-flex items-center gap-1">
+                                    {sensitiveData.isOnTrial ? (
+                                      <>
+                                        <Check
+                                          className="h-3.5 w-3.5 text-[hsl(var(--success))]"
+                                          aria-hidden="true"
+                                        />
+                                        Active
+                                      </>
+                                    ) : (
+                                      "Ended"
+                                    )}
                                   </span>
                                 </div>
                               )}
@@ -641,9 +649,9 @@ export function ProfileBillingTab({
                                       Date
                                     </span>
                                     <span className="text-foreground">
-                                      {new Date(
+                                      {formatDate(
                                         sensitiveData.invoice.created,
-                                      ).toLocaleDateString()}
+                                      )}
                                     </span>
                                   </div>
                                 )}
@@ -766,9 +774,7 @@ export function ProfileBillingTab({
                                     Created
                                   </span>
                                   <span className="text-foreground">
-                                    {new Date(
-                                      sensitiveData.created,
-                                    ).toLocaleDateString()}
+                                    {formatDate(sensitiveData.created)}
                                   </span>
                                 </div>
                               )}
@@ -809,13 +815,8 @@ export function ProfileBillingTab({
                         Gift Period
                       </span>
                       <span className="text-sm font-medium text-foreground">
-                        {new Date(
-                          billingInfo.giftedSubscription.startedAt,
-                        ).toLocaleDateString()}{" "}
-                        -{" "}
-                        {new Date(
-                          billingInfo.giftedSubscription.expiresAt,
-                        ).toLocaleDateString()}
+                        {formatDate(billingInfo.giftedSubscription.startedAt)} -{" "}
+                        {formatDate(billingInfo.giftedSubscription.expiresAt)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/20 mt-2">
@@ -825,10 +826,7 @@ export function ProfileBillingTab({
                         {getPlanById(billingInfo.giftedSubscription.plan)
                           ?.name || billingInfo.giftedSubscription.plan}{" "}
                         subscription until{" "}
-                        {new Date(
-                          billingInfo.giftedSubscription.expiresAt,
-                        ).toLocaleDateString()}
-                        .
+                        {formatDate(billingInfo.giftedSubscription.expiresAt)}.
                       </p>
                     </div>
                   </div>
@@ -847,16 +845,16 @@ export function ProfileBillingTab({
                         variant="outline"
                         onClick={handleOpenBillingPortal}
                         disabled={openingPortal}
-                        className="w-full"
+                        className="w-full gap-2"
                       >
                         {openingPortal ? (
                           <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            <Loader2 className="h-4 w-4 animate-spin" />
                             Opening...
                           </>
                         ) : (
                           <>
-                            <ExternalLink className="mr-2 h-4 w-4" />
+                            <ExternalLink className="h-4 w-4" />
                             Manage billing & view invoices
                           </>
                         )}
@@ -866,16 +864,16 @@ export function ProfileBillingTab({
                           variant="outline"
                           onClick={handleReactivateSubscription}
                           disabled={reactivatingSubscription}
-                          className="w-full"
+                          className="w-full gap-2"
                         >
                           {reactivatingSubscription ? (
                             <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              <Loader2 className="h-4 w-4 animate-spin" />
                               Reactivating...
                             </>
                           ) : (
                             <>
-                              <RefreshCw className="mr-2 h-4 w-4" />
+                              <RefreshCw className="h-4 w-4" />
                               Reactivate Subscription
                             </>
                           )}
@@ -1003,9 +1001,11 @@ export function ProfileBillingTab({
                       </div>
                     </div>
                     <Progress
-                      value={
-                        (billingInfo.usage.used / billingInfo.usage.limit) * 100
-                      }
+                      value={Math.min(
+                        100,
+                        (billingInfo.usage.used / billingInfo.usage.limit) *
+                          100,
+                      )}
                       className="h-2"
                     />
                     {billingInfo.usage.remaining === 0 && (
@@ -1623,9 +1623,7 @@ export function ProfileBillingTab({
               <p className="text-sm text-muted-foreground">
                 Keep access until{" "}
                 {billingInfo?.subscription?.currentPeriodEnd
-                  ? new Date(
-                      billingInfo.subscription.currentPeriodEnd,
-                    ).toLocaleDateString()
+                  ? formatDate(billingInfo.subscription.currentPeriodEnd)
                   : "your billing period ends"}
               </p>
             </div>

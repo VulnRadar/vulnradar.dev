@@ -8,25 +8,18 @@ import { FaGithub } from "react-icons/fa";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   Check,
   ExternalLink,
   RefreshCw,
   Unlink,
   Users,
-  Loader2,
   FolderGit2,
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { formatDate } from "@/lib/ui/format-date";
 import { API, ROUTES, DISCORD_INVITE_URL } from "@/lib/config/client-constants";
 import { useOAuthProviders } from "@/lib/hooks/use-oauth-providers";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
@@ -133,6 +126,7 @@ function OAuthIdentityCard({
   const [reconnecting, setReconnecting] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   const connected = Boolean(identity);
   const displayName = identity?.name || identity?.email || "Connected";
@@ -143,8 +137,9 @@ function OAuthIdentityCard({
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
+    setDisconnectError(null);
     try {
-      const res = await fetch(`/api/v3/account/oauth/${provider}`, {
+      const res = await fetch(API.ACCOUNT_OAUTH_DISCONNECT(provider), {
         method: "DELETE",
       });
       const data = await res.json().catch(() => ({}));
@@ -158,21 +153,18 @@ function OAuthIdentityCard({
         setSuccess(`${label} account disconnected.`);
         onDisconnected();
         refreshAuthCache();
-        setDisconnecting(false);
         setShowDisconnectConfirm(false);
       } else {
-        setError(
+        setDisconnectError(
           data.error || `We could not disconnect your ${label} account.`,
         );
-        setDisconnecting(false);
-        setShowDisconnectConfirm(false);
       }
     } catch {
-      setError(
+      setDisconnectError(
         "We could not reach the server. Check your connection and try again.",
       );
+    } finally {
       setDisconnecting(false);
-      setShowDisconnectConfirm(false);
     }
   };
 
@@ -263,7 +255,10 @@ function OAuthIdentityCard({
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={() => setShowDisconnectConfirm(true)}
+                  onClick={() => {
+                    setDisconnectError(null);
+                    setShowDisconnectConfirm(true);
+                  }}
                   aria-label={`Disconnect ${label}`}
                   className="text-muted-foreground hover:text-destructive shrink-0"
                 >
@@ -308,42 +303,17 @@ function OAuthIdentityCard({
         </CardContent>
       </Card>
 
-      <AlertDialog
+      <ConfirmDialog
         open={showDisconnectConfirm}
-        onOpenChange={(open) => {
-          if (!open && !disconnecting) setShowDisconnectConfirm(false);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Disconnect {label}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {displayName} will no longer sign you in. You can reconnect the
-              same or a different account any time.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowDisconnectConfirm(false)}
-              disabled={disconnecting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-              className="gap-2"
-            >
-              {disconnecting && (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              )}
-              Disconnect
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        danger
+        busy={disconnecting}
+        error={disconnectError}
+        title={`Disconnect ${label}?`}
+        description={`${displayName} will no longer sign you in. You can reconnect the same or a different account any time.`}
+        confirmLabel="Disconnect"
+        onConfirm={handleDisconnect}
+        onCancel={() => setShowDisconnectConfirm(false)}
+      />
     </section>
   );
 }
@@ -376,6 +346,7 @@ function GithubRepoAccessSection({
   const [granting, setGranting] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
 
   // Both failure paths used to land on connected:false, which renders the
   // "Grant repo access" pitch: the catch set it explicitly, and a 5xx whose
@@ -395,22 +366,24 @@ function GithubRepoAccessSection({
 
   const handleRevoke = async () => {
     setRevoking(true);
+    setRevokeError(null);
     try {
       const res = await fetch(API.ACCOUNT_GITHUB, { method: "DELETE" });
       if (res.ok) {
         setSuccess("Repo access revoked. Past scan results are unaffected.");
         setStatus({ connected: false });
+        setShowRevokeConfirm(false);
       } else {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        setError(data.error || "Could not revoke repo access.");
+        setRevokeError(data.error || "Could not revoke repo access.");
       }
     } catch {
-      setError(
+      setRevokeError(
         "We could not reach the server. Check your connection and try again.",
       );
+    } finally {
+      setRevoking(false);
     }
-    setRevoking(false);
-    setShowRevokeConfirm(false);
   };
 
   if (loading) return null;
@@ -478,7 +451,10 @@ function GithubRepoAccessSection({
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => setShowRevokeConfirm(true)}
+              onClick={() => {
+                setRevokeError(null);
+                setShowRevokeConfirm(true);
+              }}
               aria-label="Revoke repo access"
               className="text-muted-foreground hover:text-destructive shrink-0"
             >
@@ -510,47 +486,27 @@ function GithubRepoAccessSection({
         </div>
       )}
 
-      <AlertDialog
+      <ConfirmDialog
         open={showRevokeConfirm}
-        onOpenChange={(open) => {
-          if (!open && !revoking) setShowRevokeConfirm(false);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Revoke repo access?</AlertDialogTitle>
-            <AlertDialogDescription>
-              VulnRadar loses read access to your repos and can&apos;t scan them
-              until you grant access again. Your GitHub sign-in stays connected,
-              and past repo scan results in{" "}
-              <Link href={ROUTES.REPOS} className="underline">
-                Repos
-              </Link>{" "}
-              are kept.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowRevokeConfirm(false)}
-              disabled={revoking}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRevoke}
-              disabled={revoking}
-              className="gap-2"
-            >
-              {revoking && (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              )}
-              Revoke access
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        danger
+        busy={revoking}
+        error={revokeError}
+        title="Revoke repo access?"
+        description={
+          <>
+            VulnRadar loses read access to your repos and can&apos;t scan them
+            until you grant access again. Your GitHub sign-in stays connected,
+            and past repo scan results in{" "}
+            <Link href={ROUTES.REPOS} className="underline">
+              Repos
+            </Link>{" "}
+            are kept.
+          </>
+        }
+        confirmLabel="Revoke access"
+        onConfirm={handleRevoke}
+        onCancel={() => setShowRevokeConfirm(false)}
+      />
     </div>
   );
 }
@@ -572,11 +528,12 @@ export function ProfileSocialTab({
   );
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   // Load extended Discord connection details when account is linked
   useEffect(() => {
     if (!user?.discordId) return;
-    fetch("/api/v3/account/discord")
+    fetch(API.ACCOUNT_DISCORD)
       .then((r) => r.json())
       .then((d) => {
         if (d.connected) {
@@ -636,8 +593,9 @@ export function ProfileSocialTab({
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
+    setDisconnectError(null);
     try {
-      const res = await fetch("/api/v3/account/discord", { method: "DELETE" });
+      const res = await fetch(API.ACCOUNT_DISCORD, { method: "DELETE" });
       const data = await res.json().catch(() => ({}) as { error?: string });
       if (res.ok) {
         // Same as the Google/GitHub card above: the old reload wiped the
@@ -646,34 +604,27 @@ export function ProfileSocialTab({
         setDiscordData(null);
         onUserPatch?.({ discordId: null });
         refreshAuthCache();
-        setDisconnecting(false);
         setShowDisconnectConfirm(false);
       } else {
         // The server says why (still in the Discord server, a stale link, a
         // password-less account that would be locked out); this threw that
         // away for a fixed "Try again" that answers none of them.
-        setError(
+        setDisconnectError(
           data.error ||
             "We could not disconnect your Discord account. Try again.",
         );
-        setDisconnecting(false);
-        setShowDisconnectConfirm(false);
       }
     } catch {
-      setError(
+      setDisconnectError(
         "We could not reach the server. Check your connection and try again.",
       );
+    } finally {
       setDisconnecting(false);
-      setShowDisconnectConfirm(false);
     }
   };
 
   const connectedAt = discordData?.connectedAt
-    ? new Date(discordData.connectedAt).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
+    ? formatDate(discordData.connectedAt)
     : null;
 
   // Two Discord flows, two places the avatar can live: the connection row
@@ -790,7 +741,7 @@ export function ProfileSocialTab({
                         up as a permanent, unexplained "Not in server". It is a
                         terminal state with exactly one fix, so it says so. */}
                     {discordData?.reauthRequired && (
-                      <p className="text-xs text-[hsl(var(--severity-medium))] mt-1">
+                      <p className="text-xs text-[hsl(var(--warning))] mt-1">
                         Discord no longer accepts this link. Reconnect below to
                         restore server access.
                       </p>
@@ -804,7 +755,10 @@ export function ProfileSocialTab({
                   <Button
                     size="icon"
                     variant="ghost"
-                    onClick={() => setShowDisconnectConfirm(true)}
+                    onClick={() => {
+                      setDisconnectError(null);
+                      setShowDisconnectConfirm(true);
+                    }}
                     aria-label="Disconnect Discord"
                     className="text-muted-foreground hover:text-destructive shrink-0"
                   >
@@ -817,8 +771,7 @@ export function ProfileSocialTab({
                   className="w-full"
                   onClick={() => {
                     setReconnecting(true);
-                    window.location.href =
-                      "/api/v3/auth/discord?action=connect";
+                    window.location.href = API.AUTH.DISCORD_CONNECT;
                   }}
                   disabled={reconnecting}
                 >
@@ -846,8 +799,7 @@ export function ProfileSocialTab({
                   <Button
                     className="bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-xs"
                     onClick={() => {
-                      window.location.href =
-                        "/api/v3/auth/discord?action=connect";
+                      window.location.href = API.AUTH.DISCORD_CONNECT;
                     }}
                   >
                     <DiscordIcon />
@@ -967,43 +919,17 @@ export function ProfileSocialTab({
 
       {/* Disconnecting is reversible but changes how this account signs in,
           so it names the account before it acts. */}
-      <AlertDialog
+      <ConfirmDialog
         open={showDisconnectConfirm}
-        onOpenChange={(open) => {
-          if (!open && !disconnecting) setShowDisconnectConfirm(false);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Disconnect Discord?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {user?.discordUsername || "This Discord account"} will no longer
-              sign you in or sync your avatar. You can reconnect the same or a
-              different account any time.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowDisconnectConfirm(false)}
-              disabled={disconnecting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-              className="gap-2"
-            >
-              {disconnecting && (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              )}
-              Disconnect
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        danger
+        busy={disconnecting}
+        error={disconnectError}
+        title="Disconnect Discord?"
+        description={`${user?.discordUsername || "This Discord account"} will no longer sign you in or sync your avatar. You can reconnect the same or a different account any time.`}
+        confirmLabel="Disconnect"
+        onConfirm={handleDisconnect}
+        onCancel={() => setShowDisconnectConfirm(false)}
+      />
     </div>
   );
 }

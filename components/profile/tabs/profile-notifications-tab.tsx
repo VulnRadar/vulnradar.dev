@@ -217,7 +217,10 @@ export function ProfileNotificationsTab({
   // on screen stays there for good.
   if (!notifPrefs) {
     return (
-      <div className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex items-start gap-3">
+      <div
+        role="alert"
+        className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex items-start gap-3"
+      >
         <LeadingIcon
           icon={AlertTriangle}
           line="relaxed"
@@ -315,7 +318,7 @@ export function ProfileNotificationsTab({
                     {badge && (
                       <Badge
                         variant="secondary"
-                        className="text-[10px] px-1.5 py-0 uppercase font-semibold"
+                        className="text-[11px] px-1.5 py-0 uppercase font-semibold"
                       >
                         {badge}
                       </Badge>

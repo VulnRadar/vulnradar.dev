@@ -113,12 +113,19 @@ export function ProfileGeneralTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ avatarUrl: "" }),
       });
+      const data = await res.json();
       if (res.ok) {
         // avatarUrl is part of MeResponse -- the app-wide useAuth() cache
         // (nav avatar, etc.) needs telling too, not just this tab's own
         // display, same fix as handleCroppedAvatar in app/profile/page.tsx.
         refreshAuthCache();
         setSuccess("Profile picture removed.");
+      } else {
+        // Same fallback string as handleCroppedAvatar: a non-2xx body
+        // without an `error` key otherwise left this silently doing
+        // nothing, and a failed removal looked identical to a successful
+        // one that just didn't repaint yet.
+        setError(data.error || "Failed to remove profile picture.");
       }
     } catch {
       setError("Failed to remove profile picture.");

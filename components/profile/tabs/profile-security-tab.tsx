@@ -7,14 +7,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Copy,
   Download,
   KeyRound,
@@ -22,12 +14,10 @@ import {
   Loader2,
   LogOut,
   ShieldOff,
-  AlertTriangle,
   ArrowRight,
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { copyToClipboard } from "@/lib/ui/clipboard";
 import {
   API,
   ROUTES,
@@ -36,6 +26,7 @@ import {
   PASSWORD_MIN_LENGTH,
 } from "@/lib/config/client-constants";
 import { downloadBlob } from "@/lib/ui/download";
+import { formatDateTime } from "@/lib/ui/format-date";
 import {
   refreshAuthCache,
   clearAuthCache,
@@ -43,6 +34,11 @@ import {
 import type { ProfileTabProps } from "@/components/profile/types";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import {
+  useCopyFeedback,
+  CopiedAnnouncement,
+} from "@/components/shared/copy-feedback";
 
 // The API issues this many backup codes per set. Kept as one named value so
 // the copy and the progress readout cannot drift apart.
@@ -74,13 +70,6 @@ interface TrustedDeviceItem {
   lastUsedAt: string;
   expiresAt: string;
   isCurrent: boolean;
-}
-
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
 }
 
 /** Section shell: a left-aligned heading with prose, then the content. */
@@ -134,8 +123,25 @@ function StatusPill({
   );
 }
 
-export function ProfileSecurityTab(props: ProfileTabProps) {
-  const { user, setError, setSuccess, onTabChange } = props;
+interface ProfileSecurityTabProps extends ProfileTabProps {
+  /**
+   * Fires whenever this tab is showing freshly issued backup codes that have
+   * not been copied or downloaded yet. Backup codes are shown exactly once,
+   * and this tab remounts (dropping its local `backupCodes` state) on every
+   * profile-tab switch, so the parent uses this flag to confirm before
+   * letting a switch away happen while a set is still unsaved.
+   */
+  onUnsavedBackupCodesChange?: (hasUnsaved: boolean) => void;
+}
+
+export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
+  const {
+    user,
+    setError,
+    setSuccess,
+    onTabChange,
+    onUnsavedBackupCodesChange,
+  } = props;
 
   // Password change state
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -176,7 +182,13 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
     number | null
   >(null);
   const [backupCodesCheckFailed, setBackupCodesCheckFailed] = useState(false);
-  const [codesCopied, setCodesCopied] = useState(false);
+  // Whether the codes have EVER been copied, for as long as this set is on
+  // screen -- distinct from `copied` below, which is the transient
+  // "Copied to clipboard" state every copy button shows for
+  // COPIED_FEEDBACK_MS and then clears. codesSaved (below) has to stay true
+  // once a copy happens, not blink back to false a couple of seconds later.
+  const [codesCopiedEver, setCodesCopiedEver] = useState(false);
+  const { copied: codeCopyFeedback, copy: copyBackupCodes } = useCopyFeedback();
   const [codesDownloaded, setCodesDownloaded] = useState(false);
   const [showRegenerateBackup, setShowRegenerateBackup] = useState(false);
   const [regenPassword, setRegenPassword] = useState("");
@@ -192,8 +204,11 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   const [setup2FAPassword, setSetup2FAPassword] = useState("");
 
   // Session state
-  const [forceLoggingOut, setForceLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  // Routed through ConfirmDialog's own `error` prop so a rejected
+  // sign-out-everywhere shows inside the still-open dialog instead of only
+  // the page-wide banner, which auto-clears after 8 seconds.
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   // Active sessions + trusted devices
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -408,7 +423,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   }
 
   async function handleForceLogout() {
-    setForceLoggingOut(true);
+    setLogoutError(null);
     try {
       const res = await fetch(API.AUTH.SESSIONS, { method: "DELETE" });
       if (res.ok) {
@@ -423,14 +438,12 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
         setShowLogoutModal(false);
         setTimeout(() => (window.location.href = "/login"), 2000);
       } else {
-        setError("We could not sign out your other sessions. Try again.");
+        setLogoutError("We could not sign out your other sessions. Try again.");
       }
     } catch {
-      setError(
+      setLogoutError(
         "We could not reach the server. Check your connection and try again.",
       );
-    } finally {
-      setForceLoggingOut(false);
     }
   }
 
@@ -457,7 +470,17 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
 
   const appActive = totpEnabled && twoFactorMethod === "app";
   const emailActive = totpEnabled && twoFactorMethod === "email";
-  const codesSaved = codesCopied || codesDownloaded;
+  const codesSaved = codesCopiedEver || codesDownloaded;
+
+  // Tell the parent whenever there is a freshly issued, not-yet-saved set of
+  // backup codes on screen. Placed ahead of the early return below so it runs
+  // on every render (Rules of Hooks), and cleaned up on unmount so a
+  // confirmed tab switch does not leave the parent thinking a set is still
+  // unsaved once this component is gone.
+  useEffect(() => {
+    onUnsavedBackupCodesChange?.(backupCodes.length > 0 && !codesSaved);
+    return () => onUnsavedBackupCodesChange?.(false);
+  }, [backupCodes.length, codesSaved, onUnsavedBackupCodesChange]);
 
   /* ── The freshly issued backup codes take over the whole tab. They are shown
      once, so nothing else competes with them for attention. ── */
@@ -520,18 +543,19 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
             size="lg"
             className="h-11 px-6 gap-2"
             onClick={async () => {
-              if (await copyToClipboard(backupCodes.join("\n"))) {
-                setCodesCopied(true);
+              if (await copyBackupCodes(backupCodes.join("\n"))) {
+                setCodesCopiedEver(true);
               }
             }}
           >
-            {codesCopied ? (
+            {codeCopyFeedback ? (
               <Check className="h-4 w-4" aria-hidden="true" />
             ) : (
               <Copy className="h-4 w-4" aria-hidden="true" />
             )}
-            {codesCopied ? "Copied to clipboard" : "Copy all codes"}
+            {codeCopyFeedback ? "Copied to clipboard" : "Copy all codes"}
           </Button>
+          <CopiedAnnouncement copied={codeCopyFeedback} noun="backup codes" />
           <Button
             variant="outline"
             size="lg"
@@ -562,7 +586,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
             variant={codesSaved ? "default" : "outline"}
             onClick={() => {
               setBackupCodes([]);
-              setCodesCopied(false);
+              setCodesCopiedEver(false);
               setCodesDownloaded(false);
             }}
             className="gap-2"
@@ -619,9 +643,17 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
             </CardContent>
           </Card>
         ) : (
-          <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col gap-4">
+          <form
+            className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col gap-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleChangePassword();
+            }}
+          >
             {passwordError && (
-              <InlineAlert tone="error">{passwordError}</InlineAlert>
+              <div id="sec-password-error">
+                <InlineAlert tone="error">{passwordError}</InlineAlert>
+              </div>
             )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {hasPassword && (
@@ -634,6 +666,10 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     className="h-10"
+                    aria-invalid={!!passwordError}
+                    aria-describedby={
+                      passwordError ? "sec-password-error" : undefined
+                    }
                   />
                 </div>
               )}
@@ -646,7 +682,12 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="h-10"
-                  aria-describedby="sec-new-pw-hint"
+                  aria-invalid={!!passwordError}
+                  aria-describedby={
+                    passwordError
+                      ? "sec-new-pw-hint sec-password-error"
+                      : "sec-new-pw-hint"
+                  }
                 />
                 <p
                   id="sec-new-pw-hint"
@@ -664,14 +705,15 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                   value={confirmNewPassword}
                   onChange={(e) => setConfirmNewPassword(e.target.value)}
                   className="h-10"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleChangePassword();
-                  }}
+                  aria-invalid={!!passwordError}
+                  aria-describedby={
+                    passwordError ? "sec-password-error" : undefined
+                  }
                 />
               </div>
             </div>
             <div className="flex items-center gap-2 pt-1">
-              <Button onClick={handleChangePassword} disabled={savingPassword}>
+              <Button type="submit" disabled={savingPassword}>
                 {savingPassword ? (
                   <>
                     <Loader2
@@ -687,6 +729,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                 )}
               </Button>
               <Button
+                type="button"
                 variant="ghost"
                 onClick={() => {
                   setShowPasswordForm(false);
@@ -699,7 +742,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                 Cancel
               </Button>
             </div>
-          </div>
+          </form>
         )}
       </Section>
 
@@ -750,6 +793,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     size="sm"
                     className="h-8 gap-1.5 shrink-0"
                     disabled={emailActive || startingSetup}
+                    aria-expanded={setting2FA}
                     onClick={async () => {
                       setStartingSetup(true);
                       setEnrolError(null);
@@ -873,7 +917,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                               setBackupCodesRemaining(data.backupCodes.length);
                               setShowRegenerateBackup(false);
                               setRegenPassword("");
-                              setCodesCopied(false);
+                              setCodesCopiedEver(false);
                               setCodesDownloaded(false);
                               setSuccess("New backup codes generated.");
                             } else {
@@ -923,6 +967,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                       setShowDisable2FA(true);
                       setDisableError(null);
                     }}
+                    aria-expanded={showDisable2FA}
                     className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Turn off the authenticator app
@@ -940,12 +985,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                       </p>
                     </div>
                     {disableError && (
-                      <p
-                        role="alert"
-                        className="text-sm text-destructive font-medium"
-                      >
-                        {disableError}
-                      </p>
+                      <InlineAlert tone="error">{disableError}</InlineAlert>
                     )}
                     <div className="flex flex-col gap-2">
                       <Label htmlFor="disable-app-2fa-password">
@@ -1128,7 +1168,9 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     </div>
 
                     {enrolError && (
-                      <InlineAlert tone="error">{enrolError}</InlineAlert>
+                      <div id="setup-2fa-error">
+                        <InlineAlert tone="error">{enrolError}</InlineAlert>
+                      </div>
                     )}
 
                     <div className="flex flex-col sm:flex-row gap-4">
@@ -1150,6 +1192,10 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                             )
                           }
                           className="h-10 w-[180px] text-center text-lg tracking-[0.3em] font-mono"
+                          aria-invalid={!!enrolError}
+                          aria-describedby={
+                            enrolError ? "setup-2fa-error" : undefined
+                          }
                         />
                       </div>
                       <div className="flex flex-col gap-2 flex-1 min-w-0">
@@ -1198,7 +1244,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                               setTotpSecret("");
                               setTotpVerifyCode("");
                               setSetup2FAPassword("");
-                              setCodesCopied(false);
+                              setCodesCopiedEver(false);
                               setCodesDownloaded(false);
                               setBackupCodes(data.backupCodes || []);
                               setBackupCodesRemaining(
@@ -1289,6 +1335,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     variant="outline"
                     className="h-8 gap-1.5 shrink-0"
                     disabled={appActive}
+                    aria-expanded={showEnableEmail2FA}
                     onClick={() => {
                       if (appActive) return;
                       setEmailEnableError(null);
@@ -1312,6 +1359,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                       setShowDisable2FA(true);
                       setDisableError(null);
                     }}
+                    aria-expanded={showDisable2FA}
                     className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Turn off email codes
@@ -1328,12 +1376,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                       </p>
                     </div>
                     {disableError && (
-                      <p
-                        role="alert"
-                        className="text-sm text-destructive font-medium"
-                      >
-                        {disableError}
-                      </p>
+                      <InlineAlert tone="error">{disableError}</InlineAlert>
                     )}
                     <div className="flex flex-col gap-2">
                       <Label htmlFor="disable-email-2fa-password">
@@ -1424,12 +1467,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
             {(!totpEnabled || appActive) && showEnableEmail2FA && (
               <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
                 {emailEnableError && (
-                  <p
-                    role="alert"
-                    className="text-sm text-destructive font-medium"
-                  >
-                    {emailEnableError}
-                  </p>
+                  <InlineAlert tone="error">{emailEnableError}</InlineAlert>
                 )}
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="enable-email-2fa-password">
@@ -1684,54 +1722,25 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       </p>
 
       {/* Sign out everywhere confirmation */}
-      <Dialog open={showLogoutModal} onOpenChange={setShowLogoutModal}>
-        <DialogContent size="sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle
-                className="h-5 w-5 text-destructive shrink-0"
-                aria-hidden="true"
-              />
-              Sign out everywhere?
-            </DialogTitle>
-            <DialogDescription>
-              This ends every session for {user?.email || "your account"},
-              including the one you are using now. You will land on the sign-in
-              page and need your password again on every device.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowLogoutModal(false)}
-              disabled={forceLoggingOut}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleForceLogout}
-              disabled={forceLoggingOut}
-              className="gap-2"
-            >
-              {forceLoggingOut ? (
-                <>
-                  <Loader2
-                    className="h-4 w-4 animate-spin"
-                    aria-hidden="true"
-                  />
-                  Signing out...
-                </>
-              ) : (
-                <>
-                  <LogOut className="h-4 w-4" aria-hidden="true" />
-                  Sign out everywhere
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={showLogoutModal}
+        title="Sign out everywhere?"
+        description={
+          <>
+            This ends every session for {user?.email || "your account"},
+            including the one you are using now. You will land on the sign-in
+            page and need your password again on every device.
+          </>
+        }
+        confirmLabel="Sign out everywhere"
+        danger
+        error={logoutError}
+        onConfirm={handleForceLogout}
+        onCancel={() => {
+          setShowLogoutModal(false);
+          setLogoutError(null);
+        }}
+      />
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/ui/utils";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import { formatDateTime } from "@/lib/ui/format-date";
 import {
   Plus,
   Play,
@@ -28,6 +28,11 @@ import type { ConfirmAction, WebhookDelivery } from "./types";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { TeamAssignSelect } from "@/components/shared/team-assign-select";
 import type { AssignableTeamsResult } from "@/lib/hooks/use-assignable-teams";
+import {
+  useCopyFeedback,
+  CopiedAnnouncement,
+} from "@/components/shared/copy-feedback";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 interface WebhooksSectionProps {
   webhooks: WebhookItem[];
@@ -96,7 +101,7 @@ function deliveryTone(status: number | null): {
     return {
       label: "No response",
       className:
-        "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
+        "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
     };
   }
   if (status >= 200 && status < 300) {
@@ -147,7 +152,8 @@ export function WebhooksSection({
   assigningTeamWebhookId,
   onAssignWebhookTeam,
 }: WebhooksSectionProps) {
-  const [copiedSecret, setCopiedSecret] = useState(false);
+  const { copied: copiedSecret, copy: copySecretText } = useCopyFeedback();
+  const [copySecretError, setCopySecretError] = useState<string | null>(null);
 
   function teamLabel(teamId: number) {
     return teams.all.find((team) => team.id === teamId)?.name ?? "A team";
@@ -155,9 +161,13 @@ export function WebhooksSection({
 
   async function handleCopySecret() {
     if (!newlyCreatedWebhookSecret) return;
-    if (await copyToClipboard(newlyCreatedWebhookSecret)) {
-      setCopiedSecret(true);
-      setTimeout(() => setCopiedSecret(false), 2000);
+    const ok = await copySecretText(newlyCreatedWebhookSecret);
+    if (ok) {
+      setCopySecretError(null);
+    } else {
+      setCopySecretError(
+        "Could not copy automatically. Select the secret text and copy it manually.",
+      );
     }
   }
 
@@ -211,9 +221,7 @@ export function WebhooksSection({
               )}
               {copiedSecret ? "Copied to clipboard" : "Copy secret"}
             </Button>
-            <p className="sr-only" role="status" aria-live="polite">
-              {copiedSecret ? "Signing secret copied to clipboard." : ""}
-            </p>
+            <CopiedAnnouncement copied={copiedSecret} noun="signing secret" />
             <Button
               variant="ghost"
               className="ml-auto text-muted-foreground"
@@ -222,6 +230,9 @@ export function WebhooksSection({
               Done
             </Button>
           </div>
+          {copySecretError && (
+            <InlineAlert tone="error">{copySecretError}</InlineAlert>
+          )}
         </div>
       )}
 
@@ -616,9 +627,7 @@ export function WebhooksSection({
                                         dateTime={d.attempted_at}
                                         className="text-xs text-muted-foreground"
                                       >
-                                        {new Date(
-                                          d.attempted_at,
-                                        ).toLocaleString()}
+                                        {formatDateTime(d.attempted_at)}
                                       </time>
                                       {d.response_snippet && (
                                         <span

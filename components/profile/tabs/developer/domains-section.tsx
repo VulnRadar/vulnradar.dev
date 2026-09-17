@@ -7,19 +7,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { cn } from "@/lib/ui/utils";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import {
+  useCopyFeedback,
+  CopiedAnnouncement,
+} from "@/components/shared/copy-feedback";
 import { TeamAssignSelect } from "@/components/shared/team-assign-select";
 import { useAssignableTeams } from "@/lib/hooks/use-assignable-teams";
 import { useAuth } from "@/components/providers/auth-provider";
+import { formatDate } from "@/lib/ui/format-date";
 import { API } from "@/lib/config/client-constants";
 import {
   Plus,
@@ -110,9 +107,10 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
   const [adding, setAdding] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [verifyingId, setVerifyingId] = useState<number | null>(null);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const { copied: copiedField, copy: copyValue } = useCopyFeedback();
   const [deleteTarget, setDeleteTarget] = useState<DomainItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   // Team assignment. Owner-only server-side (the UPDATE is scoped `AND
   // user_id = $3`), so the picker is only drawn on rows the caller proved.
   const { me } = useAuth();
@@ -278,6 +276,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       const res = await fetch(`${API.DOMAINS}?id=${deleteTarget.id}`, {
         method: "DELETE",
@@ -285,22 +284,20 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
       if (res.ok) {
         setDomains((prev) => prev.filter((d) => d.id !== deleteTarget.id));
         setSuccess(`${deleteTarget.domain} removed.`);
+        setDeleteTarget(null);
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || "Failed to remove domain.");
+        setDeleteError(data.error || "Failed to remove domain.");
       }
     } catch {
-      setError("Failed to remove domain.");
+      setDeleteError("Failed to remove domain.");
+    } finally {
+      setDeleting(false);
     }
-    setDeleting(false);
-    setDeleteTarget(null);
   }
 
   async function handleCopy(field: string, value: string) {
-    if (await copyToClipboard(value)) {
-      setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
-    }
+    await copyValue(value, field);
   }
 
   return (
@@ -449,8 +446,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                         </div>
                         {d.status === "verified" && d.verified_at && (
                           <p className="text-xs text-muted-foreground">
-                            Verified{" "}
-                            {new Date(d.verified_at).toLocaleDateString()}
+                            Verified {formatDate(d.verified_at)}
                           </p>
                         )}
                       </div>
@@ -543,7 +539,10 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                             variant="ghost"
                             size="icon"
                             className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => setDeleteTarget(d)}
+                            onClick={() => {
+                              setDeleteError(null);
+                              setDeleteTarget(d);
+                            }}
                             title="Remove domain"
                             aria-label={`Remove domain ${d.domain}`}
                           >
@@ -590,6 +589,10 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                               <Copy aria-hidden className="h-3.5 w-3.5" />
                             )}
                           </Button>
+                          <CopiedAnnouncement
+                            copied={copiedField === `name-${d.id}`}
+                            noun="record name"
+                          />
                         </div>
                         {d.verificationRecordValue ? (
                           <>
@@ -623,6 +626,10 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                                   <Copy aria-hidden className="h-3.5 w-3.5" />
                                 )}
                               </Button>
+                              <CopiedAnnouncement
+                                copied={copiedField === `value-${d.id}`}
+                                noun="record value"
+                              />
                             </div>
                           </>
                         ) : (
@@ -646,40 +653,17 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
         </CardContent>
       </Card>
 
-      <AlertDialog
+      <ConfirmDialog
         open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {deleteTarget?.domain}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Active Probing will no longer be allowed against this domain (or
-              its subdomains) until it&apos;s verified again.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-              disabled={deleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="gap-2"
-            >
-              {deleting && (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              )}
-              Remove domain
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        danger
+        busy={deleting}
+        error={deleteError}
+        title={`Remove ${deleteTarget?.domain}?`}
+        description="Active Probing will no longer be allowed against this domain (or its subdomains) until it's verified again."
+        confirmLabel="Remove domain"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </section>
   );
 }

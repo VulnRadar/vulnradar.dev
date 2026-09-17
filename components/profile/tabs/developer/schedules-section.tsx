@@ -20,6 +20,7 @@ import Link from "next/link";
 import { ROUTES, BILLING_ENABLED } from "@/lib/config/client-constants";
 import { hasFeatureAccess } from "@/components/modals/premium-upgrade-modal";
 import { getPlanById } from "@/lib/billing/catalog";
+import { formatDateTime } from "@/lib/ui/format-date";
 import {
   FREQUENCIES,
   SCHEDULE_FREQUENCIES,
@@ -86,12 +87,11 @@ interface SchedulesSectionProps {
   onAssignScheduleTeam: (id: number, teamId: number | null) => void;
 }
 
+// "Never" for a schedule that hasn't run yet isn't a date at all, so it
+// stays a local wrapper around the shared formatter.
 function formatScheduleTime(iso: string | null): string {
   if (!iso) return "Never";
-  return new Date(iso).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return formatDateTime(iso);
 }
 
 /**
@@ -337,8 +337,11 @@ export function SchedulesSection({
                           variant="secondary"
                           className="text-[10px] px-1.5 py-0 uppercase font-semibold"
                         >
+                          {/* The raw frequency enum ("weekly") is an
+                              implementation detail, not copy -- shown only if
+                              a value ever lands outside the known set. */}
                           {FREQUENCIES[sch.frequency as ScheduleFrequency]
-                            ?.label ?? sch.frequency}
+                            ?.label ?? "Custom"}
                         </Badge>
                         {isPaused && (
                           <Badge

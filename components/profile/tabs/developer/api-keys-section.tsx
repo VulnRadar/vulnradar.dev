@@ -27,6 +27,7 @@ import {
 import type { ApiKey } from "@/components/profile/types";
 import type { ConfirmAction } from "./types";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { CopiedAnnouncement } from "@/components/shared/copy-feedback";
 
 interface ApiKeysSectionProps {
   apiKeys: ApiKey[];
@@ -231,6 +232,7 @@ export function ApiKeysSection({
               )}
               {copiedKey ? "Copied to clipboard" : "Copy key"}
             </Button>
+            <CopiedAnnouncement copied={copiedKey} noun="API key" />
             <Button
               variant="outline"
               onClick={onToggleShowKey}
@@ -252,9 +254,6 @@ export function ApiKeysSection({
               Done
             </Button>
           </div>
-          <p className="sr-only" role="status" aria-live="polite">
-            {copiedKey ? "API key copied to clipboard." : ""}
-          </p>
         </div>
       )}
 

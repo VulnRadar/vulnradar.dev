@@ -2,15 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import { useCopyFeedback } from "@/components/shared/copy-feedback";
+import { formatDate as formatAbsoluteDate } from "@/lib/ui/format-date";
 import {
   Key,
   Webhook,
   CalendarClock,
   ShieldCheck,
-  Loader2,
   ArrowRight,
   type LucideIcon,
 } from "lucide-react";
@@ -31,14 +30,7 @@ import {
 } from "@/lib/config/feature-surfaces";
 import { EmptyState } from "@/components/shared/empty-state";
 import { getPlanById } from "@/lib/billing/catalog";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import type {
   ProfileTabProps,
   ApiKey,
@@ -251,7 +243,7 @@ export function ProfileDeveloperTab({
   const [generatingKey, setGeneratingKey] = useState(false);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
-  const [copiedKey, setCopiedKey] = useState(false);
+  const { copied: copiedKey, copy: copyKeyText } = useCopyFeedback();
   const [keyActionPending, setKeyActionPending] = useState<{
     id: number;
     kind: "rotate" | "revoke";
@@ -264,7 +256,15 @@ export function ProfileDeveloperTab({
     null,
   );
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const confirmCopy = confirmAction ? getConfirmCopy(confirmAction) : null;
+
+  /** Opens the shared confirm dialog for a new action, clearing any error
+   *  left over from the last one it guarded. */
+  function requestConfirm(action: ConfirmAction) {
+    setConfirmError(null);
+    setConfirmAction(action);
+  }
 
   // Webhooks state
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -400,9 +400,10 @@ export function ProfileDeveloperTab({
     }
   }
 
-  async function handleRotateKey(keyId: number) {
+  /** Returns whether the rotation succeeded, so the shared confirm dialog
+   *  (handleConfirmDestructive below) knows whether it may close. */
+  async function handleRotateKey(keyId: number): Promise<boolean> {
     setKeyActionPending({ id: keyId, kind: "rotate" });
-    setError(null);
     try {
       const rotateUrl = `${API.KEYS}/${keyId}/rotate`;
       const res = await fetch(rotateUrl, {
@@ -411,8 +412,8 @@ export function ProfileDeveloperTab({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to rotate key.");
-        return;
+        setConfirmError(data.error || "Failed to rotate key.");
+        return false;
       }
       const newKey = data.key;
       setNewlyCreatedKey(newKey.raw_key);
@@ -423,16 +424,21 @@ export function ProfileDeveloperTab({
       setSuccess(
         "Key rotated. The old key stopped working, copy the new one now.",
       );
+      return true;
     } catch {
-      setError("Failed to rotate key.");
+      setConfirmError("Failed to rotate key.");
+      return false;
     } finally {
       setKeyActionPending(null);
     }
   }
 
-  async function handleRevokeKey(keyId: number, keyName: string) {
+  /** See handleRotateKey above for why this reports success/failure. */
+  async function handleRevokeKey(
+    keyId: number,
+    keyName: string,
+  ): Promise<boolean> {
     setKeyActionPending({ id: keyId, kind: "revoke" });
-    setError(null);
     try {
       const res = await fetch(`${API.KEYS}/${keyId}/revoke`, {
         method: "POST",
@@ -440,22 +446,27 @@ export function ProfileDeveloperTab({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to revoke key.");
-        return;
+        setConfirmError(data.error || "Failed to revoke key.");
+        return false;
       }
       setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
       setSuccess(
         `"${keyName}" revoked. It stopped authenticating immediately.`,
       );
+      return true;
     } catch {
-      setError("Failed to revoke key.");
+      setConfirmError("Failed to revoke key.");
+      return false;
     } finally {
       setKeyActionPending(null);
     }
   }
 
-  async function handleDeleteWebhook(id: number, name: string) {
-    setError(null);
+  /** See handleRotateKey above for why this reports success/failure. */
+  async function handleDeleteWebhook(
+    id: number,
+    name: string,
+  ): Promise<boolean> {
     try {
       const res = await fetch(API.WEBHOOKS, {
         method: "DELETE",
@@ -464,18 +475,20 @@ export function ProfileDeveloperTab({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        setError(data.error || "Failed to delete webhook.");
-        return;
+        setConfirmError(data.error || "Failed to delete webhook.");
+        return false;
       }
       setWebhooks((prev) => prev.filter((w) => w.id !== id));
       setSuccess(`"${name}" deleted.`);
+      return true;
     } catch {
-      setError("Failed to delete webhook.");
+      setConfirmError("Failed to delete webhook.");
+      return false;
     }
   }
 
-  async function handleDeleteSchedule(id: number) {
-    setError(null);
+  /** See handleRotateKey above for why this reports success/failure. */
+  async function handleDeleteSchedule(id: number): Promise<boolean> {
     try {
       const res = await fetch(API.SCHEDULES, {
         method: "DELETE",
@@ -484,13 +497,15 @@ export function ProfileDeveloperTab({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        setError(data.error || "Failed to remove the schedule.");
-        return;
+        setConfirmError(data.error || "Failed to remove the schedule.");
+        return false;
       }
       setSchedules((prev) => prev.filter((s) => s.id !== id));
       setSuccess("Scheduled scan removed.");
+      return true;
     } catch {
-      setError("Failed to remove the schedule.");
+      setConfirmError("Failed to remove the schedule.");
+      return false;
     }
   }
 
@@ -551,36 +566,39 @@ export function ProfileDeveloperTab({
   async function handleConfirmDestructive() {
     if (!confirmAction) return;
     setConfirmBusy(true);
+    setConfirmError(null);
+    let ok = false;
     try {
       switch (confirmAction.kind) {
         case "rotate-key":
-          await handleRotateKey(confirmAction.id);
+          ok = await handleRotateKey(confirmAction.id);
           break;
         case "revoke-key":
-          await handleRevokeKey(confirmAction.id, confirmAction.label);
+          ok = await handleRevokeKey(confirmAction.id, confirmAction.label);
           break;
         case "delete-webhook":
-          await handleDeleteWebhook(confirmAction.id, confirmAction.label);
+          ok = await handleDeleteWebhook(confirmAction.id, confirmAction.label);
           break;
         case "rotate-webhook-secret":
-          await handleRotateWebhookSecret(confirmAction.id);
+          ok = await handleRotateWebhookSecret(confirmAction.id);
           break;
         case "delete-schedule":
-          await handleDeleteSchedule(confirmAction.id);
+          ok = await handleDeleteSchedule(confirmAction.id);
           break;
       }
     } finally {
       setConfirmBusy(false);
-      setConfirmAction(null);
     }
+    // Stay open on failure: the handler already put the reason in
+    // confirmError, and closing unconditionally here (the old behaviour)
+    // discarded it before anyone could read it.
+    if (ok) setConfirmAction(null);
   }
 
   async function handleCopyKey() {
     if (!newlyCreatedKey) return;
-    if (await copyToClipboard(newlyCreatedKey)) {
-      setCopiedKey(true);
-      setTimeout(() => setCopiedKey(false), 2000);
-    } else {
+    const ok = await copyKeyText(newlyCreatedKey);
+    if (!ok) {
       setError(
         "Could not copy automatically. Select the key text and copy it manually.",
       );
@@ -698,17 +716,17 @@ export function ProfileDeveloperTab({
     }
   }
 
-  async function handleRotateWebhookSecret(id: number) {
+  /** See handleRotateKey above for why this reports success/failure. */
+  async function handleRotateWebhookSecret(id: number): Promise<boolean> {
     setRotatingWebhookId(id);
-    setError(null);
     try {
       const res = await fetch(`${API.WEBHOOKS}/${id}/rotate-secret`, {
         method: "POST",
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to rotate the signing secret.");
-        return;
+        setConfirmError(data.error || "Failed to rotate the signing secret.");
+        return false;
       }
       // Same one-time reveal panel the create response uses. The plaintext
       // secret is never stored in the webhooks list: the column holds
@@ -717,8 +735,10 @@ export function ProfileDeveloperTab({
       setSuccess(
         "Signing secret rotated. Paste the new one into your receiver before the next scan finishes.",
       );
+      return true;
     } catch {
-      setError("Failed to rotate the signing secret.");
+      setConfirmError("Failed to rotate the signing secret.");
+      return false;
     } finally {
       setRotatingWebhookId(null);
     }
@@ -843,13 +863,12 @@ export function ProfileDeveloperTab({
     setAddingSchedule(false);
   }
 
+  // "Never" for a key that has no timestamp yet (never rotated, never used)
+  // isn't a date at all, so it stays a local wrapper around the shared
+  // formatter rather than something formatDate itself should special-case.
   function formatDate(dateStr: string | null) {
     if (!dateStr) return "Never";
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return formatAbsoluteDate(dateStr);
   }
 
   // Waiting on the feature flags too, not just the account data. Every sub-tab
@@ -897,7 +916,7 @@ export function ProfileDeveloperTab({
               onClick={() => setDevSectionRaw(section.id)}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
+                "flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium transition-colors whitespace-nowrap border-b-2 -mb-px",
                 isActive
                   ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
@@ -935,16 +954,15 @@ export function ProfileDeveloperTab({
           newlyCreatedKey={newlyCreatedKey}
           showKey={showKey}
           onToggleShowKey={() => setShowKey((v) => !v)}
-          copiedKey={copiedKey}
+          copiedKey={!!copiedKey}
           onCopyKey={handleCopyKey}
           onDismissNewKey={() => {
             setNewlyCreatedKey(null);
             setShowKey(false);
-            setCopiedKey(false);
           }}
           newKeyPanelRef={newKeyPanelRef}
           keyActionPending={keyActionPending}
-          onRequestConfirm={setConfirmAction}
+          onRequestConfirm={requestConfirm}
           formatDate={formatDate}
         />
       )}
@@ -960,7 +978,7 @@ export function ProfileDeveloperTab({
           onAddWebhook={handleAddWebhook}
           testingWebhookId={testingWebhookId}
           onTestWebhook={handleTestWebhook}
-          onRequestConfirm={setConfirmAction}
+          onRequestConfirm={requestConfirm}
           newlyCreatedWebhookSecret={newlyCreatedWebhookSecret}
           onDismissNewWebhookSecret={() => setNewlyCreatedWebhookSecret(null)}
           togglingWebhookId={togglingWebhookId}
@@ -976,7 +994,7 @@ export function ProfileDeveloperTab({
           onSaveWebhookEdit={handleSaveWebhookEdit}
           rotatingWebhookId={rotatingWebhookId}
           onRotateWebhookSecret={(webhook) =>
-            setConfirmAction({
+            requestConfirm({
               kind: "rotate-webhook-secret",
               id: webhook.id,
               label: webhook.name,
@@ -1036,7 +1054,7 @@ export function ProfileDeveloperTab({
           onScheduleDayOfMonthLocalChange={setScheduleDayOfMonthLocal}
           addingSchedule={addingSchedule}
           onAddSchedule={handleAddSchedule}
-          onRequestConfirm={setConfirmAction}
+          onRequestConfirm={requestConfirm}
           scheduleTimestamp={scheduleTimestamp}
           userPlan={planKnown ? effectivePlan : null}
           onToggleSchedule={handleToggleSchedule}
@@ -1051,46 +1069,17 @@ export function ProfileDeveloperTab({
       {/* Every rotate/revoke/delete above opens here instead of firing
           immediately: none of those actions can be undone once the
           request lands. */}
-      <AlertDialog
+      <ConfirmDialog
         open={confirmAction !== null}
-        onOpenChange={(open) => {
-          if (!open && !confirmBusy) setConfirmAction(null);
-        }}
-      >
-        {confirmAction && confirmCopy && (
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{confirmCopy.title}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {confirmCopy.description}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setConfirmAction(null)}
-                disabled={confirmBusy}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant={confirmCopy.destructive ? "destructive" : "default"}
-                onClick={handleConfirmDestructive}
-                disabled={confirmBusy}
-                className="gap-2"
-              >
-                {confirmBusy && (
-                  <Loader2
-                    className="h-4 w-4 animate-spin"
-                    aria-hidden="true"
-                  />
-                )}
-                {confirmCopy.confirmLabel}
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        )}
-      </AlertDialog>
+        danger={confirmCopy?.destructive}
+        busy={confirmBusy}
+        error={confirmError}
+        title={confirmCopy?.title ?? ""}
+        description={confirmCopy?.description ?? ""}
+        confirmLabel={confirmCopy?.confirmLabel ?? "Confirm"}
+        onConfirm={handleConfirmDestructive}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 }
