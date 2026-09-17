@@ -585,6 +585,12 @@ const CHANGELOG: Release[] = [
         category: "admin",
       },
       {
+        icon: Mail,
+        label: "Smaller Email Fixes",
+        desc: "The red Critical tag in finding emails is now easy to read on its dark background. The email that asks you to verify your address uses the same word throughout instead of switching between verify and confirm. The notice about a new API key no longer puts the key's name on your lock screen. Promotional emails show offer codes and bullet lists in the same style as every other email, including in dark mode.",
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

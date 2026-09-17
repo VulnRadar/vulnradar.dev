@@ -1436,3 +1436,38 @@ describe("maskedWebhookEndpoint", () => {
     }
   });
 });
+
+describe("mailtoAddress", () => {
+  it("accepts a bare address and refuses anything a mailto reads as headers", async () => {
+    const { mailtoAddress } = await import("@/lib/email/email");
+    expect(mailtoAddress(" ada@example.com ")).toBe("ada@example.com");
+    expect(mailtoAddress("ada@example.com?bcc=eve@example.org")).toBeNull();
+    expect(mailtoAddress("ada@example.com&cc=eve@example.org")).toBeNull();
+    expect(
+      mailtoAddress("ada@example.com%0D%0ABcc:eve@example.org"),
+    ).toBeNull();
+    expect(mailtoAddress("ada example@example.com")).toBeNull();
+    expect(mailtoAddress("a@b@example.com")).toBeNull();
+    expect(mailtoAddress("ada@localhost")).toBeNull();
+  });
+
+  it("is what the contact emails link, and an unsafe address is not linked", async () => {
+    const { contactEmail, landingContactEmail } =
+      await import("@/lib/email/email");
+    const hostile = "ada@example.com?bcc=eve@example.org";
+    const contact = contactEmail({
+      name: "Ada",
+      email: hostile,
+      subject: "Hi",
+      message: "Hello",
+      category: "general",
+    });
+    const landing = landingContactEmail({ email: hostile, message: "Hello" });
+    for (const html of [contact.html, landing.html]) {
+      expect(html).not.toContain("mailto:ada@example.com?bcc");
+      expect(html).not.toContain("mailto:ada@example.com&amp;");
+    }
+    const ok = landingContactEmail({ email: "ada@example.com", message: "Hi" });
+    expect(ok.html).toContain('href="mailto:ada@example.com"');
+  });
+});

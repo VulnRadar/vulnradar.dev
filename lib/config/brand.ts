@@ -81,6 +81,10 @@ export const BRAND = {
     low: "#2a8ff4",
     info: "#7b899e",
   },
+  // Email only. critical above measures 4.38:1 on surfaceRaised, the panel a
+  // finding list sits in, where every other severity clears 4.5:1. This is the
+  // smallest shift that passes there (4.74:1, and 5.25:1 on surface).
+  severityCriticalOnRaised: "#f05252",
 
   // LIGHT-SURFACE VARIANTS.
   //

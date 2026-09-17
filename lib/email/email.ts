@@ -664,6 +664,27 @@ const CATEGORY_LABELS: Record<string, string> = {
   feedback: "Feedback",
 };
 
+/** Characters a mailto URL would read as structure rather than address. */
+const MAILTO_UNSAFE = `?&#%<>"'(),;:/`;
+
+/**
+ * A submitted address, only if it is a bare local@domain with nothing a mailto
+ * URL would read as more headers. Escaping stops markup injection, but
+ * "you@example.com?bcc=someone@example.org" is valid HTML and a valid mailto,
+ * and the Reply button would have pre-filled the Bcc in the staffer's own
+ * compose window. Anything else renders as text with no link.
+ */
+export function mailtoAddress(raw: string): string | null {
+  const address = raw.trim();
+  const at = address.indexOf("@");
+  if (at < 1 || at !== address.lastIndexOf("@")) return null;
+  if (!address.slice(at + 1).includes(".")) return null;
+  for (const ch of address) {
+    if (ch.charCodeAt(0) <= 32 || MAILTO_UNSAFE.includes(ch)) return null;
+  }
+  return address;
+}
+
 export function contactEmail(input: {
   name: string;
   email: string;
@@ -673,6 +694,7 @@ export function contactEmail(input: {
 }) {
   const name = escapeHtml(input.name);
   const email = escapeHtml(input.email);
+  const replyTo = mailtoAddress(input.email);
   const subject = escapeHtml(input.subject);
   const message = escapeHtml(input.message).replace(/\n/g, "<br />");
   const category =
@@ -689,13 +711,13 @@ export function contactEmail(input: {
         { label: "Name", value: name },
         {
           label: "Email",
-          value: emailLink(`mailto:${email}`, email),
+          value: replyTo ? emailLink(`mailto:${replyTo}`, email) : email,
         },
         { label: "Category", value: category },
         { label: "Subject", value: subject },
       ])}
       ${emailQuote("Message", emailProse(message))}
-      ${emailButton(`mailto:${email}`, `Reply to ${name}`)}
+      ${replyTo ? emailButton(`mailto:${replyTo}`, `Reply to ${name}`) : ""}
     `,
   };
 }
@@ -737,8 +759,8 @@ export function emailVerificationEmail(name: string, verifyLink: string) {
     subject: `Verify your email for ${APP_NAME}`,
     text: `Hi ${name},\n\nConfirm this email address to activate your ${APP_NAME} account:\n${verifyLink}\n\nThe link works for the next 24 hours. If it expires, request a new one from the sign-in page.\n\nIf you didn't create this account, you can ignore this email. Nothing was set up.`,
     html: `
-      ${emailHeading("Confirm your email address")}
-      ${emailLead(`Hi ${safeName}, confirm this is your address and your ${APP_NAME} account is ready to scan.`)}
+      ${emailHeading("Verify your email address")}
+      ${emailLead(`Hi ${safeName}, verify this is your address and your ${APP_NAME} account is ready to scan.`)}
       ${emailButton(verifyLink, "Verify email address")}
       ${emailNote(
         "The link works for the next 24 hours. If it expires, request a new one from the sign-in page.",
@@ -906,6 +928,7 @@ export function staffInviteEmail(
 
 export function landingContactEmail(input: { email: string; message: string }) {
   const email = escapeHtml(input.email);
+  const replyTo = mailtoAddress(input.email);
   const message = escapeHtml(input.message).replace(/\n/g, "<br />");
 
   return {
@@ -918,11 +941,11 @@ export function landingContactEmail(input: { email: string; message: string }) {
       ${emailDetailPanel([
         {
           label: "From",
-          value: emailLink(`mailto:${email}`, email),
+          value: replyTo ? emailLink(`mailto:${replyTo}`, email) : email,
         },
       ])}
       ${emailQuote("Message", emailProse(message))}
-      ${emailButton(`mailto:${email}`, "Reply")}
+      ${replyTo ? emailButton(`mailto:${replyTo}`, "Reply") : ""}
     `,
   };
 }
@@ -1109,7 +1132,9 @@ export function apiKeyCreatedEmail(
 ) {
   const safeName = escapeHtml(keyName);
   return {
-    preheader: `${keyName} (${keyPrefix}...) can now call the API on your behalf.`,
+    // No key name or prefix here: the preheader is what a lock screen shows,
+    // and a name like "prod-payments-writer" says more than it should there.
+    preheader: "A new API key can now call the API on your behalf.",
     subject: `A new API key was created on your ${APP_NAME} account`,
     text: `A new API key "${keyName}" was just added to your ${APP_NAME} account.\n\nKey prefix: ${keyPrefix}...\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't create this key, revoke it from your API settings and email ${SUPPORT_EMAIL}.`,
     html: `
@@ -2097,7 +2122,7 @@ export function adminAccountChangeEmail(input: AdminChangeNotification) {
       ${emailLead(`Hi ${userName}, ${emailStrong(adminName)} changed some details on your ${APP_NAME} account on ${escapeHtml(timestamp)}.`)}
       ${emailPanel(
         "Changes",
-        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${changesHtml}</table>`,
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${changesHtml}</table>`,
       )}
       ${emailParagraph(
         `If any of this looks wrong, reach the team at ${supportLink()}.`,

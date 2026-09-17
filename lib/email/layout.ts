@@ -226,8 +226,11 @@ const ACCENTS: Record<EmailAccent, { light: string; dark: string }> = {
   neutral: { light: BRAND.textMuted, dark: BRAND.textMuted },
 };
 
+/** See BRAND.severityCriticalOnRaised: critical is nudged to pass AA inside panels. */
+const CRITICAL_ON_DARK = BRAND.severityCriticalOnRaised;
+
 const SEVERITIES: Record<EmailSeverity, { light: string; dark: string }> = {
-  critical: { light: BRAND.severity.critical, dark: BRAND.severity.critical },
+  critical: { light: CRITICAL_ON_DARK, dark: CRITICAL_ON_DARK },
   high: { light: BRAND.severity.high, dark: BRAND.severity.high },
   medium: { light: BRAND.severity.medium, dark: BRAND.severity.medium },
   low: { light: BRAND.severity.low, dark: BRAND.severity.low },
@@ -385,6 +388,22 @@ export function emailParagraph(text: string): string {
  * composer's only content block: an admin writes markup, and this gives it the
  * same colour, size and dark-mode behaviour as a real template's prose.
  */
+/**
+ * A plain bulleted list in body-copy styling: the colour, dark-mode class hook
+ * and word breaking every other body block has. The campaign builder
+ * hand-rolled one with none of the three, so it was the only text in the
+ * system dark-mode repainting did not reach.
+ */
+export function emailBulletList(items: string[]): string {
+  if (items.length === 0) return "";
+  return `<ul class="${C.body}" style="margin:0 0 20px 0;padding-left:20px;font-family:${SANS_STACK};color:${PALETTE.textMuted};">${items
+    .map(
+      (item) =>
+        `<li class="${C.body}" style="margin:0 0 8px 0;font-size:15px;line-height:1.65;color:${PALETTE.textMuted};word-break:break-word;">${escapeHtml(item)}</li>`,
+    )
+    .join("")}</ul>`;
+}
+
 export function emailProse(html: string): string {
   return `<div class="${C.body}" style="font-family:${SANS_STACK};font-size:15px;color:${PALETTE.textMuted};line-height:1.65;word-break:break-word;">${html}</div>`;
 }

@@ -144,6 +144,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Each security alert in the admin panel now names the account it concerns, links to that account, and gives the alert a readable name instead of an internal code. The Block user confirmation lists the account being blocked, so nobody is blocked without being named first.
 - [Wrench] **[ADMIN]** **A Tidier, More Predictable Admin Panel**
   A sweep across every admin section. Buttons for viewing and renaming teams and staff are visible without hovering, and deleting a team is no longer the most prominent button in its row. Revoking a staff invite now asks first. Search boxes, table headers, dates and small labels look the same in every section, and no admin text is smaller than 11 pixels. Counts no longer flash zero while a page loads, lists that show only part of their results say so, the broadcast composer no longer moves a field when you pick a recipient, and pop-up messages on phones appear at the top of the screen instead of covering the Contents button.
+- [Mail] **[FIXED]** **Smaller Email Fixes**
+  The red Critical tag in finding emails is now easy to read on its dark background. The email that asks you to verify your address uses the same word throughout instead of switching between verify and confirm. The notice about a new API key no longer puts the key's name on your lock screen. Promotional emails show offer codes and bullet lists in the same style as every other email, including in dark mode.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -2524,6 +2526,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 954
+- **Total changes documented:** 955
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

@@ -39,6 +39,9 @@ import {
   emailNote,
   emailPanel,
   emailQuote,
+  emailBulletList,
+  emailCodeBlock,
+  MONO_STACK,
 } from "@/lib/email/layout";
 
 /**
@@ -112,13 +115,7 @@ function bulletList(raw: string | undefined): string {
     .split("\n")
     .map((line) => line.replace(/^\s*[-*•]\s*/, "").trim())
     .filter((line) => line.length > 0);
-  if (items.length === 0) return "";
-  return `<ul style="margin:0 0 20px 0;padding-left:20px;">${items
-    .map(
-      (item) =>
-        `<li style="margin:0 0 8px 0;font-size:15px;line-height:1.65;">${escapeHtml(item)}</li>`,
-    )
-    .join("")}</ul>`;
+  return emailBulletList(items);
 }
 
 /**
@@ -344,14 +341,7 @@ const PROMOTION_OFFER: CampaignTemplate = {
     return `
       ${emailHeading(fieldValue(this, values, "offer"))}
       ${emailLead(fieldValue(this, values, "why"))}
-      ${
-        code
-          ? emailPanel(
-              "Code",
-              `<p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;letter-spacing:2px;font-weight:600;">${escapeHtml(code)}</p>`,
-            )
-          : ""
-      }
+      ${code ? emailCodeBlock(code) : ""}
       ${emailButton(`${APP_URL}/pricing`, "See the plans")}
       ${emailNote(
         `Ends ${fieldValue(this, values, "expires")}. Plans are month to month and cancel from the billing page, and the free tier keeps working either way.`,
@@ -450,7 +440,7 @@ const TIP_GUIDE: CampaignTemplate = {
         snippet
           ? emailPanel(
               "Example",
-              `<pre style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;">${escapeHtml(snippet)}</pre>`,
+              `<pre style="margin:0;font-family:${MONO_STACK};font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;">${escapeHtml(snippet)}</pre>`,
             )
           : ""
       }

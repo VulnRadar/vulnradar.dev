@@ -103,6 +103,10 @@ export function buildTemplateCorpus(
     { name: "twoFactorEnabled", ...e.twoFactorEnabledEmail(DETAILS) },
     { name: "twoFactorDisabled", ...e.twoFactorDisabledEmail(DETAILS) },
     {
+      name: "twoFactorRecoveryCode",
+      ...e.twoFactorRecoveryCodeEmail("7KQ2-9XFD", "Ada from Support"),
+    },
+    {
       name: "backupCodesRegenerated",
       ...e.backupCodesRegeneratedEmail(DETAILS),
     },
