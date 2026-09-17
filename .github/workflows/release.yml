@@ -150,12 +150,24 @@ jobs:
           git archive "${TAG}" -- extension | tar -x -C "${EXT_DIR}"
           cd "${EXT_DIR}/extension"
           npm ci
-          npm run build:chrome
-          npm run build:firefox
+          # `npm run build`, not build:chrome + build:firefox + a hand-rolled
+          # `zip -r`. The full chain also runs scripts/package.mjs, whose
+          # release gate refuses to ship a build containing sourcemaps, and
+          # scripts/package-source.mjs, which produces the source archive AMO
+          # review asks for (extension/README.md). Building the two targets
+          # and zipping the output by hand skipped both: the gate never ran
+          # against the artifacts actually attached here, and the one archive
+          # a Firefox reviewer asks for was the only release artifact with no
+          # tagged, signed, checksummed provenance -- whoever submitted to AMO
+          # had to build it locally, off whatever their tree happened to be.
+          npm run build
           EXT_VERSION=$(node -p "require('./package.json').version")
           echo "EXT_VERSION=${EXT_VERSION}" >> "$GITHUB_ENV"
-          cd dist-chrome && zip -r "${ARTIFACT_DIR}/vulnradar-chrome-v${EXT_VERSION}.zip" . && cd ..
-          cd dist-firefox && zip -r "${ARTIFACT_DIR}/vulnradar-firefox-v${EXT_VERSION}.zip" . && cd ..
+          # package.mjs and package-source.mjs write into the extension root.
+          mv "vulnradar-chrome-v${EXT_VERSION}.zip" \
+             "vulnradar-firefox-v${EXT_VERSION}.zip" \
+             "vulnradar-extension-v${EXT_VERSION}-source.zip" \
+             "${ARTIFACT_DIR}/"
 
       - name: Pack the CLI tarball
         # The release already ships the extension; the CLI was the one
@@ -348,6 +360,7 @@ jobs:
             "vulnradar-${TAG}.tar.gz.cert" \
             "vulnradar-chrome-v${EXT_VERSION}.zip" \
             "vulnradar-firefox-v${EXT_VERSION}.zip" \
+            "vulnradar-extension-v${EXT_VERSION}-source.zip" \
             "vulnradar-extension-v${EXT_VERSION}.sbom.cdx.json" \
             "vulnradar-cli-v${CLI_VERSION}.tgz" \
             "sha256sums.txt" \
