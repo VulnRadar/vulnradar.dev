@@ -55,6 +55,12 @@ export const ACTION_META: Record<string, ActionMeta> = {
     icon: "key",
     cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
   },
+  revoke_api_key: {
+    label: "Revoked API Key",
+    verb: "revoked an API key for",
+    icon: "key",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
+  },
   reset_2fa: {
     label: "Reset 2FA",
     verb: "reset two-factor authentication for",
@@ -300,6 +306,7 @@ export const ACTION_LABELS: Record<string, string> = {
   reset_password: "Password reset email sent to the user.",
   revoke_sessions: "All sessions revoked.",
   revoke_api_keys: "All API keys revoked.",
+  revoke_api_key: "API key revoked.",
   disable: "Account disabled.",
   enable: "Account re-enabled.",
   delete: "User deleted.",
@@ -376,6 +383,7 @@ export const PASSWORD_GATED_ACTIONS = new Set([
   "delete_account",
   "revoke_sessions",
   "revoke_api_keys",
+  "revoke_api_key",
   "reset_2fa",
   // Hands whoever reads the target's mailbox a working second factor, so it
   // sits with the account-mutation set rather than with the harmless resets.

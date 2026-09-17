@@ -3232,6 +3232,36 @@ export function UserDetailPanel({
                               ? formatRelativeTime(new Date(key.last_used_at))
                               : "Never used"}
                           </span>
+                          {/* Revoke THIS key. The danger zone's "Revoke API
+                              Keys" revokes every key the account holds, which
+                              was the only answer this panel had to "one of my
+                              keys leaked": it took down every other
+                              integration with it. Same permission, same
+                              password prompt, one key. */}
+                          {hasStaffPermission(
+                            callerRole,
+                            STAFF_PERMISSIONS.REVOKE_USER_API_KEYS,
+                          ) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                              disabled={isLoading("revoke_api_key")}
+                              title={`Revoke ${key.name || "this key"}`}
+                              aria-label={`Revoke API key ${key.key_prefix}`}
+                              onClick={() =>
+                                queueSupportAction(
+                                  "revoke_api_key",
+                                  "Revoke API Key",
+                                  `Invalidate the key ${key.key_prefix}... for ${u.name || u.email}. Their other keys keep working.`,
+                                  "destructive",
+                                  { keyId: key.id },
+                                )
+                              }
+                            >
+                              <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+                            </Button>
+                          )}
                         </div>
                       ))}
                   </div>

@@ -635,6 +635,7 @@ export async function PATCH(request: NextRequest) {
     userId: rawUserId,
     role: newRole,
     badgeId: rawBadgeId,
+    keyId: rawKeyId,
     name: badgeName,
     displayName,
     color: badgeColor,
@@ -663,6 +664,7 @@ export async function PATCH(request: NextRequest) {
     userId = numId;
   }
   const badgeId = rawBadgeId != null ? Number(rawBadgeId) : undefined;
+  const keyId = rawKeyId != null ? Number(rawKeyId) : undefined;
 
   if (!userId || !action) {
     return NextResponse.json(
@@ -1082,6 +1084,58 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayloadSess,
+        targetUser.unsubscribe_token,
+      );
+
+      return NextResponse.json({ success: true });
+    }
+
+    // One key, not all of them. The bulk case below was the only thing this
+    // panel could do about a leaked key, so answering "rotate the one that
+    // leaked" meant taking down every other integration the account runs.
+    case "revoke_api_key": {
+      if (!Number.isInteger(keyId) || (keyId as number) < 1) {
+        return NextResponse.json({ error: "Invalid keyId" }, { status: 400 });
+      }
+      // Scoped by user_id as well as id: a key id from another account cannot
+      // be revoked through this user's panel, and an already-revoked key
+      // returns nothing rather than being logged and emailed a second time.
+      const revokedKey = await pool.query(
+        `UPDATE api_keys SET revoked_at = NOW()
+          WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+          RETURNING key_prefix`,
+        [keyId, userId],
+      );
+      if (revokedKey.rowCount === 0) {
+        return NextResponse.json(
+          { error: "That API key is not active on this account." },
+          { status: 404 },
+        );
+      }
+      const keyPrefix = revokedKey.rows[0].key_prefix as string;
+      await logAction(
+        session.userId,
+        userId,
+        "revoke_api_key",
+        `Revoked API key ${keyPrefix} for ${targetUser.email}`,
+        ip,
+      );
+
+      const [adminNameKey, userNameKey] = await Promise.all([
+        getAdminName(session.userId),
+        getUserName(userId),
+      ]);
+      await sendNotificationIfEnabled(
+        notifyUser,
+        targetUser.email,
+        adminAccountChangeEmail({
+          userName: userNameKey,
+          adminName: adminNameKey,
+          changes: [
+            { field: "API Key", oldValue: keyPrefix, newValue: "Revoked" },
+          ],
+          timestamp: new Date(),
+        }),
         targetUser.unsubscribe_token,
       );
 

@@ -35,6 +35,7 @@ export const AUDIT_FILTER_CATEGORIES = [
       "reset_password",
       "revoke_sessions",
       "revoke_api_keys",
+      "revoke_api_key",
       "reset_2fa",
       "issue_2fa_recovery_code",
       "force_logout_all",

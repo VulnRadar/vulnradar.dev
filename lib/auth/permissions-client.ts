@@ -546,6 +546,21 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     dangerous: true,
     requiresConfirmation: true,
   },
+  // The same grant, aimed at one key. "One key leaked, rotate it" is the
+  // support request this panel actually gets, and revoke_api_keys was the
+  // only answer it had: every other integration the account runs went down
+  // with the leaked one. Same permission and the same password gate, since
+  // it destroys the same kind of material.
+  {
+    id: "revoke_api_key",
+    label: "Revoke API Key",
+    description: "Revoke one key",
+    permission: STAFF_PERMISSIONS.REVOKE_USER_API_KEYS,
+    category: "security",
+    icon: "Key",
+    dangerous: true,
+    requiresConfirmation: true,
+  },
 
   // Badge Management
   {

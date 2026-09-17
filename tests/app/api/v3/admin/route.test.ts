@@ -658,6 +658,7 @@ describe("PATCH /api/v3/admin — authorization", () => {
     ["create_badge", "CREATE_BADGE"],
     ["delete_badge", "DELETE_BADGE"],
     ["revoke_api_keys", "REVOKE_USER_API_KEYS"],
+    ["revoke_api_key", "REVOKE_USER_API_KEYS"],
     ["delete_webhooks", "DELETE_USER_WEBHOOKS"],
     ["delete_schedules", "DELETE_USER_SCHEDULES"],
     ["clear_rate_limits", "MANAGE_RATE_LIMITS"],
@@ -1370,6 +1371,94 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
   // user's rate limits was a client-visible success that changed nothing.
   // This test would have failed against the old implementation (no
   // DELETE FROM rate_limits call exists at all).
+  /**
+   * revoke_api_keys revokes every key the account holds, and it was the only
+   * thing this panel could do about one leaked key. The per-key action has to
+   * be scoped by user_id as well as id, or a key id belonging to someone else
+   * would be revocable through this user's panel.
+   */
+  it("revoke_api_key: revokes that one key, scoped to the account that owns it", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ key_prefix: "vr_live_ab12" }],
+      rowCount: 1,
+    });
+    const res = await PATCH(
+      patchRequest({
+        action: "revoke_api_key",
+        userId: 5,
+        keyId: 7,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+    const updateCall = mockQuery.mock.calls.find(
+      (c) =>
+        String(c[0]).includes("UPDATE api_keys") &&
+        String(c[0]).includes("user_id = $2"),
+    );
+    expect(updateCall).toBeDefined();
+    expect(updateCall?.[1]).toEqual([7, 5]);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "revoke_api_key",
+      expect.stringContaining("vr_live_ab12"),
+      "127.0.0.1",
+    );
+  }, 20000);
+
+  it("revoke_api_key: a key that is not this account's active key is a 404 with nothing logged", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const res = await PATCH(
+      patchRequest({
+        action: "revoke_api_key",
+        userId: 5,
+        keyId: 999,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("revoke_api_key: refuses a missing or malformed key id before touching the table", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "revoke_api_key",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(
+      mockQuery.mock.calls.some((c) =>
+        String(c[0]).includes("UPDATE api_keys"),
+      ),
+    ).toBe(false);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+
   it("clear_rate_limits: actually deletes matching rate_limits rows and reports the real count in the audit log", async () => {
     queueRole("admin");
     queueTarget({

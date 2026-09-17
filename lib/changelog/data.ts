@@ -573,6 +573,12 @@ const CHANGELOG: Release[] = [
         category: "extension",
       },
       {
+        icon: Key,
+        label: "Support Can Revoke One API Key Instead of All of Them",
+        desc: "If you told us one of your API keys had leaked, the only thing our support tools could do was revoke every key on your account, taking down every other integration you run along with the leaked one. Each key in the admin panel now has its own revoke control, which invalidates that key and leaves the rest working. It needs the same permission and the same password confirmation as before, and you are emailed about it the same way.",
+        category: "admin",
+      },
+      {
         icon: Shield,
         label: "Security Alerts Show Which Account They Are About",
         desc: "Each security alert in the admin panel now names the account it concerns, links to that account, and gives the alert a readable name instead of an internal code. The Block user confirmation lists the account being blocked, so nobody is blocked without being named first.",
