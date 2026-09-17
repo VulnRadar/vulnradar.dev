@@ -1,12 +1,17 @@
 /**
- * Centralized Animation & Transition Configuration
- * ================================================
- * All animations, transitions, and motion settings are defined here.
- * Import these constants to ensure consistency across all pages.
+ * Shared transition, toggle, focus and backdrop recipes.
  *
  * Usage:
- *   import { transitions, animations } from "@/lib/ui/animations"
+ *   import { transitions, focus } from "@/lib/ui/animations"
  *   <div className={transitions.default}>...</div>
+ *
+ * Every entry below is imported by at least one call site, and that is the
+ * rule this file is kept to. It used to hold 45 constants of which 15 were
+ * imported: a keyframe-class alias group nothing but one component used, three
+ * dialog backdrops no dialog reads, and ten transition presets, several of
+ * them the long `transition-all` this release removed from controls. A recipe
+ * nobody imports is not neutral, it is a suggestion, and these suggested the
+ * thing we had just finished undoing.
  *
  * One constraint worth knowing before adding to this file: tailwind.config.mjs
  * does NOT scan lib/, so a Tailwind class whose only appearance in the repo is
@@ -24,27 +29,20 @@
  */
 
 // STANDARD TRANSITIONS (combine duration + easing)
-
+//
+// Four entries, because four are imported. This was a fourteen-entry menu
+// with ten entries nothing had ever imported, and a menu is not free: half of
+// them were `transition-all` at 200-500ms, which is the recipe this release
+// spent commits removing from controls (a press scale and a hover slide that
+// made buttons move), sitting here ready to be reached for again under names
+// like `interactive` and `hover` that read like the right answer.
+//
+// Add one back when a call site needs it, not in advance.
 export const transitions = {
-  // Basic transitions
-  none: "",
-  instant: "transition-all duration-75 ease-out",
   fast: "transition-all duration-150 ease-out",
   default: "transition-all duration-200 ease-out",
-  normal: "transition-all duration-300 ease-out",
-  slow: "transition-all duration-500 ease-out",
-
-  // Specific property transitions
   colors: "transition-colors duration-200 ease-out",
   opacity: "transition-opacity duration-200 ease-out",
-  transform: "transition-transform duration-200 ease-out",
-  shadow: "transition-shadow duration-200 ease-out",
-
-  // Combined common patterns
-  interactive: "transition-all duration-150 ease-out", // buttons, links
-  hover: "transition-all duration-200 ease-out", // hover states
-  modal: "transition-all duration-300 ease-out", // modals, sheets
-  page: "transition-all duration-500 ease-out", // page transitions
 } as const;
 
 // TOGGLES / SEGMENTED CONTROLS
@@ -99,14 +97,6 @@ export const toggles = {
   indicator:
     "transition-transform duration-100 ease-out motion-reduce:transition-none",
   /**
-   * A caret that rotates when the section it heads expands. Slower than the
-   * rest on purpose: this one is not a confirmation, it is the visual half of
-   * a panel opening, and it should keep pace with the panel rather than the
-   * click.
-   */
-  chevron:
-    "transition-transform duration-150 ease-out motion-reduce:transition-none",
-  /**
    * Entry for a mark that is mounted rather than restyled when it turns on.
    * This is the tick a user is actually waiting for after a click, so it is
    * the one place a delay is most noticeable: kept to 100ms to match
@@ -117,47 +107,26 @@ export const toggles = {
 
 // FOCUS STATES
 
+// `within` and `none` are not here for the same reason as the transitions
+// above: nothing imported them. `ring` is imported 31 times and is the
+// focus-visible recipe the radius ladder in CLAUDE.md refers to.
 export const focus = {
   ring: "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-  within: "focus-within:ring-2 focus-within:ring-ring",
-  none: "focus:outline-hidden focus-visible:outline-hidden",
 } as const;
 
-// ANIMATION CLASSES (for keyframe animations)
-
-export const animations = {
-  // Fade
-  fadeIn: "animate-fade-in",
-  fadeOut: "animate-fade-out",
-
-  // Slide
-  slideUp: "animate-slide-up",
-  slideDown: "animate-slide-down",
-  slideLeft: "animate-slide-left",
-  slideRight: "animate-slide-right",
-
-  // Scale
-  scaleIn: "animate-scale-in",
-  scaleOut: "animate-scale-out",
-
-  // Special
-  pulse: "animate-pulse",
-  spin: "animate-spin",
-  bounce: "animate-bounce",
-  ping: "animate-ping",
-
-  // Custom
-  shimmer: "animate-shimmer",
-  glow: "animate-glow",
-  float: "animate-float",
-} as const;
+// The `animations` group is gone. It aliased fifteen keyframe classes behind
+// names of its own (`animations.spin` for `animate-spin`), one of which was
+// ever imported, while every other call site in the app writes the Tailwind
+// class literally. An alias used once is a second name for the same thing,
+// and this file's own header explains why a class that lives only in lib/ is
+// the riskier of the two names.
 
 // BACKDROP / OVERLAY
-
+//
+// The three overlay entries (`modal`, `modalSubtle`, `sheet`) had no
+// importers: every dialog in the app takes its overlay from
+// components/ui/dialog.tsx, which is where a change to it has to happen.
 export const backdrops = {
-  modal: "bg-black/80 backdrop-blur-md",
-  modalSubtle: "bg-black/60 backdrop-blur-xs",
-  sheet: "bg-black/50 backdrop-blur-xs",
   header:
     "bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60",
   card: "bg-card/95 backdrop-blur-xs",

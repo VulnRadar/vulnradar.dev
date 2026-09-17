@@ -17,7 +17,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn, safeHref } from "@/lib/ui/utils";
-import { animations } from "@/lib/ui/animations";
 import { API, ROUTES } from "@/lib/config/client-constants";
 import { formatAge, formatRefreshAvailability } from "@/lib/ui/relative-time";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -365,7 +364,7 @@ export function SubdomainDiscovery({
           "rounded-xl border border-border bg-card overflow-hidden",
           // Skipped the loading card (fast/cached path): fade the result
           // in instead of a hard cut so it still reads as deliberate.
-          !showProgressUi && animations.fadeIn,
+          !showProgressUi && "animate-fade-in",
         )}
       >
         <button
