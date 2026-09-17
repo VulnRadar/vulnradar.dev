@@ -128,6 +128,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Buttons used to shrink slightly when pressed, and a few arrows and badges grew or slid when you hovered over them. It looked jittery, especially on buttons that open a menu. Buttons now just change colour, and nothing jumps around under your cursor.
 - [Bug] **[FIXED]** **Icons Lined Up in the Broadcast Composer**
   The icons on the "Start from a template" and "Fill from the newest changelog entry" buttons in the admin broadcast composer sat above the text instead of beside it. They are centred now.
+- [Bug] **[SELFHOST]** **Restoring a Backup No Longer Fails at Random**
+  Restoring a database backup on a self-hosted install could stop with a message saying the file was not made by VulnRadar, even though it was. It depended on timing: if the database was a little slow to respond, the first part of the file was skipped. Restores now read the whole file every time. If one failed for you before, running it again with this version will work.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -1298,6 +1300,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 946
+- **Total changes documented:** 947
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

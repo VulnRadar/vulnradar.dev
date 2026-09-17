@@ -537,6 +537,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: Bug,
+        label: "Restoring a Backup No Longer Fails at Random",
+        desc: "Restoring a database backup on a self-hosted install could stop with a message saying the file was not made by VulnRadar, even though it was. It depended on timing: if the database was a little slow to respond, the first part of the file was skipped. Restores now read the whole file every time. If one failed for you before, running it again with this version will work.",
+        category: "selfhost",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

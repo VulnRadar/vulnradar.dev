@@ -81,7 +81,7 @@
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream";
 import { createGunzip } from "node:zlib";
-import { createInterface } from "node:readline";
+import { StringDecoder } from "node:string_decoder";
 import {
   getTableNames,
   getPrimaryKeys,
@@ -1262,24 +1262,59 @@ export function detectBackupFormat(gzPath) {
 /**
  * Line-by-line reader over a gzipped dump. Never buffers the whole file.
  *
+ * An async generator over the gunzip stream, not a readline.Interface. The
+ * Interface starts pulling the file the moment it is created and emits each
+ * line whether or not anything is iterating yet, so a caller that awaits
+ * anything first loses those lines. restoreSqlDump awaits BEGIN first, and
+ * whenever gunzip produced its first 16KB before the database answered, the
+ * restore started reading halfway through a CREATE TABLE and refused the file
+ * as "not produced by VulnRadar". A generator does nothing until the first
+ * next(), and iterating a stream is pull-based, so nothing is read ahead of
+ * the consumer and nothing can be dropped.
+ *
+ * Lines split on LF, CRLF and a lone CR, which is what readline with
+ * crlfDelay: Infinity did, so a dump that passed through a Windows editor
+ * reads the same.
+ *
  * pipeline() and not `createReadStream(gzPath).pipe(createGunzip())`, because
  * pipe() does not forward the SOURCE's errors to the destination. A file that
  * cannot be opened or read part way through (ENOENT, EACCES, EMFILE under a
  * loaded test run, a disk error) would leave the caller with a gunzip that
  * never errors and never ends: the reader yields whatever arrived before the
  * failure and stops, and the restore then reports whatever that prefix looked
- * like instead of the read error. Reading nothing is the worst of those, since
- * it is indistinguishable from a file that simply is not one of ours.
+ * like instead of the read error. pipeline destroys the gunzip with the
+ * source's error, which the for-await below raises, so the caller sees the
+ * real cause.
  *
- * pipeline destroys the gunzip with the source's error, which readline then
- * raises on the iterator, so the caller sees the real cause.
+ * @param {string} gzPath
+ * @returns {AsyncGenerator<string, void, undefined>}
  */
-export function readDumpLines(gzPath) {
+export async function* readDumpLines(gzPath) {
   const gunzip = createGunzip();
   // The error reaches the caller through gunzip; the callback exists only
   // because pipeline requires one.
   pipeline(createReadStream(gzPath), gunzip, () => {});
-  return createInterface({ input: gunzip, crlfDelay: Infinity });
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
+  for await (const chunk of gunzip) {
+    pending += decoder.write(chunk);
+    let from = 0;
+    for (;;) {
+      const lf = pending.indexOf("\n", from);
+      const cr = pending.indexOf("\r", from);
+      const at = cr !== -1 && (lf === -1 || cr < lf) ? cr : lf;
+      if (at === -1) break;
+      // A CR at the very end may be the first half of a CRLF split across two
+      // chunks; wait for the next chunk to find out.
+      if (at === cr && at === pending.length - 1) break;
+      yield pending.slice(from, at);
+      from = at === cr && pending[at + 1] === "\n" ? at + 2 : at + 1;
+    }
+    pending = pending.slice(from);
+  }
+  pending += decoder.end();
+  if (pending.endsWith("\r")) pending = pending.slice(0, -1);
+  if (pending !== "") yield pending;
 }
 
 /**
