@@ -70,6 +70,9 @@ export function CookieNotice() {
       ref={barRef}
       role="region"
       aria-label="Cookie notice"
+      // Everything fixed to the bottom already adds --vr-cookie-h, so the chat
+      // launcher's collision probe must not also climb over this bar.
+      data-publishes-bottom-offset="--vr-cookie-h"
       // z-60, above the z-50 floating save bars, so the two never tie on
       // paint order; they offset above it via --vr-cookie-h.
       className="fixed inset-x-0 bottom-0 z-60 border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80"

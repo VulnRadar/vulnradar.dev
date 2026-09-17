@@ -762,6 +762,11 @@ export function ChatWidget() {
         }
         if (!node || node === document.body) continue;
         if (node === el || node.contains(el)) continue;
+        // A bar that publishes its height as a CSS variable is one the
+        // launcher's bottom already adds (--vr-cookie-h). Measured before
+        // that variable landed, the cookie notice read as a bar to clear and
+        // the launcher was lifted by its height twice, parked mid-screen.
+        if ((node as HTMLElement).dataset.publishesBottomOffset) continue;
         const nr = node.getBoundingClientRect();
         // Only a bar sitting along the bottom can collide with a
         // bottom-anchored launcher; a fixed header or a full-screen scrim
@@ -781,6 +786,12 @@ export function ChatWidget() {
     schedule();
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
+    // The bottom offsets live in <html>'s style (--vr-cookie-h), which a body
+    // subtree observer never sees change.
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["style"],
+    });
     window.addEventListener("resize", schedule);
     return () => {
       observer.disconnect();
