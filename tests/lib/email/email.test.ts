@@ -795,9 +795,9 @@ describe("high-stakes templates", () => {
   });
 
   describe("email2FACodeEmail", () => {
-    it("carries the verification code in the subject and both bodies", () => {
+    it("carries the verification code in both bodies, never the subject", () => {
       const result = email.email2FACodeEmail("482913");
-      expect(result.subject).toContain("482913");
+      expect(result.subject).not.toContain("482913");
       expect(result.text).toContain("482913");
       expect(result.html).toContain("482913");
       expect(result.text).toContain("expires in 10 minutes");
@@ -980,13 +980,15 @@ describe("every template meets the same bar", () => {
   // two templates whose subject IS a one-time code must not repeat it there.
   // A blanket "no six-digit run" rule would be wrong: a credit receipt says
   // "500000 AI analysis tokens" and that is not a secret.
-  it("keeps a one-time code out of the preheader", async () => {
+  // Subject and preheader are what a lock screen, an inbox list and mail
+  // search show without the message being opened.
+  it("keeps a one-time code out of the subject and the preheader", async () => {
     const email = await loadEmail();
     const code = email.email2FACodeEmail("418246", 10);
-    expect(code.subject).toContain("418246");
+    expect(code.subject).not.toContain("418246");
     expect(code.preheader).not.toContain("418246");
     const billing = email.billingVerificationCodeEmail("730914", 10);
-    expect(billing.subject).toContain("730914");
+    expect(billing.subject).not.toContain("730914");
     expect(billing.preheader).not.toContain("730914");
   });
 
@@ -1398,5 +1400,39 @@ describe("stripHtmlTags", () => {
     const started = performance.now();
     expect(stripHtmlTags(input)).toBe(input);
     expect(performance.now() - started).toBeLessThan(200);
+  });
+});
+
+describe("maskedWebhookEndpoint", () => {
+  it("keeps a webhook URL recognisable without printing its secret", async () => {
+    const { maskedWebhookEndpoint } = await import("@/lib/email/email");
+    expect(
+      maskedWebhookEndpoint(
+        "https://discord.com/api/webhooks/1234567/abcDEFsecret",
+      ),
+    ).toBe("discord.com/api/webhooks/…");
+    expect(
+      maskedWebhookEndpoint("https://hooks.slack.com/services/T0/B0/xyzSECRET"),
+    ).toBe("hooks.slack.com/services/T0/…");
+    expect(maskedWebhookEndpoint("https://example.com/hook?token=s3cret")).toBe(
+      "example.com/…",
+    );
+    expect(maskedWebhookEndpoint("not a url")).toBe("(unreadable URL)");
+  });
+
+  it("is what the webhook emails print, in both parts", async () => {
+    const { webhookCreatedEmail, webhookDeliveryFailedEmail } =
+      await import("@/lib/email/email");
+    const url = "https://discord.com/api/webhooks/1234567/abcDEFsecret";
+    const details = { ipAddress: "203.0.113.9", userAgent: "Mozilla/5.0" };
+    const created = webhookCreatedEmail("Alerts", url, "discord", details);
+    const failed = webhookDeliveryFailedEmail(url, {
+      firstStatus: 500,
+      retryStatus: null,
+      manageUrl: "https://vulnradar.dev/profile",
+    });
+    for (const part of [created.html, created.text, failed.html, failed.text]) {
+      expect(part).not.toContain("abcDEFsecret");
+    }
   });
 });

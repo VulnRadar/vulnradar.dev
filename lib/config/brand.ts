@@ -34,7 +34,10 @@ export const BRAND = {
   // Mirrors --foreground / --muted-foreground and steps below it.
   text: "#f1f5f9",
   textMuted: "#9aa6b8",
-  textFaint: "#68758a",
+  // #68758a measured 4.14:1 on the canvas and 3.53:1 on a raised panel,
+  // under AA, and it carries real content in email: detail-row labels, the
+  // footer and the "paste this link" line. 4.78:1 on the raised panel.
+  textFaint: "#7f8b9e",
   textDim: "#4a5568",
 
   // Status tints for callouts: a dark, low-saturation background paired with a

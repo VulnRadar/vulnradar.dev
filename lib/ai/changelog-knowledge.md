@@ -118,6 +118,10 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Filtering your scan history and moving to page 2 remembered the page but not the filters, so reloading or sharing the link showed page 2 of everything. The search, tag, severity, date and sort choices are now kept in the address too.
 - [Layout] **[FIXED]** **Small Visual Fixes Across the Product**
   The pricing page showed visitors who were not signed in a greyed-out Current Plan button on the free plan instead of a way to sign up. The scanned web address at the top of a finished scan was smaller on the dashboard and in history than on shared reports, and all four now match. The support chat button could float in the middle of the screen on a first visit. Warning notices, such as the one saying a scanned page redirected, were almost invisible in the light theme and now stand out as they do in the dark theme.
+- [Lock] **[SECURITY]** **Emails No Longer Show Codes or Webhook Secrets**
+  Sign-in and billing code emails put the code itself in the subject line, which shows on a locked phone's notifications and in the inbox list. The code is now only inside the message. Emails about webhooks printed the full webhook address, and for Discord, Slack and most other services that address works as a password for posting to your channel; they now show only enough of it to recognise which webhook is meant.
+- [Mail] **[IMPROVED]** **Easier-to-Read Emails**
+  Small grey text in emails, such as the labels next to details, the footer and the line offering a link to copy if the button does not work, was too faint to read comfortably and is now brighter. The main button in every email now matches the buttons in the app, with dark text on light blue that is much easier to read than the white text it had before. Emails about a deleted scheduled scan or a changed team role now say what to do if the change was not expected, like the other notices already did.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -2498,6 +2502,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 941
+- **Total changes documented:** 943
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

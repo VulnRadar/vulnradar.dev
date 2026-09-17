@@ -508,6 +508,18 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Lock,
+        label: "Emails No Longer Show Codes or Webhook Secrets",
+        desc: "Sign-in and billing code emails put the code itself in the subject line, which shows on a locked phone's notifications and in the inbox list. The code is now only inside the message. Emails about webhooks printed the full webhook address, and for Discord, Slack and most other services that address works as a password for posting to your channel; they now show only enough of it to recognise which webhook is meant.",
+        category: "security",
+      },
+      {
+        icon: Mail,
+        label: "Easier-to-Read Emails",
+        desc: "Small grey text in emails, such as the labels next to details, the footer and the line offering a link to copy if the button does not work, was too faint to read comfortably and is now brighter. The main button in every email now matches the buttons in the app, with dark text on light blue that is much easier to read than the white text it had before. Emails about a deleted scheduled scan or a changed team role now say what to do if the change was not expected, like the other notices already did.",
+        category: "improved",
+      },
+      {
+        icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",
         category: "engine",

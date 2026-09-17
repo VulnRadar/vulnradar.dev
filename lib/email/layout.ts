@@ -155,8 +155,12 @@ const PALETTE = {
   text: BRAND.text,
   textMuted: BRAND.textMuted,
   textFaint: BRAND.textFaint,
-  primary: BRAND.primary,
-  onPrimary: BRAND.onPrimary,
+  // The button is the app's own primary button: --primary (#60a5fa) under
+  // near-black text, 7.6:1. It was white on #3b82f6 (3.68:1) and, for the
+  // "bad" accent, white on #fca5a5 (1.9:1), both under AA for 15px text.
+  button: BRAND.primaryLight,
+  buttonBad: BRAND.dangerLight,
+  onButton: BRAND.bg,
   primaryText: BRAND.primaryLight,
   success: BRAND.successLight,
   successBg: BRAND.successBg,
@@ -295,7 +299,7 @@ function darkRules(prefix: string): string {
     // The quote rule is the one edge that has to stay visible on its own,
     // with no fill behind it, so it takes the stronger of the two.
     `${p("v-qr")}{border-color:${BRAND.borderStrong}!important}`,
-    `${p(C.button)}{background-color:${BRAND.primary}!important;color:${BRAND.onPrimary}!important}`,
+    `${p(C.button)}{background-color:${BRAND.primaryLight}!important;color:${BRAND.bg}!important}`,
     `${p("v-tint-ok")}{background-color:${BRAND.successBg}!important}`,
     `${p("v-tint-bad")}{background-color:${BRAND.dangerBg}!important}`,
     accentRules,
@@ -463,7 +467,7 @@ export function emailButton(
   label: string,
   accent: "brand" | "bad" = "brand",
 ): string {
-  const bg = accent === "bad" ? PALETTE.danger : PALETTE.primary;
+  const bg = accent === "bad" ? PALETTE.buttonBad : PALETTE.button;
   // The dark override belongs on the cell and the label, which are the two
   // things that actually paint, and only on the brand button: the danger red
   // reads correctly on both grounds and does not want repainting. The wrapper
@@ -477,14 +481,14 @@ export function emailButton(
       <!--[if mso]>
       <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${safeHref}" style="height:46px;v-text-anchor:middle;width:${vmlWidth}px;" arcsize="14%" stroke="f" fillcolor="${bg}">
         <w:anchorlock/>
-        <center style="color:${PALETTE.onPrimary};font-family:${SANS_STACK};font-size:15px;font-weight:600;">${label}</center>
+        <center style="color:${PALETTE.onButton};font-family:${SANS_STACK};font-size:15px;font-weight:600;">${label}</center>
       </v:roundrect>
       <![endif]-->
       <!--[if !mso]><!-->
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="v-btnw" style="border-collapse:separate;">
         <tr>
           <td bgcolor="${bg}"${cls} style="border-radius:${R.control};background-color:${bg};">
-            <a href="${safeHref}"${cls} style="display:inline-block;padding:13px 28px;background-color:${bg};color:${PALETTE.onPrimary};font-family:${SANS_STACK};font-size:15px;font-weight:600;line-height:1.2;text-decoration:none;border-radius:${R.control};">${label}</a>
+            <a href="${safeHref}"${cls} style="display:inline-block;padding:13px 28px;background-color:${bg};color:${PALETTE.onButton};font-family:${SANS_STACK};font-size:15px;font-weight:600;line-height:1.2;text-decoration:none;border-radius:${R.control};">${label}</a>
           </td>
         </tr>
       </table>

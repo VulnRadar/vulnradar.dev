@@ -1159,6 +1159,34 @@ export function apiKeyDeletedEmail(
 }
 
 // Webhook emails
+
+/**
+ * A webhook endpoint as its owner can recognise it without being able to use
+ * it: host and at most the first two path segments, the rest elided, no
+ * query string.
+ *
+ * For Discord, Slack and most incoming webhooks the URL IS the credential, so
+ * printing it whole put a working secret into an inbox, where mail is
+ * forwarded, archived and indexed. webhookSecretRotatedEmail already never
+ * prints the signing secret for the same reason.
+ */
+export function maskedWebhookEndpoint(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return "(unreadable URL)";
+  }
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  const shown = segments.slice(
+    0,
+    Math.min(2, Math.max(0, segments.length - 1)),
+  );
+  const hidden = segments.length > shown.length || parsed.search !== "";
+  const path = shown.length > 0 ? `/${shown.join("/")}` : "";
+  return `${parsed.host}${path}${hidden ? "/\u2026" : ""}`;
+}
+
 export function webhookCreatedEmail(
   webhookName: string,
   webhookUrl: string,
@@ -1170,14 +1198,18 @@ export function webhookCreatedEmail(
   return {
     preheader: `${webhookName} (${webhookType}) will receive scan events from now on.`,
     subject: `A webhook was created on your ${APP_NAME} account`,
-    text: `A new ${webhookType} webhook "${webhookName}" was just added to your ${APP_NAME} account.\n\nEndpoint: ${webhookUrl}\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't create this webhook, delete it from your webhook settings.`,
+    text: `A new ${webhookType} webhook "${webhookName}" was just added to your ${APP_NAME} account.\n\nEndpoint: ${maskedWebhookEndpoint(webhookUrl)}\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't create this webhook, delete it from your webhook settings.`,
     html: `
       ${emailHeading("A webhook was created")}
       ${emailLead(`A new webhook was just added to your ${APP_NAME} account.`)}
       ${emailDetailPanel([
         { label: "Webhook name", value: safeName },
         { label: "Type", value: safeType, accent: "brand" },
-        { label: "Endpoint", value: escapeHtml(webhookUrl), mono: true },
+        {
+          label: "Endpoint",
+          value: escapeHtml(maskedWebhookEndpoint(webhookUrl)),
+          mono: true,
+        },
         ...securityDetailRows(details),
       ])}
       ${emailNote(
@@ -1227,18 +1259,19 @@ export function webhookDeliveryFailedEmail(
   webhookUrl: string,
   details: WebhookFailureDetails,
 ) {
-  const safeUrl = escapeHtml(webhookUrl);
+  const endpoint = maskedWebhookEndpoint(webhookUrl);
+  const safeUrl = escapeHtml(endpoint);
   const firstLabel = statusLabel(details.firstStatus);
   const retryLabel = statusLabel(details.retryStatus);
   return {
     preheader: `${firstLabel} on the first attempt, ${retryLabel} on the retry.`,
     subject: `${APP_NAME} couldn't deliver a scan to your webhook`,
-    text: `A scan finished, but ${APP_NAME} couldn't deliver the result to your webhook. Both the initial attempt and the retry failed.\n\nWebhook URL: ${webhookUrl}\nFirst attempt: ${firstLabel}\nRetry: ${retryLabel}\n\nThe webhook is still active, so future scans will keep trying to deliver to it. Check that your endpoint is reachable and returns a 2xx status, then manage it at ${details.manageUrl}`,
+    text: `A scan finished, but ${APP_NAME} couldn't deliver the result to your webhook. Both the initial attempt and the retry failed.\n\nWebhook: ${endpoint}\nFirst attempt: ${firstLabel}\nRetry: ${retryLabel}\n\nThe webhook is still active, so future scans will keep trying to deliver to it. Check that your endpoint is reachable and returns a 2xx status, then manage it at ${details.manageUrl}`,
     html: `
       ${emailHeading("Webhook delivery failed")}
       ${emailLead(`A scan finished, but ${APP_NAME} couldn't deliver the result to your webhook. Both the initial attempt and the retry failed.`)}
       ${emailDetailPanel([
-        { label: "Webhook URL", value: safeUrl, mono: true },
+        { label: "Webhook", value: safeUrl, mono: true },
         {
           label: "First attempt",
           value: firstLabel,
@@ -1302,7 +1335,7 @@ export function scheduleDeletedEmail(
   return {
     preheader: `No more automatic scans of ${url}.`,
     subject: `Scheduled scan deleted for ${hostOf(url)}`,
-    text: `The recurring scan of ${url} was just removed from your ${APP_NAME} account.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}`,
+    text: `The recurring scan of ${url} was just removed from your ${APP_NAME} account.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't remove it, review your account activity and change your password.`,
     html: `
       ${emailHeading("Scheduled scan deleted")}
       ${emailLead(`A recurring scan was just removed from your ${APP_NAME} account.`)}
@@ -1316,6 +1349,10 @@ export function scheduleDeletedEmail(
         { label: "Status", value: "Deleted", accent: "bad" },
         ...securityDetailRows(details),
       ])}
+      ${emailNote(
+        "If you didn't remove it, review your account activity and change your password.",
+        "warn",
+      )}
     `,
   };
 }
@@ -1536,7 +1573,10 @@ export function email2FACodeEmail(
   const window = minutesCopy(expiryMinutes);
   return {
     preheader: `The code expires in ${window}. We will never ask you to share it.`,
-    subject: `${code} is your ${APP_NAME} sign-in code`,
+    // Never the code itself: a subject is on the lock screen, in the inbox
+    // list and in search, which is why derivePreheader already keeps codes
+    // out of the preheader.
+    subject: `Your ${APP_NAME} sign-in code`,
     text: `Your ${APP_NAME} sign-in code is ${code}. It expires in ${window}.\n\nDon't share this code with anyone. ${APP_NAME} will never ask you for it. If you didn't try to sign in, change your password.`,
     html: `
       ${emailHeading("Your sign-in code")}
@@ -1557,7 +1597,7 @@ export function billingVerificationCodeEmail(
   const window = minutesCopy(expiryMinutes);
   return {
     preheader: `The code expires in ${window} and unlocks billing once.`,
-    subject: `${code} is your ${APP_NAME} billing access code`,
+    subject: `Your ${APP_NAME} billing access code`,
     text: `Your ${APP_NAME} billing access code is ${code}. It expires in ${window}.\n\nYou'll need a fresh code each time you open billing. Don't share it with anyone. We ask for this so payment details stay locked even if someone reaches your account, since only your email can unlock them.\n\nIf you didn't request this, secure your account.`,
     html: `
       ${emailHeading("Billing access code")}
@@ -2356,6 +2396,7 @@ export function teamRoleChangedEmail(
       ])}
       ${emailParagraph("What you can do in the team may have changed with it.")}
       ${emailButton(`${APP_URL}/teams`, "View the team")}
+      ${emailNote("If you think this is a mistake, ask the team's owner.")}
     `,
   };
 }
