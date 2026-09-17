@@ -3257,8 +3257,8 @@ An HTTPS page contains a form that submits data to an HTTP endpoint.
 **Why it matters:** When a secure page sends form data to an insecure endpoint, all submitted data travels unencrypted.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/319.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Change all form action URLs to use HTTPS.
@@ -3282,8 +3282,7 @@ Vulnerable library functions that could allow modification of Object.prototype.
 **Why it matters:** Vulnerable functions like Lodash merge/set or jQuery.extend with deep merging can be exploited via __proto__ keys.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/1321.html
 
 **Fix:**
 - Update vulnerable libraries: Lodash to 4.17.12+, jQuery to 3.4.0+.
@@ -3310,8 +3309,8 @@ Code patterns that execute system commands, potentially vulnerable to command in
 **Why it matters:** Executing system commands with user-controlled input is extremely dangerous.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/78.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Never pass user input to system command functions.
@@ -3366,8 +3365,8 @@ File operations with user-controlled paths that could allow directory traversal.
 **Why it matters:** Path traversal occurs when user input is used to construct file paths without validation.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/22.html
+- https://owasp.org/Top10/A01_2021-Broken_Access_Control/
 
 **Fix:**
 - Never use user input directly in file paths.
@@ -3392,8 +3391,8 @@ Authentication security issues that could compromise user sessions.
 **Why it matters:** Secure authentication requires proper cookie flags, token handling in headers, and avoiding Basic authentication.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/287.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Use secure session cookies with HttpOnly, Secure, SameSite=Strict.
@@ -3414,8 +3413,9 @@ Deserialization operations on potentially untrusted data.
 **Why it matters:** Deserializing untrusted data can instantiate arbitrary objects or execute code.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/502.html
+- https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
 
 **Fix:**
 - Only deserialize data from trusted sources.
@@ -3438,8 +3438,8 @@ Direct eval() calls found in inline scripts.
 **Why it matters:** eval() interprets strings as code, creating injection risks.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/94.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Replace eval() with JSON.parse() or safe alternatives.
@@ -3469,7 +3469,8 @@ Multiple innerHTML assignments detected.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/79.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Use textContent for text, or sanitize HTML before assignment.
@@ -3497,7 +3498,8 @@ outerHTML assignment detected.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/79.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Avoid outerHTML with user input, use safe DOM methods.
@@ -3523,7 +3525,8 @@ document.write() call detected.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/79.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Replace with appendChild or insertAdjacentHTML with sanitization.
@@ -3549,7 +3552,8 @@ insertAdjacentHTML() usage detected.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/79.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Sanitize input or use insertAdjacentText for text-only insertion.
@@ -3577,7 +3581,8 @@ setAttribute used with event handlers or URL attributes.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/79.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Use property assignment or sanitize values before setAttribute.
@@ -3605,8 +3610,8 @@ Path traversal sequences in URL parameters.
 **Why it matters:** ../sequences can escape the web root to read sensitive files.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/22.html
+- https://owasp.org/Top10/A01_2021-Broken_Access_Control/
 
 **Fix:**
 - Validate paths, use basename(), never concatenate user input.
@@ -3635,8 +3640,8 @@ Template syntax detected in output.
 **Why it matters:** Unescaped template expressions can execute arbitrary code.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/1336.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Escape all user input before template rendering.
@@ -3662,8 +3667,8 @@ Command-related parameter names detected.
 **Why it matters:** Parameters named cmd, exec, etc. may be passed to shell.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/78.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Never pass user input to shell commands, use parameterized APIs.
@@ -3687,8 +3692,8 @@ new Function() usage detected.
 **Why it matters:** Function constructor creates functions from strings.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/94.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Avoid Function constructor, use direct function definitions.
@@ -3748,8 +3753,8 @@ Sensitive data patterns being stored in localStorage.
 **Why it matters:** localStorage is not encrypted and accessible via XSS.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/312.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Use secure, HttpOnly cookies for sensitive data.
@@ -3775,8 +3780,9 @@ Authentication tokens stored in sessionStorage.
 **Why it matters:** sessionStorage is accessible via JavaScript.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/312.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Store tokens in HttpOnly cookies.
@@ -3801,8 +3807,8 @@ IndexedDB usage with potentially sensitive data.
 **Why it matters:** IndexedDB can store large amounts of data.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/312.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Encrypt sensitive data before storing in IndexedDB.
@@ -3833,8 +3839,8 @@ window.name used for data storage.
 **Why it matters:** window.name is shared across origins in some cases.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/312.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Clear window.name, use proper storage APIs.
@@ -3862,8 +3868,7 @@ Service worker registration detected.
 **Why it matters:** Service workers are powerful and persistent.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers
 
 **Fix:**
 - Ensure SW is properly secured and scoped.
@@ -3891,8 +3896,9 @@ JavaScript debugger statement found.
 **Why it matters:** Debugger statements should be removed.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/489.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove debugger statements in production.
@@ -3913,8 +3919,7 @@ Hard-coded axios.defaults.baseURL = 'http://localhost:3000' will leak into produ
 **Risk:** Move API base URLs to environment variables
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://axios-http.com/docs/config_defaults
 
 **Fix:**
 - Move API base URLs to environment variables
@@ -3941,8 +3946,8 @@ setInterval('code', 1000) is implicitly eval(). Pass a function reference instea
 **Risk:** Use setInterval(function() {}, 1000) instead of setInterval('...', 1000)
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/94.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Use setInterval(function() {}, 1000) instead of setInterval('...', 1000)
@@ -3966,8 +3971,7 @@ Object.assign(target, userInput) with a user-supplied source (the second argumen
 **Why it matters:** Object.assign(target, userInput) with a user-supplied source can pollute Object.prototype or let the caller overwrite fields on target that were never meant to be user-settable.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/1321.html
 
 **Fix:**
 - Never pass unsanitized user input as the Object.assign source (second argument); use an allowlist or spread with key filtering instead
@@ -3991,8 +3995,7 @@ Spreading user input into a globals object can leak fields like __proto__.
 **Risk:** Sanitize keys; reject any that contain __proto__, constructor, prototype
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/1321.html
 
 **Fix:**
 - Sanitize keys; reject any that contain __proto__, constructor, prototype
@@ -4016,8 +4019,9 @@ document.cookie = 'sid=...'; sets a cookie without HttpOnly, allowing JS access.
 **Risk:** Set HttpOnly; if the cookie must be readable by JS, prefer localStorage
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#security
+- https://cwe.mitre.org/data/definitions/1004.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set HttpOnly; if the cookie must be readable by JS, prefer localStorage
@@ -4038,8 +4042,9 @@ Cookies without SameSite are sent on cross-site requests (CSRF).
 **Risk:** Add SameSite=Lax or SameSite=Strict
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#security
+- https://cwe.mitre.org/data/definitions/1275.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add SameSite=Lax or SameSite=Strict
@@ -4062,8 +4067,9 @@ window.open(url, '_blank') without 'noopener' lets the new tab navigate the sour
 **Risk:** Use window.open(url, '_blank', 'noopener,noreferrer')
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/noopener
+- https://cwe.mitre.org/data/definitions/1022.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Use window.open(url, '_blank', 'noopener,noreferrer')
@@ -4088,7 +4094,8 @@ $el.html(userInput) executes arbitrary HTML. Always escape or use .text().
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/79.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Use .text() or escape user input via a DOMPurify-like library
@@ -4113,8 +4120,7 @@ $(document).on('click', sel, fn) can be triggered by an attacker-controlled sele
 **Risk:** Bind handlers to specific elements, not document
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://api.jquery.com/category/ajax/global-ajax-event-handlers/
 
 **Fix:**
 - Bind handlers to specific elements, not document
@@ -4136,8 +4142,8 @@ localStorage is not encrypted and is readable by any JS that runs in the same or
 **Risk:** Don't store PII, tokens, or session identifiers in localStorage
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/312.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Don't store PII, tokens, or session identifiers in localStorage
@@ -4162,8 +4168,7 @@ Service workers can intercept any request on the same origin. CSP without worker
 **Risk:** Add worker-src 'self'; restrict script-src to your origin
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers
 
 **Fix:**
 - Add worker-src 'self'; restrict script-src to your origin
@@ -4186,8 +4191,9 @@ jQuery.cookie() sets cookies via JS and bypasses HttpOnly-equivalent protections
 **Risk:** Use the server's Set-Cookie header instead
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#security
+- https://cwe.mitre.org/data/definitions/614.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Use the server's Set-Cookie header instead
@@ -4212,8 +4218,7 @@ Stripe publishable keys (pk_live_*) are designed to be client-side. Not a secret
 **Risk:** This is informational
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://docs.stripe.com/keys
 
 **Fix:**
 - This is informational
@@ -4237,7 +4242,8 @@ Setting element.innerHTML via a ref after hydration bypasses React's rendering.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/79.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Use React state to update DOM instead of mutating via refs
@@ -4266,7 +4272,8 @@ AngularJS (1.x) template injection: user-controlled values rendered via {{ }} or
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/79.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Migrate off AngularJS 1.x; never bind user data into ng-bind-html-unsafe
@@ -5721,8 +5728,9 @@ The code uses deprecated or broken cryptographic algorithms (MD5, SHA1, DES, RC4
 **Why it matters:** Deprecated algorithms like MD5 and SHA1 are vulnerable to collision attacks. Use SHA-256 or higher for hashing, AES-256-GCM for encryption, and bcrypt/argon2 for password hashing.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/327.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Replace MD5/SHA1 with SHA-256 or SHA-3 for integrity checks
@@ -5760,8 +5768,9 @@ String concatenation or template literals used to build SQL queries with what ap
 **Why it matters:** Directly concatenating user input into SQL queries allows injection of arbitrary SQL syntax. Always use parameterized queries or prepared statements.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
 - https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/89.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Replace string concatenation with parameterized queries ($1, $2 placeholders)
@@ -5793,8 +5802,9 @@ Code fetches URLs that may be derived from user-controlled input, potentially en
 **Why it matters:** When user-supplied URLs are passed directly to server-side HTTP clients, attackers can redirect requests to internal infrastructure.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/918.html
+- https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/
 
 **Fix:**
 - Allowlist permitted hosts and validate the URL before fetching
@@ -5822,8 +5832,9 @@ XML is being parsed without explicit external entity restrictions.
 **Why it matters:** XML parsers that allow SYSTEM/PUBLIC entities can be abused to load external content at the server level.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/611.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set processEntities: false in fast-xml-parser
@@ -5850,8 +5861,8 @@ LDAP filter strings may be constructed from user input without proper escaping.
 **Why it matters:** LDAP filter special characters (* \ ( ) NUL) must be escaped before including user input in filters.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/90.html
+- https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
 - Escape all LDAP filter special characters from user input
@@ -5882,8 +5893,9 @@ A password, passwd or pwd assignment in the source holds a literal value that lo
 **Why it matters:** Credentials in source code become part of version history and distribution artifacts.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Move credentials to environment variables
@@ -5912,8 +5924,9 @@ Vendor default usernames or passwords detected in configuration or source.
 **Why it matters:** Software shipped with default credentials must have them changed before first exposure to any network.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/1392.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Change all default credentials immediately on installation
@@ -5940,8 +5953,9 @@ API keys, tokens, or secret strings are embedded directly in the source code.
 **Why it matters:** Secrets in source are nearly impossible to fully remove once committed: use environment variables and rotate immediately.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Remove the secret from source code and git history (BFG Repo Cleaner)
@@ -6067,8 +6081,9 @@ postMessage() is called with "*" as the targetOrigin, sending the message to any
 **Why it matters:** When a postMessage call uses "*", any window open in the browser (including cross-origin malicious pages) can receive the message payload.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#security_concerns
+- https://cwe.mitre.org/data/definitions/346.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Replace "*" with the exact expected target origin (e.g., "https://partner.example.com")
@@ -6929,8 +6944,9 @@ The page contains URL parameters or JavaScript patterns commonly associated with
 **Why it matters:** Open redirect vulnerabilities occur when a web application takes a user-supplied URL parameter and redirects to it without validation.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/601.html
+- https://owasp.org/Top10/A01_2021-Broken_Access_Control/
 
 **Fix:**
 - Validate all redirect URLs against an allowlist.
@@ -6954,8 +6970,9 @@ The response contains patterns indicating directory listing is enabled.
 **Why it matters:** Directory listing allows anyone to see all files in a directory when no index file is present.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/548.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Disable directory listing in your web server configuration.
@@ -6980,8 +6997,9 @@ The page references files commonly associated with sensitive configuration or de
 **Why it matters:** Sensitive files like .env, .git/, and configuration files should never be referenced in public pages.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove all references to sensitive files from public HTML.
@@ -7003,8 +7021,8 @@ The page references JavaScript libraries that are either below a version with kn
 **Why it matters:** Using outdated client-side libraries exposes your application to known attack vectors.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/1104.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
 
 **Fix:**
 - Update all JavaScript libraries to their latest stable versions.
@@ -7028,8 +7046,9 @@ The response body looks like a robots.txt file. This check only confirms the fil
 **Why it matters:** Robots.txt files are publicly accessible. Manually review the Disallow entries for sensitive-looking paths (admin, backup, internal, etc.); a well-formed robots.txt with only public paths is not itself a finding.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Manually review the listed Disallow paths for anything sensitive.
@@ -7052,8 +7071,7 @@ The site exposes CMS or technology stack details that aid attacker reconnaissanc
 **Why it matters:** CMS fingerprinting reveals the underlying technology, version, and sometimes plugin information.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/08-Fingerprint_Web_Application_Framework
 
 **Fix:**
 - Remove or obscure the generator meta tag.
@@ -7130,8 +7148,8 @@ HTML comments containing potentially sensitive information detected.
 **Why it matters:** Developers often leave TODO notes, debug information, or temporary credentials in HTML comments.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/615.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove all HTML comments containing sensitive information.
@@ -7153,8 +7171,9 @@ Debug/error indicators that reveal internal application details detected.
 **Why it matters:** Debug mode and verbose error messages are invaluable during development but catastrophic in production.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/489.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Disable debug mode in production.
@@ -7183,8 +7202,8 @@ Iframes loading content over HTTP on an HTTPS page.
 **Why it matters:** Browsers display your page as secure but an HTTP iframe can be intercepted and modified by network attackers.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/319.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Change all iframe src attributes to use HTTPS.
@@ -7205,8 +7224,9 @@ Tokens or session identifiers exposed in the HTML source.
 **Why it matters:** Authentication tokens should never appear in HTML source. They can be captured by browser extensions, cached by CDNs, or logged by proxies.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/522.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Store tokens in HTTP-only Secure cookies.
@@ -7227,8 +7247,7 @@ Sensitive input fields without proper autocomplete attributes.
 **Why it matters:** The autocomplete attribute tells browsers how to handle form autofill.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete
 
 **Fix:**
 - Add autocomplete="new-password" for registration fields.
@@ -7250,8 +7269,7 @@ Forms with target="_blank" can be abused for phishing via reverse tabnabbing.
 **Why it matters:** Forms that open results in new tabs create the same reverse tabnabbing risk as anchor links.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/noopener
 
 **Fix:**
 - Remove target="_blank" from forms unless necessary.
@@ -7274,8 +7292,9 @@ Meta refresh redirects can be abused for open redirect attacks and phishing.
 **Why it matters:** Meta refresh tags automatically redirect users after a delay. Unlike server-side redirects, they execute in the browser.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#http-equiv
+- https://cwe.mitre.org/data/definitions/601.html
+- https://owasp.org/Top10/A01_2021-Broken_Access_Control/
 
 **Fix:**
 - Replace meta refresh with server-side 301/302 redirects.
@@ -7296,8 +7315,7 @@ The page uses a <base> tag with an HTTP URL, making all relative URLs resolve in
 **Why it matters:** The HTML <base> tag sets the base URL for all relative URLs in the document.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
 
 **Fix:**
 - Change the <base> tag to use HTTPS.
@@ -7318,8 +7336,9 @@ References to potentially sensitive endpoints in the page source.
 **Why it matters:** Even if endpoints are protected, exposing their paths gives attackers specific targets.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove references to internal/admin endpoints from client-side code.
@@ -7365,8 +7384,8 @@ A JSON Web Token was found embedded in a URL within the page HTML.
 **Why it matters:** JWTs in URLs persist in numerous locations, creating many avenues for token theft.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/598.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Transmit tokens in HTTP headers (Authorization: Bearer) instead of URLs.
@@ -7390,8 +7409,8 @@ Meta tags that expose sensitive or unnecessary information.
 **Why it matters:** Generator tags reveal exact software versions with known CVEs. CSRF tokens in meta tags are accessible to any script.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove generator meta tags in production.
@@ -7412,8 +7431,7 @@ Open Graph meta tags contain suspicious content that could indicate injection.
 **Why it matters:** Some preview renderers process OG values in ways that can be exploited.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://ogp.me/
 
 **Fix:**
 - Sanitize all Open Graph tag content.
@@ -7435,8 +7453,7 @@ A service worker is registered without an explicit narrow 'scope' option, so it 
 **Why it matters:** Most sites intentionally register their service worker with the default (whole-origin) scope -- this is fine for the common case of a single-page app or PWA that wants offline support everywhere. Consider a narrower scope only if the service worker should not control unrelated subpaths (e.g. a docs subsection, a third-party-embeddable widget path).
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers
 
 **Fix:**
 - If the service worker is only meant to control a specific section of the site, pass an explicit scope: navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).
@@ -7460,8 +7477,9 @@ JavaScript accesses window.opener properties, exploitable for reverse tabnabbing
 **Why it matters:** When a page is opened via window.open() or target='_blank', it may have a reference to the opening window.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/noopener
+- https://cwe.mitre.org/data/definitions/1022.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add rel='noopener noreferrer' to external links.
@@ -7482,8 +7500,9 @@ Weak or broken cryptographic algorithms in client-side JavaScript.
 **Why it matters:** Cryptographic algorithms become weak as computing power increases. MD5 collisions can be generated in seconds.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/327.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Replace MD5/SHA-1 with SHA-256 or SHA-3.
@@ -7509,8 +7528,9 @@ Detailed error messages visible in the page HTML.
 **Why it matters:** Verbose error messages reveal the technology stack and internal structure.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/209.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Configure production to display generic error pages.
@@ -7534,8 +7554,9 @@ Server-side XML parsing library usage found. Ensure external entity processing i
 **Why it matters:** Server-side XML parsers can be vulnerable to XXE if not properly configured.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/611.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Disable external entity processing.
@@ -7556,8 +7577,9 @@ User-controlled input may be used in server-side HTTP requests.
 **Why it matters:** SSRF occurs when an application fetches a remote resource without validating the user-supplied URL.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/918.html
+- https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/
 
 **Fix:**
 - Validate URLs against an allowlist.
@@ -7580,8 +7602,8 @@ The page's client-side bundle contains a reference to a GraphQL introspection qu
 **Why it matters:** Client-side GraphQL tooling routinely ships introspection query text as part of normal operation (schema-aware caching, fragment matching, dev tooling support). Treat this as a prompt to verify server-side introspection is disabled in production, not as confirmation that it is enabled.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Verify whether the server actually accepts an introspection query in production (send a __schema query directly to the GraphQL endpoint).
@@ -7603,8 +7625,7 @@ Password input fields are missing a name attribute, hindering form submission an
 **Why it matters:** Password managers rely on the input's name (and autocomplete) attributes to correctly identify and autofill fields. Missing autocomplete alone is covered separately by the autocomplete-sensitive check.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
 
 **Fix:**
 - Add a name attribute to all password fields.
@@ -7624,8 +7645,9 @@ POST form(s) found without apparent CSRF token fields. Note: This check skips fr
 **Why it matters:** CSRF attacks forge requests from authenticated users. CSRF tokens ensure form submissions originate from your site.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/352.html
+- https://owasp.org/Top10/A01_2021-Broken_Access_Control/
 
 **Fix:**
 - Add a hidden CSRF token field to all POST forms.
@@ -7648,8 +7670,7 @@ A <form action="tel:..."> opens the device's phone dialer instead of submitting 
 **Why it matters:** A <form action="tel:..."> triggers the device dialer on submit. It's usually intended for a plain "call us" link, not an actual form with fields, and should be a <a href="tel:..."> instead.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form
 
 **Fix:**
 - Use a plain <a href="tel:+1..."> link for click-to-call instead of wrapping it in a <form>.
@@ -7676,8 +7697,7 @@ The viewport meta tag disables user scaling (user-scalable=no or maximum-scale=1
 **Why it matters:** Disabling zoom creates an accessibility barrier for users who need to enlarge content.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://www.w3.org/WAI/WCAG21/Understanding/resize-text.html
 
 **Fix:**
 - Remove user-scalable=no from viewport meta.
@@ -7698,8 +7718,9 @@ Multiple distinct IP addresses found hardcoded in page source (excluding localho
 **Why it matters:** IP addresses in client-facing code suggest hardcoded infrastructure references that should use DNS or environment variables.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Replace hardcoded IPs with domain names.
@@ -7745,8 +7766,7 @@ The page connects to a large number of distinct third-party domains (10+), incre
 **Why it matters:** Every external domain you load resources from expands your attack surface. A compromise of any CDN, analytics, or advertising domain can lead to script injection.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
 
 **Fix:**
 - Audit all third-party connections and remove unnecessary ones.
@@ -7768,8 +7788,8 @@ A //# sourceMappingURL comment pointing to a .map file was found in the page's J
 **Why it matters:** Bundlers emit a sourceMappingURL comment by default. The comment alone isn't a vulnerability -- the risk depends on whether the referenced .map file is actually served publicly.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/540.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Verify whether the referenced .map file is publicly fetchable; if not, this is informational only.
@@ -7799,8 +7819,8 @@ Reference to AWS metadata endpoint (169.254.169.254) detected.
 **Why it matters:** The AWS metadata service provides instance credentials.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/918.html
+- https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/
 
 **Fix:**
 - Block metadata access from applications; use IMDSv2.
@@ -7830,8 +7850,9 @@ async function safeFetch(url: string) {
 **Why it matters:** If .git is accessible, attackers can reconstruct your entire repository.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/538.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Block access to .git directory in web server config.
@@ -7859,8 +7880,9 @@ References to .env file found in page source.
 **Why it matters:** .env files should never be web-accessible.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/538.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Block .env access in web server config.
@@ -7887,8 +7909,9 @@ phpinfo() page or reference detected.
 **Why it matters:** This diagnostic page should never be accessible in production.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove phpinfo() files from production.
@@ -7919,8 +7942,9 @@ A Discord incoming webhook URL was found in page source.
 **Why it matters:** Discord webhook URLs are bearer credentials -- possession of the URL is sufficient to post to the channel, with no further authentication.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Delete and regenerate the webhook in Discord's Integrations settings.
@@ -7955,8 +7979,9 @@ The page references Swagger or OpenAPI documentation, which is often published i
 **Why it matters:** Reachable documentation is not a vulnerability by itself. Confirm the spec lists only operations you intend to expose. The OpenAPI content checks in the API category look inside the spec for the concrete problems: weak or missing security schemes, server URLs that leak internal hosts, and plain-HTTP servers.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Restrict API docs access to authenticated users.
@@ -7983,8 +8008,8 @@ Spring Boot Actuator endpoints found in page source.
 **Why it matters:** Spring Boot Actuator provides operational endpoints that should be secured.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Restrict actuator endpoints to internal access only.
@@ -8014,7 +8039,6 @@ Multiple inline event handler attributes found.
 **Why it matters:** Inline event handlers are equivalent to inline scripts for XSS purposes.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
@@ -8040,8 +8064,8 @@ document.domain assignment found.
 **Why it matters:** document.domain is deprecated and weakens isolation.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/346.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Use postMessage() for cross-subdomain communication.
@@ -8071,8 +8095,9 @@ postMessage called with * origin target.
 **Why it matters:** Using * as target origin means any page can receive the message.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#security_concerns
+- https://cwe.mitre.org/data/definitions/346.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Specify the exact target origin instead of *.
@@ -8101,8 +8126,8 @@ JSON Web Token found in HTML source.
 **Why it matters:** JWTs in page source can be stolen by XSS attacks.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/598.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Never embed JWTs in HTML; use HttpOnly cookies.
@@ -8128,8 +8153,9 @@ Basic authentication credentials (Base64) found.
 **Why it matters:** Basic auth headers encode credentials in Base64 which is not encryption.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Remove hardcoded credentials from page source.
@@ -8157,8 +8183,9 @@ An S3 object URL in the page source points at something that looks like it was n
 **Why it matters:** Exposed bucket names can be tested for misconfigured permissions. Only the sensitive-looking object paths are reported, and each keyword has to be a whole path segment or a real file extension rather than a substring, so /assets/config.json and private-beta-invite.png do not count.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Use CloudFront or a CDN in front of S3 buckets.
@@ -8185,8 +8212,9 @@ Firebase configuration object found in page source.
 **Why it matters:** Firebase config is semi-public but should be paired with security rules.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Ensure Firestore/RTDB security rules are properly configured.
@@ -8216,8 +8244,8 @@ Form with password field uses GET method.
 **Why it matters:** GET requests encode form data in the URL query string.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/598.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Change form method to POST for all forms with sensitive data.
@@ -8244,8 +8272,9 @@ Meta referrer tag set to an unsafe value.
 **Why it matters:** unsafe-url sends the complete URL to all destinations.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Use strict-origin-when-cross-origin or no-referrer.
@@ -8271,8 +8300,9 @@ A session identifier (session_id, sid, PHPSESSID, JSESSIONID, or ASP.NET_Session
 **Why it matters:** Session identifiers belong exclusively in HttpOnly cookies. A session ID that also appears as a URL parameter is exposed everywhere URLs are recorded, and enables session fixation if the server accepts an attacker-supplied ID.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/598.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Never pass session identifiers as URL query parameters.
@@ -8300,8 +8330,9 @@ Password parameter found in URL.
 **Why it matters:** GET parameters appear in URL and are logged everywhere.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/598.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Use POST for all forms with passwords.
@@ -8328,8 +8359,9 @@ Password field allows very short passwords.
 **Why it matters:** Short passwords are vulnerable to brute force attacks.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/521.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Require minimum 8-12 characters for passwords.
@@ -8358,8 +8390,9 @@ Remember-me token exposed in URL.
 **Why it matters:** Remember-me tokens should be in cookies, not URLs.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/598.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Store remember-me tokens in secure, HttpOnly cookies.
@@ -8390,8 +8423,8 @@ OAuth authorization URL without state parameter.
 **Why it matters:** State parameter prevents cross-site request forgery in OAuth.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/352.html
+- https://owasp.org/Top10/A01_2021-Broken_Access_Control/
 
 **Fix:**
 - Always include a cryptographically random state parameter.
@@ -8432,8 +8465,9 @@ The page links to, loads, or submits a form to a debug, profiler or trace path o
 **Why it matters:** Debug pages may show configs, stack traces, environment.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/489.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove or restrict debug endpoints in production.
@@ -8465,8 +8499,8 @@ The scanned URL's path suggests an admin or management panel (e.g. /admin/, /adm
 **Why it matters:** Knowing admin URLs helps attackers target them.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Manually verify this endpoint requires authentication.
@@ -8495,8 +8529,8 @@ Error message reveals email existence.
 **Why it matters:** Different messages for valid/invalid emails enable enumeration.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/204.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Use generic messages like 'If this email exists...'
@@ -8527,8 +8561,7 @@ CDN-hosted scripts without local fallback.
 **Why it matters:** SRI helps but local fallback ensures availability.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script
 
 **Fix:**
 - Add onerror fallback to local copy for critical scripts.
@@ -8557,8 +8590,8 @@ jQuery version may have known vulnerabilities.
 **Why it matters:** jQuery < 3.5.0 has known security issues.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/1104.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
 
 **Fix:**
 - Update to latest jQuery version.
@@ -8583,8 +8616,8 @@ End-of-life AngularJS framework detected.
 **Why it matters:** AngularJS reached EOL Dec 2021, migrate to Angular.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/1104.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
 
 **Fix:**
 - Migrate to Angular (2+) or another modern framework.
@@ -8608,8 +8641,8 @@ Outdated Prototype.js library detected.
 **Why it matters:** Prototype.js is no longer maintained.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/1104.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
 
 **Fix:**
 - Remove Prototype.js, use modern alternatives.
@@ -8634,8 +8667,8 @@ Outdated MooTools library detected.
 **Why it matters:** MooTools has limited maintenance.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/1104.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
 
 **Fix:**
 - Migrate to a modern, maintained framework.
@@ -8660,8 +8693,7 @@ document.cookie accesses detected near session/auth-related keywords (token, jwt
 **Why it matters:** HttpOnly cookies prevent JavaScript access.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#security
 
 **Fix:**
 - Use HttpOnly flag for sensitive cookies.
@@ -8690,8 +8722,8 @@ A Luhn-valid number carrying a card-network prefix appears in the page source ne
 **Why it matters:** Card numbers should never appear in HTML. The detection requires three things together: a card-network prefix and length, a passing Luhn checksum, and payment vocabulary within about 120 characters. Published processor test cards are excluded, and so is a card-shaped window carved out of a longer run of separated digit groups.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Never display full card numbers, mask or tokenize.
@@ -8720,8 +8752,8 @@ Social Security Number pattern in content.
 **Why it matters:** SSNs should never appear in page content.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Mask SSNs, never display in full.
@@ -8749,8 +8781,8 @@ Many phone numbers found in page source.
 **Why it matters:** Bulk phone numbers may indicate data exposure.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Review if phone numbers should be displayed.
@@ -8780,8 +8812,9 @@ Bearer token found in page source.
 **Why it matters:** Bearer tokens grant API access.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/522.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Never embed tokens in HTML, use secure storage.
@@ -8806,8 +8839,9 @@ API key found in URL parameter.
 **Why it matters:** API keys in URLs are exposed in many places.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/598.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Pass API keys in headers instead of URLs.
@@ -8836,8 +8870,9 @@ AWS access key pattern found in source.
 **Why it matters:** AWS keys grant access to cloud resources.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Rotate exposed credentials immediately.
@@ -8865,8 +8900,9 @@ Private key pattern found in page.
 **Why it matters:** Private keys should never be in HTML.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Rotate keys, investigate how they were exposed.
@@ -8892,8 +8928,9 @@ A Stripe secret key (sk_live_ or sk_test_) was found in the response body. Publi
 **Why it matters:** sk_live_ and sk_test_ keys are server-only credentials and must never reach the browser. The publishable key (pk_live_/pk_test_) is the one Stripe.js, Checkout, and Elements are meant to use in client-side code, and it is not reported by this check.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://docs.stripe.com/keys
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Roll the exposed secret key in the Stripe dashboard immediately, then review the account's recent API activity for anything you did not initiate.
@@ -8922,8 +8959,9 @@ A Twilio Account SID pattern was found in the page. The Account SID functions li
 **Why it matters:** Twilio Account SIDs are routinely displayed for reference (client-side SDK setup, webhook configuration pages). Only the Auth Token or an API Key Secret is a real credential.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Confirm no Auth Token or API Key Secret is exposed alongside this SID; rotate immediately if one is found.
@@ -8950,8 +8988,9 @@ SendGrid API key pattern found.
 **Why it matters:** SendGrid keys allow email sending.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Rotate API key immediately.
@@ -8975,8 +9014,9 @@ Slack webhook URL found in source.
 **Why it matters:** Anyone with webhook URL can post messages.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Rotate webhook URL, keep it server-side.
@@ -9000,8 +9040,9 @@ GitHub personal access token found.
 **Why it matters:** GitHub tokens grant repo access.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Revoke token immediately, use fine-grained tokens.
@@ -9026,8 +9067,9 @@ Google API key found in source.
 **Why it matters:** Unrestricted Google keys can be abused.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Restrict key to specific APIs and referrers.
@@ -9053,8 +9095,9 @@ Mailchimp API key pattern found.
 **Why it matters:** Mailchimp keys grant full account access.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Regenerate API key immediately.
@@ -9078,8 +9121,9 @@ Heroku API key pattern found.
 **Why it matters:** Heroku keys allow app deployment and deletion.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Regenerate API key immediately.
@@ -9105,8 +9149,9 @@ NPM authentication token found.
 **Why it matters:** NPM tokens allow package publishing.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Revoke token, publish with 2FA.
@@ -9136,8 +9181,9 @@ Docker Hub credentials found.
 **Why it matters:** Docker tokens allow image push/pull.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Regenerate token immediately.
@@ -9162,8 +9208,9 @@ A raw PHP, .NET, Django, MySQL, or PostgreSQL error message was found in the res
 **Why it matters:** Uncaught framework exceptions and raw database errors expose internal implementation details that should never reach an end user.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/209.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Use custom error pages, log errors server-side.
@@ -9192,8 +9239,9 @@ NoSQL/MongoDB error found in response.
 **Why it matters:** NoSQL errors aid injection attacks.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/209.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Use custom error pages, handle errors gracefully.
@@ -9219,8 +9267,9 @@ LDAP error message in response.
 **Why it matters:** LDAP errors may expose user enumeration.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/209.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Return generic error messages.
@@ -9246,8 +9295,9 @@ XML parser error in response.
 **Why it matters:** XML errors can indicate parser misconfiguration.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/209.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Handle XML errors gracefully.
@@ -9273,8 +9323,7 @@ API returns JSON array as top-level response. This check only inspects response 
 **Why it matters:** Older browsers could include JSON in script tags and override the Array constructor to read its contents cross-origin.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/AJAX_Security_Cheat_Sheet.html
 
 **Fix:**
 - Wrap array in object, or use CORS properly.
@@ -9305,8 +9354,7 @@ JSONP callback parameter found.
 **Why it matters:** JSONP bypasses same-origin policy by design.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/AJAX_Security_Cheat_Sheet.html
 
 **Fix:**
 - Replace JSONP with CORS for cross-origin requests.
@@ -9363,8 +9411,7 @@ Iframe using srcdoc for inline HTML.
 **Why it matters:** srcdoc allows HTML directly in iframe.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#srcdoc
 
 **Fix:**
 - Ensure srcdoc content is properly sanitized.
@@ -9392,8 +9439,9 @@ Sandboxed iframe with allow-scripts.
 **Why it matters:** allow-scripts re-enables JavaScript in sandbox.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox
+- https://cwe.mitre.org/data/definitions/1021.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Only add allow-scripts if absolutely necessary.
@@ -9502,8 +9550,7 @@ Form has autocomplete=off.
 **Why it matters:** Users may enter weaker manual passwords.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete
 
 **Fix:**
 - Allow autocomplete unless there's a specific reason.
@@ -9533,8 +9580,7 @@ Password input with very short maxlength.
 **Why it matters:** Short passwords are easier to crack.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input
 
 **Fix:**
 - Allow at least 64-128 character passwords.
@@ -9558,8 +9604,7 @@ Password field with type=hidden.
 **Why it matters:** Hidden inputs are visible in HTML source.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
 
 **Fix:**
 - Never store passwords in hidden fields.
@@ -9583,8 +9628,7 @@ Password stored in text input instead of password type.
 **Why it matters:** Password fields should mask input.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
 
 **Fix:**
 - Use type='password' for password inputs.
@@ -9616,8 +9660,7 @@ Sensitive data in readonly input field.
 **Why it matters:** Readonly doesn't prevent data access.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input
 
 **Fix:**
 - Consider masking or removing sensitive readonly data.
@@ -9647,8 +9690,8 @@ File input without accept attribute. The accept attribute is only a client-side 
 **Why it matters:** Accept attribute provides a client-side hint only, with no enforcement value. Add it for UX, but rely on server-side validation for security.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/434.html
+- https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
 
 **Fix:**
 - Set the accept attribute for UX.
@@ -9684,8 +9727,8 @@ The page contains an href/src/action link to a configuration filename (config.ya
 **Why it matters:** When a page surfaces the names of server-side configuration files, it provides a roadmap for an attacker probing for common misconfiguration paths.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/538.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Verify that the referenced paths (e.g. /config.yaml, /.env, /docker-compose.yml) return 404 on the public origin.
@@ -9712,8 +9755,9 @@ An <iframe srcdoc="..."> embeds inline HTML directly in the page without a sandb
 **Why it matters:** Unlike a regular src= iframe loading a separate document, srcdoc content is embedded inline -- without sandbox, it runs with the same privileges as the parent page, which matters if the srcdoc value is ever built from dynamic or user-influenced data.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#srcdoc
+- https://cwe.mitre.org/data/definitions/1021.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add sandbox="" to the srcdoc iframe. That is the maximally restrictive value and is enough for static inline markup.
@@ -9740,8 +9784,7 @@ A submit button with formnovalidate bypasses HTML5 input constraints (required, 
 **Why it matters:** A submit button with formnovalidate bypasses HTML5 input constraints (required, pattern, type=email). Server-side validation must catch this.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form
 
 **Fix:**
 - Always validate on the server; never rely on browser-side form validation alone
@@ -9798,8 +9841,7 @@ A <form action="mailto:..."> opens the user's mail client, leaks the recipient a
 **Risk:** Use a server endpoint or contact form instead of mailto: for form submission
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form
 
 **Fix:**
 - Use a server endpoint or contact form instead of mailto: for form submission
@@ -9826,8 +9868,8 @@ Combining sandbox='allow-scripts allow-same-origin' removes most of the sandbox 
 **Risk:** Drop allow-same-origin (or allow-scripts) - together they fully re-enable same-origin script execution
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/1021.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Drop allow-same-origin (or allow-scripts) - together they fully re-enable same-origin script execution
@@ -9876,8 +9918,8 @@ An <svg> with an external entity reference like <!ENTITY xxe SYSTEM "file:///...
 **Risk:** Strip DOCTYPE and external entities when ingesting SVG; use a hardened parser
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/611.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Strip DOCTYPE and external entities when ingesting SVG; use a hardened parser
@@ -9903,8 +9945,9 @@ An iframe element is present without a sandbox attribute, giving the embedded co
 **Why it matters:** The sandbox attribute restricts iframe capabilities by default and allows adding back only the required permissions.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox
+- https://cwe.mitre.org/data/definitions/1021.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add sandbox="" to the iframe element
@@ -9929,8 +9972,7 @@ A form action attribute uses plain HTTP, or points to a domain that is neither y
 **Why it matters:** Form actions should always point to HTTPS endpoints on your own domain.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form
 
 **Fix:**
 - Change all form actions to HTTPS URLs
@@ -9955,8 +9997,7 @@ The HTML base element sets the base URL for all relative links. A user-controlle
 **Why it matters:** The base tag should be set to a fixed HTTPS absolute URL and never derived from user input.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
 
 **Fix:**
 - Set base href to an absolute HTTPS URL you control
@@ -9981,8 +10022,9 @@ The WordPress admin login page (/wp-login.php or /wp-admin/) is publicly accessi
 **Why it matters:** While hiding the login URL provides only obscurity, combining it with rate limiting, 2FA, and IP allowlisting significantly reduces attack surface.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Enable login rate limiting and CAPTCHA
@@ -10008,8 +10050,9 @@ The page opens a WebSocket connection using the unencrypted ws:// protocol inste
 **Why it matters:** WebSocket connections should always use wss:// (WebSocket over TLS) in the same way that HTTP should be served over HTTPS.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/319.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Change all ws:// WebSocket URLs to wss://
@@ -10034,8 +10077,9 @@ A WebSocket endpoint does not validate the Origin header, allowing connections f
 **Why it matters:** WebSocket connections bypass CORS restrictions. The server must check the Origin header and reject connections from unexpected origins.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/346.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Check the Origin header on WebSocket upgrade requests
@@ -10092,8 +10136,9 @@ A server error response contains a full stack trace, revealing file paths, line 
 **Why it matters:** Stack traces should be logged server-side and never included in HTTP responses to clients.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/209.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Catch all errors and return generic messages to clients
@@ -10121,8 +10166,8 @@ The page contains an SQL error message that reveals database type, query structu
 **Why it matters:** Database errors must be caught server-side and never exposed to users.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/209.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Wrap all database calls in try/catch blocks
@@ -10155,8 +10200,8 @@ A PHP error, warning, or notice is displayed in the page output, revealing file 
 **Why it matters:** PHP display_errors should be disabled in production; errors should be logged, not displayed.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/209.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set display_errors = Off in php.ini or .htaccess
@@ -10185,8 +10230,8 @@ ASP.NET error details including stack traces or YSOD (Yellow Screen of Death) ar
 **Why it matters:** Enable custom error pages in production and disable detailed ASP.NET error output.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/209.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set <customErrors mode="On"> in Web.config
@@ -10214,8 +10259,9 @@ Django's DEBUG = True is enabled in production, exposing detailed error pages wi
 **Why it matters:** DEBUG = True is appropriate only in development. Production deployments must have DEBUG = False.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/489.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set DEBUG = False in production settings
@@ -10240,8 +10286,9 @@ Laravel's APP_DEBUG=true is enabled in production, showing detailed error pages 
 **Why it matters:** APP_DEBUG must be false in production environments.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/489.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set APP_DEBUG=false in .env for production
@@ -10267,8 +10314,8 @@ The page stores potentially sensitive data in localStorage or sessionStorage, wh
 **Why it matters:** Web Storage should not contain authentication tokens, session identifiers, or PII. Use HttpOnly cookies for sensitive session state.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/312.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Move session tokens to HttpOnly cookies
@@ -10296,8 +10343,7 @@ The page references navigator.geolocation. This check only detects the API refer
 **Why it matters:** Geolocation should only be requested when the user initiates an action that clearly requires it.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API
 
 **Fix:**
 - Request geolocation only in response to an explicit user action (e.g., "Use my location" button)
@@ -10325,8 +10371,7 @@ The page references navigator.clipboard or document.execCommand('copy'). This ch
 **Why it matters:** Clipboard read/write must be triggered by user gesture and clearly communicate why it needs clipboard access.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API
 
 **Fix:**
 - Only call navigator.clipboard.readText() in response to an explicit user gesture
@@ -10354,8 +10399,7 @@ The page references the getUserMedia/mediaDevices camera-or-microphone API. This
 **Why it matters:** Camera and microphone access must be requested in response to explicit user action with a clear UI indicator showing when recording is active.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#security
 
 **Fix:**
 - Show a clear recording indicator when camera/mic is active
@@ -10442,8 +10486,9 @@ The API response includes an internal version string or build number that reveal
 **Why it matters:** API responses should not include internal version numbers or build identifiers.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove version strings from API response bodies
@@ -10470,8 +10515,9 @@ The HTTP response reveals server software name and/or version in the Server, X-P
 **Why it matters:** Server identification headers should be removed or set to generic values.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Nginx: add "server_tokens off;" to your server block
@@ -10498,8 +10544,7 @@ Outgoing links or redirects reference domains that closely resemble known truste
 **Why it matters:** Outbound links should be audited to ensure they do not reference typosquatted or lookalike domains.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://en.wikipedia.org/wiki/IDN_homograph_attack
 
 **Fix:**
 - Audit all outbound links for lookalike domains
@@ -10528,8 +10573,7 @@ The Service Worker intercepts all requests but does not validate origins or enfo
 **Why it matters:** Service Workers should only intercept requests to known origins, enforce HTTPS, and not cache sensitive data.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers
 
 **Fix:**
 - Limit fetch interception to same-origin requests
@@ -10554,8 +10598,9 @@ The password input field has JavaScript that prevents pasting, making password m
 **Why it matters:** NCSC and NIST recommend allowing paste on password fields to encourage password manager use.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/521.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Remove any onpaste="return false;" or paste event listeners from password fields
@@ -10581,8 +10626,8 @@ A database connection string containing credentials is visible in client-accessi
 **Why it matters:** Connection strings must be stored in environment variables or a secrets manager, never in source code or public-facing files.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/798.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Immediately rotate the database credentials
@@ -10607,8 +10652,8 @@ An HTML comment in the response contains potentially sensitive information such 
 **Why it matters:** Production HTML responses should not contain developer comments.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/615.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove all HTML comments from production templates
@@ -10635,8 +10680,8 @@ Private or public IP addresses are hard-coded in the client-side source, potenti
 **Why it matters:** IP addresses should be read from configuration, not embedded in source code.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Replace hard-coded IPs with hostnames resolved from environment variables
@@ -10809,8 +10854,9 @@ The .map file referenced by a //# sourceMappingURL comment was fetched directly 
 **Why it matters:** A source map's optional sourcesContent field embeds the full text of every original source file directly in the map. Many bundler configurations include it by default, so a publicly reachable .map file becomes a complete download of the pre-minification source, not just line/column mappings.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
+- https://cwe.mitre.org/data/definitions/540.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Restrict access to .map files at the web server/CDN level (deny public requests, or require authentication).
@@ -13006,7 +13052,9 @@ No Content-Security-Policy header was found. CSP helps prevent cross-site script
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Define a Content-Security-Policy header with restrictive defaults.
@@ -13075,7 +13123,9 @@ Neither X-Frame-Options nor CSP frame-ancestors directive is set, leaving the si
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
+- https://cwe.mitre.org/data/definitions/1021.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add X-Frame-Options: DENY or SAMEORIGIN to your responses.
@@ -13136,7 +13186,9 @@ The Permissions-Policy (formerly Feature-Policy) header is not set.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add a Permissions-Policy header that disables features you don't use.
@@ -13197,7 +13249,9 @@ The Access-Control-Allow-Origin header is set to '*', so any origin can read thi
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+- https://cwe.mitre.org/data/definitions/942.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Replace the wildcard with specific trusted origins.
@@ -13260,7 +13314,9 @@ The server allows credentials with a wildcard origin, a self-defeating combinati
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+- https://cwe.mitre.org/data/definitions/942.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Never combine wildcard with Allow-Credentials: true.
@@ -13286,7 +13342,9 @@ No Cross-Origin-Resource-Policy header is set.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Resource-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add 'Cross-Origin-Resource-Policy: same-origin' for maximum protection.
@@ -13308,7 +13366,9 @@ CSP-Report-Only is set but no enforcing CSP header exists.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Deploy an enforcing Content-Security-Policy header alongside report-only.
@@ -13330,7 +13390,7 @@ The CSP includes directives required by the frontend framework. This is expected
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
 - Ensure all user input is properly sanitized.
@@ -13359,7 +13419,7 @@ X-DNS-Prefetch-Control is set to 'on', leaking which links exist on the page.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-DNS-Prefetch-Control
 
 **Fix:**
 - Set X-DNS-Prefetch-Control: off for pages with sensitive links.
@@ -13380,7 +13440,9 @@ Neither CSP frame-ancestors nor X-Frame-Options header is present.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/1021.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add frame-ancestors 'none' or 'self' to your CSP.
@@ -13402,7 +13464,9 @@ A single scanned response shows Access-Control-Allow-Origin set to the exact ori
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+- https://cwe.mitre.org/data/definitions/942.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Validate the Origin header against a strict allowlist.
@@ -13426,7 +13490,9 @@ A logout page was detected but it does not send the Clear-Site-Data header to cl
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Clear-Site-Data
+- https://cwe.mitre.org/data/definitions/613.html
+- https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
 - Add 'Clear-Site-Data: "cookies", "storage", "cache"' to logout response headers.
@@ -13453,7 +13519,9 @@ The CSP header exists but does not contain a form-action directive to restrict f
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add 'form-action self' to your CSP.
@@ -13474,7 +13542,9 @@ The CSP header exists but does not contain a base-uri directive.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add 'base-uri self' to your CSP.
@@ -13494,7 +13564,9 @@ The CSP header exists but does not contain an object-src directive to block plug
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add 'object-src none' to your CSP.
@@ -13515,7 +13587,9 @@ An inline script branches on cross-origin isolation, by reading window.crossOrig
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Embedder-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Decide which one is wrong: the header or the script. Most of the time it is the script, and the isolation-dependent branch should be removed.
@@ -13538,7 +13612,7 @@ CSP uses the deprecated 'report-uri' directive without the modern 'report-to' di
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
 - Add report-to directive alongside report-uri for backward compatibility.
@@ -13567,7 +13641,9 @@ CSP script-src permits inline scripts without nonce or hash.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Use nonce-based or hash-based CSP instead of unsafe-inline.
@@ -13597,7 +13673,9 @@ Content Security Policy permits eval().
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove unsafe-eval and refactor code to avoid eval().
@@ -13657,7 +13735,9 @@ CSP has no default-src directive.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add default-src 'self' as a baseline to your CSP.
@@ -13718,7 +13798,9 @@ Referrer-Policy uses a value that leaks full URLs.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Use strict-origin-when-cross-origin or no-referrer.
@@ -13745,7 +13827,9 @@ CSP policy includes the unsafe-hashes directive, a hash-locked allowlist for spe
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Migrate inline handlers to external scripts with nonces.
@@ -13770,7 +13854,9 @@ CSP lacks frame-src directive for iframe sources.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add frame-src 'self' or 'none' to CSP.
@@ -13799,7 +13885,9 @@ CSP allows plugins via object-src.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set object-src 'none' in CSP.
@@ -13828,7 +13916,7 @@ CSP script-src only allows 'self'.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
 - Verify site functions correctly with this CSP.
@@ -13854,7 +13942,9 @@ X-Frame-Options has invalid value.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
+- https://cwe.mitre.org/data/definitions/1021.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Use DENY or SAMEORIGIN for X-Frame-Options.
@@ -13883,7 +13973,9 @@ Page with credentials lacks Cache-Control: no-store.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+- https://cwe.mitre.org/data/definitions/525.html
+- https://owasp.org/Top10/A04_2021-Insecure_Design/
 
 **Fix:**
 - Add Cache-Control: no-store to sensitive pages.
@@ -13914,7 +14006,7 @@ Pragma: no-cache header present.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma
 
 **Fix:**
 - Use Cache-Control instead of Pragma.
@@ -13941,7 +14033,7 @@ Expires header set to date in the past.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Expires
 
 **Fix:**
 - Use Cache-Control for modern caching control.
@@ -13970,7 +14062,9 @@ No Cross-Origin-Opener-Policy header is set. The detector checks for the real, e
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add Cross-Origin-Opener-Policy: same-origin to responses.
@@ -14000,7 +14094,7 @@ The HTML document does not declare a character set via <meta charset>. Without a
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#charset
 
 **Fix:**
 - Add <meta charset="utf-8"> as the first element inside <head>.
@@ -14025,7 +14119,9 @@ ACA-Headers: * lets any browser send any header. Restrict to the headers you act
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+- https://cwe.mitre.org/data/definitions/942.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Replace * with an explicit allowlist
@@ -14052,7 +14148,9 @@ Access-Control-Allow-Origin is set to the literal string 'null'. The 'null' orig
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+- https://cwe.mitre.org/data/definitions/942.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove 'null' from any CORS origin allowlist.
@@ -14080,7 +14178,9 @@ ALLOWALL (Chromium extension) explicitly disables framing protection. Use CSP fr
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
+- https://cwe.mitre.org/data/definitions/1021.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove X-Frame-Options or set DENY/SAMEORIGIN; rely on CSP frame-ancestors for modern browsers
@@ -14111,7 +14211,7 @@ The CSP names a directive browsers no longer implement (allow-http, reflected-xs
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
 - Remove legacy directives like allow-http and reflected-xss
@@ -14140,7 +14240,7 @@ CSP headers longer than ~4KB are silently dropped by some browsers.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
 - Split into multiple CSPs via report-to, or use nonces instead of inline source lists
@@ -14165,7 +14265,9 @@ Geolocation should default to 'self' unless your app needs it.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set Permissions-Policy: geolocation=(self) or geolocation=() to block entirely
@@ -14193,7 +14295,9 @@ The policy grants camera to every origin (camera=*), which includes any third pa
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set Permissions-Policy: camera=() to block entirely
@@ -14218,7 +14322,9 @@ Microphone should default to 'self' or be blocked.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#security
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set Permissions-Policy: microphone=() to block entirely
@@ -14242,7 +14348,9 @@ Payment Request API should default to 'self'.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set Permissions-Policy: payment=(self) to scope to your origin
@@ -14266,7 +14374,9 @@ WebUSB should default to 'self'.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set Permissions-Policy: usb=(self)
@@ -14290,7 +14400,9 @@ Web Bluetooth should default to 'self'.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set Permissions-Policy: bluetooth=(self)
@@ -14314,7 +14426,9 @@ Web Serial should default to 'self'.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set Permissions-Policy: serial=(self)
@@ -14338,7 +14452,9 @@ Wake Lock should default to 'self'.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set Permissions-Policy: screen-wake-lock=(self)
@@ -14362,7 +14478,9 @@ Passkey / WebAuthn should default to 'self'.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set Permissions-Policy: publickey-credentials-get=(self)
@@ -14386,7 +14504,9 @@ Permissions-Policy: unload=() is recommended to prevent third parties from inter
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set Permissions-Policy: unload=()
@@ -14713,7 +14833,9 @@ The server does not send the X-Content-Type-Options: nosniff header, allowing br
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add X-Content-Type-Options: nosniff to all responses
@@ -14743,7 +14865,9 @@ The response lacks a Cross-Origin-Embedder-Policy (COEP) header, which is requir
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Embedder-Policy
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add Cross-Origin-Embedder-Policy: require-corp to responses
@@ -14770,7 +14894,7 @@ No Cache-Control header is present, leaving caching behavior undefined and poten
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
 
 **Fix:**
 - For sensitive/authenticated pages: Cache-Control: no-store
@@ -14799,7 +14923,9 @@ The Access-Control-Expose-Headers response header names a specific sensitive hea
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Review which headers cross-origin clients need to access
@@ -14827,7 +14953,9 @@ Access-Control-Expose-Headers lists five or more entries, exposing a large numbe
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Review the list and remove any headers cross-origin clients don't need
@@ -14850,7 +14978,7 @@ The Access-Control-Max-Age value is very large, caching CORS preflight results f
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
 **Fix:**
 - Set Access-Control-Max-Age to 600 seconds (10 minutes) or less
@@ -14877,7 +15005,9 @@ The Content-Security-Policy header does not include upgrade-insecure-requests, l
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/319.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Add upgrade-insecure-requests to your CSP header
@@ -14903,7 +15033,9 @@ The Content-Security-Policy permits data: URIs as a script or object source, ena
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Remove data: from script-src and object-src
@@ -14956,7 +15088,7 @@ The Feature-Policy header is present. This header has been replaced by Permissio
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
 
 **Fix:**
 - Replace the Feature-Policy header with Permissions-Policy
@@ -14983,7 +15115,9 @@ The X-Content-Type-Options header is present but set to a value other than "nosn
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options
+- https://cwe.mitre.org/data/definitions/693.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Set X-Content-Type-Options: nosniff (the only valid value)
@@ -15044,7 +15178,9 @@ The HTTP Server response header identifies the web server software by name.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Nginx: add "server_tokens off;" in the http block
@@ -15074,7 +15210,9 @@ The Server header exposes the exact version of the web server software, enabling
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Nginx: server_tokens off removes the version number
@@ -15098,7 +15236,9 @@ The X-Powered-By response header discloses the application framework and sometim
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Next.js: poweredByHeader: false in next.config.mjs
@@ -15126,7 +15266,9 @@ The X-AspNet-Version header is present and reveals the exact ASP.NET framework v
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - In Web.config: <httpRuntime enableVersionHeader="false" />
@@ -15151,7 +15293,9 @@ The X-AspNetMvc-Version header reveals which version of ASP.NET MVC the applicat
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - In Global.asax Application_Start: MvcHandler.DisableMvcResponseHeader = true;
@@ -15173,7 +15317,9 @@ The Via header is present and reveals proxy server software names or versions in
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Via
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Configure your CDN/proxy to remove or genericize the Via header
@@ -15197,7 +15343,9 @@ The X-Runtime header is present, exposing per-request server processing time in 
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Disable X-Runtime in your framework configuration
@@ -15218,7 +15366,9 @@ The X-Backend-Server header discloses the internal hostname or IP of the backend
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Configure your load balancer or CDN to strip X-Backend-Server
@@ -15241,7 +15391,9 @@ A debug-related response header is present (e.g., X-Debug-Info, X-Debug-Token, X
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
+- https://cwe.mitre.org/data/definitions/489.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Disable debug mode in production
@@ -15265,7 +15417,9 @@ The ETag header format suggests it includes a file inode number, potentially rev
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Apache: FileETag MTime Size (removes inode)
@@ -15288,7 +15442,9 @@ The Server-Timing response header reveals internal performance metrics such as d
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - In production, disable Server-Timing or use opaque metric names
@@ -15313,7 +15469,7 @@ The Date response header shows a time significantly different from the current t
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Date
 
 **Fix:**
 - Enable and configure NTP: systemctl enable --now systemd-timesyncd
@@ -15343,7 +15499,9 @@ A response containing authenticated or user-specific content is served with Cach
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+- https://cwe.mitre.org/data/definitions/525.html
+- https://owasp.org/Top10/A04_2021-Insecure_Design/
 
 **Fix:**
 - Change Cache-Control to "no-store" for authenticated/private responses
@@ -15368,7 +15526,9 @@ The scanned URL uses the plain http:// scheme, meaning the connection is not enc
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security
+- https://cwe.mitre.org/data/definitions/319.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Serve the site over HTTPS and redirect all HTTP requests to HTTPS.
@@ -15394,7 +15554,9 @@ An HTTPS page loads scripts, images, or other resources over HTTP, triggering br
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
+- https://cwe.mitre.org/data/definitions/319.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Update all resource URLs from http:// to https://
@@ -15421,7 +15583,9 @@ An HTML form uses an HTTP (not HTTPS) action URL, transmitting form data in plai
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
+- https://cwe.mitre.org/data/definitions/319.html
+- https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
 - Change the form action from http:// to https://
@@ -15447,7 +15611,9 @@ A script or stylesheet is loaded from an external origin without a Subresource I
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
+- https://cwe.mitre.org/data/definitions/353.html
+- https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
 
 **Fix:**
 - Generate hash: openssl dgst -sha384 -binary file.js | openssl base64 -A
@@ -15473,7 +15639,9 @@ A CSS stylesheet loaded from a third-party CDN does not have a Subresource Integ
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
+- https://cwe.mitre.org/data/definitions/353.html
+- https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
 
 **Fix:**
 - Generate hash: openssl dgst -sha384 -binary style.css | openssl base64 -A
@@ -15499,7 +15667,9 @@ Clickjacking protection is provided by HTTP header only, without a JavaScript fr
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
+- https://cwe.mitre.org/data/definitions/1021.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Keep X-Frame-Options header
@@ -15524,7 +15694,9 @@ Access-Control-Allow-Methods lists methods (e.g., PUT, DELETE, PATCH) that the e
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+- https://cwe.mitre.org/data/definitions/942.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Audit which methods each endpoint supports
@@ -15551,7 +15723,9 @@ The Referrer-Policy header is absent or not set to a strict value, potentially l
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add Referrer-Policy: strict-origin-when-cross-origin to all responses
@@ -15611,7 +15785,7 @@ A meta refresh tag has an empty content attribute, or a url= parameter present w
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#http-equiv
 
 **Fix:**
 - Replace meta refresh with a server-side 301/302 redirect
@@ -15635,7 +15809,7 @@ A username or login field does not specify autocomplete="username", hindering pa
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete
 
 **Fix:**
 - Add autocomplete="username" to the username/login field
@@ -15657,7 +15831,7 @@ An image source uses a protocol-relative URL (//example.com/image.jpg) that inhe
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
 
 **Fix:**
 - Replace // with https:// in all image src attributes
@@ -15680,7 +15854,7 @@ The og:image meta tag uses an HTTP URL, which may cause browsers and social plat
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
 
 **Fix:**
 - Change og:image content from http:// to https://
@@ -15701,7 +15875,7 @@ The page does not start with a DOCTYPE declaration, triggering quirks mode in so
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Glossary/Doctype
 
 **Fix:**
 - Add <!DOCTYPE html> as the very first line of every HTML document
@@ -15725,7 +15899,6 @@ The page contains 3 or more HTML elements with inline style attributes, which CS
 **Why it matters:** Inline style attributes cannot be validated against Content-Security-Policy rules like style-src 'self' and they couple layout to markup. External stylesheets or CSS modules make the page easier to theme and audit.
 
 **References:**
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 - https://web.dev/articles/style-scoping
 
 **Fix:**
@@ -15785,7 +15958,9 @@ An iframe embedding third-party content does not use the sandbox attribute. Note
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox
+- https://cwe.mitre.org/data/definitions/1021.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
 - Add sandbox="" (most restrictive)

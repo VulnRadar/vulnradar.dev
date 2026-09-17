@@ -24,8 +24,9 @@
     ],
     "_idx": 1,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/601.html",
+      "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"
     ],
     "cwe": "CWE-601",
     "owasp": "A01:2021"
@@ -59,8 +60,9 @@
     ],
     "_idx": 5,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/548.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-548",
     "owasp": "A05:2021"
@@ -89,8 +91,9 @@
     ],
     "_idx": 6,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -120,8 +123,8 @@
     ],
     "_idx": 7,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/1104.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
     ],
     "cwe": "CWE-1104",
     "owasp": "A06:2021"
@@ -150,8 +153,9 @@
     ],
     "_idx": 8,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -181,8 +185,7 @@
     ],
     "_idx": 9,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/08-Fingerprint_Web_Application_Framework"
     ]
   },
   {
@@ -275,8 +278,8 @@
     ],
     "_idx": 14,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/615.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-615",
     "owasp": "A05:2021"
@@ -311,8 +314,9 @@
     ],
     "_idx": 16,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/489.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-489",
     "owasp": "A05:2021"
@@ -341,8 +345,8 @@
     ],
     "_idx": 17,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/319.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-319",
     "owasp": "A02:2021"
@@ -371,8 +375,9 @@
     ],
     "_idx": 18,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/522.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-522",
     "owasp": "A02:2021"
@@ -401,8 +406,7 @@
     ],
     "_idx": 19,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete"
     ]
   },
   {
@@ -428,8 +432,7 @@
     ],
     "_idx": 20,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/noopener"
     ]
   },
   {
@@ -455,8 +458,9 @@
     ],
     "_idx": 21,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#http-equiv",
+      "https://cwe.mitre.org/data/definitions/601.html",
+      "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"
     ],
     "cwe": "CWE-601",
     "owasp": "A01:2021"
@@ -485,8 +489,7 @@
     ],
     "_idx": 22,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base"
     ]
   },
   {
@@ -513,8 +516,9 @@
     ],
     "_idx": 25,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -573,8 +577,8 @@
     ],
     "_idx": 27,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/598.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-598",
     "owasp": "A02:2021"
@@ -603,8 +607,8 @@
     ],
     "_idx": 28,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -632,10 +636,7 @@
       }
     ],
     "_idx": 31,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    "references": ["https://ogp.me/"]
   },
   {
     "id": "service-worker-scope",
@@ -660,8 +661,7 @@
     ],
     "_idx": 32,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers"
     ]
   },
   {
@@ -688,8 +688,9 @@
     ],
     "_idx": 33,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/noopener",
+      "https://cwe.mitre.org/data/definitions/1022.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-1022",
     "owasp": "A05:2021"
@@ -719,8 +720,9 @@
     ],
     "_idx": 36,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/327.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-327",
     "owasp": "A02:2021"
@@ -749,8 +751,9 @@
     ],
     "_idx": 38,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-209",
     "owasp": "A05:2021"
@@ -779,8 +782,9 @@
     ],
     "_idx": 39,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/611.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-611",
     "owasp": "A05:2021"
@@ -809,8 +813,9 @@
     ],
     "_idx": 40,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/918.html",
+      "https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/"
     ],
     "cwe": "CWE-918",
     "owasp": "A10:2021"
@@ -840,8 +845,8 @@
     ],
     "_idx": 41,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -869,8 +874,7 @@
     ],
     "_idx": 44,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
     ]
   },
   {
@@ -897,8 +901,9 @@
     ],
     "_idx": 45,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/352.html",
+      "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"
     ],
     "cwe": "CWE-352",
     "owasp": "A01:2021"
@@ -926,8 +931,7 @@
     ],
     "_idx": 48,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form"
     ]
   },
   {
@@ -954,8 +958,7 @@
     ],
     "_idx": 50,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://www.w3.org/WAI/WCAG21/Understanding/resize-text.html"
     ]
   },
   {
@@ -982,8 +985,9 @@
     ],
     "_idx": 52,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1042,8 +1046,7 @@
     ],
     "_idx": 54,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content"
     ]
   },
   {
@@ -1070,8 +1073,8 @@
     ],
     "_idx": 61,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/540.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-540",
     "owasp": "A05:2021"
@@ -1096,8 +1099,8 @@
     ],
     "_idx": 62,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/918.html",
+      "https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/"
     ],
     "cwe": "CWE-918",
     "owasp": "A10:2021"
@@ -1122,8 +1125,9 @@
     ],
     "_idx": 63,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/538.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-538",
     "owasp": "A05:2021"
@@ -1148,8 +1152,9 @@
     ],
     "_idx": 64,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/538.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-538",
     "owasp": "A05:2021"
@@ -1177,8 +1182,9 @@
     ],
     "_idx": 66,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1206,8 +1212,9 @@
     ],
     "_idx": 67,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1232,8 +1239,9 @@
     ],
     "_idx": 69,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1261,8 +1269,8 @@
     ],
     "_idx": 75,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1286,10 +1294,7 @@
       }
     ],
     "_idx": 79,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    "references": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"]
   },
   {
     "id": "document-domain-usage",
@@ -1311,8 +1316,8 @@
     ],
     "_idx": 80,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/346.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-346",
     "owasp": "A05:2021"
@@ -1337,8 +1342,9 @@
     ],
     "_idx": 81,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#security_concerns",
+      "https://cwe.mitre.org/data/definitions/346.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-346",
     "owasp": "A05:2021"
@@ -1363,8 +1369,8 @@
     ],
     "_idx": 82,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/598.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-598",
     "owasp": "A02:2021"
@@ -1392,8 +1398,9 @@
     ],
     "_idx": 84,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -1421,8 +1428,9 @@
     ],
     "_idx": 86,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1449,8 +1457,9 @@
     ],
     "_idx": 87,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1477,8 +1486,8 @@
     ],
     "_idx": 92,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/598.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-598",
     "owasp": "A02:2021"
@@ -1503,8 +1512,9 @@
     ],
     "_idx": 93,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1532,8 +1542,9 @@
     ],
     "_idx": 94,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/598.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-598",
     "owasp": "A02:2021"
@@ -1558,8 +1569,9 @@
     ],
     "_idx": 96,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/598.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-598",
     "owasp": "A02:2021"
@@ -1584,8 +1596,9 @@
     ],
     "_idx": 97,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/521.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-521",
     "owasp": "A07:2021"
@@ -1610,8 +1623,9 @@
     ],
     "_idx": 98,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/598.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-598",
     "owasp": "A02:2021"
@@ -1636,8 +1650,8 @@
     ],
     "_idx": 99,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/352.html",
+      "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"
     ],
     "cwe": "CWE-352",
     "owasp": "A01:2021"
@@ -1662,8 +1676,9 @@
     ],
     "_idx": 101,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/489.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-489",
     "owasp": "A05:2021"
@@ -1691,8 +1706,8 @@
     ],
     "_idx": 102,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1717,8 +1732,8 @@
     ],
     "_idx": 105,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/204.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-204",
     "owasp": "A07:2021"
@@ -1743,8 +1758,7 @@
     ],
     "_idx": 107,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script"
     ]
   },
   {
@@ -1767,8 +1781,8 @@
     ],
     "_idx": 108,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/1104.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
     ],
     "cwe": "CWE-1104",
     "owasp": "A06:2021"
@@ -1793,8 +1807,8 @@
     ],
     "_idx": 109,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/1104.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
     ],
     "cwe": "CWE-1104",
     "owasp": "A06:2021"
@@ -1819,8 +1833,8 @@
     ],
     "_idx": 110,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/1104.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
     ],
     "cwe": "CWE-1104",
     "owasp": "A06:2021"
@@ -1845,8 +1859,8 @@
     ],
     "_idx": 111,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/1104.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
     ],
     "cwe": "CWE-1104",
     "owasp": "A06:2021"
@@ -1871,8 +1885,7 @@
     ],
     "_idx": 112,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#security"
     ]
   },
   {
@@ -1895,8 +1908,8 @@
     ],
     "_idx": 113,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1921,8 +1934,8 @@
     ],
     "_idx": 114,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1947,8 +1960,8 @@
     ],
     "_idx": 115,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021"
@@ -1973,8 +1986,9 @@
     ],
     "_idx": 117,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/522.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-522",
     "owasp": "A02:2021"
@@ -1999,8 +2013,9 @@
     ],
     "_idx": 118,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/598.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-598",
     "owasp": "A02:2021"
@@ -2025,8 +2040,9 @@
     ],
     "_idx": 119,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2051,8 +2067,9 @@
     ],
     "_idx": 120,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2080,8 +2097,9 @@
     ],
     "_idx": 122,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://docs.stripe.com/keys",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2108,8 +2126,9 @@
     ],
     "_idx": 123,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2134,8 +2153,9 @@
     ],
     "_idx": 124,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2160,8 +2180,9 @@
     ],
     "_idx": 125,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2186,8 +2207,9 @@
     ],
     "_idx": 127,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2212,8 +2234,9 @@
     ],
     "_idx": 128,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2238,8 +2261,9 @@
     ],
     "_idx": 129,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2264,8 +2288,9 @@
     ],
     "_idx": 130,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2290,8 +2315,9 @@
     ],
     "_idx": 131,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2316,8 +2342,9 @@
     ],
     "_idx": 132,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
@@ -2342,8 +2369,9 @@
     ],
     "_idx": 133,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-209",
     "owasp": "A05:2021"
@@ -2368,8 +2396,9 @@
     ],
     "_idx": 134,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-209",
     "owasp": "A05:2021"
@@ -2394,8 +2423,9 @@
     ],
     "_idx": 135,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-209",
     "owasp": "A05:2021"
@@ -2420,8 +2450,9 @@
     ],
     "_idx": 136,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-209",
     "owasp": "A05:2021"
@@ -2446,8 +2477,7 @@
     ],
     "_idx": 137,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/AJAX_Security_Cheat_Sheet.html"
     ]
   },
   {
@@ -2470,8 +2500,7 @@
     ],
     "_idx": 138,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/AJAX_Security_Cheat_Sheet.html"
     ]
   },
   {
@@ -2520,8 +2549,7 @@
     ],
     "_idx": 140,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#srcdoc"
     ]
   },
   {
@@ -2544,8 +2572,9 @@
     ],
     "_idx": 141,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox",
+      "https://cwe.mitre.org/data/definitions/1021.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-1021",
     "owasp": "A05:2021"
@@ -2648,8 +2677,7 @@
     ],
     "_idx": 147,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete"
     ]
   },
   {
@@ -2672,8 +2700,7 @@
     ],
     "_idx": 148,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input"
     ]
   },
   {
@@ -2696,8 +2723,7 @@
     ],
     "_idx": 149,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
     ]
   },
   {
@@ -2720,8 +2746,7 @@
     ],
     "_idx": 150,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
     ]
   },
   {
@@ -2744,8 +2769,7 @@
     ],
     "_idx": 151,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input"
     ]
   },
   {
@@ -2771,8 +2795,8 @@
     ],
     "_idx": 152,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/434.html",
+      "https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/"
     ],
     "cwe": "CWE-434",
     "owasp": "A08:2021"
@@ -2801,8 +2825,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/538.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 180,
     "cwe": "CWE-538",
@@ -2830,8 +2854,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#srcdoc",
+      "https://cwe.mitre.org/data/definitions/1021.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 183,
     "cwe": "CWE-1021",
@@ -2858,8 +2883,7 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form"
     ],
     "_idx": 186
   },
@@ -2912,8 +2936,7 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form"
     ],
     "_idx": 188
   },
@@ -2938,8 +2961,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/1021.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 191,
     "cwe": "CWE-1021",
@@ -2994,8 +3017,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/611.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 193,
     "cwe": "CWE-611",
@@ -3024,8 +3047,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox",
+      "https://cwe.mitre.org/data/definitions/1021.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 300,
     "cwe": "CWE-1021",
@@ -3054,8 +3078,7 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form"
     ],
     "_idx": 301
   },
@@ -3082,8 +3105,7 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base"
     ],
     "_idx": 303
   },
@@ -3111,8 +3133,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 306,
     "cwe": "CWE-200",
@@ -3141,8 +3164,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/319.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "_idx": 307,
     "cwe": "CWE-319",
@@ -3171,8 +3195,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/346.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 308,
     "cwe": "CWE-346",
@@ -3231,8 +3256,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 311,
     "cwe": "CWE-209",
@@ -3261,8 +3287,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 313,
     "cwe": "CWE-209",
@@ -3291,8 +3317,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 314,
     "cwe": "CWE-209",
@@ -3321,8 +3347,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 315,
     "cwe": "CWE-209",
@@ -3351,8 +3377,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/489.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 316,
     "cwe": "CWE-489",
@@ -3381,8 +3408,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/489.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 317,
     "cwe": "CWE-489",
@@ -3411,8 +3439,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/312.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "_idx": 318,
     "cwe": "CWE-312",
@@ -3441,8 +3469,7 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API"
     ],
     "_idx": 319
   },
@@ -3469,8 +3496,7 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API"
     ],
     "_idx": 320
   },
@@ -3497,8 +3523,7 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#security"
     ],
     "_idx": 321
   },
@@ -3586,8 +3611,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 324,
     "cwe": "CWE-200",
@@ -3617,8 +3643,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server",
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 325,
     "cwe": "CWE-200",
@@ -3646,10 +3673,7 @@
         "code": "// Register common typosquatting variants of your domain:\n// examp1e.com, exarnple.com, example.co, example.net\n// Then redirect all variants to your canonical domain.\n\n// nginx: redirect lookalike to canonical\nserver {\n  server_name examp1e.com;\n  return 301 https://example.com$request_uri;\n}"
       }
     ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
+    "references": ["https://en.wikipedia.org/wiki/IDN_homograph_attack"],
     "_idx": 326
   },
   {
@@ -3675,8 +3699,7 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers"
     ],
     "_idx": 328
   },
@@ -3703,8 +3726,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/521.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "_idx": 329,
     "cwe": "CWE-521",
@@ -3733,8 +3757,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "_idx": 330,
     "cwe": "CWE-798",
@@ -3763,8 +3787,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/615.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 332,
     "cwe": "CWE-615",
@@ -3793,8 +3817,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 334,
     "cwe": "CWE-200",
@@ -3988,8 +4012,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
+      "https://cwe.mitre.org/data/definitions/540.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-540",
     "owasp": "A05:2021"

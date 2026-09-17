@@ -23,8 +23,8 @@
     ],
     "_idx": 1,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/319.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-319",
     "owasp": "A02:2021"
@@ -53,10 +53,7 @@
       }
     ],
     "_idx": 2,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
+    "references": ["https://cwe.mitre.org/data/definitions/1321.html"],
     "cwe": "CWE-1321"
   },
   {
@@ -83,8 +80,8 @@
     ],
     "_idx": 3,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/78.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "cwe": "CWE-78",
     "owasp": "A03:2021"
@@ -143,8 +140,8 @@
     ],
     "_idx": 5,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/22.html",
+      "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"
     ],
     "cwe": "CWE-22",
     "owasp": "A01:2021"
@@ -173,8 +170,8 @@
     ],
     "_idx": 6,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/287.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "cwe": "CWE-287",
     "owasp": "A07:2021"
@@ -204,8 +201,9 @@
     ],
     "_idx": 7,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/502.html",
+      "https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/"
     ],
     "cwe": "CWE-502",
     "owasp": "A08:2021"
@@ -230,8 +228,8 @@
     ],
     "_idx": 9,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/94.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "cwe": "CWE-94",
     "owasp": "A03:2021"
@@ -259,7 +257,8 @@
     "_idx": 11,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/79.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "cwe": "CWE-79",
     "owasp": "A03:2021"
@@ -285,7 +284,8 @@
     "_idx": 12,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/79.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "cwe": "CWE-79",
     "owasp": "A03:2021"
@@ -313,7 +313,8 @@
     "_idx": 13,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/79.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "cwe": "CWE-79",
     "owasp": "A03:2021"
@@ -341,7 +342,8 @@
     "_idx": 14,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/79.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "cwe": "CWE-79",
     "owasp": "A03:2021"
@@ -369,7 +371,8 @@
     "_idx": 15,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/79.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "cwe": "CWE-79",
     "owasp": "A03:2021"
@@ -396,8 +399,8 @@
     ],
     "_idx": 17,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/22.html",
+      "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"
     ],
     "cwe": "CWE-22",
     "owasp": "A01:2021"
@@ -422,8 +425,8 @@
     ],
     "_idx": 18,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/1336.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "cwe": "CWE-1336",
     "owasp": "A03:2021"
@@ -450,8 +453,8 @@
     ],
     "_idx": 21,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/78.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "cwe": "CWE-78",
     "owasp": "A03:2021"
@@ -478,8 +481,8 @@
     ],
     "_idx": 23,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/94.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "cwe": "CWE-94",
     "owasp": "A03:2021"
@@ -531,8 +534,8 @@
     ],
     "_idx": 31,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/312.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-312",
     "owasp": "A02:2021"
@@ -557,8 +560,9 @@
     ],
     "_idx": 32,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/312.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-312",
     "owasp": "A02:2021"
@@ -583,8 +587,8 @@
     ],
     "_idx": 33,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/312.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-312",
     "owasp": "A02:2021"
@@ -609,8 +613,8 @@
     ],
     "_idx": 34,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/312.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "cwe": "CWE-312",
     "owasp": "A02:2021"
@@ -635,8 +639,7 @@
     ],
     "_idx": 35,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers"
     ]
   },
   {
@@ -659,8 +662,9 @@
     ],
     "_idx": 43,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/489.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "cwe": "CWE-489",
     "owasp": "A05:2021"
@@ -683,10 +687,7 @@
         "code": "import axios from \"axios\";\n\n// BAD: base URL constructed from user input\n// axios.defaults.baseURL = userInput + \"/api\";\n\n// GOOD: hard-coded origin\nconst api = axios.create({\n  baseURL: process.env.NEXT_PUBLIC_API_URL || \"https://api.yoursite.com\",\n  timeout: 10_000,\n  withCredentials: false, // only enable if needed with explicit CORS\n});"
       }
     ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
+    "references": ["https://axios-http.com/docs/config_defaults"],
     "_idx": 46
   },
   {
@@ -710,8 +711,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/94.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "_idx": 49,
     "cwe": "CWE-94",
@@ -737,10 +738,7 @@
         "code": "function safeAssign<T extends object>(target: T, source: Record<string, unknown>): T {\n  const banned = new Set([\"__proto__\", \"constructor\", \"prototype\"]);\n  for (const [k, v] of Object.entries(source)) {\n    if (!banned.has(k)) (target as Record<string, unknown>)[k] = v;\n  }\n  return target;\n}\n// Never: Object.assign(config, req.body) without validation"
       }
     ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
+    "references": ["https://cwe.mitre.org/data/definitions/1321.html"],
     "_idx": 50,
     "cwe": "CWE-1321"
   },
@@ -764,10 +762,7 @@
         "code": "// BAD: { ...globalConfig, ...req.body } allows overwriting any key\n\n// GOOD: allowlist only known, safe keys\nconst ALLOWED_KEYS: Set<keyof typeof defaultConfig> = new Set([\"theme\", \"locale\", \"pageSize\"]);\nconst userPrefs = Object.fromEntries(\n  Object.entries(req.body).filter(([k]) => ALLOWED_KEYS.has(k as any))\n);\nconst merged = { ...defaultConfig, ...userPrefs };"
       }
     ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
+    "references": ["https://cwe.mitre.org/data/definitions/1321.html"],
     "_idx": 51,
     "cwe": "CWE-1321"
   },
@@ -792,8 +787,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#security",
+      "https://cwe.mitre.org/data/definitions/1004.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 52,
     "cwe": "CWE-1004",
@@ -818,8 +814,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#security",
+      "https://cwe.mitre.org/data/definitions/1275.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 54,
     "cwe": "CWE-1275",
@@ -844,8 +841,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/noopener",
+      "https://cwe.mitre.org/data/definitions/1022.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 55,
     "cwe": "CWE-1022",
@@ -873,7 +871,8 @@
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/79.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "_idx": 59,
     "cwe": "CWE-79",
@@ -898,8 +897,7 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://api.jquery.com/category/ajax/global-ajax-event-handlers/"
     ],
     "_idx": 60
   },
@@ -924,8 +922,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/312.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "_idx": 61,
     "cwe": "CWE-312",
@@ -950,8 +948,7 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers"
     ],
     "_idx": 62
   },
@@ -974,8 +971,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#security",
+      "https://cwe.mitre.org/data/definitions/614.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 63,
     "cwe": "CWE-614",
@@ -999,10 +997,7 @@
         "code": "// pk_live_* and pk_test_* are intentionally public, used in browser\nimport { loadStripe } from \"@stripe/stripe-js\";\nconst stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);\n\n// The SECRET key (sk_live_*) must NEVER appear in client code\n// Create PaymentIntents server-side only:\n// stripe.paymentIntents.create(...): in an API route with the secret key"
       }
     ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
+    "references": ["https://docs.stripe.com/keys"],
     "_idx": 64
   },
   {
@@ -1025,7 +1020,8 @@
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/79.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "_idx": 65,
     "cwe": "CWE-79",
@@ -1053,7 +1049,8 @@
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/79.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "_idx": 66,
     "cwe": "CWE-79",
@@ -2484,8 +2481,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/327.html",
+      "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
     ],
     "_idx": 200,
     "cwe": "CWE-327",
@@ -2514,8 +2512,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://owasp.org/www-community/attacks/SQL_Injection",
+      "https://cwe.mitre.org/data/definitions/89.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "_idx": 201,
     "cwe": "CWE-89",
@@ -2544,8 +2543,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/918.html",
+      "https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/"
     ],
     "_idx": 202,
     "cwe": "CWE-918",
@@ -2574,8 +2574,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/611.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 204,
     "cwe": "CWE-611",
@@ -2604,8 +2605,8 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cwe.mitre.org/data/definitions/90.html",
+      "https://owasp.org/Top10/A03_2021-Injection/"
     ],
     "_idx": 205,
     "cwe": "CWE-90",
@@ -2634,8 +2635,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "_idx": 206,
     "cwe": "CWE-798",
@@ -2664,8 +2666,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/1392.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "_idx": 207,
     "cwe": "CWE-1392",
@@ -2694,8 +2697,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/798.html",
+      "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
     ],
     "_idx": 208,
     "cwe": "CWE-798",
@@ -2809,8 +2813,9 @@
       }
     ],
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#security_concerns",
+      "https://cwe.mitre.org/data/definitions/346.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
     "_idx": 209,
     "cwe": "CWE-346",

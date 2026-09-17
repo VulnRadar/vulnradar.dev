@@ -465,6 +465,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: BookOpen,
+        label: "Further Reading Links Now Match the Problem",
+        desc: "Every finding ends with links to read more about the problem. For about 250 checks those links had been filled in with the same few pages regardless of the subject, so a finding about a server revealing its version pointed at a guide to forcing secure connections, and a leftover debug page pointed at an article about cross-site scripting. Each of those checks now links to material about its own subject: the matching reference page for the setting involved, the official description of the weakness, and the matching OWASP Top 10 category.",
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",
