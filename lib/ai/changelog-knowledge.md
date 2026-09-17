@@ -182,6 +182,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The browser extension's documentation listed two permissions it does not actually use, and left out two that it does use, for right-click scanning and exporting reports. For a security tool, claiming access it does not have is just as misleading as hiding access it does have. The documented list now exactly matches what the extension actually requests from your browser.
 - [Wrench] **[CLI]** **Command-Line Tool: Choose Scanners, Visibility and Teams**
   Our command-line tool, used to run scans from scripts and automated pipelines, previously started every scan with only default settings. It can now choose which categories of checks to run, whether the result is public or private, and which of your teams should be able to see it. If the server is temporarily rate limiting requests, the tool now waits and retries automatically instead of failing your build outright.
+- [FileDown] **[CLI]** **Command-Line Tool Can Download Your Report**
+  The website could export a scan as a SARIF file for GitHub code scanning, a PDF, a Markdown report, a spreadsheet, or the compliance crosswalk, but our command-line tool could not ask for any of them: a pipeline that wanted one had to make a second request of its own, with a second copy of your key. The tool now takes a report format and a file to write it to, including the choice of whether findings you marked a false positive or accepted are included. The file is fetched before the tool decides whether your thresholds were exceeded, so the run that fails your build still leaves the report behind for the step that uploads it.
 - [Wrench] **[CLI]** **Pipeline Templates Now Match the Command-Line Tool**
   The ready-made templates for running scans in GitHub and GitLab pipelines behaved slightly differently from our command-line tool. A single failed status check used to fail the whole pipeline; it now takes five failures in a row. Like the tool, they fail the build only when a real threshold is exceeded, and separately report when the scan itself could not run, so a temporary outage does not silently block your pipeline while findings still can. The GitLab template's timeout now follows how long the scan is actually allowed to take.
 - [Eye] **[EXTENSION]** **The Extension's Privacy Statements Now Match What It Sends**
@@ -2532,6 +2534,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 958
+- **Total changes documented:** 959
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

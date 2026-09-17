@@ -2471,9 +2471,9 @@ with a raw request. Authentication is the same Bearer API key.
 - Only needed to work on the CLI itself, or to run a change that is not released yet:
 - Or run the entrypoint directly with node cli/vulnradar.mjs scan <url>, no install at all.
 - Pass your key with --api-key or the VULNRADAR_TOKEN environment variable. Prefer the variable in CI so the key never lands in shell history or logs. --api-base has the same env form, VULNRADAR_API_BASE, so a self-hosted CI does not repeat the flag on every invocation. An explicit flag beats the variable in both cases.
-- 0 when every finding count is at or under its threshold. 1 when the scan ran and a threshold was exceeded: a real result, and what lets a CI job block a merge on a new critical. 2 when the scan could not run at all - bad arguments, a missing or invalid API key, a network failure, an API error, or a scan that never completed.
 - 1 and 2 were both 1 before, so a pipeline could not tell "we found a critical, block the merge" from "VulnRadar was briefly unreachable". A script testing for any non-zero exit behaves exactly as it did; one that wants the gate result specifically can now ask for it.
 - Once the CLI is on the runner (see Install), a GitHub Actions step fails the build on any new critical or high:
+- A report is downloaded before the thresholds are judged, so the run that fails the build still leaves the file behind for the step that uploads it:
 
 ### Code examples
 ```bash
@@ -2500,6 +2500,18 @@ vulnradar scan <url> [options]
   env:
     VULNRADAR_TOKEN: \<value>}
   run: vulnradar scan https://staging.example.com --max-critical 0 --max-high 0
+```
+
+```text
+- name: VulnRadar scan
+  env:
+    VULNRADAR_TOKEN: \<value>}
+  run: vulnradar scan https://staging.example.com --report sarif --out results.sarif
+- name: Upload to code scanning
+  if: always()
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results.sarif
 ```
 
 ## github
@@ -3001,7 +3013,7 @@ individual URLs instead.
 | `/docs/administration` | - | 10 | 6 | 0 | 0 | 0 | 0 | 31 | 0 |
 | `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 19 | 0 |
 | `/docs/billing` | - | 8 | 7 | 0 | 0 | 0 | 0 | 21 | 0 |
-| `/docs/cli` | - | 6 | 1 | 0 | 5 | 0 | 0 | 11 | 0 |
+| `/docs/cli` | - | 6 | 1 | 0 | 6 | 0 | 0 | 11 | 0 |
 | `/docs/github` | ✓ | 8 | 4 | 0 | 1 | 0 | 0 | 24 | 0 |
 | `/docs/reports` | - | 7 | 3 | 0 | 4 | 0 | 0 | 15 | 0 |
 | `/docs/scheduled-scans` | - | 9 | 6 | 0 | 0 | 0 | 0 | 22 | 0 |

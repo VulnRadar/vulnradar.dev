@@ -699,6 +699,12 @@ const CHANGELOG: Release[] = [
         category: "cli",
       },
       {
+        icon: FileDown,
+        label: "Command-Line Tool Can Download Your Report",
+        desc: "The website could export a scan as a SARIF file for GitHub code scanning, a PDF, a Markdown report, a spreadsheet, or the compliance crosswalk, but our command-line tool could not ask for any of them: a pipeline that wanted one had to make a second request of its own, with a second copy of your key. The tool now takes a report format and a file to write it to, including the choice of whether findings you marked a false positive or accepted are included. The file is fetched before the tool decides whether your thresholds were exceeded, so the run that fails your build still leaves the report behind for the step that uploads it.",
+        category: "cli",
+      },
+      {
         icon: Wrench,
         label: "Pipeline Templates Now Match the Command-Line Tool",
         desc: "The ready-made templates for running scans in GitHub and GitLab pipelines behaved slightly differently from our command-line tool. A single failed status check used to fail the whole pipeline; it now takes five failures in a row. Like the tool, they fail the build only when a real threshold is exceeded, and separately report when the scan itself could not run, so a temporary outage does not silently block your pipeline while findings still can. The GitLab template's timeout now follows how long the scan is actually allowed to take.",

@@ -179,6 +179,26 @@ npm install -g .`}
               def: "personal",
             },
             {
+              flag: "--report <format>",
+              desc: "Download a report once the scan finishes: json, sarif, md, markdown, compliance, csv, pdf. The same formats GET /history/{id}/report serves. Printed to stdout unless --out is given.",
+              def: "none",
+            },
+            {
+              flag: "--out <path>",
+              desc: "Write the --report file here. Required for pdf, which is binary, and with --json, which owns stdout.",
+              def: "stdout",
+            },
+            {
+              flag: "--apply-triage",
+              desc: "In the report, mark accepted-risk and won't-fix findings as suppressed. GitHub reads SARIF suppressions as dismissed.",
+              def: "off",
+            },
+            {
+              flag: "--include-suppressed",
+              desc: "In the report, keep findings you marked a false positive. Off matches what the dashboard shows.",
+              def: "off",
+            },
+            {
               flag: "--json",
               desc: "Print the raw completed result as JSON.",
               def: "off",
@@ -223,6 +243,23 @@ npm install -g .`}
   env:
     VULNRADAR_TOKEN: \${{ secrets.VULNRADAR_TOKEN }}
   run: vulnradar scan https://staging.example.com --max-critical 0 --max-high 0`}
+        />
+        <p className="text-sm text-muted-foreground">
+          A report is downloaded before the thresholds are judged, so the run
+          that fails the build still leaves the file behind for the step that
+          uploads it:
+        </p>
+        <CodeBlock
+          language="yaml"
+          code={`- name: VulnRadar scan
+  env:
+    VULNRADAR_TOKEN: \${{ secrets.VULNRADAR_TOKEN }}
+  run: vulnradar scan https://staging.example.com --report sarif --out results.sarif
+- name: Upload to code scanning
+  if: always()
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results.sarif`}
         />
         <p className="text-sm text-muted-foreground">
           Want a gate with nothing to install? The{" "}

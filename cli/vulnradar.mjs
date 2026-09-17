@@ -5,12 +5,13 @@
 // of the project. It used to advertise Node 18, which went end of life in
 // April 2025 and is exercised by nothing here.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import {
   parseArgs,
   evaluateGate,
   buildScanBody,
   retryAfterSeconds,
+  reportRequestUrl,
   USAGE,
   EXIT,
 } from "./lib.mjs";
@@ -295,6 +296,53 @@ async function main() {
   say(
     `Scan complete: critical=${s.critical || 0} high=${s.high || 0} medium=${s.medium || 0} low=${s.low || 0} total=${s.total || 0}`,
   );
+
+  // 4. Download the report, if one was asked for.
+  //
+  // Before the gate, deliberately. A pipeline that fails the build on a new
+  // critical is exactly the pipeline that wants the SARIF it was going to
+  // upload, and exiting first would leave the upload step with no file.
+  //
+  // It also gets its own request timeout rather than what is left of
+  // --timeout, which says how long to wait for the SCAN: a scan that finishes
+  // one second inside the budget would otherwise have no time left to fetch
+  // anything, and the run would report a failure for work that succeeded.
+  if (opts.report) {
+    const target = reportRequestUrl(opts.apiBase, scanId, opts);
+    let res;
+    try {
+      res = await fetch(target, {
+        headers,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (err) {
+      fail(
+        opts,
+        `Could not download the ${opts.report} report: ${describeFetchError(err)}`,
+        { scanId },
+      );
+    }
+    if (!res.ok) {
+      fail(
+        opts,
+        `Could not download the ${opts.report} report (HTTP ${res.status}): ${await readBodyForError(res)}`,
+        { scanId, status: res.status },
+      );
+    }
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (opts.out) {
+      try {
+        writeFileSync(opts.out, bytes);
+      } catch (err) {
+        fail(opts, `Could not write ${opts.out}: ${err?.message || err}`, {
+          scanId,
+        });
+      }
+      say(`Wrote the ${opts.report} report to ${opts.out}.`);
+    } else {
+      process.stdout.write(bytes.toString("utf8"));
+    }
+  }
 
   const { failed, reasons } = evaluateGate(s, {
     maxCritical: opts.maxCritical,

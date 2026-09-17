@@ -27,6 +27,27 @@ export const EXIT = {
   ERROR: 2,
 };
 
+/**
+ * What `--report <format>` accepts, mapped to the extension a saved file gets.
+ *
+ * The same list the server has in app/api/v3/history/[id]/report/route.ts,
+ * which has served SARIF, Markdown, CSV, the compliance crosswalk, PDF and
+ * JSON since v3: the CLI was the one client that could not ask for any of
+ * them, so a pipeline that wanted the SARIF it uploads to GitHub Code
+ * Scanning had to curl the API itself with a second copy of the token.
+ *
+ * `binary` marks the format that is not text and so cannot go to stdout.
+ */
+export const REPORT_FORMATS = {
+  json: { ext: "json" },
+  sarif: { ext: "sarif" },
+  md: { ext: "md" },
+  markdown: { ext: "md" },
+  compliance: { ext: "md" },
+  csv: { ext: "csv" },
+  pdf: { ext: "pdf", binary: true },
+};
+
 export const DEFAULTS = {
   apiBase: "https://vulnradar.dev/api/v3",
   crawl: false,
@@ -50,7 +71,28 @@ export const DEFAULTS = {
   isPublic: undefined,
   /** Teams to share the scan with. Empty means a personal scan. */
   teamIds: [],
+  /** A format from REPORT_FORMATS to download after the scan, or null. */
+  report: null,
+  /** Where to write the report. Null prints a text report to stdout. */
+  out: null,
+  /** Mark accepted-risk and won't-fix findings suppressed in the report. */
+  applyTriage: false,
+  /** Keep findings the owner marked a false positive in the report. */
+  includeSuppressed: false,
 };
+
+/**
+ * The report URL for a finished scan. The two triage flags are sent only when
+ * asked for, because the server's defaults are the ones the dashboard shows,
+ * and an export that quietly disagrees with the dashboard is the bug this
+ * endpoint's own comment was written about.
+ */
+export function reportRequestUrl(apiBase, scanId, opts) {
+  const params = new URLSearchParams({ format: opts.report });
+  if (opts.includeSuppressed) params.set("includeSuppressed", "true");
+  if (opts.applyTriage) params.set("applyTriage", "true");
+  return `${apiBase}/history/${scanId}/report?${params}`;
+}
 
 /**
  * Parse `vulnradar scan <url> [flags]` argv (already sliced past `node script`).
@@ -189,6 +231,26 @@ export function parseArgs(argv) {
         }
         break;
       }
+      case "--report": {
+        const raw = takeValue(arg, argv[++i]);
+        if (raw === null) break;
+        const fmt = raw.toLowerCase();
+        if (!Object.hasOwn(REPORT_FORMATS, fmt)) {
+          out.error ??= `${arg} expects one of: ${Object.keys(REPORT_FORMATS).join(", ")}. Got "${raw}".`;
+        } else {
+          out.report = fmt;
+        }
+        break;
+      }
+      case "--out":
+        out.out = takeValue(arg, argv[++i]) ?? out.out;
+        break;
+      case "--apply-triage":
+        out.applyTriage = true;
+        break;
+      case "--include-suppressed":
+        out.includeSuppressed = true;
+        break;
       case "--crawl":
         out.crawl = true;
         break;
@@ -237,6 +299,26 @@ export function parseArgs(argv) {
   // Resolved after the loop, not inside the --crawl case: the flags can
   // arrive in either order, so `--timeout 60 --crawl` must still mean 60.
   if (out.crawl && !timeoutExplicit) out.timeout = DEFAULTS.crawlTimeout;
+
+  // The report flags check each other here rather than at the call site, so a
+  // combination that cannot work is refused before a scan is started and
+  // charged against the account's daily limit. A flag that silently does
+  // nothing is worse than a flag that says why it cannot.
+  if (!out.report) {
+    const orphan = out.out
+      ? "--out"
+      : out.applyTriage
+        ? "--apply-triage"
+        : out.includeSuppressed
+          ? "--include-suppressed"
+          : null;
+    if (orphan) out.error ??= `${orphan} needs --report <format>.`;
+  } else if (REPORT_FORMATS[out.report].binary && !out.out) {
+    out.error ??= `--report ${out.report} writes binary, so it needs --out <path>.`;
+  } else if (out.json && !out.out) {
+    out.error ??=
+      "--report with --json needs --out <path>, so the JSON result stays the only thing on stdout.";
+  }
 
   return out;
 }
@@ -320,6 +402,16 @@ Options:
   --public | --private   List the scan in the public directory, or keep it out.
                          Omitted, your account's default applies.
   --team-id <id>         Share the scan with a team you manage. Repeat for several.
+  --report <format>      Download a report once the scan finishes:
+                         ${Object.keys(REPORT_FORMATS).join(", ")}.
+                         Printed to stdout unless --out is given.
+  --out <path>           Write the --report file here. Required for pdf, and
+                         with --json.
+  --apply-triage         In the report, mark accepted-risk and won't-fix
+                         findings as suppressed (GitHub reads SARIF
+                         suppressions as "dismissed").
+  --include-suppressed   In the report, keep findings marked a false positive.
+                         Off by default, matching the dashboard.
   --json                 Print the raw completed result as JSON.
   -v, --version          Print the CLI version.
   -h, --help             Show this help.
@@ -328,4 +420,7 @@ Exit codes:
   0  every finding count is at or under its threshold
   1  the scan ran and a threshold was exceeded
   2  the scan could not run: auth, network, API, or bad arguments
+
+A --report is downloaded before the thresholds are judged, so a run that exits
+1 still leaves the file for the step that uploads it.
 `;

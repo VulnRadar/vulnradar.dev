@@ -3,12 +3,16 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   parseArgs,
   evaluateGate,
   buildScanBody,
   retryAfterSeconds,
+  reportRequestUrl,
+  REPORT_FORMATS,
   DEFAULTS,
   EXIT,
 } from "./lib.mjs";
@@ -802,4 +806,188 @@ test("--version prints the package version", async () => {
   const { code, stdout } = await runCli(["--version"]);
   assert.equal(code, EXIT.OK);
   assert.match(stdout.trim(), /^\d+\.\d+\.\d+$/);
+});
+
+// --report: the CLI can pull the report formats the API has served since v3
+// (SARIF for GitHub Code Scanning, Markdown, CSV, the compliance crosswalk,
+// PDF). Until it could, a pipeline that wanted any of them had to curl the
+// API itself with a second copy of the token.
+
+test("parseArgs: --report and --out are read, and the triage flags are opt-in", () => {
+  const o = parseArgs([
+    "scan",
+    "https://x.com",
+    "--report",
+    "SARIF",
+    "--out",
+    "report.sarif",
+    "--apply-triage",
+  ]);
+  assert.equal(o.error, undefined);
+  assert.equal(o.report, "sarif");
+  assert.equal(o.out, "report.sarif");
+  assert.equal(o.applyTriage, true);
+  assert.equal(o.includeSuppressed, false);
+});
+
+test("parseArgs: an unknown --report format names the ones that exist", () => {
+  const o = parseArgs(["scan", "https://x.com", "--report", "xlsx"]);
+  assert.match(o.error, /sarif/);
+  assert.match(o.error, /xlsx/);
+});
+
+test("parseArgs: a report flag without --report is refused, not ignored", () => {
+  for (const flag of ["--apply-triage", "--include-suppressed"]) {
+    const o = parseArgs(["scan", "https://x.com", flag]);
+    assert.match(o.error, /needs --report/, flag);
+  }
+  const withOut = parseArgs(["scan", "https://x.com", "--out", "f.json"]);
+  assert.match(withOut.error, /needs --report/);
+});
+
+test("parseArgs: pdf and --json both require --out", () => {
+  const pdf = parseArgs(["scan", "https://x.com", "--report", "pdf"]);
+  assert.match(pdf.error, /needs --out/);
+  assert.equal(
+    parseArgs(["scan", "https://x.com", "--report", "pdf", "--out", "r.pdf"])
+      .error,
+    undefined,
+  );
+
+  const json = parseArgs(["scan", "https://x.com", "--report", "md", "--json"]);
+  assert.match(json.error, /needs --out/);
+  assert.equal(
+    parseArgs([
+      "scan",
+      "https://x.com",
+      "--report",
+      "md",
+      "--json",
+      "--out",
+      "r.md",
+    ]).error,
+    undefined,
+  );
+});
+
+test("reportRequestUrl: sends only the triage flags that were asked for", () => {
+  const plain = reportRequestUrl("https://api.example/api/v3", 7, {
+    report: "sarif",
+  });
+  assert.equal(
+    plain,
+    "https://api.example/api/v3/history/7/report?format=sarif",
+  );
+
+  const triaged = reportRequestUrl("https://api.example/api/v3", 7, {
+    report: "sarif",
+    applyTriage: true,
+    includeSuppressed: true,
+  });
+  assert.match(triaged, /applyTriage=true/);
+  assert.match(triaged, /includeSuppressed=true/);
+});
+
+test("every REPORT_FORMATS entry has an extension, and pdf is the binary one", () => {
+  for (const [name, meta] of Object.entries(REPORT_FORMATS)) {
+    assert.ok(meta.ext, name);
+  }
+  assert.equal(REPORT_FORMATS.pdf.binary, true);
+  assert.equal(REPORT_FORMATS.sarif.binary, undefined);
+});
+
+test("cli: --report without --out prints the report to stdout", async () => {
+  const { code, stdout, requests } = await runCli(
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--poll-interval",
+      "0",
+      "--report",
+      "sarif",
+      "--apply-triage",
+    ],
+    {
+      routes: {
+        "/scan/status/": { body: completed({ critical: 0, high: 0 }) },
+        "/scan": { body: { scanId: "abc123" } },
+        "/history/": { body: '{"runs":[]}' },
+      },
+    },
+  );
+  assert.equal(code, EXIT.OK);
+  assert.match(stdout, /"runs"/);
+  const report = requests.find((r) => r.url.startsWith("/history/"));
+  assert.equal(
+    report.url,
+    "/history/abc123/report?format=sarif&applyTriage=true",
+  );
+  assert.equal(report.headers.authorization, "Bearer k");
+});
+
+test("cli: a failing gate still writes the --out file before it exits 1", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vulnradar-cli-"));
+  const out = path.join(dir, "report.md");
+  try {
+    const { code, stdout } = await runCli(
+      [
+        "scan",
+        "https://target.example",
+        "--api-key",
+        "k",
+        "--poll-interval",
+        "0",
+        "--report",
+        "md",
+        "--out",
+        out,
+      ],
+      {
+        routes: {
+          "/scan/status/": {
+            body: completed({ critical: 2, high: 0, total: 2 }),
+          },
+          "/scan": { body: { scanId: "abc123" } },
+          "/history/": { body: "# Scan report" },
+        },
+      },
+    );
+    assert.equal(code, EXIT.GATE_FAILED);
+    assert.equal(readFileSync(out, "utf8"), "# Scan report");
+    assert.match(stdout, /Wrote the md report/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("cli: a report the API refuses is an error, not a silent pass", async () => {
+  const { code, stderr } = await runCli(
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--poll-interval",
+      "0",
+      "--report",
+      "pdf",
+      "--out",
+      path.join(tmpdir(), "vulnradar-should-not-exist.pdf"),
+    ],
+    {
+      routes: {
+        "/scan/status/": { body: completed({ critical: 0, high: 0 }) },
+        "/scan": { body: { scanId: "abc123" } },
+        "/history/": {
+          status: 403,
+          body: { error: "PDF reports are disabled." },
+        },
+      },
+    },
+  );
+  assert.equal(code, EXIT.ERROR);
+  assert.match(stderr, /HTTP 403/);
+  assert.match(stderr, /PDF reports are disabled/);
 });
