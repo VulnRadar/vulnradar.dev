@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { AlertTriangle, Share2, ExternalLink, ShieldCheck } from "lucide-react";
 import { OG_INSPECT_URL_TEMPLATE } from "@/lib/config/client-constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import { describeIncompleteAreas } from "@/lib/scanner/incomplete-labels";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ScanSummary } from "./scan-summary";
 import { ResultsList } from "./results-list";
@@ -203,26 +204,7 @@ export function ScanResultDetail({
   // Branch keys the scanner records in ScanResult.incomplete, mapped to
   // words a user recognises. Anything unrecognised falls through as-is
   // rather than being dropped, so a new branch still surfaces.
-  const INCOMPLETE_LABELS: Record<string, string> = {
-    dns: "DNS records",
-    tls: "TLS and certificate checks",
-    "live-fetch": "Live page fetch",
-    reputation: "Domain reputation lookups",
-    // Thrown by osv-check.ts when OSV.dev answered none of the lookups.
-    "osv-libraries": "The live vulnerable-library lookup",
-    "active-probes": "Active probes",
-    // Written by POST /api/v3/scan/authenticated when the login held long
-    // enough to start but the session was lost during the run: the pages
-    // that came back are the signed-out surface, so the authenticated area
-    // the user asked about is unchecked rather than clean.
-    "authenticated-session": "The signed-in view of this page",
-    // A page check threw instead of reaching a verdict (engine.ts records
-    // which in result_meta.erroredChecks for operators).
-    "page-checks": "Some page checks",
-  };
-  const incompleteAreas = (result.incomplete ?? []).map(
-    (area) => INCOMPLETE_LABELS[area] ?? area,
-  );
+  const incompleteAreas = describeIncompleteAreas(result.incomplete);
 
   return (
     <>

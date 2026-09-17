@@ -627,6 +627,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: AlertTriangle,
+        label: "A Partial Scan Now Says Which Part Is Missing",
+        desc: 'When a scan did not finish and found nothing, the page named the areas that were skipped. When it did not finish but found something, it said only that "some checks ran out of time" and never which, so the one reader with both a partial result and findings in it was the one reader who could not tell what was still unchecked. Both places now name the same areas, and the wording no longer says the checks timed out when a check failed instead.',
+        category: "fixed",
+      },
+      {
         icon: Filter,
         label: "Five Page Checks Stop Flagging Ordinary Pages",
         desc: 'Five checks were producing false alarms on ordinary pages: a source-code download link was flagged as an exposed sensitive file; a field was flagged just because its name contained letters like "tax", like a checkout page\'s tax rate, and now needs a real card, ID or tax number filled in; a common code-loading technique was mistaken for a riskier one; an article merely mentioning a debugging address, without linking to it, was wrongly flagged; and an insecure setting was marked high severity even where nothing changed. All five now need real evidence before reporting a problem.',

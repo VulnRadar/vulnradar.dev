@@ -26,6 +26,7 @@ import { copyToClipboard } from "@/lib/ui/clipboard";
 import { plural } from "@/lib/ui/plural";
 import { formatRelativeTime as getRelativeTime } from "@/lib/ui/relative-time";
 import { SeverityDistribution } from "@/components/scanner/severity-badge";
+import { describeIncompleteAreas } from "@/lib/scanner/incomplete-labels";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { StatIcon, type StatTone } from "@/components/shared/stat-icon";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -76,7 +77,7 @@ const VERDICT = {
     icon: ShieldAlert,
     headline: "This scan did not finish",
     detail:
-      "Some checks ran out of time, so parts of this host were never looked at. Nothing came back, but treat that as incomplete rather than clean and run the scan again.",
+      "Parts of this scan never finished, so parts of this host were never looked at. Nothing came back, but treat that as incomplete rather than clean and run the scan again.",
     rail: "bg-[hsl(var(--warning))]",
     text: "text-[hsl(var(--warning))]",
     tint: "bg-[hsl(var(--warning))]/5",
@@ -378,7 +379,8 @@ export function ScanSummary({
   const [copied, setCopied] = useState(false);
   const scanDate = new Date(result.scannedAt);
   const total = result.summary.total;
-  const incomplete = (result.incomplete?.length ?? 0) > 0;
+  const incompleteAreas = describeIncompleteAreas(result.incomplete);
+  const incomplete = incompleteAreas.length > 0;
   // getSafetyRating answers "how dangerous", which for an empty findings list
   // is "safe" -- and the safe copy then tells the reader to get round to the
   // hardening recommendations, of which there are none. A scan with nothing in
@@ -488,11 +490,13 @@ export function ScanSummary({
                 <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
                   {verdict.detail}
                 </p>
-                {/* A scan that found things AND timed out is still a partial
-                    scan, and nothing on the page said so: the empty state
-                    below only speaks when there are no findings at all. The
-                    areas that were missed are named there; here it is enough
-                    that the count above is a floor, not a total. */}
+                {/* A scan that found things AND did not finish is still a
+                    partial scan. This used to say only that "some checks ran
+                    out of time" and left naming them to the empty state
+                    below, which does not render when there are findings: the
+                    reader with a partial result and something in it was the
+                    one reader never told which area was missing. Same names
+                    as that empty state, from the same map. */}
                 {incomplete && total > 0 && (
                   <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[hsl(var(--warning))]">
                     <LeadingIcon
@@ -500,8 +504,11 @@ export function ScanSummary({
                       line="xs-relaxed"
                       size="sm"
                     />
-                    Some checks ran out of time, so this list may be missing
-                    findings. Run the scan again for a complete result.
+                    <span>
+                      {incompleteAreas.join(", ")} did not finish, so this list
+                      may be missing findings. Run the scan again for a complete
+                      result.
+                    </span>
                   </p>
                 )}
               </div>
