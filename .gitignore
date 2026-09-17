@@ -148,8 +148,10 @@ audits/report.html
 audits/merged-findings.json
 audits/email-previews/
 
-# Design-language reference pulled in by `npx getdesign@latest add <name>`.
-# It is a local styling aid for keeping the site visually coherent, not part
-# of the product, and it re-materialises on demand.
+# Design-language references pulled in by `npx getdesign@latest add <name>`.
+# They are Claude tooling, not part of the product: install one as a personal
+# Claude skill (~/.claude/skills/<name>/) rather than keeping it in the repo.
+# Still ignored so a stray `getdesign add` run never gets committed. The
+# product's own design rules live in CLAUDE.md.
 /DESIGN.md
 /apple/

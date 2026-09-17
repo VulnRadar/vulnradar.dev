@@ -10,7 +10,7 @@ const buttonVariants = cva(
   // snap between sizes instead of settling.
   //
   // active:scale-[0.98] is the press feedback the product has been missing.
-  // The design language in DESIGN.md makes a press scale the system-wide
+  // The product's button conventions (CLAUDE.md) make a press scale the system-wide
   // micro-interaction on every button, and this app had it written down
   // twice and rendered zero times: `hovers.button` and
   // `interactive.buttonOutline` in lib/ui/animations.ts both carry this exact
@@ -61,8 +61,8 @@ const buttonVariants = cva(
       // Opt-in, and deliberately a separate axis from `size` rather than a
       // new variant or a new size.
       //
-      // The marketing surface wants the full-pill CTA of the design language
-      // in DESIGN.md, where the pill radius IS the "this is the action"
+      // The marketing surface wants the full-pill CTA (CLAUDE.md's button
+      // conventions), where the pill radius IS the "this is the action"
       // signal. The app does not: a pill on a dense toolbar reads as a chip,
       // and `rounded-md` is the control rung of the radius ladder in
       // CLAUDE.md, which every other control in the product sits on.

@@ -13,7 +13,7 @@ const Card = React.forwardRef<
       // place the primitive disagreed with the rest of the product: the app's
       // own card idiom, written out by hand in dozens of panels, is
       // `rounded-xl border border-border bg-card` with no elevation at all.
-      // The design language in DESIGN.md is explicit for the same reason -
+      // The section-surface rules in CLAUDE.md are explicit for the same reason -
       // elevation comes from a change of surface, and a shadow belongs on
       // imagery rather than on chrome. Floating things that genuinely sit
       // above the page (dropdowns, toasts, sticky action bars, modal panels)
