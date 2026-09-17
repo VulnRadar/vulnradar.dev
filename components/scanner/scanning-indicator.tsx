@@ -440,7 +440,7 @@ export function ScanningIndicator({
                     "min-w-0",
                     running && "font-medium text-foreground",
                     done && "text-muted-foreground",
-                    !done && !running && "text-muted-foreground/50",
+                    !done && !running && "text-muted-foreground/70",
                   )}
                 >
                   {step}

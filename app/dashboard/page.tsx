@@ -228,7 +228,7 @@ function DashboardContent() {
 
   useEffect(() => {
     if (!me?.userId) return;
-    fetch("/api/v3/ai/info")
+    fetch(API.AI_INFO)
       .then((r) => r.json())
       .then((d) => {
         aiAvailableRef.current = (d.configured || false) && !d.aiDisabled;
@@ -746,10 +746,14 @@ function DashboardContent() {
     async (urls: string[], isPublic?: boolean) => {
       setBulkStatus("scanning");
       setBulkResult(null);
-      // One request, so there is no per-URL step left to count. The submit
-      // button carries the pending state on its own; a determinate bar that
-      // never moves would say less than nothing.
-      setBulkProgress(undefined);
+      // One request for the whole batch, so there is no per-URL network step
+      // to count -- the endpoint admits or defers every URL atomically (see
+      // the comment below on why this replaced a per-URL loop). `total` is
+      // known the moment the caller hands over the list; `current` stays 0
+      // until the batch call resolves, which is still real information (the
+      // bar and "Queuing 0 of N" now show instead of never appearing at all)
+      // rather than a fabricated per-URL tick this request can't produce.
+      setBulkProgress({ current: 0, total: urls.length });
 
       // POST /api/v3/scan/bulk, not a loop of POST /api/v3/scan. The batch
       // endpoint was fully built (quota slicing, per-URL SSRF and access-rule
@@ -838,6 +842,10 @@ function DashboardContent() {
           const skipped = Number(data?.skipped ?? 0);
           const failed = Number(data?.failed ?? 0);
           if (skipped > 0) setShowLimitModal(true);
+          // The batch call just resolved, so every URL now has a known
+          // outcome (queued, failed or skipped) even though none of them
+          // arrived one at a time.
+          setBulkProgress({ current: urls.length, total: urls.length });
           setBulkResult({
             total: Number(data?.total ?? urls.length),
             successful: Number(data?.queued ?? 0),

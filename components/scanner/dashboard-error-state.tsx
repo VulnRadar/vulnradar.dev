@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -17,8 +16,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { BILLING_ENABLED, SUPPORT_EMAIL } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
-import { copyToClipboard } from "@/lib/ui/clipboard";
 import { EmailLink } from "@/components/shared/email-link";
+import {
+  useCopyFeedback,
+  CopiedAnnouncement,
+} from "@/components/shared/copy-feedback";
 
 interface DashboardErrorStateProps {
   error: string;
@@ -195,12 +197,12 @@ export function DashboardErrorState({
   onBack,
   forcedKind,
 }: DashboardErrorStateProps) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFeedback();
   const kind = forcedKind ?? classifyError(error, status);
   const meta = ERROR_META[kind];
   const Icon = meta.icon;
 
-  async function copyDetails() {
+  function copyDetails() {
     const text = [
       `Error: ${error}`,
       url ? `URL: ${url}` : null,
@@ -209,10 +211,7 @@ export function DashboardErrorState({
     ]
       .filter(Boolean)
       .join("\n");
-    if (await copyToClipboard(text)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    }
+    copy(text);
   }
 
   return (
@@ -320,6 +319,7 @@ export function DashboardErrorState({
                   </>
                 )}
               </button>
+              <CopiedAnnouncement copied={copied} noun="error details" />
             </div>
             <p className="wrap-break-word px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground">
               {error}

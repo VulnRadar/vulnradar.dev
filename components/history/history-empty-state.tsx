@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ScanSearch, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -29,10 +30,10 @@ export function HistoryEmptyState({
         description="Every scan you run gets saved here automatically: findings, tags, notes, kept for as long as your plan allows."
         action={
           <Button asChild size="sm">
-            <a href={ROUTES.DASHBOARD}>
+            <Link href={ROUTES.DASHBOARD}>
               <ScanSearch aria-hidden className="mr-2 h-3.5 w-3.5" />
               Run your first scan
-            </a>
+            </Link>
           </Button>
         }
       />

@@ -123,6 +123,7 @@ function TrendBadge({
       )}
     >
       <Icon aria-hidden className="h-2.5 w-2.5" />
+      <span className="sr-only">{isUp ? "up " : "down "}</span>
       {Math.abs(pct).toFixed(0)}%
     </span>
   );

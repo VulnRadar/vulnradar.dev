@@ -16,7 +16,6 @@ import {
   Lock,
   Camera,
   Network,
-  AlertTriangle,
   FileJson,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -64,6 +63,8 @@ import { resolveScanMode } from "@/lib/config/feature-surfaces";
 import { useVerifiedDomains } from "@/lib/hooks/use-verified-domains";
 import { hostFromScanTarget } from "@/lib/domains/covering";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { InlineAlert } from "@/components/shared/inline-alert";
+import { plural } from "@/lib/ui/plural";
 export type ScanMode = "quick" | "deep" | "bulk";
 export type { InlineAuthValue };
 
@@ -774,7 +775,7 @@ export function ScanForm({
     const extras: string[] = [];
     if (activeProbeCount > 0) {
       extras.push(
-        `${activeProbeCount} active ${activeProbeCount === 1 ? "probe" : "probes"}`,
+        `${activeProbeCount} active ${plural(activeProbeCount, "probe")}`,
       );
     }
     targetNote = `${effectiveFamilies} of ${totalFamilies} check families will run${
@@ -1179,7 +1180,10 @@ export function ScanForm({
             >
               Capture page screenshot
             </label>
-            <span className="hidden text-[11px] text-muted-foreground sm:block">
+            <span
+              id="scan-capture-screenshot-reason"
+              className="hidden text-[11px] text-muted-foreground sm:block"
+            >
               {authScanDropsExtras
                 ? "Not available on a scan that signs in first."
                 : "Opens a real browser once. Uses your live-browser minutes."}
@@ -1190,6 +1194,11 @@ export function ScanForm({
               onCheckedChange={setCaptureScreenshot}
               disabled={isScanning || authScanDropsExtras}
               aria-label="Capture page screenshot"
+              aria-describedby={
+                authScanDropsExtras
+                  ? "scan-capture-screenshot-reason"
+                  : undefined
+              }
               className="ml-auto"
             />
           </div>
@@ -1257,54 +1266,54 @@ export function ScanForm({
               id="scan-port-scan-blocked"
               className="border-t border-border px-3 py-2 text-[11px] leading-snug text-muted-foreground sm:hidden"
             >
-              Port scanning needs a verified domain, and{" "}
-              <span className="font-mono">{portScanHost}</span> is not one yet.{" "}
-              <Link
-                href={ROUTES.ATTACK_SURFACE}
-                className={cn(
-                  "rounded-sm underline underline-offset-2 hover:text-foreground",
-                  FOCUS_RING,
-                )}
-              >
-                Verify it
-              </Link>
+              {authScanDropsExtras ? (
+                // Same two-reason split as the desktop copy above: a scan
+                // that signs in first is not fixed by verifying a domain.
+                <>Not available on a scan that signs in first.</>
+              ) : (
+                <>
+                  Port scanning needs a verified domain, and{" "}
+                  <span className="font-mono">{portScanHost}</span> is not one
+                  yet.{" "}
+                  <Link
+                    href={ROUTES.ATTACK_SURFACE}
+                    className={cn(
+                      "rounded-sm underline underline-offset-2 hover:text-foreground",
+                      FOCUS_RING,
+                    )}
+                  >
+                    Verify it
+                  </Link>
+                </>
+              )}
             </p>
           )}
 
           {targetWarning && (
-            <div className="border-t border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 px-3 py-2.5">
-              <div className="flex items-start gap-2">
-                <LeadingIcon
-                  icon={AlertTriangle}
-                  line="xs"
-                  className="text-[hsl(var(--warning))]"
-                />
-                <div className="flex-1 space-y-2">
-                  <p className="text-xs leading-snug text-foreground">
-                    {targetWarning}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs"
-                      onClick={dispatchScan}
-                    >
-                      Scan anyway
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      onClick={() => setTargetWarning(null)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
+            <div className="border-t border-border px-3 py-2.5">
+              <InlineAlert tone="warning">
+                <p>{targetWarning}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={dispatchScan}
+                  >
+                    Scan anyway
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={() => setTargetWarning(null)}
+                  >
+                    Cancel
+                  </Button>
                 </div>
-              </div>
+              </InlineAlert>
             </div>
           )}
 
@@ -1487,7 +1496,7 @@ export function ScanForm({
                 </span>
               ) : (
                 <>
-                  {bulkCount} {bulkCount === 1 ? "URL" : "URLs"} ready.{" "}
+                  {bulkCount} {plural(bulkCount, "URL")} ready.{" "}
                   {bulkCount === 1 ? "It counts" : "Each counts"} as one scan
                   against today&apos;s quota.
                 </>

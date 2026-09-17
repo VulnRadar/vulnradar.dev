@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { ACTION_META } from "./config";
 import type { AuditEntry } from "./types";
+import { formatDate, formatDateTime } from "@/lib/ui/format-date";
 
 /**
  * Audit log filter categories with comprehensive action mappings
@@ -258,27 +259,12 @@ export function formatBytes(bytes: number): string {
  * `withSeconds` because ordering within a minute is the point there.
  */
 export function formatTimestamp(iso: string, withSeconds = false): string {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    ...(withSeconds ? { second: "2-digit" as const } : {}),
-  });
+  return formatDateTime(iso, withSeconds);
 }
 
-/**
- * The date half of formatTimestamp, for a column that is about the day and not
- * the minute ("Sep 16, 2026"). Four panels hand-wrote this with slightly
- * different options, so one date read three ways across admin.
- */
+/** The date half of formatTimestamp. Both are lib/ui/format-date.ts under admin's names. */
 export function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDate(iso);
 }
 
 /**

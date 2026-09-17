@@ -21,7 +21,10 @@ import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
 import { tourAnchor } from "@/lib/tour/anchors";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import {
+  useCopyFeedback,
+  CopiedAnnouncement,
+} from "@/components/shared/copy-feedback";
 import { API, APP_NAME } from "@/lib/config/client-constants";
 import {
   REMEDIATION_STATUSES,
@@ -604,14 +607,7 @@ interface IssueDetailProps {
 }
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopy() {
-    if (await copyToClipboard(code)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  }
+  const { copied, copy } = useCopyFeedback();
 
   return (
     <div
@@ -623,24 +619,27 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
           <Terminal aria-hidden className="h-3 w-3" />
           {language}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn("h-7 gap-1.5 px-2 text-xs", FOCUS_RING)}
-          onClick={handleCopy}
-        >
-          {copied ? (
-            <>
-              <Check className="h-3.5 w-3.5" />
-              Copied
-            </>
-          ) : (
-            <>
-              <Copy className="h-3.5 w-3.5" />
-              Copy
-            </>
-          )}
-        </Button>
+        <span className="inline-flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-7 gap-1.5 px-2 text-xs", FOCUS_RING)}
+            onClick={() => copy(code)}
+          >
+            {copied ? (
+              <>
+                <Check className="h-3.5 w-3.5" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5" />
+                Copy
+              </>
+            )}
+          </Button>
+          <CopiedAnnouncement copied={copied} noun="code" />
+        </span>
       </div>
       <pre className="overflow-x-auto p-3 text-[13px] leading-relaxed">
         <code className="font-mono text-foreground">{code}</code>
@@ -1222,7 +1221,7 @@ export function IssueDetail({
                       // segmented controls in the product read as one idiom
                       // even though this one is a toggle group rather than a
                       // tablist (see the comment above).
-                      "shrink-0 whitespace-nowrap rounded-sm px-2.5 py-1 text-xs font-medium transition-all",
+                      "shrink-0 whitespace-nowrap rounded-sm px-2.5 py-1 text-xs font-medium transition-colors",
                       exampleTab === i
                         ? "bg-background text-foreground shadow-xs"
                         : "text-muted-foreground hover:text-foreground",

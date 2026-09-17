@@ -562,7 +562,7 @@ function SubdomainRow({
           <span
             key={source}
             className={cn(
-              "hidden sm:inline-flex px-1 py-px rounded-md text-[9px] font-medium border",
+              "hidden sm:inline-flex px-1 py-px rounded-md text-[11px] font-medium border",
               SOURCE_BADGE,
             )}
           >
@@ -650,7 +650,7 @@ function UnreachableSection({
                   <span
                     key={source}
                     className={cn(
-                      "hidden sm:inline-flex px-1 py-px rounded-md text-[9px] font-medium border opacity-60",
+                      "hidden sm:inline-flex px-1 py-px rounded-md text-[11px] font-medium border opacity-60",
                       SOURCE_BADGE,
                     )}
                   >

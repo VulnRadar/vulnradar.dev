@@ -847,6 +847,16 @@
     }
   }
 
+  /* The browser's own clear button inside a type="search" input. Chrome,
+     Edge and Safari draw it in the same right-hand padding the app's search
+     fields use for their own clear control, so the findings search showed two
+     overlapping "x"s, and a field without a custom one showed an unstyled
+     native one no other field in the product has. */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration {
+    appearance: none;
+  }
+
   /* Paragraph and prose. A plain line-height for the same reason as the
      headings above: `@apply leading-7` set --tw-leading on every <p>, so
      `<p class="text-xs">` rendered 12px type in a 28px line and every

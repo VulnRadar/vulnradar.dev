@@ -8,6 +8,7 @@ import type {
   SoftwareCategory,
 } from "@/lib/scanner/software-inventory";
 import { cn } from "@/lib/ui/utils";
+import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
 import { TechIcon } from "./tech-icon";
 
 interface SoftwareInventoryPanelProps {
@@ -129,11 +130,24 @@ export function SoftwareInventoryPanel({
 
 function InventoryRow({ item }: { item: SoftwareInventoryEntry }) {
   const vulnerable = item.cveStatus === "vulnerable" && item.cve;
+  const sourceLine = `${item.source}${
+    vulnerable && item.cve!.cveIds.length > 0
+      ? ` · ${item.cve!.cveIds.slice(0, 6).join(", ")}${
+          item.cve!.count > item.cve!.cveIds.slice(0, 6).length ? ", ..." : ""
+        } (${item.cve!.source})`
+      : ""
+  }`;
   return (
     <div className="flex items-start gap-2.5 px-4 py-2">
       {/* Real brand icon for the detected technology; the red CVE badge below
-          carries the vulnerable signal that used to be a shield icon here. */}
-      <TechIcon name={item.name} className="mt-0.5 h-4 w-4 shrink-0" />
+          carries the vulnerable signal that used to be a shield icon here.
+          TechIcon isn't a LucideIcon, so it gets the bare icon-lead utility
+          (see leading-icon.tsx) rather than the <LeadingIcon> wrapper, with
+          the row's own text-xs alongside it since the line size can't be
+          inherited from a class this component doesn't own. */}
+      <span aria-hidden className="icon-lead text-xs">
+        <TechIcon name={item.name} className="h-4 w-4 shrink-0" />
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-xs font-medium text-foreground">
@@ -149,16 +163,16 @@ function InventoryRow({ item }: { item: SoftwareInventoryEntry }) {
           </span>
           {vulnerable && (
             <span
-              className="rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-medium"
-              style={{
-                borderColor: `hsl(var(--severity-${item.cve!.severity}) / 0.35)`,
-                backgroundColor: `hsl(var(--severity-${item.cve!.severity}) / 0.12)`,
-                color: `hsl(var(--severity-${item.cve!.severity}))`,
-              }}
+              className={cn(
+                "rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-medium",
+                SEVERITY_TONE[item.cve!.severity].surface,
+                SEVERITY_TONE[item.cve!.severity].border,
+                SEVERITY_TONE[item.cve!.severity].text,
+              )}
             >
               {item.cve!.count} CVE{item.cve!.count === 1 ? "" : "s"}
               {" · "}
-              {item.cve!.severity}
+              {SEVERITY_TONE[item.cve!.severity].label}
             </span>
           )}
           {item.cveStatus === "clean" && (
@@ -172,15 +186,11 @@ function InventoryRow({ item }: { item: SoftwareInventoryEntry }) {
             </span>
           )}
         </div>
-        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-          {item.source}
-          {vulnerable && item.cve!.cveIds.length > 0
-            ? ` · ${item.cve!.cveIds.slice(0, 6).join(", ")}${
-                item.cve!.count > item.cve!.cveIds.slice(0, 6).length
-                  ? ", ..."
-                  : ""
-              } (${item.cve!.source})`
-            : ""}
+        <p
+          className="mt-0.5 truncate text-[11px] text-muted-foreground"
+          title={sourceLine}
+        >
+          {sourceLine}
         </p>
       </div>
     </div>

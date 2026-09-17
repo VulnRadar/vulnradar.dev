@@ -23,6 +23,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { plural } from "@/lib/ui/plural";
 import { formatRelativeTime as getRelativeTime } from "@/lib/ui/relative-time";
 import { SeverityDistribution } from "@/components/scanner/severity-badge";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
@@ -517,7 +518,7 @@ export function ScanSummary({
                     {total}
                   </span>
                   <span className="text-sm text-muted-foreground">
-                    {total === 1 ? "finding" : "findings"}
+                    {plural(total, "finding")}
                   </span>
                 </p>
                 <SeverityDistribution counts={counts} />

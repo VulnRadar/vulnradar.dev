@@ -3,6 +3,7 @@
 import { Globe, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 import { getDomain, scanRowState, type ScanRecord } from "./history-types";
 import { StatStrip } from "@/components/shared/stat-strip";
+import { plural } from "@/lib/ui/plural";
 
 interface HistoryStatsProps {
   scans: ScanRecord[];
@@ -41,7 +42,7 @@ export function HistoryStats({ scans, capped }: HistoryStatsProps) {
           // the strip or from the heading.
           {
             value: hosts,
-            label: hosts === 1 ? "Host" : "Hosts",
+            label: plural(hosts, "Host"),
             icon: Globe,
             iconTone: "primary",
           },

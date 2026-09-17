@@ -1,15 +1,7 @@
 "use client";
 
-import {
-  ArrowUpDown,
-  Calendar,
-  Filter,
-  Search,
-  ShieldAlert,
-} from "lucide-react";
+import { ArrowUpDown, Calendar, Filter, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/ui/utils";
 import { tourAnchor } from "@/lib/tour/anchors";
 import {
   DropdownMenu,
@@ -18,37 +10,24 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  FilterDropdown,
+  filterTriggerClass,
+  ListFilterBar,
+  ListSearchInput,
+} from "@/components/shared/list-filter-bar";
+import {
   DATE_FILTER_LABELS,
   SEVERITY_FILTER_LABELS,
   SORT_LABELS,
-  type HistoryDateFilter,
   type HistoryQuery,
-  type HistorySeverityFilter,
-  type HistorySort,
 } from "@/components/history/history-filter-utils";
 
 interface HistoryFiltersProps {
   query: HistoryQuery;
   onChange: (patch: Partial<HistoryQuery>) => void;
   allTags: string[];
-}
-
-// One trigger shape for all four dropdowns, so a filter row does not read as
-// four different controls that happen to sit next to each other.
-const TRIGGER_CLASS = "h-10 shrink-0 gap-2 bg-transparent";
-
-// An engaged filter is the single most important thing this row can tell you,
-// and all four triggers used to look identical whether or not one was on: a
-// list narrowed to "Has a critical" looked exactly like the full list, with the
-// only clue being the word inside the button. Active picks up the same
-// brand-blue chip treatment the findings list already uses for its active
-// severity and category filters, so the two filter rows in the product say
-// "on" the same way.
-const ACTIVE_TRIGGER_CLASS =
-  "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary";
-
-function triggerClass(active: boolean): string {
-  return cn(TRIGGER_CLASS, active && ACTIVE_TRIGGER_CLASS);
+  /** Narrowing controls only. The search field is always rendered. */
+  showDropdowns?: boolean;
 }
 
 /**
@@ -61,6 +40,12 @@ function triggerClass(active: boolean): string {
  * questions a security team asks of a scan history, so they are the two
  * filters here.
  *
+ * Built on the shared list-filter-bar recipe (ListFilterBar / ListSearchInput
+ * / FilterDropdown) rather than its own hand-rolled search box and trigger
+ * geometry, the same shape /repos and /shares already use. The tag filter
+ * stays a plain DropdownMenu because its options are account data, not a
+ * fixed enum FilterDropdown's `labels` table can express.
+ *
  * Clear All is deliberately gone from this row: it deleted every scan on the
  * account from a button sitting immediately beside the search input, which is
  * the control a user touches constantly. It lives in the page header now,
@@ -70,125 +55,79 @@ export function HistoryFilters({
   query,
   onChange,
   allTags,
+  showDropdowns = true,
 }: HistoryFiltersProps) {
-  const severityKeys = Object.keys(
-    SEVERITY_FILTER_LABELS,
-  ) as HistorySeverityFilter[];
-  const dateKeys = Object.keys(DATE_FILTER_LABELS) as HistoryDateFilter[];
-  const sortKeys = Object.keys(SORT_LABELS) as HistorySort[];
-
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-      <div className="relative min-w-[12rem] flex-1">
-        <Search
-          aria-hidden
-          className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          {...tourAnchor("historySearch")}
-          placeholder="Search by URL..."
+    <ListFilterBar>
+      {/* The wrapping div, not ListSearchInput itself, carries the tour
+          anchor: the shared component's props are closed and do not accept a
+          passthrough data-tour attribute. flex-1 here is what min-w-[12rem]
+          flex-1 was doing directly on the search box before. */}
+      <div {...tourAnchor("historySearch")} className="min-w-[12rem] flex-1">
+        <ListSearchInput
           value={query.search}
-          onChange={(e) => onChange({ search: e.target.value })}
-          aria-label="Filter scan history by URL"
-          className="h-10 bg-card/50 pl-9"
+          onChange={(search) => onChange({ search })}
+          placeholder="Search by URL..."
+          label="Filter scan history by URL"
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {allTags.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className={triggerClass(!!query.tag)}
-              >
-                <Filter aria-hidden className="h-4 w-4" />
-                <span>{query.tag || "All tags"}</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onChange({ tag: null })}>
-                All tags
-              </DropdownMenuItem>
-              {allTags.map((tag) => (
-                <DropdownMenuItem key={tag} onClick={() => onChange({ tag })}>
-                  {tag}
+      {showDropdowns && (
+        <div className="flex flex-wrap items-center gap-2">
+          {allTags.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label="Filter scan history by tag"
+                  className={filterTriggerClass(!!query.tag)}
+                >
+                  <Filter aria-hidden className="h-4 w-4" />
+                  <span>{query.tag || "All tags"}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onChange({ tag: null })}>
+                  All tags
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+                {allTags.map((tag) => (
+                  <DropdownMenuItem key={tag} onClick={() => onChange({ tag })}>
+                    {tag}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className={triggerClass(query.severity !== "any")}
-            >
-              <ShieldAlert aria-hidden className="h-4 w-4" />
-              <span>{SEVERITY_FILTER_LABELS[query.severity]}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {severityKeys.map((key) => (
-              <DropdownMenuItem
-                key={key}
-                onClick={() => onChange({ severity: key })}
-              >
-                {SEVERITY_FILTER_LABELS[key]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <FilterDropdown
+            icon={ShieldAlert}
+            label="Filter scan history by severity"
+            value={query.severity}
+            labels={SEVERITY_FILTER_LABELS}
+            active={query.severity !== "any"}
+            onChange={(severity) => onChange({ severity })}
+          />
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className={triggerClass(query.date !== "any")}
-            >
-              <Calendar aria-hidden className="h-4 w-4" />
-              <span>{DATE_FILTER_LABELS[query.date]}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {dateKeys.map((key) => (
-              <DropdownMenuItem
-                key={key}
-                onClick={() => onChange({ date: key })}
-              >
-                {DATE_FILTER_LABELS[key]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <FilterDropdown
+            icon={Calendar}
+            label="Filter scan history by date"
+            value={query.date}
+            labels={DATE_FILTER_LABELS}
+            active={query.date !== "any"}
+            onChange={(date) => onChange({ date })}
+          />
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className={triggerClass(query.sort !== "newest")}
-            >
-              <ArrowUpDown aria-hidden className="h-4 w-4" />
-              <span>{SORT_LABELS[query.sort]}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {sortKeys.map((key) => (
-              <DropdownMenuItem
-                key={key}
-                onClick={() => onChange({ sort: key })}
-              >
-                {SORT_LABELS[key]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
+          <FilterDropdown
+            icon={ArrowUpDown}
+            label="Sort scan history"
+            value={query.sort}
+            labels={SORT_LABELS}
+            active={query.sort !== "newest"}
+            onChange={(sort) => onChange({ sort })}
+          />
+        </div>
+      )}
+    </ListFilterBar>
   );
 }

@@ -156,7 +156,10 @@ function SourceRow({ source }: { source: ThreatIntelSource }) {
             </div>
           )}
         {source.detail && (
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+          <p
+            className="mt-0.5 truncate text-[11px] text-muted-foreground"
+            title={source.detail}
+          >
             {source.detail}
           </p>
         )}

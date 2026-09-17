@@ -591,6 +591,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: Wrench,
+        label: "Dashboard, History and Scan Results Polish",
+        desc: "A sweep of the signed-in pages. Bulk scans now show their queuing progress, which never appeared before. On phones, the scan form now explains why port scanning is unavailable when the real reason is a scan that signs in first, not an unverified domain. History's filters match every other list, the whole search box is clickable, and filters only appear once you have enough scans to need them. Every copy button now waits the same length of time before resetting and tells screen reader users that the copy worked. Search boxes no longer show two clear buttons at once, and several small labels are easier to read.",
+        category: "improved",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

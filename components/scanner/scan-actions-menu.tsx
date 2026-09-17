@@ -1443,7 +1443,7 @@ export function ScanActionsMenu({
 
           <DialogBody>
             {githubResult ? (
-              <div className="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 px-3 py-2.5 text-sm">
+              <InlineAlert tone="success">
                 <p className="text-foreground">Issue created.</p>
                 <a
                   href={safeHref(githubResult.url)}
@@ -1453,7 +1453,7 @@ export function ScanActionsMenu({
                 >
                   {githubResult.url}
                 </a>
-              </div>
+              </InlineAlert>
             ) : (
               <div className="space-y-2">
                 <label
@@ -1471,7 +1471,7 @@ export function ScanActionsMenu({
                   spellCheck={false}
                 />
                 {githubError && (
-                  <p className="text-sm text-destructive">{githubError}</p>
+                  <InlineAlert tone="error">{githubError}</InlineAlert>
                 )}
               </div>
             )}

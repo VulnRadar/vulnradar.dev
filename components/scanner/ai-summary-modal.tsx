@@ -1,7 +1,6 @@
 "use client";
 
 import { AlertTriangle, Check, Copy, Loader2, ScrollText } from "lucide-react";
-import { useState } from "react";
 import {
   Dialog,
   DialogBody,
@@ -12,7 +11,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import {
+  useCopyFeedback,
+  CopiedAnnouncement,
+} from "@/components/shared/copy-feedback";
 
 interface AiSummaryModalProps {
   open: boolean;
@@ -39,14 +41,11 @@ export function AiSummaryModal({
   error,
   summary,
 }: AiSummaryModalProps) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFeedback();
 
-  async function copySummary() {
+  function copySummary() {
     if (!summary) return;
-    if (await copyToClipboard(summary)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    copy(summary);
   }
 
   return (
@@ -122,6 +121,7 @@ export function AiSummaryModal({
                 )}
                 {copied ? "Copied" : "Copy text"}
               </Button>
+              <CopiedAnnouncement copied={copied} noun="summary" />
             </DialogFooter>
           </>
         ) : null}

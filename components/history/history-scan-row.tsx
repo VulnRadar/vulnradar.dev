@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/ui/utils";
 import { tourAnchor } from "@/lib/tour/anchors";
+import { plural } from "@/lib/ui/plural";
 import { SEVERITY_LEVELS } from "@/lib/config/client-constants";
 import { severityTone } from "@/components/scanner/severity-badge";
 import { SeverityPill } from "./severity-pill";
@@ -353,8 +354,7 @@ export function HistoryScanRow({
           </span>
         ) : (
           <span className={cn("font-medium", tone.text)}>
-            {scan.findings_count}{" "}
-            {scan.findings_count === 1 ? "finding" : "findings"}
+            {scan.findings_count} {plural(scan.findings_count, "finding")}
             {worstCount > 0 && `, ${worstCount} ${worst}`}
           </span>
         )}

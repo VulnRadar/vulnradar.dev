@@ -5,7 +5,10 @@ import { Check, ChevronDown, Copy, Network } from "lucide-react";
 import type { DnsRecords } from "@/lib/scanner/dns-records";
 import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import {
+  useCopyFeedback,
+  CopiedAnnouncement,
+} from "@/components/shared/copy-feedback";
 import { PREMIUM_FEATURES } from "@/components/modals/premium-upgrade-modal";
 import {
   PanelActionBar,
@@ -49,15 +52,7 @@ interface RecordGroup {
 
 /** A single monospace value with a copy affordance revealed on hover. */
 function ValueRow({ row }: { row: RecordRow }) {
-  const [copied, setCopied] = useState(false);
-
-  const onCopy = async () => {
-    const ok = await copyToClipboard(row.value);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }
-  };
+  const { copied, copy } = useCopyFeedback();
 
   return (
     <div className="group/row flex items-center gap-2 px-4 py-1.5">
@@ -71,7 +66,7 @@ function ValueRow({ row }: { row: RecordRow }) {
       </code>
       <button
         type="button"
-        onClick={onCopy}
+        onClick={() => copy(row.value)}
         aria-label={copied ? "Copied" : "Copy value"}
         // Hover-gated from sm up only: a touch device never produces hover, so
         // below that the copy button was permanently invisible. It also gets a
@@ -87,6 +82,7 @@ function ValueRow({ row }: { row: RecordRow }) {
           <Copy aria-hidden className="h-3.5 w-3.5" />
         )}
       </button>
+      <CopiedAnnouncement copied={copied} noun="value" />
     </div>
   );
 }

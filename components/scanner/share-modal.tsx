@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   Link2,
   Check,
@@ -25,7 +24,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/ui/utils";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import {
+  useCopyFeedback,
+  CopiedAnnouncement,
+} from "@/components/shared/copy-feedback";
 import { EXPIRY_PRESETS, activePreset, formatExpiry } from "./share-expiry";
 
 interface ShareModalProps {
@@ -114,16 +116,12 @@ export function ShareModal({
   onExpiryChange,
   updatingExpiry = false,
 }: ShareModalProps) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFeedback();
   const selectedDays = activePreset(expiresAt);
   const expired = Boolean(expiresAt && new Date(expiresAt) <= new Date());
 
-  async function handleCopy() {
-    const success = await copyToClipboard(shareUrl);
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+  function handleCopy() {
+    copy(shareUrl);
   }
 
   function handleShare(option: (typeof SHARE_OPTIONS)[number]) {
@@ -214,6 +212,7 @@ export function ShareModal({
                 </>
               )}
             </Button>
+            <CopiedAnnouncement copied={copied} noun="link" />
           </div>
 
           {/* Link expiry. Presets rather than a date picker: the route only

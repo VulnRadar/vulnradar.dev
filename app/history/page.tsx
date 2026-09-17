@@ -18,7 +18,8 @@ import {
   usePagination,
 } from "@/components/ui/pagination-control";
 import { API, BILLING_HISTORY_RETENTION } from "@/lib/config/client-constants";
-import { pluralize } from "@/lib/ui/plural";
+import { plural, pluralize } from "@/lib/ui/plural";
+import { worthFiltering } from "@/components/shared/list-filter-bar";
 import {
   getQueryParam,
   getQueryParamInt,
@@ -903,7 +904,7 @@ export default function HistoryPage() {
                 <Skeleton className="mt-1 h-5 w-64 max-w-full" />
               ) : (
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {totalScans} {totalScans === 1 ? "scan" : "scans"} on record
+                  {pluralize(totalScans, "scan")} on record
                   {/* Only while nothing is being searched. With a search on,
                       the loaded rows are the matches for it, not "the most
                       recent", and the notice below the filters says so
@@ -1002,6 +1003,10 @@ export default function HistoryPage() {
                   query={query}
                   onChange={updateQuery}
                   allTags={allTags}
+                  // Narrowing controls only, same threshold as /repos and
+                  // /shares. Search stays up regardless: it costs one row and
+                  // is still useful on a short list.
+                  showDropdowns={worthFiltering(scans.length)}
                 />
               )}
 
@@ -1017,42 +1022,44 @@ export default function HistoryPage() {
                 look at the loaded rows, and the second notice is the old
                 warning kept for exactly that case. */}
               {serverFiltering && scans.length < matchedScans && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 px-3.5 py-2.5 text-xs text-muted-foreground">
-                  <span>
-                    {matchedScans} scans match. Showing the {scans.length} most
-                    recent of them.
-                  </span>
-                  {/* A button, where the copy used to say "narrow the search
-                      to reach the older ones". That advice could not work:
-                      the row cap applies to the filtered set too, so an
-                      older scan stayed out of reach however precise the
-                      search got. */}
-                  {hasOlder && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 shrink-0 text-xs"
-                      disabled={loadingOlder}
-                      onClick={async () => {
-                        setLoadingOlder(true);
-                        try {
-                          await fetchHistory(scans.length);
-                        } finally {
-                          setLoadingOlder(false);
-                        }
-                      }}
-                    >
-                      {loadingOlder ? "Loading..." : "Load older scans"}
-                    </Button>
-                  )}
-                </div>
+                <InlineAlert tone="warning">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      {matchedScans} scans match. Showing the {scans.length}{" "}
+                      most recent of them.
+                    </span>
+                    {/* A button, where the copy used to say "narrow the
+                        search to reach the older ones". That advice could
+                        not work: the row cap applies to the filtered set
+                        too, so an older scan stayed out of reach however
+                        precise the search got. */}
+                    {hasOlder && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 shrink-0 text-xs"
+                        disabled={loadingOlder}
+                        onClick={async () => {
+                          setLoadingOlder(true);
+                          try {
+                            await fetchHistory(scans.length);
+                          } finally {
+                            setLoadingOlder(false);
+                          }
+                        }}
+                      >
+                        {loadingOlder ? "Loading..." : "Load older scans"}
+                      </Button>
+                    )}
+                  </div>
+                </InlineAlert>
               )}
               {!serverFiltering && hasFilters && scans.length < totalScans && (
-                <p className="rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 px-3.5 py-2.5 text-xs text-muted-foreground">
+                <InlineAlert tone="warning">
                   Filtering the {scans.length} most recent scans, not all{" "}
                   {totalScans} on this account. Search by URL or tag to look
                   through all of them.
-                </p>
+                </InlineAlert>
               )}
 
               <HistoryEmptyState
@@ -1101,9 +1108,9 @@ export default function HistoryPage() {
           <>
             This deletes all{" "}
             <span className="font-medium text-foreground">{totalScans}</span>{" "}
-            {totalScans === 1 ? "scan" : "scans"} on this account, findings and
-            notes included, not just the {scans.length} shown here. This cannot
-            be undone.
+            {plural(totalScans, "scan")} on this account, findings and notes
+            included, not just the {scans.length} shown here. This cannot be
+            undone.
           </>
         }
         confirmLabel="Clear history"
