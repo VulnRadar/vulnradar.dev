@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { NextRequest } from "next/server";
 import pool from "@/lib/database/db";
 import { GET } from "@/app/api/v3/shared/[token]/route";
@@ -23,18 +23,20 @@ async function shareScan(
   expiresAt: string | null,
 ): Promise<string> {
   const token = randomBytes(32).toString("hex");
-  const hash = createHash("sha256").update(token).digest("hex");
+  // share_token_hash is GENERATED ALWAYS from share_token, so the row is
+  // written the way the share route writes it and Postgres derives the hash
+  // the lookup matches on.
   await pool.query(
     `INSERT INTO scan_history
        (user_id, url, status, started_at, scanned_at, scan_type, summary,
-        findings, findings_count, duration, share_token_hash, share_expires_at)
+        findings, findings_count, duration, share_token, share_expires_at)
      VALUES ($1, $2, 'completed', NOW(), NOW(), 'web',
              '{"critical":0,"high":0,"medium":0,"low":0,"info":0,"total":0}'::jsonb,
              '[]'::jsonb, 0, 1, $3, $4)`,
     [
       userId,
       `https://share-${token.slice(0, 8)}.example.test/`,
-      hash,
+      token,
       expiresAt,
     ],
   );

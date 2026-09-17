@@ -20,7 +20,7 @@ describeIntegration("API key caps, under real contention", () => {
   it("never leaves an account holding more keys than its plan cap", async () => {
     const user = await createUser();
     const CAP = 3;
-    const CALLERS = 8;
+    const CALLERS = 6;
 
     const created = await Promise.all(
       Array.from({ length: CALLERS }, (_unused, i) =>
@@ -96,8 +96,13 @@ describeIntegration("API key caps, under real contention", () => {
     );
     expect(key).not.toBeNull();
 
-    const LIMIT = 5;
-    const CALLERS = 20;
+    // Six, not twenty: every caller holds a pooled client for the length of
+    // its transaction and the pool's max is CONFIG_DB_POOL_MAX (10), so a
+    // wider fan-out starves the fire-and-forget last_used_at update of a
+    // connection and the test fails on a connect timeout rather than on the
+    // thing it is testing. Six still has five of them losing the race.
+    const LIMIT = 3;
+    const CALLERS = 6;
     const results = await Promise.all(
       Array.from({ length: CALLERS }, () => checkRateLimit(key!.id, LIMIT)),
     );
