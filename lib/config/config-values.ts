@@ -164,7 +164,20 @@ export const CONFIG_KNOWN_SCHEMA_VERSIONS = ["1.0.0", "2.0.0", "3.0.0"];
 // version, and the offline library table is an OSV-shaped snapshot with real
 // per-advisory ranges and CVSS severities. Scan results and the check count
 // change, with new checks, so a minor bump.
-export const CONFIG_ENGINE_VERSION = "3.4.0";
+// 3.5.0: the same cycle kept going after 3.4.0 was set, and it added checks,
+// so the number moved again rather than shipping new detections under the old
+// one. New: a CSP nonce reused across two responses, MX records naming hosts
+// that do not resolve, and exposed Go pprof, Symfony profiler, anonymous
+// Grafana, open Elasticsearch and Jupyter. Changed: a CSP with wildcards in
+// two directives reports one finding per directive instead of merging them
+// into one that names a single directive; code checks read authored script
+// only, so a marker inside a comment no longer hides a script; an OSV.dev
+// outage makes the library check incomplete rather than clean; DNSSEC,
+// dangling-CNAME and DoH answers are judged on the real response. Eighteen
+// detectors that grew with the square of the page are linear, and the TLS
+// branch reads one certificate with one handshake. New checks, so a minor
+// bump.
+export const CONFIG_ENGINE_VERSION = "3.5.0";
 // The most syndicated sentence in the product: it is the root meta
 // description, the OpenGraph and Twitter description, the PWA manifest
 // description, all three JSON-LD description fields, and the opening line of

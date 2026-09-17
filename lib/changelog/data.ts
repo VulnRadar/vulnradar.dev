@@ -808,8 +808,8 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: ShieldAlert,
-        label: "Engine Version 3.4.0",
-        desc: "The detection engine that powers every scan moves to version 3.4.0. Scan results may change for reasons described elsewhere in this update: pages are read the way a browser uses them, error pages are matched more accurately, two new certificate problems are reported, and checks that could never find anything are removed. Identifying codes for existing findings are unchanged, so your previous notes and automated rules still apply, with one exception: the outdated-library check now reports one finding per library instead of one per advisory, so those findings get new codes this one time.",
+        label: "Engine Version 3.5.0",
+        desc: "The detection engine that powers every scan moves to version 3.5.0. Scan results may change for reasons described elsewhere in this update: pages are read the way a browser uses them, error pages are matched more accurately, checks judge the address actually reached after redirects, new certificate, DNS, mail and exposed-tool problems are reported, and checks that could never find anything are removed. Identifying codes for existing findings are unchanged, so your previous notes and automated rules still apply, with one exception: the outdated-library check now reports one finding per library instead of one per advisory, so those findings get new codes this one time. A site whose content security policy has wildcards in several places now gets one finding per place instead of a single finding that named only one of them.",
         category: "changed",
       },
       {
