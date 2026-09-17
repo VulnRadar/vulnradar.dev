@@ -12,6 +12,11 @@ import {
   reverseBrowserbaseCreditPurchase,
 } from "@/lib/billing/browserbase-usage";
 import {
+  creditGithubCreditPurchase,
+  reverseGithubCreditPurchase,
+  claimFreeGithubReviewTrial,
+} from "@/lib/billing/github-review-usage";
+import {
   describeIntegration,
   createUser,
   setSettings,
@@ -195,6 +200,60 @@ describeIntegration("credit ledgers", () => {
     expect((await reverseBrowserbaseCreditPurchase(intent)).reversed).toBe(
       false,
     );
+  });
+
+  /**
+   * The third ledger, and the one that was missing from this file. Its CTE is
+   * hand-copied from the AI one rather than shared with it, so proving the
+   * other two hold proves nothing about this one: a copy is exactly where an
+   * ON CONFLICT target gets edited to the wrong column and nobody notices.
+   *
+   * Both paths that credit a GitHub purchase can arrive at once in
+   * production: the client confirm and the Stripe webhook's
+   * payment_intent.succeeded backup.
+   */
+  it("runs the GitHub review ledger on the same guarantees", async () => {
+    const user = await createUser();
+    const intent = unique("pi");
+
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        creditGithubCreditPurchase(intent, user.id, 25_000),
+      ),
+    );
+    expect(results.filter((r) => r.credited).length).toBe(1);
+
+    const balance = async () => {
+      const { rows } = await pool.query<{ b: string }>(
+        "SELECT github_credit_balance AS b FROM users WHERE id = $1",
+        [user.id],
+      );
+      return Number(rows[0].b);
+    };
+    expect(await balance()).toBe(25_000);
+
+    expect(await reverseGithubCreditPurchase(intent)).toMatchObject({
+      reversed: true,
+      userId: user.id,
+      tokens: 25_000,
+    });
+    expect(await balance()).toBe(0);
+    // A refund webhook that arrives twice must not deduct twice: the second
+    // call finds the purchase already claimed.
+    expect((await reverseGithubCreditPurchase(intent)).reversed).toBe(false);
+  });
+
+  it("hands the free GitHub review trial to exactly one concurrent caller", async () => {
+    const user = await createUser();
+
+    const wins = await Promise.all(
+      Array.from({ length: 6 }, () => claimFreeGithubReviewTrial(user.id)),
+    );
+    expect(wins.filter(Boolean).length).toBe(1);
+
+    // And not again inside the same window: the mutex is the UPDATE's own
+    // WHERE clause, so a second round has to lose outright.
+    expect(await claimFreeGithubReviewTrial(user.id)).toBe(false);
   });
 
   it("spends the free window allowance before touching purchased credits", async () => {
