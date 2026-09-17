@@ -33,7 +33,6 @@ import { API, APP_SLUG } from "@/lib/config/client-constants";
 import {
   SkeletonRegion,
   AdminPanelHeader,
-  ConfirmDialog,
   StatusPill,
   useUnsavedChangesWarning,
   AdminMobileToc,
@@ -41,6 +40,7 @@ import {
   SettingsFieldsSkeleton,
   type AdminTocItem,
 } from "@/components/admin/shared";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { cn } from "@/lib/ui/utils";
 import { pluralize } from "@/lib/ui/plural";
 import {

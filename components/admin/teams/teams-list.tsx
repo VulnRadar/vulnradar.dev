@@ -30,7 +30,6 @@ import { PaginationControl } from "@/components/ui/pagination-control";
 import {
   SkeletonRegion,
   UserAvatar,
-  ConfirmDialog,
   EmptyState,
   TableScrollArea,
   DataTableSkeleton,
@@ -39,6 +38,7 @@ import {
   AdminPanelHeader,
   type SortDirection,
 } from "@/components/admin/shared";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { useAdminPermissions } from "@/components/admin/hooks";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";

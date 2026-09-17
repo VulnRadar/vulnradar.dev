@@ -12,9 +12,9 @@ import {
   EmptyState,
   LogListSkeleton,
   StatusPill,
-  ConfirmDialog,
   Toast,
 } from "@/components/admin/shared";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   formatTimestamp as formatAdminTimestamp,
   formatRelativeTime,

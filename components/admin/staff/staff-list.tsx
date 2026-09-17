@@ -54,11 +54,11 @@ import {
   RowListSkeleton,
   StatBarSkeleton,
   AdminPasswordConfirmDialog,
-  ConfirmDialog,
   AdminPanelHeader,
   StatusPill,
   type SortDirection,
 } from "@/components/admin/shared";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { formatRelativeTime } from "@/components/admin/utils";
 import { ModalShell } from "@/components/ui/modal-shell";
 import {

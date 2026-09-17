@@ -1,5 +1,36 @@
 @import "tailwindcss";
 
+/* STACKING ORDER, declared once.
+ *
+ * Every fixed or sticky layer in the product, in order. It used to exist only
+ * as comments in ten files pointing at each other's numbers ("above that bar's
+ * z-60"), so adding a new layer meant reading all of them to find a free slot
+ * and nothing caught a collision.
+ *
+ *   z-20   sticky table headers inside a scroll area
+ *   z-30   sticky in-page bars: the profile tab bar, the browser viewer's
+ *          phone log sheet
+ *   z-40   full-screen sheets under the site bars: the docs and admin mobile
+ *          navigation, the landing social prompt
+ *   z-50   page chrome: site and landing headers, mobile nav sheets, the
+ *          notification centre, floating save bars, the admin section pill
+ *   z-60   site-wide bars that must cover the header: cookie notice, site
+ *          notifications, the impersonation banner, the social prompt
+ *   z-70   offline banner, and the admin toast on phones, both of which have
+ *          to clear the bars above
+ *   z-80   command palette (reachable from anywhere, so above the bars)
+ *   z-90   product tour spotlight
+ *   z-91   the spotlight's cutout ring
+ *   z-100  blocking overlays: the terms gate, tour callouts and controls
+ *
+ * Radix portals (dialog, popover, tooltip, dropdown) carry their own z-50
+ * inside components/ui and sit above page content in their own stacking
+ * context; they are deliberately below the z-60 bars.
+ *
+ * tests/components/shared/z-layers.test.ts fails on a value that is not
+ * listed here, so a new layer has to be placed in this order on purpose.
+ */
+
 @config '../tailwind.config.mjs';
 
 /* Role badge styles - generated dynamically via ROLE_BADGE_STYLES lookup

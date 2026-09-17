@@ -268,12 +268,6 @@ export const MODAL_INVENTORY: readonly InventoryEntry[] = [
     tier: "compact",
     size: "sm",
   },
-  {
-    name: "Admin confirm",
-    source: "components/admin/shared/confirm-dialog.tsx",
-    tier: "compact",
-    size: "sm",
-  },
 
   // Deliberately not modals. See the tier note at the top of this file.
   {
