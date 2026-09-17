@@ -1,5 +1,6 @@
 import { cn } from "@/lib/ui/utils";
 import { focus } from "@/lib/ui/animations";
+import { LeadingIcon } from "@/components/shared/leading-icon";
 import { CATEGORIES, type ContactCategory } from "./contact-types";
 
 /**
@@ -113,13 +114,10 @@ function CategoryOption({
         className,
       )}
     >
-      <Icon
-        aria-hidden="true"
-        className={cn(
-          "shrink-0 mt-0.5",
-          emphasis ? "h-5 w-5" : "h-4 w-4",
-          selected ? "text-primary" : "text-muted-foreground/70",
-        )}
+      <LeadingIcon
+        icon={Icon}
+        size={emphasis ? "lg" : "md"}
+        className={selected ? "text-primary" : "text-muted-foreground/70"}
       />
       <span className="min-w-0">
         <span

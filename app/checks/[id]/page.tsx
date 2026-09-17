@@ -322,7 +322,8 @@ export default async function CheckPage({
                 >
                   <SeverityPill
                     severity={c.severity}
-                    className="scale-90 shrink-0"
+                    size="sm"
+                    className="shrink-0"
                   />
                   <Link
                     href={checkPath(c.id)}

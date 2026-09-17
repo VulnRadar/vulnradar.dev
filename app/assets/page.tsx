@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Search } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   PaginationControl,
   usePagination,
@@ -29,6 +28,7 @@ import {
 import { HistoryViewTabs } from "@/components/history";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 export default function AssetsPage() {
   const router = useRouter();
@@ -244,16 +244,13 @@ export default function AssetsPage() {
       {!loading && !listError && <AssetsStats assets={assets} />}
 
       {!loading && !listError && assets.length > 0 && (
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by host..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            aria-label="Filter assets by host"
-            className="pl-9 bg-card/50 h-10"
-          />
-        </div>
+        <ListSearchInput
+          value={filter}
+          onChange={setFilter}
+          placeholder="Search by host..."
+          label="Filter assets by host"
+          className="flex-none"
+        />
       )}
 
       {/* The failure panel REPLACES the empty state rather than sitting above

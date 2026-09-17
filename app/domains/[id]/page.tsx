@@ -9,6 +9,7 @@ import { InlineAlert } from "@/components/shared/inline-alert";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { Button } from "@/components/ui/button";
 import { API, ROUTES } from "@/lib/config/client-constants";
+import { formatDate } from "@/lib/ui/format-date";
 
 /**
  * A verified domain's own page.
@@ -118,7 +119,7 @@ export default function DomainPage({
         </p>
         {domain?.verified_at && (
           <p className="mt-1 text-xs text-muted-foreground">
-            Verified {new Date(domain.verified_at).toLocaleDateString()}
+            Verified {formatDate(domain.verified_at)}
           </p>
         )}
       </header>

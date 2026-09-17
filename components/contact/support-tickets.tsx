@@ -37,6 +37,7 @@ import {
 } from "@/lib/support/ticket-constants";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 interface TicketListItem {
   id: number;
@@ -165,6 +166,10 @@ export function SupportTickets() {
   const [shares, setShares] = useState<ShareEntry[]>([]);
   const [eligible, setEligible] = useState<ShareEntry[]>([]);
   const [sharesLoading, setSharesLoading] = useState(false);
+
+  // Closing is the one status change a requester cannot walk back (reopening
+  // is resolved-only, see canReopen below), so it is the one that asks first.
+  const [confirmClose, setConfirmClose] = useState(false);
 
   // The history scrolls inside its own box, so the newest message is at the
   // bottom of that box. Without this a long thread opens on the message the
@@ -334,6 +339,15 @@ export function SupportTickets() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update the ticket.");
     }
+  }
+
+  // setStatus reports its own failures through the shared `error` banner
+  // rather than throwing, so this closes the dialog unconditionally -- same
+  // as domain-control-panel's confirmed actions, which close on both outcomes
+  // and let the page-level error state say what went wrong.
+  async function handleCloseTicket() {
+    await setStatus("closed");
+    setConfirmClose(false);
   }
 
   async function loadShares(ticketId: number) {
@@ -530,7 +544,9 @@ export function SupportTickets() {
                     <Skeleton className="h-3.5 w-2/3" />
                     <Skeleton className="h-3 w-1/2" />
                   </div>
-                  <Skeleton className="mt-0.5 h-4 w-4 shrink-0 rounded-sm" />
+                  <span className="icon-lead text-sm">
+                    <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
+                  </span>
                 </div>
               ))}
             </div>
@@ -671,7 +687,7 @@ export function SupportTickets() {
                           size="sm"
                           variant="ghost"
                           className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
-                          onClick={() => setStatus("closed")}
+                          onClick={() => setConfirmClose(true)}
                         >
                           Close ticket
                         </Button>
@@ -858,6 +874,16 @@ export function SupportTickets() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmClose}
+        danger
+        title="Close this ticket?"
+        description="You won't be able to reopen it. Open a new ticket if you need more help."
+        confirmLabel="Close ticket"
+        onCancel={() => setConfirmClose(false)}
+        onConfirm={handleCloseTicket}
+      />
     </section>
   );
 }

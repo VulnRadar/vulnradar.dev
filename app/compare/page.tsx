@@ -12,8 +12,7 @@ import { useIsomorphicLayoutEffect } from "@/lib/ui/use-isomorphic-layout-effect
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { tourAnchor } from "@/lib/tour/anchors";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { GitCompareArrows, Loader2, Search, ArrowLeft } from "lucide-react";
+import { GitCompareArrows, Loader2, ArrowLeft } from "lucide-react";
 import { API } from "@/lib/config/client-constants";
 import {
   clearQueryParams,
@@ -37,6 +36,7 @@ import {
   getDomain,
 } from "@/components/compare";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 export default function ComparePage() {
   const [scans, setScans] = useState<ScanOption[]>([]);
@@ -359,19 +359,13 @@ export default function ComparePage() {
 
       {!deepLinkPending && !diffResult && !selectedHost && (
         <div {...tourAnchor("compareHosts")} className="flex flex-col gap-6">
-          <div className="relative max-w-sm">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              placeholder="Filter by host"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="Filter hosts by name"
-              className="pl-9 bg-card/50 border-border/50"
-            />
-          </div>
+          <ListSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Filter by host"
+            label="Filter hosts by name"
+            className="max-w-sm flex-none"
+          />
 
           <CompareHostPicker
             hosts={filteredHostGroups}

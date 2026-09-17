@@ -39,9 +39,15 @@ export function SeoPageShell({ children }: { children: React.ReactNode }) {
  */
 export function SeverityPill({
   severity,
+  size = "md",
   className,
 }: {
   severity: Severity;
+  /** sm = a pill sized for sitting beside a line of text; md (default) is the
+   *  standalone size. Callers used to reach for `scale-90` instead, which
+   *  shrinks the glyphs but not the box, so the pill and the mt-0.5 nudge it
+   *  needed to look aligned had to be re-tuned by eye at every call site. */
+  size?: "sm" | "md";
   className?: string;
 }) {
   const v = `var(--severity-${severity})`;
@@ -53,7 +59,8 @@ export function SeverityPill({
         borderColor: `hsl(${v} / 0.25)`,
       }}
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+        "inline-flex items-center rounded-full border font-semibold",
+        size === "sm" ? "px-2 py-0 text-[11px]" : "px-2.5 py-0.5 text-xs",
         className,
       )}
     >

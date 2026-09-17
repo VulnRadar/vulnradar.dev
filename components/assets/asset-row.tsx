@@ -4,15 +4,13 @@ import Link from "next/link";
 import { Clock, Lock } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { ROUTES, SEVERITY_LEVELS } from "@/lib/config/client-constants";
-import { VERDICT } from "@/components/public-scans/public-scans-types";
+import {
+  VERDICT,
+  SAFETY_RATING_LABEL,
+} from "@/components/public-scans/public-scans-types";
 import { SeverityPill } from "@/components/history/severity-pill";
-import { formatRelativeTime, formatDate, type AssetRow } from "./assets-types";
-
-const VERDICT_LABEL: Record<AssetRow["safetyRating"], string> = {
-  safe: "Clean",
-  caution: "Caution",
-  unsafe: "Exploitable",
-};
+import { formatDateTime } from "@/lib/ui/format-date";
+import { formatRelativeTime, type AssetRow } from "./assets-types";
 
 /**
  * One host row: links to that host's existing aggregate report at
@@ -61,7 +59,7 @@ export function AssetRowItem({ asset }: { asset: AssetRow }) {
       {/* Verdict */}
       <div className="flex items-center">
         <span className={cn("text-xs font-medium", verdict.text)}>
-          {VERDICT_LABEL[asset.safetyRating]}
+          {SAFETY_RATING_LABEL[asset.safetyRating]}
         </span>
       </div>
 
@@ -98,7 +96,7 @@ export function AssetRowItem({ asset }: { asset: AssetRow }) {
       {/* Last scanned */}
       <div
         className="flex items-center gap-1 text-[11px] text-muted-foreground sm:justify-end"
-        title={formatDate(asset.latestScannedAt)}
+        title={formatDateTime(asset.latestScannedAt)}
       >
         <Clock aria-hidden className="h-3 w-3 shrink-0" />
         {formatRelativeTime(asset.latestScannedAt)}

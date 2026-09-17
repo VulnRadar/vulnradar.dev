@@ -206,7 +206,8 @@ export default async function ChecksIndexPage() {
                       >
                         <SeverityPill
                           severity={c.severity}
-                          className="scale-90 shrink-0"
+                          size="sm"
+                          className="shrink-0"
                         />
                         <Link
                           href={`/checks/${c.id}`}

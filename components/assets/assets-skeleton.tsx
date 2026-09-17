@@ -44,6 +44,10 @@ export function AssetsSkeleton() {
         <div className="h-7 w-20 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
         <div className="h-4 w-52 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
       </div>
+      {/* The "Asset scope" toggle (My scans / All public hosts) renders above
+          this region too, and is the same h-10 on every load, so drawing it
+          keeps the page from dropping 40px the instant the real one mounts. */}
+      <div className="h-10 w-48 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
       <AssetsDataSkeleton />
     </AppPageShell>
   );

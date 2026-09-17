@@ -64,11 +64,11 @@ export function CompareHostScanPicker({
                 onClick={() => onToggle(scan.id)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "flex items-center gap-3 px-4 py-3 text-left w-full transition-colors",
+                  "flex items-center gap-3 px-4 py-3 text-left w-full border-l-2 transition-colors",
                   focus.ring,
                   isSelected
-                    ? "bg-primary/5 border-l-2 border-l-primary"
-                    : "hover:bg-muted/50",
+                    ? "bg-primary/5 border-l-primary"
+                    : "border-l-transparent hover:bg-muted/50",
                 )}
               >
                 <span className="flex-1 min-w-0">

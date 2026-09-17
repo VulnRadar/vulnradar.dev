@@ -132,7 +132,8 @@ export default async function ApiScannerPage() {
                 >
                   <SeverityPill
                     severity={c.severity}
-                    className="scale-90 shrink-0 mt-0.5"
+                    size="sm"
+                    className="shrink-0"
                   />
                   <span className="min-w-0">
                     <span className="block font-medium text-foreground group-hover:text-primary transition-colors">

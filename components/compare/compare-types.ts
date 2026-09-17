@@ -52,13 +52,9 @@ export function getDomain(url: string) {
   }
 }
 
-export function formatDate(d: string) {
-  return new Date(d).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+// Canonical absolute-date formatter (see lib/ui/format-date.ts). Used to be a
+// local copy here that had drifted from the app's other eight.
+export { formatDate } from "@/lib/ui/format-date";
 
 export function formatTime(d: string) {
   return new Date(d).toLocaleTimeString("en-US", {

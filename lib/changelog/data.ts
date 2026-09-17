@@ -597,6 +597,12 @@ const CHANGELOG: Release[] = [
         category: "improved",
       },
       {
+        icon: Wrench,
+        label: "Steadier Pages While They Load",
+        desc: "Several pages, including assets, public scans and repositories, jumped or changed shape when their content finished loading, because the placeholder shown while loading did not match the real layout. They now match. The same scan verdict reads Clean, Caution or Exploitable on every page, including the badge page, which said Safe and Unsafe. Closing a support ticket now asks first, because a closed ticket cannot be reopened. Dates on team invites, domains and repositories use the same format as the rest of the app.",
+        category: "improved",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

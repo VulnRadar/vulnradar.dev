@@ -26,16 +26,16 @@ const PAGE_SIZE = 20;
 
 function PublicScansTableSkeleton() {
   return (
-    <div className="rounded-md border border-border overflow-hidden divide-y divide-border">
+    <div className="rounded-xl border border-border overflow-hidden divide-y divide-border">
       {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="flex items-center gap-4 py-3.5 pl-4 pr-4">
           <div className="flex-1 min-w-0 space-y-1.5">
             <Skeleton className="h-4 w-44" />
             <Skeleton className="h-3 w-24" />
           </div>
-          <Skeleton className="hidden sm:block h-4 w-20" />
-          <Skeleton className="hidden sm:block h-4 w-24" />
-          <Skeleton className="h-4 w-16" />
+          <Skeleton className="hidden md:block h-4 w-20" />
+          <Skeleton className="hidden md:block h-4 w-24" />
+          <Skeleton className="hidden md:block h-4 w-16" />
         </div>
       ))}
     </div>

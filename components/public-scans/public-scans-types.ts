@@ -46,6 +46,19 @@ export const VERDICT: Record<
   },
 };
 
+/**
+ * The one-word verdict, as opposed to VERDICT's full sentence above. This
+ * used to be three separate copies (here inline, an asset-row.tsx constant,
+ * and a badge-types.ts RATING_TONE field) and two of the three had drifted to
+ * "Safe"/"Unsafe" instead of "Clean"/"Exploitable" -- the badge page rated
+ * the exact same scan a different word than /assets and /public-scans did.
+ */
+export const SAFETY_RATING_LABEL: Record<SafetyRating, string> = {
+  safe: "Clean",
+  caution: "Caution",
+  unsafe: "Exploitable",
+};
+
 // Canonical relative-time formatter (see lib/ui/relative-time.ts).
 export { formatRelativeTime } from "@/lib/ui/relative-time";
 

@@ -22,7 +22,7 @@ import {
   getCategoryBlurb,
   getCategorySeo,
 } from "@/lib/seo/checks-content";
-import type { Category, Severity } from "@/lib/scanner/types";
+import type { Category } from "@/lib/scanner/types";
 import { APP_NAME } from "@/lib/config/constants";
 
 export const dynamicParams = true;
@@ -138,7 +138,7 @@ export default async function CategoryPage({
         <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm border-t border-border/40 pt-4">
           {bySeverity.map((g) => (
             <span key={g.sev} className="inline-flex items-center gap-1.5">
-              <SeverityPill severity={g.sev} className="scale-90" />
+              <SeverityPill severity={g.sev} size="sm" />
               <span className="text-muted-foreground tabular-nums">
                 {g.items.length}
               </span>

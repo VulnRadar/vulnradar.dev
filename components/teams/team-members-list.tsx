@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/ui/utils";
+import { formatDate } from "@/lib/ui/format-date";
 import {
   TEAM_ROLES,
   STAFF_ROLES,
@@ -201,7 +202,7 @@ export function TeamMembersList({
                     <DropdownMenuContent align="end" className="w-44">
                       <DropdownMenuItem onClick={() => onViewScans(m)}>
                         <Eye className="h-4 w-4 mr-2" />
-                        View Scans
+                        View scans
                       </DropdownMenuItem>
                       {canManage &&
                         m.role !== TEAM_ROLES.OWNER &&
@@ -330,7 +331,7 @@ export function TeamMembersList({
                       {inv.email}
                     </p>
                     <p className="text-xs text-muted-foreground/70">
-                      Expires {new Date(inv.expires_at).toLocaleDateString()}
+                      Expires {formatDate(inv.expires_at)}
                     </p>
                   </div>
                   <RolePill role={inv.role} />

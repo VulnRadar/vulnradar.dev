@@ -5,7 +5,12 @@ import { cn } from "@/lib/ui/utils";
 import { SEVERITY_LEVELS, STAFF_ROLES } from "@/lib/config/client-constants";
 import { SeverityPill } from "@/components/history/severity-pill";
 import { ScanTags } from "@/components/history/scan-tags";
-import { VERDICT, formatRelativeTime, displayUrl } from "./public-scans-types";
+import {
+  VERDICT,
+  SAFETY_RATING_LABEL,
+  formatRelativeTime,
+  displayUrl,
+} from "./public-scans-types";
 import type { PublicScan } from "./public-scans-types";
 
 export function PublicScanRow({ scan }: { scan: PublicScan }) {
@@ -47,11 +52,7 @@ export function PublicScanRow({ scan }: { scan: PublicScan }) {
       {/* Verdict */}
       <div className="flex items-center">
         <span className={cn("text-xs font-medium", verdict.text)}>
-          {scan.verdict === "safe"
-            ? "Clean"
-            : scan.verdict === "caution"
-              ? "Caution"
-              : "Exploitable"}
+          {SAFETY_RATING_LABEL[scan.verdict]}
         </span>
       </div>
 

@@ -19,6 +19,7 @@ import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
+import { formatDateTime } from "@/lib/ui/format-date";
 import type { GithubRepo, GithubScanOutcome } from "./types";
 
 function GithubIcon({ className }: { className?: string }) {
@@ -72,16 +73,6 @@ interface RepoScanRow {
   findingsCount: number;
   duration: number;
   scannedAt: string;
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 interface RepoDetailProps {
@@ -357,7 +348,7 @@ export function RepoDetail({
                   {scan.findingsCount === 1 ? "" : "s"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {formatDate(scan.scannedAt)}
+                  {formatDateTime(scan.scannedAt)}
                 </p>
               </div>
               <span className="hidden sm:inline text-[11px] text-muted-foreground shrink-0 tabular-nums">

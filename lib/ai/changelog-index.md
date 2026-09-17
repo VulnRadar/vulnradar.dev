@@ -148,6 +148,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The red Critical tag in finding emails is now easy to read on its dark background. The email that asks you to verify your address uses the same word throughout instead of switching between verify and confirm. The notice about a new API key no longer puts the key's name on your lock screen. Promotional emails show offer codes and bullet lists in the same style as every other email, including in dark mode.
 - [Wrench] **[IMPROVED]** **Dashboard, History and Scan Results Polish**
   A sweep of the signed-in pages. Bulk scans now show their queuing progress, which never appeared before. On phones, the scan form now explains why port scanning is unavailable when the real reason is a scan that signs in first, not an unverified domain. History's filters match every other list, the whole search box is clickable, and filters only appear once you have enough scans to need them. Every copy button now waits the same length of time before resetting and tells screen reader users that the copy worked. Search boxes no longer show two clear buttons at once, and several small labels are easier to read.
+- [Wrench] **[IMPROVED]** **Steadier Pages While They Load**
+  Several pages, including assets, public scans and repositories, jumped or changed shape when their content finished loading, because the placeholder shown while loading did not match the real layout. They now match. The same scan verdict reads Clean, Caution or Exploitable on every page, including the badge page, which said Safe and Unsafe. Closing a support ticket now asks first, because a closed ticket cannot be reopened. Dates on team invites, domains and repositories use the same format as the rest of the app.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -1318,6 +1320,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 956
+- **Total changes documented:** 957
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

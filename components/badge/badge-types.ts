@@ -2,6 +2,7 @@ import { ShieldCheck, AlertTriangle, ShieldAlert } from "lucide-react";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
+import { SAFETY_RATING_LABEL } from "@/components/public-scans/public-scans-types";
 
 export interface ScanEntry {
   id: number;
@@ -33,24 +34,29 @@ export interface ScanEntry {
  * not follow the theme at all. unsafe and caution map onto the real scale;
  * "safe" has no severity equivalent, so it uses --success, the token the rest
  * of the product already uses for a clean result.
+ *
+ * `label` used to be its own literal here ("Unsafe"/"Caution"/"Safe"), which
+ * had drifted from the "Clean"/"Caution"/"Exploitable" wording /assets and
+ * /public-scans use for the exact same safetyRating -- SAFETY_RATING_LABEL is
+ * the one place that word is decided now.
  */
 const RATING_TONE = {
   unsafe: {
     text: SEVERITY_TONE.critical.text,
     surface: SEVERITY_TONE.critical.surface,
-    label: "Unsafe",
+    label: SAFETY_RATING_LABEL.unsafe,
     icon: ShieldAlert,
   },
   caution: {
     text: SEVERITY_TONE.medium.text,
     surface: SEVERITY_TONE.medium.surface,
-    label: "Caution",
+    label: SAFETY_RATING_LABEL.caution,
     icon: AlertTriangle,
   },
   safe: {
     text: "text-[hsl(var(--success))]",
     surface: "bg-[hsl(var(--success))]/10",
-    label: "Safe",
+    label: SAFETY_RATING_LABEL.safe,
     icon: ShieldCheck,
   },
 } as const;

@@ -11,6 +11,7 @@ import { SEVERITY_ORDER } from "@/lib/config/client-constants";
 import { focus } from "@/lib/ui/animations";
 import { pluralize } from "@/lib/ui/plural";
 import { cn } from "@/lib/ui/utils";
+import { formatMonthDay } from "@/lib/ui/format-date";
 import { GithubIcon } from "./github-icon";
 import type { GithubRepo, RepoScanSummary } from "./types";
 
@@ -66,13 +67,6 @@ function railColor(summary: RepoScanSummary | undefined): string {
   if (!summary) return "transparent";
   const worst = worstSeverity(summary);
   return worst ? `hsl(var(--severity-${worst}))` : "hsl(var(--success))";
-}
-
-function formatUpdated(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
 }
 
 /** What the "Last scan" column holds: severity pills, a clean chip, or the
@@ -212,7 +206,7 @@ function ReposRow({
         <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 sm:hidden">
           <LastScan summary={summary} summariesFailed={summariesFailed} />
           <span className="text-[11px] tabular-nums text-muted-foreground">
-            Updated {formatUpdated(repo.updatedAt)}
+            Updated {formatMonthDay(repo.updatedAt)}
           </span>
         </span>
       </button>
@@ -227,7 +221,7 @@ function ReposRow({
 
       <div className="hidden w-16 sm:flex sm:items-center sm:justify-end">
         <span className="text-xs tabular-nums text-muted-foreground">
-          {formatUpdated(repo.updatedAt)}
+          {formatMonthDay(repo.updatedAt)}
         </span>
       </div>
 

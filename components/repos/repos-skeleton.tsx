@@ -66,7 +66,7 @@ export function ReposDataSkeleton() {
               </div>
               <Skeleton className="hidden h-4 w-28 sm:block" />
               <Skeleton className="hidden h-3 w-12 sm:block sm:justify-self-end" />
-              <Skeleton className="h-11 w-24 shrink-0 rounded-md sm:h-9 sm:justify-self-end" />
+              <Skeleton className="h-11 w-11 shrink-0 rounded-md sm:h-8 sm:w-24 sm:justify-self-end" />
             </div>
           ))}
         </div>
