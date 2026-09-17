@@ -6,6 +6,11 @@ import {
   logAction,
 } from "@/lib/auth/authorization";
 import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
+import {
+  normalizeBlockedDomain,
+  findScansForBlockedDomain,
+  deleteScansForBlockedDomain,
+} from "@/lib/admin/blocked-domain-scans";
 
 // Stays admin-only, unlike content/route.ts's MODERATE_CONTENT gate: the
 // delete_scans action below bulk-deletes scan_history rows across every
@@ -37,61 +42,18 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "Missing value" }, { status: 400 });
         }
 
-        // Normalize the domain (strip protocol if accidentally included)
-        let normalizedValue = value.trim().toLowerCase();
+        const domain = normalizeBlockedDomain(value);
+        const scans = await findScansForBlockedDomain(domain);
 
-        // Remove protocol using indexOf instead of regex
-        const protoEnd = normalizedValue.indexOf("://");
-        if (protoEnd !== -1) {
-          normalizedValue = normalizedValue.substring(protoEnd + 3);
-        }
-
-        // Remove path using indexOf instead of regex
-        const pathIndex = normalizedValue.indexOf("/");
-        if (pathIndex !== -1) {
-          normalizedValue = normalizedValue.substring(0, pathIndex);
-        }
-
-        // Find scans matching the blocked domain
-        // Uses a subquery to extract hostname from URL and match:
-        // - Exact domain match (example.com)
-        // - Subdomain match (sub.example.com)
-        // The regex extracts the hostname from URLs like http://example.com/path
-        const result = await pool.query(
-          `
-          SELECT 
-            sh.id,
-            sh.url,
-            sh.source,
-            sh.scanned_at,
-            sh.user_id,
-            u.email as user_email
-          FROM scan_history sh
-          LEFT JOIN users u ON sh.user_id = u.id
-          WHERE 
-            -- Extract hostname from URL and check if it matches or is subdomain
-            (
-              -- Match domain exactly after stripping protocol
-              LOWER(REGEXP_REPLACE(sh.url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) = LOWER($1)
-              -- Match subdomain (hostname ends with .domain)
-              OR LOWER(REGEXP_REPLACE(sh.url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) LIKE '%.' || LOWER($1)
-            )
-          ORDER BY sh.scanned_at DESC
-          LIMIT 100
-        `,
-          [normalizedValue],
-        );
-
-        // Log the search action
         await logAction(
           user.id,
           null,
           "blocked_data_search",
-          `Searched for scans matching blocked value: ${value} (found ${result.rows.length} results)`,
+          `Searched for scans matching blocked value: ${value} (found ${scans.length} results)`,
           ip,
         );
 
-        return NextResponse.json({ scans: result.rows });
+        return NextResponse.json({ scans });
       }
 
       case "delete_scans": {
@@ -99,44 +61,9 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "Missing value" }, { status: 400 });
         }
 
-        // Normalize the domain
-        let normalizedValue = value.trim().toLowerCase();
+        const domain = normalizeBlockedDomain(value);
+        const deletedCount = await deleteScansForBlockedDomain(domain);
 
-        // Remove protocol using indexOf instead of regex
-        const protoEnd = normalizedValue.indexOf("://");
-        if (protoEnd !== -1) {
-          normalizedValue = normalizedValue.substring(protoEnd + 3);
-        }
-
-        // Remove path using indexOf instead of regex
-        const pathIndex = normalizedValue.indexOf("/");
-        if (pathIndex !== -1) {
-          normalizedValue = normalizedValue.substring(0, pathIndex);
-        }
-
-        // Escape LIKE metacharacters in the subdomain pattern: an admin value
-        // like "%.com" would otherwise expand its % into a wildcard and delete
-        // far more (cross-tenant) scan rows than the one domain intended. The
-        // exact-match arm uses the raw value ($1); only the LIKE arm uses the
-        // escaped value ($2). Backslash is PostgreSQL's default LIKE escape.
-        const likeEscaped = normalizedValue.replace(/[\\%_]/g, "\\$&");
-        // Delete all scans matching the blocked domain (exact or subdomain)
-        const result = await pool.query(
-          `
-          DELETE FROM scan_history
-          WHERE
-            -- Match domain exactly after stripping protocol
-            LOWER(REGEXP_REPLACE(url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) = LOWER($1)
-            -- Match subdomain (hostname ends with .domain)
-            OR LOWER(REGEXP_REPLACE(url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) LIKE '%.' || LOWER($2)
-          RETURNING id
-        `,
-          [normalizedValue, likeEscaped],
-        );
-
-        const deletedCount = result.rowCount || 0;
-
-        // Log audit action
         await logAction(
           user.id,
           null,

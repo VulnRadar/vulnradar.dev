@@ -573,6 +573,12 @@ const CHANGELOG: Release[] = [
         category: "extension",
       },
       {
+        icon: Trash2,
+        label: "Blocked-Domain Cleanup Previews Exactly What It Deletes",
+        desc: 'When staff block a domain they can wipe every cached scan of it. The preview list and the delete used different matching rules for one shape of input, so a search could list scans that the delete then refused to touch, reporting zero removed. Both now use the same rule, and the rule that stops a pattern like "%.com" from being read as a wildcard is now tested against a real database rather than assumed.',
+        category: "admin",
+      },
+      {
         icon: Key,
         label: "Support Can Revoke One API Key Instead of All of Them",
         desc: "If you told us one of your API keys had leaked, the only thing our support tools could do was revoke every key on your account, taking down every other integration you run along with the leaked one. Each key in the admin panel now has its own revoke control, which invalidates that key and leaves the rest working. It needs the same permission and the same password confirmation as before, and you are emailed about it the same way.",

@@ -140,6 +140,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   About forty settings, such as the app name, logo and social links, are built into the app, so saving them in the admin panel was recorded but never used. They are now shown read-only, with the exact setting to change in the configuration file and the environment variable that overrides it. Two settings that nothing used at all, a footer text and a light background colour, have been removed.
 - [Bug] **[EXTENSION]** **Clearer Extension Messages When Something Goes Wrong**
   When the browser extension could not reach VulnRadar, because you were offline or a network blocked it, it showed a technical browser error like "Failed to fetch". It now says it could not reach VulnRadar or that the request took too long. On browser pages that cannot be scanned, such as settings or new tab pages, the popup now says so up front instead of offering a Scan button that could never work. The small Scanning badge on pages is also easier to read, and the privacy section now explains what the extension runs on each page and why it needs each permission.
+- [Trash2] **[ADMIN]** **Blocked-Domain Cleanup Previews Exactly What It Deletes**
+  When staff block a domain they can wipe every cached scan of it. The preview list and the delete used different matching rules for one shape of input, so a search could list scans that the delete then refused to touch, reporting zero removed. Both now use the same rule, and the rule that stops a pattern like "%.com" from being read as a wildcard is now tested against a real database rather than assumed.
 - [Key] **[ADMIN]** **Support Can Revoke One API Key Instead of All of Them**
   If you told us one of your API keys had leaked, the only thing our support tools could do was revoke every key on your account, taking down every other integration you run along with the leaked one. Each key in the admin panel now has its own revoke control, which invalidates that key and leaves the rest working. It needs the same permission and the same password confirmation as before, and you are emailed about it the same way.
 - [Shield] **[ADMIN]** **Security Alerts Show Which Account They Are About**
@@ -2556,6 +2558,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 970
+- **Total changes documented:** 971
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
