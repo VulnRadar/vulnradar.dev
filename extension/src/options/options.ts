@@ -1397,7 +1397,18 @@ function SectionPrivacy(): TemplateResult {
         <code>extension storage</code> on this device so the popup can show
         recent scans without re-querying. They are never synced across devices.
         Nothing is sent to any other origin. The extension has no analytics, no
-        telemetry, no third-party scripts.
+        telemetry, no third-party scripts. <br /><br />
+        <strong>What runs on the pages you visit.</strong> A small script loads
+        on every page so it can show the site alert card and the scan status
+        badge. It also checks, on this device only, whether the page has a
+        cookie that looks like a sign-in, so the scan prompt can mention that a
+        signed-in page may look different to the scanner. That check is never
+        sent anywhere. <br /><br />
+        <strong>Why the permissions.</strong> Tabs, to know which page to scan.
+        Notifications, to tell you when a scan finishes. Downloads, to save a
+        report you export. The right-click menu, for "Scan this link". Alarms,
+        to keep a long scan alive in the background. Storage, for your key,
+        settings and the cache above.
       </div>
       <div class="row">
         <div class="row-label">

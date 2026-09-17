@@ -138,6 +138,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The admin settings page was a long column of 294 fields, with each description squeezed into a narrow strip and its control floating at the far edge of the screen. It now has a search box that looks through every setting's name and description at once, a Changed only filter, and a side list of sections instead of a strip of tabs that wrapped onto two lines. Plan limits are a single table with a column per plan instead of sixty separate rows, and each rate limit and its time window sit on one line. Unsaved changes on any section are saved together, instead of only the section you happened to have open.
 - [Wrench] **[ADMIN]** **Settings That Could Not Change Anything Are Now Read-Only**
   About forty settings, such as the app name, logo and social links, are built into the app, so saving them in the admin panel was recorded but never used. They are now shown read-only, with the exact setting to change in the configuration file and the environment variable that overrides it. Two settings that nothing used at all, a footer text and a light background colour, have been removed.
+- [Bug] **[EXTENSION]** **Clearer Extension Messages When Something Goes Wrong**
+  When the browser extension could not reach VulnRadar, because you were offline or a network blocked it, it showed a technical browser error like "Failed to fetch". It now says it could not reach VulnRadar or that the request took too long. On browser pages that cannot be scanned, such as settings or new tab pages, the popup now says so up front instead of offering a Scan button that could never work. The small Scanning badge on pages is also easier to read, and the privacy section now explains what the extension runs on each page and why it needs each permission.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -2518,6 +2520,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 951
+- **Total changes documented:** 952
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

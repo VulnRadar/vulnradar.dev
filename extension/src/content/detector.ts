@@ -149,6 +149,9 @@ function ensureIndicator(): HTMLElement | null {
   const el = document.createElement("div");
   el.id = INDICATOR_ID;
   el.setAttribute("data-vulnradar", "true");
+  // Near-black on the brand blue, the pair --vr-primary-fg exists for. White
+  // on #60a5fa is about 2.5:1; this element lives outside the shadow root and
+  // cannot read the tokens, which is how it kept the old pairing.
   el.style.cssText = `
     position: fixed;
     top: 12px;
@@ -156,7 +159,7 @@ function ensureIndicator(): HTMLElement | null {
     z-index: 2147483647;
     padding: 4px 10px;
     font: 600 11px/1 system-ui, -apple-system, sans-serif;
-    color: #fff;
+    color: #0c0e12;
     background: #60a5fa;
     border-radius: 6px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.25);

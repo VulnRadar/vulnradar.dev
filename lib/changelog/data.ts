@@ -567,6 +567,12 @@ const CHANGELOG: Release[] = [
         category: "admin",
       },
       {
+        icon: Bug,
+        label: "Clearer Extension Messages When Something Goes Wrong",
+        desc: 'When the browser extension could not reach VulnRadar, because you were offline or a network blocked it, it showed a technical browser error like "Failed to fetch". It now says it could not reach VulnRadar or that the request took too long. On browser pages that cannot be scanned, such as settings or new tab pages, the popup now says so up front instead of offering a Scan button that could never work. The small Scanning badge on pages is also easier to read, and the privacy section now explains what the extension runs on each page and why it needs each permission.',
+        category: "extension",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

@@ -37,7 +37,7 @@ export class VulnRadarApiError extends Error {
   readonly status: number;
   readonly body: ApiError;
   constructor(status: number, body: ApiError) {
-    super(body.error || `API error ${status}`);
+    super(body.error || apiErrorFallback(status));
     this.name = "VulnRadarApiError";
     this.status = status;
     this.body = body;
@@ -57,6 +57,53 @@ export function isAuthRejection(err: unknown): boolean {
     err instanceof VulnRadarApiError &&
     (err.status === 401 || err.status === 403)
   );
+}
+
+/** For an error response with no message of its own, e.g. a proxy's 502 page. */
+export function apiErrorFallback(status: number): string {
+  return status >= 500
+    ? `VulnRadar had a problem answering (${status}). Try again in a moment.`
+    : `VulnRadar refused the request (${status}).`;
+}
+
+/**
+ * The request never got a response: offline, DNS, a proxy or firewall
+ * blocking the API host, or the timeout.
+ *
+ * fetch() throws the browser's own exception for all of those, and the popup
+ * and the options page used to print its message verbatim ("TypeError: Failed
+ * to fetch") into the error banner and the screen-reader announcement. Every
+ * other failure had an authored sentence; the most common one for a network
+ * tool did not.
+ */
+export class VulnRadarNetworkError extends Error {
+  readonly timedOut: boolean;
+  constructor(timedOut: boolean) {
+    super(
+      timedOut
+        ? "VulnRadar took too long to respond. Try again in a moment."
+        : "Could not reach VulnRadar. Check your connection and try again.",
+    );
+    this.name = "VulnRadarNetworkError";
+    this.timedOut = timedOut;
+  }
+}
+
+async function send(
+  url: string,
+  init: RequestInit,
+  callerSignal?: AbortSignal,
+): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    // A cancel the caller asked for is not a failure to explain.
+    if (callerSignal?.aborted) throw err;
+    const timedOut =
+      err instanceof DOMException &&
+      (err.name === "TimeoutError" || err.name === "AbortError");
+    throw new VulnRadarNetworkError(timedOut);
+  }
 }
 
 function combineSignals(
@@ -120,7 +167,7 @@ async function call<T>(
     init.body = JSON.stringify(body);
   }
 
-  const res = await fetch(url, init);
+  const res = await send(url, init, signal);
 
   const status = res.status;
   const text = await res.text();
@@ -176,7 +223,7 @@ export async function fetchReport(
   timeoutMs: number = VULNRADAR.apiTimeoutMs,
 ): Promise<{ bytes: ArrayBuffer; contentType: string }> {
   const url = `${VULNRADAR.apiHost}/api/v3/history/${scanId}/report?format=${encodeURIComponent(format)}`;
-  const res = await fetch(url, {
+  const res = await send(url, {
     method: "GET",
     headers: { Authorization: `Bearer ${apiKey}` },
     signal: combineSignals(undefined, timeoutMs),

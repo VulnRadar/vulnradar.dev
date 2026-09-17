@@ -8,7 +8,12 @@
 // always proceed regardless of the autoScan setting.
 
 import browser from "webextension-polyfill";
-import { api, VulnRadarApiError, type FetchResult } from "./api";
+import {
+  api,
+  apiErrorFallback,
+  VulnRadarApiError,
+  type FetchResult,
+} from "./api";
 import { get, set, getApiKey } from "./storage";
 import { VULNRADAR } from "./constants";
 import { looksLikeApiKey } from "./auth";
@@ -390,7 +395,7 @@ export async function runScanSafe(input: ScanInput): Promise<ScanOutcome> {
       const msg =
         err.status === 429
           ? `Rate limit reached. ${err.body.error}`
-          : err.body.error || `API error ${err.status}`;
+          : err.body.error || apiErrorFallback(err.status);
       return { ok: false, error: msg };
     }
     return {

@@ -21,6 +21,17 @@ body {
   max-width: 480px;
 }
 
+/* The toolbar popup's own scroll region. Chrome stops growing a popup at
+   600px tall, and a full result (score, badges, findings, "This site", recent
+   scans, the rate-limit bar) is taller than that for an active user. Every
+   inner list already had a deliberate cap; the document itself did not, so
+   what happened past 600px was whatever the browser chose. The full-tab view
+   below has no such limit and opts out. */
+body {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
 /* Full-tab view: the same document opened as a real browser tab (the "Open in
    tab" footer button). A toolbar popup is size-locked by the browser; a tab is
    not, so drop the width clamp and center a roomier column that can grow with
@@ -28,6 +39,8 @@ body {
 :root[data-fulltab] body {
   max-width: none;
   min-height: 100vh;
+  max-height: none;
+  overflow-y: visible;
 }
 
 :root[data-fulltab] main {
@@ -212,7 +225,7 @@ select:focus-visible,
   gap: 8px;
   padding: 10px 12px;
   border: 1px solid var(--vr-border);
-  border-radius: var(--vr-radius);
+  border-radius: var(--vr-radius-sm);
   background: var(--vr-card);
   font-family: var(--vr-mono);
   font-size: 12px;
@@ -283,7 +296,7 @@ select:focus-visible,
   /* A control edge, so --vr-input rather than the container --vr-border: this
      is what tells you the pair of buttons is there (SC 1.4.11, 3:1). */
   border: 1px solid var(--vr-input);
-  border-radius: var(--vr-radius);
+  border-radius: var(--vr-radius-sm);
   background: var(--vr-card);
   overflow: hidden;
   font-size: 12px;
@@ -326,7 +339,7 @@ select:focus-visible,
   padding: 11px 20px;
   background: var(--vr-primary);
   color: var(--vr-primary-fg);
-  border-radius: var(--vr-radius);
+  border-radius: var(--vr-radius-sm);
   font-weight: 600;
   font-size: 14px;
   display: flex;
@@ -356,7 +369,7 @@ select:focus-visible,
   padding: 12px 20px;
   background: var(--vr-primary);
   color: var(--vr-primary-fg);
-  border-radius: var(--vr-radius);
+  border-radius: var(--vr-radius-sm);
   font-weight: 600;
   font-size: 14px;
   display: flex;
@@ -531,7 +544,7 @@ select:focus-visible,
 .stale-chip {
   font-size: 9px;
   padding: 1px 5px;
-  border-radius: var(--vr-radius-pill);
+  border-radius: var(--vr-radius-sm);
   /* --vr-border as a FILL put muted text at 4.28:1 on the light theme.
      --vr-muted-bg is the surface token meant to be painted on and measures
      6.28:1 with the same visual weight. */
@@ -837,7 +850,7 @@ select:focus-visible,
   min-height: 24px;
   padding: 3px 10px;
   border: 1px solid var(--vr-input);
-  border-radius: var(--vr-radius-pill);
+  border-radius: var(--vr-radius-sm);
   background: var(--vr-bg);
   color: var(--vr-text-muted);
   font-size: 10px;

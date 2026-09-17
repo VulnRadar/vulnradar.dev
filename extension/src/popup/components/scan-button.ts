@@ -29,7 +29,11 @@ export function ScanButton(props: ScanButtonProps): TemplateResult {
   const enabledCount = Object.values(props.families).filter(Boolean).length;
   const totalCount = Object.keys(CATEGORIES_BY_ID).length;
 
-  if (!props.url) {
+  // Browser and extension pages (chrome://, about:, file://, the web store)
+  // used to get the full scan UI with an enabled button, which went all the
+  // way to the background before being refused as "Not a scannable URL".
+  const scannable = !!props.url && /^https?:/i.test(props.url);
+  if (!scannable) {
     return html`
       <div class="empty-url-state">
         <img
@@ -39,7 +43,13 @@ export function ScanButton(props: ScanButtonProps): TemplateResult {
           style="border-radius:8px;opacity:0.5"
           alt=""
         />
-        <div class="empty-url-text">Navigate to a website to scan it</div>
+        <div class="empty-url-text">
+          ${
+            props.url
+              ? "This page can't be scanned. Open a website (an http or https address) to scan it."
+              : "Navigate to a website to scan it"
+          }
+        </div>
         ${
           !props.isAuthed
             ? html`
@@ -114,7 +124,8 @@ export function ScanButton(props: ScanButtonProps): TemplateResult {
       >
         ${
           props.isScanning
-            ? html`<span class="spinner"></span> Scanning&hellip;`
+            ? html`<span class="spinner" aria-hidden="true"></span>
+                Scanning&hellip;`
             : html`Scan this page`
         }
       </button>

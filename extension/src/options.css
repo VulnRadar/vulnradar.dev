@@ -187,7 +187,7 @@ main#app {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: var(--vr-radius-pill);
+  border-radius: var(--vr-radius-sm);
   background: color-mix(in srgb, var(--vr-primary) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--vr-primary) 32%, transparent);
   color: var(--vr-primary-text);

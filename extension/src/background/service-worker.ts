@@ -69,6 +69,9 @@ import type {
   Vulnerability,
 } from "../lib/types";
 
+const NOT_SCANNABLE =
+  "Only websites (http or https addresses) can be scanned, not browser or extension pages.";
+
 // ---- Lifecycle ----
 
 browser.runtime.onInstalled.addListener(async (details) => {
@@ -510,7 +513,7 @@ async function handleScanUrl(
   mode?: "quick" | "deep",
 ): Promise<unknown> {
   if (!url || !/^https?:/i.test(url)) {
-    return { ok: false, error: `Not a scannable URL` };
+    return { ok: false, error: NOT_SCANNABLE };
   }
   const storage = await loadAll();
   const effectiveMode = mode ?? storage.settings.scanMode;
@@ -565,7 +568,7 @@ async function handleReputationScan(
   tabId?: number,
 ): Promise<ScanOutcome> {
   if (!url || !/^https?:/i.test(url)) {
-    return { ok: false, error: "Not a scannable URL" };
+    return { ok: false, error: NOT_SCANNABLE };
   }
   const storage = await loadAll();
   return runScanAndNotify(url, storage.settings, tabId);
