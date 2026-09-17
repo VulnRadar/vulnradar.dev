@@ -855,12 +855,6 @@ const CHANGELOG: Release[] = [
         category: "security",
       },
       {
-        icon: ShieldAlert,
-        label: "A Page Full of Comments Could Freeze the Scanner",
-        desc: "A scanned page built with many HTML comments in a particular pattern could make one of our checks take exponentially longer to finish, holding up every other scan running at the same time. That check now finishes in a predictable amount of time no matter how the page is written. This is separate from the speed work elsewhere in this release, which was about checks that were merely slow rather than stoppable.",
-        category: "security",
-      },
-      {
         icon: Container,
         label: "Release Images Can No Longer Be Built From Fork Code",
         desc: "The workflow that builds and signs our ARM Docker image trusted whichever run triggered it, which could have let a copy of the project supply the code that gets published as an official update if a later change opened that door. It now confirms the trigger came from a real push to our own repository first. There is no evidence this ever happened; the gap is closed.",

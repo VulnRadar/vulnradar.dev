@@ -234,8 +234,6 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Four findings are now reported as low severity instead of medium, since each only shows a condition exists, not that it is exploitable: a wide-open cross-site sharing setting, which browsers already refuse to send sign-in details to anyway, published API documentation, an unusual network method being allowed, and a text-matching guess that a data-query feature might allow unauthorised access. Where the scanner can confirm the serious version, or probes the network method directly, it keeps medium severity. A pipeline set to fail on any medium finding will no longer trip on these four alone.
 - [Mail] **[SECURITY]** **A Contact Reply No Longer Goes to a Hidden Second Address**
   The email address field on our contact form accepted more than an address: a sender could append instructions to it that quietly added a second, hidden recipient. Anyone on our side clicking Reply would then have sent a copy of the conversation to an address they never saw. The field now only accepts a plain email address, and anything else is shown as plain text with no working reply link.
-- [ShieldAlert] **[SECURITY]** **A Page Full of Comments Could Freeze the Scanner**
-  A scanned page built with many HTML comments in a particular pattern could make one of our checks take exponentially longer to finish, holding up every other scan running at the same time. That check now finishes in a predictable amount of time no matter how the page is written. This is separate from the speed work elsewhere in this release, which was about checks that were merely slow rather than stoppable.
 - [Container] **[SECURITY]** **Release Images Can No Longer Be Built From Fork Code**
   The workflow that builds and signs our ARM Docker image trusted whichever run triggered it, which could have let a copy of the project supply the code that gets published as an official update if a later change opened that door. It now confirms the trigger came from a real push to our own repository first. There is no evidence this ever happened; the gap is closed.
 - [Container] **[SELFHOST]** **Docker Setup No Longer Points at an Unpublished Image**
@@ -2558,6 +2556,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 971
+- **Total changes documented:** 970
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
