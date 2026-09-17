@@ -308,7 +308,14 @@ function styleBlock(): string {
   return [
     ":root{color-scheme:dark;supported-color-schemes:dark}",
     "body{margin:0;padding:0;width:100%!important;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}",
-    "table{border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0}",
+    // separate, not collapse. Under border-collapse:collapse a cell's border
+    // ignores border-radius but its background is still clipped to it, so in
+    // every client that applies this stylesheet (Gmail web, Apple Mail, iOS
+    // Mail, Outlook on the web) the card and every callout drew a square
+    // hairline around a rounded fill, with the canvas showing through at all
+    // four corners. border-spacing:0 does what collapse was here for, and every
+    // table already carries cellspacing="0" for Word, which reads neither.
+    "table{border-collapse:separate;border-spacing:0;mso-table-lspace:0;mso-table-rspace:0}",
     "img{border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic}",
     // iOS turns dates, addresses and phone-shaped strings into blue links
     // inside the footer and the detail rows. This keeps them the colour
@@ -353,7 +360,7 @@ function styleBlock(): string {
  * wordmark below is 600 for the same reason.
  */
 export function emailHeading(text: string): string {
-  return `<h1 class="${C.heading}" style="margin:0 0 12px 0;font-family:${SANS_STACK};font-size:22px;line-height:1.32;font-weight:600;color:${PALETTE.text};letter-spacing:-0.3px;mso-line-height-rule:exactly;">${text}</h1>`;
+  return `<h1 class="${C.heading}" style="margin:0 0 12px 0;font-family:${SANS_STACK};font-size:22px;line-height:1.32;font-weight:600;color:${PALETTE.text};letter-spacing:-0.3px;word-break:break-word;mso-line-height-rule:exactly;">${text}</h1>`;
 }
 
 /**
@@ -362,11 +369,11 @@ export function emailHeading(text: string): string {
  * the same size as what follows it was not leading anything.
  */
 export function emailLead(text: string): string {
-  return `<p class="${C.body}" style="margin:0 0 ${SPACE.block} 0;font-family:${SANS_STACK};font-size:16px;color:${PALETTE.textMuted};line-height:1.62;mso-line-height-rule:exactly;">${text}</p>`;
+  return `<p class="${C.body}" style="margin:0 0 ${SPACE.block} 0;font-family:${SANS_STACK};font-size:16px;color:${PALETTE.textMuted};line-height:1.62;word-break:break-word;mso-line-height-rule:exactly;">${text}</p>`;
 }
 
 export function emailParagraph(text: string): string {
-  return `<p class="${C.body}" style="margin:0 0 20px 0;font-family:${SANS_STACK};font-size:15px;color:${PALETTE.textMuted};line-height:1.65;mso-line-height-rule:exactly;">${text}</p>`;
+  return `<p class="${C.body}" style="margin:0 0 20px 0;font-family:${SANS_STACK};font-size:15px;color:${PALETTE.textMuted};line-height:1.65;word-break:break-word;mso-line-height-rule:exactly;">${text}</p>`;
 }
 
 /**
@@ -375,10 +382,16 @@ export function emailParagraph(text: string): string {
  * same colour, size and dark-mode behaviour as a real template's prose.
  */
 export function emailProse(html: string): string {
-  return `<div class="${C.body}" style="font-family:${SANS_STACK};font-size:15px;color:${PALETTE.textMuted};line-height:1.65;">${html}</div>`;
+  return `<div class="${C.body}" style="font-family:${SANS_STACK};font-size:15px;color:${PALETTE.textMuted};line-height:1.65;word-break:break-word;">${html}</div>`;
 }
 
-/** Emphasis inside a lead or paragraph, in the heading colour. */
+/**
+ * Emphasis inside a lead or paragraph, in the heading colour.
+ *
+ * The blocks it sits in break long words (word-break:break-word) because this
+ * is usually a URL, hostname or email address: a scanned URL with no break
+ * point held the whole message wider than a 320px phone.
+ */
 export function emailStrong(text: string): string {
   return `<strong class="${C.heading}" style="color:${PALETTE.text};font-weight:600;">${text}</strong>`;
 }
@@ -621,7 +634,7 @@ export function emailCodeBlock(code: string): string {
 function severityChip(severity: EmailSeverity, count: number): string {
   if (count <= 0) return "";
   const { light } = SEVERITIES[severity];
-  return `<td style="padding:0 6px 6px 0;"><span class="${accentClass(severity)}" style="display:inline-block;padding:5px 11px;border:1px solid ${light};border-radius:${R.pill};font-family:${SANS_STACK};font-size:12px;font-weight:600;color:${light};white-space:nowrap;">${count} ${severity}</span></td>`;
+  return `<span class="${accentClass(severity)}" style="display:inline-block;margin:0 2px 6px 0;padding:5px 11px;border:1px solid ${light};border-radius:${R.pill};font-family:${SANS_STACK};font-size:12px;font-weight:600;color:${light};white-space:nowrap;">${count} ${severity}</span>`;
 }
 
 export function severityChipRow(counts: {
@@ -635,9 +648,13 @@ export function severityChipRow(counts: {
     ["critical", "high", "medium", "low", "info"] as EmailSeverity[]
   )
     .map((s) => severityChip(s, counts[s] ?? 0))
-    .join("");
+    .filter(Boolean)
+    .join(" ");
+  // One cell of inline chips separated by spaces, so the row wraps. It was a
+  // cell per chip, and a table row never wraps: five chips held the message
+  // at about 410px, so a 320px or 360px phone scrolled sideways.
   return chips
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 ${SPACE.block} 0;"><tr>${chips}</tr></table>`
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 ${SPACE.block} 0;"><tr><td style="line-height:1.9;">${chips}</td></tr></table>`
     : "";
 }
 
@@ -727,7 +744,11 @@ export function emailLayout({
   // four differently-weighted things that happen to be blue.
   const footLink = (href: string, text: string) =>
     `<a href="${escapeHtml(href)}" class="${C.faint}" style="color:${PALETTE.textFaint};text-decoration:underline;white-space:nowrap;">${text}</a>`;
-  const dot = `<span class="${C.faint}" style="color:${PALETTE.textFaint};padding:0 7px;">&middot;</span>`;
+  // Spaces around the separator are the row's only break opportunities. The
+  // links are nowrap and were joined to the dots with no whitespace at all,
+  // so the whole row was one unbreakable run of about 350px that held every
+  // message at that width on a 320px phone and forced sideways scrolling.
+  const dot = ` <span class="${C.faint}" style="color:${PALETTE.textFaint};padding:0 4px;">&middot;</span> `;
 
   // Two different reasons a message can land, and telling the reader the
   // wrong one is worse than saying nothing. A message that carries an

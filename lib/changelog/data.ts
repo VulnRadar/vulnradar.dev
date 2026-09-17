@@ -471,6 +471,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: Mail,
+        label: "Emails Look Right in Gmail, Apple Mail and on Small Phones",
+        desc: "In most mail apps, the rounded box around every email and around its highlighted notes had square outline corners with a rounded fill inside, so a thin sliver of the background showed at each corner. Those boxes are now cleanly rounded. On narrow phones, about half of all emails were also wider than the screen and had to be scrolled sideways, because the links at the bottom, the row of severity counts in scan emails, or a long web address could not wrap onto a new line. Every email now fits a 320 pixel wide screen.",
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

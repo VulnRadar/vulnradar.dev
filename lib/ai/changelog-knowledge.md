@@ -106,6 +106,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Part of the outdated library check asks OSV.dev, a public database of known security problems, about each library it finds. When OSV.dev could not be reached, the scan quietly treated that as "no problems found", so a report could say a library was fine when it was never checked. A scan now says this part did not complete when none of those questions got an answer, the same way it already does for other parts that fail. The software list in a report shows "unknown" rather than "clean" for anything it could not look up, and it asks again on the next scan instead of remembering the failure for half an hour.
 - [BookOpen] **[FIXED]** **Further Reading Links Now Match the Problem**
   Every finding ends with links to read more about the problem. For about 250 checks those links had been filled in with the same few pages regardless of the subject, so a finding about a server revealing its version pointed at a guide to forcing secure connections, and a leftover debug page pointed at an article about cross-site scripting. Each of those checks now links to material about its own subject: the matching reference page for the setting involved, the official description of the weakness, and the matching OWASP Top 10 category.
+- [Mail] **[FIXED]** **Emails Look Right in Gmail, Apple Mail and on Small Phones**
+  In most mail apps, the rounded box around every email and around its highlighted notes had square outline corners with a rounded fill inside, so a thin sliver of the background showed at each corner. Those boxes are now cleanly rounded. On narrow phones, about half of all emails were also wider than the screen and had to be scrolled sideways, because the links at the bottom, the row of severity counts in scan emails, or a long web address could not wrap onto a new line. Every email now fits a 320 pixel wide screen.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -2486,6 +2488,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 935
+- **Total changes documented:** 936
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

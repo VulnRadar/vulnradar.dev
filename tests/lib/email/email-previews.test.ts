@@ -104,6 +104,29 @@ describe("rendered email previews", () => {
     }
   });
 
+  // Under border-collapse:collapse a cell's border ignores border-radius while
+  // its background is still clipped to it, so a bordered, rounded, filled cell
+  // (the card, every callout) drew a square hairline around a rounded fill
+  // with the canvas showing at the corners, in every client that applies the
+  // embedded stylesheet.
+  it("never puts a bordered, rounded cell in the collapsed border model", async () => {
+    const rendered = await renderAll();
+    for (const r of rendered) {
+      const style = /<style>([\s\S]*?)<\/style>/.exec(r.html)?.[1] ?? "";
+      expect(style, r.name).not.toMatch(/table\{[^}]*border-collapse:collapse/);
+      for (const m of r.html.matchAll(
+        /<table[^>]*border-collapse:\s*collapse[^>]*>/g,
+      )) {
+        const end = r.html.indexOf("</table>", m.index);
+        const inner = r.html.slice(m.index, end);
+        expect(
+          /<td[^>]*style="[^"]*border:\s*1px[^"]*border-radius/.test(inner),
+          `${r.name}: a collapsed table holds a bordered, rounded cell`,
+        ).toBe(false);
+      }
+    }
+  });
+
   it("stays under the size email_logs will actually store", async () => {
     const rendered = await renderAll();
     for (const r of rendered) {
