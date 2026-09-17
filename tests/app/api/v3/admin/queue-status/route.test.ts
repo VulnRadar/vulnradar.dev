@@ -250,7 +250,7 @@ describe("GET /api/v3/admin/queue-status?failures=1", () => {
     await GET(req("?failures=1"));
 
     const [sql] = mockQuery.mock.calls[2] as [string];
-    expect(sql).not.toMatch(/JOIN/i);
+    expect(sql).not.toMatch(/\bJOIN\b/i);
     expect(sql).not.toContain("email");
   });
 

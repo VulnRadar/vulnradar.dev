@@ -833,6 +833,26 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+  "webcam-microphone-access": [
+    {
+      description: "regression: a link to the getUserMedia documentation",
+      url: "https://example.com/",
+      body: '<a href="https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#security">MediaDevices getUserMedia</a>',
+      expect: "skip",
+    },
+    {
+      description: "a real camera request",
+      url: "https://example.com/",
+      body: "<script>navigator.mediaDevices.getUserMedia({ video: true });</script>",
+      expect: "fire",
+    },
+    {
+      description: "the legacy prefixed call",
+      url: "https://example.com/",
+      body: "<script>navigator.webkitGetUserMedia({ audio: true }, ok, fail);</script>",
+      expect: "fire",
+    },
+  ],
   "debug-endpoint": [
     {
       description:

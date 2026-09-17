@@ -1310,7 +1310,14 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "webcam-microphone-access": (_url, _headers, body) => {
-    if (/getUserMedia|mediaDevices/g.test(body)) {
+    // A call, the way geolocation-usage and clipboard-access above require
+    // one. The bare words matched a link to MDN's getUserMedia page, which is
+    // how a check reference page on our own site read as using the camera.
+    if (
+      /\bnavigator\.mediaDevices\b|\b(?:webkit|moz)?[gG]etUserMedia\s*\(/.test(
+        body,
+      )
+    ) {
       return "Media device access (camera/microphone) detected.";
     }
     return null;
