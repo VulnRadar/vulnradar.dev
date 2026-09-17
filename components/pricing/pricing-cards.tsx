@@ -113,7 +113,10 @@ export function PricingCards({
             // floor, or the lookup failed) this falls back to the old
             // id-only check, so we never offer a switch to the billing
             // period already being paid for.
-            const isSamePlanId = currentPlan === plan.id;
+            // Signed out, currentPlan is the "free" fallback, not a plan
+            // anyone is on: it rendered Free as a disabled "Current Plan" to
+            // every visitor, so the page's own Start Free button never showed.
+            const isSamePlanId = isLoggedIn && currentPlan === plan.id;
             const isCurrentPlan =
               isSamePlanId &&
               (currentInterval === null || currentInterval === billing);
