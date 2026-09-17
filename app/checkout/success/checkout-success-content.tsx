@@ -8,10 +8,15 @@ import { useVerifySubscription } from "@/hooks/use-verify-subscription";
 import { CheckoutMessage } from "@/components/billing/checkout-message";
 import { EmailLink } from "@/components/shared/email-link";
 
-/** Credit top-up labels, keyed by the ?kind= the checkout components send. */
+/**
+ * Credit top-up labels, keyed by the ?kind= the checkout components send, for
+ * the sentence "Your ___ are being added". Worded as in
+ * components/billing/credit-kinds.ts: live-browser is bought in minutes, and
+ * this screen was the one place that called them credits.
+ */
 const CREDIT_KINDS: Record<string, string> = {
   "ai-credits": "AI credits",
-  "browser-credits": "live-browser credits",
+  "browser-credits": "live-browser minutes",
   "github-credits": "GitHub review credits",
 };
 

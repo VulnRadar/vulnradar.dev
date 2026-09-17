@@ -151,17 +151,22 @@ export function BillingVerificationModal({
     }
   }, [open]);
 
-  const handleContinue = async () => {
-    setUserContinued(true);
+  const [sending, setSending] = useState(false);
 
+  // Advances to "check your email" only once the send succeeded. It used to
+  // advance first and roll back on failure, so a failed send flashed the
+  // code screen, and the Continue button had no busy state, so a double click
+  // sent two emails.
+  const handleContinue = async () => {
+    if (sending) return;
+    setSending(true);
     try {
       const res = await fetch("/api/v3/billing/verify/send", {
         method: "POST",
       });
-      if (!res.ok) {
-        // A 429/500 previously still advanced to "check your email" even though
-        // no code was sent. Roll back so the user can retry, and surface it.
-        setUserContinued(false);
+      if (res.ok) {
+        setUserContinued(true);
+      } else {
         toast({
           title: "Could not send the code",
           description:
@@ -170,12 +175,13 @@ export function BillingVerificationModal({
         });
       }
     } catch {
-      setUserContinued(false);
       toast({
         title: "Could not reach the server",
         description: "No code went out. Check your connection and try again.",
         variant: "destructive",
       });
+    } finally {
+      setSending(false);
     }
   };
 
@@ -258,6 +264,10 @@ export function BillingVerificationModal({
   };
 
   const handleClose = () => {
+    // Escape and the backdrop come through here as well as Cancel. While a
+    // send, verify or resend is in flight, closing would throw away the code
+    // the user typed and leave the request finishing against nothing.
+    if (sending || loading || resending) return;
     setCode("");
     setUserContinued(false);
     hasSentEmail.current = false;
@@ -300,8 +310,18 @@ export function BillingVerificationModal({
               </div>
 
               <div className="flex flex-col gap-2">
-                <Button onClick={handleContinue} className="w-full">
-                  Continue
+                <Button
+                  onClick={handleContinue}
+                  className="w-full gap-2"
+                  disabled={sending}
+                >
+                  {sending && (
+                    <Loader2
+                      className="h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {sending ? "Sending code..." : "Continue"}
                 </Button>
                 <Button
                   variant="outline"

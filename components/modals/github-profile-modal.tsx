@@ -17,8 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { FaGithub } from "react-icons/fa";
 import { Check, Loader2, Image as ImageIcon, User } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-
-const AUTH_UPDATE_ENDPOINT = "/api/v3/auth/update";
+import { API } from "@/lib/config/client-constants";
 
 /**
  * GitHub's counterpart to DiscordProfileModal -- same shape (sync avatar +
@@ -72,7 +71,7 @@ export function GithubProfileModal() {
         updateData.name = githubUsername;
       }
 
-      const res = await fetch(AUTH_UPDATE_ENDPOINT, {
+      const res = await fetch(API.AUTH.UPDATE, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updateData),
@@ -109,7 +108,14 @@ export function GithubProfileModal() {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        // Escape and the backdrop go through here too; while the save is in
+        // flight they must not close what the disabled buttons cannot.
+        if (!isOpen && !loading) handleClose();
+      }}
+    >
       {/* The three-band shell, so the actions stay in a pinned footer: with
           the header, the 80px avatar and the sync rows, a short viewport used
           to push "Sync selected" / "Skip for now" past the height cap. */}
@@ -126,7 +132,7 @@ export function GithubProfileModal() {
             reader announces as an unnamed dialog. */}
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#181717]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#24292e]">
               <FaGithub className="h-5 w-5 text-white" aria-hidden="true" />
             </div>
             <div className="min-w-0">
@@ -144,7 +150,7 @@ export function GithubProfileModal() {
                   src={githubAvatar || undefined}
                   alt={githubUsername}
                 />
-                <AvatarFallback className="bg-[#181717] text-white text-xl font-semibold">
+                <AvatarFallback className="bg-[#24292e] text-white text-xl font-semibold">
                   {githubUsername?.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>

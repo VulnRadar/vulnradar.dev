@@ -16,8 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Check, Loader2, Image as ImageIcon, User } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-
-const AUTH_UPDATE_ENDPOINT = "/api/v3/auth/update";
+import { API } from "@/lib/config/client-constants";
 
 export function DiscordProfileModal() {
   const router = useRouter();
@@ -65,7 +64,7 @@ export function DiscordProfileModal() {
         updateData.name = discordUsername;
       }
 
-      const res = await fetch(AUTH_UPDATE_ENDPOINT, {
+      const res = await fetch(API.AUTH.UPDATE, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updateData),
@@ -102,7 +101,14 @@ export function DiscordProfileModal() {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        // Escape and the backdrop go through here too; while the save is in
+        // flight they must not close what the disabled buttons cannot.
+        if (!isOpen && !loading) handleClose();
+      }}
+    >
       {/* The three-band shell, so the actions stay in a pinned footer: with
           the header, the 80px avatar and the sync rows, a short viewport used
           to push "Sync selected" / "Skip for now" past the height cap. */}

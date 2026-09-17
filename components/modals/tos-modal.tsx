@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Check, ShieldCheck, AlertCircle } from "lucide-react";
+import {
+  ExternalLink,
+  Check,
+  ShieldCheck,
+  AlertCircle,
+  Loader2,
+} from "lucide-react";
 import { APP_NAME, API } from "@/lib/config/client-constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
@@ -350,7 +356,7 @@ export function TosModal({
                     critical
                       ? checked[key]
                         ? "border-l-[hsl(var(--warning))] bg-[hsl(var(--warning))]/5"
-                        : "border-l-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/5 hover:bg-[hsl(var(--warning))]/5"
+                        : "border-l-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/5 hover:bg-[hsl(var(--warning))]/10"
                       : checked[key]
                         ? "border-l-transparent bg-muted/50"
                         : "border-l-transparent hover:bg-muted/30",
@@ -447,26 +453,10 @@ export function TosModal({
             >
               {accepting ? (
                 <span className="flex items-center gap-2">
-                  <svg
-                    className="animate-spin h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
                     aria-hidden="true"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
+                  />
                   Processing
                 </span>
               ) : allChecked ? (
@@ -480,11 +470,13 @@ export function TosModal({
             </Button>
 
             <div className="flex items-center justify-center gap-1">
-              <p className="text-xs text-muted-foreground/60">
+              <p className="text-xs text-muted-foreground">
                 By continuing, you agree to
               </p>
+              {/* The Terms of Service, which is what "full terms" promises. It
+                  pointed at the disclaimer page. */}
               <a
-                href="/legal/disclaimer"
+                href="/legal/terms"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-primary hover:text-primary/80 underline underline-offset-2 transition-colors"

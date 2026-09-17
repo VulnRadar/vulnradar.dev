@@ -117,7 +117,12 @@ export function CreditMeter({
       )}
     >
       <div className="bg-muted-foreground/45" style={{ width: pct(spent) }} />
-      <div style={{ width: pct(limit - spent) }} />
+      {/* Free allowance still to use: its own shade, so the bar reads as
+          three parts (spent, left, purchased) instead of two blocks and a gap. */}
+      <div
+        className="bg-muted-foreground/15"
+        style={{ width: pct(limit - spent) }}
+      />
       <div
         className="bg-primary"
         style={{ width: pct(Math.max(0, snapshot.purchased)) }}

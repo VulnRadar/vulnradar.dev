@@ -156,7 +156,9 @@ export function CreditTopUp({
             purchased {kind.unitMany} you hold now
           </p>
           <CreditMeter className="mt-4 max-w-md" snapshot={snapshot} />
-          <p className="mt-2 max-w-md text-xs text-muted-foreground">
+          {/* The free allowance is what decides whether anyone needs to buy,
+              so it is body text, not a caption. */}
+          <p className="mt-2 max-w-md text-sm text-muted-foreground">
             {allowanceSentence(kind, snapshot)}
           </p>
         </div>
@@ -231,7 +233,7 @@ export function CreditTopUp({
             <button
               type="button"
               onClick={() => setSelectedTier(null)}
-              className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset mb-4"
+              className="inline-flex h-11 items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset mb-4 sm:h-8"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
               Change amount
@@ -266,7 +268,7 @@ export function CreditTopUp({
                   <div className="flex justify-between gap-3">
                     <dt className="text-muted-foreground">Balance now</dt>
                     <dd className="tabular-nums">
-                      {formatCount(snapshot.purchased)}
+                      {formatUnits(kind, snapshot.purchased)}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3 border-t border-border pt-2 font-medium">

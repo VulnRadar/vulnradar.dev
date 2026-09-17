@@ -237,7 +237,9 @@ export function ImageCropDialog({
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        if (!o) onClose();
+        // Escape and the backdrop close through here; mid-save they must not
+        // do what the disabled Cancel button cannot.
+        if (!o && !saving) onClose();
       }}
     >
       {/* A cropper canvas plus its zoom control is content that can grow, and

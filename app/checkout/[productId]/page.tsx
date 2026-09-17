@@ -16,6 +16,8 @@ import {
   APP_NAME,
 } from "@/lib/config/client-constants";
 import { StripeCheckout } from "@/components/billing/stripe-checkout";
+// The credit checkouts print $10, not $10.00; so does this one now.
+import { formatUsd } from "@/components/billing/credit-kinds";
 import { CheckoutShell } from "@/components/billing/checkout-shell";
 import { PaymentFormSkeleton } from "@/components/billing/checkout-status";
 import { CheckoutMessage } from "@/components/billing/checkout-message";
@@ -236,7 +238,8 @@ export default function CheckoutPage({
                         : "Monthly subscription"}
                     </span>
                     <span className="font-medium">
-                      ${monthlyPrice.toFixed(2)}/{isYearly ? "yr" : "mo"}
+                      {formatUsd(Math.round(monthlyPrice * 100))}/
+                      {isYearly ? "yr" : "mo"}
                     </span>
                   </div>
                   {isYearly && (
@@ -253,19 +256,19 @@ export default function CheckoutPage({
                   <span className="font-semibold">Total today</span>
                   <div className="text-right">
                     <span className="text-2xl font-semibold tabular-nums">
-                      ${monthlyPrice.toFixed(2)}
+                      {formatUsd(Math.round(monthlyPrice * 100))}
                     </span>
                     <p className="text-xs text-muted-foreground">
                       {isYearly
-                        ? `$${effectiveMonthly.toFixed(2)}/mo effective`
+                        ? `${formatUsd(Math.round(effectiveMonthly * 100))}/mo effective`
                         : "Billed monthly"}
                     </p>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-3">
                   Renews {isYearly ? "every year" : "every month"} at{" "}
-                  {`$${monthlyPrice.toFixed(2)}`} until you cancel. No trial, no
-                  separate setup fee.
+                  {formatUsd(Math.round(monthlyPrice * 100))} until you cancel.
+                  No trial, no separate setup fee.
                 </p>
               </div>
             </div>

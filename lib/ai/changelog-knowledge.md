@@ -150,6 +150,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   A sweep of the signed-in pages. Bulk scans now show their queuing progress, which never appeared before. On phones, the scan form now explains why port scanning is unavailable when the real reason is a scan that signs in first, not an unverified domain. History's filters match every other list, the whole search box is clickable, and filters only appear once you have enough scans to need them. Every copy button now waits the same length of time before resetting and tells screen reader users that the copy worked. Search boxes no longer show two clear buttons at once, and several small labels are easier to read.
 - [Wrench] **[IMPROVED]** **Steadier Pages While They Load**
   Several pages, including assets, public scans and repositories, jumped or changed shape when their content finished loading, because the placeholder shown while loading did not match the real layout. They now match. The same scan verdict reads Clean, Caution or Exploitable on every page, including the badge page, which said Safe and Unsafe. Closing a support ticket now asks first, because a closed ticket cannot be reopened. Dates on team invites, domains and repositories use the same format as the rest of the app.
+- [Bug] **[FIXED]** **Payment and Account Dialogs Behave**
+  The billing verification step no longer jumps to 'check your email' before the code has actually been sent, and pressing Continue twice no longer sends two emails. Pressing Escape or clicking outside a dialog while it is saving no longer closes it and loses what you typed. Subscription prices show as $5/mo like the credit prices, instead of $5.00/mo. The upgrade prompt uses the full plan name, such as Pro Supporter, so it matches the pricing page. Back links on checkout pages are easier to tap on phones, the credit meter shows your remaining free allowance as its own section, and the terms prompt's full terms link now opens the Terms of Service instead of the disclaimer.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -2530,6 +2532,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 957
+- **Total changes documented:** 958
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

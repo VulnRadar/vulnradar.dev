@@ -69,8 +69,11 @@ export const PREMIUM_FEATURES: Record<string, PremiumFeature> = {
 };
 
 // Derive plan labels, prices, and limits from centralized plans config
+// The plan's full name, as the pricing page and checkout print it. This used
+// to strip " Supporter", so the modal said "Upgrade to Pro" and sent people to
+// a page that has no plan called Pro.
 const PLAN_LABELS: Record<string, string> = Object.fromEntries(
-  PLANS.map((p) => [p.id, p.name.replace(" Supporter", "")]),
+  PLANS.map((p) => [p.id, p.name]),
 );
 
 const PLAN_PRICES: Record<string, number> = Object.fromEntries(
@@ -202,7 +205,7 @@ export function PremiumUpgradeModal({
         <DialogBody className="space-y-4">
           <div className="rounded-lg border border-border bg-muted/30 p-4">
             <div className="flex items-center justify-between mb-3">
-              <span className="font-medium">{requiredPlanLabel} Plan</span>
+              <span className="font-medium">{requiredPlanLabel} plan</span>
               <div className="text-right">
                 <span className="text-2xl font-bold">${requiredPlanPrice}</span>
                 <span className="text-muted-foreground">/mo</span>

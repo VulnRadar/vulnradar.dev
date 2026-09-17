@@ -28,7 +28,9 @@ export function CheckoutShell({ children }: { children: ReactNode }) {
         <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center">
           <Link
             href={ROUTES.PRICING}
-            className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            // h-11 below sm: the same 44px touch target the credit top-up's
+            // back link has.
+            className="inline-flex h-11 items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring sm:h-8"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <span className="text-sm">Back to plans</span>

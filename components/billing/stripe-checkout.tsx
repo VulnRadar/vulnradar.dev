@@ -115,11 +115,19 @@ function VerifiedStatus({ plan }: { plan: string }) {
       title="You are subscribed"
       description={
         <>
-          Your account is on{" "}
-          <span className="font-medium text-foreground">
-            {getPlanById(plan)?.name || plan}
-          </span>{" "}
-          now. The new scan limit applies immediately.
+          {getPlanById(plan) ? (
+            <>
+              Your account is on{" "}
+              <span className="font-medium text-foreground">
+                {getPlanById(plan)?.name}
+              </span>{" "}
+              now.
+            </>
+          ) : (
+            // Never the raw plan id: a slug on a success screen reads as broken.
+            "Your new plan is active."
+          )}{" "}
+          The new scan limit applies immediately.
         </>
       }
       action={
