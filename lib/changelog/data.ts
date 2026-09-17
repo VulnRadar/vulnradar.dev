@@ -549,6 +549,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: Shield,
+        label: "Admin Settings No Longer Show or Log Secrets",
+        desc: "Two admin settings hold secrets: the signing secret for admin alert webhooks and the client secret for staff single sign-on. The settings page used to load them into the browser and show them in plain text, and every change wrote the old and new secret into the admin audit log. Now the page only says whether a secret is saved, the box is write-only, the audit log records that it changed but not what it is, and settings exports leave it out. If you saved either secret before this update, older audit log entries still contain it, so replace that secret with a new one.",
+        category: "security",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

@@ -116,6 +116,8 @@ interface SettingFieldProps {
   isOverridden: boolean;
   isPending: boolean;
   isResetting: boolean;
+  /** For a `secret` setting: whether a value is stored. The value itself is never sent to the browser. */
+  secretIsSet?: boolean;
   onChange: (key: SettingKey, value: FieldValue) => void;
   onResetRequest: (key: SettingKey) => void;
 }
@@ -127,6 +129,7 @@ export function SettingField({
   isOverridden,
   isPending,
   isResetting,
+  secretIsSet = false,
   onChange,
   onResetRequest,
 }: SettingFieldProps) {
@@ -245,9 +248,28 @@ export function SettingField({
               />
             )}
 
-          {(def.type === "string" ||
-            def.type === "email" ||
-            def.type === "url") &&
+          {def.secret && (
+            // Write-only. The admin API reports whether a credential is
+            // stored and never what it is, so there is nothing to prefill:
+            // an empty box means "keep what is there", and typing replaces it.
+            <Input
+              id={`setting-${fieldKey}`}
+              type="password"
+              autoComplete="new-password"
+              spellCheck={false}
+              value={isPending ? stringValue : ""}
+              onChange={(e) => onChange(fieldKey, e.target.value)}
+              placeholder={
+                secretIsSet ? "Stored. Type to replace it" : "Not set"
+              }
+              className="w-48 sm:w-64 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+            />
+          )}
+
+          {!def.secret &&
+            (def.type === "string" ||
+              def.type === "email" ||
+              def.type === "url") &&
             !isListSetting(fieldKey) &&
             !isMultilineSetting(fieldKey) && (
               <Input

@@ -43,7 +43,11 @@ import {
 } from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
 import { pluralize } from "@/lib/ui/plural";
-import { SETTINGS_REGISTRY, type SettingKey } from "@/lib/config/registry";
+import {
+  SETTINGS_REGISTRY,
+  isSecretSetting,
+  type SettingKey,
+} from "@/lib/config/registry";
 import {
   SETTINGS_TABS,
   FIELDS_BY_GROUP,
@@ -123,6 +127,7 @@ export function SystemSettingsManager() {
   const [loading, setLoading] = useState(false);
   const [effective, setEffective] = useState<EffectiveMap>({});
   const [overridden, setOverridden] = useState<Set<SettingKey>>(new Set());
+  const [secretsSet, setSecretsSet] = useState<Set<SettingKey>>(new Set());
   const [changes, setChanges] = useState<ChangesMap>({});
   const [saving, setSaving] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -176,6 +181,7 @@ export function SystemSettingsManager() {
       }
       setEffective((data.effective as EffectiveMap) ?? {});
       setOverridden(new Set((data.overridden as SettingKey[]) ?? []));
+      setSecretsSet(new Set((data.secretsSet as SettingKey[]) ?? []));
     } catch (error) {
       console.error("Error fetching effective settings:", error);
       setLoadError("Could not load the current settings.");
@@ -210,11 +216,27 @@ export function SystemSettingsManager() {
     return counts;
   }, [changes]);
 
+  // The confirmation dialog shows before and after. For a credential that
+  // would print the value the admin just typed, on screen, in a dialog built to
+  // be read over someone's shoulder, so it says what happens instead.
+  const secretLabel = (key: SettingKey, value: FieldValue | undefined) =>
+    value === "" || value === undefined
+      ? secretsSet.has(key)
+        ? "(stored)"
+        : "(not set)"
+      : "(new value)";
+
   const modalChanges: ChangeItem[] = pendingInTab.map(([key, def]) => ({
     field: key,
     label: def.label,
-    oldValue: effectiveValueFor(key, effective),
-    newValue: changes[key] as FieldValue,
+    oldValue: isSecretSetting(key)
+      ? secretLabel(key, undefined)
+      : effectiveValueFor(key, effective),
+    newValue: isSecretSetting(key)
+      ? changes[key] === ""
+        ? "(cleared)"
+        : "(new value)"
+      : (changes[key] as FieldValue),
   }));
 
   const destructiveFields = pendingInTab.filter(([key]) =>
@@ -253,7 +275,18 @@ export function SystemSettingsManager() {
     if (succeeded.length > 0) {
       setEffective((prev) => {
         const next = { ...prev };
-        for (const key of succeeded) next[key] = changes[key];
+        for (const key of succeeded) {
+          if (!isSecretSetting(key)) next[key] = changes[key];
+        }
+        return next;
+      });
+      setSecretsSet((prev) => {
+        const next = new Set(prev);
+        for (const key of succeeded) {
+          if (!isSecretSetting(key)) continue;
+          if (changes[key]) next.add(key);
+          else next.delete(key);
+        }
         return next;
       });
       setOverridden((prev) => {
@@ -299,6 +332,11 @@ export function SystemSettingsManager() {
           delete next[key];
           return next;
         });
+        setSecretsSet((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
         setChanges((prev) => {
           const next = { ...prev };
           delete next[key];
@@ -316,9 +354,13 @@ export function SystemSettingsManager() {
     }
   };
 
+  // Credentials are left out: the browser never has their values, and an
+  // export is a file that gets attached to tickets and committed to repos.
   const handleExport = () => {
     const dump = Object.fromEntries(
-      [...overridden].map((key) => [key, effectiveValueFor(key, effective)]),
+      [...overridden]
+        .filter((key) => !isSecretSetting(key))
+        .map((key) => [key, effectiveValueFor(key, effective)]),
     );
     const blob = new Blob([JSON.stringify(dump, null, 2)], {
       type: "application/json",
@@ -379,11 +421,12 @@ export function SystemSettingsManager() {
       }
       if (value === current) continue; // already matches, nothing to do
       pending[settingKey] = value;
+      const secret = isSecretSetting(settingKey);
       preview.push({
         field: settingKey,
         label: SETTINGS_REGISTRY[settingKey].label,
-        oldValue: current,
-        newValue: value,
+        oldValue: secret ? secretLabel(settingKey, undefined) : current,
+        newValue: secret ? (value === "" ? "(cleared)" : "(new value)") : value,
       });
     }
 
@@ -416,7 +459,16 @@ export function SystemSettingsManager() {
         value,
       });
       if (ok) {
-        setEffective((prev) => ({ ...prev, [key]: value }));
+        if (isSecretSetting(key)) {
+          setSecretsSet((prev) => {
+            const next = new Set(prev);
+            if (value) next.add(key);
+            else next.delete(key);
+            return next;
+          });
+        } else {
+          setEffective((prev) => ({ ...prev, [key]: value }));
+        }
         setOverridden((prev) => new Set(prev).add(key));
       } else {
         failures.push((data.error as string) || `Failed to import ${key}`);
@@ -685,6 +737,7 @@ export function SystemSettingsManager() {
                                   isOverridden={overridden.has(key)}
                                   isPending={key in changes}
                                   isResetting={resettingKey === key}
+                                  secretIsSet={secretsSet.has(key)}
                                   onChange={handleFieldChange}
                                   onResetRequest={setResetTarget}
                                 />

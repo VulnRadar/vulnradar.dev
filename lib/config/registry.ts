@@ -371,6 +371,13 @@ export interface SettingDefinition {
   max?: number;
   /** Allowed values for `type: "enum"`. */
   options?: readonly string[];
+  /**
+   * A credential. The admin API never returns it (the settings page learns
+   * only whether one is stored), never writes it into the audit log, and
+   * leaves it out of a settings export. Writing is unchanged: an admin can
+   * still set, replace or clear it.
+   */
+  secret?: true;
 }
 
 /**
@@ -3150,6 +3157,7 @@ export const SETTINGS_REGISTRY = {
     label: "Admin alert webhook secret",
     help: "Optional. When set, each alert is signed the same way customer-facing webhooks are (X-VulnRadar-Signature: sha256=<hmac>), so the receiver can verify it actually came from this app.",
     max: 256,
+    secret: true,
   },
   ENFORCE_STAFF_2FA: {
     tier: "runtime",
@@ -3185,6 +3193,7 @@ export const SETTINGS_REGISTRY = {
     label: "Staff SSO: OIDC client secret",
     help: "The client secret your IdP issued alongside the client ID. Register this app's redirect URI with your IdP as: <your app URL>/api/v3/auth/staff-oidc/callback",
     max: 512,
+    secret: true,
   },
   CONTACT_MESSAGE_MAX_LENGTH: {
     tier: "runtime",
@@ -3515,6 +3524,14 @@ export type SettingValue<K extends SettingKey> = ValueForType<
 
 export function isSettingKey(key: string): key is SettingKey {
   return Object.prototype.hasOwnProperty.call(SETTINGS_REGISTRY, key);
+}
+
+/** True for a registry key holding a credential. See SettingDefinition.secret. */
+export function isSecretSetting(key: string): boolean {
+  return (
+    isSettingKey(key) &&
+    (SETTINGS_REGISTRY[key] as SettingDefinition).secret === true
+  );
 }
 
 const schemaCache = new Map<SettingKey, z.ZodType>();

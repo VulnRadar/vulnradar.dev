@@ -16,6 +16,7 @@ import { sendEmail, isEmailConfigured, stripHtmlTags } from "@/lib/email/email";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   isSettingKey,
+  isSecretSetting,
   validateSettingValue,
   SETTINGS_REGISTRY,
   type SettingKey,
@@ -544,7 +545,11 @@ export async function POST(req: NextRequest) {
           `SELECT value FROM system_settings WHERE key = $1`,
           [key],
         );
-        return NextResponse.json({ value: result.rows[0]?.value });
+        const value = result.rows[0]?.value;
+        if (typeof key === "string" && isSecretSetting(key)) {
+          return NextResponse.json({ value: null, isSet: Boolean(value) });
+        }
+        return NextResponse.json({ value });
       }
 
       if (action === "set") {
@@ -588,11 +593,16 @@ export async function POST(req: NextRequest) {
           [key, storedValue, description, user.id],
         );
         invalidateSettingsCache();
+        // A credential's value never reaches the audit log. The log is read by
+        // every admin and kept for a year, and "who changed the OIDC secret,
+        // and when" is the whole of what it needs to answer.
         await logAction(
           user.id,
           null,
           "system_setting_changed",
-          `Changed "${key}" from "${oldValue || "(not set)"}" to "${storedValue}"`,
+          isSecretSetting(key)
+            ? `Changed "${key}" (${storedValue ? "set" : "cleared"}; secret values are not logged)`
+            : `Changed "${key}" from "${oldValue || "(not set)"}" to "${storedValue}"`,
           ip,
         );
         return NextResponse.json({ success: true });
@@ -602,7 +612,13 @@ export async function POST(req: NextRequest) {
         const result = await pool.query(
           `SELECT key, value, description, updated_at FROM system_settings`,
         );
-        return NextResponse.json({ settings: result.rows });
+        return NextResponse.json({
+          settings: result.rows.map((row) =>
+            isSecretSetting(row.key)
+              ? { ...row, value: null, isSet: Boolean(row.value) }
+              : row,
+          ),
+        });
       }
 
       if (action === "effective") {
@@ -621,9 +637,18 @@ export async function POST(req: NextRequest) {
             [keys],
           ),
         ]);
+        // Credentials go back as "is one stored", never as the value. The
+        // settings page renders them write-only.
+        const secretsSet: SettingKey[] = [];
+        for (const key of keys) {
+          if (!isSecretSetting(key)) continue;
+          if (effective[key]) secretsSet.push(key);
+          delete effective[key];
+        }
         return NextResponse.json({
           effective,
           overridden: overriddenResult.rows.map((r) => r.key),
+          secretsSet,
         });
       }
 
@@ -650,7 +675,9 @@ export async function POST(req: NextRequest) {
           user.id,
           null,
           "system_setting_reset",
-          `Reset "${key}" to its default (was "${oldValue ?? "(not set)"}")`,
+          isSecretSetting(key)
+            ? `Reset "${key}" to its default (secret values are not logged)`
+            : `Reset "${key}" to its default (was "${oldValue ?? "(not set)"}")`,
           ip,
         );
         return NextResponse.json({

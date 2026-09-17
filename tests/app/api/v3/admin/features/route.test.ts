@@ -351,6 +351,104 @@ describe("POST /api/v3/admin/features — system_settings", () => {
     expect(upsertParams[1]).toBe("10");
   });
 
+  describe("credentials", () => {
+    const SECRET = "oidc-client-secret-value-7f3a";
+
+    it("effective reports whether a secret is stored, never the secret", async () => {
+      queueRole("admin");
+      mockGetSettings.mockResolvedValueOnce({
+        STAFF_OIDC_CLIENT_SECRET: SECRET,
+        ADMIN_ALERT_WEBHOOK_SECRET: "",
+        RATE_LIMIT_LOGIN_ATTEMPTS: 5,
+      });
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ key: "STAFF_OIDC_CLIENT_SECRET" }],
+      });
+      const res = await POST(
+        postRequest({ section: "system_settings", action: "effective" }),
+      );
+      const text = await res.text();
+      expect(res.status).toBe(200);
+      expect(text).not.toContain(SECRET);
+      const json = JSON.parse(text);
+      expect(json.secretsSet).toEqual(["STAFF_OIDC_CLIENT_SECRET"]);
+      expect(json.effective).not.toHaveProperty("STAFF_OIDC_CLIENT_SECRET");
+      expect(json.effective).not.toHaveProperty("ADMIN_ALERT_WEBHOOK_SECRET");
+      expect(json.effective.RATE_LIMIT_LOGIN_ATTEMPTS).toBe(5);
+      expect(json.overridden).toEqual(["STAFF_OIDC_CLIENT_SECRET"]);
+    });
+
+    it("get and list do not return a stored secret", async () => {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({ rows: [{ value: SECRET }] });
+      const got = await POST(
+        postRequest({
+          section: "system_settings",
+          action: "get",
+          key: "STAFF_OIDC_CLIENT_SECRET",
+        }),
+      );
+      const gotText = await got.text();
+      expect(gotText).not.toContain(SECRET);
+      expect(JSON.parse(gotText)).toEqual({ value: null, isSet: true });
+
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          { key: "ADMIN_ALERT_WEBHOOK_SECRET", value: SECRET },
+          { key: "RATE_LIMIT_LOGIN_ATTEMPTS", value: "5" },
+        ],
+      });
+      const listed = await POST(
+        postRequest({ section: "system_settings", action: "list" }),
+      );
+      const listText = await listed.text();
+      expect(listText).not.toContain(SECRET);
+      expect(JSON.parse(listText).settings).toEqual([
+        { key: "ADMIN_ALERT_WEBHOOK_SECRET", value: null, isSet: true },
+        { key: "RATE_LIMIT_LOGIN_ATTEMPTS", value: "5" },
+      ]);
+    });
+
+    it("setting a secret stores it but keeps both values out of the audit log", async () => {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({ rows: [{ value: "old-secret-0001" }] });
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      const res = await POST(
+        postRequest({
+          section: "system_settings",
+          action: "set",
+          key: "STAFF_OIDC_CLIENT_SECRET",
+          value: SECRET,
+        }),
+      );
+      expect(res.status).toBe(200);
+      const upsertParams = mockQuery.mock.calls[2][1] as unknown[];
+      expect(upsertParams[1]).toBe(SECRET);
+      const message = mockLogAction.mock.calls[0][3] as string;
+      expect(message).toContain("STAFF_OIDC_CLIENT_SECRET");
+      expect(message).not.toContain(SECRET);
+      expect(message).not.toContain("old-secret-0001");
+    });
+
+    it("resetting a secret keeps the old value out of the audit log", async () => {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({ rows: [{ value: SECRET }] });
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      const res = await POST(
+        postRequest({
+          section: "system_settings",
+          action: "reset",
+          key: "ADMIN_ALERT_WEBHOOK_SECRET",
+        }),
+      );
+      expect(res.status).toBe(200);
+      const message = mockLogAction.mock.calls[0][3] as string;
+      expect(message).toContain("ADMIN_ALERT_WEBHOOK_SECRET");
+      expect(message).not.toContain(SECRET);
+    });
+  });
+
   it("rejects a value below the registry's minimum without touching the database", async () => {
     queueRole("admin");
     const res = await POST(
