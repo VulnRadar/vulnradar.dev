@@ -132,7 +132,7 @@ export default function PublicScansPage() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3 pb-2 pt-2 sm:pt-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
             Public Scans
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">

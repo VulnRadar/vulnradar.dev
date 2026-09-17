@@ -857,7 +857,7 @@ export default function HistoryPage() {
                 keeps it from being a one-click mistake. */}
           <div className="mb-1 flex flex-col gap-3 pb-2 pt-6 sm:flex-row sm:items-start sm:justify-between sm:pt-8">
             <div aria-label="Scan history">
-              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
                 History
               </h1>
               {/* The subtitle is three counts about the account, and every

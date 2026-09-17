@@ -4,7 +4,7 @@ import { EXACT_CHECK_CATEGORY_COUNT } from "@/lib/config/check-stats.generated";
 export function ScanHero() {
   return (
     <section aria-label="Scanner" className="pt-8 pb-5 sm:pt-10">
-      <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+      <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
         Scan a host
       </h1>
       <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">

@@ -735,7 +735,7 @@ function ProfileContent() {
           className="h-6 w-6 text-destructive"
           aria-hidden="true"
         />
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
           Account settings could not be loaded
         </h1>
         <p className="max-w-md text-sm text-muted-foreground">
