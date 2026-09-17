@@ -346,7 +346,7 @@ export function BadgePreview({
           href={shareUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="transition-transform hover:scale-105"
+          className="rounded-sm transition-opacity hover:opacity-90"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={badgeUrl} alt={`Secured by ${APP_NAME}`} />

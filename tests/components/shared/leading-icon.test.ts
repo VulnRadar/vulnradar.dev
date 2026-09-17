@@ -110,6 +110,42 @@ describe("leading icons", () => {
     expect(util.slice(0, util.indexOf("}\n\n"))).toContain('content: "\\200b"');
   });
 
+  it("is never the icon inside a <Button>", () => {
+    // A button is one line of text centred in a fixed height, and the
+    // primitive already sizes and centres its svg. icon-lead's
+    // align-self: flex-start pins the icon to the TOP of that height instead,
+    // so in an h-8 button the icon sat 6px above its label. That was the
+    // broadcast composer's "Start from a template" and "Fill from the newest
+    // changelog entry".
+    const offenders: string[] = [];
+    const tag =
+      /<(\/?)([A-Za-z][\w.]*)\b(?:[^<>"'{}]|"[^"]*"|'[^']*'|\{[^{}]*\})*?(\/?)>/g;
+    for (const file of TSX) {
+      const src = fs.readFileSync(file, "utf8");
+      const open: { name: string; line: number }[] = [];
+      for (const m of src.matchAll(tag)) {
+        const [, closing, name, selfClosing] = m;
+        const line = src.slice(0, m.index).split("\n").length;
+        if (name === "LeadingIcon" && open.at(-1)?.name === "Button") {
+          offenders.push(
+            `${path.relative(ROOT, file).split(path.sep).join("/")}:${line}`,
+          );
+        }
+        if (selfClosing) continue;
+        if (closing) {
+          const at = open.map((o) => o.name).lastIndexOf(name);
+          if (at !== -1) open.splice(at);
+        } else {
+          open.push({ name, line });
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Put the lucide icon straight inside the Button:\n  ${offenders.join("\n  ")}`,
+    ).toEqual([]);
+  });
+
   it("sets its own type rather than inheriting it", () => {
     const src = fs.readFileSync(
       path.join(ROOT, "components/shared/leading-icon.tsx"),

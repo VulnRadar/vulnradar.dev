@@ -185,7 +185,7 @@ export function TeamsList({
                   </div>
                   <RolePill role={team.role} />
                   <ChevronRight
-                    className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                    className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
                     aria-hidden="true"
                   />
                 </button>

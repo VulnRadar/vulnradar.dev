@@ -2025,7 +2025,7 @@ export function ChatWidget() {
             "bg-primary text-primary-foreground",
             "hover:bg-primary/90",
             "shadow-lg",
-            "transition-all duration-150 active:scale-95 touch-manipulation",
+            "transition-colors touch-manipulation",
             // a11y (SC 2.4.7): no ring colour of its own. This was
             // focus-visible:ring-primary/60, a utility-layer rule that beat the
             // base-layer remap in app/globals.css and drew a 60%-opacity

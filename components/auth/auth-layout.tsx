@@ -56,10 +56,7 @@ export function AuthWordmark({ className }: { className?: string }) {
       <ThemedLogo
         width={26}
         height={26}
-        className={cn(
-          "h-[26px] w-[26px] shrink-0 motion-safe:group-hover:scale-105",
-          transitions.transform,
-        )}
+        className="h-[26px] w-[26px] shrink-0"
         alt={`${APP_NAME} logo`}
       />
       <span className="text-lg font-semibold tracking-tight text-foreground">

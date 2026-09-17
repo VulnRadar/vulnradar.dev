@@ -1167,7 +1167,7 @@ function FindingRow({
       {!selectable && (
         <LeadingIcon
           icon={ChevronRight}
-          className="text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+          className="text-muted-foreground/50 transition-colors group-hover:text-foreground"
         />
       )}
     </button>

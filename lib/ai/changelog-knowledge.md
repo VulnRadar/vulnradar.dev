@@ -122,6 +122,12 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Sign-in and billing code emails put the code itself in the subject line, which shows on a locked phone's notifications and in the inbox list. The code is now only inside the message. Emails about webhooks printed the full webhook address, and for Discord, Slack and most other services that address works as a password for posting to your channel; they now show only enough of it to recognise which webhook is meant.
 - [Mail] **[IMPROVED]** **Easier-to-Read Emails**
   Small grey text in emails, such as the labels next to details, the footer and the line offering a link to copy if the button does not work, was too faint to read comfortably and is now brighter. The main button in every email now matches the buttons in the app, with dark text on light blue that is much easier to read than the white text it had before. Emails about a deleted scheduled scan or a changed team role now say what to do if the change was not expected, like the other notices already did.
+- [Bug] **[FIXED]** **Letters No Longer Cut Off at the Bottom**
+  In several places the bottoms of letters like g, p and y were cut off, most visibly in the website address at the top of a shared report and in the numbers across the top of a scan result. Headings now get enough room for the whole letter, everywhere in the app, and a test keeps it that way.
+- [Bug] **[IMPROVED]** **Buttons Stay Still When You Click Them**
+  Buttons used to shrink slightly when pressed, and a few arrows and badges grew or slid when you hovered over them. It looked jittery, especially on buttons that open a menu. Buttons now just change colour, and nothing jumps around under your cursor.
+- [Bug] **[FIXED]** **Icons Lined Up in the Broadcast Composer**
+  The icons on the "Start from a template" and "Fill from the newest changelog entry" buttons in the admin broadcast composer sat above the text instead of beside it. They are centred now.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -2502,6 +2508,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 943
+- **Total changes documented:** 946
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

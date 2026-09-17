@@ -21,18 +21,7 @@
    found by the scanner and must not be duplicated. */
 @source inline("bg-violet-500/10 text-violet-500 border-violet-500/20 bg-emerald-500/10 text-emerald-500 border-emerald-500/20 bg-rose-500/10 text-rose-500 border-rose-500/20 bg-indigo-500/10 text-indigo-500 border-indigo-500/20 bg-orange-500/10 text-orange-500 border-orange-500/20 bg-blue-500/10 text-blue-500 border-blue-500/20");
 
-/*
-   Same trap, different file. lib/ui/animations.ts composes its recipes from
-   Tailwind tokens, and active:scale-[0.98] is an arbitrary value that appears
-   NOWHERE under app/ or components/. So hovers.button and hovers.buttonOutline
-   asked for a press effect that was never compiled: every button using them
-   has been rendering with no press feedback at all. animations.ts documents
-   the constraint at the top of the file; this is the other half of it.
-*/
-@source inline("active:scale-[0.98]");
-
-/* MEASURED, and read it before adding anything to either list above or
-   acting on the warnings they reference.
+/* MEASURED, and read it before adding anything to the list above.
 
    Tailwind v4's automatic source detection scans the whole project from the
    CSS file's package root, and `@config` pointing at a legacy config does not
@@ -42,28 +31,18 @@
    sentinel: a unique class written only into lib/ui/animations.ts, on no
    safelist, compiles.
 
-   The two lists above are therefore NOT equivalent, and the difference is the
-   point. Compiling this file with every `@source inline(...)` stripped:
-
-     bg-violet-500 / text-rose-500 / border-indigo-500   EMITTED
-     scale-[0.98]                                        MISSING
-
-   The role-badge list is inert. Those utilities are extracted from
-   lib/config/client-constants.ts on their own, so the badges were never
-   rendering colourless and that entry fixes nothing. Kept only because it
+   The role-badge list above is therefore inert: those utilities are extracted
+   from lib/config/client-constants.ts on their own. It is kept only because it
    documents which strings are load-bearing without a literal call site.
 
-   The `active:scale-[0.98]` entry is NOT inert. An arbitrary value carrying
-   brackets and a decimal point is not reliably extracted from a TypeScript
-   string literal even in a scanned file, so that one really is doing work.
-   Do not delete it on the assumption that the list above generalises.
+   The exception is an arbitrary value carrying brackets and a decimal point
+   (`scale-[0.98]`, say), which is not reliably extracted from a TypeScript
+   string literal even in a scanned file. That is the only kind of class that
+   belongs in an `@source inline(...)` list.
 
    The practical rule: "the class was not generated" is usually the WRONG
    diagnosis for a control that looks unstyled, so check the compiled CSS
-   before reaching for a safelist. `active:scale-[0.98]` is also the worked
-   example of the other failure mode: it compiles, and no button presses,
-   because `hovers.button` and `hovers.buttonOutline` have zero consumers
-   anywhere in app/ or components/. A class can be present and still unused. */
+   before reaching for a safelist. */
 
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
@@ -806,23 +785,66 @@
   h6 {
     @apply font-semibold tracking-tight text-balance;
   }
+  /* Plain font-size and line-height, never `@apply text-* leading-*`.
+
+     A `leading-*` utility does not just set line-height, it sets the
+     --tw-leading variable, and every `text-*` utility computes its own
+     line-height as `var(--tw-leading, <its default>)`. So a base rule that
+     applied `leading-[1.1]` to h1 reached through every heading's own size
+     class: `<h1 class="text-xl">` rendered 20px type in a 22px line box
+     instead of text-xl's 28px. With `truncate` (overflow: hidden) on the
+     heading, that box is shorter than the glyphs, and the bottoms of g, j, p,
+     q and y were cut off. The shared report's URL heading was the visible
+     case; 265 headings in app/ and components/ carry a size class and all of
+     them had the tight box.
+
+     Written this way the default only applies to a heading that names no size
+     of its own, and a size class brings its own line-height with it. Nested
+     `@variant md` rather than `@apply md:text-*` for the same reason: the
+     applied utility would bring text-5xl's line-height of 1 along with it. */
   h1 {
-    @apply text-4xl md:text-5xl leading-[1.1];
+    font-size: var(--text-4xl);
+    line-height: 1.1;
+    @variant md {
+      font-size: var(--text-5xl);
+    }
   }
   h2 {
-    @apply text-3xl md:text-4xl leading-[1.15];
+    font-size: var(--text-3xl);
+    line-height: 1.15;
+    @variant md {
+      font-size: var(--text-4xl);
+    }
   }
   h3 {
-    @apply text-2xl md:text-3xl leading-[1.2];
+    font-size: var(--text-2xl);
+    line-height: 1.2;
+    @variant md {
+      font-size: var(--text-3xl);
+    }
   }
   h4 {
-    @apply text-xl md:text-2xl leading-tight;
+    font-size: var(--text-xl);
+    line-height: 1.25;
+    @variant md {
+      font-size: var(--text-2xl);
+    }
   }
   h5 {
-    @apply text-lg md:text-xl;
+    font-size: var(--text-lg);
+    line-height: var(--text-lg--line-height);
+    @variant md {
+      font-size: var(--text-xl);
+      line-height: var(--text-xl--line-height);
+    }
   }
   h6 {
-    @apply text-base md:text-lg;
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    @variant md {
+      font-size: var(--text-lg);
+      line-height: var(--text-lg--line-height);
+    }
   }
 
   /* Paragraph and prose */

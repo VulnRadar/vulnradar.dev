@@ -230,10 +230,14 @@ function Readout({
     // that box on its explainer button, so "SSL GRADE" rendered as "SSL G...".
     // These are strings we wrote, so the cell is sized to fit them instead.
     <div className="flex min-w-0 flex-1 basis-[calc(50%-1px)] items-center gap-1 px-3.5 py-2.5 sm:basis-32 sm:px-4">
-      <div className="flex min-w-0 flex-col gap-0.5">
+      {/* leading-tight, not leading-none: `truncate` clips to the line box,
+          and a 16px box under 16px type cut the tail off the p in "Sep" and
+          the g in a grade. The 2px of gap it used to have is inside the taller
+          line box now. */}
+      <div className="flex min-w-0 flex-col">
         <span
           className={cn(
-            "truncate text-base font-semibold leading-none tabular-nums",
+            "truncate text-base font-semibold leading-tight tabular-nums",
             valueClass ?? "text-foreground",
           )}
         >

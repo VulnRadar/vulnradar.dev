@@ -519,6 +519,24 @@ const CHANGELOG: Release[] = [
         category: "improved",
       },
       {
+        icon: Bug,
+        label: "Letters No Longer Cut Off at the Bottom",
+        desc: "In several places the bottoms of letters like g, p and y were cut off, most visibly in the website address at the top of a shared report and in the numbers across the top of a scan result. Headings now get enough room for the whole letter, everywhere in the app, and a test keeps it that way.",
+        category: "fixed",
+      },
+      {
+        icon: Bug,
+        label: "Buttons Stay Still When You Click Them",
+        desc: "Buttons used to shrink slightly when pressed, and a few arrows and badges grew or slid when you hovered over them. It looked jittery, especially on buttons that open a menu. Buttons now just change colour, and nothing jumps around under your cursor.",
+        category: "improved",
+      },
+      {
+        icon: Bug,
+        label: "Icons Lined Up in the Broadcast Composer",
+        desc: 'The icons on the "Start from a template" and "Fill from the newest changelog entry" buttons in the admin broadcast composer sat above the text instead of beside it. They are centred now.',
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "Fewer Repeated Requests to Your Site",
         desc: "Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.",

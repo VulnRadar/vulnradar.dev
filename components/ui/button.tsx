@@ -5,26 +5,20 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/ui/utils";
 
 const buttonVariants = cva(
-  // `transition`, not `transition-colors`: the press state below moves a
-  // transform, and transition-colors does not carry one, so the button would
-  // snap between sizes instead of settling.
+  // Colour only. This used to be `transition` plus `active:scale-[0.98]`, a
+  // press that shrank every button in the product. On a control whose whole
+  // job is to be clicked, the shrink re-rasterised the label mid-press (text
+  // visibly softens while a transform runs) and on a trigger that opens
+  // something, like the scan form's check-families button, the button was
+  // still settling back while the popover it opened was already animating in,
+  // so one click produced two competing movements. The owner's call was that
+  // buttons should not move at all. Hover and pressed states are carried by
+  // colour, which is instant enough to feel direct and does not touch layout.
   //
-  // active:scale-[0.98] is the press feedback the product has been missing.
-  // The product's button conventions (CLAUDE.md) make a press scale the system-wide
-  // micro-interaction on every button, and this app had it written down
-  // twice and rendered zero times: `hovers.button` and
-  // `interactive.buttonOutline` in lib/ui/animations.ts both carry this exact
-  // class and neither object has a single importer anywhere in app/ or
-  // components/, which is why app/globals.css safelists the class (an
-  // arbitrary value is not reliably extracted from a TS string literal) and
-  // why that safelist was, in practice, compiling a rule nothing rendered.
-  // Putting it on the primitive is what actually connects it.
-  //
-  // Reduced motion is already handled globally: the
-  // prefers-reduced-motion block in app/globals.css forces
-  // transition-duration to 0.01ms on everything, so the press lands
-  // instantly rather than animating.
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition active:scale-[0.98] focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  // `transition-colors`, not `transition`: the bare one also animates
+  // opacity, so a button going disabled faded out over 150ms after the click
+  // that disabled it, which read as lag.
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {

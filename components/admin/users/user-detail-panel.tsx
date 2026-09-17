@@ -1456,7 +1456,7 @@ export function UserDetailPanel({
                               : "Click to remove badge"
                           }
                           className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all cursor-pointer hover:scale-105",
+                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-opacity cursor-pointer hover:opacity-80",
                             isPendingRevoke && "opacity-50 line-through",
                           )}
                           style={{
@@ -1581,10 +1581,10 @@ export function UserDetailPanel({
                                   }
                                 }}
                                 className={cn(
-                                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all",
+                                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-opacity",
                                   isPending
-                                    ? "ring-2 ring-primary scale-105"
-                                    : "hover:scale-105 hover:opacity-80",
+                                    ? "ring-2 ring-primary"
+                                    : "hover:opacity-80",
                                 )}
                                 style={{
                                   borderColor: `${badge.color}40`,
@@ -1749,11 +1749,11 @@ export function UserDetailPanel({
                               // dark swatch and told a screen reader nothing.
                               aria-pressed={newBadgeColor === c.color}
                               className={cn(
-                                "w-7 h-7 rounded-full transition-all",
+                                "w-7 h-7 rounded-full",
                                 "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                                 newBadgeColor === c.color
                                   ? "ring-2 ring-foreground ring-offset-2 ring-offset-background"
-                                  : "hover:scale-105",
+                                  : "hover:ring-2 hover:ring-border hover:ring-offset-2 hover:ring-offset-background",
                               )}
                               style={{ backgroundColor: c.color }}
                               title={c.name}
@@ -1768,7 +1768,7 @@ export function UserDetailPanel({
                             title="Open color picker"
                           >
                             <div
-                              className="w-7 h-7 rounded-full border-2 border-border/50 shrink-0 transition-all hover:scale-110 hover:border-border"
+                              className="w-7 h-7 rounded-full border-2 border-border/50 shrink-0 transition-colors hover:border-border"
                               style={{ backgroundColor: newBadgeColor }}
                               aria-hidden="true"
                             />

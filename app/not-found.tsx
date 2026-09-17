@@ -45,7 +45,7 @@ export default function NotFound() {
         </Link>
 
         <div className="flex flex-col items-center gap-3 text-center border-y border-border/50 py-8 w-full">
-          <p className="font-mono text-6xl font-semibold text-foreground tabular-nums">
+          <p className="font-mono text-6xl leading-none font-semibold text-foreground tabular-nums">
             404
           </p>
           <h1 className="text-lg font-semibold text-foreground">

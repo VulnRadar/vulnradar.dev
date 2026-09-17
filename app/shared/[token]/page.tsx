@@ -162,10 +162,7 @@ export default function SharedScanPage() {
                   onClick={handleBack}
                   className="group inline-flex w-fit items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <ArrowLeft
-                    aria-hidden
-                    className="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
-                  />
+                  <ArrowLeft aria-hidden className="h-4 w-4" />
                   Back
                 </button>
 

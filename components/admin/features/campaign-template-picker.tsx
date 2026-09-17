@@ -36,7 +36,6 @@ import {
   type CampaignTemplate,
   type CampaignValues,
 } from "@/lib/email/campaigns";
-import { LeadingIcon } from "@/components/shared/leading-icon";
 
 /**
  * A template an admin wrote and saved, as opposed to one of the seven written
@@ -166,7 +165,7 @@ export function CampaignTemplatePicker({
     >
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="h-8 gap-1.5">
-          <LeadingIcon icon={Sparkles} size="sm" line="xs" />
+          <Sparkles aria-hidden />
           Start from a template
         </Button>
       </DialogTrigger>
@@ -271,9 +270,9 @@ export function CampaignTemplatePicker({
                   disabled={fillingFromChangelog}
                 >
                   {fillingFromChangelog ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2 aria-hidden className="animate-spin" />
                   ) : (
-                    <LeadingIcon icon={Wand2} size="sm" line="xs" />
+                    <Wand2 aria-hidden />
                   )}
                   Fill from the newest changelog entry
                 </Button>
