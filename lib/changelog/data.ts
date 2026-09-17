@@ -803,7 +803,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Trash2,
         label: "Checks That Could Never Report Anything Are Gone",
-        desc: "Fifty checks had already been switched off in earlier releases for good reasons: duplicates, tests for things browsers no longer use, or a key meant to be public. Three more were listed but never built. All still counted toward our advertised total number of checks and had their own page in our checks catalogue, despite reporting nothing. They are now removed, and the advertised total moves from 905+ to 855+, the number a scan actually runs. A further 111 pieces of detection code that could never run at all were also deleted, and this is now tested automatically so it cannot happen again.",
+        desc: "Fifty checks had already been switched off in earlier releases for good reasons: duplicates, tests for things browsers no longer use, or a key meant to be public. Three more were listed but never built. All still counted toward our advertised total number of checks and had their own page in our checks catalogue, despite reporting nothing. They are now removed, and the advertised total stops counting them: with the new checks added elsewhere in this release, it stands at 860+, the number a scan actually runs. A further 111 pieces of detection code that could never run at all were also deleted, and this is now tested automatically so it cannot happen again.",
         category: "removed",
       },
       {
@@ -823,6 +823,54 @@ const CHANGELOG: Release[] = [
         label: "Four Findings Lowered to Low Severity",
         desc: "Four findings are now reported as low severity instead of medium, since each only shows a condition exists, not that it is exploitable: a wide-open cross-site sharing setting, which browsers already refuse to send sign-in details to anyway, published API documentation, an unusual network method being allowed, and a text-matching guess that a data-query feature might allow unauthorised access. Where the scanner can confirm the serious version, or probes the network method directly, it keeps medium severity. A pipeline set to fail on any medium finding will no longer trip on these four alone.",
         category: "changed",
+      },
+      {
+        icon: Mail,
+        label: "A Contact Reply No Longer Goes to a Hidden Second Address",
+        desc: "The email address field on our contact form accepted more than an address: a sender could append instructions to it that quietly added a second, hidden recipient. Anyone on our side clicking Reply would then have sent a copy of the conversation to an address they never saw. The field now only accepts a plain email address, and anything else is shown as plain text with no working reply link.",
+        category: "security",
+      },
+      {
+        icon: ShieldAlert,
+        label: "A Page Full of Comments Could Freeze the Scanner",
+        desc: "A scanned page built with many HTML comments in a particular pattern could make one of our checks take exponentially longer to finish, holding up every other scan running at the same time. That check now finishes in a predictable amount of time no matter how the page is written. This is separate from the speed work elsewhere in this release, which was about checks that were merely slow rather than stoppable.",
+        category: "security",
+      },
+      {
+        icon: Container,
+        label: "Release Images Can No Longer Be Built From Fork Code",
+        desc: "The workflow that builds and signs our ARM Docker image trusted whichever run triggered it, which could have let a copy of the project supply the code that gets published as an official update if a later change opened that door. It now confirms the trigger came from a real push to our own repository first. There is no evidence this ever happened; the gap is closed.",
+        category: "security",
+      },
+      {
+        icon: Container,
+        label: "Docker Setup No Longer Points at an Unpublished Image",
+        desc: 'The self-hosting guide downloaded its Docker Compose file from our development branch, which can name a version of the image we have not published yet. Anyone following the guide during that window got an immediate and confusing "manifest unknown" error. The guide now downloads the file from the release it belongs to, so the image it names always exists.',
+        category: "selfhost",
+      },
+      {
+        icon: Database,
+        label: "Manual Database Setup Now Works on Current PostgreSQL",
+        desc: "The self-hosting guide's manual database steps failed on PostgreSQL 15 and later with a permission error, because newer versions changed who is allowed to create tables by default. The steps now create the database already owned by the application's own user, which works on every PostgreSQL version we support.",
+        category: "selfhost",
+      },
+      {
+        icon: Key,
+        label: "Weak Certificate Keys Are Rated by How Weak They Are",
+        desc: "Every certificate key under the modern minimum got the same warning and the same wording, whether it was small enough to be broken in practice or merely outdated. Keys small enough to be broken are now reported as critical. The rest stay high severity with accurate wording: out of date and no longer issued, but not known to be breakable.",
+        category: "engine",
+      },
+      {
+        icon: MailOpen,
+        label: "Mail Servers Offering Encryption Are Not Reported as Plaintext",
+        desc: "A mail server was reported as sending everything unencrypted, at high severity, purely because of the kind of address it was, even when it actually offered the standard encrypted upgrade. That false warning is gone. Findings about a mail, remote-login or database server now only appear once the scanner has connected and seen the real behaviour, rather than being assumed from the address.",
+        category: "engine",
+      },
+      {
+        icon: Crosshair,
+        label: "The Cross-Site Scripting Probe Stops Confirming Safe Echoes",
+        desc: "Our optional active probe reported a confirmed critical cross-site scripting vulnerability whenever its test marker appeared anywhere in the response, including inside a text box, a quoted value or the page title, where a browser would never run it. It now only confirms a finding when the marker lands somewhere it could actually execute, removing a real source of false criticals.",
+        category: "engine",
       },
       {
         icon: Package,
