@@ -983,7 +983,7 @@ export default function HistoryPage() {
                 look at the loaded rows, and the second notice is the old
                 warning kept for exactly that case. */}
               {serverFiltering && scans.length < matchedScans && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-2.5 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 px-3.5 py-2.5 text-xs text-muted-foreground">
                   <span>
                     {matchedScans} scans match. Showing the {scans.length} most
                     recent of them.
@@ -1014,7 +1014,7 @@ export default function HistoryPage() {
                 </div>
               )}
               {!serverFiltering && hasFilters && scans.length < totalScans && (
-                <p className="rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-2.5 text-xs text-muted-foreground">
+                <p className="rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 px-3.5 py-2.5 text-xs text-muted-foreground">
                   Filtering the {scans.length} most recent scans, not all{" "}
                   {totalScans} on this account. Search by URL or tag to look
                   through all of them.

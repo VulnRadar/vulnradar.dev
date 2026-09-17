@@ -1272,7 +1272,7 @@ export function ScanForm({
           )}
 
           {targetWarning && (
-            <div className="border-t border-[hsl(var(--warning))]/20 bg-[hsl(var(--warning))]/5 px-3 py-2.5">
+            <div className="border-t border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 px-3 py-2.5">
               <div className="flex items-start gap-2">
                 <LeadingIcon
                   icon={AlertTriangle}

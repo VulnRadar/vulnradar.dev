@@ -314,7 +314,7 @@ export function TosModal({
                 right above a checkbox that says the same thing -- that
                 checkbox (below) now carries the weight instead. */}
             {isUpdate && termsChangeSummary && (
-              <div className="mt-4 p-3 rounded-lg border border-[hsl(var(--warning))]/20 bg-[hsl(var(--warning))]/5 flex gap-3">
+              <div className="mt-4 p-3 rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 flex gap-3">
                 <LeadingIcon
                   icon={AlertCircle}
                   line="xs"

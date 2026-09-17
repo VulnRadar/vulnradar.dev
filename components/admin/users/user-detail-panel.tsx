@@ -1250,7 +1250,7 @@ export function UserDetailPanel({
                       className={cn(
                         "flex flex-col gap-2 p-3 rounded-lg border transition-colors",
                         u.gifted_plan
-                          ? "bg-[hsl(var(--warning))]/5 border-[hsl(var(--warning))]/30"
+                          ? "bg-[hsl(var(--warning))]/10 border-[hsl(var(--warning))]/30"
                           : pendingChanges.plan
                             ? "bg-primary/5 border-primary/30"
                             : "bg-card/30 border-border/40",
@@ -1277,7 +1277,7 @@ export function UserDetailPanel({
                       </div>
                       {u.gifted_plan ? (
                         <div className="flex flex-col gap-1.5">
-                          <div className="h-8 text-xs rounded-md border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/5 px-2 flex items-center gap-2 text-[hsl(var(--warning))]">
+                          <div className="h-8 text-xs rounded-md border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 px-2 flex items-center gap-2 text-[hsl(var(--warning))]">
                             <Gift className="h-3.5 w-3.5" aria-hidden="true" />
                             {getPlanById(u.gifted_plan)?.name || u.gifted_plan}
                           </div>
@@ -2381,7 +2381,7 @@ export function UserDetailPanel({
                     card, below the entire Danger Zone, roughly 500 lines from
                     the control it explains. */}
                 {u.totp_enabled && (
-                  <div className="flex items-start gap-2.5 p-3 rounded-md bg-[hsl(var(--warning))]/5 border border-[hsl(var(--warning))]/25">
+                  <div className="flex items-start gap-2.5 p-3 rounded-md bg-[hsl(var(--warning))]/10 border border-[hsl(var(--warning))]/30">
                     <LeadingIcon
                       icon={AlertTriangle}
                       line="relaxed"

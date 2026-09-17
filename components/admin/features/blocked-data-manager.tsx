@@ -570,7 +570,7 @@ export function BlockedDataManager() {
         />
 
         {/* Info Card */}
-        <Card className="border-[hsl(var(--warning))]/20 bg-[hsl(var(--warning))]/5">
+        <Card className="border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-[hsl(var(--warning))]/10 shrink-0">

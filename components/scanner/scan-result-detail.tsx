@@ -233,7 +233,7 @@ export function ScanResultDetail({
           different executor that doesn't record a redirect at all, so this is a
           belt-and-suspenders guard for any result that carries both. */}
       {result.redirect && !result.authenticated && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-3">
+        <div className="flex items-start gap-2.5 rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 px-3.5 py-3">
           <LeadingIcon
             line="p"
             icon={AlertTriangle}
