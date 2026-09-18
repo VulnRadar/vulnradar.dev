@@ -53,6 +53,7 @@ import {
   LOCATION_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { useConfirm } from "@/components/shared/use-confirm";
 
 /** Query param that mirrors the selected finding, e.g. ?finding=missing-csp-header. */
 const FINDING_QUERY_PARAM = "finding";
@@ -235,6 +236,7 @@ export function ResultsList({
   >(new Map());
   const [bulkStatus, setBulkStatus] =
     useState<RemediationStatus>("in_progress");
+  const { confirm, confirmDialog } = useConfirm();
   const [bulkAssignee, setBulkAssignee] = useState("");
   const [bulkDue, setBulkDue] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -966,7 +968,21 @@ export function ResultsList({
           <span className="ms-auto flex items-center gap-2">
             <Button
               size="sm"
-              onClick={applyBulk}
+              // One click here rewrites every selected finding, and choosing
+              // "Open" also clears the note, assignee and due date each of
+              // them had. Nothing puts that text back.
+              onClick={() =>
+                confirm({
+                  title: `Apply this to ${pluralize(visibleSelected.size, "finding")}?`,
+                  description:
+                    bulkStatus === "open"
+                      ? "Setting them back to Open also clears any note, assignee and due date saved on them. That text is not kept anywhere else."
+                      : "Every selected finding gets this status, replacing whatever it had.",
+                  confirmLabel: "Apply",
+                  danger: bulkStatus === "open",
+                  onConfirm: applyBulk,
+                })
+              }
               disabled={bulkBusy}
               className="h-8 gap-1.5"
             >
@@ -996,6 +1012,7 @@ export function ResultsList({
           )}
         </div>
       )}
+      {confirmDialog}
     </section>
   );
 }

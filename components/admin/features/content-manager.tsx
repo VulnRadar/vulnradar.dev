@@ -36,6 +36,7 @@ import {
 import { formatDay, formatTimestamp } from "@/components/admin/utils";
 import { cn } from "@/lib/ui/utils";
 import { API, ROUTES } from "@/lib/config/client-constants";
+import { useConfirm } from "@/components/shared/use-confirm";
 
 /**
  * The 0-4 safe / 5-7 caution / 8-10 unsafe bands that getDangerScore anchors
@@ -95,6 +96,7 @@ async function postAction(body: Record<string, unknown>) {
 }
 
 export function ContentManager() {
+  const { confirm, confirmDialog } = useConfirm();
   const [tab, setTab] = useState<Tab>("hosts");
   const [hosts, setHosts] = useState<HostRow[]>([]);
   const [shares, setShares] = useState<ShareRow[]>([]);
@@ -578,7 +580,28 @@ export function ContentManager() {
                                       variant="ghost"
                                       size="sm"
                                       className="h-8 gap-1.5 text-muted-foreground hover:text-foreground"
-                                      onClick={() => handleUnlistShare(row)}
+                                      onClick={() =>
+                                        confirm({
+                                          title:
+                                            "Take this scan out of the public directory?",
+                                          description: (
+                                            <>
+                                              The report for{" "}
+                                              <span className="font-medium text-foreground">
+                                                {row.url}
+                                              </span>{" "}
+                                              stops appearing in Public Scans.
+                                              The share link keeps working, and
+                                              nothing here puts it back: the
+                                              owner has to list it again.
+                                            </>
+                                          ),
+                                          confirmLabel: "Unlist",
+                                          danger: true,
+                                          onConfirm: () =>
+                                            handleUnlistShare(row),
+                                        })
+                                      }
                                       disabled={busyId === row.id}
                                     >
                                       {busyId === row.id ? (
@@ -737,6 +760,7 @@ export function ContentManager() {
           </div>
         </div>
       </div>
+      {confirmDialog}
     </>
   );
 }

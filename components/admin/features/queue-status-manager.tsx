@@ -34,6 +34,7 @@ import {
   type QueueStatusResponse,
 } from "./queue-status-utils";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { useConfirm } from "@/components/shared/use-confirm";
 import { formatRelativeTime } from "@/components/admin/utils";
 
 // No admin panel manager currently uses SWR (see
@@ -67,6 +68,7 @@ export function QueueStatusManager() {
   const [failuresOpen, setFailuresOpen] = useState(false);
   const [failuresLoading, setFailuresLoading] = useState(false);
   const [sweeping, setSweeping] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
 
   const fetchFailures = useCallback(async () => {
     setFailuresLoading(true);
@@ -332,7 +334,16 @@ export function QueueStatusManager() {
                           variant="outline"
                           size="sm"
                           className="h-8 mt-2 gap-1.5"
-                          onClick={sweepStale}
+                          onClick={() =>
+                            confirm({
+                              title: "Fail every stuck scan?",
+                              description:
+                                "Each scan still running past the grace period is marked failed. It belongs to a real account, the person watching it sees it fail, and there is no action that undoes this. Scans inside their timeout are left alone.",
+                              confirmLabel: "Fail stuck scans",
+                              danger: true,
+                              onConfirm: sweepStale,
+                            })
+                          }
                           disabled={sweeping}
                         >
                           <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
@@ -464,6 +475,7 @@ export function QueueStatusManager() {
       </Card>
 
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+      {confirmDialog}
     </div>
   );
 }

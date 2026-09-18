@@ -19,6 +19,7 @@ import { InlineAlert } from "@/components/shared/inline-alert";
 import { cn } from "@/lib/ui/utils";
 import { formatRelativeTime } from "@/lib/ui/relative-time";
 import { API } from "@/lib/config/client-constants";
+import { useConfirm } from "@/components/shared/use-confirm";
 import {
   TICKET_CATEGORY_LABELS,
   TICKET_MESSAGE_MAX,
@@ -116,6 +117,7 @@ function StatusBadge({ status }: { status: TicketStatus }) {
 }
 
 export function SupportInbox() {
+  const { confirm, confirmDialog } = useConfirm();
   const [filter, setFilter] = useState("active");
   const [tickets, setTickets] = useState<InboxTicket[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -552,7 +554,15 @@ export function SupportInbox() {
                         size="sm"
                         variant="ghost"
                         className="h-8 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => setStatus("closed")}
+                        onClick={() =>
+                          confirm({
+                            title: "Close this ticket?",
+                            description:
+                              "The person who opened it can no longer add to the conversation. If they still need help they have to open a new ticket, so close it once the answer has actually gone out.",
+                            confirmLabel: "Close ticket",
+                            onConfirm: () => setStatus("closed"),
+                          })
+                        }
                       >
                         <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
                         Close
@@ -658,6 +668,7 @@ export function SupportInbox() {
           )}
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

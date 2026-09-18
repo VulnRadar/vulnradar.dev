@@ -66,6 +66,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useConfirm } from "@/components/shared/use-confirm";
 
 interface ScanActionsMenuProps {
   result: ScanResult;
@@ -269,6 +270,7 @@ export function ScanActionsMenu({
   const [updatingShareExpiry, setUpdatingShareExpiry] = useState(false);
 
   const [togglingPrivacy, setTogglingPrivacy] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
   const currentIsPublic = isPublic ?? true;
 
   // Team sharing. Only teams the caller can actually assign to are listed,
@@ -1139,7 +1141,20 @@ export function ScanActionsMenu({
                 ? "Make private"
                 : "Make public",
             icon: togglingPrivacy ? Loader2 : currentIsPublic ? Lock : Globe,
-            onSelect: togglePrivacy,
+            // Making a scan public puts its findings on /host/<hostname>
+            // for anyone, and there is no un-seeing that window.
+            onSelect: () =>
+              confirm({
+                title: currentIsPublic
+                  ? "Make this scan private?"
+                  : "Make this scan public?",
+                description: currentIsPublic
+                  ? "It stops appearing on the public page for this host. Anyone who already saw it, or saved it, still has what they saw."
+                  : "The findings for this scan go on the public page for this host, where anyone can read them, including whatever they say about how this site is configured.",
+                confirmLabel: currentIsPublic ? "Make private" : "Make public",
+                danger: !currentIsPublic,
+                onConfirm: togglePrivacy,
+              }),
             disabled: togglingPrivacy,
           },
           // One row, one modal. This used to render a row per assignable team
@@ -1239,7 +1254,19 @@ export function ScanActionsMenu({
           shareUrl={shareUrl}
           title={`${APP_NAME} Scan: ${result.url}`}
           publiclyListed={sharePubliclyListed}
-          onPubliclyListedChange={toggleSharePubliclyListed}
+          onPubliclyListedChange={(next) =>
+            confirm({
+              title: next
+                ? "List this scan in Public Scans?"
+                : "Remove this scan from Public Scans?",
+              description: next
+                ? "Anyone browsing the public directory can open this report and read its findings. The link itself already works for anyone who has it; this is about being findable by people who do not."
+                : "It stops appearing in the public directory. The share link keeps working for anyone who already has it.",
+              confirmLabel: next ? "List it publicly" : "Remove from the list",
+              danger: next,
+              onConfirm: () => toggleSharePubliclyListed(next),
+            })
+          }
           togglingPubliclyListed={togglingShareListing}
           expiresAt={shareExpiresAt}
           onExpiryChange={isOwner ? changeShareExpiry : undefined}
@@ -1383,6 +1410,8 @@ export function ScanActionsMenu({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {confirmDialog}
 
       <AiVerifyResultModal
         open={verifyModalOpen}

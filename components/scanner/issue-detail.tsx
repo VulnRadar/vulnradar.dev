@@ -51,6 +51,7 @@ import {
   QUERY_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { useConfirm } from "@/components/shared/use-confirm";
 
 /** Same key results-list.tsx writes when a finding is selected. */
 const FINDING_QUERY_PARAM = "finding";
@@ -333,6 +334,7 @@ function RemediationControl({
   const [dueAt, setDueAt] = useState(toDateInputValue(initial?.dueAt));
   const [saving, setSaving] = useState(false);
   const [savedDetails, setSavedDetails] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
   const [error, setError] = useState(false);
   const noteFieldId = useId();
   const assigneeFieldId = useId();
@@ -421,6 +423,25 @@ function RemediationControl({
   }
 
   async function selectStatus(next: RemediationStatus) {
+    // Back to Open is the one status that DELETES: the server drops the whole
+    // remediation row, so the note, the assignee and the due date go with it.
+    // Every other transition just relabels. Only the deleting one asks, and
+    // only when there is something to lose.
+    const wouldDiscard = next === "open" && (note || assignee || dueAt);
+    if (wouldDiscard) {
+      confirm({
+        title: "Clear the tracking on this finding?",
+        description:
+          "Setting it back to Open removes the note, the assignee and the due date saved on it. That text is not kept anywhere else.",
+        confirmLabel: "Clear it",
+        danger: true,
+        onConfirm: async () => {
+          setStatus(next);
+          await save(next, { note, assignee, dueAt });
+        },
+      });
+      return;
+    }
     setStatus(next);
     await save(next, { note, assignee, dueAt });
   }
@@ -583,6 +604,7 @@ function RemediationControl({
           Couldn&apos;t save that, try again.
         </span>
       )}
+      {confirmDialog}
     </div>
   );
 }

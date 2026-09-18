@@ -50,6 +50,7 @@ import { ModalShell } from "@/components/ui/modal-shell";
 import { cn } from "@/lib/ui/utils";
 import { pluralize } from "@/lib/ui/plural";
 import { API } from "@/lib/config/client-constants";
+import { useConfirm } from "@/components/shared/use-confirm";
 
 /**
  * Expiry presets for a new rule. A temporary block is the normal case on this
@@ -121,6 +122,7 @@ interface AccessRule {
 }
 
 export function IPRulesManager() {
+  const { confirm, confirmDialog } = useConfirm();
   const [rules, setRules] = useState<AccessRule[]>([]);
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -513,12 +515,29 @@ export function IPRulesManager() {
                   {selectedRule.is_active ? "Active" : "Paused"}
                 </StatusPill>
               </div>
-              {/* Pausing is reversible in one click, so no confirmation. */}
+              {/* Reversible in one click, and still confirmed: pausing a
+                  block rule un-blocks whoever it was blocking, which is a
+                  security control going off for everyone until someone
+                  notices. */}
               <Button
                 variant="outline"
                 size="sm"
                 className="h-8 gap-1.5 border-border/40 shrink-0"
-                onClick={() => handleToggleActive(selectedRule)}
+                onClick={() =>
+                  confirm({
+                    title: selectedRule.is_active
+                      ? "Pause this rule?"
+                      : "Resume this rule?",
+                    description: selectedRule.is_active
+                      ? `${selectedRule.ip_address} stops being enforced straight away, for everyone, until somebody turns it back on.`
+                      : `${selectedRule.ip_address} starts being enforced again straight away.`,
+                    confirmLabel: selectedRule.is_active
+                      ? "Pause rule"
+                      : "Resume rule",
+                    danger: selectedRule.is_active,
+                    onConfirm: () => handleToggleActive(selectedRule),
+                  })
+                }
                 disabled={togglingActive}
               >
                 {selectedRule.is_active ? (
@@ -1281,6 +1300,7 @@ export function IPRulesManager() {
           confirmText="Delete Rule"
           variant="destructive"
         />
+        {confirmDialog}
       </div>
     </>
   );

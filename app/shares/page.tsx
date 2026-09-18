@@ -7,6 +7,7 @@ import { AlertTriangle, Search, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useConfirm } from "@/components/shared/use-confirm";
 import { EmptyState } from "@/components/shared/empty-state";
 import { worthFiltering } from "@/components/shared/list-filter-bar";
 import { AppPageShell } from "@/components/shared/app-page-shell";
@@ -44,6 +45,7 @@ export default function SharesPage() {
   const [togglingPubliclyListed, setTogglingPubliclyListed] = useState<
     number | null
   >(null);
+  const { confirm, confirmDialog } = useConfirm();
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useQuerySeededState(
     () => getQueryParamInt("page") ?? 1,
@@ -133,6 +135,25 @@ export default function SharesPage() {
 
   function requestRevoke(scanId: number) {
     setConfirmRevoke(shares.find((s) => s.id === scanId) ?? null);
+  }
+
+  // Listing a report publicly puts its findings in front of anyone browsing
+  // the directory, so it asks first. Unlisting asks too: it is the action
+  // someone takes in a hurry, and it is worth saying that the link itself
+  // keeps working.
+  function confirmTogglePubliclyListed(share: Share) {
+    const next = !share.publiclyListed;
+    confirm({
+      title: next
+        ? "List this report in Public Scans?"
+        : "Remove this report from Public Scans?",
+      description: next
+        ? "Anyone browsing the public directory can open it and read its findings."
+        : "It stops appearing in the directory. The share link keeps working for anyone who already has it.",
+      confirmLabel: next ? "List it publicly" : "Remove from the list",
+      danger: next,
+      onConfirm: () => togglePubliclyListed(share),
+    });
   }
 
   async function togglePubliclyListed(share: Share) {
@@ -386,7 +407,7 @@ export default function SharesPage() {
                 setSelectedShare(share);
                 setShareModalOpen(true);
               }}
-              onTogglePubliclyListed={togglePubliclyListed}
+              onTogglePubliclyListed={confirmTogglePubliclyListed}
             />
           )}
 
@@ -440,10 +461,13 @@ export default function SharesPage() {
           onExpiryChange={(days) => changeShareExpiry(selectedShare, days)}
           updatingExpiry={updatingExpiry}
           publiclyListed={selectedShare.publiclyListed}
-          onPubliclyListedChange={() => togglePubliclyListed(selectedShare)}
+          onPubliclyListedChange={() =>
+            confirmTogglePubliclyListed(selectedShare)
+          }
           togglingPubliclyListed={togglingPubliclyListed === selectedShare.id}
         />
       )}
+      {confirmDialog}
     </AppPageShell>
   );
 }

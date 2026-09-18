@@ -135,22 +135,6 @@ interface UserDetailPanelProps {
 }
 
 /**
- * Support actions that run without a confirmation dialog. The rule this
- * panel now follows: confirm on irreversible, nothing on a grant. Every
- * entry here only restores capacity to the user (a reset quota window, a
- * cleared rate-limit counter), so there is nothing to undo and nothing lost
- * by running it twice. They previously opened the same change-diff modal as
- * Delete Account, which is how a confirmation dialog stops meaning anything.
- */
-const UNCONFIRMED_SUPPORT_ACTIONS = new Set([
-  "clear_rate_limits",
-  "reset_daily_limit",
-  "reset_ai_usage",
-  "reset_github_review_usage",
-  "reset_free_github_trial",
-]);
-
-/**
  * An ActionCard that knows whether this role may run its action.
  *
  * Eleven of the cards in this panel are permission-gated at their render site
@@ -451,15 +435,14 @@ export function UserDetailPanel({
     variant?: "default" | "destructive",
     extraPayload?: Record<string, unknown>,
   ) => {
-    // Purely additive: each of these only hands the user back capacity they
-    // already had, destroys nothing, and is safe to repeat. They used to open
-    // the full change-diff modal, which taught operators that every action
-    // opens a dialog, so the dialog stopped carrying information. Run them
-    // straight away; the success toast is the feedback.
-    if (UNCONFIRMED_SUPPORT_ACTIONS.has(action)) {
-      void onAction(u.id, action, { ...extraPayload, notifyUser: true });
-      return;
-    }
+    // Every support action confirms. Five of them (the quota and rate-limit
+    // resets) used to run straight from the click, on the argument that
+    // handing capacity back destroys nothing and a dialog nobody needs is a
+    // dialog nobody reads. The owner's rule is the other way round and it is
+    // the right one for a panel that operates on other people's accounts:
+    // these still write to a real user's row, an operator can still click the
+    // wrong card in a list of nineteen, and "it was only a reset" is not
+    // something you get to say afterwards.
     setPendingSupportAction({
       action,
       label,

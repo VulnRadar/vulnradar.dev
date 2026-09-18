@@ -26,6 +26,7 @@ import {
 } from "@/lib/config/client-constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "../types";
+import { useConfirm } from "@/components/shared/use-confirm";
 
 interface ProfileGeneralTabProps extends ProfileTabProps {
   onAvatarCrop?: (croppedDataUrl: string) => void;
@@ -44,6 +45,7 @@ export function ProfileGeneralTab({
   onSetCropDialog,
 }: ProfileGeneralTabProps) {
   const router = useRouter();
+  const { confirm, confirmDialog } = useConfirm();
   const [profileEditMode, setProfileEditMode] = useState(false);
   const [nameInput, setNameInput] = useState(user?.name || "");
   const [emailInput, setEmailInput] = useState(user?.email || "");
@@ -266,7 +268,16 @@ export function ProfileGeneralTab({
                         variant="ghost"
                         size="sm"
                         className="text-xs text-destructive hover:text-destructive"
-                        onClick={handleRemoveAvatar}
+                        onClick={() =>
+                          confirm({
+                            title: "Remove your profile picture?",
+                            description:
+                              "Your picture goes back to the default initials. We do not keep a copy, so putting it back means uploading the file again.",
+                            confirmLabel: "Remove picture",
+                            danger: true,
+                            onConfirm: handleRemoveAvatar,
+                          })
+                        }
                         disabled={uploadingAvatar}
                       >
                         Remove
@@ -539,6 +550,7 @@ export function ProfileGeneralTab({
         </button>
         .
       </p>
+      {confirmDialog}
     </div>
   );
 }

@@ -39,7 +39,9 @@ import { useAuth } from "@/components/providers/auth-provider";
 type Confirmation =
   | { kind: "deleteTeam"; teamId: number; teamName: string }
   | { kind: "removeMember"; userId: number; label: string }
-  | { kind: "leaveTeam"; teamName: string };
+  | { kind: "leaveTeam"; teamName: string }
+  | { kind: "changeRole"; userId: number; label: string; role: string }
+  | { kind: "cancelInvite"; inviteId: number; label: string };
 
 const CONFIRM_COPY: Record<
   Confirmation["kind"],
@@ -48,6 +50,11 @@ const CONFIRM_COPY: Record<
   deleteTeam: { title: "Delete this team?", confirmLabel: "Delete team" },
   removeMember: { title: "Remove this person?", confirmLabel: "Remove" },
   leaveTeam: { title: "Leave this team?", confirmLabel: "Leave" },
+  changeRole: {
+    title: "Change this person's role?",
+    confirmLabel: "Change role",
+  },
+  cancelInvite: { title: "Cancel this invite?", confirmLabel: "Cancel invite" },
 };
 
 function confirmDescription(confirmation: Confirmation): React.ReactNode {
@@ -60,6 +67,27 @@ function confirmDescription(confirmation: Confirmation): React.ReactNode {
           </span>{" "}
           and its member list are deleted. Everyone loses access to the
           team&apos;s shared reports. This cannot be undone.
+        </>
+      );
+    case "changeRole":
+      return (
+        <>
+          <span className="font-medium text-foreground">
+            {confirmation.label}
+          </span>{" "}
+          becomes {confirmation.role}. That changes what they can do with this
+          team&apos;s scans straight away.
+        </>
+      );
+    case "cancelInvite":
+      return (
+        <>
+          The invite to{" "}
+          <span className="font-medium text-foreground">
+            {confirmation.label}
+          </span>{" "}
+          stops working. If they had the link already, it will no longer let
+          them in, and you would have to invite them again.
         </>
       );
     case "removeMember":
@@ -505,8 +533,10 @@ export default function TeamsPage() {
   // both directions (the caller may not appoint a role it does not hold, and
   // may not act on a member who already holds one); PATCH /teams/members
   // enforces the same ceiling server-side, so a hand-built request gains
-  // nothing. Not a destructive action, so unlike handleRemoveMember it does
-  // not route through the confirmation dialog.
+  // nothing. It routes through the confirmation dialog like every other
+  // action here: it is reversible, but it changes what somebody ELSE can do
+  // with the team's scans, and it fires from a single click on a menu row
+  // next to "Remove".
   async function handleChangeRole(userId: number, role: string) {
     if (!selectedTeam) return;
     setActionError(null);
@@ -586,6 +616,10 @@ export default function TeamsPage() {
         await handleDelete(confirmation.teamId);
       } else if (confirmation.kind === "removeMember") {
         await handleRemoveMember(confirmation.userId);
+      } else if (confirmation.kind === "changeRole") {
+        await handleChangeRole(confirmation.userId, confirmation.role);
+      } else if (confirmation.kind === "cancelInvite") {
+        await handleCancelInvite(confirmation.inviteId);
       } else {
         await handleLeave();
       }
@@ -817,7 +851,15 @@ export default function TeamsPage() {
             currentRole={currentRole}
             currentUserId={me?.userId}
             onViewScans={handleViewMemberScans}
-            onChangeRole={handleChangeRole}
+            onChangeRole={(userId, role) => {
+              const m = members.find((x) => x.user_id === userId);
+              setConfirmation({
+                kind: "changeRole",
+                userId,
+                role,
+                label: m?.name || m?.email || "this member",
+              });
+            }}
             onRemoveMember={(userId) => {
               const m = members.find((x) => x.user_id === userId);
               setConfirmation({
@@ -826,7 +868,14 @@ export default function TeamsPage() {
                 label: m?.name || m?.email || "this member",
               });
             }}
-            onCancelInvite={handleCancelInvite}
+            onCancelInvite={(inviteId) => {
+              const invite = invites.find((x) => x.id === inviteId);
+              setConfirmation({
+                kind: "cancelInvite",
+                inviteId,
+                label: invite?.email || "this address",
+              });
+            }}
           />
 
           {viewingMember && (

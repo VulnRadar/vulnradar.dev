@@ -35,6 +35,7 @@ import type { ProfileTabProps } from "@/components/profile/types";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useConfirm } from "@/components/shared/use-confirm";
 import {
   useCopyFeedback,
   CopiedAnnouncement,
@@ -135,6 +136,7 @@ interface ProfileSecurityTabProps extends ProfileTabProps {
 }
 
 export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
+  const { confirm, confirmDialog } = useConfirm();
   const {
     user,
     setError,
@@ -1616,7 +1618,15 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleRevokeSession(s.id)}
+                    onClick={() =>
+                      confirm({
+                        title: "Sign out this session?",
+                        description: `Whoever is signed in on ${s.device} is signed out straight away and has to sign in again.`,
+                        confirmLabel: "Sign out",
+                        danger: true,
+                        onConfirm: () => handleRevokeSession(s.id),
+                      })
+                    }
                     disabled={revokingSessionId === s.id}
                     className="text-muted-foreground hover:text-destructive h-8 gap-1.5 shrink-0"
                     aria-label={`Sign out the session on ${s.device}`}
@@ -1675,7 +1685,15 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleRevokeDevice(d.id)}
+                    onClick={() =>
+                      confirm({
+                        title: "Remove this trusted device?",
+                        description: `${d.deviceName || d.device} has to pass two-factor again the next time it signs in.`,
+                        confirmLabel: "Remove device",
+                        danger: true,
+                        onConfirm: () => handleRevokeDevice(d.id),
+                      })
+                    }
                     disabled={revokingDeviceId === d.id}
                     className="text-muted-foreground hover:text-destructive h-8 gap-1.5 shrink-0"
                     aria-label={`Remove trusted device ${d.deviceName || d.device}`}
@@ -1741,6 +1759,7 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
           setLogoutError(null);
         }}
       />
+      {confirmDialog}
     </div>
   );
 }
