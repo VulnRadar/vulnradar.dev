@@ -7,6 +7,7 @@ import { ImageCropDialog } from "@/components/modals/image-crop-dialog";
 import { API, MAX_AVATAR_UPLOAD_BYTES } from "@/lib/config/client-constants";
 import { TeamAvatar } from "./team-avatar";
 import { type Team } from "./teams-types";
+import { useConfirm } from "@/components/shared/use-confirm";
 
 const MAX_MB = Math.floor(MAX_AVATAR_UPLOAD_BYTES / (1024 * 1024));
 
@@ -34,6 +35,7 @@ export function TeamAvatarPicker({
   const fileRef = useRef<HTMLInputElement>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -121,7 +123,16 @@ export function TeamAvatarPicker({
             size="sm"
             // 44px on touch, the target size the rest of this page uses.
             className="h-11 px-2 text-xs text-destructive hover:text-destructive sm:h-8"
-            onClick={() => save("")}
+            onClick={() =>
+              confirm({
+                title: "Remove the team picture?",
+                description:
+                  "The team goes back to its default initials for everyone in it. We do not keep a copy of the image.",
+                confirmLabel: "Remove picture",
+                danger: true,
+                onConfirm: () => save(""),
+              })
+            }
             disabled={saving}
           >
             Remove
@@ -143,6 +154,7 @@ export function TeamAvatarPicker({
         onClose={() => setCropSrc(null)}
         onCrop={save}
       />
+      {confirmDialog}
     </>
   );
 }

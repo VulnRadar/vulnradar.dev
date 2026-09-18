@@ -19,6 +19,7 @@ import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { formatMonthDay } from "@/lib/ui/format-date";
 import type { GithubRepo } from "./types";
+import { useConfirm } from "@/components/shared/use-confirm";
 
 // lucide-react dropped brand/logo icons; every other brand mark in this
 // app (Discord, Slack, and the mark GithubRepoAccessSection/react-icons'
@@ -79,6 +80,7 @@ export function GithubRepoPickerModal({
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
   const [confirmError, setConfirmError] = useState<string | null>(null);
 
   const loadRepos = async () => {
@@ -362,7 +364,22 @@ export function GithubRepoPickerModal({
             Cancel
           </Button>
           <Button
-            onClick={handleConfirm}
+            // With nothing ticked this button is a bulk clear: it drops every
+            // repository the account had selected, in one press, from a
+            // control whose label the user may not have re-read after
+            // unticking.
+            onClick={() =>
+              selectedCount > 0
+                ? handleConfirm()
+                : confirm({
+                    title: "Clear every selected repository?",
+                    description:
+                      "Nothing is ticked, so saving now removes all of them from your list. The repositories themselves are untouched, and you can pick them again.",
+                    confirmLabel: "Clear selection",
+                    danger: true,
+                    onConfirm: handleConfirm,
+                  })
+            }
             disabled={confirming || loading || !!loadError}
             className="gap-2"
           >
@@ -375,6 +392,7 @@ export function GithubRepoPickerModal({
           </Button>
         </DialogFooter>
       </DialogContent>
+      {confirmDialog}
     </Dialog>
   );
 }
