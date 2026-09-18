@@ -42,8 +42,18 @@ export function CookieNotice() {
     const root = document.documentElement;
     if (!el) {
       root.style.setProperty("--vr-cookie-h", "0px");
+      delete root.dataset.cookieNotice;
       return;
     }
+    // The height is not enough on a phone. Everything fixed to the bottom
+    // lifts by --vr-cookie-h, so while this bar is up the support launcher
+    // sits 137px higher than usual and lands on whatever the page has there:
+    // on the landing hero at 390px that is the "Try the demo" button, with a
+    // 56px circle over its corner. The flag lets app/globals.css take the
+    // launcher out of the way until the notice is answered, which is one
+    // decision at a time rather than two overlays fighting for the same
+    // corner.
+    root.dataset.cookieNotice = "open";
     const observer = new ResizeObserver(([entry]) => {
       root.style.setProperty("--vr-cookie-h", `${entry.contentRect.height}px`);
     });
@@ -51,6 +61,7 @@ export function CookieNotice() {
     return () => {
       observer.disconnect();
       root.style.setProperty("--vr-cookie-h", "0px");
+      delete root.dataset.cookieNotice;
     };
   }, [visible]);
 

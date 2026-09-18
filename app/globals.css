@@ -1177,3 +1177,22 @@
 .text-primary\/60 {
   color: hsl(var(--primary-text) / 0.6);
 }
+
+/* ONE CORNER, ONE THING AT A TIME
+   ---------------------------------------------------------------------------
+   Everything fixed to the bottom of the page lifts by --vr-cookie-h so the
+   cookie notice never covers it. That is right for a save bar, which sits in
+   the flow of what someone is doing, and wrong for the support launcher: a
+   56px circle that has no place of its own simply moves up the page and lands
+   on whatever is there. At 390px on the landing page that is the corner of
+   "Try the demo".
+
+   While the notice is up, at phone width, the launcher stands down. The notice
+   is a one-time question that wants answering, the launcher is always
+   available afterwards, and nothing is lost by not stacking them. Above 640px
+   the circle sits in a corner the content does not reach, so it stays. */
+@media (width < 40rem) {
+  :root[data-cookie-notice="open"] .vr-chat-launcher {
+    display: none;
+  }
+}

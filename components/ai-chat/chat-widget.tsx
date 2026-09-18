@@ -2021,7 +2021,9 @@ export function ChatWidget() {
             bottom: `calc(1.25rem + var(--vr-cookie-h, 0px) + ${barLift}px)`,
           }}
           className={cn(
-            "fixed right-5 z-50",
+            // vr-chat-launcher: the hook app/globals.css uses to stand this
+            // down while the cookie notice is up at phone width.
+            "vr-chat-launcher fixed right-5 z-50",
             "h-14 w-14 rounded-full flex items-center justify-center",
             "bg-primary text-primary-foreground",
             "hover:bg-primary/90",
