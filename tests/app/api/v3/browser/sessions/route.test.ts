@@ -437,14 +437,24 @@ describe("POST /api/v3/browser/sessions", () => {
     );
   });
 
-  it("surfaces a BrowserBaseError's own status and message instead of a generic 500", async () => {
+  it("keeps the provider's status but answers in our own words", async () => {
+    // BrowserBaseError.message is built from the provider's raw response body
+    // and used to be returned verbatim, so a third party's error text (and
+    // whatever it happened to name) was rendered in the browser and the
+    // extension. The status is ours to keep; the sentence is not theirs to
+    // write.
     mockCreateBrowserSession.mockRejectedValue(
-      new BrowserBaseError("quota exceeded", 402),
+      new BrowserBaseError(
+        'BrowserBase create session failed (402): {"error":"quota exceeded for project prj_abc123"}',
+        402,
+      ),
     );
     const res = await POST(postRequest({}));
     expect(res.status).toBe(402);
     const json = await res.json();
-    expect(json.error).toBe("quota exceeded");
+    expect(json.error).not.toContain("prj_abc123");
+    expect(json.error).not.toContain("BrowserBase create session failed");
+    expect(json.error.length).toBeGreaterThan(20);
   });
 
   // Browserbase bills by session-seconds. If the ownership INSERT fails and
@@ -596,15 +606,19 @@ describe("GET /api/v3/browser/sessions", () => {
     expect(mockGetBrowserSession).not.toHaveBeenCalled();
   });
 
-  it("surfaces a BrowserBaseError's status and message", async () => {
+  it("keeps the provider's status but answers in our own words", async () => {
     mockQuery.mockResolvedValue({ rows: [{ user_id: 42 }] });
     mockGetBrowserSession.mockRejectedValue(
-      new BrowserBaseError("not found", 404),
+      new BrowserBaseError(
+        "BrowserBase read session failed (404): session sess_internal_9f not found",
+        404,
+      ),
     );
     const res = await GET(getRequest("sess_missing"));
     expect(res.status).toBe(404);
     const json = await res.json();
-    expect(json.error).toBe("not found");
+    expect(json.error).not.toContain("sess_internal_9f");
+    expect(json.error).toMatch(/no longer exists/i);
   });
 });
 

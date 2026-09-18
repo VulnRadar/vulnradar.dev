@@ -565,8 +565,8 @@ describe("processSchedule", () => {
 
     await processSchedule(schedule, new Date("2026-08-12T10:00:00.000Z"));
 
-    const reset = mockPoolQuery.mock.calls.find(([sql]: [string]) =>
-      String(sql).includes("SET consecutive_failures = 0"),
+    const reset = mockPoolQuery.mock.calls.find((call) =>
+      String(call[0]).includes("SET consecutive_failures = 0"),
     );
     expect(reset).toBeDefined();
     expect(reset![1]).toEqual([23]);

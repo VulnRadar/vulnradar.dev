@@ -11,6 +11,7 @@ import {
   navigateBrowserSession,
   pickLiveViewerUrl,
 } from "@/lib/browserbase/client";
+import { publicBrowserSessionMessage } from "@/lib/browserbase/public-error";
 import { stopLiveNetworkCapture } from "@/lib/browserbase/network-capture";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
@@ -165,7 +166,10 @@ export const POST = withErrorHandling(async (request: Request) => {
   } catch (err) {
     await releaseConcurrencySlot();
     if (err instanceof BrowserBaseError) {
-      return ApiResponse.error(err.message, err.status);
+      return ApiResponse.error(
+        publicBrowserSessionMessage(err.status),
+        err.status,
+      );
     }
     throw err;
   }
@@ -232,7 +236,10 @@ export const POST = withErrorHandling(async (request: Request) => {
     });
   } catch (err) {
     if (err instanceof BrowserBaseError) {
-      return ApiResponse.error(err.message, err.status);
+      return ApiResponse.error(
+        publicBrowserSessionMessage(err.status),
+        err.status,
+      );
     }
     throw err;
   }
@@ -307,7 +314,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.success({ session: sessionOut });
   } catch (err) {
     if (err instanceof BrowserBaseError) {
-      return ApiResponse.error(err.message, err.status);
+      return ApiResponse.error(
+        publicBrowserSessionMessage(err.status),
+        err.status,
+      );
     }
     throw err;
   }

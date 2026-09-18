@@ -151,14 +151,18 @@ describe("GET /api/v3/browser/sessions/logs", () => {
     expect(mockGetBrowserSessionLogs).not.toHaveBeenCalled();
   });
 
-  it("surfaces a BrowserBaseError's status and message", async () => {
+  it("keeps the provider's status but answers in our own words", async () => {
     mockQuery.mockResolvedValue({ rows: [{ user_id: 42 }] });
     mockGetBrowserSessionLogs.mockRejectedValue(
-      new BrowserBaseError("gone", 410),
+      new BrowserBaseError(
+        'BrowserBase logs failed (410): {"error":"session expired","project":"prj_abc123"}',
+        410,
+      ),
     );
     const res = await GET(logsRequest("sess_expired"));
     expect(res.status).toBe(410);
     const json = await res.json();
-    expect(json.error).toBe("gone");
+    expect(json.error).not.toContain("prj_abc123");
+    expect(json.error).not.toContain("BrowserBase logs failed");
   });
 });

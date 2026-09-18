@@ -5,6 +5,7 @@ import {
   getBrowserSessionLogs,
   parseNetworkRequests,
 } from "@/lib/browserbase/client";
+import { publicBrowserSessionMessage } from "@/lib/browserbase/public-error";
 import { getLiveNetworkRequests } from "@/lib/browserbase/network-capture";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
@@ -56,7 +57,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     if (err instanceof BrowserBaseError) {
       // Live capture had nothing and the REST fallback errored (e.g. the
       // session is gone) -- surface that so the client knows why.
-      return ApiResponse.error(err.message, err.status);
+      return ApiResponse.error(
+        publicBrowserSessionMessage(err.status),
+        err.status,
+      );
     }
     throw err;
   }
