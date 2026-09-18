@@ -214,6 +214,72 @@ describe("verifyFindingsBatch: large scan coverage", () => {
   });
 });
 
+describe("runAiVerification: says whether it actually ran", () => {
+  /**
+   * It used to return void, and the route answered `success: true` either
+   * way, so a provider outage and a clean sweep reached the browser as the
+   * same green "AI didn't confirm any findings" card. The outcome is what
+   * lets the modal tell those two apart.
+   */
+  it("reports configured:false when no endpoint resolves", async () => {
+    delete process.env.AI_BASE_URL;
+    delete process.env.AI_API_KEY;
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    const outcome = await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      null,
+    );
+
+    expect(outcome).toMatchObject({
+      configured: false,
+      verdicts: 0,
+      attempted: 1,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("reports zero verdicts when the provider answers nothing usable", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+      text: async () => "upstream unavailable",
+    });
+
+    const outcome = await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1"), makeFinding("f2")],
+      42,
+      null,
+    );
+
+    expect(outcome.configured).toBe(true);
+    expect(outcome.verdicts).toBe(0);
+    expect(outcome.attempted).toBe(2);
+  });
+
+  it("counts the findings that did get a verdict", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponse("f1"),
+    );
+
+    const outcome = await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      null,
+    );
+
+    expect(outcome).toMatchObject({ configured: true, attempted: 1 });
+    expect(outcome.verdicts).toBeGreaterThan(0);
+  });
+});
+
 describe("runAiVerification: incremental persistence", () => {
   it("writes scan_history after every chunk, not only once at the end", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(

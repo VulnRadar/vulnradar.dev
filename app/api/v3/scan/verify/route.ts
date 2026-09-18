@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: quota.message }, { status: 429 });
   }
 
-  await runAiVerification(
+  const outcome = await runAiVerification(
     url as string,
     parsedFindings,
     scanId,
@@ -160,8 +160,15 @@ export async function POST(req: NextRequest) {
     [scanId],
   );
 
+  // `ai` says whether the pass actually happened. Without it this response
+  // was `success: true` whether the model judged every finding, or no
+  // endpoint was configured, or the provider failed on every chunk, and the
+  // browser drew the same green "AI didn't confirm any findings" card for all
+  // three. A verification that did not run must not read like one that ran
+  // and cleared everything.
   return NextResponse.json({
     success: true,
     findings: updated.rows[0]?.findings ?? parsedFindings,
+    ai: outcome,
   });
 }

@@ -44,6 +44,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { downloadBlob } from "@/lib/ui/download";
 import { ShareModal } from "./share-modal";
 import { AiVerifyResultModal } from "./ai-verify-result-modal";
+import type { AiVerificationOutcome } from "@/lib/ai/verify-findings";
 import { AiSummaryModal } from "./ai-summary-modal";
 import { generatePdfReport } from "@/lib/reports/pdf-report";
 import { generateSarifReport } from "@/lib/reports/sarif-report";
@@ -325,6 +326,8 @@ export function ScanActionsMenu({
   const [verifiedFindings, setVerifiedFindings] = useState<
     Vulnerability[] | null
   >(null);
+  const [verifyOutcome, setVerifyOutcome] =
+    useState<AiVerificationOutcome | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   // Lets closing the verify modal mid-request actually abort the /scan/verify
   // fetch instead of just hiding the UI while it keeps running in the background.
@@ -924,11 +927,16 @@ export function ScanActionsMenu({
       const data = await apiPost<{
         success: boolean;
         findings: Vulnerability[];
+        ai?: AiVerificationOutcome;
       }>(
         API.SCAN_VERIFY,
         { scanHistoryId: scanId },
         { signal: controller.signal },
       );
+      // Whether the pass ran at all, which is not the same question as
+      // whether it confirmed anything. The route used to answer only the
+      // second one.
+      setVerifyOutcome(data.ai ?? null);
       if (Array.isArray(data.findings)) {
         setVerifiedFindings(data.findings);
         onVerified?.(data.findings);
@@ -1382,6 +1390,7 @@ export function ScanActionsMenu({
         loading={verifying}
         error={verifyError}
         findings={verifiedFindings}
+        outcome={verifyOutcome}
         pendingCount={result.findings.filter((f) => !f.aiVerdict).length}
       />
 

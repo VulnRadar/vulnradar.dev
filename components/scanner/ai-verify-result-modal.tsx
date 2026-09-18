@@ -23,6 +23,7 @@ import {
 } from "@/components/scanner/severity-badge";
 import { Stat } from "@/components/scanner/scan-summary";
 import type { Severity, Vulnerability } from "@/lib/scanner/types";
+import type { AiVerificationOutcome } from "@/lib/ai/verify-findings";
 
 interface AiVerifyResultModalProps {
   open: boolean;
@@ -35,6 +36,16 @@ interface AiVerifyResultModalProps {
   findings: Vulnerability[] | null;
   /** How many findings had no verdict yet when the check was kicked off, for the loading copy. */
   pendingCount: number;
+  /**
+   * Whether the pass actually ran, from the route.
+   *
+   * Without it this modal could only count verdicts, and no verdicts looks
+   * identical whether the model read every finding and cleared them, or no AI
+   * endpoint is configured, or the provider failed on every chunk. All three
+   * drew the same green "AI didn't confirm any findings" card. On a security
+   * tool, "we could not check" must never be dressed as "we checked".
+   */
+  outcome?: AiVerificationOutcome | null;
 }
 
 /**
@@ -50,6 +61,7 @@ export function AiVerifyResultModal({
   error,
   findings,
   pendingCount,
+  outcome,
 }: AiVerifyResultModalProps) {
   const confirmed = findings?.filter((f) => f.aiVerdict === "confirmed") ?? [];
   const possibleFp =
@@ -75,7 +87,24 @@ export function AiVerifyResultModal({
       ? "Everything checked out as a likely false positive or needs a human to decide."
       : "AI didn't return a verdict for any finding in this scan.";
 
-  if (worstConfirmed === "critical" || worstConfirmed === "high") {
+  // The pass did not happen. Reported before anything is counted, because a
+  // count of zero verdicts is exactly what a successful all-clear looks like.
+  const didNotRun =
+    outcome != null &&
+    outcome.attempted > 0 &&
+    (!outcome.configured || outcome.verdicts === 0);
+  if (didNotRun) {
+    railClass = "bg-[hsl(var(--warning))]";
+    textClass = "text-[hsl(var(--warning))]";
+    headline = "AI verification did not run";
+    detail = outcome.configured
+      ? "The AI service did not answer for any finding, so nothing here has been checked by it. Your findings are unchanged. Try again in a minute."
+      : "No AI provider is configured for this instance, so nothing was checked. Add your own provider in Profile > AI settings, or ask the operator to configure one.";
+  }
+
+  if (didNotRun) {
+    // Nothing below applies: there are no verdicts to describe.
+  } else if (worstConfirmed === "critical" || worstConfirmed === "high") {
     const tone = SEVERITY_TONE[worstConfirmed];
     railClass = tone.solid;
     textClass = tone.text;

@@ -707,14 +707,34 @@ function applyVerdicts(
   });
 }
 
+/**
+ * Whether the verification pass actually happened, for the caller to say so.
+ *
+ * It used to return void, and the route answered `success: true` either way,
+ * so "the AI looked and cleared everything" and "no AI endpoint is configured"
+ * and "the provider was down for every chunk" all arrived at the browser as
+ * the same green modal reading "AI didn't confirm any findings". On a security
+ * tool that is the worst direction for an ambiguity to fall in.
+ */
+export interface AiVerificationOutcome {
+  /** An endpoint resolved at all (instance config, or the user's own key). */
+  configured: boolean;
+  /** Findings that came back with a verdict. Zero means nothing was judged. */
+  verdicts: number;
+  /** Findings the pass was asked to judge. */
+  attempted: number;
+}
+
 export async function runAiVerification(
   url: string,
   findings: Vulnerability[],
   scanHistoryId: number,
   userId?: number | null,
   usingOwnAi = false,
-): Promise<void> {
-  if (findings.length === 0) return;
+): Promise<AiVerificationOutcome> {
+  if (findings.length === 0) {
+    return { configured: true, verdicts: 0, attempted: 0 };
+  }
 
   const endpoint =
     (userId ? await resolveUserEndpoint(userId) : null) ??
@@ -724,7 +744,7 @@ export async function runAiVerification(
     console.error(
       "[AI-VERIFY] No endpoint resolved — check AI_BASE_URL/AI_PROVIDER env vars or user AI config",
     );
-    return;
+    return { configured: false, verdicts: 0, attempted: findings.length };
   }
 
   const settings = await resolveVerifySettings();
@@ -769,4 +789,10 @@ export async function runAiVerification(
       `[AI-VERIFY] All ${findings.length} findings returned null or timed out for ${url} — check the configured AI endpoint/model`,
     );
   }
+
+  return {
+    configured: true,
+    verdicts: verdictMap.size,
+    attempted: findings.length,
+  };
 }
