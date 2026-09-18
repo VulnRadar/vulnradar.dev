@@ -97,7 +97,7 @@ export function PricingCards({
       <h2 id="pricing-plans-heading" className="sr-only">
         Plans
       </h2>
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-card/40">
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
         {/* One row of four at lg, a single stack below it. No 2-up
             breakpoint on purpose: two columns cannot be compared across a
             row any better than one can, and it is the only arrangement

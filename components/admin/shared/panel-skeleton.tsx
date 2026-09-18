@@ -299,7 +299,7 @@ export function PanelSkeleton({
             ))}
           </div>
           <div className="grid gap-4 lg:h-[38rem] lg:grid-cols-[minmax(0,21rem)_1fr]">
-            <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
               <RowListSkeleton
                 rows={4}
                 lead="none"
@@ -307,7 +307,7 @@ export function PanelSkeleton({
                 trailing={false}
               />
             </div>
-            <div className="hidden lg:block rounded-xl border border-border/60 bg-card" />
+            <div className="hidden lg:block rounded-xl border border-border bg-card" />
           </div>
         </>
       ) : (

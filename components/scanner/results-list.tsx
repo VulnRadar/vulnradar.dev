@@ -892,7 +892,7 @@ export function ResultsList({
           // the whole bar parked behind it. A sticky bottom offset is
           // measured from the viewport edge, same as a fixed one, so the
           // variable works here.
-          className="sticky bottom-[calc(0.75rem+var(--vr-cookie-h,0px))] z-20 mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border/50 bg-card px-4 py-3 shadow-lg backdrop-blur-xs transition-[bottom] duration-300"
+          className="sticky bottom-[calc(0.75rem+var(--vr-cookie-h,0px))] z-20 mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 shadow-lg backdrop-blur-xs transition-[bottom] duration-300"
         >
           {/* Icon tile plus a text-sm label, matching the unsaved-changes bar
               in components/admin/features/system-settings-manager.tsx. Both

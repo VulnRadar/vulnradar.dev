@@ -44,7 +44,7 @@ export function CompareSummaryStats({
   ];
 
   return (
-    <dl className="flex items-stretch rounded-xl border border-border/50 bg-card/30 divide-x divide-border/50 overflow-hidden">
+    <dl className="flex items-stretch rounded-xl border border-border/50 bg-card/50 divide-x divide-border/50 overflow-hidden">
       {cells.map((cell) => (
         <div
           key={cell.label}

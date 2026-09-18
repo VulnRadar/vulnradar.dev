@@ -63,7 +63,7 @@ export function PricingSkeleton() {
 
         {/* PricingCards: one panel of columns, not four separate boxes. */}
         <section className={PRICING_RAIL_SECTION}>
-          <div className="overflow-hidden rounded-xl border border-border/60 bg-card/40">
+          <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
             <div className="grid grid-cols-1 lg:grid-cols-4">
               {Array.from({ length: CARD_COUNT }).map((_, i) => (
                 <div

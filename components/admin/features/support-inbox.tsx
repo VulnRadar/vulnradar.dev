@@ -339,7 +339,7 @@ export function SupportInbox() {
       <div className="grid gap-4 lg:h-[38rem] lg:grid-cols-[minmax(0,21rem)_1fr]">
         <div
           className={cn(
-            "flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card",
+            "flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card",
             openId !== null && "hidden lg:flex",
           )}
         >
@@ -448,7 +448,7 @@ export function SupportInbox() {
         {/* Thread */}
         <div
           className={cn(
-            "flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card",
+            "flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card",
             openId === null && "hidden lg:flex",
           )}
         >

@@ -254,7 +254,7 @@ export function ChangelogRelease({
     <article
       id={slug}
       aria-labelledby={`${slug}-heading`}
-      className="scroll-mt-24 rounded-xl border border-border/60 bg-card p-5 sm:p-6"
+      className="scroll-mt-24 rounded-xl border border-border bg-card p-5 sm:p-6"
     >
       <div className="mb-4 flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">

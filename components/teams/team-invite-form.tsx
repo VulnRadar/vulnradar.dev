@@ -51,7 +51,7 @@ export function TeamInviteForm({
     : "";
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-5">
+    <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="min-w-0">
           <p className="text-sm font-medium">Invite someone</p>

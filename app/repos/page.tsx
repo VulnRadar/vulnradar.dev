@@ -537,7 +537,7 @@ export default function ReposPage() {
               <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
             </div>
           ) : !repos || repos.length === 0 ? (
-            <div className="flex flex-col gap-4 rounded-xl border border-border/60 bg-card/50 px-6 py-8 sm:flex-row sm:items-center sm:gap-6">
+            <div className="flex flex-col gap-4 rounded-xl border border-border/50 bg-card/50 px-6 py-8 sm:flex-row sm:items-center sm:gap-6">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-muted/60">
                 <GithubIcon className="h-5 w-5 text-muted-foreground" />
               </div>

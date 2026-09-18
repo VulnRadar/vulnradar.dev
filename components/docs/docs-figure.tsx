@@ -37,7 +37,7 @@ export function DocsFigure({
       className={cn("flex flex-col gap-2", className)}
       style={{ maxWidth: width }}
     >
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Image
           src={src}
           alt={alt}

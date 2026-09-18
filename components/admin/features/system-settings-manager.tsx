@@ -953,7 +953,7 @@ export function SystemSettingsManager() {
       {pendingKeys.length > 0 && (
         <div className="pointer-events-none fixed bottom-(--vr-cookie-h,0px) left-0 right-0 z-50 p-4">
           <div className="pointer-events-auto mx-auto max-w-lg">
-            <div className="flex items-center justify-between gap-4 rounded-xl border border-border/50 bg-card px-4 py-3 shadow-lg">
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card px-4 py-3 shadow-lg">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="rounded-lg bg-primary/10 p-1.5">
                   <Save

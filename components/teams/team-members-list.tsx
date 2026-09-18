@@ -93,7 +93,7 @@ export function TeamMembersList({
   return (
     <>
       {/* Members */}
-      <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         {/* No count on the right. The header directly above this card already
             says "4 members" in words, so the bare digit here was the same fact
             twice within about forty pixels, and it was wrong while the request
@@ -309,7 +309,7 @@ export function TeamMembersList({
 
       {/* Pending invites */}
       {invites.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <p className="text-sm font-medium">Pending invites</p>
             <span className="text-xs text-muted-foreground tabular-nums">

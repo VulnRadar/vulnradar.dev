@@ -85,7 +85,7 @@ export function TeamDetailHeader({
       {/* rounded-xl, the page-panel rung. Every panel on this page used the
           Card primitive, which is rounded-lg, so /teams drew its page panels
           one rung below the identical panels on /shares and /history. */}
-      <div className="rounded-xl border border-border/50 bg-card p-5">
+      <div className="rounded-xl border border-border bg-card p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           {/* The team's own face, alongside its name. Teams already showed an
               avatar in the list (the owner's) with nowhere to set one; this is

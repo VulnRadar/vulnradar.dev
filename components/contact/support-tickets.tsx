@@ -450,7 +450,7 @@ export function SupportTickets() {
       {view === "new" && (
         <form
           onSubmit={submitNew}
-          className="overflow-hidden rounded-xl border border-border/60 bg-card"
+          className="overflow-hidden rounded-xl border border-border bg-card"
         >
           <div className="border-b border-border/60 bg-muted/20 px-4 py-2.5 sm:px-5">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -531,7 +531,7 @@ export function SupportTickets() {
         <div>
           {tickets === null ? (
             <div
-              className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/60 bg-card"
+              className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border bg-card"
               role="status"
               aria-label="Loading your tickets"
             >
@@ -563,7 +563,7 @@ export function SupportTickets() {
             // A divided list, not a stack of separate cards: these rows are one
             // column of the same thing, and floating each one made the list
             // read as several unrelated panels.
-            <div className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/60 bg-card">
+            <div className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border bg-card">
               {tickets.map((t) => (
                 <button
                   key={t.id}
@@ -606,7 +606,7 @@ export function SupportTickets() {
       )}
 
       {view === "thread" && (
-        <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-muted/20 px-2 py-1.5 sm:px-3">
             <Button
               variant="ghost"
