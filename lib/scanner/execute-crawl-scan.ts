@@ -661,6 +661,16 @@ export async function executeCrawlScan(
       ...new Set([
         ...hostAsync.incomplete,
         ...pageResults.flatMap((pr) => pr.incomplete),
+        // A login that dropped mid-crawl belongs here too, and did not: the
+        // single-page authenticated route records "authenticated-session"
+        // (app/api/v3/scan/authenticated/route.ts) and this executor only
+        // reported it through the auth badge. So a crawl whose session died
+        // after page two came back with full engine confidence, no "this scan
+        // did not finish" verdict, and nothing saying the signed-in area was
+        // never looked at -- while every page after the drop was scanned as
+        // an anonymous visitor. A clean result from those pages is not a
+        // clean result for the site the user asked about.
+        ...(authenticated && session?.lost ? ["authenticated-session"] : []),
       ]),
     ].sort();
     const erroredChecks = [

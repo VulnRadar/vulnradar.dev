@@ -531,6 +531,48 @@ describe("executeCrawlScan (authenticated)", () => {
     expect(resultMeta.authReport.reason).toMatch(/cleared the session cookie/i);
   });
 
+  it("counts a lost session as an area that did not finish, not just a badge", async () => {
+    const session = fakeSession({
+      lost: true,
+      reason: "The target cleared the session cookie during the scan.",
+    });
+
+    await executeCrawlScan(
+      baseParams({ scanId: 23, session, authenticated: true }),
+    );
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 23,
+    );
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    // The badge alone left the result counting as complete: full engine
+    // confidence, no "did not finish" verdict, and nothing telling the reader
+    // the signed-in view was never checked, although every page after the
+    // drop was scanned as an anonymous visitor.
+    expect(resultMeta.incomplete).toContain("authenticated-session");
+    expect(resultMeta.engineConfidence).toBeLessThan(100);
+  });
+
+  it("does not report an incomplete area for a session that held", async () => {
+    await executeCrawlScan(
+      baseParams({ scanId: 24, session: fakeSession(), authenticated: true }),
+    );
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 24,
+    );
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    expect(resultMeta.incomplete ?? []).not.toContain("authenticated-session");
+  });
+
   it("writes no authenticated flag or authReport for an ordinary crawl", async () => {
     await executeCrawlScan(baseParams({ scanId: 22 }));
 

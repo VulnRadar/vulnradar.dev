@@ -633,6 +633,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Lock,
+        label: "A Crawl That Gets Signed Out Says So",
+        desc: "When you scan a site behind a login and the site drops your session partway through a multi-page crawl, every page after that point is scanned as a signed-out visitor. The result showed a badge saying the session was lost, but still counted as a complete scan: full confidence, no warning, and nothing saying the signed-in area had not been checked. It now counts as an unfinished scan and names the signed-in view as the part that was missed, the same as a single-page scan already did.",
+        category: "fixed",
+      },
+      {
         icon: AlertTriangle,
         label: "A Partial Scan Now Says Which Part Is Missing",
         desc: 'When a scan did not finish and found nothing, the page named the areas that were skipped. When it did not finish but found something, it said only that "some checks ran out of time" and never which, so the one reader with both a partial result and findings in it was the one reader who could not tell what was still unchecked. Both places now name the same areas, and the wording no longer says the checks timed out when a check failed instead.',

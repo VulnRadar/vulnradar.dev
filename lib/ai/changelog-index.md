@@ -160,6 +160,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The billing verification step no longer jumps to 'check your email' before the code has actually been sent, and pressing Continue twice no longer sends two emails. Pressing Escape or clicking outside a dialog while it is saving no longer closes it and loses what you typed. Subscription prices show as $5/mo like the credit prices, instead of $5.00/mo. The upgrade prompt uses the full plan name, such as Pro Supporter, so it matches the pricing page. Back links on checkout pages are easier to tap on phones, the credit meter shows your remaining free allowance as its own section, and the terms prompt's full terms link now opens the Terms of Service instead of the disclaimer.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
   Checking your site's security certificate used to involve four separate connections to your server, one per certificate-related check. If your site sits behind a service that can route different connections to different servers, the four checks could see four different certificates, and the report then described several at once. They now share a single connection, so every certificate finding describes the certificate your visitors actually see. The check that deliberately tests old, insecure connection versions still connects separately, since it must offer only those versions. Three other checks that each downloaded your page again, to look for outdated code libraries, open storage buckets and a reused security code, now share a single download as well.
+- [Lock] **[FIXED]** **A Crawl That Gets Signed Out Says So**
+  When you scan a site behind a login and the site drops your session partway through a multi-page crawl, every page after that point is scanned as a signed-out visitor. The result showed a badge saying the session was lost, but still counted as a complete scan: full confidence, no warning, and nothing saying the signed-in area had not been checked. It now counts as an unfinished scan and names the signed-in view as the part that was missed, the same as a single-page scan already did.
 - [AlertTriangle] **[FIXED]** **A Partial Scan Now Says Which Part Is Missing**
   When a scan did not finish and found nothing, the page named the areas that were skipped. When it did not finish but found something, it said only that "some checks ran out of time" and never which, so the one reader with both a partial result and findings in it was the one reader who could not tell what was still unchecked. Both places now name the same areas, and the wording no longer says the checks timed out when a check failed instead.
 - [Filter] **[ENGINE]** **Five Page Checks Stop Flagging Ordinary Pages**
@@ -1346,6 +1348,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 970
+- **Total changes documented:** 971
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release
