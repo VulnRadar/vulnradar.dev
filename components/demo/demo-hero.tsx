@@ -34,7 +34,7 @@ export function DemoHero({ scansRemaining, onScan, isLoading }: DemoHeroProps) {
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-10 lg:gap-16 items-start">
           <div>
-            {/* Tier A exactly (CLAUDE.md typography): the lg:text-5xl this
+            {/* Tier A exactly (STYLE.md typography): the lg:text-5xl this
                 carried was a fifth H1 size, and it made the hero title a
                 different size from the one the same page shows while scanning,
                 on an error, and over the report. */}

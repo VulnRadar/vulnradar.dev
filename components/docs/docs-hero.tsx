@@ -43,7 +43,7 @@ export function DocsHero({
       <p className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
         {badge}
       </p>
-      {/* Tier A from CLAUDE.md. This was text-2xl sm:text-3xl, a third H1
+      {/* Tier A from STYLE.md. This was text-2xl sm:text-3xl, a third H1
           size that belonged to neither tier and left only a 4px gap to the
           section headings below it. */}
       <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-4 text-balance text-foreground">

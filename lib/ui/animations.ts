@@ -109,7 +109,7 @@ export const toggles = {
 
 // `within` and `none` are not here for the same reason as the transitions
 // above: nothing imported them. `ring` is imported 31 times and is the
-// focus-visible recipe the radius ladder in CLAUDE.md refers to.
+// focus-visible recipe the radius ladder in STYLE.md refers to.
 export const focus = {
   ring: "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
 } as const;

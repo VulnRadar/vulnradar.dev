@@ -39,7 +39,7 @@ export function LegalPageHeader({
       <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
         {kickerMap[type] || kickerMap.terms}
       </p>
-      {/* Tier A from CLAUDE.md, matching /legal, /pricing and /changelog.
+      {/* Tier A from STYLE.md, matching /legal, /pricing and /changelog.
           This was text-3xl font-bold with no sm: step and no text-balance,
           the one page title in the set that was set differently. */}
       <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-balance text-foreground">

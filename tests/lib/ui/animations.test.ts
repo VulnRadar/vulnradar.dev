@@ -14,7 +14,7 @@ import { toggles } from "@/lib/ui/animations";
  *
  *   `cn` was a second cn - a plain `.filter(Boolean).join(" ")` with no
  *   class-conflict resolution - sitting beside the clsx + tailwind-merge one
- *   in lib/ui/utils.ts that CLAUDE.md names as the import convention. Every
+ *   in lib/ui/utils.ts that STYLE.md names as the import convention. Every
  *   call site in the app used the real one. A same-named helper that silently
  *   does less is worse than no helper.
  *

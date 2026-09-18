@@ -96,7 +96,7 @@ describe("landing social prompt", () => {
   });
 
   it("keeps the copy free of em dashes", () => {
-    // CLAUDE.md: no em dashes in user-facing text.
+    // STYLE.md: no em dashes in user-facing text.
     const strings = COMPONENT.split("\n").filter(
       (line) => !line.trim().startsWith("*") && !line.trim().startsWith("//"),
     );

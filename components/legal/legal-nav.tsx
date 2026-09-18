@@ -43,7 +43,7 @@ export function LegalNav() {
             aria-current={isActive ? "page" : undefined}
             className={cn(
               // rounded-md, not rounded-lg: these are chips, and the radius
-              // ladder in CLAUDE.md puts a control-shaped thing one rung
+              // ladder in STYLE.md puts a control-shaped thing one rung
               // below the card it sits on.
               // min-h-9 gives the row a consistent height whether or not the
               // label wraps to the short form on a phone.

@@ -207,7 +207,7 @@ export function OnboardingTour() {
 
   // Match the hole to the shape of the thing in it. A pill-shaped button
   // inside a square hole looks like a rendering fault, and every radius in the
-  // app is on the ladder in CLAUDE.md, so copying the computed value lands on
+  // app is on the ladder in STYLE.md, so copying the computed value lands on
   // one of four sane numbers rather than an arbitrary one.
   useEffect(() => {
     if (!element) {

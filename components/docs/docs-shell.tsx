@@ -62,7 +62,7 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
             wordmark moved 144px on every navigation between them. Owner call,
             2026-08-31: one top bar across the whole public surface wins over
             aligning it with a single page's sidebar. max-w-6xl is also the
-            container CLAUDE.md documents. Do not re-add the override; the
+            container STYLE.md documents. Do not re-add the override; the
             docs sidebar and TOC below it stay exactly as they are. */}
         <LandingNav />
 

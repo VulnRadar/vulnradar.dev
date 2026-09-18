@@ -20,7 +20,7 @@ import path from "node:path";
  * different from the same card elsewhere.
  *
  * This is the guard that keeps it at two. If a third tone is genuinely needed,
- * it belongs here and in CLAUDE.md's radius ladder first, so it is a decision
+ * it belongs here and in STYLE.md's radius ladder first, so it is a decision
  * rather than a typo.
  */
 const ROOT = path.resolve(__dirname, "..", "..", "..");

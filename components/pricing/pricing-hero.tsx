@@ -16,7 +16,7 @@ export function PricingHero({ billing, onBillingChange }: PricingHeroProps) {
       <div className={PRICING_HERO_SECTION}>
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 lg:gap-12 lg:items-end">
           <div className="max-w-2xl">
-            {/* Tier A exactly (CLAUDE.md typography, which names /pricing as
+            {/* Tier A exactly (STYLE.md typography, which names /pricing as
                 the Tier A reference). The lg:text-5xl this carried was a third
                 H1 size, and it made this title bigger than the one on /demo,
                 /security and every /checks page. Same fix demo-hero already

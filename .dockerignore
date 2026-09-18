@@ -11,8 +11,8 @@
 **/node_modules
 .next
 
-# Version control and agent/audit working directories. .claude in particular
-# can hold a full second checkout under .claude/worktrees/.
+# Version control and local tooling directories. Some of them can hold a full
+# second checkout, which would otherwise be copied into the image.
 .git
 .claude
 audits

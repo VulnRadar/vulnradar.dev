@@ -31,7 +31,7 @@ interface ActionCardProps {
  *
  * Radius is `rounded-md` because this is a control, not a card, and because
  * these sit inside a `rounded-lg` Card: a child never gets a larger radius
- * than its container (CLAUDE.md's radius ladder). It was `rounded-xl`.
+ * than its container (STYLE.md's radius ladder). It was `rounded-xl`.
  */
 export function ActionCard({
   icon: Icon,

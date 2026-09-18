@@ -1,7 +1,7 @@
 /**
  * Centralized console.error -> system_error_logs capture.
  *
- * ~280 console.error call sites exist across this codebase (see CLAUDE.md's
+ * ~280 console.error call sites exist across this codebase (see STYLE.md's
  * "only genuine errors use console.error, routine status uses console.log"
  * convention) -- too many to touch individually so admins can see them
  * without shell/SSH access. Instead, installErrorLogCapture() wraps the

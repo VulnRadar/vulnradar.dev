@@ -68,7 +68,7 @@ describe("the domain management page", () => {
   });
 
   it("titles itself with the sub-page heading tier", () => {
-    // CLAUDE.md: Tier B, for a surface reached from inside the app, and it
+    // STYLE.md: Tier B, for a surface reached from inside the app, and it
     // carries text-foreground explicitly because the shell sets a muted colour.
     expect(PAGE).toContain(
       'className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground"',

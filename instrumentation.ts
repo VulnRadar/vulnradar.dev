@@ -66,7 +66,7 @@ export async function register() {
 
     // ── System error log capture (Admin > System > Error Logs) ─────────
     // Wraps console.error exactly once per process so every genuine error logged
-    // anywhere in the app (see CLAUDE.md's console.error/console.log convention)
+    // anywhere in the app (see STYLE.md's console.error/console.log convention)
     // also lands in system_error_logs, viewable from the admin panel without
     // shell/SSH access. installErrorLogCapture() is itself idempotent (guards on
     // a module-level flag), so this is also safe on dev hot-reload re-execution.

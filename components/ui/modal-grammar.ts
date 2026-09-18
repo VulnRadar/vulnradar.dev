@@ -56,7 +56,7 @@ export const modalPositioner =
  * hard outline around every modal in the product. The control edge inside the
  * panel is where --input belongs, and that is where it stayed.
  *
- * `rounded-lg` flat, per the radius ladder in CLAUDE.md: a modal is a card, not
+ * `rounded-lg` flat, per the radius ladder in STYLE.md: a modal is a card, not
  * a page-level panel. The admin overlays used rounded-xl and the shadcn shells
  * used `sm:rounded-lg`, which left square corners on mobile even though the
  * positioner already insets the panel by 16px.

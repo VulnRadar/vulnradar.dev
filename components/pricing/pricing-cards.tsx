@@ -45,7 +45,7 @@ interface PricingCardsProps {
 /**
  * Four plans as ONE panel of aligned columns, not four bordered cards.
  *
- * The cards this replaces were the exact shape CLAUDE.md tells us to avoid:
+ * The cards this replaces were the exact shape STYLE.md tells us to avoid:
  * four identical boxes, each with its own ragged tick list of a different
  * length, so the columns ended up different heights with nothing lining up
  * and the differences between tiers unfindable. The free column also said

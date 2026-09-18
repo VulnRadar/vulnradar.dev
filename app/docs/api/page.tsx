@@ -1049,7 +1049,7 @@ format=json       -> application/json            vulnradar-example.com.json`,
   ]
 }`,
     notes: [
-      "This endpoint existed and was documented nowhere, while its three siblings were. It is the one named in the repo's own CLAUDE.md alongside them.",
+      "This endpoint existed and was documented nowhere, while its three siblings were. It is the one named in the repo's own STYLE.md alongside them.",
       "requests is empty rather than an error while a session is still warming up: the live capture simply has nothing yet.",
       "failed: true appears instead of a status when the request never completed.",
       "Ownership fails CLOSED, unlike the other session endpoints' best-effort ownership row. This streams live traffic (hosts, paths and query strings), so a session whose ownership row is missing or unreadable is refused rather than served: losing the network panel is the right trade against serving somebody else's browsing.",

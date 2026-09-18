@@ -88,7 +88,7 @@ every CI run, so it is exercised even though it still reports no percentage.
 
 ## Two tiers, two rules
 
-CLAUDE.md lists "mocking the database in tests" under what to avoid. This file
+STYLE.md lists "mocking the database in tests" under what to avoid. This file
 tells you to mock `pool.query`. Both are correct, and here is the line between
 them, because it used to read as a contradiction and cost people time.
 
@@ -106,7 +106,7 @@ UPDATE` that lost its lock, and a CTE that stopped returning its `RETURNING`
 row all pass. So do not conclude from a green unit suite that a query works.
 
 **Integration tier (`tests/integration`): never fake `pg`, ever.** This is
-where CLAUDE.md's rule applies literally. These suites run the real
+where STYLE.md's rule applies literally. These suites run the real
 `instrumentation.ts` boot path against a real PostgreSQL and then execute the
 real queries. Anything a fake pool could answer belongs in the unit tier; put
 a test here only when the answer depends on what the database actually does.

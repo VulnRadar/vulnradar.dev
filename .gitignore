@@ -33,7 +33,8 @@ graphify-out
 # is personal data.
 /data/
 /engine/data/
-# Agent instructions - never commit; per-developer files
+# Per-developer instruction files for whatever editor or tooling someone uses.
+# Never committed: they describe one person's setup, not the product.
 AGENTS.md
 CLAUDE.md
 
@@ -130,28 +131,13 @@ id_ed25519
 *.dump
 *.bak
 
-# Agent and platform working directories. .claude/worktrees/ is a full second
-# checkout (~18 MB) and was only ever saved by a local .git/info/exclude,
-# which is not shared, so any fresh clone would stage it.
+# Local tooling directories and scratch files. These belong to whoever is
+# working on the checkout, never to the product: a second worktree, an editor's
+# cache, a generated design dump. Ignored so a stray run of one of them can
+# never land in a commit.
 .claude/
-.vercel/
-
-# Generated audit artefacts. The AUDIT-*/ records stay tracked because the
-# audit:list / audit:show / audit:close scripts read them; these three are
-# one-off output that was committed by accident.
-#
-# report.html alone carried four HIGH js/xss-through-dom code-scanning alerts:
-# it builds its own DOM from finding text, and finding text is scraped from
-# scanned third-party pages. Nothing renders it in the product, so the alerts
-# were pure noise from a file that did not belong in git.
-audits/report.html
-audits/merged-findings.json
-audits/email-previews/
-
-# Design-language references pulled in by `npx getdesign@latest add <name>`.
-# They are Claude tooling, not part of the product: install one as a personal
-# Claude skill (~/.claude/skills/<name>/) rather than keeping it in the repo.
-# Still ignored so a stray `getdesign add` run never gets committed. The
-# product's own design rules live in CLAUDE.md.
+.cursor/
+.aider*
+CLAUDE.md
 /DESIGN.md
 /apple/

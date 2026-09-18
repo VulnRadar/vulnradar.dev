@@ -55,11 +55,11 @@ const buttonVariants = cva(
       // Opt-in, and deliberately a separate axis from `size` rather than a
       // new variant or a new size.
       //
-      // The marketing surface wants the full-pill CTA (CLAUDE.md's button
+      // The marketing surface wants the full-pill CTA (STYLE.md's button
       // conventions), where the pill radius IS the "this is the action"
       // signal. The app does not: a pill on a dense toolbar reads as a chip,
       // and `rounded-md` is the control rung of the radius ladder in
-      // CLAUDE.md, which every other control in the product sits on.
+      // STYLE.md, which every other control in the product sits on.
       //
       // Making it a variant would have forced a choice between pill and
       // `destructive`/`outline`; making it a size would have forced a choice

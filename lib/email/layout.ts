@@ -173,7 +173,7 @@ const PALETTE = {
 
 /**
  * The spacing and radius scale, in one place so a block cannot invent a
- * seventh value. CLAUDE.md's radius ladder in email terms: the card is the
+ * seventh value. STYLE.md's radius ladder in email terms: the card is the
  * panel (12), a detail group or callout is the card (8), the button is a
  * control (6), a chip is a pill. Nothing nested ever gets a larger radius
  * than what contains it.

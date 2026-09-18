@@ -4,7 +4,7 @@
  * lib/scanner/checks-data/*.json is rendered directly into the scan-result
  * UI (title, description, riskImpact, explanation, fixSteps, evidence,
  * references, codeExamples), and is also compiled into lib/ai/checks-knowledge.md,
- * which the AI chat assistant loads as RAG context. CLAUDE.md bans em dashes
+ * which the AI chat assistant loads as RAG context. STYLE.md bans em dashes
  * in UI copy ("No em dashes (—) in UI copy. Use a colon, comma, or rewrite
  * the sentence."), so a stray em dash here would both violate that rule and
  * bias the AI assistant's own writing style. This test walks every string
