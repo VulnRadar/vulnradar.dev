@@ -152,7 +152,12 @@ export function LoginForm({
           <Link
             href="/forgot-password"
             className={cn(
-              "text-xs text-muted-foreground hover:text-primary rounded",
+              // -my-1.5 py-1.5: a standalone utility link, not one inside a
+              // sentence, so WCAG 2.2's 24px minimum applies to it. It was
+              // 16px, beside a 44px password field, and it is the link people
+              // reach for on a phone precisely when they are already annoyed.
+              // The negative margin keeps it on the label's baseline.
+              "-my-1.5 rounded py-1.5 text-xs text-muted-foreground hover:text-primary",
               transitions.colors,
               authFocusRing,
             )}

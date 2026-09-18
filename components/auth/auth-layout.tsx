@@ -77,7 +77,10 @@ export function AuthFooter({ className }: { className?: string }) {
       <Link
         href={ROUTES.CONTACT}
         className={cn(
-          "rounded hover:text-foreground",
+          // The only way out of this page for someone who cannot sign in, and
+          // it was 16px tall. Standalone link, so WCAG 2.2's 24px minimum
+          // applies; the negative margin keeps the footer's height.
+          "-my-1.5 rounded py-1.5 hover:text-foreground",
           transitions.colors,
           focus.ring,
         )}
