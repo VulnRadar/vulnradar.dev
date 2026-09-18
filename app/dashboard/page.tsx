@@ -154,6 +154,9 @@ function DashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  // The server's name for a refusal, so the failure screen does not have to
+  // tell three kinds of 429 apart by reading their sentences.
+  const [errorStatusCode, setErrorStatusCode] = useState<string | null>(null);
   const [errorUrl, setErrorUrl] = useState<string | null>(null);
   const [errorForcedKind, setErrorForcedKind] = useState<ErrorKind | undefined>(
     undefined,
@@ -496,6 +499,7 @@ function DashboardContent() {
       setError(null);
       setErrorDetails(null);
       setErrorStatus(null);
+      setErrorStatusCode(null);
       setErrorUrl(null);
       setErrorForcedKind(undefined);
       setAuthReport(null);
@@ -566,6 +570,9 @@ function DashboardContent() {
           setError(data.error || "An unexpected error occurred.");
           setErrorDetails(data.details || null);
           setErrorStatus(response.status);
+          setErrorStatusCode(
+            typeof data.statusCode === "string" ? data.statusCode : null,
+          );
           setErrorUrl(url);
           setStatus("failed");
           return;
@@ -702,6 +709,7 @@ function DashboardContent() {
           "Failed to connect to the scanner. Please check your connection and try again.",
         );
         setErrorStatus(null);
+        setErrorStatusCode(null);
         setErrorUrl(url);
         setStatus("failed");
       }
@@ -1074,6 +1082,7 @@ function DashboardContent() {
           details={errorDetails || undefined}
           url={errorUrl ?? undefined}
           status={errorStatus ?? undefined}
+          statusCode={errorStatusCode ?? undefined}
           forcedKind={errorForcedKind}
           onRetry={handleRetryScan}
           onBack={handleReset}

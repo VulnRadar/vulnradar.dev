@@ -639,6 +639,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Clock,
+        label: "A Busy Site Is No Longer Mistaken for Your Own Limit",
+        desc: 'Three different refusals shared one screen, and its wording described only one of them: your plan\'s daily scans. So being told "that address has been scanned too many times in the last hour", a limit we apply to protect the site being scanned and count across everybody, came with a headline suggesting a higher plan would fix it. It would not. Each of the three now says what it actually is: your daily allowance, a busy address that clears within the hour, or your own scans already running. Only the first mentions plans.',
+        category: "fixed",
+      },
+      {
         icon: CalendarClock,
         label: "A Scheduled Scan That Fails Now Tells You",
         desc: "Scheduled scans emailed you when they finished and said nothing at all when they could not run. A schedule whose target went offline, lost its DNS or stopped answering could fail every run for weeks in silence, while the whole point of it was watching the site for you. You now get one email the first time a run fails, saying what happened in plain language, and nothing further until a run succeeds and then fails again, so a site that stays down does not fill your inbox.",

@@ -27,6 +27,14 @@ interface DashboardErrorStateProps {
   details?: string;
   url?: string;
   status?: number;
+  /**
+   * The server's own name for the refusal (`TARGET_RATE_LIMIT`,
+   * `CONCURRENT_SCAN_LIMIT`, `DAILY_LIMIT`...). Three different things arrive
+   * as HTTP 429 and only one of them is about the caller's plan, so without
+   * this the screen had to guess from message text and got it wrong in the
+   * direction that costs money: it told people to upgrade.
+   */
+  statusCode?: string;
   /** Runs the same scan again, with the same URL, mode and options. */
   onRetry: () => void;
   /**
@@ -48,12 +56,18 @@ export type ErrorKind =
   | "blocked"
   | "network"
   | "rate_limit"
+  | "target_busy"
+  | "too_many_running"
   | "validation"
   | "server"
   | "auth_failed"
   | "generic";
 
-function classifyError(error: string, status?: number): ErrorKind {
+function classifyError(
+  error: string,
+  status?: number,
+  statusCode?: string,
+): ErrorKind {
   const e = error.toLowerCase();
   if (
     e.includes("cannot be scanned") ||
@@ -73,6 +87,26 @@ function classifyError(error: string, status?: number): ErrorKind {
     e.includes("etimedout")
   ) {
     return "network";
+  }
+  // Three different 429s reach this screen and only one of them is about the
+  // caller's plan. Collapsing them meant a free user who hit the shared
+  // per-target limiter was told, in the headline, that a higher plan would fix
+  // it. It would not: that bucket protects the site being scanned and is
+  // counted across every account. The server names which one it is
+  // (statusCode), and the message text is the fallback for a response that
+  // predates it.
+  if (
+    statusCode === "TARGET_RATE_LIMIT" ||
+    e.includes("scanned too many times")
+  ) {
+    return "target_busy";
+  }
+  if (
+    statusCode === "CONCURRENT_SCAN_LIMIT" ||
+    e.includes("already have") ||
+    e.includes("scan(s) running")
+  ) {
+    return "too_many_running";
   }
   if (status === 429 || e.includes("rate limit") || e.includes("too many")) {
     return "rate_limit";
@@ -142,6 +176,28 @@ const ERROR_META: Record<
     edge: "border-primary/30",
     tile: "bg-primary/10 text-primary",
   },
+  target_busy: {
+    title: "That site has been scanned a lot in the last hour",
+    description:
+      "Not your limit: this one counts every scan of that address, from everybody, and it exists so we do not hammer somebody's site. It clears within the hour. Scanning a different address still works right now, and a higher plan does not change this one.",
+    icon: Clock,
+    rail: "bg-primary",
+    accent: "text-primary",
+    tint: "bg-primary/5",
+    edge: "border-primary/30",
+    tile: "bg-primary/10 text-primary",
+  },
+  too_many_running: {
+    title: "You already have scans running",
+    description:
+      "Your plan allows a set number at once, and they are all busy. They usually finish in under a minute; this one will start as soon as one of them does. Nothing has been lost and nothing was charged.",
+    icon: Clock,
+    rail: "bg-primary",
+    accent: "text-primary",
+    tint: "bg-primary/5",
+    edge: "border-primary/30",
+    tile: "bg-primary/10 text-primary",
+  },
   validation: {
     title: "The scanner rejected that input",
     description:
@@ -193,12 +249,13 @@ export function DashboardErrorState({
   details,
   url,
   status,
+  statusCode,
   onRetry,
   onBack,
   forcedKind,
 }: DashboardErrorStateProps) {
   const { copied, copy } = useCopyFeedback();
-  const kind = forcedKind ?? classifyError(error, status);
+  const kind = forcedKind ?? classifyError(error, status, statusCode);
   const meta = ERROR_META[kind];
   const Icon = meta.icon;
 
