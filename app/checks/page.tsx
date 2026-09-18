@@ -186,7 +186,7 @@ export default async function ChecksIndexPage() {
                       {checks.length}
                     </span>
                   </summary>
-                  <ul className="px-4 pb-4 pt-1 grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                  <ul className="px-4 pb-4 pt-1 grid sm:grid-cols-2 gap-x-6 gap-y-0.5">
                     {checks.map((c) => (
                       <li
                         key={c.id}
@@ -211,7 +211,14 @@ export default async function ChecksIndexPage() {
                         />
                         <Link
                           href={`/checks/${c.id}`}
-                          className="text-muted-foreground hover:text-foreground transition-colors"
+                          // block + py-1.5: the tappable area was the text
+                          // itself, 20px tall, on a page whose whole job is
+                          // browsing 860 of these on whatever device you have.
+                          // WCAG 2.2's minimum target is 24x24 and this missed
+                          // it 543 times on one page. The padding takes the row
+                          // to 32px and the list's own gap shrinks to match, so
+                          // the rhythm is what it was and the target is not.
+                          className="block py-1.5 text-muted-foreground hover:text-foreground transition-colors"
                         >
                           {c.title}
                         </Link>

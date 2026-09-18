@@ -157,7 +157,12 @@ export default function DocsPage() {
                     <dt>
                       <Link
                         href={item.href}
-                        className="rounded-sm text-sm font-medium text-foreground hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                        // block + py: the row is 44px tall but the tappable
+                        // part was the 19px of text inside it, which is under
+                        // WCAG 2.2's 24px minimum on the page that is the way
+                        // into every other doc. The negative margin keeps the
+                        // row exactly as tall as it was.
+                        className="-my-1.5 block rounded-sm py-1.5 text-sm font-medium text-foreground hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {item.label}
                       </Link>
