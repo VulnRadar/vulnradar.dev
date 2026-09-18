@@ -45,6 +45,51 @@ do intentionally change dependencies, check the diff for removed
 The full script list is in `package.json`; `npm run db:*` covers database
 creation, migration, backup, restore, and the diagnose/repair tooling.
 
+## Reviewing a production build locally, over plain HTTP
+
+`npm run dev` is fine for writing code and wrong for reviewing it: the dev
+server does not run the production CSS pipeline, the lazy-loaded chunks or the
+prerendered pages, so what you are looking at is not what a visitor gets.
+
+A production build served on plain `http://localhost` is what you want. One
+thing is in the way: `middleware.ts` redirects any request whose
+`x-forwarded-proto` says `http` to `https`, and Next fills that header in for
+direct requests, so `http://localhost:3000` 301s to an address nothing is
+listening on. `ALLOW_INSECURE_HTTP=1` is the documented opt-out for a
+deployment with no TLS at all, and it is exactly right here.
+
+```bash
+npm run build
+ALLOW_INSECURE_HTTP=1 PORT=3001 npm start
+```
+
+Then open `http://localhost:3001`. Port 3001 rather than 3000 so it can sit
+beside a `npm run dev` you already have running, and the two do not fight over
+the port or the `.next` directory.
+
+On Windows PowerShell, `ALLOW_INSECURE_HTTP=1 PORT=3001 npm start` is not
+valid syntax; set them first:
+
+```powershell
+$env:ALLOW_INSECURE_HTTP = "1"; $env:PORT = "3001"; npm start
+```
+
+To review a specific commit without disturbing your working tree, build it in a
+worktree:
+
+```bash
+git worktree add ../vulnradar-build --detach <sha>
+cd ../vulnradar-build && npm ci && npm run build
+ALLOW_INSECURE_HTTP=1 PORT=3001 npm start
+```
+
+Two things that have bitten us there: if `node_modules` in the worktree is a
+junction or symlink to the main checkout, `npm ci` empties the main one, so
+check it is a real directory first; and stopping the terminal that started
+`npm start` does not always stop the server, so if the port is still busy, find
+the owner (`Get-NetTCPConnection -LocalPort 3001 -State Listen`) and stop that
+process before starting another.
+
 ## Commit signing
 
 All commits to `main` must be GPG-signed. Configure your signing key once:

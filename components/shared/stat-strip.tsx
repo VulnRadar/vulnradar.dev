@@ -148,9 +148,19 @@ export function StatStrip({
                   // utilities set a line-height as well as a font-size, so
                   // tailwind-merge treats them as conflicting with leading-*
                   // and drops whichever came first: written ahead of the size
-                  // (as it was), `leading-none` was being stripped from every
+                  // (as it was), the leading was being stripped from every
                   // stat value in the product and never reached the DOM.
-                  "leading-none",
+                  //
+                  // leading-tight, not leading-none, for the reason
+                  // scan-summary.tsx gives at its own stat: this span is
+                  // `truncate`, which is overflow: hidden, so the line box IS
+                  // the clip. At leading-none the box is exactly the font size
+                  // and the glyphs need about 1.17 of it, measured 28px of
+                  // content in a 24px box on the dashboard. Digits survive
+                  // that; anything with a descender does not, and the guard
+                  // test missed it because the clip and the leading are in two
+                  // different strings of one cn() call.
+                  "leading-tight",
                   // Was text-muted-foreground/40, which measures 2.18:1 on
                   // --card in dark mode. A zero should read as quiet, not as
                   // barely-there: this is a real count a user is reading off

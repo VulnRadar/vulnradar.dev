@@ -61,18 +61,59 @@ describe("text clipping", () => {
     const CLIP =
       /^(?:[\w-]+:)*(?:truncate|line-clamp-\d+|overflow-hidden|overflow-clip)$/;
     const offenders: string[] = [];
+
+    /**
+     * Every class token in one string literal, plus every token in one cn()
+     * call taken together.
+     *
+     * A cn() call composes several literals into ONE class attribute, so its
+     * pieces have to be judged as one. components/shared/stat-strip.tsx put
+     * `truncate` in one argument and the leading in another, a dozen lines
+     * apart, and shipped a 24px line box around 28px of glyphs on every stat
+     * in the product straight past the literal-by-literal check.
+     */
+    function* classGroups(
+      src: string,
+    ): Generator<{ tokens: string[]; at: number }> {
+      const LITERAL = /"([^"\n]*)"|`([^`]*)`/g;
+      for (const m of src.matchAll(LITERAL)) {
+        yield { tokens: (m[1] ?? m[2]).split(/\s+/), at: m.index ?? 0 };
+      }
+      for (const call of src.matchAll(/\bcn\(/g)) {
+        const open = call.index ?? 0;
+        let depth = 0;
+        let close = -1;
+        for (let i = open + 3; i < src.length; i++) {
+          const ch = src[i];
+          if (ch === "(") depth++;
+          else if (ch === ")") {
+            if (depth === 0) {
+              close = i;
+              break;
+            }
+            depth--;
+          }
+        }
+        if (close < 0) continue;
+        const tokens: string[] = [];
+        for (const lit of src.slice(open, close).matchAll(LITERAL)) {
+          tokens.push(...(lit[1] ?? lit[2]).split(/\s+/));
+        }
+        yield { tokens, at: open };
+      }
+    }
+
     for (const file of TSX) {
       const src = fs.readFileSync(file, "utf8");
-      for (const m of src.matchAll(/"([^"\n]*)"|`([^`]*)`/g)) {
-        const tokens = (m[1] ?? m[2]).split(/\s+/);
+      for (const group of classGroups(src)) {
         if (
-          tokens.some((t) => TIGHT.test(t)) &&
-          tokens.some((t) => CLIP.test(t))
+          group.tokens.some((t) => TIGHT.test(t)) &&
+          group.tokens.some((t) => CLIP.test(t))
         ) {
-          offenders.push(`${rel(file)}:${lineOf(src, m.index)}`);
+          offenders.push(`${rel(file)}:${lineOf(src, group.at)}`);
         }
       }
     }
-    expect(offenders).toEqual([]);
+    expect([...new Set(offenders)]).toEqual([]);
   });
 });
