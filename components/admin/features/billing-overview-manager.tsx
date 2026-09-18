@@ -164,7 +164,7 @@ export function BillingOverviewManager() {
           above the panels it introduced. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">
             Billing overview
           </h2>
           <p className="max-w-prose text-sm text-muted-foreground">

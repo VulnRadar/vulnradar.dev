@@ -262,7 +262,7 @@ export function SupportInbox() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">
             Support tickets
           </h2>
           <p className="max-w-prose text-sm text-muted-foreground">

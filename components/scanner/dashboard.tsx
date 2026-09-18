@@ -193,7 +193,7 @@ function SkeletonPanel({
 function FirstRunPanel() {
   return (
     <div className="mt-6 rounded-xl border border-dashed border-border bg-card/50 p-5 sm:p-6">
-      <h2 className="text-base font-semibold text-foreground">
+      <h2 className="text-base font-semibold tracking-tight text-foreground">
         No scans on this account yet
       </h2>
       <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-muted-foreground">

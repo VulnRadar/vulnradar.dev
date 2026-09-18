@@ -415,7 +415,7 @@ export function SupportTickets() {
     <section className="mt-10 border-t border-border/50 pt-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">
             Your support tickets
           </h2>
           {/* Where a reply turns up is said by whichever block is on screen

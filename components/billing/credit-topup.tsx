@@ -166,7 +166,7 @@ export function CreditTopUp({
 
       {!selectedTier ? (
         <div className="flex flex-col gap-3">
-          <h2 className="text-base font-semibold text-foreground">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
             Pick an amount
           </h2>
           <ul className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">

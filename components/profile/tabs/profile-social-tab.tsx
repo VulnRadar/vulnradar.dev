@@ -191,7 +191,7 @@ function OAuthIdentityCard({
                 {icon}
               </div>
               <div className="min-w-0">
-                <h2 className="text-base font-semibold text-foreground">
+                <h2 className="text-base font-semibold tracking-tight text-foreground">
                   {label}
                 </h2>
                 {/* Only the connected branch truncates. The other branch is a
@@ -669,7 +669,7 @@ export function ProfileSocialTab({
                   <DiscordIcon />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="text-base font-semibold text-foreground">
+                  <h2 className="text-base font-semibold tracking-tight text-foreground">
                     Discord
                   </h2>
                   {/* Same split as the OAuth card above: the username clips,

@@ -698,7 +698,7 @@ export function UserDetailPanel({
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-lg font-semibold tracking-tight">
+                  <h2 className="text-lg font-semibold tracking-tight text-foreground">
                     {u.name || "Unnamed User"}
                   </h2>
                   {u.role && u.role !== "user" && ROLE_BADGE_STYLES[u.role] && (

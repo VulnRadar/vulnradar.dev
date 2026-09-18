@@ -156,7 +156,7 @@ export function AIChatsManager() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight">
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">
           AI Conversations
         </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
