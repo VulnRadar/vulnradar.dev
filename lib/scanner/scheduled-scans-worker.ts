@@ -78,10 +78,12 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import {
   scheduleDisabledEmail,
   scheduledScanCompleteEmail,
+  scheduledScanFailedEmail,
 } from "@/lib/email/email";
 import { APP_NAME, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 import { scanningPausedReason } from "@/lib/admin/service-state";
+import { publicScanErrorMessage } from "@/lib/api/scan-error-message";
 
 /** Rows claimed per polling tick, admin-configurable (SCHEDULE_WORKER_CLAIM_LIMIT
  *  setting). A backlog larger than this just spreads across additional ticks
@@ -469,10 +471,54 @@ export async function processSchedule(
         summary: unknown;
         duration: number;
         status: string;
-      }>(`SELECT summary, duration, status FROM scan_history WHERE id = $1`, [
-        scanHistoryId,
-      ]);
+        error_message: string | null;
+      }>(
+        `SELECT summary, duration, status, error_message FROM scan_history WHERE id = $1`,
+        [scanHistoryId],
+      );
       const row = rowRes.rows[0];
+
+      // A run that FAILED used to fall through this whole block and reschedule
+      // in silence: executeScan does not throw for an ordinary failure, it
+      // records the failure and returns, so the only branch here was the
+      // success one. A schedule against a host that went down could fail every
+      // hour for a month while its owner believed their site was being
+      // watched, which is the opposite of what a scheduled scan is for.
+      //
+      // Emailed on the FIRST failure of a run, then silent until a scan
+      // succeeds again. consecutive_failures is what makes that possible: an
+      // hourly schedule against a dead host sends one email, not twenty-four a
+      // day. The reason is the sanitised one, never the stored error text.
+      if (row?.status === "failed") {
+        const failRes = await pool.query<{ consecutive_failures: number }>(
+          `UPDATE scheduled_scans
+              SET consecutive_failures = consecutive_failures + 1
+            WHERE id = $1
+            RETURNING consecutive_failures`,
+          [schedule.id],
+        );
+        const streak = failRes.rows[0]?.consecutive_failures ?? 1;
+        if (streak === 1) {
+          const userRes = await pool.query<{ email: string }>(
+            `SELECT email FROM users WHERE id = $1`,
+            [schedule.user_id],
+          );
+          const userEmail = userRes.rows[0]?.email;
+          if (userEmail) {
+            await sendNotificationEmail({
+              userId: schedule.user_id,
+              userEmail,
+              type: "schedules",
+              emailContent: scheduledScanFailedEmail(
+                FREQUENCIES[frequency].label,
+                schedule.url,
+                publicScanErrorMessage(row.error_message),
+              ),
+            });
+          }
+        }
+      }
+
       if (row?.status === "completed") {
         const userRes = await pool.query<{ email: string }>(
           `SELECT email FROM users WHERE id = $1`,
@@ -497,6 +543,15 @@ export async function processSchedule(
             ),
           });
         }
+
+        // A run that worked clears the streak, so the next failure is a first
+        // failure again and gets its own email. Last in the branch, and
+        // conditional, so a healthy schedule does not write a row every run.
+        await pool.query(
+          `UPDATE scheduled_scans SET consecutive_failures = 0
+            WHERE id = $1 AND consecutive_failures <> 0`,
+          [schedule.id],
+        );
       }
     } catch (err) {
       console.error(

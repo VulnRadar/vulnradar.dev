@@ -85,11 +85,18 @@ const mockScheduledScanCompleteEmail = vi.fn((..._args: unknown[]) => ({
   text: "text",
   html: "<p>html</p>",
 }));
+const mockScheduledScanFailedEmail = vi.fn((..._args: unknown[]) => ({
+  subject: "Scheduled scan could not run",
+  text: "text",
+  html: "<p>html</p>",
+}));
 vi.mock("@/lib/email/email", () => ({
   scheduleDisabledEmail: (...args: [string, string]) =>
     mockScheduleDisabledEmail(...args),
   scheduledScanCompleteEmail: (...args: unknown[]) =>
     mockScheduledScanCompleteEmail(...args),
+  scheduledScanFailedEmail: (...args: unknown[]) =>
+    mockScheduledScanFailedEmail(...args),
 }));
 
 const mockGetSetting = vi.fn();
@@ -414,7 +421,7 @@ describe("processSchedule", () => {
     const insertCall = { rows: [{ id: 555 }], rowCount: 1 };
     mockPoolQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("INSERT INTO scan_history")) return insertCall;
-      if (sql.includes("SELECT summary, duration, status FROM scan_history")) {
+      if (sql.includes("SELECT summary, duration, status")) {
         return {
           rows: [
             {
@@ -456,12 +463,121 @@ describe("processSchedule", () => {
     );
   });
 
+  /**
+   * A failed run used to be silent. executeScan does not throw for an ordinary
+   * failure (target down, DNS gone, timed out): it records the failure and
+   * returns, so the only branch here was the success one, and a schedule could
+   * fail every hour for a month while its owner believed their site was being
+   * watched.
+   */
+  it("emails the owner the first time a scheduled run fails", async () => {
+    const schedule = makeSchedule({ id: 21, frequency: "daily" });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history"))
+        return { rows: [{ id: 556 }], rowCount: 1 };
+      if (sql.includes("SELECT summary, duration, status")) {
+        return {
+          rows: [
+            {
+              summary: null,
+              duration: 0,
+              status: "failed",
+              error_message: "getaddrinfo ENOTFOUND example.com",
+            },
+          ],
+        };
+      }
+      if (sql.includes("consecutive_failures = consecutive_failures + 1")) {
+        return { rows: [{ consecutive_failures: 1 }], rowCount: 1 };
+      }
+      if (sql.includes("SELECT email FROM users")) {
+        return { rows: [{ email: "owner@example.com" }] };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await processSchedule(schedule, new Date("2026-08-12T10:00:00.000Z"));
+
+    expect(mockScheduledScanFailedEmail).toHaveBeenCalledTimes(1);
+    const [label, url, reason] = mockScheduledScanFailedEmail.mock
+      .calls[0] as unknown as string[];
+    expect(label).toBe("Daily");
+    expect(url).toBe("https://example.com");
+    // Sanitised, never the raw resolver error.
+    expect(reason).not.toContain("ENOTFOUND");
+    expect(mockSendNotificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "schedules" }),
+    );
+  });
+
+  it("stays quiet on the second and later failures in a row", async () => {
+    const schedule = makeSchedule({ id: 22, frequency: "daily" });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history"))
+        return { rows: [{ id: 557 }], rowCount: 1 };
+      if (sql.includes("SELECT summary, duration, status")) {
+        return {
+          rows: [
+            {
+              summary: null,
+              duration: 0,
+              status: "failed",
+              error_message: "timed out",
+            },
+          ],
+        };
+      }
+      if (sql.includes("consecutive_failures = consecutive_failures + 1")) {
+        return { rows: [{ consecutive_failures: 7 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await processSchedule(schedule, new Date("2026-08-12T10:00:00.000Z"));
+
+    // A schedule against a host that is down must send one email, not one per
+    // run for as long as it stays down.
+    expect(mockScheduledScanFailedEmail).not.toHaveBeenCalled();
+  });
+
+  it("clears the failure streak after a run that works", async () => {
+    const schedule = makeSchedule({ id: 23, frequency: "daily" });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history"))
+        return { rows: [{ id: 558 }], rowCount: 1 };
+      if (sql.includes("SELECT summary, duration, status")) {
+        return {
+          rows: [
+            {
+              summary: JSON.stringify({ total: 0 }),
+              duration: 900,
+              status: "completed",
+              error_message: null,
+            },
+          ],
+        };
+      }
+      if (sql.includes("SELECT email FROM users")) {
+        return { rows: [{ email: "owner@example.com" }] };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await processSchedule(schedule, new Date("2026-08-12T10:00:00.000Z"));
+
+    const reset = mockPoolQuery.mock.calls.find(([sql]: [string]) =>
+      String(sql).includes("SET consecutive_failures = 0"),
+    );
+    expect(reset).toBeDefined();
+    expect(reset![1]).toEqual([23]);
+  });
+
   it("does not send the schedule-complete email when the run never reached 'completed' (e.g. watchdog timeout)", async () => {
     const schedule = makeSchedule({ id: 21 });
     const insertCall = { rows: [{ id: 556 }], rowCount: 1 };
     mockPoolQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("INSERT INTO scan_history")) return insertCall;
-      if (sql.includes("SELECT summary, duration, status FROM scan_history")) {
+      if (sql.includes("SELECT summary, duration, status")) {
         return { rows: [{ summary: null, duration: 0, status: "failed" }] };
       }
       return { rows: [], rowCount: 1 };

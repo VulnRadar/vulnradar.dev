@@ -1418,6 +1418,41 @@ export function scheduleDisabledEmail(url: string, reason: string) {
   };
 }
 
+/**
+ * A scheduled scan failed, sent once per run of failures.
+ *
+ * The worker used to email only on success, so a schedule whose target went
+ * down went quiet rather than loud: exactly backwards for a thing whose whole
+ * job is telling you when something changed while you were not looking. The
+ * reason is the sanitised one (lib/api/scan-error-message.ts), never the raw
+ * error text.
+ */
+export function scheduledScanFailedEmail(
+  frequencyLabel: string,
+  url: string,
+  reason: string,
+) {
+  const safeUrl = escapeHtml(url);
+  const safeReason = escapeHtml(reason);
+  return {
+    preheader: `${sentenceCase(reason)} We will try again on the usual schedule.`,
+    subject: `Scheduled scan could not run for ${hostOf(url)}`,
+    text: `Your ${frequencyLabel.toLowerCase()} scan of ${url} could not complete: ${reason}\n\nThe schedule is still on and will try again as usual. You will not get another email about it until a run succeeds and then fails again, so this is not going to fill your inbox.\n\nIf the site is meant to be reachable, it is worth a look: a scan that cannot run is not the same as a scan that found nothing.`,
+    html: `
+      ${emailHeading("A scheduled scan could not run")}
+      ${emailLead("The schedule is still on. This is the one email you get until a run succeeds and then fails again.")}
+      ${emailDetailPanel([
+        { label: "Target", value: safeUrl, mono: true, accent: "brand" },
+        { label: "Schedule", value: escapeHtml(frequencyLabel) },
+        { label: "What happened", value: safeReason, accent: "bad" },
+      ])}
+      ${emailParagraph(
+        "A scan that cannot run is not the same as a scan that found nothing, so if the site is meant to be reachable it is worth a look.",
+      )}
+    `,
+  };
+}
+
 // Data request emails
 export function dataRequestCreatedEmail(
   requestType: string,

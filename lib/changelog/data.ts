@@ -639,6 +639,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: CalendarClock,
+        label: "A Scheduled Scan That Fails Now Tells You",
+        desc: "Scheduled scans emailed you when they finished and said nothing at all when they could not run. A schedule whose target went offline, lost its DNS or stopped answering could fail every run for weeks in silence, while the whole point of it was watching the site for you. You now get one email the first time a run fails, saying what happened in plain language, and nothing further until a run succeeds and then fails again, so a site that stays down does not fill your inbox.",
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "A Crawl That Gets Signed Out Says So",
         desc: "When you scan a site behind a login and the site drops your session partway through a multi-page crawl, every page after that point is scanned as a signed-out visitor. The result showed a badge saying the session was lost, but still counted as a complete scan: full confidence, no warning, and nothing saying the signed-in area had not been checked. It now counts as an unfinished scan and names the signed-in view as the part that was missed, the same as a single-page scan already did.",
