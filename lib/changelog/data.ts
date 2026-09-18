@@ -615,6 +615,12 @@ const CHANGELOG: Release[] = [
         category: "improved",
       },
       {
+        icon: ShieldCheck,
+        label: "Anything That Changes Your Data Asks First",
+        desc: "About thirty controls across the app and the staff panel did what they did the moment you clicked them. They now ask first, and say what will happen: making a scan public or listing it in the public directory, signing out one session, removing a trusted device, removing your profile picture, scanning a site again, stopping a scan in progress, changing a teammate's role, cancelling an invite, applying a status to every selected finding at once, and setting a finding back to Open, which is the one that also clears its note, assignee and due date. On the staff side the same now applies to failing stuck scans, unlisting somebody's report, closing a support ticket, pausing a blocking rule, renaming a team, replacing a site-wide notice, and every quota reset. Switches that simply flip back, like pausing a webhook, still act immediately.",
+        category: "changed",
+      },
+      {
         icon: UserCog,
         label: "Your Settings Pages, Reviewed Screen by Screen",
         desc: "A pass over every tab of your account settings. Confirmations that could fail silently now stay open and say why, so a disconnect or a delete that did not work no longer looks like it did. Dates across the tabs are written the same way instead of three ways. Copy buttons announce themselves to screen readers, password and code fields point at their own error messages, and pressing Enter submits the password form from any of its three fields. Leaving the Security tab while your one-time backup codes are on screen now asks first, because leaving was the last chance to see them. Panels that failed to load announce themselves, the schedule and webhook rows stop showing raw internal names, and a progress bar that could overflow its track is capped.",

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useConfirm } from "@/components/shared/use-confirm";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { useToast } from "@/components/ui/use-toast";
 import { IssueDetail } from "@/components/scanner/issue-detail";
@@ -121,6 +122,7 @@ export default function HistoryPage() {
   const [hasOlder, setHasOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [rescanning, setRescanning] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
   // Clearing history is the one action in the product that can cost a user
@@ -1073,7 +1075,14 @@ export default function HistoryPage() {
                 <HistoryScanList
                   scans={paginatedScans}
                   onViewScan={handleViewScan}
-                  onRescan={handleRescan}
+                  onRescan={(scan) =>
+                    confirm({
+                      title: "Scan this site again?",
+                      description: `${getDomain(scan.url)} is scanned fresh, which spends one of today's scans. The result you already have is kept.`,
+                      confirmLabel: "Scan again",
+                      onConfirm: () => handleRescan(scan),
+                    })
+                  }
                   onAddTag={handleAddTag}
                   onRemoveTag={handleRemoveTag}
                   rescanningScanId={rescanning}
@@ -1097,6 +1106,8 @@ export default function HistoryPage() {
           )}
         </>
       )}
+
+      {confirmDialog}
 
       <ConfirmDialog
         open={showClearConfirm}

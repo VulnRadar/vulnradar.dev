@@ -42,6 +42,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { useAdminPermissions } from "@/components/admin/hooks";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
+import { useConfirm } from "@/components/shared/use-confirm";
 
 const focusRing =
   "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
@@ -122,6 +123,9 @@ export function TeamsList({
     id: number;
     name: string;
   } | null>(null);
+  // Aliased: this component already has its own `confirmDialog` state for
+  // the delete-team dialog.
+  const { confirm, confirmDialog: renameConfirmDialog } = useConfirm();
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
     description: string;
@@ -375,13 +379,20 @@ export function TeamsList({
                                   <Button
                                     size="sm"
                                     className="h-8 px-2"
-                                    onClick={() => {
-                                      handleTeamRename(
-                                        team.id,
-                                        editingTeam.name,
-                                      );
-                                      setEditingTeam(null);
-                                    }}
+                                    onClick={() =>
+                                      confirm({
+                                        title: "Rename this team?",
+                                        description: `"${team.name}" becomes "${editingTeam.name}" for everyone in it. They are not told it changed.`,
+                                        confirmLabel: "Rename",
+                                        onConfirm: () => {
+                                          handleTeamRename(
+                                            team.id,
+                                            editingTeam.name,
+                                          );
+                                          setEditingTeam(null);
+                                        },
+                                      })
+                                    }
                                     disabled={
                                       actionLoading === `team-rename-${team.id}`
                                     }
@@ -730,6 +741,7 @@ export function TeamsList({
           onConfirm={confirmDialog?.onConfirm || (() => {})}
           onCancel={() => setConfirmDialog(null)}
         />
+        {renameConfirmDialog}
       </div>
     </>
   );

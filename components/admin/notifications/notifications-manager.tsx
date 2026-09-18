@@ -47,6 +47,7 @@ import { cn } from "@/lib/ui/utils";
 import { formatTimestamp } from "@/components/admin/utils";
 import { toLocalDatetimeInputValue } from "@/lib/notifications/local-datetime";
 import { API } from "@/lib/config/client-constants";
+import { useConfirm } from "@/components/shared/use-confirm";
 
 interface AdminNotification {
   id: number;
@@ -215,6 +216,7 @@ export function NotificationsManager() {
   const [error, setError] = useState<string | null>(null);
   const [editingNotification, setEditingNotification] =
     useState<AdminNotification | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
   const [isCreating, setIsCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AdminNotification | null>(
@@ -1080,7 +1082,20 @@ export function NotificationsManager() {
                 draft is a benign, reversible act and must not be dressed as
                 the product's delete-this-forever colour. */}
             <Button
-              onClick={handleSave}
+              // Editing rewrites a banner that may be on screen for every
+              // signed-in account right now. Creating one does not overwrite
+              // anything, so only the edit asks.
+              onClick={() =>
+                editingNotification
+                  ? confirm({
+                      title: "Replace this notification?",
+                      description:
+                        "Everyone who can see it gets the new wording, audience and schedule straight away. The version it replaces is not kept.",
+                      confirmLabel: "Replace it",
+                      onConfirm: handleSave,
+                    })
+                  : handleSave()
+              }
               disabled={saving || !formData.title || !formData.message}
             >
               {saving && (
@@ -1132,6 +1147,7 @@ export function NotificationsManager() {
         confirmText="Delete"
         variant="destructive"
       />
+      {confirmDialog}
     </div>
   );
 }

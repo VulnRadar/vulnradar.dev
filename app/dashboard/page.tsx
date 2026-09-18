@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ROUTES } from "@/lib/config/client-constants";
+import { useConfirm } from "@/components/shared/use-confirm";
 import {
   setQueryParams,
   removeQueryParam,
@@ -148,6 +149,7 @@ function DashboardContent() {
   // loop exits for any reason, so a stale id can never be cancelled after
   // its own run already ended.
   const [runningScanId, setRunningScanId] = useState<number | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
   const [scanTags, setScanTags] = useState<ScanTag[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
@@ -884,6 +886,21 @@ function DashboardContent() {
   // either way, and the user is already back at the form to start a new
   // one; nothing about cancelling a job the UI no longer displays needs a
   // blocking error state.
+  // Cancelling throws away a scan that is part-way through and cannot be
+  // resumed: the pages already fetched are discarded and the next run starts
+  // from nothing. Worth a question, since the button sits next to a progress
+  // bar people watch.
+  function confirmCancelScan() {
+    confirm({
+      title: "Stop this scan?",
+      description:
+        "Everything it has checked so far is thrown away and no result is saved. Starting again runs the whole scan from the beginning.",
+      confirmLabel: "Stop the scan",
+      danger: true,
+      onConfirm: handleCancelScan,
+    });
+  }
+
   function handleCancelScan() {
     if (!runningScanId) return;
     cancelledRef.current = true;
@@ -1045,7 +1062,7 @@ function DashboardContent() {
             categoriesCompleted={scanProgress?.categoriesCompleted ?? 0}
             categoriesTotal={scanProgress?.categoriesTotal ?? 0}
             partialFindings={scanProgress?.partialFindings}
-            onCancel={runningScanId ? handleCancelScan : undefined}
+            onCancel={runningScanId ? confirmCancelScan : undefined}
           />
         </div>
       )}
@@ -1117,6 +1134,7 @@ function DashboardContent() {
           onViewNow={handleViewNow}
         />
       )}
+      {confirmDialog}
     </>
   );
 }
