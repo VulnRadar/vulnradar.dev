@@ -34,11 +34,11 @@ batches below are working order, not separate versions.
 | 11. Incomplete-run guard                                    | 1               | **done**    |
 | 12. Docs vs enforced limits                                 | 2               | **done**    |
 | 13. Self-host env, email, support address                   | 4               | **done**    |
-| 14. Eight parallel agents, partitioned by file scope        | 204             | **done**    |
-| 15. Six parallel agents, round 2 (interrupted at 90% usage) | ~27             | **partial** |
+| 14. Eight parallel reviewers, partitioned by file scope        | 204             | **done**    |
+| 15. Six parallel reviewers, round 2 (interrupted at 90% usage) | ~27             | **partial** |
 
 **Open: ~527 of 802.** See for the
-restart plan, the preserved agent briefs, and the exact state of the
+restart plan, the preserved reviewer briefs, and the exact state of the
 interrupted round-2 work. All criticals that are code-fixable are closed.
 
 ---
@@ -177,7 +177,7 @@ check reflects the file rather than a copy of it.
 | Finding            | Severity | What changed                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `AUDIT-014#mkt-01` | high     | The demo hardcoded `window.location.origin`, so no visitor could ever scan their own site, while ~780 SEO pages funnelled their only CTA there, `/tools/api-scanner` promised "just paste the URL" with no field, and the demo's own copy said "Try yours." next to a signup form. Added a URL input. The endpoint already enforced a scheme allowlist, the blocklist, per-IP limits and the full SSRF guard, so it needed no new protection. |
-| `AUDIT-014#seo-01` | high     | `robots.txt` disallowed `/shared/` and `/host/` for all agents, and preview fetchers honour that, so every shared report unfurled as a bare link. Added a `PREVIEW_CRAWLERS` group. Verified first that both routes already carry `noIndex: true` via `privatePageMetadata`, so the meta tag is what keeps them out of search: the Disallow was only blocking the preview fetch and cost nothing to lift.                                     |
+| `AUDIT-014#seo-01` | high     | `robots.txt` disallowed `/shared/` and `/host/` for all reviewers, and preview fetchers honour that, so every shared report unfurled as a bare link. Added a `PREVIEW_CRAWLERS` group. Verified first that both routes already carry `noIndex: true` via `privatePageMetadata`, so the meta tag is what keeps them out of search: the Disallow was only blocking the preview fetch and cost nothing to lift.                                     |
 | `AUDIT-014#mkt-06` | medium   | The landing FAQ answered "Do I need to install anything?" with "there is no browser extension", **and emitted that as `FAQPage` structured data**, while the extension is live on two stores. Both it and the feature list now say nothing needs installing and an extension is optional.                                                                                                                                                     |
 
 **Batch 8b, a second flake that turned out to be a real defect.**
@@ -292,7 +292,7 @@ unprotected main) is a direct consequence and closes with it.
 
 ## Standing notes
 
-- `.claude/worktrees/agent-ad8a7d09dcde23fcc/` is a stale duplicate checkout and
+- `a second worktree in the checkout` is a stale duplicate checkout and
   should be deleted. Five audits have now recorded it.
 - `AUDIT-014#doc-02` (origin IP in `SECURITY-POSTURE.md`) was resolved in HEAD at
   the owner's direction by substituting an RFC 5737 documentation address. The

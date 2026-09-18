@@ -4,7 +4,7 @@
   "sectionsCovered": [1, 2, 9, 17],
   "sectionsComplete": [1, 2, 9, 17],
   "sectionsPartial": [],
-  "dedupeNote": "Two defects were each found independently by two agents working different angles. logic-01 was merged into abuse-04 (unmetered scheduled scans) and logic-02 into abuse-02 (unmetered API-key crawls); the section-2 id was kept because the brief files quota enforcement under scan abuse. Those two ids are intentionally absent.",
+  "dedupeNote": "Two defects were each found independently by two reviewers working different angles. logic-01 was merged into abuse-04 (unmetered scheduled scans) and logic-02 into abuse-02 (unmetered API-key crawls); the section-2 id was kept because the brief files quota enforcement under scan abuse. Those two ids are intentionally absent.",
   "findings": [
     {
       "id": "inj-01",
@@ -1446,7 +1446,7 @@
       "line": 1,
       "description": "lib/config/constants.ts (787 lines) re-exports lib/config/config-values.ts (1,367 lines) and is imported directly by client components across the app, including ones mounted in app/layout.tsx. The compiled result is visible in the committed build: static/chunks/9711-3989d97c24edd68e.js, 18 KB and part of the /layout entry (so present on all 311 routes), contains `i.env.SMTP_HOST, i.env.SMTP_PORT, i.env.SMTP_USER, i.env.SMTP_PASS, i.env.SMTP_FROM||i.env.SMTP_USER;` and `i.env.BROWSERBASE_API_KEY&&i.env.BROWSERBASE_PROJECT_ID;` as bare expression statements alongside the team-role matrix and the API route table. No secret is disclosed: `i` is Next's client process shim and only NEXT_PUBLIC_-prefixed variables are inlined, so these evaluate to undefined -- but the code and the variable names ship, and every unused constant webpack cannot prove dead ships with them.",
       "impact": "Every page in the app carries a slice of the server configuration module and dead environment reads for SMTP credentials and the Browserbase API key. It is bytes and noise today, and it is one careless `NEXT_PUBLIC_` rename away from becoming a real disclosure, since the read sites are already compiled into a client chunk.",
-      "recommendation": "Enforce the split the project already documents in CLAUDE.md: keep lib/config/client-constants.ts as the only module client components import, move the process.env-reading blocks (EMAIL_CONFIG and the Browserbase configured check in lib/config/constants.ts) into a server-only module marked with `import \"server-only\"`, and change the client-side imports of @/lib/config/constants over to the client-safe module."
+      "recommendation": "Enforce the split the project already documents in STYLE.md: keep lib/config/client-constants.ts as the only module client components import, move the process.env-reading blocks (EMAIL_CONFIG and the Browserbase configured check in lib/config/constants.ts) into a server-only module marked with `import \"server-only\"`, and change the client-side imports of @/lib/config/constants over to the client-safe module."
     },
     {
       "id": "perf-25",

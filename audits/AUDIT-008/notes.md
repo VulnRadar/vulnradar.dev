@@ -15,7 +15,7 @@ _run `node scripts/audit/add-finding.mjs AUDIT-008 ...` to append findings._
 
 ---
 
-## content / client-side / vibe-code / information-disclosure sweep (agent a930df6b39d45efa2)
+## content / client-side / vibe-code / information-disclosure sweep (reviewer a930df6b39d45efa2)
 
 Scope: lib/scanner/checks/content.ts + checks-data/content.json (137 checks),
 client-side.ts + client-side.json (16 checks), vibe-code.ts + vibe-code.json
@@ -124,7 +124,7 @@ infodisc-01 for full detail)
 Scope: `lib/scanner/checks/{headers,cookies,configuration}.ts` +
 matching `checks-data/*.json` (126 + 24 + 18 = 168 checks reviewed).
 `lib/scanner/safety-rating.ts` was read for the exploitable/hardening/
-info tiering philosophy but not touched (owned by a parallel agent).
+info tiering philosophy but not touched (owned by a parallel reviewer).
 
 Method: rather than eyeballing 168 entries one at a time, cross-checked
 detector implementation vs. JSON title/severity/description for every

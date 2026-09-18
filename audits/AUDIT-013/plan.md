@@ -24,7 +24,7 @@ findings.
 
 ## How this run was executed
 
-Eight subagents in parallel, each with a disjoint file scope:
+Eight reviewer in parallel, each with a disjoint file scope:
 
 | Agent     | Section | Scope                                                                                                                   |
 | --------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
@@ -37,7 +37,7 @@ Eight subagents in parallel, each with a disjoint file scope:
 | `dead`    | 16      | import graph, unused exports, unreachable branches, built-but-unreachable features, TODOs                               |
 | `dup`     | 16      | already-drifted duplicate logic, duplicate UI primitives, error and success shape inventory, config surfaces            |
 
-Every agent read prior findings in its area first and was required to confirm each
+Every reviewer read prior findings in its area first and was required to confirm each
 finding at a live `file:line`. Output was machine-validated: schema keys, enum values,
 duplicate ids, severity sort, and the existence of every cited file and line. Fifteen
 headline claims were then re-verified by hand at the merge step (see assumption 8).
@@ -79,7 +79,7 @@ severity-descending. 72 distinct files cited.
 
 ## The theme of this batch
 
-Three independent agents, looking at different things, arrived at the same structural
+Three independent reviewers, looking at different things, arrived at the same structural
 conclusion: **the test suite is large, disciplined, and green, and it is not
 load-bearing where it matters most.**
 
@@ -177,15 +177,15 @@ recommendation is to replace the hand-maintained list with a check derived from
    the stronger evidence and folding in the other's distinct proof. Recorded in
    `findings.json`'s `dedupeNote` so the gap does not read as data loss.
 
-4. **A line count was corrected during the merge.** Two agents reported
+4. **A line count was corrected during the merge.** Two reviewers reported
    `_legacy-original.mjs` as 872 and 871 lines. It is 871, verified with `wc -l`. The
    merged finding says 871.
 
-5. **My own pre-flight count was wrong and the agent's is authoritative.** I told the
-   agents `instrumentation.ts` holds 72 `CREATE TABLE`; a raw grep counts 66 and the
+5. **My own pre-flight count was wrong and the reviewer's is authoritative.** I told the
+   reviewers `instrumentation.ts` holds 72 `CREATE TABLE`; a raw grep counts 66 and the
    real number of `CREATE TABLE IF NOT EXISTS` statements is 63 to 64 depending on
-   whether commented mentions are included. The schema agent derived 64 and the
-   migration agent 63 (app tables, excluding a system table). Findings use the agents'
+   whether commented mentions are included. The schema reviewer derived 64 and the
+   migration reviewer 63 (app tables, excluding a system table). Findings use the reviewers'
    derived numbers, not my grep.
 
 6. **Severity is judged by demonstrated consequence.** There is no `critical` in this
@@ -194,9 +194,9 @@ recommendation is to replace the hand-maintained list with a check derived from
    misleading.
 
 7. **Deletions are inventoried, never applied or presumed approved.** The dead-code
-   agent proposes 1,341 lines across six items, each itemized by file and line range
+   reviewer proposes 1,341 lines across six items, each itemized by file and line range
    so they can be approved or rejected individually. The product owner has previously
-   required explicit approval before deletions and that rule was passed to the agent.
+   required explicit approval before deletions and that rule was passed to the reviewer.
 
 8. **Fifteen headline claims were re-verified by hand at the merge step** rather than
    taken on trust: the unclaimed `npm view vulnradar` 404 and its `/docs/cli`
@@ -208,20 +208,20 @@ recommendation is to replace the hand-maintained list with a check derived from
    genuinely-unused AI SDK and `jsonwebtoken` (both `jsonwebtoken` hits are scanner
    detection strings, not imports).
 
-9. **Read-only was taken literally for repo files.** No agent edited anything. The
-   coverage agent ran `vitest run --coverage`, which is allowed because `coverage/` is
+9. **Read-only was taken literally for repo files.** No reviewer edited anything. The
+   coverage reviewer ran `vitest run --coverage`, which is allowed because `coverage/` is
    gitignored and the run does not dirty the tree; that produced the real numbers used
-   throughout section 10. No writing npm command was run by any agent, per the
+   throughout section 10. No writing npm command was run by any reviewer, per the
    lockfile landmine below.
 
 10. **The npm lockfile landmine was a hard rule.** `npm install`, `ci`, `update`,
     `audit fix`, `dedupe`, `prune` and every `pnpm`/`yarn` command were forbidden by
     name, because a Windows-regenerated `package-lock.json` strips the Linux native
     bindings and breaks CI and deploy in this repo. Only `npm audit`, `outdated`,
-    `ls` and `view` were permitted. No agent reported running a writing command and
+    `ls` and `view` were permitted. No reviewer reported running a writing command and
     `git status` is unchanged apart from `audits/`.
 
-11. **`.claude/worktrees/agent-ad8a7d09dcde23fcc/` was excluded from every search,**
+11. **`a second worktree in the checkout` was excluded from every search,**
     along with `node_modules/` (including `marketing/node_modules/`), `.next/`,
     `coverage/` and `graphify-out/`. The stale worktree is **still present and should
     be deleted**; this is the third audit in a row to record it.
@@ -229,12 +229,12 @@ recommendation is to replace the hand-maintained list with a check derived from
 12. **The `/checks` pages were protected from the dead-code sweep by explicit
     instruction.** The ~750 SEO pages are deliberate and were listed as
     do-not-delete, along with `marketing/`, `audits/`, and the intentional
-    `2.0.0-to-1.0.0` downgrade path, so the agent would not propose removing the SEO
-    surface. The agent independently confirmed all 754 check ids can fire.
+    `2.0.0-to-1.0.0` downgrade path, so the reviewer would not propose removing the SEO
+    surface. The reviewer independently confirmed all 754 check ids can fire.
 
 13. **One prior finding's stated mechanism was corrected, not re-filed.**
     `AUDIT-012#fe-13` said `vitest` in `dependencies` bloats the production install
-    via `--omit=dev`. The deps agent found `Dockerfile:24` never passes `--omit=dev`
+    via `--omit=dev`. The deps reviewer found `Dockerfile:24` never passes `--omit=dev`
     and `Dockerfile:77` copies the whole tree, so dev dependencies ship regardless.
     The correction lives in `deps-02`, which cites and supersedes the mechanism.
 

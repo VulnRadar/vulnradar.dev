@@ -103,7 +103,7 @@ section was audited; those sections remain fully outstanding.
 
 ### Why three sections are PARTIAL
 
-The run was structured as two waves. Wave 1 (7 agents) completed. **Wave 2
+The run was structured as two waves. Wave 1 (7 reviewers) completed. **Wave 2
 was cancelled by the owner mid-run** so they could switch models before it
 started. Wave 2 held the second half of three sections:
 
@@ -171,7 +171,7 @@ Decisions made without asking, per instruction:
    on mobile is `high`; a page that is ugly but usable is `low`.
 
 7. **"Don't change any code outside `audits/`" taken literally.** Every
-   finding describes a fix; none were applied. No subagent was permitted to
+   finding describes a fix; none were applied. No reviewer was permitted to
    edit, and none were permitted to run `git stash` or any destructive git
    command.
 
@@ -179,8 +179,8 @@ Decisions made without asking, per instruction:
    files, half a day. `large` = a rebuild of a surface or a cross-cutting
    change touching many files.
 
-9. **Section 5's yardstick was derived, then applied to CLAUDE.md itself.**
-   The extraction found that `CLAUDE.md` line 1 ("cyan/teal, ~190° hue") is
+9. **Section 5's yardstick was derived, then applied to STYLE.md itself.**
+   The extraction found that `STYLE.md` line 1 ("cyan/teal, ~190° hue") is
    wrong: every shipped surface is blue `#60a5fa` (213°). Rather than audit
    against the documented brand, I audited against the shipped one and
    filed the doc as the defect (`design-01`).
@@ -194,8 +194,8 @@ Decisions made without asking, per instruction:
     call, not an audit call.
 
 11. **A stale git worktree exists inside the repo** at
-    `.claude/worktrees/agent-ad8a7d09dcde23fcc/`, holding a second copy at
-    a different revision. Two independent agents tripped over it. Every
+    `a second worktree in the checkout`, holding a second copy at
+    a different revision. Two independent reviewers tripped over it. Every
     finding here was verified against the main tree only. **Any repo-wide
     grep during the merge/report step must exclude it** or it will
     double-count every file.

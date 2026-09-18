@@ -1,8 +1,8 @@
 # AUDIT-014 salvaged research: commercial DAST competitors (section 20)
 
 **Status: raw research, NOT findings.** Companion to `research-competitors.md` (which
-covers open-source and free-tool competitors). The section 20 agent was stopped before
-turning either into findings; both of its research subagents had already completed, so
+covers open-source and free-tool competitors). The section 20 reviewer was stopped before
+turning either into findings; both of its research reviewer had already completed, so
 this preserves the second one. Use it as the evidence base rather than repeating the
 web research.
 
@@ -104,7 +104,7 @@ around $7,000/yr, range $7K to $37K+/yr. **Flagged unverified**; acunetix.com 40
 **Proof-Based Scanning is the flagship claim: runtime verification at a claimed 99.98%
 accuracy.** The strongest zero-false-positive claim in the set.
 
-**AcuSensor IAST agent** for PHP, ASP.NET, Java and Node.js gives grey-box runtime
+**AcuSensor IAST reviewer** for PHP, ASP.NET, Java and Node.js gives grey-box runtime
 feedback from inside the source. **None of the other seven ship a comparable
 server-side sensor.**
 
@@ -113,8 +113,8 @@ HIPAA, ISO 27001, SOC 2, OWASP templates. Two-way sync with Jira, GitHub, Azure 
 ServiceNow and 30+ others. **Deployment: SaaS and enterprise on-premise.**
 
 **Distinctive 2026 development: Invicti Agentic Pentest**, announced 29-30 July 2026.
-Parallel specialized AI agents attack SQLi, RCE, XSS, SSRF, XXE, insecure
-deserialization, path traversal and NoSQLi, with an app-specific agent synthesizing
+Parallel specialized AI reviewers attack SQLi, RCE, XSS, SSRF, XXE, insecure
+deserialization, path traversal and NoSQLi, with an app-specific reviewer synthesizing
 chained attack strategies. Max $500 per pentest, 24h turnaround. Directly undercuts
 traditional PTaaS.
 
@@ -155,7 +155,7 @@ and **automatic re-authentication when the session expires mid-scan.**
 APIs: OpenAPI/Swagger, Postman, and **GraphQL as a first-class target** including
 schema fetch from an introspection endpoint. Headless-Chrome SPA crawler inherited
 from Probely. Compliance: PCI DSS, SOC 2, HIPAA, ISO 27001, GDPR, OWASP. Scanning
-agent as a Docker container or Kubernetes workload for internal targets.
+reviewer as a Docker container or Kubernetes workload for internal targets.
 
 **Only vendor spanning SAST, SCA, container, IaC, secrets, DAST and SBOM in one
 platform.** But **DAST is paywalled to Ignite and above, which is exactly the seam
@@ -222,7 +222,7 @@ API Scanning EUR 90/mo.**
 ### Deployment: VulnRadar's clearest structural advantage
 
 **Only Burp Suite DAST and Acunetix/Invicti offer real self-hosting.** Everyone else is
-SaaS with at most an internal-scanning agent. **VulnRadar being genuinely self-hostable
+SaaS with at most an internal-scanning reviewer. **VulnRadar being genuinely self-hostable
 and GPL differentiates it against six of the eight** (subject to `AUDIT-014#host-01`,
 which found the documented self-host does not currently work, so this advantage is
 claimed but not yet delivered).
@@ -231,7 +231,7 @@ claimed but not yet delivered).
 
 Every major vendor launched agentic AI pentesting this year: Invicti Agentic Pentest
 (July 2026, max $500, 24h), Intruder AI Pentesting (from $3,500/test), Astra autonomous
-agents, Snyk Evo Continuous Offensive Security. All priced 10x to 100x below
+reviewers, Snyk Evo Continuous Offensive Security. All priced 10x to 100x below
 traditional pentests and aimed at the "we need a pentest report for the SOC 2 auditor"
 buyer. Section 20 should take a position on whether VulnRadar competes here or
 deliberately does not.

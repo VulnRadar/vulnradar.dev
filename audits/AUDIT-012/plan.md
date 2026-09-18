@@ -44,7 +44,7 @@ observability problems.
 
 ## How this run was executed
 
-Nine subagents in parallel, each given a disjoint file scope so no two agents read
+Nine reviewer in parallel, each given a disjoint file scope so no two reviewers read
 the same code for the same purpose:
 
 | Agent   | Section | Scope                                                                                                                    |
@@ -59,7 +59,7 @@ the same code for the same purpose:
 | `fe`    | 9       | `"use client"` audit, bundle imports, waterfalls, images and CLS, polling, route caching                                 |
 | `obs`   | 17      | swallowed catches, fire-and-forget promises, internals leaking to users, error-shape consistency, logging and monitoring |
 
-Every agent was required to read prior findings in its area before filing, and to
+Every reviewer was required to read prior findings in its area before filing, and to
 confirm each finding at a live `file:line` in the current tree. All output was then
 machine-validated: schema keys, enum values, duplicate ids, severity sort order, and
 the existence of every cited file and line.
@@ -161,7 +161,7 @@ Decisions made without asking, per instruction:
    reference `ref: AUDIT-012#inj-01`. Ids are unique within this audit.
 
 4. **Two findings were merged, and their twins deliberately do not appear.** Two
-   agents working different angles independently found the same two defects.
+   reviewers working different angles independently found the same two defects.
    `logic-01` was merged into `abuse-04` (unmetered scheduled scans) and `logic-02`
    into `abuse-02` (unmetered API-key crawls), keeping the section-2 id because the
    brief files quota enforcement under scan abuse. The merged findings carry the
@@ -171,10 +171,10 @@ Decisions made without asking, per instruction:
 
 5. **Corroboration was kept as separate findings where the consequence differs.**
    `ssrf-01` and `perf-02` are the same root cause (`lib/scanner/safe-fetch.ts:687`
-   detaching the abort signal once headers arrive), found independently by two agents.
+   detaching the abort signal once headers arrive), found independently by two reviewers.
    They are filed separately because one is a hang and memory-exhaustion vector and
    the other is scan-path latency, and the fixes are judged against different budgets.
-   Three agents reached that line by three different routes, which is the strongest
+   Three reviewers reached that line by three different routes, which is the strongest
    evidence in this audit.
 
 6. **Severity is judged by demonstrated consequence,** not by category. Agents were
@@ -194,18 +194,18 @@ Decisions made without asking, per instruction:
 9. **Effort sizing matches AUDIT-011:** `small` = under an hour, one file.
    `medium` = a few files, half a day. `large` = a rebuild or a cross-cutting change.
 
-10. **Read-only was taken literally.** No agent edited a file, and none were permitted
+10. **Read-only was taken literally.** Nothing edited a file, and none were permitted
     to run `git stash` or any destructive git command. Every finding describes a fix;
     none were applied. Nothing outside `audits/` was changed.
 
-11. **`.claude/worktrees/agent-ad8a7d09dcde23fcc/` was excluded from every search,**
+11. **`a second worktree in the checkout` was excluded from every search,**
     along with `node_modules/` and `.next/` source. The stale worktree holds a second
     copy of the repo at a different revision and would double-count every file. This
     was AUDIT-011's assumption 11 and it still applies. **It is still present and
     should be deleted.**
 
 12. **Measurements come from static reading plus standalone reproduction, not from a
-    running app.** No agent could deploy or execute the product. The ReDoS timings in
+    running app.** No reviewer could deploy or execute the product. The ReDoS timings in
     `inj-01` were reproduced by running the exact regexes standalone under Node 22 and
     independently re-measured during the merge (20k chars 746ms, 40k 3.3s, 80k 16.2s,
     120k 35.8s: clean quadratic, times 74 detectors, and the detector count was

@@ -4,7 +4,7 @@ Derived for AUDIT-011 section 5 by reading the strongest existing work:
 `app/landing/page.tsx` + all of `components/landing/`, `public/og-image.svg`,
 the five Chrome-store PNGs in `extension/public/store/`, `app/globals.css`,
 `components/ui/`, `components/shared/response-readout.tsx`,
-`components/scanner/severity-badge.tsx`, `tailwind.config.mjs`, `CLAUDE.md`.
+`components/scanner/severity-badge.tsx`, `tailwind.config.mjs`, `STYLE.md`.
 
 This is the yardstick every other surface gets measured against. It is
 descriptive, not aspirational: it records what the strong work actually does.
@@ -58,7 +58,7 @@ of the old cyan brand.
   `globals.css:178`, `lib/config/config-values.ts:188`
   (`CONFIG_PRIMARY_COLOR = "#60a5fa"`), `lib/config/brand.ts:16-21`,
   `og-image.svg:36,58`, and the store PNGs (sampled `#60A5FA`/`#5EA5FF`).
-- **`CLAUDE.md` line 1 is stale.** It says "cyan/teal (~190° hue)". Nothing
+- **`STYLE.md` line 1 is stale.** It says "cyan/teal (~190° hue)". Nothing
   shipped is 190° except the unused `--chart-1`. **Audit against blue.**
 - **Severity is encoded only through `SEVERITY_TONE`**
   (`components/scanner/severity-badge.tsx:37-78`), never a raw Tailwind color.
@@ -332,7 +332,7 @@ information."_).
 
 ## E. LAYOUT PRINCIPLES
 
-### E1. What CLAUDE.md forbids
+### E1. What STYLE.md forbids
 
 - 6 identical icon cards for "features"
 - 3 identical cards for "how it works" with numbered circles and connecting lines
@@ -437,7 +437,7 @@ Em dashes are banned and the codebase honors it: the only `—` in `app/` +
 ### F2. Weak copy found
 
 1. **`app/docs/architecture/page.tsx:77`** — "Everything you need…", the exact
-   phrase `CLAUDE.md` bans as a section title. Survives only as mid-sentence prose.
+   phrase `STYLE.md` bans as a section title. Survives only as mid-sentence prose.
 2. **`components/ui/badge.tsx:16-19`** — variant names `info`/`success`/
    `warning`/`error` are generic framework labels sitting beside a real
    severity vocabulary. Two overlapping vocabularies for "how bad is this".
@@ -480,7 +480,7 @@ landing page has zero of the three across nine sections.
 
 ## Known drift any auditor will trip over
 
-1. **`CLAUDE.md` line 1 says cyan/teal (~190°). It is blue `#60a5fa` (213°).**
+1. **`STYLE.md` line 1 says cyan/teal (~190°). It is blue `#60a5fa` (213°).**
    Audit against blue.
 2. **Inter and JetBrains Mono are loaded but never applied.** The site ships in
    system-ui / ui-monospace.

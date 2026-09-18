@@ -1,7 +1,7 @@
 # AUDIT-014 salvaged research: competitor landscape (section 20)
 
-**Status: raw research, NOT findings.** The section 20 agent was stopped before it
-could turn this into findings. Its research subagent had already completed, so this
+**Status: raw research, NOT findings.** The section 20 reviewer was stopped before it
+could turn this into findings. Its research reviewer had already completed, so this
 file preserves that output verbatim in substance. The next session should use this as
 the evidence base for section 20 rather than repeating roughly six minutes of live
 web research.
@@ -87,7 +87,7 @@ emit and which peers treat as table stakes.
 ### Faraday (Infobyte) | VERIFIED-LIVE
 
 6,697 stars, GPL-3.0, last push 2026-08-20. OSS vulnerability management, 80+ tool
-plugins, multi-user, CI/CD integration, `faraday-cli`, remote agent dispatcher, full
+plugins, multi-user, CI/CD integration, `faraday-cli`, remote reviewer dispatcher, full
 API. The company has pivoted to services; pricing is demo-gated.
 
 ---

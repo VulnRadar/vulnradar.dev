@@ -10,7 +10,7 @@ the scanning page, and quality of life
 
 ## What this run covered
 
-Nine sections in one audit: **5, 6, 7, 13, 14, 15, 18, 19, 20.** Sixteen agents,
+Nine sections in one audit: **5, 6, 7, 13, 14, 15, 18, 19, 20.** Sixteen reviewers,
 307 findings after dedupe.
 
 Sections 5, 6 and 7 were left PARTIAL by AUDIT-011 when its second wave was cancelled
@@ -21,7 +21,7 @@ complete, and **all twenty sections of the brief are done.**
 
 ## How this run was executed
 
-**Two passes.** The first dispatched sixteen agents and was halted by the owner after
+**Two passes.** The first dispatched sixteen reviewers and was halted by the owner after
 one completed. The remaining fifteen were re-dispatched from briefs preserved verbatim
 in `agent-briefs/`, which is why the restart was exact rather than approximate.
 
@@ -139,7 +139,7 @@ is a required check, so every "must block merges" comment in `ci.yml` is false.
 
 ### Section 20's verdict
 
-The two verifications requested in the agent brief both **inverted** the salvaged
+The two verifications requested in the reviewer brief both **inverted** the salvaged
 research's conclusions, which is the clearest argument for the verify-before-filing
 rule in this audit. SARIF export already exists and is complete
 (`lib/reports/sarif-report.ts`), as does a six-framework compliance crosswalk, and
@@ -147,11 +147,11 @@ authenticated scanning already exists in three modes. Had those been taken from 
 research at face value, section 20 would have shipped two false headline gaps. Five of
 the seven gaps hypothesised in a previous session are closed in `comp-18`.
 
-The agent takes a deliberate position in `comp-17`: **do not compete on agentic
+The reviewer takes a deliberate position in `comp-17`: **do not compete on agentic
 pentesting**, because it would cost the product its own headline claim ("no model in
 the detection path", `landing-features.tsx:26`) and needs unattended exploitation
 infrastructure this codebase has structurally refused. `comp-16` records container,
-IaC, cloud, IAST and an internal scanning agent as permanent non-goals with reasons.
+IaC, cloud, IAST and an internal scanning reviewer as permanent non-goals with reasons.
 
 ---
 
@@ -163,7 +163,7 @@ IaC, cloud, IAST and an internal scanning agent as permanent non-goals with reas
    `findings` array uses the brief's exact twelve keys.
 
 3. **Eight ids are intentionally absent.** Seven defects were each found independently
-   by two agents and merged into whichever finding carried stronger evidence:
+   by two reviewers and merged into whichever finding carried stronger evidence:
    `a11y-02` and `a11y-03` into `dsn-01`, `a11y-04` into `dsn-02`, `mkt-12` into
    `dsnx-12`, `mkt-03` into `comp-01`, `qols-15` into `qolf-01`, `qols-05` into
    `qolf-28`, and `doc-18` into `ci-16`. Each survivor carries the other's distinct
@@ -175,7 +175,7 @@ IaC, cloud, IAST and an internal scanning agent as permanent non-goals with reas
    severities were untouched.
 
 5. **Independent corroboration was kept as evidence, not merged away, where the
-   consequence differs.** Two agents computed light-mode contrast with separate
+   consequence differs.** Two reviewers computed light-mode contrast with separate
    calculators and both arrived at 1.66:1 for the medium severity badge; that agreement
    is recorded inside `dsn-01` rather than discarded. `a11y-01` stays separate from
    `dsn-01` because the focus-ring defect has a different mechanism and a different fix.
@@ -191,12 +191,12 @@ IaC, cloud, IAST and an internal scanning agent as permanent non-goals with reas
    font declared with no `/Encoding`, the 29 build-tier settings, and SARIF plus
    authenticated scanning already existing.
 
-7. **One agent claim was softened at merge.** `hc-01` stated that not one of the 157
+7. **One reviewer claim was softened at merge.** `hc-01` stated that not one of the 157
    runtime-resolved keys is build-tier; `APP_URL` has one `getSetting` call site. The
    substance holds for `APP_NAME`, `LOGO_URL` and `FOOTER_TEXT`, which have none.
 
-8. **One error in my own agent brief is recorded here.** The brief told agents the
-   product has "~310 checks", taken from CLAUDE.md's illustrative
+8. **One error in my own reviewer brief is recorded here.** The brief told reviewers the
+   product has "~310 checks", taken from STYLE.md's illustrative
    `TOTAL_CHECKS_LABEL` value. The real figure is `EXACT_CHECK_COUNT = 797`
    (`lib/config/check-stats.generated.ts:6`), auto-generated into
    `CONFIG_TOTAL_CHECKS_LABEL`, so the app's own label is correct and no finding
@@ -210,14 +210,14 @@ IaC, cloud, IAST and an internal scanning agent as permanent non-goals with reas
 
 10. **Nothing could be executed.** `docker` and `psql` are absent and no build was
     permitted, so every claim is derived from reading source, config, lockfiles, the
-    committed `.next` output and git history. Where an agent used the network it was
+    committed `.next` output and git history. Where an reviewer used the network it was
     read-only and is stated in the finding. The self-host verdict in particular is a
     static trace, and says so.
 
-11. **Read-only was preserved.** No agent edited a repo file. Nothing outside
+11. **Read-only was preserved.** No reviewer edited a repo file. Nothing outside
     `audits/` was changed by this run.
 
-12. **`.claude/worktrees/agent-ad8a7d09dcde23fcc/` is still present and should be
+12. **`a second worktree in the checkout` is still present and should be
     deleted.** Fifth consecutive audit to record it.
 
 13. **`doc-02`, the origin-IP disclosure, was remediated during the run at the owner's

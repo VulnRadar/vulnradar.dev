@@ -1603,17 +1603,17 @@
     },
     {
       "id": "design-01",
-      "title": "CLAUDE.md states the brand is cyan/teal at ~190 degrees; every shipped surface is blue #60a5fa at 213 degrees",
+      "title": "STYLE.md states the brand is cyan/teal at ~190 degrees; every shipped surface is blue #60a5fa at 213 degrees",
       "section": 5,
       "type": "design",
       "severity": "low",
       "effort": "small",
       "category": "design language",
-      "file": "CLAUDE.md",
+      "file": "STYLE.md",
       "line": 1,
       "description": "app/globals.css:178, lib/config/config-values.ts:188 (CONFIG_PRIMARY_COLOR = \"#60a5fa\"), lib/config/brand.ts:16-21, public/og-image.svg:36,58 and the five store PNGs all agree on blue #60a5fa (213 94% 68%). The only 190 degree hue left in the system is --chart-1 (app/globals.css:197), which is unused. app/global-error.tsx:10 still hardcodes BRAND_TEAL = \"#0891b2\", a stale cyan matching nothing.",
-      "impact": "Every future contributor and every AI agent reading CLAUDE.md is told the wrong brand colour on line 1, which is how stale cyan keeps reappearing.",
-      "recommendation": "Correct CLAUDE.md line 1 to blue #60a5fa (213 degrees) and fix the BRAND_TEAL constant in app/global-error.tsx:10. See audits/AUDIT-011/design-language.md for the full extracted spec."
+      "impact": "Every future contributor and every contributor reading STYLE.md is told the wrong brand colour on line 1, which is how stale cyan keeps reappearing.",
+      "recommendation": "Correct STYLE.md line 1 to blue #60a5fa (213 degrees) and fix the BRAND_TEAL constant in app/global-error.tsx:10. See audits/AUDIT-011/design-language.md for the full extracted spec."
     },
     {
       "id": "design-02",

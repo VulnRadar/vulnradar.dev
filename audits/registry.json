@@ -43,7 +43,7 @@
     },
     {
       "id": "AUDIT-003",
-      "title": "Comprehensive v3 security audit — applied fixes",
+      "title": "Comprehensive v3 security audit \u2014 applied fixes",
       "scopes": [
         "auth",
         "db",
@@ -62,7 +62,7 @@
     },
     {
       "id": "AUDIT-004",
-      "title": "Deferred security items — DB migrations, CI/CD, and code hardening",
+      "title": "Deferred security items \u2014 DB migrations, CI/CD, and code hardening",
       "scopes": [
         "auth",
         "crypto",
@@ -101,7 +101,7 @@
     },
     {
       "id": "AUDIT-007",
-      "title": "Comprehensive security audit — auth, API sweep, scanner, crypto, supply chain",
+      "title": "Comprehensive security audit \u2014 auth, API sweep, scanner, crypto, supply chain",
       "scopes": [
         "auth",
         "idor",
@@ -172,7 +172,7 @@
     },
     {
       "id": "AUDIT-011",
-      "title": "Product surface audit — scanning page, UI breakage, design language, QOL, capability drift",
+      "title": "Product surface audit \u2014 scanning page, UI breakage, design language, QOL, capability drift",
       "scopes": [
         "ux",
         "mobile",
@@ -258,7 +258,6 @@
     "mergedData": "audits/merged-findings.json",
     "generated": "2026-08-29",
     "totalFindings": 843,
-    "auditsMerged": 14,
-    "url": "https://claude.ai/code/artifact/dc44f2b8-2979-48a2-a8e0-0a413cd7a606"
+    "auditsMerged": 14
   }
 }
