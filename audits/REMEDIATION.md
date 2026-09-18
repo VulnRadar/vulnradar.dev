@@ -19,21 +19,21 @@ is fine.
 Everything ships as **one release, 3.8.0**, with a single changelog entry. The
 batches below are working order, not separate versions.
 
-| Batch                                                       | Findings closed | Status      |
-| ----------------------------------------------------------- | --------------- | ----------- |
-| 1. Self-host + result honesty                               | 8               | **done**    |
-| 2. ReDoS family + CI gap                                    | 4               | **done**    |
-| 3. Quota and metering                                       | 4               | **done**    |
-| 4. Honest numbers                                           | 3               | **done**    |
-| 5. Contrast, focus, skip link                               | 4               | **done**    |
-| 6. Documentation truth                                      | 3               | **done**    |
-| 7. Marketing surface                                        | 3               | **done**    |
-| 8. Test-suite flakes (both root-caused)                     | 2               | **done**    |
-| 9. Silent failures + confirmation                           | 5               | **done**    |
-| 10. Scanning-page timer                                     | 1               | **done**    |
-| 11. Incomplete-run guard                                    | 1               | **done**    |
-| 12. Docs vs enforced limits                                 | 2               | **done**    |
-| 13. Self-host env, email, support address                   | 4               | **done**    |
+| Batch                                                          | Findings closed | Status      |
+| -------------------------------------------------------------- | --------------- | ----------- |
+| 1. Self-host + result honesty                                  | 8               | **done**    |
+| 2. ReDoS family + CI gap                                       | 4               | **done**    |
+| 3. Quota and metering                                          | 4               | **done**    |
+| 4. Honest numbers                                              | 3               | **done**    |
+| 5. Contrast, focus, skip link                                  | 4               | **done**    |
+| 6. Documentation truth                                         | 3               | **done**    |
+| 7. Marketing surface                                           | 3               | **done**    |
+| 8. Test-suite flakes (both root-caused)                        | 2               | **done**    |
+| 9. Silent failures + confirmation                              | 5               | **done**    |
+| 10. Scanning-page timer                                        | 1               | **done**    |
+| 11. Incomplete-run guard                                       | 1               | **done**    |
+| 12. Docs vs enforced limits                                    | 2               | **done**    |
+| 13. Self-host env, email, support address                      | 4               | **done**    |
 | 14. Eight parallel reviewers, partitioned by file scope        | 204             | **done**    |
 | 15. Six parallel reviewers, round 2 (interrupted at 90% usage) | ~27             | **partial** |
 
@@ -177,7 +177,7 @@ check reflects the file rather than a copy of it.
 | Finding            | Severity | What changed                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `AUDIT-014#mkt-01` | high     | The demo hardcoded `window.location.origin`, so no visitor could ever scan their own site, while ~780 SEO pages funnelled their only CTA there, `/tools/api-scanner` promised "just paste the URL" with no field, and the demo's own copy said "Try yours." next to a signup form. Added a URL input. The endpoint already enforced a scheme allowlist, the blocklist, per-IP limits and the full SSRF guard, so it needed no new protection. |
-| `AUDIT-014#seo-01` | high     | `robots.txt` disallowed `/shared/` and `/host/` for all reviewers, and preview fetchers honour that, so every shared report unfurled as a bare link. Added a `PREVIEW_CRAWLERS` group. Verified first that both routes already carry `noIndex: true` via `privatePageMetadata`, so the meta tag is what keeps them out of search: the Disallow was only blocking the preview fetch and cost nothing to lift.                                     |
+| `AUDIT-014#seo-01` | high     | `robots.txt` disallowed `/shared/` and `/host/` for all reviewers, and preview fetchers honour that, so every shared report unfurled as a bare link. Added a `PREVIEW_CRAWLERS` group. Verified first that both routes already carry `noIndex: true` via `privatePageMetadata`, so the meta tag is what keeps them out of search: the Disallow was only blocking the preview fetch and cost nothing to lift.                                  |
 | `AUDIT-014#mkt-06` | medium   | The landing FAQ answered "Do I need to install anything?" with "there is no browser extension", **and emitted that as `FAQPage` structured data**, while the extension is live on two stores. Both it and the feature list now say nothing needs installing and an extension is optional.                                                                                                                                                     |
 
 **Batch 8b, a second flake that turned out to be a real defect.**
