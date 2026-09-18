@@ -639,7 +639,7 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
-        icon: Clock,
+        icon: Timer,
         label: "A Busy Site Is No Longer Mistaken for Your Own Limit",
         desc: 'Three different refusals shared one screen, and its wording described only one of them: your plan\'s daily scans. So being told "that address has been scanned too many times in the last hour", a limit we apply to protect the site being scanned and count across everybody, came with a headline suggesting a higher plan would fix it. It would not. Each of the three now says what it actually is: your daily allowance, a busy address that clears within the hour, or your own scans already running. Only the first mentions plans.',
         category: "fixed",

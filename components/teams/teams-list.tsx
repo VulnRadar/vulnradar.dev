@@ -1,6 +1,7 @@
 "use client";
 
-import { Plus, Search, Users, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { Plus, Search, Users, ChevronRight, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -8,6 +9,7 @@ import {
   worthFiltering,
 } from "@/components/shared/list-filter-bar";
 import { plural, pluralize } from "@/lib/ui/plural";
+import { ROUTES } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { RolePill } from "./role-pill";
 import { TeamAvatar } from "./team-avatar";
@@ -50,6 +52,12 @@ export function TeamsList({
   // -1 is the plan catalog's "unlimited" sentinel and null means billing is
   // off, so neither is a number worth printing at someone.
   const showsQuota = teamLimit !== null && teamLimit >= 0;
+  // teamLimit 0 means this plan has no teams at all. The page used to invite
+  // the visitor to name one and pick who to invite, drop the invite field
+  // silently (team-create-dialog hides it when there are no seats), and then
+  // answer the submit with "Teams are not available on your plan" as a plain
+  // line of text with nothing to click. Say it first, and point somewhere.
+  const planHasNoTeams = teamLimit === 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -64,10 +72,19 @@ export function TeamsList({
             also start scans or invite people.
           </p>
         </div>
-        <Button className="shrink-0 gap-1.5" onClick={onShowCreate}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          New team
-        </Button>
+        {planHasNoTeams ? (
+          <Button asChild className="shrink-0 gap-1.5">
+            <Link href={ROUTES.PRICING}>
+              <Crown className="h-4 w-4" aria-hidden="true" />
+              See plans with teams
+            </Link>
+          </Button>
+        ) : (
+          <Button className="shrink-0 gap-1.5" onClick={onShowCreate}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            New team
+          </Button>
+        )}
       </div>
 
       {invitations}
@@ -97,13 +114,26 @@ export function TeamsList({
       {filtered.length === 0 && !searchQuery ? (
         <EmptyState
           icon={Users}
-          title="No teams yet"
-          description="Create one to put your scans somewhere your colleagues can read them. You name it, invite people by email, and pick what each of them is allowed to do."
+          title={planHasNoTeams ? "Teams are not on your plan" : "No teams yet"}
+          description={
+            planHasNoTeams
+              ? "A team shares its scans: everyone in it can open every report run under it, and you decide who can start scans or invite people. Your current plan does not include one. Scans you run stay yours either way, and nothing here is lost by waiting."
+              : "Create one to put your scans somewhere your colleagues can read them. You name it, invite people by email, and pick what each of them is allowed to do."
+          }
           action={
-            <Button size="sm" onClick={onShowCreate} className="gap-1.5">
-              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-              Create your first team
-            </Button>
+            planHasNoTeams ? (
+              <Button asChild size="sm" className="gap-1.5">
+                <Link href={ROUTES.PRICING}>
+                  <Crown className="h-3.5 w-3.5" aria-hidden="true" />
+                  See which plans include teams
+                </Link>
+              </Button>
+            ) : (
+              <Button size="sm" onClick={onShowCreate} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                Create your first team
+              </Button>
+            )
           }
         />
       ) : filtered.length === 0 ? (
