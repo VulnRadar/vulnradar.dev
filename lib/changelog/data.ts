@@ -654,7 +654,7 @@ const CHANGELOG: Release[] = [
       {
         icon: FileSearch,
         label: "Pages From a Site Scan Show Their Full Result",
-        desc: "Scanning a whole site also saves each page as its own entry in your history, and those entries were saved with only their findings and how long they took. Opening one showed the duration and when it ran, and none of the risk score, site grade, certificate grade, confidence or number of checks that every other result shows. Each page is now saved with its own full set, worked out from that page's findings.",
+        desc: "Scanning a whole site also saves each page as its own entry in your history, and those entries were saved with only their findings and how long they took. Opening one showed the duration and when it ran, and none of the risk score, site grade, certificate grade, confidence or number of checks that every other result shows. Each page is now saved with its own full set, worked out from that page's findings, and the whole-site result now shows how many checks ran, which it never did.",
         category: "fixed",
       },
       {

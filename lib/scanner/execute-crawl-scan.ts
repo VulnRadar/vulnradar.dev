@@ -971,6 +971,11 @@ export async function executeCrawlScan(
           }
         : undefined;
 
+    const crawlChecksRun = Math.max(
+      0,
+      ...pageResults.map((pr) => pr.checksRun ?? 0),
+    );
+
     const applied = await finalizeScanSuccess(scanId, {
       summary: mergedSummary,
       findings: allFindings,
@@ -980,6 +985,11 @@ export async function executeCrawlScan(
       // Non-secret boolean fact only; the session and credentials never persist.
       ...(authenticated ? { authenticated: true } : {}),
       resultMeta: {
+        // How many distinct checks ran, which is what the figure means on a
+        // single scan: the most any page ran, not the sum. A sum would say a
+        // ten-page crawl ran ten times the catalogue. It was missing entirely,
+        // so a crawl's summary was the only one without it.
+        ...(crawlChecksRun > 0 ? { checksRun: crawlChecksRun } : {}),
         // Same summary stats the single-URL path stores (execute-scan.ts), so a
         // crawl result shows Risk score + Engine confidence like any other scan
         // instead of leaving those stats silently blank. Computed from the

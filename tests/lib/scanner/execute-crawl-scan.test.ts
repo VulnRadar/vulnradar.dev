@@ -577,6 +577,30 @@ describe("executeCrawlScan (authenticated)", () => {
     expect(resultMeta.engineConfidence).toBeLessThan(100);
   });
 
+  it("records how many distinct checks ran, not the sum across pages", async () => {
+    const pageRun = (checksRun: number) => ({
+      findings: [],
+      checksRun,
+      checksSkipped: 0,
+      deduped: 0,
+    });
+    mockRunSyncChecks
+      .mockReturnValueOnce(pageRun(740))
+      .mockReturnValueOnce(pageRun(746));
+
+    await executeCrawlScan(baseParams({ scanId: 25 }));
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 25,
+    );
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    expect(resultMeta.checksRun).toBe(746);
+  });
+
   it("does not report an incomplete area for a session that held", async () => {
     await executeCrawlScan(
       baseParams({ scanId: 24, session: fakeSession(), authenticated: true }),
