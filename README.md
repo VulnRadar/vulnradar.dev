@@ -4,7 +4,7 @@
 
 # VulnRadar
 
-Open-source web vulnerability scanner. Paste a URL and get 860+ deterministic
+Open-source web vulnerability scanner. Paste a URL and get 855+ deterministic
 checks back, each with the response evidence behind it, a finding ID that does
 not change between runs, and the config line that fixes it. No agent to
 install. GPL-3.0 and self-hostable.

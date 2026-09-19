@@ -2877,38 +2877,6 @@
     "owasp": "A08:2021"
   },
   {
-    "id": "frame-busting-header-only",
-    "type": "header-missing",
-    "title": "Frame-busting relies on header only without JS fallback",
-    "category": "headers",
-    "severity": "low",
-    "description": "Clickjacking protection is provided by HTTP header only, without a JavaScript frame-busting script for older browsers.",
-    "evidence": "Frame protection limited to HTTP header without JS fallback at {{url}}.",
-    "riskImpact": "Older browsers that do not support X-Frame-Options may be tricked into framing the page. While modern browsers all support X-Frame-Options, the JS fallback provides defense in depth for legacy clients.",
-    "explanation": "Combine HTTP header protection with a JavaScript frame-busting snippet for legacy browser coverage.",
-    "fixSteps": [
-      "Keep X-Frame-Options header",
-      "Add a JS frame-buster for legacy browsers",
-      "Consider CSP frame-ancestors which supersedes X-Frame-Options in modern browsers"
-    ],
-    "codeExamples": [
-      {
-        "label": "JS frame buster",
-        "language": "javascript",
-        "code": "// Add to <head> of your page:\nif (window.self !== window.top) {\n  window.top.location = window.self.location;\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options",
-      "https://cwe.mitre.org/data/definitions/1021.html",
-      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
-    ],
-    "_idx": 383,
-    "cwe": "CWE-1021",
-    "owasp": "A05:2021"
-  },
-  {
     "id": "cors-methods-too-permissive",
     "type": "header-missing",
     "title": "CORS allows overly broad HTTP methods",

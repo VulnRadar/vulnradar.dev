@@ -727,13 +727,10 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Clickjacking / framing coverage ─────────────────────────────────────
 
-  "frame-busting-header-only": (_url, headers) => {
-    const xfo = h(headers, "x-frame-options");
-    if (!xfo) return null;
-    const csp = h(headers, "content-security-policy");
-    if (csp && /frame-ancestors/i.test(csp)) return null;
-    return "X-Frame-Options is set but CSP frame-ancestors directive is missing.";
-  },
+  // "frame-busting-header-only" removed: it fired when X-Frame-Options
+  // protected the page, which csp-frame-ancestors-missing below rightly treats
+  // as sufficient, and its fix was a JavaScript frame-buster, which a
+  // sandboxed iframe disables.
 
   "x-frame-options-invalid": (_url, headers) => {
     const xfo = h(headers, "x-frame-options");

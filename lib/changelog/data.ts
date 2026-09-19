@@ -672,6 +672,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Filter,
+        label: "Two Checks Stop Asking for Things You Cannot Do",
+        desc: "A clickjacking check reported pages that X-Frame-Options already protected, and its fix was a JavaScript frame-buster, which a sandboxed frame switches off. It has been removed. The mail DANE check told domains whose mail Google or Microsoft hosts to publish a record inside Google's or Microsoft's DNS. It now looks only at mail servers inside your own domain, which are the ones you can publish a record for.",
+        category: "engine",
+      },
+      {
         icon: Layers,
         label: "A Crawl Reports Each Problem Once",
         desc: "Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.",
@@ -878,7 +884,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Trash2,
         label: "Checks That Could Never Report Anything Are Gone",
-        desc: "Fifty checks had already been switched off in earlier releases for good reasons: duplicates, tests for things browsers no longer use, or a key meant to be public. Three more were listed but never built. All still counted toward our advertised total number of checks and had their own page in our checks catalogue, despite reporting nothing. They are now removed, and the advertised total stops counting them: with the new checks added elsewhere in this release, it stands at 860+, the number a scan actually runs. A further 111 pieces of detection code that could never run at all were also deleted, and this is now tested automatically so it cannot happen again.",
+        desc: "Fifty checks had already been switched off in earlier releases for good reasons: duplicates, tests for things browsers no longer use, or a key meant to be public. Three more were listed but never built. All still counted toward our advertised total number of checks and had their own page in our checks catalogue, despite reporting nothing. They are now removed, and the advertised total stops counting them: with the new checks added elsewhere in this release, it stands at 855+, the number a scan actually runs. A further 111 pieces of detection code that could never run at all were also deleted, and this is now tested automatically so it cannot happen again.",
         category: "removed",
       },
       {

@@ -2855,6 +2855,36 @@ describe("checkTLSARecord", () => {
     ).toEqual([]);
   });
 
+  // circlebot.xyz: mail hosted by Google. The TLSA record would live in
+  // google.com's zone, which the domain's owner cannot publish into.
+  it("reports nothing when every mail exchanger is someone else's", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "aspmx.l.google.com", priority: 1 },
+      { exchange: "alt1.aspmx.l.google.com", priority: 5 },
+    ]);
+    stubDohByType({ DNSKEY: true, TLSA: false });
+    expect(
+      await checkTLSARecord("hosted-mail.test", "https://hosted-mail.test"),
+    ).toEqual([]);
+  });
+
+  it("judges only the mail exchangers inside the domain's own zone", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "aspmx.l.google.com", priority: 1 },
+      { exchange: "mx.split-mail.test", priority: 10 },
+    ]);
+    stubDohByType({ DNSKEY: true, TLSA: false });
+
+    const findings = await checkTLSARecord(
+      "split-mail.test",
+      "https://split-mail.test",
+    );
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence).toContain("_25._tcp.mx.split-mail.test");
+    expect(findings[0].evidence).not.toContain("google.com");
+  });
+
   it("reports nothing when the domain accepts no mail", async () => {
     dnsMock.resolveMx.mockResolvedValue([]);
     stubDohByType({ DNSKEY: true, TLSA: false });

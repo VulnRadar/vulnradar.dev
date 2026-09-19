@@ -2190,6 +2190,13 @@ export async function checkDSRecord(
  * DNSSEC cannot publish a TLSA record anyone can trust, and telling it to
  * publish one is advice with a prerequisite it does not have; checkDNSSEC
  * already reports that prerequisite on its own.
+ *
+ * Only mail exchangers inside the domain's own zone are judged. A TLSA record
+ * lives under the MX host's name, so for mail hosted by Google or Microsoft it
+ * belongs in google.com's or outlook.com's zone, and "publish a TLSA record
+ * under aspmx.l.google.com" is not something the domain's owner can do.
+ * Whether a hosted provider offers DANE is the provider's decision. A domain
+ * whose mail is entirely hosted elsewhere gets nothing from this check.
  */
 export async function checkTLSARecord(
   domain: string,
@@ -2207,6 +2214,11 @@ export async function checkTLSARecord(
       // RFC 7505 null MX ("."): the domain has declared it accepts no mail.
       .map((r) => r.exchange.replace(/[.]$/, "").trim())
       .filter((e) => e.length > 0)
+      .filter(
+        (e) =>
+          extractRootDomain(e.toLowerCase()) ===
+          extractRootDomain(domain.toLowerCase()),
+      )
       // Bound the work: a domain with a dozen MX hosts does not need a dozen
       // more DoH round trips to answer a question about all of them.
       .slice(0, 4);

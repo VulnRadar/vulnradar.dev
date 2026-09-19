@@ -485,7 +485,7 @@ remediation documentation in the docs.
 - [medium  ] `email-mta-sts-mx-mismatch` [network-probe] - MTA-STS policy does not cover every published MX host
 - [info    ] `email-bimi-without-vmc` [network-probe] - BIMI record publishes a logo with no verified mark certificate
 
-### headers (118)
+### headers (117)
 - [high    ] `hsts-missing` [combined] - Missing HTTP Strict Transport Security (HSTS)
 - [high    ] `csp-missing` [header-missing] - Missing Content Security Policy (CSP)
 - [medium  ] `clickjack-missing` [combined] - Missing Clickjacking Protection
@@ -578,7 +578,6 @@ remediation documentation in the docs.
 - [high    ] `form-action-http` [header-missing] - Form submits data over unencrypted HTTP
 - [low     ] `sri-missing` [header-missing] - External script loaded without Subresource Integrity
 - [low     ] `sri-stylesheet-missing` [header-missing] - External stylesheet without SRI
-- [low     ] `frame-busting-header-only` [header-missing] - Frame-busting relies on header only without JS fallback
 - [medium  ] `cors-methods-too-permissive` [header-missing] - CORS allows overly broad HTTP methods
 - [low     ] `referrer-policy-no-referrer-strict-origin-when-cross-origin` [header-missing] - Referrer-Policy not set to strict-origin-when-cross-origin
 - [medium  ] `strict-transport-security-include-subdomains` [header-missing] - HSTS header missing includeSubDomains directive
@@ -860,19 +859,19 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **805**
+- Total checks: **804**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
   - medium: 223
   - high: 198
-  - low: 184
+  - low: 183
   - critical: 100
   - info: 100
 - By type:
   - body-pattern: 462
   - header: 155
   - combined: 60
-  - header-missing: 42
+  - header-missing: 41
   - network-probe: 40
   - url-check: 19
   - header-value: 18

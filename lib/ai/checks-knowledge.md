@@ -18,19 +18,19 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 805
+- **Total checks:** 804
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
   - medium: 223
   - high: 198
-  - low: 184
+  - low: 183
   - critical: 100
   - info: 100
 - **By type:**
   - body-pattern: 462
   - header: 155
   - combined: 60
-  - header-missing: 42
+  - header-missing: 41
   - network-probe: 40
   - url-check: 19
   - header-value: 18
@@ -12976,7 +12976,7 @@ dig +short TXT _dmarc.example.com
 
 ---
 
-## Category: headers (118 checks)
+## Category: headers (117 checks)
 
 ### `hsts-missing` [headers / high / combined]
 **Missing HTTP Strict Transport Security (HSTS)**
@@ -15654,33 +15654,6 @@ A CSS stylesheet loaded from a third-party CDN does not have a Subresource Integ
   integrity="sha384-COMPUTED_HASH"
   crossorigin="anonymous"
 />
-```
-
-### `frame-busting-header-only` [headers / low / header-missing]
-**Frame-busting relies on header only without JS fallback**
-
-Clickjacking protection is provided by HTTP header only, without a JavaScript frame-busting script for older browsers.
-
-**Risk:** Older browsers that do not support X-Frame-Options may be tricked into framing the page. While modern browsers all support X-Frame-Options, the JS fallback provides defense in depth for legacy clients.
-
-**Why it matters:** Combine HTTP header protection with a JavaScript frame-busting snippet for legacy browser coverage.
-
-**References:**
-- https://owasp.org/www-project-secure-headers/
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
-- https://cwe.mitre.org/data/definitions/1021.html
-- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
-
-**Fix:**
-- Keep X-Frame-Options header
-- Add a JS frame-buster for legacy browsers
-- Consider CSP frame-ancestors which supersedes X-Frame-Options in modern browsers
-- **JS frame buster** (javascript):
-```javascript
-// Add to <head> of your page:
-if (window.self !== window.top) {
-  window.top.location = window.self.location;
-}
 ```
 
 ### `cors-methods-too-permissive` [headers / medium / header-missing]
