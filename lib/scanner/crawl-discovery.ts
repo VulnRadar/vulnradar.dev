@@ -23,6 +23,7 @@ import { safeFetch } from "./safe-fetch";
 import { safeReadBody } from "./read-bounded-body";
 import { APP_NAME } from "@/lib/config/constants";
 import type { ScanSessionBinding } from "./auth/types";
+import { canonicalPageUrl } from "./page-url";
 
 /**
  * The User-Agent this crawler sends. It is also the token a site's robots.txt
@@ -111,9 +112,9 @@ function isSameOriginPageUrl(resolved: URL, entryHostname: string): boolean {
   return true;
 }
 
-/** Drop the hash, keep origin + path + query. */
+/** Drop the hash and a trailing slash, keep origin + path + query. */
 function normalizePageUrl(u: URL): string {
-  return u.origin + u.pathname + u.search;
+  return canonicalPageUrl(u);
 }
 
 /**

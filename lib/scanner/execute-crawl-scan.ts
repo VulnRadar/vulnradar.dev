@@ -37,6 +37,8 @@ import {
   ScanCancelledError,
   getCancelSignal,
   clearCancel,
+  isCancelled,
+  requestSignal,
 } from "./scan-jobs";
 import pool from "@/lib/database/db";
 import {
@@ -53,6 +55,7 @@ import { safeFetch } from "./safe-fetch";
 import { safeReadBody } from "./read-bounded-body";
 import { discoverPages } from "./crawl-discovery";
 import { BOT_CHALLENGE_INCOMPLETE, detectBotChallenge } from "./bot-challenge";
+import { canonicalPageUrl } from "./page-url";
 import type { ScanSessionBinding, ScanAuthReport } from "./auth/types";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
@@ -161,7 +164,7 @@ async function scanSingleUrl(
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
         redirect: "follow",
-        signal: AbortSignal.timeout(fetchTimeoutMs),
+        signal: requestSignal(fetchTimeoutMs, cancelSignal),
       },
       [urlObj.hostname],
       session,
@@ -399,6 +402,7 @@ async function isBehindBotChallenge(
   url: string,
   fetchTimeoutMs: number,
   session?: ScanSessionBinding,
+  cancelSignal?: AbortSignal,
 ): Promise<boolean> {
   try {
     const response = await safeFetch(
@@ -407,7 +411,7 @@ async function isBehindBotChallenge(
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
         redirect: "follow",
-        signal: AbortSignal.timeout(fetchTimeoutMs),
+        signal: requestSignal(fetchTimeoutMs, cancelSignal),
       },
       [new URL(url).hostname],
       session,
@@ -530,13 +534,22 @@ export async function executeCrawlScan(
     let pages: string[];
     if (selectedUrls && selectedUrls.length > 0) {
       const checkedUrls: string[] = [];
+      // One page per address, not one per spelling of it: /landing and
+      // /landing/ are the same page, and scanning both charged the quota
+      // twice and listed the page twice in the result.
+      const seenPages = new Set<string>();
       for (const u of selectedUrls.slice(0, maxPages)) {
         try {
           const parsed = new URL(u);
           // Restrict to same origin as the main URL to prevent cross-origin abuse
           if (parsed.origin !== mainOrigin) continue;
+          const canonical = canonicalPageUrl(parsed);
+          if (seenPages.has(canonical)) continue;
           const ac = await checkAccessRules(u);
-          if (ac.allowed) checkedUrls.push(u);
+          if (ac.allowed) {
+            seenPages.add(canonical);
+            checkedUrls.push(canonical);
+          }
         } catch {
           // skip malformed URLs
         }
@@ -595,6 +608,7 @@ export async function executeCrawlScan(
       normalizedMainUrl,
       fetchTimeoutMs,
       session,
+      cancelSignal,
     );
     const hostScope = hostChallenged ? "network" : "host";
     const plannedHostBranches = getPlannedAsyncBranches(
@@ -643,6 +657,10 @@ export async function executeCrawlScan(
 
     const scanPagesFromQueue = async (): Promise<void> => {
       while (!quotaExhausted) {
+        // Asked here rather than left to the next progress event: a page is
+        // the crawl's unit of work against someone else's server, and a
+        // cancelled crawl must not start another one.
+        if (isCancelled(scanId)) throw new ScanCancelledError();
         const index = nextPageIndex++;
         if (index >= pagesToScan.length) return;
         // Charge the daily quota before each scan, for every auth method.

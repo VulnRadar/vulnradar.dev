@@ -35,6 +35,7 @@ import {
   ScanCancelledError,
   getCancelSignal,
   clearCancel,
+  requestSignal,
 } from "./scan-jobs";
 import type { Category, Vulnerability } from "./types";
 import {
@@ -465,7 +466,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
               "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
             },
             redirect: "follow",
-            signal: AbortSignal.timeout(fetchTimeoutMs),
+            signal: requestSignal(fetchTimeoutMs, cancelSignal),
           });
           responseBody = await safeReadBody(response, MAX_BODY_SIZE);
 

@@ -59,7 +59,7 @@ export const GET = withErrorHandling(async () => {
       // summary '{}', findings_count 0, duration 0, so without this a scan
       // still in flight (or a cancelled/watchdog-killed one) rendered
       // identically to a genuinely clean result: "0 findings, 0.0s".
-      `SELECT public_id AS id, url, summary, findings_count, duration, scanned_at, source, status
+      `SELECT public_id AS id, url, summary, findings_count, duration, scanned_at, source, status, error_message
        FROM scan_history WHERE user_id = $1
        ORDER BY scanned_at DESC LIMIT $2`,
       [userId, widgetLimit],

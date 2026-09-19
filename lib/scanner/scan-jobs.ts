@@ -48,12 +48,42 @@ const cancelledScans = new Set<number>();
  */
 const cancelControllers = new Map<number, AbortController>();
 
+/**
+ * How long a cancellation flag lives when nothing clears it.
+ *
+ * The running job clears its own flag when it stops. This covers the case
+ * where there is no job to stop: the row was cancelled after a restart, or
+ * the job died without running its cleanup. Comfortably past the longest
+ * watchdog (900s for a crawl), so it can never forget a scan that is still
+ * going.
+ */
+const CANCEL_FLAG_TTL_MS = 20 * 60 * 1000;
+
 /** Flag a scan for cancellation. Checked the next time it reports progress,
  *  and immediately aborts any in-flight work holding this scan's signal
  *  (see `getCancelSignal`). */
 export function requestCancel(scanId: number): void {
   cancelledScans.add(scanId);
   cancelControllers.get(scanId)?.abort();
+  const forget = setTimeout(() => {
+    cancelledScans.delete(scanId);
+    cancelControllers.delete(scanId);
+  }, CANCEL_FLAG_TTL_MS);
+  forget.unref?.();
+}
+
+/**
+ * A per-request timeout that also aborts the moment the scan is cancelled.
+ *
+ * Every scan fetch passed only its own timeout, so cancelling a scan left its
+ * in-flight request to the target running to completion.
+ */
+export function requestSignal(
+  timeoutMs: number,
+  cancelSignal?: AbortSignal,
+): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return cancelSignal ? AbortSignal.any([timeout, cancelSignal]) : timeout;
 }
 
 export function isCancelled(scanId: number): boolean {
@@ -499,7 +529,15 @@ export async function finalizeScanFailure(
      RETURNING id`,
     [reason.slice(0, MAX_ERROR_MESSAGE_LENGTH), scanId],
   );
-  clearCancel(scanId);
+  // Deliberately does NOT clearCancel. This write is how a cancel and the
+  // watchdog record themselves, and both call requestCancel first so the job
+  // stops on its own. Clearing here forgot that flag microseconds after it was
+  // set: isCancelled() went back to false, the job's next progress event did
+  // not throw, and the work ran to completion with only its result blocked by
+  // the status guard above. A crawl cancelled five seconds in kept fetching
+  // for another thirty and saved 250 page rows. The running job clears its own
+  // flag when it stops (see executeScan / executeCrawlScan), and
+  // CANCEL_FLAG_TTL_MS covers a cancel with no job left to stop.
   return (result.rowCount ?? 0) > 0;
 }
 

@@ -16,6 +16,8 @@ import {
 import { cn } from "@/lib/ui/utils";
 import { pluralize } from "@/lib/ui/plural";
 import { formatRelativeTime } from "@/lib/ui/relative-time";
+import { scanRowState } from "@/components/history/history-types";
+import { parseUrl } from "@/lib/ui/parse-url";
 import { API, ROUTES } from "@/lib/config/client-constants";
 import {
   SEVERITY_ORDER,
@@ -62,6 +64,8 @@ interface DashboardData {
     duration: number;
     scanned_at: string;
     source?: string;
+    status?: string;
+    error_message?: string | null;
   }[];
   severityBreakdown: {
     critical: number;
@@ -437,6 +441,9 @@ export function Dashboard() {
               {recentScans.slice(0, WIDGET_ROWS).map((scan) => {
                 const worst = worstSeverity(scan.summary);
                 const tone = worst ? SEVERITY_TONE[worst] : null;
+                // Not findings_count alone: a cancelled or still-running scan
+                // has none either, and used to read "Clean" here.
+                const rowState = scanRowState(scan);
                 return (
                   <li key={scan.id} className="flex-1">
                     <a
@@ -452,16 +459,29 @@ export function Dashboard() {
                       />
                       <span className="min-w-0 flex-1 leading-tight">
                         <span className="block truncate font-mono text-sm text-foreground group-hover:text-primary">
-                          {getHostname(scan.url)}
+                          {parseUrl(scan.url).full}
                         </span>
                         <span className="mt-0.5 block text-xs text-muted-foreground">
                           {formatRelativeTime(scan.scanned_at)}
                           {scan.source === "api" && " via API"}
                         </span>
                       </span>
-                      {scan.findings_count === 0 ? (
-                        <span className="shrink-0 text-xs font-medium text-[hsl(var(--success))]">
-                          Clean
+                      {rowState !== "findings" ? (
+                        <span
+                          className={cn(
+                            "shrink-0 text-xs font-medium",
+                            rowState === "clean"
+                              ? "text-[hsl(var(--success))]"
+                              : "text-[hsl(var(--warning))]",
+                          )}
+                        >
+                          {rowState === "clean"
+                            ? "Clean"
+                            : rowState === "cancelled"
+                              ? "Cancelled"
+                              : rowState === "running"
+                                ? "Running"
+                                : "Did not finish"}
                         </span>
                       ) : (
                         <span

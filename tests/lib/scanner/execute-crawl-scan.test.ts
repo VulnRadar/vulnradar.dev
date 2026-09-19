@@ -337,6 +337,39 @@ describe("executeCrawlScan", () => {
   // robots/security.txt, the 23 exposed-file probes) used to run on every
   // single page, so a 25-page crawl re-asked the same host-level questions 25
   // times and threw away 24 identical copies of the answer.
+  it("stops taking pages the moment the crawl is cancelled", async () => {
+    // Cancelling used to stop only the record: finalizeScanFailure cleared
+    // the flag the running job reads, so a crawl cancelled five seconds in
+    // kept fetching for another thirty and saved every page it had been
+    // given. Three workers may already be in flight when the cancel lands;
+    // what must not happen is the queue handing out the rest.
+    const { requestCancel, clearCancel } =
+      await import("@/lib/scanner/scan-jobs");
+    mockRunSyncChecks.mockImplementationOnce(() => {
+      requestCancel(41);
+      return { findings: [], checksRun: 1, checksSkipped: 0, deduped: 0 };
+    });
+
+    await executeCrawlScan(
+      baseParams({
+        scanId: 41,
+        selectedUrls: Array.from(
+          { length: 9 },
+          (_unused, i) => `https://example.com/p${i}`,
+        ),
+      }),
+    );
+
+    expect(mockRunSyncChecks.mock.calls.length).toBeLessThanOrEqual(3);
+    const failed = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'failed'") &&
+        (params as unknown[])[1] === 41,
+    );
+    expect(failed?.[1]).toContain("Cancelled");
+    clearCancel(41);
+  });
+
   it("runs the host-level branches once for the whole crawl, not once per page", async () => {
     await executeCrawlScan(
       baseParams({

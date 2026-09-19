@@ -68,7 +68,9 @@ export function HistoryScanRow({
   const state = scanRowState(scan);
   const isClean = state === "clean";
   const isRunning = state === "running";
-  const isUnfinished = state === "unfinished";
+  const isCancelled = state === "cancelled";
+  const isUnfinished = state === "unfinished" || isCancelled;
+  const unfinishedLabel = isCancelled ? "Cancelled" : "Did not finish";
   // Both non-result states borrow ScanSummary's partial-verdict hue rather
   // than inventing a third palette: an incomplete scan is a warning, not a
   // severity.
@@ -216,7 +218,7 @@ export function HistoryScanRow({
             ) : (
               <Loader2 className="h-3 w-3 animate-spin" />
             )}
-            {isUnfinished ? "Did not finish" : "Running"}
+            {isUnfinished ? unfinishedLabel : "Running"}
           </span>
         ) : isClean ? (
           <span className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--success))]">
@@ -345,7 +347,7 @@ export function HistoryScanRow({
             ) : (
               <Loader2 className="h-3 w-3 animate-spin" />
             )}
-            {isUnfinished ? "Did not finish" : "Running"}
+            {isUnfinished ? unfinishedLabel : "Running"}
           </span>
         ) : isClean ? (
           <span className="flex items-center gap-1 text-[hsl(var(--success))]">

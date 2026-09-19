@@ -182,6 +182,12 @@ The largest release since 3.0, and a pass over the whole product rather than one
   A scan runs on our servers and never needed your page open, but the dashboard stopped following it after about twelve seconds without a connection, and a reload left it empty while the scan finished out of sight. It now waits for your connection to come back and carries on from where the scan has got to, and reloading or coming back to the dashboard picks a running scan back up, or shows its result if it finished while you were away.
 - [CalendarClock] **[ADDED]** **Scan Again or Schedule It From Any Result**
   Checking that a fix worked meant going back to the dashboard, pasting the URL and choosing the options again, and setting up a recurring scan of the same site meant finding a settings tab nothing pointed at. Every result's actions menu now has Scan this site again, which asks first because it spends one of today's scans, and Scan this site on a schedule, which opens the schedule form with the URL already filled in.
+- [CircleSlash] **[FIXED]** **Cancelling a Scan Actually Stops It**
+  Cancelling marked the scan stopped and left it running. The work carried on against the site, sometimes for another half a minute, and only the result was thrown away: a cancelled crawl kept fetching pages and saved every one of them. The flag that tells the scan to stop was being cleared by the very write that recorded the cancellation. A cancelled scan now stops taking new pages at once, and the request it already had in flight is cut off with it. The same applies when a scan is stopped for running too long.
+- [ShieldAlert] **[FIXED]** **A Stopped Scan No Longer Reads as Clean**
+  A scan you cancelled has no findings, and the recent-scans list on the dashboard read that as a clean result, in green. It now says what happened: Cancelled, or Did not finish, or Running. History says Cancelled too, rather than lumping a scan you stopped in with one that broke.
+- [Link2] **[ENGINE]** **A Trailing Slash Is Not a Different Page**
+  example.com/landing and example.com/landing/ are the same page, and the scanner treated them as two: a site scan could scan the page twice, list it twice and spend two of your scans on it. They are one page now, everywhere, while a different query string (?page=2 against ?page=3) still counts as the different page it is. The recent-scans list also shows the page you scanned rather than just the site, and no longer shows a bare "/" as if it were a path.
 - [Layers] **[FIXED]** **A Crawl Reports Each Problem Once**
   Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.
 - [Lock] **[FIXED]** **A Crawl That Gets Signed Out Says So**
@@ -2582,6 +2588,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 983
+- **Total changes documented:** 986
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

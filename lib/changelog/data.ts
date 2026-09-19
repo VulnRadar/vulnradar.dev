@@ -2,6 +2,7 @@
 // lazy-loaded client-side instead of shipping the whole thing in one payload.
 import { APP_NAME } from "@/lib/config/constants";
 import {
+  CircleSlash,
   KeyRound,
   Wifi,
   ShieldQuestion,
@@ -701,6 +702,24 @@ const CHANGELOG: Release[] = [
         label: "Scan Again or Schedule It From Any Result",
         desc: "Checking that a fix worked meant going back to the dashboard, pasting the URL and choosing the options again, and setting up a recurring scan of the same site meant finding a settings tab nothing pointed at. Every result's actions menu now has Scan this site again, which asks first because it spends one of today's scans, and Scan this site on a schedule, which opens the schedule form with the URL already filled in.",
         category: "added",
+      },
+      {
+        icon: CircleSlash,
+        label: "Cancelling a Scan Actually Stops It",
+        desc: "Cancelling marked the scan stopped and left it running. The work carried on against the site, sometimes for another half a minute, and only the result was thrown away: a cancelled crawl kept fetching pages and saved every one of them. The flag that tells the scan to stop was being cleared by the very write that recorded the cancellation. A cancelled scan now stops taking new pages at once, and the request it already had in flight is cut off with it. The same applies when a scan is stopped for running too long.",
+        category: "fixed",
+      },
+      {
+        icon: ShieldAlert,
+        label: "A Stopped Scan No Longer Reads as Clean",
+        desc: "A scan you cancelled has no findings, and the recent-scans list on the dashboard read that as a clean result, in green. It now says what happened: Cancelled, or Did not finish, or Running. History says Cancelled too, rather than lumping a scan you stopped in with one that broke.",
+        category: "fixed",
+      },
+      {
+        icon: Link2,
+        label: "A Trailing Slash Is Not a Different Page",
+        desc: 'example.com/landing and example.com/landing/ are the same page, and the scanner treated them as two: a site scan could scan the page twice, list it twice and spend two of your scans on it. They are one page now, everywhere, while a different query string (?page=2 against ?page=3) still counts as the different page it is. The recent-scans list also shows the page you scanned rather than just the site, and no longer shows a bare "/" as if it were a path.',
+        category: "engine",
       },
       {
         icon: Layers,

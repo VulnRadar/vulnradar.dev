@@ -60,6 +60,27 @@ describe("scanRowState", () => {
     );
   });
 
+  it("says a scan somebody stopped was cancelled, not that it broke", () => {
+    expect(
+      scanRowState({
+        status: "failed",
+        error_message: "Cancelled",
+        findings_count: 0,
+      }),
+    ).toBe("cancelled");
+    // Any other failure is still just a scan that did not finish.
+    expect(
+      scanRowState({
+        status: "failed",
+        error_message: "Could not reach the target URL",
+        findings_count: 0,
+      }),
+    ).toBe("unfinished");
+    expect(scanRowState({ status: "failed", findings_count: 0 })).toBe(
+      "unfinished",
+    );
+  });
+
   it("treats an unrecognised status as completed rather than as a non-result", () => {
     // A status this client does not know is not evidence the scan died, and
     // failing the other way would blank out every row on a schema change.

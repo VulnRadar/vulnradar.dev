@@ -3,32 +3,8 @@
 // import it. parseUrl in particular is called from both.
 import { cn } from "@/lib/ui/utils";
 
-export interface ParsedUrl {
-  subdomain: string | null;
-  host: string;
-  path: string;
-  /** hostname + path, i.e. the whole thing minus the scheme. */
-  full: string;
-}
-
-/**
- * Split a scanned URL into the three parts the app displays it as. Treated as
- * a subdomain only at 3+ labels (sub.example.com), which is deliberately naive
- * about multi-part public suffixes (example.co.uk reads as sub "example"); it
- * only affects which half of the name is emphasised, never what is shown.
- */
-export function parseUrl(url: string): ParsedUrl {
-  try {
-    const u = new URL(url);
-    const path = u.pathname === "/" ? "" : u.pathname + (u.search || "");
-    const parts = u.hostname.split(".");
-    const subdomain = parts.length > 2 ? parts[0] : null;
-    const host = subdomain ? parts.slice(1).join(".") : u.hostname;
-    return { subdomain, host, path, full: u.hostname + path };
-  } catch {
-    return { subdomain: null, host: url, path: "", full: url };
-  }
-}
+export { parseUrl, type ParsedUrl } from "@/lib/ui/parse-url";
+import { parseUrl } from "@/lib/ui/parse-url";
 
 interface UrlDisplayProps {
   url: string;

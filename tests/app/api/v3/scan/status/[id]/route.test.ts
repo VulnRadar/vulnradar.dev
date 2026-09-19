@@ -258,7 +258,10 @@ describe("DELETE /api/v3/scan/status/:id", () => {
     const json = await res.json();
     expect(json).toEqual({ status: "failed", cancelled: true });
 
-    expect(isCancelled(1)).toBe(false); // finalizeScanFailure clears it again
+    // The flag has to survive the failure write, which is what the running
+    // job reads to stop. finalizeScanFailure used to clear it here, so the
+    // scan carried on with only its result blocked.
+    expect(isCancelled(1)).toBe(true);
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("status = 'failed'");
     expect(params[0]).toBe("Cancelled");

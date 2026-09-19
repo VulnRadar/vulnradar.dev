@@ -194,7 +194,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // duration 0, so a scan the user navigated away from used to appear in
   // History wearing a clean result's clothes: "0 findings in 0.0s".
   const result = await pool.query(
-    `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source, sh.status,
+    `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source, sh.status, sh.error_message,
          COALESCE(
            (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
             FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),

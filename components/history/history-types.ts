@@ -1,6 +1,7 @@
 "use client";
 
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import { parseUrl } from "@/lib/ui/parse-url";
 
 /**
  * One tag on a scan. `source` distinguishes a tag lib/tags/auto-tags.ts
@@ -30,6 +31,8 @@ export interface ScanRecord {
   id: string;
   url: string;
   status?: ScanRecordStatus | string;
+  /** Why a failed scan failed. "Cancelled" when somebody stopped it. */
+  error_message?: string | null;
   summary: {
     critical?: number;
     high?: number;
@@ -62,14 +65,22 @@ export interface ScanRecord {
  * "completed", which is what every pre-status row and every read-only surface
  * that reuses ScanRecord is.
  */
-export type ScanRowState = "clean" | "findings" | "running" | "unfinished";
+export type ScanRowState =
+  "clean" | "findings" | "running" | "unfinished" | "cancelled";
 
 export function scanRowState(scan: {
   status?: string;
+  error_message?: string | null;
   findings_count: number;
 }): ScanRowState {
   const status = scan.status ?? "completed";
-  if (status === "failed") return "unfinished";
+  // A scan somebody stopped is not a scan that broke, and neither is a clean
+  // result. "Cancelled" is what the row says, in its own words.
+  if (status === "failed") {
+    return scan.error_message?.trim().toLowerCase() === "cancelled"
+      ? "cancelled"
+      : "unfinished";
+  }
   if (status === "pending" || status === "running") return "running";
   return scan.findings_count === 0 ? "clean" : "findings";
 }
@@ -109,13 +120,9 @@ export function isRecentScan(scannedAt: string, now = Date.now()): boolean {
 }
 
 export function displayUrl(url: string) {
-  try {
-    const u = new URL(url);
-    const path = u.pathname === "/" ? "" : u.pathname + u.search;
-    return u.hostname + path;
-  } catch {
-    return url;
-  }
+  // One splitter for the whole app (components/shared/url-display.tsx), which
+  // also drops the slash on the end of a path: /landing/ is /landing.
+  return parseUrl(url).full;
 }
 
 export function getDomain(url: string) {
