@@ -155,6 +155,71 @@ describe("pollScanStatus", () => {
     );
   });
 
+  describe("while the browser is offline", () => {
+    let online = false;
+    const events = new EventTarget();
+    const goOnline = () => {
+      online = true;
+      events.dispatchEvent(new Event("online"));
+    };
+
+    beforeEach(() => {
+      online = false;
+      vi.stubGlobal("navigator", {
+        get onLine() {
+          return online;
+        },
+      });
+      vi.stubGlobal("window", events);
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("waits for the connection instead of giving up on a scan that is still running", async () => {
+      // A Wi-Fi drop used to spend the six-strike budget in about twelve
+      // seconds and end the tracking for a scan that then finished normally.
+      const fetchMock = vi.fn(async () => {
+        if (!online) throw new TypeError("Failed to fetch");
+        return jsonResponse({
+          status: "completed",
+          result: { url: "https://a.test" },
+        });
+      });
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+      const polled = pollScanStatus(1, 10_000, undefined, FAST);
+      // Long enough for many more than six strikes at this interval.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      goOnline();
+
+      await expect(polled).resolves.toMatchObject({ status: "completed" });
+      // One attempt that found the device offline, then one after it came
+      // back: nothing is sent while there is no connection to send it on.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("still stops at once when the scan is cancelled while offline", async () => {
+      globalThis.fetch = vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }) as unknown as typeof fetch;
+      const controller = new AbortController();
+
+      const polled = pollScanStatus(
+        1,
+        10_000,
+        undefined,
+        FAST,
+        controller.signal,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      controller.abort();
+
+      await expect(polled).rejects.toBeInstanceOf(PollAbortedError);
+    });
+  });
+
   it("treats a non-ok status response as a failed poll, not a failed scan", async () => {
     globalThis.fetch = fetchSequence([
       jsonResponse({ status: "running" }, false, 502),

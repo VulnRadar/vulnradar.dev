@@ -39,9 +39,11 @@ import {
   pollScanStatus,
   PollAbortedError,
   type ScanStatusResponse,
+  type ScanStatusResult,
   type ScanProgressState,
 } from "./poll-scan-status";
 import { buildScanRequest } from "./scan-request";
+import { readRememberedScan, rememberRunningScan } from "./running-scan";
 
 import type {
   ScanResult,
@@ -481,6 +483,191 @@ function DashboardContent() {
     );
   }, []);
 
+  /**
+   * Follow a running scan to its end: poll it, report a failure, and hand back
+   * the finished result, or null when there is nothing to show (it failed,
+   * was cancelled, or the tracking was aborted). Split out of runScan so a
+   * scan picked back up after a reload goes through the same path.
+   */
+  const followScan = useCallback(
+    async (
+      scanId: number,
+      url: string,
+      isCrawl: boolean,
+      mode: ScanMode,
+    ): Promise<ScanStatusResult | null> => {
+      setRunningScanId(scanId);
+      rememberRunningScan({ scanId, url, mode, isCrawl });
+      pollAbortRef.current?.abort();
+      const pollAbort = new AbortController();
+      pollAbortRef.current = pollAbort;
+      let statusData: ScanStatusResponse;
+      try {
+        statusData = await pollScanStatus(
+          scanId,
+          isCrawl ? CRAWL_MAX_WAIT_MS : SCAN_MAX_WAIT_MS,
+          setScanProgress,
+          scanStatusPollIntervalMs,
+          pollAbort.signal,
+        );
+      } catch (pollError) {
+        // A user-initiated cancel already reset the UI to idle
+        // (handleCancelScan) -- don't clobber that with a "scan
+        // failed" screen just because this in-flight poll's own
+        // request lost the race and errored out afterward.
+        if (cancelledRef.current) {
+          cancelledRef.current = false;
+          rememberRunningScan(null);
+          return null;
+        }
+        // Aborted for any other reason (unmount, a newer run taking
+        // over): nothing left on screen to report to.
+        if (pollError instanceof PollAbortedError) return null;
+        setError(
+          pollError instanceof Error
+            ? pollError.message
+            : "Lost track of the scan while it was running.",
+        );
+        setErrorUrl(url);
+        setStatus("failed");
+        return null;
+      } finally {
+        setRunningScanId(null);
+      }
+      rememberRunningScan(null);
+      if (cancelledRef.current) {
+        // Same reasoning as above: the cancel already reset the UI,
+        // this resolved poll is just the DELETE's own "status: failed,
+        // error: Cancelled" response arriving after the fact.
+        cancelledRef.current = false;
+        return null;
+      }
+      if (statusData.status === "failed" || !statusData.result) {
+        setError(statusData.error || "The scan failed.");
+        setErrorUrl(url);
+        setStatus("failed");
+        return null;
+      }
+      return statusData.result;
+    },
+    [scanStatusPollIntervalMs],
+  );
+
+  /** Put a finished scan on screen. Shared by runScan and the reload path. */
+  const showScanResult = useCallback(
+    (payload: ScanStatusResult) => {
+      // The scan routes return a whole ScanResult; ScanStatusResult only
+      // names the fields the poller itself reads.
+      const finalData = payload as ScanStatusResult & ScanResult;
+      let effectiveFindings: Vulnerability[] = [];
+      if (finalData.crawl && finalData.crawl.pages?.length > 0) {
+        const mainPage = finalData.crawl.pages[0];
+        effectiveFindings = mainPage.findings || [];
+        setResult({
+          ...finalData,
+          findings: effectiveFindings,
+          summary: mainPage.summary as ScanResult["summary"],
+          duration: mainPage.duration,
+        });
+        setCrawlInfo(finalData.crawl);
+      } else {
+        effectiveFindings = finalData.findings || [];
+        setResult({ ...finalData, findings: effectiveFindings });
+      }
+      setAuthReport(finalData.authReport ?? null);
+      const historyId = finalData.scanHistoryId || null;
+      setScanHistoryId(historyId);
+      setScanPublicId(
+        typeof finalData.scanPublicId === "string"
+          ? finalData.scanPublicId
+          : null,
+      );
+      // Populated for a regular scan/crawl (its result comes from
+      // GET /api/v3/scan/status/[id], which includes tags once auto-
+      // tagging has run). The ephemeral authenticated-scan path (runScan
+      // passes its POST response straight here) has no tags yet -- that route
+      // saves them fire-and-forget after already responding, so they
+      // only show up once the user revisits this scan from History.
+      setScanTags(Array.isArray(finalData.tags) ? finalData.tags : []);
+      setScanNotes(DEFAULT_SCAN_NOTE);
+      setStatus("done");
+
+      if (historyId) {
+        // Prefer the opaque public id for the URL; fall back to the numeric
+        // id only if the response predates it (e.g. the ephemeral auth path).
+        updateUrlWithScan(
+          typeof finalData.scanPublicId === "string"
+            ? finalData.scanPublicId
+            : historyId,
+        );
+      }
+
+      if (historyId) {
+        fetch(`${API.HISTORY}/${historyId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),
+        }).catch(() => {});
+      }
+
+      if (aiAvailableRef.current && historyId) {
+        // Opens on completion rather than offering an inline banner: the
+        // owner wants this as a modal. AUDIT-014#scan-08 argued the other
+        // way, that a modal at the end of a scan interrupts the read, and
+        // was overruled.
+        setShowAiModal(true);
+      }
+    },
+    [updateUrlWithScan],
+  );
+
+  // A running scan picked back up after this tab reloads. The scan is a
+  // background job and never depended on the page staying open, but nothing
+  // on screen followed it again: a reload mid-scan, or a dropped connection
+  // the visitor answered with one, left the dashboard empty and the result
+  // turned up in History later. Skipped when the URL already names a scan,
+  // which the effects above own.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("scan")) return;
+    const remembered = readRememberedScan();
+    if (!remembered) return;
+    void (async () => {
+      let data: ScanStatusResponse;
+      try {
+        const res = await fetch(API.SCAN_STATUS(remembered.scanId));
+        if (!res.ok) {
+          rememberRunningScan(null);
+          return;
+        }
+        data = await res.json();
+      } catch {
+        return;
+      }
+      if (data.status === "completed" && data.result) {
+        rememberRunningScan(null);
+        showScanResult(data.result);
+        return;
+      }
+      if (data.status !== "pending" && data.status !== "running") {
+        rememberRunningScan(null);
+        return;
+      }
+      setStatus("scanning");
+      setScanningUrl(remembered.url);
+      setScanningMode(remembered.mode);
+      setScanProgress(null);
+      const finalData = await followScan(
+        remembered.scanId,
+        remembered.url,
+        remembered.isCrawl,
+        remembered.mode,
+      );
+      if (finalData) showScanResult(finalData);
+    })();
+    // Once, on mount: this is about the page load, not later renders.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const runScan = useCallback(
     async (
       url: string,
@@ -594,116 +781,12 @@ function DashboardContent() {
             setStatus("failed");
             return;
           }
-          setRunningScanId(scanId);
-          pollAbortRef.current?.abort();
-          const pollAbort = new AbortController();
-          pollAbortRef.current = pollAbort;
-          let statusData: ScanStatusResponse;
-          try {
-            statusData = await pollScanStatus(
-              scanId,
-              isCrawl ? CRAWL_MAX_WAIT_MS : SCAN_MAX_WAIT_MS,
-              setScanProgress,
-              scanStatusPollIntervalMs,
-              pollAbort.signal,
-            );
-          } catch (pollError) {
-            // A user-initiated cancel already reset the UI to idle
-            // (handleCancelScan) -- don't clobber that with a "scan
-            // failed" screen just because this in-flight poll's own
-            // request lost the race and errored out afterward.
-            if (cancelledRef.current) {
-              cancelledRef.current = false;
-              return;
-            }
-            // Aborted for any other reason (unmount, a newer run taking
-            // over): nothing left on screen to report to.
-            if (pollError instanceof PollAbortedError) return;
-            setError(
-              pollError instanceof Error
-                ? pollError.message
-                : "Lost track of the scan while it was running.",
-            );
-            setErrorUrl(url);
-            setStatus("failed");
-            return;
-          } finally {
-            setRunningScanId(null);
-          }
-          if (cancelledRef.current) {
-            // Same reasoning as above: the cancel already reset the UI,
-            // this resolved poll is just the DELETE's own "status: failed,
-            // error: Cancelled" response arriving after the fact.
-            cancelledRef.current = false;
-            return;
-          }
-          if (statusData.status === "failed" || !statusData.result) {
-            setError(statusData.error || "The scan failed.");
-            setErrorUrl(url);
-            setStatus("failed");
-            return;
-          }
-          finalData = statusData.result;
+          const followed = await followScan(scanId, url, isCrawl, mode);
+          if (!followed) return;
+          finalData = followed;
         }
 
-        let effectiveFindings: Vulnerability[] = [];
-        if (finalData.crawl && finalData.crawl.pages?.length > 0) {
-          const mainPage = finalData.crawl.pages[0];
-          effectiveFindings = mainPage.findings || [];
-          setResult({
-            ...finalData,
-            findings: effectiveFindings,
-            summary: mainPage.summary,
-            duration: mainPage.duration,
-          });
-          setCrawlInfo(finalData.crawl);
-        } else {
-          effectiveFindings = finalData.findings || [];
-          setResult({ ...finalData, findings: effectiveFindings });
-        }
-        setAuthReport(finalData.authReport ?? null);
-        const historyId = finalData.scanHistoryId || null;
-        setScanHistoryId(historyId);
-        setScanPublicId(
-          typeof finalData.scanPublicId === "string"
-            ? finalData.scanPublicId
-            : null,
-        );
-        // Populated for a regular scan/crawl (its result comes from
-        // GET /api/v3/scan/status/[id], which includes tags once auto-
-        // tagging has run). The ephemeral authenticated-scan path
-        // (finalData = data above) has no tags here yet -- that route
-        // saves them fire-and-forget after already responding, so they
-        // only show up once the user revisits this scan from History.
-        setScanTags(Array.isArray(finalData.tags) ? finalData.tags : []);
-        setScanNotes(DEFAULT_SCAN_NOTE);
-        setStatus("done");
-
-        if (historyId) {
-          // Prefer the opaque public id for the URL; fall back to the numeric
-          // id only if the response predates it (e.g. the ephemeral auth path).
-          updateUrlWithScan(
-            typeof finalData.scanPublicId === "string"
-              ? finalData.scanPublicId
-              : historyId,
-          );
-        }
-
-        if (historyId) {
-          fetch(`${API.HISTORY}/${historyId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),
-          }).catch(() => {});
-        }
-
-        if (aiAvailableRef.current && historyId) {
-          // Opens on completion rather than offering an inline banner: the
-          // owner wants this as a modal. AUDIT-014#scan-08 argued the other
-          // way, that a modal at the end of a scan interrupts the read, and
-          // was overruled.
-          setShowAiModal(true);
-        }
+        showScanResult(finalData);
       } catch {
         setError(
           "Failed to connect to the scanner. Please check your connection and try again.",
@@ -714,7 +797,7 @@ function DashboardContent() {
         setStatus("failed");
       }
     },
-    [updateUrlWithScan, scanStatusPollIntervalMs],
+    [followScan, showScanResult],
   );
 
   // Keep ref in sync with latest runScan so handleScan (defined earlier)

@@ -128,6 +128,36 @@ export function nextPollDelayMs(
   return pollIntervalMs;
 }
 
+function isOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+/** Resolves when the browser is back online, the time is up, or on abort. */
+function waitUntilOnline(
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!isOffline()) return resolve();
+    const cleanUp = () => {
+      clearTimeout(timer);
+      window.removeEventListener("online", online);
+      signal?.removeEventListener("abort", aborted);
+    };
+    const online = () => {
+      cleanUp();
+      resolve();
+    };
+    const aborted = () => {
+      cleanUp();
+      reject(new PollAbortedError("aborted"));
+    };
+    const timer = setTimeout(online, Math.max(0, timeoutMs));
+    window.addEventListener("online", online, { once: true });
+    signal?.addEventListener("abort", aborted, { once: true });
+  });
+}
+
 export async function pollScanStatus(
   scanId: number,
   maxWaitMs: number,
@@ -193,6 +223,17 @@ export async function pollScanStatus(
       nearlyDone = total > 0 && (data.categoriesCompleted ?? 0) >= total - 1;
     } catch {
       if (signal?.aborted) throw new PollAbortedError("aborted");
+      // The scan is a background job on the server and keeps running while
+      // this browser has no connection, so a check that failed because the
+      // device is offline says nothing about the scan. It used to count
+      // toward the give-up budget, and a Wi-Fi drop of about twelve seconds
+      // ended the tracking with "Lost the connection" for a scan that then
+      // finished normally. Wait for the connection instead, up to the same
+      // overall deadline, and carry on from where the scan has got to.
+      if (isOffline()) {
+        await waitUntilOnline(startedAt + maxWaitMs - Date.now(), signal);
+        continue;
+      }
       consecutiveFailures++;
       if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
         throw new Error(POLL_GAVE_UP_MESSAGE);

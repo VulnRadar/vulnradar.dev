@@ -3,6 +3,7 @@
 import { APP_NAME } from "@/lib/config/constants";
 import {
   KeyRound,
+  Wifi,
   ShieldQuestion,
   Zap,
   Shield,
@@ -687,6 +688,12 @@ const CHANGELOG: Release[] = [
         icon: Image,
         label: "Link Previews for Reports Load Again",
         desc: "The preview image shown when a host report or a shared scan link is posted in Slack, Discord or X failed to load whenever the report had ten or more findings of one severity, which is most real reports. It renders again.",
+        category: "fixed",
+      },
+      {
+        icon: Wifi,
+        label: "A Scan Survives Your Connection Dropping",
+        desc: "A scan runs on our servers and never needed your page open, but the dashboard stopped following it after about twelve seconds without a connection, and a reload left it empty while the scan finished out of sight. It now waits for your connection to come back and carries on from where the scan has got to, and reloading or coming back to the dashboard picks a running scan back up, or shows its result if it finished while you were away.",
         category: "fixed",
       },
       {
