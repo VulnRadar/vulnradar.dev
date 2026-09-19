@@ -176,6 +176,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   A clickjacking check reported pages that X-Frame-Options already protected, and its fix was a JavaScript frame-buster, which a sandboxed frame switches off. It has been removed. The mail DANE check told domains whose mail Google or Microsoft hosts to publish a record inside Google's or Microsoft's DNS. It now looks only at mail servers inside your own domain, which are the ones you can publish a record for.
 - [Timer] **[ENGINE]** **Private Server-Timing Is No Longer Reported as Exposed**
   Sending Server-Timing without Timing-Allow-Origin keeps those metrics away from other sites, which is the safe default, and the scanner reported exactly that as exposing them. It now reports only Timing-Allow-Origin: *, which does hand the metrics to every site.
+- [Image] **[FIXED]** **Link Previews for Reports Load Again**
+  The preview image shown when a host report or a shared scan link is posted in Slack, Discord or X failed to load whenever the report had ten or more findings of one severity, which is most real reports. It renders again.
 - [Layers] **[FIXED]** **A Crawl Reports Each Problem Once**
   Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.
 - [Lock] **[FIXED]** **A Crawl That Gets Signed Out Says So**
@@ -2576,6 +2578,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 980
+- **Total changes documented:** 981
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

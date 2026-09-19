@@ -209,7 +209,13 @@ export function OgCard({
                 }}
               />
               <div style={{ fontSize: 28, fontWeight: 600, marginRight: 8 }}>
-                {s.count}
+                {/* A string, not the number. Satori counts a numeric child of
+                    two or more digits as several child nodes and throws on a
+                    div without display: flex, after the response has started,
+                    so every host or shared report with ten or more findings
+                    of one severity failed its social card with "failed to
+                    pipe response". */}
+                {String(s.count)}
               </div>
               <div style={{ fontSize: 24, color: INK.muted }}>{s.label}</div>
             </div>

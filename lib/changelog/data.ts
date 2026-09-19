@@ -684,6 +684,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Image,
+        label: "Link Previews for Reports Load Again",
+        desc: "The preview image shown when a host report or a shared scan link is posted in Slack, Discord or X failed to load whenever the report had ten or more findings of one severity, which is most real reports. It renders again.",
+        category: "fixed",
+      },
+      {
         icon: Layers,
         label: "A Crawl Reports Each Problem Once",
         desc: "Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.",
