@@ -262,6 +262,39 @@ describe("runAiVerification: says whether it actually ran", () => {
     expect(outcome.attempted).toBe(2);
   });
 
+  it("stops at the first rate limit instead of sending every finding into it", async () => {
+    // A 429 used to be logged and swallowed per finding, and the pass carried
+    // on: forty findings meant forty requests into the same limit, forty
+    // identical error-log rows, and a limit made longer by adding to it.
+    mockQuery.mockResolvedValue({ rows: [] });
+    const calls = { n: 0 };
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      calls.n++;
+      return {
+        ok: false,
+        status: 429,
+        json: async () => ({}),
+        text: async () => "rate limit reached",
+      };
+    });
+
+    const findings = Array.from(
+      { length: CONFIG_AI_VERIFY_CHUNK_SIZE * 4 },
+      (_, i) => makeFinding(`f${i}`),
+    );
+    const outcome = await runAiVerification(
+      "https://example.com",
+      findings,
+      42,
+      null,
+    );
+
+    expect(outcome.rateLimited).toBe(true);
+    expect(outcome.verdicts).toBe(0);
+    // One chunk's worth of requests, then it stopped.
+    expect(calls.n).toBeLessThanOrEqual(CONFIG_AI_VERIFY_CHUNK_SIZE);
+  });
+
   it("counts the findings that did get a verdict", async () => {
     mockQuery.mockResolvedValue({ rows: [] });
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>

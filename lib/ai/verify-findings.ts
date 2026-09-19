@@ -9,7 +9,7 @@ import {
   resolveAiDefaultModel,
   isAnthropicProvider,
 } from "@/lib/ai/provider";
-import { callAnthropicMessages } from "@/lib/ai/anthropic";
+import { callAnthropicMessages, AnthropicApiError } from "@/lib/ai/anthropic";
 import {
   resolveAnthropicThinkingBudget,
   resolveOpenAiCompatReasoningExtras,
@@ -329,6 +329,12 @@ interface CallVerifyResult {
   result: VerifyResult | null;
   /** Real tokens the provider reported for this one call (0 if the call never reached a provider, or the provider omitted usage). */
   tokensUsed: number;
+  /**
+   * The provider answered 429. Distinct from every other failure because it
+   * is the one where sending the NEXT finding is guaranteed to fail the same
+   * way, and the one the user can act on (wait, or raise their plan).
+   */
+  rateLimited?: boolean;
 }
 
 async function callVerify(
@@ -438,6 +444,12 @@ async function callVerify(
     }
 
     if (!res.ok) {
+      // A 429 is reported once, by verifyInChunks, for the whole pass: one
+      // line per finding turned a single rate limit into dozens of identical
+      // error-log rows.
+      if (res.status === 429) {
+        return { result: null, tokensUsed: 0, rateLimited: true };
+      }
       let body = "";
       try {
         body = await res.text();
@@ -468,10 +480,14 @@ async function callVerify(
 
     return { result: parseVerifyResponseText(finding.id, text), tokensUsed };
   } catch (err) {
+    if (err instanceof AnthropicApiError && err.status === 429) {
+      return { result: null, tokensUsed: 0, rateLimited: true };
+    }
+    // A template string, not console.error's "%s" placeholder: the admin error
+    // log (lib/database/error-log-capture.ts) records the raw arguments, so the
+    // placeholder showed up there literally as `callVerify failed for "%s"`.
     console.error(
-      '[AI-VERIFY] callVerify failed for "%s":',
-      finding.id,
-      err instanceof Error ? err.message : err,
+      `[AI-VERIFY] callVerify failed for "${finding.id}": ${err instanceof Error ? err.message : String(err)}`,
     );
     return { result: null, tokensUsed: 0 };
   } finally {
@@ -502,6 +518,8 @@ interface VerifyInChunksResult {
   verdictMap: Map<string, Omit<VerifyResult, "id">>;
   /** Sum of every call's real token usage across the whole batch, regardless of whether that call produced a usable verdict. */
   totalTokens: number;
+  /** The provider rate-limited the pass, which was stopped there. */
+  rateLimited: boolean;
 }
 
 async function verifyInChunks(
@@ -517,6 +535,7 @@ async function verifyInChunks(
 ): Promise<VerifyInChunksResult> {
   const verdictMap = new Map<string, Omit<VerifyResult, "id">>();
   let totalTokens = 0;
+  let rateLimited = false;
 
   for (const group of chunkFindings(findings, settings.chunkSize)) {
     if (Date.now() >= deadline) break;
@@ -528,6 +547,7 @@ async function verifyInChunks(
     for (const r of settled) {
       if (r.status === "fulfilled") {
         totalTokens += r.value.tokensUsed;
+        if (r.value.rateLimited) rateLimited = true;
         if (r.value.result) {
           const { id, ...rest } = r.value.result;
           verdictMap.set(id, rest);
@@ -538,9 +558,20 @@ async function verifyInChunks(
     // Awaited so a slow chunk's persistence can't land after (and clobber)
     // a later, more-complete chunk's write.
     await onChunkDone?.(verdictMap);
+
+    // Once the provider has said 429, every remaining chunk would be refused
+    // the same way. It used to carry on regardless: a scan with forty
+    // findings sent forty requests into the same limit, logged forty identical
+    // errors, and made the limit last longer by adding to it.
+    if (rateLimited) {
+      console.error(
+        `[AI-VERIFY] ${endpoint.baseUrl} rate-limited the pass for ${url}; stopped after ${verdictMap.size} of ${findings.length} verdicts.`,
+      );
+      break;
+    }
   }
 
-  return { verdictMap, totalTokens };
+  return { verdictMap, totalTokens, rateLimited };
 }
 
 /**
@@ -723,6 +754,13 @@ export interface AiVerificationOutcome {
   verdicts: number;
   /** Findings the pass was asked to judge. */
   attempted: number;
+  /**
+   * The AI provider refused the pass with a rate limit. The modal says so
+   * specifically: "try again in a minute" is the right advice for an outage
+   * and the wrong one for a plan limit that resets on the provider's
+   * schedule.
+   */
+  rateLimited?: boolean;
 }
 
 export async function runAiVerification(
@@ -759,7 +797,7 @@ export async function runAiVerification(
   // at the end, so a scan with a lot of findings keeps whatever got
   // verified even if the process is cut off (by the deadline above, or by
   // the calling route's own request timeout) before covering all of them.
-  const { verdictMap, totalTokens } = await verifyInChunks(
+  const { verdictMap, totalTokens, rateLimited } = await verifyInChunks(
     url,
     findings,
     endpoint,
@@ -794,5 +832,6 @@ export async function runAiVerification(
     configured: true,
     verdicts: verdictMap.size,
     attempted: findings.length,
+    ...(rateLimited ? { rateLimited: true } : {}),
   };
 }

@@ -97,10 +97,20 @@ export function AiVerifyResultModal({
     railClass = "bg-[hsl(var(--warning))]";
     textClass = "text-[hsl(var(--warning))]";
     headline = "AI verification did not run";
-    detail = outcome.configured
-      ? "The AI service did not answer for any finding, so nothing here has been checked by it. Your findings are unchanged. Try again in a minute."
-      : "No AI provider is configured for this instance, so nothing was checked. Add your own provider in Profile > AI settings, or ask the operator to configure one.";
+    detail = !outcome.configured
+      ? "No AI provider is configured for this instance, so nothing was checked. Add your own provider in Profile > AI settings, or ask the operator to configure one."
+      : outcome.rateLimited
+        ? "The AI provider is refusing requests because a usage limit has been reached, so nothing here has been checked. Your findings are unchanged. That limit belongs to the provider's plan and resets on their schedule, so waiting a few minutes may not be enough."
+        : "The AI service did not answer for any finding, so nothing here has been checked by it. Your findings are unchanged. Try again in a minute.";
   }
+
+  // Some findings were judged before the provider started refusing. The
+  // result above is real, but it covers only part of the scan, and saying
+  // nothing would let the unchecked rest read as cleared.
+  const partialNote =
+    outcome?.rateLimited && !didNotRun
+      ? `${outcome.verdicts} of ${outcome.attempted} findings were checked before the AI provider started refusing requests. The rest have no AI verdict.`
+      : null;
 
   if (didNotRun) {
     // Nothing below applies: there are no verdicts to describe.
@@ -192,6 +202,11 @@ export function AiVerifyResultModal({
                     <p className="text-sm leading-relaxed text-muted-foreground">
                       {detail}
                     </p>
+                    {partialNote && (
+                      <p className="text-xs leading-relaxed text-[hsl(var(--warning))]">
+                        {partialNote}
+                      </p>
+                    )}
                   </div>
                   {confirmed.length > 0 && (
                     <SeverityDistribution counts={confirmedCounts} />
