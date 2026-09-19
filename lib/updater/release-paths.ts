@@ -76,4 +76,6 @@ export const STRIP_PREFIXES = [
   "CONTRIBUTING.md",
   "CODE_OF_CONDUCT.md",
   "SECURITY-POSTURE.md",
+  // The design rules. Read by people changing the code, never by the app.
+  "STYLE.md",
 ];

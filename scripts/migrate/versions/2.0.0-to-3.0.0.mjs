@@ -1124,6 +1124,13 @@ export const upgrade = {
         "SMALLINT NOT NULL DEFAULT 1 CHECK (preferred_day_of_month BETWEEN 1 AND 28)",
     },
     {
+      // Lets the schedules worker email the FIRST failure of a run and then
+      // stay quiet until a scan succeeds (lib/scanner/scheduled-scans-worker).
+      table: "scheduled_scans",
+      column: "consecutive_failures",
+      definition: "SMALLINT NOT NULL DEFAULT 0",
+    },
+    {
       table: "webhooks",
       column: "secret",
       definition:

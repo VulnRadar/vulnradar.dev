@@ -234,6 +234,7 @@ describe("runUpdateJob: the destructive prune is driven with the intended lists"
     "CONTRIBUTING.md",
     "CODE_OF_CONDUCT.md",
     "SECURITY-POSTURE.md",
+    "STYLE.md",
   ];
 
   it("passes exactly the protected and strip lists to pruneExtraneous", async () => {
