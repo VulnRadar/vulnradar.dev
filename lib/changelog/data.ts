@@ -678,6 +678,12 @@ const CHANGELOG: Release[] = [
         category: "engine",
       },
       {
+        icon: Timer,
+        label: "Private Server-Timing Is No Longer Reported as Exposed",
+        desc: "Sending Server-Timing without Timing-Allow-Origin keeps those metrics away from other sites, which is the safe default, and the scanner reported exactly that as exposing them. It now reports only Timing-Allow-Origin: *, which does hand the metrics to every site.",
+        category: "engine",
+      },
+      {
         icon: Layers,
         label: "A Crawl Reports Each Problem Once",
         desc: "Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.",

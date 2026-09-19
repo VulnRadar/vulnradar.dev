@@ -6709,21 +6709,21 @@ sub vcl_deliver {
 ```
 
 ### `server-timing-allow-origin-public` [configuration / low / header]
-**Server-Timing Exposed Without Timing-Allow-Origin Gate**
+**Server-Timing Readable by Any Origin**
 
-Server-Timing is exposed publicly without a Timing-Allow-Origin restriction, allowing any cross-origin page to read performance data.
+The response sends Server-Timing metrics with Timing-Allow-Origin: *, so any site that loads this resource can read them through the Resource Timing API.
 
 **Risk:** Cross-origin attackers can read precise timing data and fingerprint the backend stack, infer database query counts, and mount cache-probing attacks to detect which pages a user has visited.
 
-**Why it matters:** Server-Timing carries per-request performance metrics. When exposed without a Timing-Allow-Origin restriction, the browser sends it to the cross-origin document and any timing-based fingerprinting attack can run.
+**Why it matters:** Server-Timing carries per-request performance metrics. A browser hands them to another origin's scripts only when Timing-Allow-Origin names that origin, and * names every origin, so any page that loads this resource can run timing-based fingerprinting against it.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing
 
 **Fix:**
+- Set Timing-Allow-Origin to the specific origins that need the metrics, or remove it.
 - Hide Server-Timing at the edge (proxy_hide_header Server-Timing) for public responses.
-- If you need to expose it for monitoring, set Timing-Allow-Origin to a specific trusted origin instead of '*'.
 - Strip cache;dur, db;dur, edge;dur style entries that reveal backend internals.
 - **Nginx** (nginx):
 ```nginx

@@ -174,6 +174,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Sites behind Cloudflare's bot protection answer an automated visitor with a "Just a moment" page instead of the site. The scanner graded that page as the site, so a scan reported the challenge page's missing headers and its timing data as the site's own findings. When the answer is a challenge now, the checks that read the page are skipped and the result says the page could not be checked and why. DNS, certificate and email results still come from the real site. The same applies to site scans, the homepage demo and signed-in scans.
 - [Filter] **[ENGINE]** **Two Checks Stop Asking for Things You Cannot Do**
   A clickjacking check reported pages that X-Frame-Options already protected, and its fix was a JavaScript frame-buster, which a sandboxed frame switches off. It has been removed. The mail DANE check told domains whose mail Google or Microsoft hosts to publish a record inside Google's or Microsoft's DNS. It now looks only at mail servers inside your own domain, which are the ones you can publish a record for.
+- [Timer] **[ENGINE]** **Private Server-Timing Is No Longer Reported as Exposed**
+  Sending Server-Timing without Timing-Allow-Origin keeps those metrics away from other sites, which is the safe default, and the scanner reported exactly that as exposing them. It now reports only Timing-Allow-Origin: *, which does hand the metrics to every site.
 - [Layers] **[FIXED]** **A Crawl Reports Each Problem Once**
   Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.
 - [Lock] **[FIXED]** **A Crawl That Gets Signed Out Says So**
@@ -1364,6 +1366,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 979
+- **Total changes documented:** 980
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

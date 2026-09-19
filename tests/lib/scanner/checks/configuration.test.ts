@@ -126,6 +126,16 @@ const fixtures: DetectorFixtures = {
     },
     {
       description:
+        "Accept-Encoding among the other tokens a Next.js page varies on",
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "content-encoding": "br",
+        vary: "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding",
+      },
+      expect: "skip",
+    },
+    {
+      description:
         "Content-Encoding: identity is not compression and does not fire",
       headers: {
         "content-type": "text/html; charset=utf-8",
@@ -222,6 +232,29 @@ const fixtures: DetectorFixtures = {
         "timing-allow-origin": "*",
       },
       expect: "fire",
+    },
+    {
+      description: "the wildcard inside a list of origins",
+      headers: {
+        "server-timing": "db;dur=53",
+        "timing-allow-origin": "https://a.example, *",
+      },
+      expect: "fire",
+    },
+    {
+      // Without Timing-Allow-Origin another origin reads no serverTiming
+      // entries at all. This was reported as "exposed publicly".
+      description: "regression: Server-Timing with no Timing-Allow-Origin",
+      headers: { "server-timing": 'chlray;desc="a3db96a95d6655b5"' },
+      expect: "skip",
+    },
+    {
+      description: "Timing-Allow-Origin naming one trusted origin",
+      headers: {
+        "server-timing": "db;dur=53",
+        "timing-allow-origin": "https://monitor.example",
+      },
+      expect: "skip",
     },
   ],
 

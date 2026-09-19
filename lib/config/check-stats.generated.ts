@@ -18,7 +18,7 @@ export const CHECK_CATEGORY_LAST_MODIFIED: Record<string, string> = {
   api: "2026-09-16",
   "client-side": "2026-09-01",
   code: "2026-09-16",
-  configuration: "2026-09-16",
+  configuration: "2026-09-19",
   content: "2026-09-16",
   cookies: "2026-09-16",
   dns: "2026-09-16",

@@ -240,7 +240,7 @@ remediation documentation in the docs.
 - [info    ] `x-nextjs-cache` [header-value] - X-Nextjs-Cache Reveals Next.js ISR Cache State
 - [info    ] `x-netlify-cache` [header-value] - X-Netlify-Cache Exposes CDN Cache State
 - [info    ] `x-cache-hits` [header-value] - X-Cache-Hits Exposes Cache Hit Count
-- [low     ] `server-timing-allow-origin-public` [header] - Server-Timing Exposed Without Timing-Allow-Origin Gate
+- [low     ] `server-timing-allow-origin-public` [header] - Server-Timing Readable by Any Origin
 - [medium  ] `debug-via-cookie` [header] - Debug Mode Toggled via Cookie
 - [info    ] `x-cache-status-cloudflare` [header] - CF-Cache-Status Exposes Cloudflare Cache State
 - [medium  ] `nextjs-dev-mode-exposed` [body-pattern] - Next.js Development Build Running in Production

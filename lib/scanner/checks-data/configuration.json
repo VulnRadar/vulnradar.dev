@@ -421,16 +421,16 @@
   {
     "id": "server-timing-allow-origin-public",
     "type": "header",
-    "title": "Server-Timing Exposed Without Timing-Allow-Origin Gate",
+    "title": "Server-Timing Readable by Any Origin",
     "category": "configuration",
     "severity": "low",
-    "description": "Server-Timing is exposed publicly without a Timing-Allow-Origin restriction, allowing any cross-origin page to read performance data.",
-    "evidence": "Server-Timing header is exposed publicly: restrict with Timing-Allow-Origin to specific trusted origins.",
+    "description": "The response sends Server-Timing metrics with Timing-Allow-Origin: *, so any site that loads this resource can read them through the Resource Timing API.",
+    "evidence": "Server-Timing is sent with Timing-Allow-Origin: *, so any site that loads this resource can read those metrics.",
     "riskImpact": "Cross-origin attackers can read precise timing data and fingerprint the backend stack, infer database query counts, and mount cache-probing attacks to detect which pages a user has visited.",
-    "explanation": "Server-Timing carries per-request performance metrics. When exposed without a Timing-Allow-Origin restriction, the browser sends it to the cross-origin document and any timing-based fingerprinting attack can run.",
+    "explanation": "Server-Timing carries per-request performance metrics. A browser hands them to another origin's scripts only when Timing-Allow-Origin names that origin, and * names every origin, so any page that loads this resource can run timing-based fingerprinting against it.",
     "fixSteps": [
+      "Set Timing-Allow-Origin to the specific origins that need the metrics, or remove it.",
       "Hide Server-Timing at the edge (proxy_hide_header Server-Timing) for public responses.",
-      "If you need to expose it for monitoring, set Timing-Allow-Origin to a specific trusted origin instead of '*'.",
       "Strip cache;dur, db;dur, edge;dur style entries that reveal backend internals."
     ],
     "codeExamples": [

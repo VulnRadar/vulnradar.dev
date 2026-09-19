@@ -106,12 +106,15 @@ export const detectors: Record<string, DetectFn> = {
   // ── Server-Timing / Timing-Allow-Origin ──────────────────────────────────
 
   "server-timing-allow-origin-public": (_url, headers) => {
+    // Without Timing-Allow-Origin a cross-origin page reads no serverTiming
+    // entries at all (Resource Timing), so an absent header is the safe
+    // default. This used to fire on it, reporting every site that sends
+    // Server-Timing and no TAO, which is nearly all of them, as exposing it.
     const st = h(headers, "server-timing");
     const tao = h(headers, "timing-allow-origin");
-    if (st && (!tao || tao === "*")) {
-      return "Server-Timing header is exposed publicly — restrict with Timing-Allow-Origin to specific trusted origins.";
-    }
-    return null;
+    if (!st || !tao) return null;
+    if (!tao.split(",").some((origin) => origin.trim() === "*")) return null;
+    return `Server-Timing (${st.slice(0, 120)}) is sent with Timing-Allow-Origin: *, so any site that loads this resource can read those metrics.`;
   },
 
   "server-timing-cache-timings": (_url, headers) => {
