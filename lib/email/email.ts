@@ -1,4 +1,6 @@
 import nodemailer from "nodemailer";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/config";
+import { getTranslator } from "@/lib/i18n/translate";
 import {
   APP_NAME,
   APP_URL,
@@ -751,23 +753,33 @@ export function contactConfirmationEmail(input: {
   };
 }
 
-export function emailVerificationEmail(name: string, verifyLink: string) {
+/**
+ * The first template written in the reader's language (lib/i18n/README.md).
+ *
+ * The pattern for the rest: take the recipient's locale, build a translator
+ * for it, and keep the link, the product name and anything else the reader
+ * has to match exactly out of the translation. Async because the messages are
+ * loaded, not compiled in.
+ */
+export async function emailVerificationEmail(
+  name: string,
+  verifyLink: string,
+  locale: Locale = DEFAULT_LOCALE,
+) {
+  const t = await getTranslator(locale);
   const safeName = escapeHtml(name);
+  const lead = (who: string) =>
+    t("email.verify.lead", { name: who, app: APP_NAME });
   return {
-    preheader:
-      "One click and the account is live. The link works for the next 24 hours.",
-    subject: `Verify your email for ${APP_NAME}`,
-    text: `Hi ${name},\n\nConfirm this email address to activate your ${APP_NAME} account:\n${verifyLink}\n\nThe link works for the next 24 hours. If it expires, request a new one from the sign-in page.\n\nIf you didn't create this account, you can ignore this email. Nothing was set up.`,
+    preheader: t("email.verify.preheader"),
+    subject: t("email.verify.subject", { app: APP_NAME }),
+    text: `${lead(name)}\n\n${t("email.verify.textIntro", { app: APP_NAME })}\n${verifyLink}\n\n${t("email.verify.expiry")}\n\n${t("email.verify.ignore")}`,
     html: `
-      ${emailHeading("Verify your email address")}
-      ${emailLead(`Hi ${safeName}, verify this is your address and your ${APP_NAME} account is ready to scan.`)}
-      ${emailButton(verifyLink, "Verify email address")}
-      ${emailNote(
-        "The link works for the next 24 hours. If it expires, request a new one from the sign-in page.",
-      )}
-      ${emailParagraph(
-        "If you didn't create this account, you can ignore this email. Nothing was set up.",
-      )}
+      ${emailHeading(t("email.verify.heading"))}
+      ${emailLead(lead(safeName))}
+      ${emailButton(verifyLink, t("email.verify.button"))}
+      ${emailNote(t("email.verify.expiry"))}
+      ${emailParagraph(t("email.verify.ignore"))}
       ${emailFallbackLink(verifyLink)}
     `,
   };

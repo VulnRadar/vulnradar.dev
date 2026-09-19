@@ -46,7 +46,7 @@ async function renderAll(): Promise<Rendered[]> {
   process.env.SMTP_USER = "user@example.com";
   process.env.SMTP_PASS = "app-password";
   const email = await import("@/lib/email/email");
-  const corpus = buildTemplateCorpus(email);
+  const corpus = await buildTemplateCorpus(email);
 
   const out: Rendered[] = [];
   for (const t of corpus) {

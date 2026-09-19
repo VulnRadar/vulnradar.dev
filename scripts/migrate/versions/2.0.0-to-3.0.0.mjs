@@ -1131,6 +1131,13 @@ export const upgrade = {
       definition: "SMALLINT NOT NULL DEFAULT 0",
     },
     {
+      // The account's chosen language (lib/i18n/config.ts). NULL until the
+      // account picks one, which is what lets the browser decide instead.
+      table: "users",
+      column: "locale",
+      definition: "VARCHAR(10)",
+    },
+    {
       table: "webhooks",
       column: "secret",
       definition:

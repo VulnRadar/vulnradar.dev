@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { negotiateLocale } from "@/lib/i18n/config";
 import { createUser, getUserByEmail } from "@/lib/auth";
 import {
   analyzePassword,
@@ -263,7 +264,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Send verification email in background (don't block the response)
   const verifyLink = `${APP_URL}/verify-email?token=${token}`;
-  const emailContent = emailVerificationEmail(name.trim(), verifyLink);
+  // A brand-new account has no saved language yet, so the verification mail
+  // goes out in the language this browser asked for.
+  const emailContent = await emailVerificationEmail(
+    name.trim(),
+    verifyLink,
+    negotiateLocale(request.headers.get("accept-language")),
+  );
 
   setImmediate(() => {
     sendEmail({

@@ -339,6 +339,7 @@ export const API = {
   DATA_REQUEST: `/api/${API_VERSION}/data-request`,
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
   ACCOUNT_PRIVACY: `/api/${API_VERSION}/account/privacy`,
+  ACCOUNT_LANGUAGE: `/api/${API_VERSION}/account/language`,
   /** Account-level "list new shares in Public Scans by default" setting. */
   ACCOUNT_SHARE_PRIVACY: `/api/${API_VERSION}/account/share-privacy`,
   /** Account-level posture-digest email opt-in. */

@@ -1,4 +1,9 @@
 import { cookies } from "next/headers";
+import {
+  LOCALE_COOKIE,
+  LOCALE_COOKIE_MAX_AGE,
+  isLocale,
+} from "@/lib/i18n/config";
 import { randomBytes, createHash } from "node:crypto";
 import { hashPassword } from "@/lib/auth/password-hash";
 import pool from "@/lib/database/db";
@@ -87,6 +92,30 @@ export async function createSession(
     path: "/",
     maxAge: cookieMaxAgeSeconds,
   });
+
+  // The language this account chose, carried into the cookie rendering reads
+  // (lib/i18n/request.ts). Without it, signing in on a new browser showed the
+  // site in whatever language that browser asks for until the setting was
+  // opened and saved again. Best-effort: a session is not worth failing over
+  // a preference.
+  try {
+    const saved = await pool.query<{ locale: string | null }>(
+      "SELECT locale FROM users WHERE id = $1",
+      [userId],
+    );
+    const locale = saved.rows[0]?.locale;
+    if (isLocale(locale)) {
+      cookieStore.set(LOCALE_COOKIE, locale, {
+        httpOnly: true,
+        secure: cookiesRequireHttps(),
+        sameSite: "lax",
+        path: "/",
+        maxAge: LOCALE_COOKIE_MAX_AGE,
+      });
+    }
+  } catch {
+    // The site simply stays in the language the browser asked for.
+  }
 
   // The RAW token, not the stored id: callers that set the cookie
   // themselves (app/api/v3/auth/update/route.ts after a password or email

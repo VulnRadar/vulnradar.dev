@@ -1,4 +1,5 @@
 import { buildSystemPrompt, sanitizeUserName } from "@/lib/ai/system-prompt";
+import { LOCALE_ENGLISH_NAMES, isLocale } from "@/lib/i18n/config";
 import { SLASH_COMMANDS } from "@/lib/ai/commands";
 import { buildRetrievedContextBlock } from "@/lib/ai/knowledge-retrieval";
 import {
@@ -57,9 +58,11 @@ export async function POST(req: Request) {
     ai_chat_banned: boolean;
     plan: string | null;
     created_at: string;
-  }>("SELECT ai_chat_banned, plan, created_at FROM users WHERE id = $1", [
-    session.userId,
-  ]);
+    locale: string | null;
+  }>(
+    "SELECT ai_chat_banned, plan, created_at, locale FROM users WHERE id = $1",
+    [session.userId],
+  );
   if (userRow.rows[0]?.ai_chat_banned) {
     return Response.json(
       {
@@ -163,6 +166,12 @@ export async function POST(req: Request) {
       ? resolvedDailyLimit
       : "unlimited",
     memberSince,
+    // The language this account reads the site in. The assistant answers in
+    // it, rather than in whatever language the question happened to be typed
+    // in, because it is the language they chose for everything else.
+    language: isLocale(userRecord?.locale)
+      ? LOCALE_ENGLISH_NAMES[userRecord.locale]
+      : null,
   });
 
   // Bound what we forward to the (paid, unmetered) provider. Only the last

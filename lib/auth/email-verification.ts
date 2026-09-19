@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { getUserLocale } from "@/lib/i18n/translate";
 import type { PoolClient } from "pg";
 import pool from "@/lib/database/db";
 import { sendEmail, emailVerificationEmail } from "@/lib/email/email";
@@ -45,7 +46,11 @@ export async function sendEmailVerification(
   );
 
   const verifyLink = `${APP_URL}/verify-email?token=${token}`;
-  const emailContent = emailVerificationEmail(name || "there", verifyLink);
+  const emailContent = await emailVerificationEmail(
+    name || "there",
+    verifyLink,
+    await getUserLocale(userId),
+  );
   const to = email.toLowerCase().trim();
   setImmediate(() => {
     sendEmail({

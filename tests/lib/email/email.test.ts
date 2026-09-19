@@ -946,7 +946,7 @@ describe("teamInviteEmail link guard", () => {
 describe("every template meets the same bar", () => {
   async function corpus() {
     const email = await loadEmail();
-    return buildTemplateCorpus(email);
+    return await buildTemplateCorpus(email);
   }
 
   it("returns a subject, a preheader, a plain-text part and an HTML part", async () => {

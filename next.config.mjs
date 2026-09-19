@@ -1,3 +1,10 @@
+import createNextIntlPlugin from "next-intl/plugin";
+
+// Points next-intl at lib/i18n/request.ts rather than its default ./i18n
+// path, so the whole translation layer lives in one directory with the rest
+// of lib/.
+const withNextIntl = createNextIntlPlugin("./lib/i18n/request.ts");
+
 /** @type {import('next').NextConfig} */
 
 const nextConfig = {
@@ -175,4 +182,4 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

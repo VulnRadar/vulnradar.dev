@@ -188,6 +188,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   A scan you cancelled has no findings, and the recent-scans list on the dashboard read that as a clean result, in green. It now says what happened: Cancelled, or Did not finish, or Running. History says Cancelled too, rather than lumping a scan you stopped in with one that broke.
 - [Link2] **[ENGINE]** **A Trailing Slash Is Not a Different Page**
   example.com/landing and example.com/landing/ are the same page, and the scanner treated them as two: a site scan could scan the page twice, list it twice and spend two of your scans on it. They are one page now, everywhere, while a different query string (?page=2 against ?page=3) still counts as the different page it is. The recent-scans list also shows the page you scanned rather than just the site, and no longer shows a bare "/" as if it were a path.
+- [Languages] **[ADDED]** **VulnRadar Speaks Your Language**
+  Pick a language from the globe in the top bar, or from your profile: English, Spanish, French, German, Brazilian Portuguese or Japanese. The choice follows your account to any browser you sign in on, and a visitor without an account gets the language their browser asks for. Emails go out in it, and the AI assistant answers in it. Numbers and dates are formatted the way your language writes them, while the things you have to type or match exactly stay as they are: URLs, header names, finding IDs, code and config. Translation is being rolled out screen by screen, and anything not translated yet reads in English rather than breaking.
 - [Layers] **[FIXED]** **A Crawl Reports Each Problem Once**
   Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.
 - [Lock] **[FIXED]** **A Crawl That Gets Signed Out Says So**
@@ -1378,6 +1380,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 986
+- **Total changes documented:** 987
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

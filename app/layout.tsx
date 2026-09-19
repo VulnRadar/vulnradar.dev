@@ -1,6 +1,8 @@
 import React from "react";
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { TosGate } from "@/components/auth/tos-gate";
 import { BackupCodesModal } from "@/components/shared/notification-center";
@@ -29,7 +31,6 @@ import {
   SEO_OG_IMAGE_HEIGHT,
   SEO_TWITTER_HANDLE,
   SEO_LOCALE,
-  SEO_LANGUAGE,
   SEO_GOOGLE_VERIFICATION,
   SEO_BING_VERIFICATION,
   BRANDING_PRIMARY_COLOR,
@@ -148,6 +149,12 @@ export const viewport: Viewport = {
   colorScheme: "dark light",
 };
 
+/**
+ * Everything inside this provider can translate, server components and client
+ * components alike. The messages are the reader's language with English
+ * behind it (lib/i18n/messages.ts), so a string that has not been translated
+ * yet still reads as English rather than as a dotted key.
+ */
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -163,6 +170,12 @@ export default async function RootLayout({
   const requestHeaders = await headers();
   const nonce = requestHeaders.get("x-nonce") ?? undefined;
 
+  // The language this reader gets, decided in lib/i18n/config.ts. <html lang>
+  // has to say it: it is what a screen reader picks a voice from and what a
+  // browser offers to translate against.
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   // MAINTENANCE_MODE. Enforced here rather than in middleware.ts because the
   // switch is a database-backed registry setting and middleware compiles to
   // the Edge bundle, which cannot import node-postgres. This layout wraps
@@ -177,7 +190,7 @@ export default async function RootLayout({
   if (maintenance.active) {
     return (
       <html
-        lang={SEO_LANGUAGE}
+        lang={locale}
         className="dark"
         suppressHydrationWarning
         data-scroll-behavior="smooth"
@@ -202,7 +215,7 @@ export default async function RootLayout({
 
   return (
     <html
-      lang={SEO_LANGUAGE}
+      lang={locale}
       className="dark"
       suppressHydrationWarning
       data-scroll-behavior="smooth"
@@ -259,34 +272,36 @@ export default async function RootLayout({
             covers every case where the system genuinely cannot be read - no
             JS, a blocked or failed script, matchMedia missing - because
             nothing then runs to replace it. */}
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <AuthProvider>
-            <StaffHeartbeat />
-            <Ipv4Capture />
-            <ImpersonationBanner />
-            <SiteNotificationsWrapper />
-            <TosGate>{children}</TosGate>
-            {/* App-wide, not per page: the product tour walks the reader from
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <AuthProvider>
+              <StaffHeartbeat />
+              <Ipv4Capture />
+              <ImpersonationBanner />
+              <SiteNotificationsWrapper />
+              <TosGate>{children}</TosGate>
+              {/* App-wide, not per page: the product tour walks the reader from
                 the scanner through History, Compare, Profile and Teams, and a
                 mount inside any one of those would unmount and restart it at
                 every crossing. TourMount keeps the tour's own code off the
                 ~790 public routes that will never run it. */}
-            <TourMount />
-            <BackupCodesModal />
-            <DiscordProfileModalWrapper />
-            <GithubProfileModalWrapper />
-            <ChatWidgetMount />
-            <CookieNotice />
-            <OfflineBanner />
-            <CommandPalette />
-            <Toaster />
-          </AuthProvider>
-        </ThemeProvider>
+              <TourMount />
+              <BackupCodesModal />
+              <DiscordProfileModalWrapper />
+              <GithubProfileModalWrapper />
+              <ChatWidgetMount />
+              <CookieNotice />
+              <OfflineBanner />
+              <CommandPalette />
+              <Toaster />
+            </AuthProvider>
+          </ThemeProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

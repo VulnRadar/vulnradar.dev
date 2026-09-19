@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { LanguageSelect } from "@/components/shared/language-select";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -483,6 +484,24 @@ export function ProfileGeneralTab({
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Language */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Language
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            The language this account reads the site, its emails and its AI
+            answers in
+          </p>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6">
+            <LanguageSelect />
           </CardContent>
         </Card>
       </section>

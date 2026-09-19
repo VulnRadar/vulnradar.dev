@@ -3,6 +3,7 @@
 import { APP_NAME } from "@/lib/config/constants";
 import {
   CircleSlash,
+  Languages,
   KeyRound,
   Wifi,
   ShieldQuestion,
@@ -720,6 +721,12 @@ const CHANGELOG: Release[] = [
         label: "A Trailing Slash Is Not a Different Page",
         desc: 'example.com/landing and example.com/landing/ are the same page, and the scanner treated them as two: a site scan could scan the page twice, list it twice and spend two of your scans on it. They are one page now, everywhere, while a different query string (?page=2 against ?page=3) still counts as the different page it is. The recent-scans list also shows the page you scanned rather than just the site, and no longer shows a bare "/" as if it were a path.',
         category: "engine",
+      },
+      {
+        icon: Languages,
+        label: "VulnRadar Speaks Your Language",
+        desc: "Pick a language from the globe in the top bar, or from your profile: English, Spanish, French, German, Brazilian Portuguese or Japanese. The choice follows your account to any browser you sign in on, and a visitor without an account gets the language their browser asks for. Emails go out in it, and the AI assistant answers in it. Numbers and dates are formatted the way your language writes them, while the things you have to type or match exactly stay as they are: URLs, header names, finding IDs, code and config. Translation is being rolled out screen by screen, and anything not translated yet reads in English rather than breaking.",
+        category: "added",
       },
       {
         icon: Layers,

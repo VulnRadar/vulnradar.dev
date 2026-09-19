@@ -40,18 +40,23 @@ const DETAILS = {
 
 const WHEN = new Date("2026-09-01T14:30:00Z");
 
-export function buildTemplateCorpus(
+/**
+ * Async because a template written in the reader's language loads its
+ * messages (lib/i18n), so it returns a promise. The rest are plain values and
+ * pass through Promise.all untouched.
+ */
+export async function buildTemplateCorpus(
   email: typeof EmailModule,
-): RenderedTemplate[] {
+): Promise<RenderedTemplate[]> {
   const e = email;
-  return [
+  return Promise.all([
     // Account and onboarding
     {
       name: "emailVerification",
-      ...e.emailVerificationEmail(
+      ...(await e.emailVerificationEmail(
         "Sam",
         "https://vulnradar.dev/verify-email?token=6f1c0b9e4a2d",
-      ),
+      )),
     },
     { name: "emailVerified", ...e.emailVerifiedEmail("Sam") },
     {
@@ -486,5 +491,5 @@ export function buildTemplateCorpus(
         timestamp: WHEN,
       }),
     },
-  ];
+  ]);
 }

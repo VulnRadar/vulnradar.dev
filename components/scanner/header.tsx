@@ -1,7 +1,9 @@
 "use client";
 
 import { LogOut, Menu } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { LanguageMenu } from "@/components/shared/language-menu";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -43,22 +45,32 @@ import { tourAnchor, type TourAnchor } from "@/lib/tour/anchors";
 // lib/tour/anchors.ts.
 const NAV_LINKS: {
   href: string;
-  label: string;
+  /** Key under the "nav" namespace (lib/i18n/messages/en.json). */
+  label:
+    | "scanner"
+    | "history"
+    | "repos"
+    | "compare"
+    | "shared"
+    | "teams"
+    | "badge"
+    | "profile";
   tour?: TourAnchor;
   /** Client feature flag this destination depends on, if any. */
   feature?: FeatureSurface;
 }[] = [
-  { href: ROUTES.DASHBOARD, label: "Scanner" },
-  { href: ROUTES.HISTORY, label: "History", tour: "navHistory" },
-  { href: ROUTES.REPOS, label: "Repos" },
-  { href: ROUTES.COMPARE, label: "Compare", tour: "navCompare" },
-  { href: ROUTES.SHARES, label: "Shared", tour: "navShares" },
-  { href: ROUTES.TEAMS, label: "Teams", tour: "navTeams", feature: "teams" },
-  { href: ROUTES.BADGE, label: "Badge" },
-  { href: ROUTES.PROFILE, label: "Profile", tour: "navProfile" },
+  { href: ROUTES.DASHBOARD, label: "scanner" },
+  { href: ROUTES.HISTORY, label: "history", tour: "navHistory" },
+  { href: ROUTES.REPOS, label: "repos" },
+  { href: ROUTES.COMPARE, label: "compare", tour: "navCompare" },
+  { href: ROUTES.SHARES, label: "shared", tour: "navShares" },
+  { href: ROUTES.TEAMS, label: "teams", tour: "navTeams", feature: "teams" },
+  { href: ROUTES.BADGE, label: "badge" },
+  { href: ROUTES.PROFILE, label: "profile", tour: "navProfile" },
 ];
 
 export function Header() {
+  const t = useTranslations("nav");
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { isStaff } = useAuth();
@@ -116,7 +128,7 @@ export function Header() {
           <Link
             href={ROUTES.DASHBOARD}
             className={`flex items-center gap-2.5 hover:opacity-80 shrink-0 z-10 ${transitions.opacity}`}
-            aria-label="Go to scanner"
+            aria-label={t("goToScanner")}
             onClick={(e) => {
               // If already on dashboard with a ?scan= param (viewing scan results),
               // clear the param and dispatch popstate so the dashboard can reset
@@ -165,7 +177,7 @@ export function Header() {
                       : "text-muted-foreground hover:text-foreground hover:bg-muted",
                   )}
                 >
-                  {label}
+                  {t(label)}
                 </Link>
               );
             })}
@@ -188,6 +200,7 @@ export function Header() {
           {/* Right side - pushed to end */}
           <div className="flex items-center gap-1 ml-auto z-10">
             <NotificationBell />
+            <LanguageMenu />
             <ThemeToggle />
             <div className="hidden lg:block w-px h-5 bg-border mx-1" />
             <Button
@@ -197,7 +210,7 @@ export function Header() {
               className="hidden lg:inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground px-2.5"
             >
               <LogOut className="h-4 w-4" />
-              <span>Log out</span>
+              <span>{t("logOut")}</span>
             </Button>
             {/* Mobile hamburger */}
             <Button
@@ -210,7 +223,7 @@ export function Header() {
               // name also said "Toggle" for a control that only ever opens.
               aria-expanded={mobileOpen}
               aria-haspopup="dialog"
-              aria-label="Open menu"
+              aria-label={t("openMenu")}
               // 44px below lg. size="icon" is 40px, and this button only
               // exists below lg, where it is the only route to the nav.
               className="lg:hidden h-11 w-11 text-muted-foreground hover:text-foreground"
@@ -223,7 +236,7 @@ export function Header() {
         {/* Mobile overlay menu */}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetContent side="right" className="w-64">
-            <SheetTitle className="sr-only">Navigation menu</SheetTitle>
+            <SheetTitle className="sr-only">{t("menu")}</SheetTitle>
             {/* The one deliberate override on this band: h-16 lines the sheet's
                 header up with the site header bar it slid out from, so the logo
                 does not jump when the panel opens. */}
@@ -257,7 +270,7 @@ export function Header() {
                           : "text-muted-foreground hover:text-foreground hover:bg-muted",
                       )}
                     >
-                      {label}
+                      {t(label)}
                     </Link>
                   );
                 })}
@@ -286,7 +299,7 @@ export function Header() {
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               >
                 <LogOut className="h-4 w-4" />
-                Log out
+                {t("logOut")}
               </button>
             </SheetFooter>
           </SheetContent>

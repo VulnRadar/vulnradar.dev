@@ -12,6 +12,7 @@ import {
 } from "@/lib/config/client-constants";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { LanguageMenu } from "@/components/shared/language-menu";
 import { backdrops, focus, transitions } from "@/lib/ui/animations";
 import { cn } from "@/lib/ui/utils";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -124,7 +125,8 @@ export function LandingNav({ badge }: LandingNavProps) {
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
-            <div className="hidden sm:block">
+            <div className="hidden sm:flex sm:items-center">
+              <LanguageMenu />
               <ThemeToggle />
             </div>
 
@@ -211,7 +213,10 @@ export function LandingNav({ badge }: LandingNavProps) {
                 </Link>
               ))}
               <div className="flex items-center justify-between gap-3 pt-3 mt-1 border-t border-border/50">
-                <ThemeToggle />
+                <div className="flex items-center">
+                  <LanguageMenu />
+                  <ThemeToggle />
+                </div>
                 {!isLoading && !isLoggedIn && (
                   <Link href={ROUTES.LOGIN} onClick={() => setOpen(false)}>
                     <Button variant="outline" size="sm" className="h-8">
