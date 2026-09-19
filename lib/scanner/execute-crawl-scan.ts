@@ -827,8 +827,17 @@ export async function executeCrawlScan(
     // come back keyed by url rather than by position, because RETURNING row
     // order is not something Postgres promises. ref: AUDIT-012#perf-26
     const pageHistoryIds: Record<string, number> = {};
+    // The host's certificate grade, shared by every same-host page. Read here
+    // rather than only for the tracker below, because each page row carries it
+    // too.
+    let hostSslGrade: string | undefined;
+    try {
+      hostSslGrade = readSslGrade(new URL(normalizedMainUrl).hostname);
+    } catch {
+      /* malformed URL: no grade */
+    }
     if (pageResults.length > 0) {
-      const COLUMNS = 13;
+      const COLUMNS = 14;
       const tuples: string[] = [];
       const params: unknown[] = [];
       for (const pr of pageResults) {
@@ -850,11 +859,35 @@ export async function executeCrawlScan(
           isPublic,
           authenticated,
           crawlTeamId,
+          // Each page row's own result_meta. It was never written: every
+          // per-page row a crawl saved had summary, findings and duration and
+          // nothing else, so opening one from History showed "Duration" and
+          // "Scanned" and none of the risk score, site grade, SSL grade,
+          // confidence or checks-run a scan result shows everywhere else,
+          // because the summary renders each of those only when present.
+          // Computed from THIS page's findings, the same way the tracker's
+          // are computed from the merged set.
+          JSON.stringify({
+            dangerScore: getDangerScore(pr.findings),
+            siteGrade: getSiteGrade(pr.findings),
+            engineConfidence: getEngineConfidence(
+              pr.findings,
+              pr.incomplete.length > 0,
+            ),
+            ...(typeof pr.checksRun === "number"
+              ? { checksRun: pr.checksRun }
+              : {}),
+            ...(pr.incomplete.length > 0 ? { incomplete: pr.incomplete } : {}),
+            ...(pr.erroredChecks && pr.erroredChecks.length > 0
+              ? { erroredChecks: pr.erroredChecks }
+              : {}),
+            ...(hostSslGrade ? { sslGrade: hostSslGrade } : {}),
+          }),
         );
       }
       try {
         const insertResult = await pool.query<{ id: number; url: string }>(
-          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes, is_public, authenticated, team_id)
+          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes, is_public, authenticated, team_id, result_meta)
            VALUES ${tuples.join(", ")} RETURNING id, url`,
           params,
         );
@@ -873,12 +906,7 @@ export async function executeCrawlScan(
     // TLS branch records under one hostname key (lib/scanner/ssl-grade.ts), so
     // reading by the main host resolves the shared grade. Only stored when
     // present -- a missing grade must never render as "F".
-    let sslGrade: string | undefined;
-    try {
-      sslGrade = readSslGrade(new URL(normalizedMainUrl).hostname);
-    } catch {
-      /* malformed URL: no grade */
-    }
+    const sslGrade = hostSslGrade;
 
     // Full structured DNS record set for the crawl's main host, resolved in
     // the DNS branch and read from the same per-host side channel

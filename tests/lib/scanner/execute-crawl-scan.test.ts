@@ -108,7 +108,10 @@ vi.mock("@/lib/email/email", () => ({
 const { executeCrawlScan } = await import("@/lib/scanner/execute-crawl-scan");
 
 /** Columns per tuple in the per-page multi-row child INSERT. */
-const CHILD_INSERT_COLUMNS = 13;
+const CHILD_INSERT_COLUMNS = 14;
+/** Position of team_id in a child tuple; result_meta comes after it. */
+const CHILD_TEAM_ID = 12;
+const CHILD_RESULT_META = 13;
 
 /** The per-page tuples of the one multi-row child INSERT the crawl issues. */
 function childInsertTuples(): unknown[][] {
@@ -250,7 +253,24 @@ describe("executeCrawlScan", () => {
     const tuples = childInsertTuples();
     expect(tuples.length).toBe(2);
     for (const tuple of tuples) {
-      expect(tuple.at(-1)).toBe(8);
+      expect(tuple[CHILD_TEAM_ID]).toBe(8);
+    }
+  });
+
+  it("gives every per-page row its own result stats, not just a duration", async () => {
+    // Child rows used to be saved with summary, findings and duration only, so
+    // opening one from History showed "Duration" and "Scanned" and nothing
+    // else: risk score, site grade, confidence and checks-run all render only
+    // when result_meta has them, and it was never written.
+    await executeCrawlScan(baseParams());
+
+    const tuples = childInsertTuples();
+    expect(tuples.length).toBe(2);
+    for (const tuple of tuples) {
+      const meta = JSON.parse(tuple[CHILD_RESULT_META] as string);
+      expect(typeof meta.dangerScore).toBe("number");
+      expect(typeof meta.siteGrade).toBe("string");
+      expect(typeof meta.engineConfidence).toBe("number");
     }
   });
 
@@ -268,7 +288,7 @@ describe("executeCrawlScan", () => {
     const tuples = childInsertTuples();
     expect(tuples.length).toBe(2);
     for (const tuple of tuples) {
-      expect(tuple.at(-1)).toBeNull();
+      expect(tuple[CHILD_TEAM_ID]).toBeNull();
     }
   });
 

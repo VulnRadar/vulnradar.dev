@@ -651,6 +651,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: FileSearch,
+        label: "Pages From a Site Scan Show Their Full Result",
+        desc: "Scanning a whole site also saves each page as its own entry in your history, and those entries were saved with only their findings and how long they took. Opening one showed the duration and when it ran, and none of the risk score, site grade, certificate grade, confidence or number of checks that every other result shows. Each page is now saved with its own full set, worked out from that page's findings.",
+        category: "fixed",
+      },
+      {
         icon: Layers,
         label: "A Crawl Reports Each Problem Once",
         desc: "Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.",
