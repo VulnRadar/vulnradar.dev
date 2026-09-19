@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { cn, safeHref } from "@/lib/ui/utils";
 import {
   BotMessageSquare,
+  CalendarClock,
   Check,
   CircleDot,
   GitCompareArrows,
@@ -61,6 +62,7 @@ import {
 } from "@/lib/config/client-constants";
 import { apiDelete, apiPost, ApiError } from "@/lib/api/client";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
+import { isSurfaceEnabled } from "@/lib/config/feature-surfaces";
 import { canOfferAiReview } from "./ai-review-gate";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
@@ -256,7 +258,8 @@ export function ScanActionsMenu({
   const { me } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const { featurePdfReports, featureTeams } = useClientConfig();
+  const clientConfig = useClientConfig();
+  const { featurePdfReports, featureTeams } = clientConfig;
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -1129,6 +1132,42 @@ export function ScanActionsMenu({
                 `${ROUTES.COMPARE}?host=${encodeURIComponent(compareHost)}`,
               ),
           },
+        ] as PageActionEntry[])
+      : []),
+    // Find, fix, scan again: the second scan after a fix was three steps
+    // from every result (back to the dashboard, paste the URL, choose the
+    // options again), and a recurring check of the same site was four, in a
+    // settings tab nothing here pointed at.
+    ...(me
+      ? ([
+          {
+            key: "scan-again",
+            label: "Scan this site again",
+            icon: RefreshCw,
+            onSelect: () =>
+              confirm({
+                title: "Scan this site again?",
+                description: `${hostOf(result.url) ?? result.url} is scanned fresh, which spends one of today's scans. This result is kept.`,
+                confirmLabel: "Scan again",
+                onConfirm: () =>
+                  router.push(
+                    `${ROUTES.DASHBOARD}?scan=${encodeURIComponent(result.url)}`,
+                  ),
+              }),
+          },
+          ...(isSurfaceEnabled("schedules", clientConfig)
+            ? [
+                {
+                  key: "schedule",
+                  label: "Scan this site on a schedule",
+                  icon: CalendarClock,
+                  onSelect: () =>
+                    router.push(
+                      `${ROUTES.PROFILE}?tab=developer&dtab=schedules&schedule=${encodeURIComponent(result.url)}`,
+                    ),
+                },
+              ]
+            : []),
         ] as PageActionEntry[])
       : []),
     ...(scanId && isOwner

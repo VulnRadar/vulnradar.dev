@@ -19,7 +19,12 @@ import {
   ROUTES,
   type ApiKeyScope,
 } from "@/lib/config/client-constants";
-import { useQueryParam } from "@/lib/ui/url-state";
+import {
+  getQueryParam,
+  removeQueryParam,
+  useQueryParam,
+  useQuerySeededState,
+} from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { useAssignableTeams } from "@/lib/hooks/use-assignable-teams";
@@ -300,7 +305,13 @@ export function ProfileDeveloperTab({
   // a user who never touches these controls gets a schedule anchored to
   // roughly when they created it, the same behavior a plain "now + interval"
   // used to produce implicitly.
-  const [scheduleUrl, setScheduleUrl] = useState("");
+  // "Scan this site on a schedule" on a scan result lands here with the URL in
+  // ?schedule=, so the form starts filled in. The param is dropped once the
+  // schedule is created, so a reload after that does not refill it.
+  const [scheduleUrl, setScheduleUrl] = useQuerySeededState(
+    () => getQueryParam("schedule") ?? "",
+    "",
+  );
   const [scheduleFreq, setScheduleFreq] = useState("weekly");
   const [scheduleHourLocal, setScheduleHourLocal] = useState(() =>
     new Date().getHours(),
@@ -853,6 +864,7 @@ export function ProfileDeveloperTab({
       if (res.ok) {
         setSchedules((prev) => [data, ...prev]);
         setScheduleUrl("");
+        removeQueryParam("schedule", { replace: true });
         setSuccess("Schedule created successfully.");
       } else {
         setError(data.error || "Failed to create schedule.");

@@ -180,6 +180,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The preview image shown when a host report or a shared scan link is posted in Slack, Discord or X failed to load whenever the report had ten or more findings of one severity, which is most real reports. It renders again.
 - [Wifi] **[FIXED]** **A Scan Survives Your Connection Dropping**
   A scan runs on our servers and never needed your page open, but the dashboard stopped following it after about twelve seconds without a connection, and a reload left it empty while the scan finished out of sight. It now waits for your connection to come back and carries on from where the scan has got to, and reloading or coming back to the dashboard picks a running scan back up, or shows its result if it finished while you were away.
+- [CalendarClock] **[ADDED]** **Scan Again or Schedule It From Any Result**
+  Checking that a fix worked meant going back to the dashboard, pasting the URL and choosing the options again, and setting up a recurring scan of the same site meant finding a settings tab nothing pointed at. Every result's actions menu now has Scan this site again, which asks first because it spends one of today's scans, and Scan this site on a schedule, which opens the schedule form with the URL already filled in.
 - [Layers] **[FIXED]** **A Crawl Reports Each Problem Once**
   Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.
 - [Lock] **[FIXED]** **A Crawl That Gets Signed Out Says So**
@@ -1370,6 +1372,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 982
+- **Total changes documented:** 983
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

@@ -697,6 +697,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: CalendarClock,
+        label: "Scan Again or Schedule It From Any Result",
+        desc: "Checking that a fix worked meant going back to the dashboard, pasting the URL and choosing the options again, and setting up a recurring scan of the same site meant finding a settings tab nothing pointed at. Every result's actions menu now has Scan this site again, which asks first because it spends one of today's scans, and Scan this site on a schedule, which opens the schedule form with the URL already filled in.",
+        category: "added",
+      },
+      {
         icon: Layers,
         label: "A Crawl Reports Each Problem Once",
         desc: "Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.",

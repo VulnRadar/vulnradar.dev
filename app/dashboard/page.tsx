@@ -963,7 +963,10 @@ function DashboardContent() {
     const scanUrl = searchParams.get("scan");
     // Only a URL/host-looking ?scan= is a target to scan; an id-looking value
     // is a saved scan the effect above redirects to History instead.
-    if (scanUrl && scanParamIsTarget(scanUrl) && status === "idle") {
+    // Any state but a scan already running: "Scan this site again" pushes a
+    // target onto a dashboard showing a finished (or failed) result, and an
+    // idle-only check ignored it.
+    if (scanUrl && scanParamIsTarget(scanUrl) && status !== "scanning") {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers an async scan; setState only fires after its own awaited network calls resolve, not synchronously here
       handleScan({ url: scanUrl, mode: "quick" });
     }
