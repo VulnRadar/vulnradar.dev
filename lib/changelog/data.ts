@@ -2,6 +2,7 @@
 // lazy-loaded client-side instead of shipping the whole thing in one payload.
 import { APP_NAME } from "@/lib/config/constants";
 import {
+  KeyRound,
   Zap,
   Shield,
   Lock,
@@ -655,6 +656,12 @@ const CHANGELOG: Release[] = [
         label: "Pages From a Site Scan Show Their Full Result",
         desc: "Scanning a whole site also saves each page as its own entry in your history, and those entries were saved with only their findings and how long they took. Opening one showed the duration and when it ran, and none of the risk score, site grade, certificate grade, confidence or number of checks that every other result shows. Each page is now saved with its own full set, worked out from that page's findings.",
         category: "fixed",
+      },
+      {
+        icon: KeyRound,
+        label: "Encoded Fonts and Images Are No Longer Leaked AWS Keys",
+        desc: "A font or image embedded in a page is stored as a long run of encoded text, and a stretch of it can happen to spell the start of an AWS access key. The scanner took any such stretch for a real key and reported two critical findings, a leaked key and the secret key beside it, on sites that leak neither. A key now has to stand on its own, use the characters real AWS keys use and look random, and a secret key has to be labeled as one or sit next to a real key ID. A genuinely leaked pair is still reported.",
+        category: "engine",
       },
       {
         icon: Layers,

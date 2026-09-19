@@ -7,7 +7,10 @@
  */
 
 import {
+  findAwsAccessKeyIds,
+  findAwsSecretKey,
   redactSecret,
+  shannonEntropy,
   stripExampleContent,
   stripProse,
   extractScriptContents,
@@ -183,23 +186,6 @@ const CARD_CONTEXT_RE =
   /credit[\s_-]*card|debit[\s_-]*card|card[\s_-]*(?:number|holder|no\b|num\b|nr\b)|cardnumber|\bccnum|\bcc[\s_-]*(?:number|num\b|no\b)|\bpayment|\bbilling|\bcheckout|\bcvv\b|\bcvc\b|\bexp(?:iry|iration)|\bexp[\s_-]*(?:month|year|date)|\bmastercard\b|\bamex\b|american express|\bpan\b/i;
 
 /**
- * Shannon entropy in bits/character. Higher means the character sequence
- * is closer to uniformly random (no repeated substructure), which is the
- * shape of generated credential material as opposed to prose, identifiers,
- * or file paths.
- */
-function shannonEntropy(value: string): number {
-  const counts = new Map<string, number>();
-  for (const ch of value) counts.set(ch, (counts.get(ch) ?? 0) + 1);
-  let entropy = 0;
-  for (const count of counts.values()) {
-    const p = count / value.length;
-    entropy -= p * Math.log2(p);
-  }
-  return entropy;
-}
-
-/**
  * 4.0 bits/char is a commonly used general-purpose entropy cutoff for
  * mixed-alphabet secret detection (e.g. the threshold family used by
  * detect-secrets and truffleHog-style scanners for base64/alphanumeric
@@ -241,7 +227,7 @@ const GENERIC_SECRET_ASSIGNMENT =
  */
 const KNOWN_VENDOR_VALUE_FORMAT = new RegExp(
   [
-    String.raw`AKIA[0-9A-Z]{16}`,
+    String.raw`AKIA[A-Z2-7]{16}`,
     String.raw`sk_live_[0-9a-zA-Z]{24,}`,
     String.raw`rk_live_[0-9a-zA-Z]{24,}`,
     String.raw`whsec_[0-9a-zA-Z]{24,}`,
@@ -561,11 +547,12 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "secret-aws-secret-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (
-      /(?:aws_?secret_access_key|AKIA[0-9A-Z]{16})[\s\S]{0,200}?[A-Za-z0-9/+=]{40}/.test(
-        body,
-      )
-    ) {
+    // This was "AKIA and any sixteen characters, then any forty base64
+    // characters within 200", which inside a base64 blob is the blob itself:
+    // the second of two criticals raised on nothing. findAwsSecretKey wants
+    // the value labeled as the secret key, or a real access key ID beside a
+    // value with the shape and entropy of one.
+    if (findAwsSecretKey(body)) {
       return "Response contains an AWS Secret Access Key near an AKIA pair.";
     }
     return null;
@@ -741,7 +728,7 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "secret-aws-access-key-id": (_url, _headers, body) => {
     if (!body) return null;
-    if (/AKIA[0-9A-Z]{16}/.test(body)) {
+    if (findAwsAccessKeyIds(body).length > 0) {
       return "Response contains AWS Access Key ID.";
     }
     return null;

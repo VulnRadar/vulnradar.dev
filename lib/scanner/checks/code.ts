@@ -9,8 +9,10 @@
  */
 
 import {
+  AWS_ACCESS_KEY_ID_SOURCE,
   externalEntityDeclarationAt,
   getEffectiveCsp,
+  isPlausibleAwsAccessKeyId,
   getSetCookies,
   isDemonstratedExample,
   withDocBlocksStripped,
@@ -60,12 +62,20 @@ interface SecretPattern {
    *  enough page (seen live: a Twilio Account SID pattern matching inside
    *  google.com's minified bundle). */
   requireNearby?: RegExp;
+  /** When set, a match only counts if this accepts it. */
+  accept?: (match: string) => boolean;
 }
 
 // No legitimate reason to appear in client-visible source: compromise
 // means full account, database, or infrastructure access.
 const CRITICAL_SECRET_PATTERNS: SecretPattern[] = [
-  { name: "AWS Access Key", pattern: /AKIA[0-9A-Z]{16}/g },
+  // Shared with every other AWS detector; see _helpers.ts for why it is no
+  // longer AKIA and any sixteen characters.
+  {
+    name: "AWS Access Key",
+    pattern: new RegExp(AWS_ACCESS_KEY_ID_SOURCE, "g"),
+    accept: isPlausibleAwsAccessKeyId,
+  },
   {
     name: "Azure Storage Key",
     pattern:
@@ -286,7 +296,7 @@ function matchSecretPatterns(
   patterns: SecretPattern[],
 ): string[] {
   const found: string[] = [];
-  for (const { name, pattern, requireNearby } of patterns) {
+  for (const { name, pattern, requireNearby, accept } of patterns) {
     const occurrences = [...body.matchAll(pattern)].filter((m) => {
       if (isDemonstratedExample(body, m[0])) return false;
       const lower = m[0].toLowerCase();
@@ -304,6 +314,7 @@ function matchSecretPatterns(
       )
         return false;
       if (/localhost|127\.0\.0\.1/.test(m[0])) return false;
+      if (accept && !accept(m[0])) return false;
       if (requireNearby) {
         const nearby = body.slice(
           Math.max(0, m.index - 100),

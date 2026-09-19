@@ -714,3 +714,98 @@ export function redactSecret(
     value.slice(0, prefixLen) + "****" + value.slice(value.length - suffixLen)
   );
 }
+
+/**
+ * Shannon entropy in bits per character. Higher means the characters are
+ * closer to uniformly random, which is the shape of generated credential
+ * material rather than prose, identifiers or file paths.
+ */
+export function shannonEntropy(value: string): number {
+  const counts = new Map<string, number>();
+  for (const ch of value) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+  let entropy = 0;
+  for (const count of counts.values()) {
+    const p = count / value.length;
+    entropy -= p * Math.log2(p);
+  }
+  return entropy;
+}
+
+/**
+ * A long-lived AWS access key ID: AKIA and sixteen base32 characters (A-Z and
+ * 2-7, never 0, 1, 8 or 9), standing on its own rather than inside a longer
+ * run.
+ *
+ * Every AWS detector used to match `AKIA[0-9A-Z]{16}` anywhere at all, which
+ * is also what twenty characters out of the middle of a base64 blob look like.
+ * An inlined font or image is mostly zero bytes, zero bytes encode as runs of
+ * A and Q, and "AKIA" turns up in them. A scan reported a critical leaked AWS
+ * key with the evidence `AKIAAJQA****AKQA`, which is that shape exactly, and
+ * then a second critical for the "secret key" beside it, which the pairing
+ * check found in the next forty characters of the same run. The boundaries
+ * rule out the blob: a base64 run never has a non-base64 character on both
+ * sides of twenty characters. The alphabet and the entropy floor (3.0, the
+ * floor gitleaks uses for this format) rule out what the boundaries let
+ * through.
+ */
+export const AWS_ACCESS_KEY_ID_SOURCE = String.raw`(?<![A-Za-z0-9+/])AKIA[A-Z2-7]{16}(?![A-Za-z0-9+/=])`;
+
+/** Whether a match of AWS_ACCESS_KEY_ID_SOURCE is a key rather than a filler. */
+export function isPlausibleAwsAccessKeyId(id: string): boolean {
+  return !id.includes("EXAMPLE") && shannonEntropy(id) >= 3;
+}
+
+/** Every distinct plausible AWS access key ID in the text, examples excluded. */
+export function findAwsAccessKeyIds(text: string): string[] {
+  const found = new Set<string>();
+  for (const m of text.matchAll(new RegExp(AWS_ACCESS_KEY_ID_SOURCE, "g"))) {
+    if (isPlausibleAwsAccessKeyId(m[0])) found.add(m[0]);
+  }
+  return [...found];
+}
+
+/**
+ * Whether a value could be an AWS secret access key: exactly forty characters
+ * of unpadded base64 (thirty random bytes), so it mixes upper case, lower case
+ * and digits and has the entropy of random data. A 40-character SHA-1 has no
+ * upper case, and a path or a slug has neither the mix nor the entropy.
+ */
+export function isPlausibleAwsSecretKey(value: string): boolean {
+  return (
+    /^[A-Za-z0-9+/]{40}$/.test(value) &&
+    /[a-z]/.test(value) &&
+    /[A-Z]/.test(value) &&
+    /[0-9]/.test(value) &&
+    !value.includes("EXAMPLE") &&
+    shannonEntropy(value) >= 4.3
+  );
+}
+
+/**
+ * An AWS secret access key in the text: a plausible key assigned to a label
+ * that names it (`aws_secret_access_key`, `secretAccessKey`), or a plausible
+ * key within 200 characters after a plausible access key ID, which is how the
+ * two are written when passed positionally.
+ */
+export function findAwsSecretKey(text: string): string | null {
+  for (const m of text.matchAll(
+    /(?:aws)?[_-]?secret[_-]?access[_-]?key["']?\s*[:=]\s*["']?([A-Za-z0-9+/]{40})(?![A-Za-z0-9+/=])/gi,
+  )) {
+    if (isPlausibleAwsSecretKey(m[1])) return m[1];
+  }
+  for (const id of findAwsAccessKeyIds(text)) {
+    for (let at = text.indexOf(id); at !== -1; at = text.indexOf(id, at + 1)) {
+      // A key starting within 200 characters ends by 240, so the 241st is
+      // always in the window for the lookahead to see.
+      const start = at + id.length;
+      const window = text.slice(start, start + 241);
+      for (const m of window.matchAll(
+        /(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{40}(?![A-Za-z0-9+/=])/g,
+      )) {
+        if (m.index > 200) break;
+        if (isPlausibleAwsSecretKey(m[0])) return m[0];
+      }
+    }
+  }
+  return null;
+}

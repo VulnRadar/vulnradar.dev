@@ -9,6 +9,8 @@
 
 import {
   extractScriptContents,
+  findAwsAccessKeyIds,
+  isPlausibleAwsSecretKey,
   stripExampleContent,
   stripDocBlocks,
   isDemonstratedExample,
@@ -1837,22 +1839,18 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "aws-credentials-exposed": (url, _headers, body) => {
-    // Exclude AWS's own official example credentials (AKIAIOSFODNN7EXAMPLE /
-    // wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY), reproduced verbatim across
-    // AWS SDK docs, Terraform provider docs, and countless S3/IAM tutorials.
-    // Both loops walk EVERY occurrence rather than testing only the first
-    // match: the documentation example is exactly the value most likely to
-    // appear first on a page that also leaks a real key, and the old
-    // non-global body.match let it suppress the check entirely.
-    for (const m of body.matchAll(/\bAKIA[0-9A-Z]{16}\b/g)) {
-      if (!/EXAMPLE/i.test(m[0])) {
-        return "AWS access key ID pattern detected in source.";
-      }
+    // Both walk EVERY occurrence rather than testing only the first match,
+    // and both skip AWS's own documentation credentials (AKIAIOSFODNN7EXAMPLE
+    // / wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY): the documentation example
+    // is exactly the value most likely to appear first on a page that also
+    // leaks a real key.
+    if (findAwsAccessKeyIds(body).length > 0) {
+      return "AWS access key ID pattern detected in source.";
     }
     for (const m of body.matchAll(
       /\baws_secret_access_key\s*[:=]\s*["']([A-Za-z0-9/+=]{40})["']/gi,
     )) {
-      if (!/EXAMPLE/i.test(m[1])) {
+      if (isPlausibleAwsSecretKey(m[1])) {
         return "AWS secret access key pattern detected in source.";
       }
     }

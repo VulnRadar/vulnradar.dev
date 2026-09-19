@@ -17,7 +17,7 @@
 
 import type { PageCheck } from "../../check-types";
 import { excerpt, lineAt } from "../../check-types";
-import { redactSecret } from "../../_helpers";
+import { redactSecret, shannonEntropy } from "../../_helpers";
 
 const ASSIGNMENT =
   /\b([a-zA-Z_$][a-zA-Z0-9_$]{0,40})\s*[:=]\s*["']([A-Za-z0-9_\-+/=]{20,120})["']/g;
@@ -30,17 +30,6 @@ const SECRET_NAME =
 // telltale substring rather than requiring the whole value to be one.
 const PLACEHOLDER =
   /your[_-]?(?:api[_-]?)?key|insert[_-]?(?:your[_-]?)?key|key[_-]?(?:goes[_-]?)?here|replace[_-]?(?:with|me)\b|change[_-]?me|^(?:x+|0+|1+)$|^(?:test|demo|sample|example|placeholder|dummy|fake|mock)(?:[_-][a-z]+)?$/i;
-
-function shannonEntropy(s: string): number {
-  const counts = new Map<string, number>();
-  for (const ch of s) counts.set(ch, (counts.get(ch) ?? 0) + 1);
-  let entropy = 0;
-  for (const count of counts.values()) {
-    const p = count / s.length;
-    entropy -= p * Math.log2(p);
-  }
-  return entropy;
-}
 
 /** True when the string is mostly one repeated character or a short cycle. */
 function looksLikePlaceholder(value: string): boolean {

@@ -430,7 +430,7 @@ const fixtures: DetectorFixtures = {
         "regression (false negative): the EXAMPLE key FIRST and a real access key ID second still fires -- the old non-global body.match judged only the first AKIA match",
       body:
         "<p>Example credentials: AKIAIOSFODNN7EXAMPLE</p>" +
-        '<script>var k = "AKIA3XZQ7NPLM2VKD9RT";</script>',
+        '<script>var k = "AKIA3XZQ7NPLM2VKD6RT";</script>',
       expect: "fire",
       evidenceIncludes: "access key id",
     },
