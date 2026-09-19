@@ -85,9 +85,10 @@ export function ModalShell({
   return (
     // Presentational: the scrim is a convenience for pointer users, and the one
     // action it offers (close) is also on the keyboard-reachable button below
-    // and on Escape, which useModalA11y binds. That is why it carries no role
-    // and no key handler of its own.
+    // and on Escape, which useModalA11y binds. That is why it has no key
+    // handler of its own, and role="presentation" says so.
     <div
+      role="presentation"
       className={cn(modalScrim, modalPositioner, "animate-in fade-in-0")}
       onClick={onClose}
     >
@@ -96,6 +97,11 @@ export function ModalShell({
           on screen for an exit animation to run on. Adding the closed-state
           classes here would compile dead CSS and imply a fade-out that
           never plays. */}
+      {/* The panel's role="dialog" and its Escape handling arrive in
+          dialogProps from useModalA11y, where the rule cannot see them. The
+          click handler only keeps a click inside the dialog from closing it,
+          or from reaching whatever the shell is rendered inside. */}
+      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className={cn(
           modalPanel,

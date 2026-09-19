@@ -1617,9 +1617,9 @@ export function ChatWidget() {
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 {/* CONFIG_LOGO_URL, not a hardcoded /favicon.svg, so a
                     self-hoster's own mark reaches the chat header too. */}
+                {/* oxlint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={CONFIG_LOGO_URL}
                   alt={APP_NAME}

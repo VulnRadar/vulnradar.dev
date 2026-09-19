@@ -279,6 +279,7 @@ export function UserDetailPanel({
   // unnamed edit fields.
   const badgeIdFieldId = useId();
   const badgeDisplayFieldId = useId();
+  const badgeColorLabelId = useId();
   const notifTitleId = useId();
   const notifMessageId = useId();
   const creditTypeFieldId = useId();
@@ -1708,8 +1709,17 @@ export function UserDetailPanel({
                       </div>
                       {/* Color picker */}
                       <div className="flex flex-col gap-2">
-                        <label className="text-xs font-medium">Color</label>
-                        <div className="flex flex-wrap gap-2">
+                        <p
+                          id={badgeColorLabelId}
+                          className="text-xs font-medium"
+                        >
+                          Color
+                        </p>
+                        <div
+                          role="group"
+                          aria-labelledby={badgeColorLabelId}
+                          className="flex flex-wrap gap-2"
+                        >
                           {/* A badge colour is author-chosen content, so these
                               hexes are deliberately outside the theme. The set
                               was still wrong: it offered Green, Emerald, Teal

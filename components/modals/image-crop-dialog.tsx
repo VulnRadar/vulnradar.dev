@@ -255,7 +255,10 @@ export function ImageCropDialog({
         </DialogHeader>
 
         <DialogBody className="flex flex-col items-center gap-4">
-          {/* Canvas preview */}
+          {/* Canvas preview. A custom control: the arrow keys move the photo,
+              so it takes focus and handles keys, which the rules below only
+              expect of native controls. */}
+          {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
           <div
             ref={containerRef}
             // A group rather than an img: it draws a preview, but it is also
@@ -263,6 +266,7 @@ export function ImageCropDialog({
             // announced as an image says nothing about being operable.
             role="group"
             aria-label="Photo position. Use the arrow keys to move the photo, holding Shift to move further."
+            // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
             tabIndex={0}
             // a11y (SC 1.4.10): the crop circle was a hard 280px square
             // inside a dialog that adds its own horizontal padding, so at a

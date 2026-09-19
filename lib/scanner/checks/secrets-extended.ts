@@ -317,7 +317,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "phone-number-leak": (_url, _headers, body) => {
     const matches =
       body.match(
-        /(?:\+1[-.\s]?)?\(?\d{3}\)?[.\-](?:\d{3}[.\-]\d{4})|(?:\+1[-.\s]?)?\(\d{3}\)\s?\d{3}[-.\s]\d{4}|(?:\+1[-.\s]?\d{3}[-.\s]\d{3}[-.\s]\d{4})/g,
+        /(?:\+1[-.\s]?)?\(?\d{3}\)?[.-](?:\d{3}[.-]\d{4})|(?:\+1[-.\s]?)?\(\d{3}\)\s?\d{3}[-.\s]\d{4}|(?:\+1[-.\s]?\d{3}[-.\s]\d{3}[-.\s]\d{4})/g,
       ) || [];
     if (matches.length > 5) {
       return `Multiple phone numbers (${matches.length}) found in page source.`;
@@ -353,7 +353,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // Firebase's own docs the client config (including apiKey) is meant to
     // be public, gated by Security Rules rather than by hiding this call.
     // Only an actual inline key literal is a real signal.
-    if (/apiKey\s*:\s*["']AIza[0-9A-Za-z_\-]{35}["']/.test(body))
+    if (/apiKey\s*:\s*["']AIza[0-9A-Za-z_-]{35}["']/.test(body))
       return "Firebase configuration pattern detected in source.";
     return null;
   },
@@ -531,7 +531,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // Require "google" context: bare "client_secret" is a standard OAuth2
     // field name that fires on every provider (Spotify, GitLab, a generic
     // OIDC client), same fix already applied to secret-auth0-client-secret.
-    if (/google[_\-]?client_secret[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(body)) {
+    if (/google[_-]?client_secret[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(body)) {
       return "Response contains a Google OAuth client_secret.";
     }
     return null;
@@ -590,7 +590,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-cloudflare-api-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /cloudflare[_\-]?(?:api[_\-]?key|api[_\-]?token)[\s"'=:]+[a-f0-9]{37,40}/i.test(
+      /cloudflare[_-]?(?:api[_-]?key|api[_-]?token)[\s"'=:]+[a-f0-9]{37,40}/i.test(
         body,
       )
     ) {
@@ -615,7 +615,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // or a Firebase web key. Every InstantSearch site was reported as having
     // leaked full write access to its indices, at critical.
     if (
-      /algolia[_\-]?admin[_\-]?(?:api[_\-]?)?key[\s"'=:]+[A-Za-z0-9]{32,}/i.test(
+      /algolia[_-]?admin[_-]?(?:api[_-]?)?key[\s"'=:]+[A-Za-z0-9]{32,}/i.test(
         body,
       )
     ) {
@@ -627,7 +627,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-mapbox-secret-token": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:mapbox[_\-]?(?:secret|token)[\s"'=:]+sk\.[A-Za-z0-9_.\-]{20,}|sk\.eyJ[A-Za-z0-9_.\-]+)/i.test(
+      /(?:mapbox[_-]?(?:secret|token)[\s"'=:]+sk\.[A-Za-z0-9_.-]{20,}|sk\.eyJ[A-Za-z0-9_.-]+)/i.test(
         body,
       )
     ) {
@@ -639,7 +639,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-pagerduty-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /pagerduty[_\-]?(?:api[_\-]?key|rest[_\-]?key)[\s"'=:]+[A-Za-z0-9_\-+]{16,}/i.test(
+      /pagerduty[_-]?(?:api[_-]?key|rest[_-]?key)[\s"'=:]+[A-Za-z0-9_\-+]{16,}/i.test(
         body,
       )
     ) {
@@ -671,7 +671,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-datadog-api-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:datadog[_\-]?(?:api[_\-]?key|app[_\-]?key))[\s"'=:]+[a-f0-9]{32,}/i.test(
+      /(?:datadog[_-]?(?:api[_-]?key|app[_-]?key))[\s"'=:]+[a-f0-9]{32,}/i.test(
         body,
       )
     ) {
@@ -691,7 +691,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-pinecone-api-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:pinecone|pcsk)[_\-]?(?:api[_\-]?)?key[\s"'=:]+[A-Za-z0-9_\-]{40,}/i.test(
+      /(?:pinecone|pcsk)[_-]?(?:api[_-]?)?key[\s"'=:]+[A-Za-z0-9_-]{40,}/i.test(
         body,
       )
     ) {
@@ -717,7 +717,7 @@ const rawDetectors: Record<string, DetectFn> = {
     if (
       // A JWT after the label. The label alone matched this check's own
       // id, secret-supabase-anon-key, in any link to it.
-      /(?:supabase[_\-]?anon[_\-]?key|\banon)["']?\s*[=:]\s*["']?eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/i.test(
+      /(?:supabase[_-]?anon[_-]?key|\banon)["']?\s*[=:]\s*["']?eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/i.test(
         body,
       )
     ) {
@@ -769,7 +769,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-ibm-cloud-iam-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:ibm[_\-]?cloud[_\-]?(?:iam[_\-]?)?api[_\-]?key[\s"'=:]+[A-Za-z0-9]{20,}|IBM-[A-Za-z0-9_-]{20,}|bx-[A-Za-z0-9]{40,})/i.test(
+      /(?:ibm[_-]?cloud[_-]?(?:iam[_-]?)?api[_-]?key[\s"'=:]+[A-Za-z0-9]{20,}|IBM-[A-Za-z0-9_-]{20,}|bx-[A-Za-z0-9]{40,})/i.test(
         body,
       )
     ) {
@@ -789,7 +789,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-linode-api-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:linode[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[a-f0-9]{64}/i.test(
+      /(?:linode[_-]?(?:api[_-]?)?(?:key|token))[\s"'=:]+[a-f0-9]{64}/i.test(
         body,
       )
     ) {
@@ -801,7 +801,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-vultr-api-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:vultr[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9]{20,}/i.test(
+      /(?:vultr[_-]?(?:api[_-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9]{20,}/i.test(
         body,
       )
     ) {
@@ -829,7 +829,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-jfrog-api-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:jfrog|artifactory)[_\-]?(?:api[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_\-+/=]{20,}/i.test(
+      /(?:jfrog|artifactory)[_-]?(?:api[_-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_\-+/=]{20,}/i.test(
         body,
       )
     ) {
@@ -849,7 +849,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-honeycomb-write-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:honeycomb|hcaak)[_\-]?(?:write[_\-]?)?(?:api[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9]{20,}/i.test(
+      /(?:honeycomb|hcaak)[_-]?(?:write[_-]?)?(?:api[_-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9]{20,}/i.test(
         body,
       )
     ) {
@@ -885,7 +885,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-bitbucket-app-password": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:bitbucket[_\-]?(?:app[_\-]?)?(?:password|token))[\s"'=:]+[A-Za-z0-9]{16,}/i.test(
+      /(?:bitbucket[_-]?(?:app[_-]?)?(?:password|token))[\s"'=:]+[A-Za-z0-9]{16,}/i.test(
         body,
       )
     ) {
@@ -897,7 +897,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-paypal-client-secret": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:paypal[_\-]?(?:client[_\-]?)?(?:secret|key))[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(
+      /(?:paypal[_-]?(?:client[_-]?)?(?:secret|key))[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(
         body,
       )
     ) {
@@ -909,7 +909,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-braintree-token": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:braintree[_\-]?(?:access[_\-]?)?(?:token|key))[\s"'=:]+[A-Za-z0-9]{16,}/i.test(
+      /(?:braintree[_-]?(?:access[_-]?)?(?:token|key))[\s"'=:]+[A-Za-z0-9]{16,}/i.test(
         body,
       )
     ) {
@@ -949,7 +949,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-messagebird-access-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /messagebird[_\-]?(?:access[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(
+      /messagebird[_-]?(?:access[_-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(
         body,
       )
     ) {
@@ -966,7 +966,7 @@ const rawDetectors: Record<string, DetectFn> = {
       // and spaces followed by any word used to count, so the markup
       // secret-vonage-nexmo-key" data-severity=" read as a key named
       // data-severity.
-      /(?:vonage|nexmo)[_\-]?(?:api[_\-]?)?(?:key|secret)["']?\s*[=:]\s*["']?(?:[a-f0-9]{8}|[A-Za-z0-9]{16})\b/i.test(
+      /(?:vonage|nexmo)[_-]?(?:api[_-]?)?(?:key|secret)["']?\s*[=:]\s*["']?(?:[a-f0-9]{8}|[A-Za-z0-9]{16})\b/i.test(
         body,
       )
     ) {
@@ -986,7 +986,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-cohere-api-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:cohere[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9_-]{30,}/i.test(
+      /(?:cohere[_-]?(?:api[_-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9_-]{30,}/i.test(
         body,
       )
     ) {
@@ -998,7 +998,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-mistral-api-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:mistral[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9_-]{30,}/i.test(
+      /(?:mistral[_-]?(?:api[_-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9_-]{30,}/i.test(
         body,
       )
     ) {
@@ -1018,7 +1018,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-meilisearch-master-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:meilisearch|meili)[_\-]?(?:master[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{32,}/i.test(
+      /(?:meilisearch|meili)[_-]?(?:master[_-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{32,}/i.test(
         body,
       )
     ) {
@@ -1030,7 +1030,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-typesense-admin-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:typesense[_\-]?(?:admin[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9]{32,}/i.test(
+      /(?:typesense[_-]?(?:admin[_-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9]{32,}/i.test(
         body,
       )
     ) {
@@ -1042,7 +1042,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-planetscale-password": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:planetscale|pscale)[_\-]?(?:password|service[_\-]?token|api[_\-]?key)[\s"'=:]+[A-Za-z0-9_\-:.@]{20,}/i.test(
+      /(?:planetscale|pscale)[_-]?(?:password|service[_-]?token|api[_-]?key)[\s"'=:]+[A-Za-z0-9_\-:.@]{20,}/i.test(
         body,
       )
     ) {
@@ -1057,9 +1057,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // on every OAuth app (Google, GitHub, etc.), and without requiring a value
     // this also fired on prose that merely names the config key (e.g. a docs
     // page telling a reader to set AUTH0_CLIENT_SECRET) with no secret present.
-    if (
-      /auth0[_\-]?client[_\-]?secret[\s"'=:]+[A-Za-z0-9_-]{16,}/i.test(body)
-    ) {
+    if (/auth0[_-]?client[_-]?secret[\s"'=:]+[A-Za-z0-9_-]{16,}/i.test(body)) {
       return "Response contains an Auth0 client secret.";
     }
     return null;

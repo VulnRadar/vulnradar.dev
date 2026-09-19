@@ -600,7 +600,8 @@ export function SiteNotifications({
     const next = modals.find((m) => !shownModals.current.has(m.id));
     if (!next) return;
     shownModals.current.add(next.id);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- derives which modal to show from the modals prop; self-limiting, each modal is shown at most once per page view
+    // Derives which modal to show from the modals prop. Self-limiting: each
+    // modal is shown at most once per page view.
     setActiveModal(next);
   }, [modals, activeModal]);
 

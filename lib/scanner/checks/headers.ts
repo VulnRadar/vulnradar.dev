@@ -1125,7 +1125,7 @@ export const detectors: Record<string, DetectFn> = {
     // only the first match let the ordinary interval-only self-reload idiom
     // at the top of a page hide a genuinely broken redirect further down.
     const tags =
-      body.match(/<meta\s+http-equiv=["\']?refresh[^>]{0,2000}>/gi) || [];
+      body.match(/<meta\s+http-equiv=["']?refresh[^>]{0,2000}>/gi) || [];
     for (const tag of tags) {
       // The attribute value is read with the quote character it opened
       // with. The old pattern was `content=["']?([^"'>]*)`, which had two
@@ -1248,7 +1248,7 @@ export const detectors: Record<string, DetectFn> = {
     // Referer header) -- a link with rel="noreferrer" and no literal
     // "noopener" token is not vulnerable, so it must not be flagged.
     const noNoopener = links.filter(
-      (t) => !/\brel\s*=\s*["\']?[^"']*\b(noopener|noreferrer)\b/i.test(t),
+      (t) => !/\brel\s*=\s*["']?[^"']*\b(noopener|noreferrer)\b/i.test(t),
     );
     if (noNoopener.length > 0) {
       return `${noNoopener.length} target="_blank" link(s) lack rel="noopener"/"noreferrer" (reverse tabnabbing).`;

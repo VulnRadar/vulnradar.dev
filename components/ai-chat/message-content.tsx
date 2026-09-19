@@ -28,14 +28,20 @@ export const messageMarkdownComponents: Components = {
   // any host page uses above the widget, so starting here keeps the reply
   // nested under it. All three render identically anyway (text-sm
   // font-semibold), so this is a semantics-only change.
-  h1: ({ node: _node, ...props }) => (
-    <h3 className="text-sm font-semibold mt-3 mb-1.5 first:mt-0" {...props} />
+  h1: ({ node: _node, children, ...props }) => (
+    <h3 className="text-sm font-semibold mt-3 mb-1.5 first:mt-0" {...props}>
+      {children}
+    </h3>
   ),
-  h2: ({ node: _node, ...props }) => (
-    <h4 className="text-sm font-semibold mt-3 mb-1.5 first:mt-0" {...props} />
+  h2: ({ node: _node, children, ...props }) => (
+    <h4 className="text-sm font-semibold mt-3 mb-1.5 first:mt-0" {...props}>
+      {children}
+    </h4>
   ),
-  h3: ({ node: _node, ...props }) => (
-    <h5 className="text-sm font-semibold mt-2.5 mb-1 first:mt-0" {...props} />
+  h3: ({ node: _node, children, ...props }) => (
+    <h5 className="text-sm font-semibold mt-2.5 mb-1 first:mt-0" {...props}>
+      {children}
+    </h5>
   ),
   ul: ({ node: _node, ...props }) => (
     <ul className="list-disc pl-4 my-1.5 space-y-0.5" {...props} />
@@ -86,13 +92,15 @@ export const messageMarkdownComponents: Components = {
   // model routinely emits a bare documentation URL as one unbroken token.
   // Without a break rule that token sets the bubble's min width and the whole
   // chat panel scrolls sideways.
-  a: ({ node: _node, ...props }) => (
+  a: ({ node: _node, children, ...props }) => (
     <a
       className="wrap-break-word text-primary underline underline-offset-2 hover:text-primary/80"
       target="_blank"
       rel="noopener noreferrer"
       {...props}
-    />
+    >
+      {children}
+    </a>
   ),
   blockquote: ({ node: _node, ...props }) => (
     <blockquote

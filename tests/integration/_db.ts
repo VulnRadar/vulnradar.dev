@@ -22,6 +22,7 @@ export const hasIntegrationDatabase = Boolean(
   process.env.INTEGRATION_DATABASE_URL,
 );
 
+// oxlint-disable-next-line vitest/valid-describe-callback -- skipIf returns a describe, not a call
 export const describeIntegration = describe.skipIf(!hasIntegrationDatabase);
 
 let counter = 0;

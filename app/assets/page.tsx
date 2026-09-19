@@ -159,7 +159,8 @@ export default function AssetsPage() {
   // filter shrank the list), which otherwise renders a reversed "41-15 of 15"
   // range and an empty table.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot clamp: currentPage <= totalPages after this fires, so it can't re-trigger
+    // A one-shot clamp: currentPage <= totalPages once this fires, so it
+    // cannot re-trigger.
     if (currentPage > totalPages) handlePageChange(totalPages);
   }, [currentPage, totalPages, handlePageChange]);
 

@@ -60,7 +60,7 @@ export const colorEnabled = COLOR_ENABLED;
  * be cleaned before it is stored or displayed.
  */
 export function stripAnsi(value) {
-  // eslint-disable-next-line no-control-regex
+  // oxlint-disable-next-line no-control-regex
   return String(value).replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -75,6 +75,8 @@ export const error = (msg) => log(`${c.red}[ERR]${c.reset}  ${msg}`);
  * Used to build box-drawing borders that align regardless of color codes.
  */
 function visibleLength(s) {
+  // Strips ANSI colour codes, which start with ESC.
+  // oxlint-disable-next-line no-control-regex
   return s.replace(/\x1b\[[0-9;]*m/g, "").length;
 }
 

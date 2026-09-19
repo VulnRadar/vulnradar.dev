@@ -42,7 +42,7 @@ export function ThemedLogo({
   // is in the header, so it should not wait behind lazy-loaded content.
   return (
     <span className={`inline-flex ${className}`}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* oxlint-disable-next-line @next/next/no-img-element */}
       <img
         src={CONFIG_LOGO_URL}
         alt={alt}

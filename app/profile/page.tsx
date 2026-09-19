@@ -115,7 +115,7 @@ function ProfileContent() {
     if (!window.location.search.includes("tab=")) {
       setActiveProfileTabRaw(activeProfileTabSafe);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Freshly issued 2FA backup codes are shown exactly once, and the Security

@@ -884,7 +884,7 @@ function DashboardContent() {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers an async scan; setState only fires after its own awaited network calls resolve, not synchronously here
       handleScan({ url: scanUrl, mode: "quick" });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   // Best-effort: fires the server-side cancel (DELETE, see

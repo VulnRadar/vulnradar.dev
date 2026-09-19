@@ -128,7 +128,7 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "dom-xss-location-hash": (_url, _headers, body) => {
     const pattern =
-      /(?:innerHTML|outerHTML|document\.write)\s*[=\(][^;]{0,100}location\.(?:hash|search|href)/i;
+      /(?:innerHTML|outerHTML|document\.write)\s*[=(][^;]{0,100}location\.(?:hash|search|href)/i;
     const m = pattern.exec(body);
     if (m) {
       if (/DOMPurify|sanitize|xss\s*\(/i.test(m[0])) return null;
@@ -190,7 +190,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // JSON object/array at the start of the body) rather than a bare
     // "callback=" substring, which also appears in OAuth redirect URLs and
     // third-party widget script tags that have nothing to do with JSONP.
-    const jsonpResponseShape = /^\s*([\w$.]{1,80})\(\s*[\{\[]/;
+    const jsonpResponseShape = /^\s*([\w$.]{1,80})\(\s*[{[]/;
     const call = jsonpResponseShape.exec(body);
     // An AMD module (RequireJS define/require) opens with the same shape and
     // is a script, not a data response wrapped for another origin.
@@ -396,7 +396,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "cs-clipboard-writetext-hardcoded-secret": (_url, _headers, body) => {
     const scripts = extractScriptContents(body).join("\n");
     const pattern =
-      /clipboard\.writeText\s*\(\s*["'](?:sk-|AIza|ghp_|xox[bpras]-)[A-Za-z0-9_\-]{16,}["']\s*\)/i;
+      /clipboard\.writeText\s*\(\s*["'](?:sk-|AIza|ghp_|xox[bpras]-)[A-Za-z0-9_-]{16,}["']\s*\)/i;
     if (pattern.test(scripts)) {
       return "navigator.clipboard.writeText() call contains a hardcoded credential-shaped string — likely a leftover debug 'copy my API key' button shipped with a real key.";
     }

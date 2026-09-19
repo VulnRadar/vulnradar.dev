@@ -20,6 +20,7 @@ function TableScroller({
 }) {
   return (
     <div
+      // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scroll container has to take focus to be scrolled from the keyboard
       tabIndex={0}
       className={cn(
         "relative overflow-x-auto rounded-lg border border-border/50",

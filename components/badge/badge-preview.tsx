@@ -348,7 +348,7 @@ export function BadgePreview({
           rel="noopener noreferrer"
           className="rounded-sm transition-opacity hover:opacity-90"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* oxlint-disable-next-line @next/next/no-img-element */}
           <img src={badgeUrl} alt={`Secured by ${APP_NAME}`} />
         </a>
       </PreviewFrame>

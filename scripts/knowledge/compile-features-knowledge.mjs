@@ -63,7 +63,7 @@ const GROUPS = [
   { prefix: "/legal", heading: "Legal and policy pages" },
   { prefix: "/checkout", heading: "Checkout and credit top-ups" },
   {
-    match: (route) => /credits$/.test(route),
+    match: (route) => route.endsWith("credits"),
     heading: "Checkout and credit top-ups",
   },
   {

@@ -6,8 +6,14 @@
 // releases needed.
 //
 // `next build`'s internal linter is disabled in next.config.mjs
-// (eslint.ignoreDuringBuilds: true). We run `npm run lint` (which uses
-// `eslint .` directly) in CI instead.
+// (eslint.ignoreDuringBuilds: true). We run `npm run lint` in CI instead,
+// which runs Oxlint first and then this file.
+//
+// Oxlint owns every rule it implements (.oxlintrc.json). The last block below
+// reads that file and switches the same rules off here, so nothing runs
+// twice. What stays with ESLint is what Oxlint cannot do yet: the type-aware
+// promise rules on the auth and billing surface, the React Compiler readiness
+// rules, the no-restricted-syntax selector, and the scripts block.
 //
 // TWO DELIBERATE VERSION MISMATCHES, recorded here rather than in
 // package.json (which is JSON and cannot carry a comment), because both look
@@ -47,6 +53,7 @@ import { fileURLToPath } from "node:url";
 import coreWebVitals from "eslint-config-next/core-web-vitals";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
+import oxlint from "eslint-plugin-oxlint";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -310,4 +317,6 @@ export default [
       "no-empty": ["error", { allowEmptyCatch: false }],
     },
   },
+  // Last, so it overrides every block above for the rules Oxlint owns.
+  ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
 ];

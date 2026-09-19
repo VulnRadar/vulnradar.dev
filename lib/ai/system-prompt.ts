@@ -27,7 +27,7 @@ import type { Category } from "@/lib/scanner/types";
 function sanitizeField(raw: string): string {
   return raw
     .replace(/[\r\n\t\v\f]/g, " ") // newlines → space (kills prompt injection newline tricks)
-    .replace(/[<>\[\]{}`]/g, "") // strip tag/bracket chars used in injection framing
+    .replace(/[<>[\]{}`]/g, "") // strip tag/bracket chars used in injection framing
     .replace(/#{1,6}\s/g, "") // strip markdown headings (## NEW RULES etc.)
     .replace(/\s{2,}/g, " ") // collapse runs of spaces
     .slice(0, 40)

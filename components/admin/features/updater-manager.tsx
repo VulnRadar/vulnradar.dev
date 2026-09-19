@@ -215,7 +215,7 @@ export function UpdaterManager() {
     if (!job?.id) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- poll-on-job-change: pollJob's setState calls only fire after its async request resolves, not synchronously in this effect
     pollJob(job.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.id]);
 
   // Slows down rather than stopping while the tab is hidden: an update job is

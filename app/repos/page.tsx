@@ -193,7 +193,7 @@ export default function ReposPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- init() is a useCallback the rule cannot see into; its first statement is an awaited fetch, so nothing calls setState synchronously here. It is a useCallback rather than a function declared inside this effect so the load-failure banner's Try again button can re-run the identical load.
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleConfirmSelection = async (

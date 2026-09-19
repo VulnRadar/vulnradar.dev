@@ -153,6 +153,7 @@ export function IPRulesManager() {
   const valueFieldId = useId();
   const ruleTypeId = useId();
   const descriptionId = useId();
+  const ruleTargetId = useId();
   const reasonId = useId();
   const expiryId = useId();
 
@@ -685,14 +686,20 @@ export function IPRulesManager() {
             <form onSubmit={handleFormSubmit} className="space-y-4">
               {/* Type Toggle */}
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+                <p
+                  id={ruleTargetId}
+                  className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+                >
                   Rule Target
-                </label>
+                </p>
                 <Tabs
                   value={valueType}
                   onValueChange={(v) => setValueType(v as "ip" | "url")}
                 >
-                  <TabsList className="grid w-full grid-cols-2">
+                  <TabsList
+                    aria-labelledby={ruleTargetId}
+                    className="grid w-full grid-cols-2"
+                  >
                     <TabsTrigger value="ip" className="gap-2">
                       <Network aria-hidden="true" className="h-4 w-4" />
                       <span className="hidden sm:inline">IP Address</span>

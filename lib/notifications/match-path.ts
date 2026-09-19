@@ -9,8 +9,8 @@
  * any run of characters, e.g. "/dashboard*" matches "/dashboard" and
  * "/dashboard/settings".
  *
- * Implemented as a linear greedy walk rather than `new RegExp(pattern
- * .replace(/\*​/g, ".*"))`. That construction has the classic catastrophic-
+ * Implemented as a linear greedy walk rather than by turning each `*` into
+ * `.*` and compiling a RegExp. That construction has the classic catastrophic-
  * backtracking shape (a pattern like "/a*a*a*a*b" is exponential in the
  * pathname length), and this function runs in EVERY visitor's browser on
  * every route change, driven by a string an admin typed. The walk below

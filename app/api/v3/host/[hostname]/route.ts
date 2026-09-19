@@ -184,8 +184,8 @@ export async function GET(
 
     // Live meta overrides the snapshot but never drops a field the snapshot had.
     const meta: Record<string, unknown> = {
-      ...(row.result_meta || {}),
-      ...(liveMeta || {}),
+      ...row.result_meta,
+      ...liveMeta,
     };
 
     /**

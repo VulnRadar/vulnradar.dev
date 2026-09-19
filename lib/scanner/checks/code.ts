@@ -679,7 +679,7 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "path-traversal": (_url, _headers, body) => {
     const patterns = [
-      /\.\.[\/\\]/g,
+      /\.\.[/\\]/g,
       /(?:readFile|readFileSync|createReadStream)\s*\([^)]*(?:\+|`\$\{).*(?:req|request|params|query)\./gi,
     ];
     const contextual = body.match(patterns[1]) || [];

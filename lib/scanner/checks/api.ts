@@ -138,8 +138,9 @@ function isInternalHostname(host: string): boolean {
   if (/\.(?:local|internal|intranet|lan|corp|home|test|localdomain)$/.test(h)) {
     return true;
   }
-  if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h)) return true;
-  if (/^169\.254\./.test(h)) return true;
+  if (h.startsWith("127.") || h.startsWith("10.") || h.startsWith("192.168."))
+    return true;
+  if (h.startsWith("169.254.")) return true;
   if (/^172\.(?:1[6-9]|2\d|3[01])\./.test(h)) return true;
   if (/^fd[0-9a-f]{2}:/i.test(h) || /^fe80:/i.test(h)) return true;
   return false;

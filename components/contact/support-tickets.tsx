@@ -232,7 +232,7 @@ export function SupportTickets() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot deep-link open on mount
     if (id && id > 0) void openThread(id);
     // Only react to the initial deep link, not to every openThread identity change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [me]);
 
   // Returning null here left the first and most prominent category on /contact

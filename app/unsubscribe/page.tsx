@@ -244,6 +244,7 @@ function UnsubscribeContent() {
                     // touch minimum. The whole row is the target now, and the
                     // Switch stops swallowing pointer events so the two cannot
                     // both fire; it stays focusable, so Tab plus Space still works.
+                    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the Switch inside is the keyboard control; the row only widens the pointer target
                     <div
                       key={key}
                       onClick={() => {

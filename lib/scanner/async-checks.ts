@@ -3357,7 +3357,8 @@ async function checkExposedFiles(
       // scanners useless: they report the shell as a finding on every site.
       path: "/.DS_Store",
       verify: (status, body) =>
-        status === 200 && /^\x00\x00\x00\x01Bud1/.test(body)
+        // The .DS_Store magic number: three zero bytes, 0x01, then Bud1.
+        status === 200 && body.startsWith("\x00\x00\x00\x01Bud1")
           ? "Bud1 magic header present"
           : null,
       def: A.dsStoreExposed,
@@ -4126,8 +4127,9 @@ async function checkExposedFiles(
   // workers pull the next index off a shared counter, results are written
   // back by index, so probe order in the output is unchanged.
   const PROBE_CONCURRENCY = 6;
-  const slots: Array<Vulnerability | null> = new Array(probes.length).fill(
-    null,
+  const slots: Array<Vulnerability | null> = Array.from(
+    { length: probes.length },
+    () => null,
   );
   let nextProbeIndex = 0;
   const worker = async (): Promise<void> => {

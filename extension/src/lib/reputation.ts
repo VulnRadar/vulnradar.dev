@@ -34,7 +34,7 @@ export async function noteReputationChecked(
   now: number = Date.now(),
 ): Promise<void> {
   const map: Record<string, number> = {
-    ...((await get("reputationThrottleMap")) ?? {}),
+    ...(await get("reputationThrottleMap")),
   };
   // Drop stale entries so the map doesn't grow unbounded over a long
   // browsing session - a day is well past any realistic throttle window.
@@ -74,7 +74,7 @@ export async function cacheReputation(
   url?: string,
 ): Promise<void> {
   const cache: Record<string, CachedReputation> = {
-    ...((await get("reputationCache")) ?? {}),
+    ...(await get("reputationCache")),
   };
   // Same staleness prune as noteReputationChecked's throttle map above - a
   // day is well past any realistic revisit window.
@@ -142,7 +142,7 @@ export async function noteReputationShown(
   now: number = Date.now(),
 ): Promise<void> {
   const map: Record<string, LastShownReputation> = {
-    ...((await get("lastShownReputation")) ?? {}),
+    ...(await get("lastShownReputation")),
   };
   // Same opportunistic staleness prune as the other host-maps in this file.
   for (const [h, entry] of Object.entries(map)) {
@@ -300,7 +300,7 @@ export async function snoozeHost(
   now: number = Date.now(),
 ): Promise<void> {
   const map: Record<string, number> = {
-    ...((await get("snoozedHosts")) ?? {}),
+    ...(await get("snoozedHosts")),
   };
   for (const [h, expiresAt] of Object.entries(map)) {
     if (expiresAt <= now) delete map[h];

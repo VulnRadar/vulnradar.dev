@@ -141,7 +141,7 @@ export function RepoDetail({
     setSelectedScanId(null);
     setScanDetail(null);
     setSelectedIssue(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [repo.fullName]);
 
   const loadScanDetail = async (id: number) => {

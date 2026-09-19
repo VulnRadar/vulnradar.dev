@@ -69,7 +69,7 @@ export class ScanSession implements ScanSessionBinding {
     }
     this.origin = origin;
     this.authType = init.authType;
-    this.staticHeaders = { ...(init.staticHeaders ?? {}) };
+    this.staticHeaders = { ...init.staticHeaders };
     this.loginPath = init.loginPath ? normalizePath(init.loginPath) : null;
     this.jar = new ScanCookieJar(init.maxCookieAgeSeconds);
   }

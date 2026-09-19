@@ -225,7 +225,7 @@ export function ScreenshotPanel({
                   className="group relative block w-full bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   aria-label="Enlarge page screenshot"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- served from
+                  {/* oxlint-disable-next-line @next/next/no-img-element -- served from
                     a dynamic same-origin API route; next/image would need a loader
                     and remotePatterns config for what is a simple <img>. */}
                   <img
@@ -250,7 +250,7 @@ export function ScreenshotPanel({
                   still announced. */}
               <DialogContent size="xl" className="p-2 sm:p-3">
                 <DialogTitle className="sr-only">{alt}</DialogTitle>
-                {/* eslint-disable-next-line @next/next/no-img-element -- see above. */}
+                {/* oxlint-disable-next-line @next/next/no-img-element -- see above. */}
                 <img
                   src={imgSrc}
                   alt={alt}

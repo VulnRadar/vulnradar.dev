@@ -114,7 +114,7 @@ export function GithubRepoPickerModal({
     setConfirmError(null);
     setSelected(new Set(initialSelected));
     loadRepos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const filteredRepos = useMemo(() => {

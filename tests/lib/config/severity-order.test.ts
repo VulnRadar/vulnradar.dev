@@ -70,7 +70,7 @@ function sourceFiles(dir: string): string[] {
         walk(full);
         continue;
       }
-      if (/\.(ts|tsx)$/.test(entry) && !/\.d\.ts$/.test(entry)) out.push(full);
+      if (/\.(ts|tsx)$/.test(entry) && !entry.endsWith(".d.ts")) out.push(full);
     }
   };
   walk(dir);

@@ -274,7 +274,8 @@ export default function TeamsPage() {
     if (selectedTeam && String(selectedTeam.id) === teamParam) return;
     const match = teams.find((t) => String(t.id) === teamParam);
     if (match) applyTeamSelection(match);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyTeamSelection is redeclared every render; including it would re-run this on every render
+    // applyTeamSelection is left out of the deps on purpose: it is redeclared
+    // every render, so including it would re-run this on every render.
   }, [teamParam, teams, loading, selectedTeam]);
 
   async function handleCreateTeam(name: string, invites: NewTeamInvite[]) {

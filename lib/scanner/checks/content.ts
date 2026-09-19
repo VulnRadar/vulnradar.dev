@@ -561,12 +561,12 @@ const rawDetectors: Record<string, DetectFn> = {
     const libs: { name: string; pattern: RegExp; maxSafe: string }[] = [
       {
         name: "Lodash < 4.17.21",
-        pattern: /lodash[./\-]([0-9]+\.[0-9]+\.[0-9]+)/i,
+        pattern: /lodash[./-]([0-9]+\.[0-9]+\.[0-9]+)/i,
         maxSafe: "4.17.21",
       },
       {
         name: "Bootstrap < 5.3.0",
-        pattern: /bootstrap[./\-]([0-9]+\.[0-9]+\.[0-9]+)/i,
+        pattern: /bootstrap[./-]([0-9]+\.[0-9]+\.[0-9]+)/i,
         maxSafe: "5.3.0",
       },
       {
@@ -1031,14 +1031,14 @@ const rawDetectors: Record<string, DetectFn> = {
     // keyword, a separator, and a value.
     const sensitivePatterns = [
       /(?:password|passwd|pwd)\s*[:=]\s*["']?[^\s"'<>]{4,}/i,
-      /(?:secret|api[_\-]?key|private[_\-]?key|access[_\-]?token|auth[_\-]?token|client[_\-]?secret)\s*[:=]\s*["']?[^\s"'<>]{8,}/i,
+      /(?:secret|api[_-]?key|private[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret)\s*[:=]\s*["']?[^\s"'<>]{8,}/i,
       /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
     ];
     // A value that is visibly a stand-in is documentation, not a leak: the
     // masked form an example uses, a templating placeholder, or the words
     // people write when they mean "put the real one here".
     const PLACEHOLDER =
-      /^["']?(?:\*+|x{3,}|\.{3,}|-{3,}|<[^>]*>|\{\{?[^}]*\}?\}|\$\{[^}]*\}|%[A-Za-z_]+%|(?:your|my|the|some|a)[_\-]?\w*|change[_\-]?me|placeholder|example|redacted|hidden|removed|todo|tbd|null|none|undefined|password|secret|token|value|here)["']?[.,;]?$/i;
+      /^["']?(?:\*+|x{3,}|\.{3,}|-{3,}|<[^>]*>|\{\{?[^}]*\}?\}|\$\{[^}]*\}|%[A-Za-z_]+%|(?:your|my|the|some|a)[_-]?\w*|change[_-]?me|placeholder|example|redacted|hidden|removed|todo|tbd|null|none|undefined|password|secret|token|value|here)["']?[.,;]?$/i;
     const found: string[] = [];
     for (const comment of comments) {
       for (const p of sensitivePatterns) {
@@ -1912,7 +1912,7 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "sendgrid-key-exposed": (url, _headers, body) => {
-    if (/\bSG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}\b/.test(body)) {
+    if (/\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b/.test(body)) {
       return "SendGrid API key pattern detected in source.";
     }
     return null;
@@ -1931,7 +1931,7 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "discord-webhook-exposed": (url, _headers, body) => {
     if (
-      /https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/[0-9]+\/[A-Za-z0-9_\-]+/i.test(
+      /https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/[0-9]+\/[A-Za-z0-9_-]+/i.test(
         body,
       )
     ) {
@@ -1982,7 +1982,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // page's literal "your key will look like AIzaSyXXXX..." example
     // rendered as sample code, which the unfiltered regex previously
     // matched as if it were a real embedded key.
-    if (/\bAIza[0-9A-Za-z_\-]{35}\b/.test(stripDocBlocks(body)))
+    if (/\bAIza[0-9A-Za-z_-]{35}\b/.test(stripDocBlocks(body)))
       return "Google API key pattern detected in source.";
     return null;
   },
@@ -2019,7 +2019,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // dckr_oat_ as well as dckr_pat_: an organization access token carries
     // the same registry push and pull rights as a personal one. Only a
     // detector that never ran (it had no definition) knew the oat prefix.
-    if (/\bdckr_(?:pat|oat)_[A-Za-z0-9_\-]{27,}/.test(body))
+    if (/\bdckr_(?:pat|oat)_[A-Za-z0-9_-]{27,}/.test(body))
       return "Docker Hub access token (dckr_pat_/dckr_oat_) detected in source.";
     return null;
   },

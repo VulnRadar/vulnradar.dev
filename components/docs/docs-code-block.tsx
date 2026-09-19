@@ -163,6 +163,7 @@ export function CodeBlock({
         )}
       </figcaption>
       <pre
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scroll container has to take focus to be scrolled from the keyboard
         tabIndex={0}
         className={cn(
           "overflow-x-auto p-3 sm:p-4 text-xs sm:text-[13px] leading-relaxed font-mono text-foreground/90",

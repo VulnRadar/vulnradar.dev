@@ -151,7 +151,7 @@ export function ProfileNotificationsTab({
       setOriginalPrefs(notifPrefs);
       setOriginalDigestEmailEnabled(digestEmailEnabled);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [saveKey]);
 
   const handleToggle = (key: keyof NotificationPrefs, checked: boolean) => {

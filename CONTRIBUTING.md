@@ -66,9 +66,9 @@ count toward the branch's required-signing-checks status (if enabled).
 ## Code style
 
 - **TypeScript** strict: no `any`, prefer `unknown` + narrowing
-- **ESLint** flat config in `eslint.config.mjs`
+- **Oxlint** (`.oxlintrc.json`) then **ESLint** (`eslint.config.mjs`); `npm run lint` runs both, and a rule lives in only one of them
 - **Prettier** for formatting
-- Avoid `// eslint-disable` unless absolutely necessary
+- Avoid disable comments unless absolutely necessary, and give the reason after `--`. Use `oxlint-disable` for a rule Oxlint owns and `eslint-disable` for one ESLint owns
 
 ## Before you open a PR
 

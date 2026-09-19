@@ -30,7 +30,7 @@ describe("source files", () => {
       }
       const lines = text.split("\n");
       for (let i = 0; i < lines.length; i++) {
-        // eslint-disable-next-line no-control-regex -- finding them is the point
+        // oxlint-disable-next-line no-control-regex -- finding them is the point
         const m = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.exec(lines[i]);
         if (m) {
           const code = m[0].charCodeAt(0).toString(16).padStart(4, "0");

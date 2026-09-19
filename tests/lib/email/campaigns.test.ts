@@ -85,7 +85,7 @@ describe("every campaign template", () => {
     // template would send that deployment's users to somebody else's site.
     for (const t of CAMPAIGN_TEMPLATES) {
       const body = t.body(campaignDefaults(t));
-      const hosts = [...body.matchAll(/href="(https?:\/\/[^\/"]+)/g)].map(
+      const hosts = [...body.matchAll(/href="(https?:\/\/[^/"]+)/g)].map(
         (m) => m[1],
       );
       for (const host of hosts) {

@@ -69,7 +69,11 @@ function ipv6ToBigInt(ip: string): bigint | null {
   }
   if (head.length + tail.length > 8) return null;
   const fillCount = 8 - (head.length + tail.length);
-  const groups = [...head, ...new Array(fillCount).fill("0"), ...tail];
+  const groups = [
+    ...head,
+    ...Array.from({ length: fillCount }, () => "0"),
+    ...tail,
+  ];
   if (groups.length !== 8) return null;
   let acc = BigInt(0);
   for (const g of groups) {

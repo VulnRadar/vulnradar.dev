@@ -27,6 +27,7 @@ class FakePool {
   constructor(config: PoolConfigArg) {
     this.config = config;
     poolConstructorCalls.push(config);
+    // oxlint-disable-next-line typescript/no-this-alias -- the test reads the last pool built
     lastPoolInstance = this;
   }
 

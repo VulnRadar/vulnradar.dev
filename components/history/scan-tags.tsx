@@ -190,6 +190,9 @@ export function ScanTags({
       )}
 
       {readOnly ? null : adding ? (
+        // Only keeps a click in the tag editor from also reaching the row
+        // it sits in. The input inside is the control.
+        // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
         <span
           className="inline-flex flex-col items-start gap-1"
           onClick={(e) => e.stopPropagation()}

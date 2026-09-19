@@ -395,7 +395,7 @@ function withoutHeaders(
  */
 function downgradeToGet(init: RequestInit | undefined): RequestInit {
   const method = (init?.method || "GET").toUpperCase();
-  if (method === "GET" || method === "HEAD") return { ...(init || {}) };
+  if (method === "GET" || method === "HEAD") return { ...init };
   const stripped = withoutHeaders(init, [
     "content-type",
     "content-length",

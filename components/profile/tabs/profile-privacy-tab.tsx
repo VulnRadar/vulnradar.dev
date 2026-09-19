@@ -122,7 +122,7 @@ export function ProfilePrivacyTab({
       setOriginalScansPrivateByDefault(scansPrivateByDefault);
       setOriginalSharePubliclyListedByDefault(sharePubliclyListedByDefault);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [saveKey]);
 
   function handleTogglePrivateByDefault(checked: boolean) {

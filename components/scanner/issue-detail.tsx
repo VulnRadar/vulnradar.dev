@@ -561,6 +561,8 @@ function RemediationControl({
               {teammates.length > 0 && (
                 <datalist id={assigneeListId}>
                   {teammates.map((t) => (
+                    // A datalist option's value is the text it shows.
+                    // oxlint-disable-next-line jsx-a11y/control-has-associated-label
                     <option key={t.id} value={t.name || t.email} />
                   ))}
                 </datalist>

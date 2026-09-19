@@ -81,7 +81,7 @@ function htmlResponse(
 ): Response {
   return new Response(body, {
     status: init.status ?? 200,
-    headers: { "content-type": "text/html", ...(init.headers ?? {}) },
+    headers: { "content-type": "text/html", ...init.headers },
   });
 }
 

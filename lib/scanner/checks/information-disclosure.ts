@@ -52,7 +52,7 @@ export const detectors: Record<string, DetectFn> = {
     const allComments = htmlComments(body);
     // Strip Next.js / React RSC framework markers (<!--$-->, <!--/$-->, <!--$!-->, <!--$?-->, <!--[-->, <!----> etc.)
     const comments = allComments.filter(
-      (c) => !/^<!--[$!?/\[]?[\]$]?-->$/.test(c.trim()),
+      (c) => !/^<!--[$!?/[]?[\]$]?-->$/.test(c.trim()),
     );
     const sensitive = [
       // Require an attached value so a bare mention ("CSRF token injected by
@@ -274,7 +274,7 @@ export const detectors: Record<string, DetectFn> = {
   "open-api-schema-version-leak": (url, _headers, body) => {
     // Only fire when the URL is an actual OpenAPI/Swagger schema endpoint
     // AND the version number appears in the path itself.
-    if (/\/openapi[\.\-_]?v?\d+/i.test(url)) {
+    if (/\/openapi[.\-_]?v?\d+/i.test(url)) {
       return "OpenAPI schema version is embedded in the URL — serve it at a generic path like /api/schema.";
     }
     // Or when the response body looks like a literal OpenAPI document

@@ -90,7 +90,7 @@ export function ErrorLogsManager() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchLogs(1, "", pageSize, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Debounced search, same 300ms pattern as the main admin users table.
@@ -103,7 +103,7 @@ export function ErrorLogsManager() {
       fetchLogs(1, search, pageSize);
     }, 300);
     return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
   const handleClear = async () => {

@@ -35,7 +35,7 @@ function walk(dir: string): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) out.push(...walk(full));
-    else if (/\.tsx$/.test(full)) out.push(full);
+    else if (full.endsWith(".tsx")) out.push(full);
   }
   return out;
 }
@@ -43,6 +43,9 @@ function walk(dir: string): string[] {
 const SOURCES = [...walk("app"), ...walk("components")];
 
 /** Pictographic emoji, plus the variation selector that forces emoji drawing. */
+// The selector is listed on its own on purpose: it is what turns a plain
+// symbol like a check mark into its emoji form.
+// oxlint-disable-next-line no-misleading-character-class
 const LITERAL_EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{26FF}\u{FE0F}]/u;
 
 /** Symbol ranges that, written as an entity, mean "draw me a glyph". */

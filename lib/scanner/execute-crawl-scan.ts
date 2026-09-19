@@ -582,7 +582,7 @@ export async function executeCrawlScan(
     // written back by index, so the merged output keeps the crawl's page
     // order no matter what order the pages finish in.
     const pageSlots: Array<Awaited<ReturnType<typeof scanSingleUrl>> | null> =
-      new Array(pagesToScan.length).fill(null);
+      Array.from({ length: pagesToScan.length }, () => null);
     let nextPageIndex = 0;
     let quotaExhausted = false;
 

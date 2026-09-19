@@ -265,7 +265,7 @@ export function PasswordStrengthMeter({
 }) {
   const requirements = useMemo(
     () => checkPasswordRequirements(password, context ?? {}),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
     [password, context?.email, context?.name],
   );
   const visibleRequirements = omitIds

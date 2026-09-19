@@ -879,7 +879,7 @@ function AdminContent() {
     };
     // usersPageSize is read at fire time but intentionally not a dep: a page-size
     // change has its own fetch handler, so listing it here would double-fetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
   // Debounced teams search
@@ -972,7 +972,7 @@ function AdminContent() {
     if (ALL_ADMIN_TABS.some((t) => t.key === activeTab)) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time redirect off a tab this role can't see, gated by the ALL_ADMIN_TABS.some() check above so it can't loop
     handleTabChange(ALL_ADMIN_TABS[0].key);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, callerRole]);
 
   const gate = resolveAdminGate({

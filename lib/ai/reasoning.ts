@@ -91,10 +91,10 @@ export function resolveOpenAiReasoningEffort(
   // OpenRouter and similar gateways namespace the id as "vendor/model".
   const id = model.toLowerCase().split("/").pop() ?? "";
   const reasons =
-    /^gpt-5/.test(id) ||
+    id.startsWith("gpt-5") ||
     /^o[1-9](-|$)/.test(id) ||
     /^gemini-(2.5|3)/.test(id) ||
-    /^grok-4/.test(id);
+    id.startsWith("grok-4");
   if (!reasons) return null;
   if (purpose === "verify") return "high";
   // Chat sits between the two: a support answer benefits from some thought,

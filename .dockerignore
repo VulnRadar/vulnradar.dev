@@ -65,6 +65,7 @@ marketing
 .gitignore
 .prettierrc*
 .eslintrc*
+.oxlintrc.json
 .vscode
 .idea
 docker-compose.yml

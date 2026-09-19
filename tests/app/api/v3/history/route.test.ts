@@ -272,7 +272,10 @@ describe("GET /api/v3/history", () => {
     it("truncated means 'there are rows after this page', not 'the cap was hit'", async () => {
       // Last page: offset 100 + 43 rows returned == the 143 total, so there is
       // nothing after it even though a previous page was full.
-      primeOnePage(new Array(43).fill({ id: "x" }), 143);
+      primeOnePage(
+        Array.from({ length: 43 }, () => ({ id: "x" })),
+        143,
+      );
 
       const res = await GET(pagedRequest("offset=100"));
       const json = await res.json();
@@ -281,7 +284,10 @@ describe("GET /api/v3/history", () => {
     });
 
     it("still reports truncated on the first page when more rows follow", async () => {
-      primeOnePage(new Array(100).fill({ id: "x" }), 143);
+      primeOnePage(
+        Array.from({ length: 100 }, () => ({ id: "x" })),
+        143,
+      );
 
       const res = await GET(getRequest());
       const json = await res.json();
@@ -460,7 +466,11 @@ describe("GET /api/v3/history", () => {
     it("pages against the filtered set: truncated follows matched, not the account total", async () => {
       // 412 scans on the account, 12 of them match, and this is the last page
       // of those 12. Measured against `total` this would claim there is more.
-      primeFiltered(new Array(2).fill({ id: "x" }), 412, 12);
+      primeFiltered(
+        Array.from({ length: 2 }, () => ({ id: "x" })),
+        412,
+        12,
+      );
 
       const res = await GET(filteredRequest("q=shop&limit=10&offset=10"));
       const json = await res.json();
@@ -470,7 +480,11 @@ describe("GET /api/v3/history", () => {
     });
 
     it("still reports truncated on the first page of a filtered set", async () => {
-      primeFiltered(new Array(10).fill({ id: "x" }), 412, 12);
+      primeFiltered(
+        Array.from({ length: 10 }, () => ({ id: "x" })),
+        412,
+        12,
+      );
 
       const res = await GET(filteredRequest("q=shop&limit=10"));
       const json = await res.json();

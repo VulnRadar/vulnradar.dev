@@ -1607,7 +1607,6 @@ export function ProfileBillingTab({
                 ? "border-primary bg-primary/5"
                 : "border-border hover:border-muted-foreground/50",
             )}
-            onClick={() => setCancelType("period_end")}
           >
             <input
               type="radio"
@@ -1636,7 +1635,6 @@ export function ProfileBillingTab({
                 ? "border-destructive bg-destructive/5"
                 : "border-border hover:border-muted-foreground/50",
             )}
-            onClick={() => setCancelType("immediate")}
           >
             <input
               type="radio"

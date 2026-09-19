@@ -588,7 +588,7 @@ export function ProfileSocialTab({
     );
     // Runs once on mount to consume the redirect's query params -- setError/
     // setSuccess are stable setters from the parent's useState.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDisconnect = async () => {

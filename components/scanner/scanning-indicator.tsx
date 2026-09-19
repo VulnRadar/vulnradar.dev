@@ -296,7 +296,7 @@ export function ScanningIndicator({
     // Intentionally only restarts when `displaySettling` flips on;
     // `displayBarPercent` and `settlePercent` are read once for their value
     // at that instant, not tracked as re-trigger sources for the ramp itself.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [displaySettling]);
 
   const displayPercent =

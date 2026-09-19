@@ -118,7 +118,7 @@ export function validateBannerTarget(
   if (
     !host ||
     host.length > 253 ||
-    !/^[a-z0-9.\-:\[\]]+$/i.test(host) ||
+    !/^[a-z0-9.\-:[\]]+$/i.test(host) ||
     host.includes("/")
   ) {
     return "Invalid hostname";

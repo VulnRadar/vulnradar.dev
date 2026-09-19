@@ -345,7 +345,7 @@ describe("GET /api/v3/history/[id]/report", () => {
     // bytes: Response.text() performs a UTF-8 decode, which strips a leading
     // BOM by spec, so a string comparison here would pass even without one.
     const bytes = new Uint8Array(await res.arrayBuffer());
-    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
     expect(new TextDecoder().decode(bytes)).toContain(
       "Finding ID,Title,Severity",
     );

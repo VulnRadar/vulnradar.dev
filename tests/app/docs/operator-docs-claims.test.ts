@@ -35,10 +35,12 @@ const pages = DOC_PAGES.map((path) => [path, read(path)] as const);
 
 describe("every `docker compose` command names a real service", () => {
   // Top-level keys under `services:` in docker-compose.yml. Two spaces of
-  // indent, which is what that file uses and what compose requires.
+  // indent, which is what that file uses and what compose requires. The
+  // block ends at the next top-level key or at the end of the file; JS has
+  // no \Z, and writing one matched a literal Z.
   const compose = read("docker-compose.yml");
   const servicesBlock =
-    compose.match(/^services:\n([\s\S]*?)(?=^\S|\Z)/m)?.[1] ?? "";
+    compose.match(/^services:\n([\s\S]*?)(?=^\S|(?![\s\S]))/m)?.[1] ?? "";
   const services = new Set(
     [...servicesBlock.matchAll(/^ {2}([a-z][a-z0-9_-]*):$/gm)].map((m) => m[1]),
   );

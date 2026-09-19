@@ -226,6 +226,7 @@ describe("runUpdateJob: the destructive prune is driven with the intended lists"
     ".claude",
     "audits",
     "eslint.config.mjs",
+    ".oxlintrc.json",
     ".prettierignore",
     "components.json",
     "Dockerfile",

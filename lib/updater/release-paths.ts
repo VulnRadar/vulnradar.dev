@@ -63,6 +63,7 @@ export const STRIP_PREFIXES = [
   // Developer tooling. `next build` skips ESLint entirely (see next.config's
   // eslint.ignoreDuringBuilds) and nothing at runtime reads any of these.
   "eslint.config.mjs",
+  ".oxlintrc.json",
   ".prettierignore",
   "components.json",
   // Inputs for building the container image. An install updated by this flow
