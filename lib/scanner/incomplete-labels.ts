@@ -34,6 +34,11 @@ export const INCOMPLETE_LABELS: Record<string, string> = {
   // A page check threw instead of reaching a verdict (engine.ts records which
   // in result_meta.erroredChecks for operators).
   "page-checks": "Some page checks",
+  // The site answered with a bot challenge instead of its page
+  // (lib/scanner/bot-challenge.ts), so everything read from the page, its
+  // headers and the files beside it was skipped.
+  "bot-challenge":
+    "The page, its headers and its files: the site showed the scanner a bot challenge instead",
 };
 
 /**

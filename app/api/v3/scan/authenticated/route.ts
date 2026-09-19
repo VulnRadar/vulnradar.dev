@@ -44,8 +44,13 @@ import {
 import {
   PAGE_CHECKS_INCOMPLETE,
   dedupeScanFindings,
+  noPageChecks,
   runSyncChecksYielding,
 } from "@/lib/scanner/engine";
+import {
+  BOT_CHALLENGE_INCOMPLETE,
+  detectBotChallenge,
+} from "@/lib/scanner/bot-challenge";
 import {
   getPlannedAsyncBranches,
   runAsyncChecksDetailed,
@@ -432,6 +437,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     let responseBody = "";
     let headers = new Headers();
     let finalScanUrl = url;
+    let botChallenge: string | null = null;
     try {
       const response = await safeFetch(
         url,
@@ -448,6 +454,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       );
       responseBody = await readCappedBody(response, MAX_BODY_SIZE);
       headers = response.headers;
+      // The login got through, and the page behind it can still be a bot
+      // challenge (lib/scanner/bot-challenge.ts). Graded as the signed-in
+      // page, it would be reported as the site's own headers and markup.
+      botChallenge = detectBotChallenge(response.status, headers, responseBody);
       // safeFetch restricts any redirect it follows to the same host (see its
       // own comment), so this is never a different site -- only a different
       // path/query on the one that was requested. Recorded separately from
@@ -496,14 +506,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // paid by everyone else sharing the process, which the paragraph directly
     // above that one spells out. This handler is already async - there is an
     // await eleven lines up - so the await is free.
-    const syncResult = await runSyncChecksYielding(
-      url,
-      headers,
-      bodyForChecks,
-      (scanners as Category[] | undefined) ?? null,
-      undefined,
-      finalScanUrl,
-    );
+    const syncResult = botChallenge
+      ? noPageChecks()
+      : await runSyncChecksYielding(
+          url,
+          headers,
+          bodyForChecks,
+          (scanners as Category[] | undefined) ?? null,
+          undefined,
+          finalScanUrl,
+        );
     const syncFindings: Vulnerability[] = syncResult.findings;
 
     // runAsyncChecksDetailed, not runAsyncChecks: an authenticated scan is
@@ -518,13 +530,24 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // could not finish, and it is the same defect the single-page and crawl
     // executors already fixed (lib/scanner/execute-scan.ts,
     // lib/scanner/execute-crawl-scan.ts).
-    const plannedBranches = getPlannedAsyncBranches(url, scanners ?? null);
+    const asyncScope = botChallenge ? "network" : "all";
+    const plannedBranches = getPlannedAsyncBranches(
+      url,
+      scanners ?? null,
+      asyncScope,
+    );
     let asyncFindings: Vulnerability[] = [];
     let asyncIncomplete: string[] = [];
     let asyncTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
       const asyncResult = await Promise.race<AsyncCheckResult>([
-        runAsyncChecksDetailed(url, scanners ?? null),
+        runAsyncChecksDetailed(
+          url,
+          scanners ?? null,
+          undefined,
+          undefined,
+          asyncScope,
+        ),
         new Promise<AsyncCheckResult>((resolve) => {
           asyncTimeoutHandle = setTimeout(
             () => resolve({ findings: [], incomplete: plannedBranches }),
@@ -585,6 +608,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       ...asyncIncomplete,
       ...(session.lost ? ["authenticated-session"] : []),
       ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
+      ...(botChallenge ? [BOT_CHALLENGE_INCOMPLETE] : []),
     ];
 
     // Headline signals, same as a normal scan (getDangerScore/getEngineConfidence

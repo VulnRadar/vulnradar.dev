@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   PAGE_CHECKS_INCOMPLETE,
   dedupeScanFindings,
+  noPageChecks,
   runSyncChecksYielding,
 } from "@/lib/scanner/engine";
+import {
+  BOT_CHALLENGE_INCOMPLETE,
+  detectBotChallenge,
+} from "@/lib/scanner/bot-challenge";
 import {
   runAsyncChecksDetailed,
   getPlannedAsyncBranches,
@@ -211,6 +216,16 @@ export async function POST(request: NextRequest) {
     });
     const reportedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
+    // A bot challenge in place of the page (lib/scanner/bot-challenge.ts):
+    // nothing read from it describes the site, so the page checks are skipped
+    // and the page is named as not checked, as in every other scan path.
+    const botChallenge = detectBotChallenge(
+      response.status,
+      headers,
+      responseBody,
+    );
+    const asyncScope = botChallenge ? "network" : "all";
+
     // Capped at the SAME resolved setting the body was READ with, rather
     // than at a second hardcoded literal. This used to re-cap at 1,000,000
     // bytes: both settings ship a 1 MiB default and both describe themselves
@@ -230,14 +245,16 @@ export async function POST(request: NextRequest) {
     // page the redirect landed on, and deduplication: a visitor trying the
     // product saw a different, noisier verdict than the one an account gets
     // for the same URL.
-    const syncResult = await runSyncChecksYielding(
-      url,
-      headers,
-      bodyForChecks,
-      null,
-      undefined,
-      response.url && response.url !== url ? response.url : undefined,
-    );
+    const syncResult = botChallenge
+      ? noPageChecks()
+      : await runSyncChecksYielding(
+          url,
+          headers,
+          bodyForChecks,
+          null,
+          undefined,
+          response.url && response.url !== url ? response.url : undefined,
+        );
     const syncFindings: Vulnerability[] = syncResult.findings;
 
     // Read cached subdomains only. cacheOnly is essential here: the demo is
@@ -266,7 +283,11 @@ export async function POST(request: NextRequest) {
     // corrected; the demo is the sibling that was left behind. Seeded with
     // every branch that was planned, then emptied when the checks actually
     // return.
-    let incomplete: string[] = getPlannedAsyncBranches(url);
+    let incomplete: string[] = getPlannedAsyncBranches(
+      url,
+      undefined,
+      asyncScope,
+    );
     // abuse: the race used to abandon the losing side. When the timeout won,
     // runAsyncChecks kept executing its whole live-fetch battery (the exposed
     // -file probes, GraphQL, bucket listing, header probes) against an
@@ -286,6 +307,7 @@ export async function POST(request: NextRequest) {
         undefined,
         undefined,
         asyncAbort.signal,
+        asyncScope,
       );
       // A sentinel rather than [], because "the checks ran and found nothing"
       // and "the checks never finished" are the two answers this race has to
@@ -327,6 +349,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (syncResult.checksErrored > 0) incomplete.push(PAGE_CHECKS_INCOMPLETE);
+    if (botChallenge) incomplete.push(BOT_CHALLENGE_INCOMPLETE);
 
     const findings = dedupeScanFindings([...syncFindings, ...asyncFindings]);
     findings.sort(

@@ -178,6 +178,22 @@ afterEach(() => {
 
 // ── checkSPF ─────────────────────────────────────────────────────────
 
+describe('the "network" async scope', () => {
+  it("plans only the work that never reads an HTTP response from the site", () => {
+    const branches = getPlannedAsyncBranches(
+      "https://example.com/",
+      null,
+      "network",
+    );
+    expect(branches).toEqual(
+      expect.arrayContaining(["dns", "tls", "reputation"]),
+    );
+    expect(branches).not.toContain("live-fetch");
+    expect(branches).not.toContain("osv-libraries");
+    expect(branches).not.toContain("active-probes");
+  });
+});
+
 describe("checkSPF", () => {
   it("returns missing-SPF finding when no SPF record is present", async () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf2.0"]]);

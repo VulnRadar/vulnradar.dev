@@ -170,6 +170,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Scanning a whole site also saves each page as its own entry in your history, and those entries were saved with only their findings and how long they took. Opening one showed the duration and when it ran, and none of the risk score, site grade, certificate grade, confidence or number of checks that every other result shows. Each page is now saved with its own full set, worked out from that page's findings, and the whole-site result now shows how many checks ran, which it never did.
 - [KeyRound] **[ENGINE]** **Encoded Fonts and Images Are No Longer Leaked AWS Keys**
   A font or image embedded in a page is stored as a long run of encoded text, and a stretch of it can happen to spell the start of an AWS access key. The scanner took any such stretch for a real key and reported two critical findings, a leaked key and the secret key beside it, on sites that leak neither. A key now has to stand on its own, use the characters real AWS keys use and look random, and a secret key has to be labeled as one or sit next to a real key ID. A genuinely leaked pair is still reported.
+- [ShieldQuestion] **[ENGINE]** **A Site Behind a Bot Challenge Is No Longer Graded by the Challenge**
+  Sites behind Cloudflare's bot protection answer an automated visitor with a "Just a moment" page instead of the site. The scanner graded that page as the site, so a scan reported the challenge page's missing headers and its timing data as the site's own findings. When the answer is a challenge now, the checks that read the page are skipped and the result says the page could not be checked and why. DNS, certificate and email results still come from the real site. The same applies to site scans, the homepage demo and signed-in scans.
 - [Layers] **[FIXED]** **A Crawl Reports Each Problem Once**
   Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.
 - [Lock] **[FIXED]** **A Crawl That Gets Signed Out Says So**
@@ -2570,6 +2572,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 977
+- **Total changes documented:** 978
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

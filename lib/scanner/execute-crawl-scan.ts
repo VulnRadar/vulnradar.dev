@@ -52,6 +52,7 @@ import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
 import { safeReadBody } from "./read-bounded-body";
 import { discoverPages } from "./crawl-discovery";
+import { BOT_CHALLENGE_INCOMPLETE, detectBotChallenge } from "./bot-challenge";
 import type { ScanSessionBinding, ScanAuthReport } from "./auth/types";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
@@ -188,6 +189,20 @@ async function scanSingleUrl(
   });
   // scanner: redact sensitive headers.
   const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
+
+  // A bot challenge where the page should be (lib/scanner/bot-challenge.ts).
+  // Every check below would grade the challenge as this page, so none run and
+  // the page is reported as not checked, like one that could not be fetched.
+  if (detectBotChallenge(response.status, headers, responseBody)) {
+    return {
+      url,
+      findings: [],
+      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
+      duration: Date.now() - startTime,
+      responseHeaders: redactedHeaders,
+      incomplete: [BOT_CHALLENGE_INCOMPLETE],
+    };
+  }
 
   // Capped at the SAME resolved setting the body was READ with, rather
   // than at a second hardcoded literal. This used to re-cap at 1,000,000
@@ -375,6 +390,35 @@ export interface ExecuteCrawlScanParams {
  * discovered page. Every discovered page still gets its own child row, as
  * before.
  */
+/**
+ * Whether the site answers the scanner with a bot challenge instead of its
+ * page. A fetch that fails outright is not a challenge: the page scans report
+ * that failure themselves.
+ */
+async function isBehindBotChallenge(
+  url: string,
+  fetchTimeoutMs: number,
+  session?: ScanSessionBinding,
+): Promise<boolean> {
+  try {
+    const response = await safeFetch(
+      url,
+      {
+        method: "GET",
+        headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+        redirect: "follow",
+        signal: AbortSignal.timeout(fetchTimeoutMs),
+      },
+      [new URL(url).hostname],
+      session,
+    );
+    const body = await safeReadBody(response, 32_768);
+    return detectBotChallenge(response.status, response.headers, body) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export async function executeCrawlScan(
   params: ExecuteCrawlScanParams,
 ): Promise<void> {
@@ -542,10 +586,21 @@ export async function executeCrawlScan(
     // categories/page-level branches (crawl pages all share the main URL's
     // origin, so https-ness and the scanners filter are identical for each
     // one), plus the host-level branches that run exactly once.
+    // The host-level branches start before any page is scanned, so they
+    // cannot learn from the page scans that the site answers with a bot
+    // challenge. Behind one, robots.txt, security.txt and the exposed-file
+    // probes all come back as the challenge, so one look at the main page
+    // decides whether those branches may use HTTP at all.
+    const hostChallenged = await isBehindBotChallenge(
+      normalizedMainUrl,
+      fetchTimeoutMs,
+      session,
+    );
+    const hostScope = hostChallenged ? "network" : "host";
     const plannedHostBranches = getPlannedAsyncBranches(
       normalizedMainUrl,
       scanners,
-      "host",
+      hostScope,
     );
     const perPageUnits =
       getPlannedSyncCategories(scanners as Category[] | null).length +
@@ -573,7 +628,7 @@ export async function executeCrawlScan(
             scanners,
             onProgress,
             cancelSignal,
-            "host",
+            hostScope,
           )
         : Promise.resolve({ findings: [], incomplete: [] });
     hostAsyncPromise.catch(() => {});
@@ -672,6 +727,7 @@ export async function executeCrawlScan(
         // an anonymous visitor. A clean result from those pages is not a
         // clean result for the site the user asked about.
         ...(authenticated && session?.lost ? ["authenticated-session"] : []),
+        ...(hostChallenged ? [BOT_CHALLENGE_INCOMPLETE] : []),
       ]),
     ].sort();
     const erroredChecks = [

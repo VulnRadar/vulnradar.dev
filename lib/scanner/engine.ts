@@ -65,6 +65,23 @@ export interface SyncCheckResult {
 export const PAGE_CHECKS_INCOMPLETE = "page-checks";
 
 /**
+ * The page-check result for a scan that has no page to check: a raw IP
+ * target, or a site that answered with a bot challenge instead of its page
+ * (lib/scanner/bot-challenge.ts). A fresh object each time, since callers
+ * own the findings array they are handed.
+ */
+export function noPageChecks(): SyncCheckResult {
+  return {
+    findings: [],
+    checksRun: 0,
+    checksSkipped: 0,
+    checksErrored: 0,
+    erroredChecks: [],
+    deduped: 0,
+  };
+}
+
+/**
  * Dedupe a whole scan's findings: the page checks' own results together with
  * everything that answered later (the async DNS, TLS and live-fetch checks,
  * active probes, OSV.dev). runSyncChecks dedupes the page checks alone, and

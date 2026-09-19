@@ -37,12 +37,11 @@ const mockRunSyncChecks = vi.fn();
 // executeScan drives the yielding variant (AUDIT-011#scan-06): the check loop
 // releases the event loop between categories instead of blocking it for the
 // whole ~1.2s pass on a 1MB body. Same arguments, same return shape, awaited.
-// dedupeScanFindings is the real one: it is pure, and faking it would let a
-// scan that stopped merging page and async findings pass.
+// Everything else is the real module. dedupeScanFindings in particular is
+// pure, and faking it would let a scan that stopped merging page and async
+// findings pass.
 vi.mock("@/lib/scanner/engine", async (importOriginal) => ({
-  dedupeScanFindings: (
-    await importOriginal<typeof import("@/lib/scanner/engine")>()
-  ).dedupeScanFindings,
+  ...(await importOriginal<typeof import("@/lib/scanner/engine")>()),
   runSyncChecksYielding: async (...args: unknown[]) =>
     mockRunSyncChecks(...args),
 }));
@@ -219,6 +218,44 @@ describe("executeScan", () => {
     // findings JSON, count, summary JSON, duration, scannedAt, headers JSON, resultMeta JSON, finalUrl, id
     expect((completedParams as unknown[])[7]).toBeNull(); // no redirect in this fixture
     expect((completedParams as unknown[])[8]).toBe(1);
+  });
+
+  it("does not grade a bot challenge as the site, and says the page was not checked", async () => {
+    // circlebot.xyz, scanned from a server, is Cloudflare's "Just a moment"
+    // interstitial. Its missing Vary and its Server-Timing were reported as
+    // the site's own findings.
+    mockSafeFetch.mockResolvedValue(
+      new Response(
+        "<html><head><title>Just a moment...</title></head><body></body></html>",
+        {
+          status: 403,
+          headers: {
+            "content-type": "text/html",
+            "cf-mitigated": "challenge",
+            "server-timing": 'chlray;desc="a3db96a95d6655b5"',
+          },
+        },
+      ),
+    );
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams({ scanId: 7 }));
+
+    expect(mockRunSyncChecks).not.toHaveBeenCalled();
+    // Only the work that never reads an HTTP response from the site.
+    expect(mockRunAsyncChecksDetailed.mock.calls[0][4]).toBe("network");
+
+    const completedCall = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("status = 'completed'"),
+    );
+    const params = completedCall![1] as unknown[];
+    expect(params[1]).toBe(0);
+    const resultMeta = JSON.parse(params[6] as string);
+    expect(resultMeta.incomplete).toContain("bot-challenge");
+    expect(resultMeta.engineConfidence).toBeLessThan(100);
   });
 
   it("merges an async finding into the page check that reported the same issue", async () => {

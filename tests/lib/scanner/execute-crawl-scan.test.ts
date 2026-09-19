@@ -505,9 +505,10 @@ describe("executeCrawlScan (authenticated)", () => {
       baseParams({ scanId: 20, session, authenticated: true }),
     );
 
-    // One safeFetch per pre-selected page, each carrying the session as its
-    // 4th argument (safeFetch scopes it to same-origin hops internally).
-    expect(mockSafeFetch).toHaveBeenCalledTimes(2);
+    // One safeFetch per pre-selected page plus the bot-challenge look at the
+    // main page, each carrying the session as its 4th argument (safeFetch
+    // scopes it to same-origin hops internally).
+    expect(mockSafeFetch).toHaveBeenCalledTimes(3);
     for (const call of mockSafeFetch.mock.calls) {
       expect(call[3]).toBe(session);
     }
@@ -575,6 +576,34 @@ describe("executeCrawlScan (authenticated)", () => {
     // drop was scanned as an anonymous visitor.
     expect(resultMeta.incomplete).toContain("authenticated-session");
     expect(resultMeta.engineConfidence).toBeLessThan(100);
+  });
+
+  it("does not grade a bot challenge as the site's pages", async () => {
+    mockSafeFetch.mockImplementation(
+      async () =>
+        new Response("<title>Just a moment...</title>", {
+          status: 403,
+          headers: { "content-type": "text/html", "cf-mitigated": "challenge" },
+        }),
+    );
+
+    await executeCrawlScan(baseParams({ scanId: 26 }));
+
+    expect(mockRunSyncChecks).not.toHaveBeenCalled();
+    // The host half runs once, without anything that reads HTTP; no page half
+    // runs, since no page was checked.
+    expect(mockRunAsyncChecks).toHaveBeenCalledTimes(1);
+    expect(mockRunAsyncChecks.mock.calls[0][4]).toBe("network");
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 26,
+    );
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    expect(resultMeta.incomplete).toContain("bot-challenge");
   });
 
   it("records how many distinct checks ran, not the sum across pages", async () => {

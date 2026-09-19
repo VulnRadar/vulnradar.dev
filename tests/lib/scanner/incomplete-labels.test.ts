@@ -14,6 +14,7 @@ import {
 } from "@/lib/scanner/incomplete-labels";
 import { getPlannedAsyncBranches } from "@/lib/scanner/async-checks";
 import { PAGE_CHECKS_INCOMPLETE } from "@/lib/scanner/engine";
+import { BOT_CHALLENGE_INCOMPLETE } from "@/lib/scanner/bot-challenge";
 
 /**
  * `ScanResult.incomplete` carries engine slugs, and two surfaces render them
@@ -34,11 +35,13 @@ describe("incomplete area labels", () => {
     expect(unlabelled).toEqual([]);
   });
 
-  it("names the two areas that come from outside the async branches", () => {
+  it("names the areas that come from outside the async branches", () => {
     // engine.ts, when a page check throws instead of reaching a verdict.
     expect(INCOMPLETE_LABELS[PAGE_CHECKS_INCOMPLETE]).toBeTruthy();
     // POST /api/v3/scan/authenticated, when the login session was lost mid-run.
     expect(INCOMPLETE_LABELS["authenticated-session"]).toBeTruthy();
+    // Every scan path, when the site answered with a bot challenge.
+    expect(INCOMPLETE_LABELS[BOT_CHALLENGE_INCOMPLETE]).toBeTruthy();
   });
 
   it("keeps an unknown area visible rather than dropping it", () => {

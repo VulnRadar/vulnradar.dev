@@ -3,6 +3,7 @@
 import { APP_NAME } from "@/lib/config/constants";
 import {
   KeyRound,
+  ShieldQuestion,
   Zap,
   Shield,
   Lock,
@@ -661,6 +662,13 @@ const CHANGELOG: Release[] = [
         icon: KeyRound,
         label: "Encoded Fonts and Images Are No Longer Leaked AWS Keys",
         desc: "A font or image embedded in a page is stored as a long run of encoded text, and a stretch of it can happen to spell the start of an AWS access key. The scanner took any such stretch for a real key and reported two critical findings, a leaked key and the secret key beside it, on sites that leak neither. A key now has to stand on its own, use the characters real AWS keys use and look random, and a secret key has to be labeled as one or sit next to a real key ID. A genuinely leaked pair is still reported.",
+        category: "engine",
+      },
+      {
+        icon: ShieldQuestion,
+        label:
+          "A Site Behind a Bot Challenge Is No Longer Graded by the Challenge",
+        desc: "Sites behind Cloudflare's bot protection answer an automated visitor with a \"Just a moment\" page instead of the site. The scanner graded that page as the site, so a scan reported the challenge page's missing headers and its timing data as the site's own findings. When the answer is a challenge now, the checks that read the page are skipped and the result says the page could not be checked and why. DNS, certificate and email results still come from the real site. The same applies to site scans, the homepage demo and signed-in scans.",
         category: "engine",
       },
       {

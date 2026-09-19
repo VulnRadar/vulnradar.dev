@@ -12,6 +12,7 @@
 import {
   PAGE_CHECKS_INCOMPLETE,
   dedupeScanFindings,
+  noPageChecks,
   runSyncChecksYielding,
 } from "./engine";
 import {
@@ -20,6 +21,7 @@ import {
   type AsyncCheckResult,
 } from "./async-checks";
 import { classifyRedirect } from "./scan-target-classify";
+import { BOT_CHALLENGE_INCOMPLETE, detectBotChallenge } from "./bot-challenge";
 import { readSslGrade } from "./ssl-grade";
 import { readThreatIntel } from "./reputation-lookup";
 import { readDnsRecords } from "./dns-records";
@@ -495,6 +497,19 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     });
     const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
+    // The site answered with a bot challenge instead of its page
+    // (lib/scanner/bot-challenge.ts). Nothing that reads the response can say
+    // anything about the site, so it is skipped the same way a raw IP skips
+    // it, and the scan names the page as not checked rather than grading
+    // Cloudflare's interstitial. DNS, TLS and reputation still run, and still
+    // describe the real site.
+    const botChallenge =
+      response && !isRawIpTarget
+        ? detectBotChallenge(response.status, headers, responseBody)
+        : null;
+    const noPage = isRawIpTarget || botChallenge !== null;
+    const asyncScope = botChallenge ? "network" : "all";
+
     // Automatic subdomain discovery: kicked off here so it runs concurrently
     // with the rest of the scan. It resolves as soon as the per-domain cache
     // lookup settles and never waits for a fresh sweep (see
@@ -520,12 +535,14 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     const plannedAsyncBranches = getPlannedAsyncBranches(
       normalizedUrl,
       selectedScanners,
+      asyncScope,
     );
     const asyncPromise = runAsyncChecksDetailed(
       normalizedUrl,
       selectedScanners,
       onProgress,
       cancelSignal,
+      asyncScope,
     );
     // Both onProgress and runSyncChecksYielding below can throw
     // (cancellation), which would abandon asyncPromise before the
@@ -591,7 +608,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // means no inventory panel and no software CVE findings. Raw-IP targets
     // skip the HTTP fetch, so there is nothing to fingerprint for them.
     const softwareInventoryPromise: Promise<SoftwareInventoryResult | null> =
-      isRawIpTarget
+      noPage
         ? Promise.resolve(null)
         : analyzeSoftwareInventory(
             normalizedUrl,
@@ -601,15 +618,8 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           );
     softwareInventoryPromise.catch(() => {});
 
-    const syncResult = isRawIpTarget
-      ? {
-          findings: [] as Vulnerability[],
-          checksRun: 0,
-          checksSkipped: 0,
-          checksErrored: 0,
-          erroredChecks: [] as string[],
-          deduped: 0,
-        }
+    const syncResult = noPage
+      ? noPageChecks()
       : // Yielding variant: this is ~63ms of uninterrupted synchronous work
         // on a 50KB body and ~1.2s at the 1MB cap applied just above, all of
         // it blocking every other scan and status poll sharing this process.
@@ -640,7 +650,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // bounded (see checkSourceMapSourcesExposed), and the race below is the
     // outer guarantee that a future regression inside it cannot again put an
     // unbounded await on the scan's critical path. ref: AUDIT-012#perf-02
-    const sourceMapPromise = isRawIpTarget
+    const sourceMapPromise = noPage
       ? Promise.resolve(null)
       : // The fetched URL, because a relative sourceMappingURL resolves
         // against the page that referenced it, not the one requested.
@@ -804,6 +814,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     const incomplete = [
       ...asyncResult.incomplete,
       ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
+      ...(botChallenge ? [BOT_CHALLENGE_INCOMPLETE] : []),
     ];
     const engineConfidence = getEngineConfidence(
       findings,

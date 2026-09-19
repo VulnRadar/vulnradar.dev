@@ -65,6 +65,7 @@ import { ScanSession } from "./scan-session";
 import type { BrowserCookie } from "./cookie-jar";
 import type { EphemeralFormAuth } from "./types";
 import type { EstablishSessionResult } from "./login";
+import { CHALLENGE_TITLE_MARKERS } from "../bot-challenge";
 
 const USER_AGENT = `${APP_NAME}/1.0 (Security Scanner; Authenticated)`;
 
@@ -143,16 +144,6 @@ async function resolveBrowserAuthTimings(): Promise<BrowserAuthTimings> {
 function fail(reason: string): EstablishSessionResult {
   return { ok: false, reason };
 }
-
-/** Title/body markers a Cloudflare (or similar) JS/interstitial challenge shows. */
-const CHALLENGE_TITLE_MARKERS = [
-  /just a moment/i,
-  /attention required.*cloudflare/i,
-  /checking your browser/i,
-  /verifying you are human/i,
-  /one more step/i,
-  /please wait.*redirecting/i,
-];
 
 const CHALLENGE_BODY_MARKERS = [
   /cf-chl/i,

@@ -5241,8 +5241,15 @@ async function boundedBranch(
  * deduped away. "page" is the work that genuinely differs per page: this
  * page's client-side libraries, its bucket references, and the active
  * probes. ref: AUDIT-012#perf-03
+ *
+ * "network" is for a site that answered the scanner with a bot challenge
+ * (lib/scanner/bot-challenge.ts): only the work that never reads an HTTP
+ * response from it. DNS, reputation and the TLS handshake still describe the
+ * real site; robots.txt, security.txt, the exposed-file probes and the
+ * HTTP-to-HTTPS redirect check would each be answered by the same challenge,
+ * and a "missing security.txt" read off a challenge page is not a finding.
  */
-export type AsyncBranchScope = "all" | "host" | "page";
+export type AsyncBranchScope = "all" | "host" | "page" | "network";
 
 /**
  * One planned branch. `run` is a thunk, NOT an already-started promise, and
@@ -5274,7 +5281,8 @@ function buildBranches(
   scope: AsyncBranchScope = "all",
 ): AsyncBranch[] {
   const wantsHost = scope !== "page";
-  const wantsPage = scope !== "host";
+  const wantsPage = scope !== "host" && scope !== "network";
+  const wantsHttp = scope !== "network";
   let hostname: string;
   let origin: string;
   let isHTTPS: boolean;
@@ -5370,7 +5378,9 @@ function buildBranches(
         includeDeepTlsProbes
           ? Promise.allSettled([
               checkTLSCert(hostname, url, 443, emitCategory),
-              checkHttpUpgradeToHttps(httpVariantUrl),
+              wantsHttp
+                ? checkHttpUpgradeToHttps(httpVariantUrl)
+                : Promise.resolve([]),
               checkTlsCertChainCompleteness(hostname, url),
               checkOcspStapling(hostname, url),
               // One handshake, ten certificate/negotiation checks, plus a
@@ -5386,9 +5396,10 @@ function buildBranches(
 
   // Live fetch checks (robots.txt → configuration/information-disclosure, security.txt → configuration)
   if (
-    runAll ||
-    allowed!.has("configuration") ||
-    allowed!.has("information-disclosure")
+    wantsHttp &&
+    (runAll ||
+      allowed!.has("configuration") ||
+      allowed!.has("information-disclosure"))
   ) {
     // Planned in BOTH crawl scopes: its host half (robots.txt, security.txt,
     // exposed files) runs once for the crawl, its page half (bucket listing)
