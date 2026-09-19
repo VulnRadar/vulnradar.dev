@@ -52,6 +52,7 @@ import {
 } from "@/lib/ui/url-state";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { useConfirm } from "@/components/shared/use-confirm";
+import { pluralize } from "@/lib/ui/plural";
 
 /** Same key results-list.tsx writes when a finding is selected. */
 const FINDING_QUERY_PARAM = "finding";
@@ -1012,6 +1013,21 @@ export function IssueDetail({
                   title={issue.alsoReportedBy?.join(", ")}
                 >
                   {corroboration}
+                </span>
+              </>
+            )}
+            {/* A crawl reports each problem once and lists where it occurs
+                (lib/scanner/crawl-merge.ts). Without the count on screen a
+                finding seen on thirty pages reads exactly like one seen on
+                the homepage alone. */}
+            {issue.affectedPages && issue.affectedPages.length > 1 && (
+              <>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <span
+                  className="text-xs text-muted-foreground"
+                  title={issue.affectedPages.slice(0, 20).join(", ")}
+                >
+                  On {pluralize(issue.affectedPages.length, "page")}
                 </span>
               </>
             )}

@@ -166,6 +166,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Three different refusals shared one screen, and its wording described only one of them: your plan's daily scans. So being told "that address has been scanned too many times in the last hour", a limit we apply to protect the site being scanned and count across everybody, came with a headline suggesting a higher plan would fix it. It would not. Each of the three now says what it actually is: your daily allowance, a busy address that clears within the hour, or your own scans already running. Only the first mentions plans.
 - [CalendarClock] **[FIXED]** **A Scheduled Scan That Fails Now Tells You**
   Scheduled scans emailed you when they finished and said nothing at all when they could not run. A schedule whose target went offline, lost its DNS or stopped answering could fail every run for weeks in silence, while the whole point of it was watching the site for you. You now get one email the first time a run fails, saying what happened in plain language, and nothing further until a run succeeds and then fails again, so a site that stays down does not fill your inbox.
+- [Layers] **[FIXED]** **A Crawl Reports Each Problem Once**
+  Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.
 - [Lock] **[FIXED]** **A Crawl That Gets Signed Out Says So**
   When you scan a site behind a login and the site drops your session partway through a multi-page crawl, every page after that point is scanned as a signed-out visitor. The result showed a badge saying the session was lost, but still counted as a complete scan: full confidence, no warning, and nothing saying the signed-in area had not been checked. It now counts as an unfinished scan and names the signed-in view as the part that was missed, the same as a single-page scan already did.
 - [AlertTriangle] **[FIXED]** **A Partial Scan Now Says Which Part Is Missing**
@@ -1354,6 +1356,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 974
+- **Total changes documented:** 975
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

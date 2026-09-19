@@ -651,6 +651,12 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: Layers,
+        label: "A Crawl Reports Each Problem Once",
+        desc: "Scanning a whole site repeated every problem once for every page it was found on, so a missing header on thirty pages became thirty findings. One real site came back with over three thousand findings where scanning its homepage found under a hundred, and the risk score and grade were worked out from the inflated list. A crawl now reports each problem once and shows how many pages it was seen on. Findings that genuinely differ from page to page are still reported separately.",
+        category: "fixed",
+      },
+      {
         icon: Lock,
         label: "A Crawl That Gets Signed Out Says So",
         desc: "When you scan a site behind a login and the site drops your session partway through a multi-page crawl, every page after that point is scanned as a signed-out visitor. The result showed a badge saying the session was lost, but still counted as a complete scan: full confidence, no warning, and nothing saying the signed-in area had not been checked. It now counts as an unfinished scan and names the signed-in view as the part that was missed, the same as a single-page scan already did.",

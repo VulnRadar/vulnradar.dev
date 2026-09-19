@@ -46,6 +46,7 @@ import {
   DEFAULT_SCAN_NOTE,
 } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
+import { mergeFindingsAcrossPages } from "./crawl-merge";
 import type { Vulnerability, Category, ScanProgressHook } from "./types";
 import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
@@ -677,26 +678,19 @@ export async function executeCrawlScan(
       ...new Set(pageResults.flatMap((pr) => pr.erroredChecks ?? [])),
     ].sort();
 
-    // Merge all findings, deduplicating by id. Host-level findings go in
-    // first so their id (which folds in the URL they were raised against) is
-    // the crawl's main URL rather than whichever page happened to be scanned
-    // first.
-    const seenIds = new Set<string>();
-    let allFindings: Vulnerability[] = [];
-    for (const f of hostAsync.findings) {
-      if (!seenIds.has(f.id)) {
-        seenIds.add(f.id);
-        allFindings.push(f);
-      }
-    }
-    for (const pr of pageResults) {
-      for (const f of pr.findings) {
-        if (!seenIds.has(f.id)) {
-          seenIds.add(f.id);
-          allFindings.push(f);
-        }
-      }
-    }
+    // Merge the pages into one list where each problem appears ONCE, with the
+    // pages it was seen on (lib/scanner/crawl-merge.ts). This used to dedupe
+    // by id alone, and an id folds in the page URL, so the same missing header
+    // on every page survived once per page: a crawl of a Moodle site reported
+    // 3,177 findings for problems a single-page scan counts under a hundred
+    // times, and the summary, danger score and site grade were all computed
+    // from that. Host-level findings go in first so the id kept is the main
+    // URL's, which is what keeps triage attached across a rescan.
+    let allFindings: Vulnerability[] = mergeFindingsAcrossPages([
+      { url: normalizedMainUrl, findings: hostAsync.findings },
+      ...pageResults.map((pr) => ({ url: pr.url, findings: pr.findings })),
+    ]);
+    const seenIds = new Set(allFindings.map((f) => f.id));
 
     // Curated port sweep result, captured concurrently above (host-level, once
     // per crawl). scanPorts never rejects; null when not opted in, unsafe, or

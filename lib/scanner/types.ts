@@ -126,6 +126,12 @@ export interface Vulnerability {
    */
   alsoReportedBy?: string[];
   /**
+   * A crawl only: every page this same finding was seen on, when it was seen
+   * on more than one. The crawl reports each problem once and lists where it
+   * occurs (lib/scanner/crawl-merge.ts), rather than repeating it per page.
+   */
+  affectedPages?: string[];
+  /**
    * The one software component this finding is about, as
    * `npm-package@version`, when a check can name it. Dedupe merges findings
    * in a group only when their components match, so two checks reporting
