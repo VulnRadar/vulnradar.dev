@@ -32,7 +32,11 @@ export function LanguageMenu({ className }: { className?: string }) {
         title={t("label")}
         disabled={busy}
         className={cn(
-          "inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60",
+          // The same shape, size and states as the bell beside it: a circle,
+          // 44px below sm for the touch target, and a held-open look while
+          // the menu is showing.
+          "inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60 sm:h-9 sm:w-9",
+          "data-[state=open]:bg-muted data-[state=open]:text-foreground",
           focus.ring,
           className,
         )}

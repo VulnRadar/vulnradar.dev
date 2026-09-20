@@ -13,6 +13,12 @@ import {
   UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { focus } from "@/lib/ui/animations";
 import { cn, safeHref } from "@/lib/ui/utils";
 import { PUBLIC_PATHS } from "@/lib/config/public-paths";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -212,7 +218,6 @@ export function NotificationBell() {
   const [reloadKey, setReloadKey] = useState(0);
   const online = useOnline();
   const [showVersionNotif, setShowVersionNotif] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
 
   const isStaff =
     me?.role && (STAFF_ROLE_VALUES as readonly string[]).includes(me.role);
@@ -397,29 +402,12 @@ export function NotificationBell() {
     setHydrated(true);
   }, []);
 
-  // Escape closes the panel, as it does every other popup here. This one is
-  // hand-rolled rather than Radix, and the only ways out were a second click
-  // on the bell or a click outside it.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
-      setOpen(false);
-      ref.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  // Close on outside click
-  useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false);
-    }
-    if (open) document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
+  // Escape, outside clicks, focus return and closing on scroll all come from
+  // the shared Popover (components/ui/popover.tsx) rather than from listeners
+  // this component installs itself. That also settles a bug the hand-rolled
+  // version could not: two panels open at once. A Radix layer dismisses on an
+  // interaction outside it, so opening the language menu closes this, and
+  // opening this closes that.
 
   // Dismiss using unique cookie_id - each notification has its own cookie
   const dismissNotification = useCallback(
@@ -461,60 +449,72 @@ export function NotificationBell() {
     (showVersionNotif ? 1 : 0);
 
   return (
-    <div ref={ref} className="relative">
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => setOpen(!open)}
-        // a11y (SC 4.1.2): this opens a hand-rolled panel, not a Radix one,
-        // so nothing was telling assistive tech that the bell controls
-        // anything or whether it is currently open.
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        aria-label={
-          hydrated
-            ? `Notifications${count > 0 ? ` (${count} unread)` : ""}`
-            : "Notifications"
-        }
-        // h-11 w-11 below sm, the app's touch-target floor. At a flat 32px
-        // this was the only route to the notification panel on a phone.
-        className="relative h-11 w-11 sm:h-8 sm:w-8"
-      >
-        <Bell className="h-4 w-4" aria-hidden="true" />
-        {hydrated && count > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-            {count > 9 ? "9+" : count}
-          </span>
-        )}
-      </Button>
-
-      {open && (
-        <div className="fixed right-3 left-3 sm:left-auto sm:absolute sm:right-0 sm:w-80 top-14 sm:top-full sm:mt-2 z-50 overflow-hidden rounded-lg border border-border/50 bg-card shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
-            <span className="text-sm font-medium text-foreground">
-              Notifications
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={
+            hydrated
+              ? `Notifications${count > 0 ? ` (${count} unread)` : ""}`
+              : "Notifications"
+          }
+          // The header's icon buttons are one shape: a circle, which is what
+          // the radius ladder gives an icon button, at the 44px touch target
+          // below sm. The bell was a rounded square at 32px beside a round
+          // language button, which read as two different kinds of control.
+          className={cn(
+            "relative inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-9 sm:w-9",
+            "data-[state=open]:bg-muted data-[state=open]:text-foreground",
+            focus.ring,
+          )}
+        >
+          <Bell className="h-4 w-4" aria-hidden="true" />
+          {hydrated && count > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold tabular-nums text-primary-foreground">
+              {count > 9 ? "9+" : count}
             </span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        // The panel is a list, not prose: it brings its own padding, and the
+        // width is the one the rows were built for.
+        className="w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden p-0"
+      >
+        <div className="overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-4 py-2.5">
+            <h2 className="text-sm font-semibold tracking-tight text-foreground">
+              Notifications
+            </h2>
             {count > 0 && !loading && (
-              <span className="text-xs text-muted-foreground">{count} new</span>
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold tabular-nums text-primary">
+                {count}
+              </span>
             )}
           </div>
 
           {/* Content */}
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-8 px-4">
-              <Bell
-                className="h-8 w-8 text-muted-foreground/30 mb-2 animate-pulse"
-                aria-hidden="true"
-              />
+            <div className="flex flex-col items-center justify-center gap-2 px-4 py-10">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted">
+                <Bell
+                  className="h-4 w-4 animate-pulse text-muted-foreground"
+                  aria-hidden="true"
+                />
+              </span>
               <p className="text-xs text-muted-foreground">Loading...</p>
             </div>
           ) : loadError && count === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-              <Bell
-                className="h-8 w-8 text-muted-foreground/30 mb-3"
-                aria-hidden="true"
-              />
+            <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted">
+                <Bell
+                  className="h-4 w-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              </span>
               {/* A dropped connection and a server rejection are different
                   facts and used to read identically here. useOnline() is the
                   one signal that can tell them apart, so the panel says which
@@ -527,26 +527,31 @@ export function NotificationBell() {
               <button
                 type="button"
                 onClick={() => setReloadKey((k) => k + 1)}
-                className="mt-2 text-xs text-primary hover:underline"
+                className={cn(
+                  "rounded-sm text-xs text-primary hover:underline",
+                  focus.ring,
+                )}
               >
                 Try again
               </button>
             </div>
           ) : count === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 px-4">
-              <Bell
-                className="h-8 w-8 text-muted-foreground/30 mb-3"
-                aria-hidden="true"
-              />
+            <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted">
+                <Bell
+                  className="h-4 w-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              </span>
               <p className="text-sm font-medium text-foreground">
                 Nothing waiting
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="max-w-[16rem] text-xs leading-relaxed text-muted-foreground">
                 Invites, scan alerts and staff notices land here.
               </p>
             </div>
           ) : (
-            <div className="max-h-96 overflow-y-auto">
+            <div className="max-h-96 divide-y divide-border/40 overflow-y-auto">
               {/* Per-user notifications (e.g. team invites) */}
               {userNotifications.map((n) => {
                 const isTeamInvite = n.type === "team_invite";
@@ -554,7 +559,7 @@ export function NotificationBell() {
                 return (
                   <div
                     key={`user-${n.id}`}
-                    className="border-b border-border/40 p-4 hover:bg-muted/50 transition-colors"
+                    className="px-4 py-3 transition-colors hover:bg-muted/40"
                   >
                     <div className="flex items-start gap-3">
                       <div className="shrink-0 p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary">
@@ -626,7 +631,7 @@ export function NotificationBell() {
 
               {/* Version notification */}
               {showVersionNotif && (
-                <div className="border-b border-border/40 p-4 hover:bg-muted/50 transition-colors">
+                <div className="px-4 py-3 transition-colors hover:bg-muted/40">
                   <div className="flex items-start gap-3">
                     <div className="shrink-0 p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary">
                       <Sparkles className="h-4 w-4" aria-hidden="true" />
@@ -675,7 +680,7 @@ export function NotificationBell() {
                 return (
                   <div
                     key={n.id}
-                    className="border-b border-border/40 p-4 last:border-0 hover:bg-muted/50 transition-colors"
+                    className="px-4 py-3 transition-colors hover:bg-muted/40"
                   >
                     <div className="flex items-start gap-3">
                       <div
@@ -801,7 +806,7 @@ export function NotificationBell() {
             </div>
           )}
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
