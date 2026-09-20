@@ -517,7 +517,7 @@ export function ProfileGeneralTab({
               Missing your language, or found a translation that reads wrong?
               The wording lives in{" "}
               <a
-                href={`${APP_REPO}/tree/main/lib/i18n/messages`}
+                href={`https://github.com/${APP_REPO}/tree/main/lib/i18n/messages`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary underline underline-offset-2 hover:text-primary/80"
