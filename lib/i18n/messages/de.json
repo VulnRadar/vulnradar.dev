@@ -131,5 +131,9 @@
       "ignore": "Wenn du dieses Konto nicht erstellt hast, kannst du diese E-Mail ignorieren. Es wurde nichts eingerichtet.",
       "textIntro": "Bestätige diese E-Mail-Adresse, um dein {app}-Konto zu aktivieren:"
     }
+  },
+  "legal": {
+    "languageTitle": "Es gilt die englische Fassung",
+    "languageNotice": "Andere Sprachen werden hier angeboten, damit mehr Menschen diese Bedingungen verstehen können. Rechtlich verbindlich ist die englische Fassung: Weichen eine Übersetzung und der englische Text voneinander ab oder ist eine Übersetzung unklar, gilt der englische Text. Stelle die Sprache oben auf der Seite auf English, um ihn zu lesen."
   }
 }

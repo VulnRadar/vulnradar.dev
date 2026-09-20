@@ -1,7 +1,6 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { Languages } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -35,15 +34,15 @@ export function LanguageSelect({ className }: { className?: string }) {
   return (
     <div className={className}>
       <Select value={current} onValueChange={choose} disabled={busy}>
+        {/* The trigger holds the value and nothing else. A globe next to
+            SelectValue wrapped onto its own line, because the trigger already
+            spends its width on the value and the chevron. */}
         <SelectTrigger
-          className="w-full sm:w-64"
+          className="w-full sm:w-56"
           aria-label={t("select")}
           id="language-select"
         >
-          <span className="flex items-center gap-2">
-            <Languages aria-hidden className="h-4 w-4 text-muted-foreground" />
-            <SelectValue />
-          </span>
+          <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {LOCALES.map((locale) => (

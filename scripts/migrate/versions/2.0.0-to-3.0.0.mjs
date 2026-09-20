@@ -1138,6 +1138,19 @@ export const upgrade = {
       definition: "VARCHAR(10)",
     },
     {
+      // Support across a language barrier (lib/support/translate.ts): the
+      // language a ticket message was written in, and the same message cached
+      // in the languages the other side reads.
+      table: "support_ticket_messages",
+      column: "body_locale",
+      definition: "VARCHAR(10)",
+    },
+    {
+      table: "support_ticket_messages",
+      column: "translations",
+      definition: "JSONB NOT NULL DEFAULT '{}'::jsonb",
+    },
+    {
       table: "webhooks",
       column: "secret",
       definition:

@@ -146,6 +146,13 @@ laws of the State of Missouri, United States. Any legal action shall
 be brought exclusively in the state or federal courts located in
 Missouri.
 
+These Terms are written in English. The site offers other languages so
+that more people can understand what they are agreeing to, and any
+translation of these Terms is provided for that purpose only. The
+English version is the binding one: if a translated version and the
+English version differ, or a translation is ambiguous, the English
+version governs and is what any legal action is decided on.
+
 ### 12. Dispute Resolution
 PLEASE READ THIS SECTION CAREFULLY. IT AFFECTS YOUR LEGAL RIGHTS.
 

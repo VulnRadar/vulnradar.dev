@@ -12,6 +12,7 @@ import {
   Sparkles,
   type LucideIcon as LucideIconType,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Fragment, useState, type ReactNode } from "react";
 import type { ScanResult } from "@/lib/scanner/types";
 import { SITE_GRADE_SUMMARY, type SiteGrade } from "@/lib/scanner/site-grade";
@@ -260,9 +261,10 @@ function Readout({
  * state the same letter (see lib/scanner/site-grade.ts). Sits before the SSL
  * grade because it is about the whole site, not just the TLS handshake. */
 function SiteGradeStat({ grade }: { grade: SiteGrade }) {
+  const t = useTranslations("result");
   return (
     <Readout
-      label="Site grade"
+      label={t("siteGrade")}
       value={grade}
       valueClass={letterGradeValueClass(grade)}
     >
@@ -313,9 +315,10 @@ function SiteGradeStat({ grade }: { grade: SiteGrade }) {
  * information in the readout strip, so it keeps its colour while the other
  * cells stay neutral. The "?" opens a plain-language explainer. */
 function SslGradeStat({ grade }: { grade: string }) {
+  const t = useTranslations("result");
   return (
     <Readout
-      label="SSL grade"
+      label={t("sslGrade")}
       value={grade}
       valueClass={letterGradeValueClass(grade)}
     >
@@ -374,6 +377,7 @@ export function ScanSummary({
   hideHeader,
   hideDuration,
 }: ScanSummaryProps) {
+  const t = useTranslations("result");
   const { me } = useAuth();
   const isLoggedIn = !!me?.userId;
   const [copied, setCopied] = useState(false);
@@ -560,7 +564,7 @@ export function ScanSummary({
         >
           {result.dangerScore !== undefined && (
             <Readout
-              label="Risk score"
+              label={t("riskScore")}
               value={`${result.dangerScore}/10`}
               valueClass={riskScoreClass(result.dangerScore)}
             />
@@ -568,21 +572,24 @@ export function ScanSummary({
           {result.siteGrade && <SiteGradeStat grade={result.siteGrade} />}
           {result.sslGrade && <SslGradeStat grade={result.sslGrade} />}
           {result.engineConfidence !== undefined && (
-            <Readout label="Confidence" value={`${result.engineConfidence}%`} />
+            <Readout
+              label={t("confidence")}
+              value={`${result.engineConfidence}%`}
+            />
           )}
           {result.checksRun !== undefined && result.checksRun > 0 && (
             <Readout
-              label="Checks run"
+              label={t("checksRun")}
               value={result.checksRun.toLocaleString()}
             />
           )}
           {!hideDuration && (
             <Readout
-              label="Duration"
+              label={t("duration")}
               value={`${(result.duration / 1000).toFixed(1)}s`}
             />
           )}
-          <Readout label="Scanned" value={getRelativeTime(scanDate)} />
+          <Readout label={t("scanned")} value={getRelativeTime(scanDate)} />
         </div>
       </div>
 

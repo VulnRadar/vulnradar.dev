@@ -107,11 +107,10 @@ Bugs, false positives, feature ideas, security disclosures, or enterprise deploy
 Route: /dashboard
 Access: signed in (or a share token)
 Page title: Dashboard
-Heading on the page: Scan a host
 In-app navigation label: Scanner
 Also known as: scan new dashboard
 
-855+ checks across 18 categories. Paste a domain or an IPv4 address, choose what runs, and read the findings. Nothing to install.
+This page exists at /dashboard. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
 ### Live Demo: Scan Any URL in 3 Seconds
 Route: /demo

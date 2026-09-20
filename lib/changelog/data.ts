@@ -4,6 +4,7 @@ import { APP_NAME } from "@/lib/config/constants";
 import {
   CircleSlash,
   Languages,
+  MessagesSquare,
   KeyRound,
   Wifi,
   ShieldQuestion,
@@ -726,6 +727,12 @@ const CHANGELOG: Release[] = [
         icon: Languages,
         label: "VulnRadar Speaks Your Language",
         desc: "Pick a language from the globe in the top bar, or from your profile: English, Spanish, French, German, Brazilian Portuguese or Japanese. The choice follows your account to any browser you sign in on, and a visitor without an account gets the language their browser asks for. Emails go out in it, and the AI assistant answers in it. Numbers and dates are formatted the way your language writes them, while the things you have to type or match exactly stay as they are: URLs, header names, finding IDs, code and config. Translation is being rolled out screen by screen, and anything not translated yet reads in English rather than breaking.",
+        category: "added",
+      },
+      {
+        icon: MessagesSquare,
+        label: "Support Works in Any Language",
+        desc: "Write to support in your own language and the thread works: your message is put in front of the team in theirs, and their reply comes back in yours, automatically, as it is sent. Either side can show the original of any message with one click, and the original is what is kept: a translation never replaces what somebody actually wrote. If no translation can be produced, the message is shown exactly as written rather than held back.",
         category: "added",
       },
       {

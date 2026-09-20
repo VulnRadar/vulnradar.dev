@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prepareMessageTranslation } from "@/lib/support/translate";
+import { getUserLocale } from "@/lib/i18n/translate";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { resolveTicketAccess } from "@/lib/support/ticket-access";
-import { requirePermission } from "@/lib/auth/authorization";
-import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
+import {
+  resolveTicketAccess,
+  viewerIsSupportStaff,
+} from "@/lib/support/ticket-access";
 import {
   notifyStaffOfTicketActivity,
   notifyUserOfStaffReply,
@@ -30,19 +33,6 @@ import {
  * every customer's thread here (owner email included) and reply to customers
  * as "Support". That is exactly the blast radius the toggle exists to close.
  */
-
-/**
- * Whether the CURRENT caller is support staff for ticket purposes, with the
- * ENFORCE_STAFF_2FA gate applied. requirePermission returns null both for a
- * non-staff account and for a staff account the 2FA enforcement is blocking,
- * which is the behaviour we want here: neither gets staff reach.
- */
-async function viewerIsSupportStaff(): Promise<boolean> {
-  const staff = await requirePermission(
-    STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
-  );
-  return staff !== null;
-}
 
 interface TicketRow {
   id: number;
@@ -107,11 +97,14 @@ export async function GET(
     id: number;
     is_staff: boolean;
     body: string;
+    body_locale: string | null;
+    translations: Record<string, string> | null;
     created_at: string;
     author_name: string | null;
     author_user_id: number | null;
   }>(
-    `SELECT m.id, m.is_staff, m.body, m.created_at, m.author_user_id, u.name AS author_name
+    `SELECT m.id, m.is_staff, m.body, m.body_locale, m.translations,
+            m.created_at, m.author_user_id, u.name AS author_name
      FROM support_ticket_messages m
      LEFT JOIN users u ON u.id = m.author_user_id
      WHERE m.ticket_id = $1
@@ -119,10 +112,21 @@ export async function GET(
     [id],
   );
 
+  // The language this reader reads. A message written in another one carries
+  // its translation with it when there is one, so the thread opens readable
+  // rather than a wall of Translate buttons (lib/support/translate.ts).
+  const viewerLocale = await getUserLocale(session.userId);
+
   const messages = messagesRes.rows.map((m) => ({
     id: m.id,
     isStaff: m.is_staff,
     body: m.body,
+    bodyLocale: m.body_locale,
+    translation:
+      m.body_locale && m.body_locale !== viewerLocale
+        ? (m.translations?.[viewerLocale] ?? null)
+        : null,
+    viewerLocale,
     createdAt: m.created_at,
     // The viewer's own messages render as "You"; a shared teammate or the owner
     // sees each other's names on the non-staff replies.
@@ -250,6 +254,30 @@ export async function POST(
     `UPDATE support_tickets SET status = $1, last_message_at = NOW(), updated_at = NOW() WHERE id = $2`,
     [newStatus, id],
   );
+
+  // The other side may not read this language. Detect what was written and
+  // translate it for them now, rather than when they open the ticket, so the
+  // thread is already readable (lib/support/translate.ts). Fire-and-forget:
+  // the reply is saved, and an untranslated message is still the message.
+  queueMicrotask(() => {
+    void (async () => {
+      const [authorLocale, ownerLocale] = await Promise.all([
+        getUserLocale(session.userId),
+        getUserLocale(ticket.user_id),
+      ]);
+      await prepareMessageTranslation({
+        messageId: inserted.rows[0].id,
+        body: message,
+        authorLocale,
+        // A staff reply is for the owner; the owner's reply is for staff,
+        // who have no one locale, so prepareMessageTranslation falls back to
+        // the deployment's default language.
+        counterpartLocales: actingAsStaff ? [ownerLocale] : [],
+      });
+    })().catch((err) => {
+      console.error("Ticket reply translation failed:", err);
+    });
+  });
 
   queueMicrotask(() => {
     try {

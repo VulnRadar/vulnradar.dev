@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TranslatableMessage } from "@/components/support/translatable-message";
 import {
   AlertCircle,
   ArrowLeft,
@@ -56,6 +57,10 @@ interface ThreadMessage {
   id: number;
   isStaff: boolean;
   body: string;
+  /** The language it was written in, when the thread crosses languages. */
+  bodyLocale?: string | null;
+  /** The same message in this reader's language, when it has one. */
+  translation?: string | null;
   createdAt: string;
   authorName: string | null;
   /** The viewer authored this message. */
@@ -807,7 +812,13 @@ export function SupportTickets() {
                           : "rounded-tl-sm border-border/60 bg-muted/40 text-foreground",
                       )}
                     >
-                      {m.body}
+                      <TranslatableMessage
+                        ticketId={thread.ticket.id}
+                        messageId={m.id}
+                        body={m.body}
+                        bodyLocale={m.bodyLocale}
+                        translation={m.translation}
+                      />
                     </div>
                   </div>
                 ))}

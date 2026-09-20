@@ -1,3 +1,5 @@
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
+import { requirePermission } from "@/lib/auth/authorization";
 import "server-only";
 
 import pool from "@/lib/database/db";
@@ -83,4 +85,17 @@ export async function areTeammates(
     [userA, userB],
   );
   return r.rows.length > 0;
+}
+
+/**
+ * Whether the CURRENT caller is support staff for ticket purposes, with the
+ * ENFORCE_STAFF_2FA gate applied. requirePermission returns null both for a
+ * non-staff account and for a staff account the 2FA enforcement is blocking,
+ * which is the behaviour we want here: neither gets staff reach.
+ */
+export async function viewerIsSupportStaff(): Promise<boolean> {
+  const staff = await requirePermission(
+    STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
+  );
+  return staff !== null;
 }

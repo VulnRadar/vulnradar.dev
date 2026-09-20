@@ -131,5 +131,9 @@
       "ignore": "Si vous n'avez pas créé ce compte, vous pouvez ignorer cet e-mail. Rien n'a été configuré.",
       "textIntro": "Confirmez cette adresse e-mail pour activer votre compte {app} :"
     }
+  },
+  "legal": {
+    "languageTitle": "La version anglaise est celle qui s'applique",
+    "languageNotice": "D'autres langues sont proposées ici pour que davantage de personnes puissent comprendre ces conditions. La version anglaise est celle qui fait foi juridiquement : en cas de divergence entre une traduction et le texte anglais, ou si une traduction est ambiguë, le texte anglais prévaut. Choisissez English en haut de la page pour le lire."
   }
 }

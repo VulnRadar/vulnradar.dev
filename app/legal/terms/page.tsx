@@ -253,6 +253,14 @@ export default async function TermsPage() {
           be brought exclusively in the state or federal courts located in
           Missouri.
         </p>
+        <p>
+          These Terms are written in English. The site offers other languages so
+          that more people can understand what they are agreeing to, and any
+          translation of these Terms is provided for that purpose only. The
+          English version is the binding one: if a translated version and the
+          English version differ, or a translation is ambiguous, the English
+          version governs and is what any legal action is decided on.
+        </p>
       </LegalSection>
 
       <LegalSection id="dispute-resolution" title="12. Dispute Resolution">

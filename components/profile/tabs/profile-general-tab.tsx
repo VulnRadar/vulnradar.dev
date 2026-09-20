@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   API,
+  APP_REPO,
   ROUTES,
   MAX_AVATAR_UPLOAD_BYTES,
 } from "@/lib/config/client-constants";
@@ -500,8 +501,41 @@ export function ProfileGeneralTab({
           </p>
         </div>
         <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6">
-            <LanguageSelect />
+          <CardContent className="pt-6 flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Applies everywhere: the site, the emails we send you, and the
+                answers from the AI assistant. It follows your account to any
+                browser you sign in on.
+              </p>
+              <LanguageSelect className="shrink-0" />
+            </div>
+            {/* Translation is a thing readers are better at than we are, and
+                the files are in the open repo, so the ask belongs where
+                somebody has just noticed the problem. */}
+            <p className="border-t border-border/50 pt-3 text-xs leading-relaxed text-muted-foreground">
+              Missing your language, or found a translation that reads wrong?
+              The wording lives in{" "}
+              <a
+                href={`${APP_REPO}/tree/main/lib/i18n/messages`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline underline-offset-2 hover:text-primary/80"
+              >
+                lib/i18n/messages
+              </a>
+              : each language is one file, a new one is a copy of{" "}
+              <code className="font-mono">en.json</code>, and anything left
+              untranslated falls back to English rather than breaking. Send a
+              pull request, or{" "}
+              <a
+                href={ROUTES.CONTACT}
+                className="text-primary underline underline-offset-2 hover:text-primary/80"
+              >
+                tell us
+              </a>{" "}
+              and we will fix it.
+            </p>
           </CardContent>
         </Card>
       </section>

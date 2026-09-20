@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prepareMessageTranslation } from "@/lib/support/translate";
+import { getUserLocale } from "@/lib/i18n/translate";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { getClientIp } from "@/lib/api/request-utils";
@@ -183,11 +185,30 @@ export async function POST(request: NextRequest) {
   );
   const ticket = inserted.rows[0];
 
-  await pool.query(
+  const firstMessage = await pool.query<{ id: number }>(
     `INSERT INTO support_ticket_messages (ticket_id, author_user_id, is_staff, body)
-     VALUES ($1, $2, FALSE, $3)`,
+     VALUES ($1, $2, FALSE, $3)
+     RETURNING id`,
     [ticket.id, session.userId, message],
   );
+
+  // Work out what language this was written in and put it in front of staff
+  // in theirs, before anyone opens the ticket (lib/support/translate.ts).
+  // Fire-and-forget: the ticket is filed either way.
+  queueMicrotask(() => {
+    void (async () => {
+      await prepareMessageTranslation({
+        messageId: firstMessage.rows[0].id,
+        body: message,
+        authorLocale: await getUserLocale(session.userId),
+        // Staff have no single language, so this falls back to the
+        // deployment's default one.
+        counterpartLocales: [],
+      });
+    })().catch((err) => {
+      console.error("Ticket translation failed:", err);
+    });
+  });
 
   // Fire-and-forget so the response returns immediately (same shape the
   // /api/v3/contact route uses for its outbound mail).
