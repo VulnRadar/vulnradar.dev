@@ -13,7 +13,14 @@
     "signUp": "Créer un compte",
     "menu": "Menu de navigation",
     "openMenu": "Ouvrir le menu",
-    "goToScanner": "Aller au scanner"
+    "goToScanner": "Aller au scanner",
+    "pricing": "Tarifs",
+    "docs": "Docs",
+    "demo": "Démo",
+    "changelog": "Nouveautés",
+    "contact": "Contact",
+    "dashboard": "Tableau de bord",
+    "startFree": "Commencer gratuitement"
   },
   "common": {
     "cancel": "Annuler",
@@ -88,7 +95,30 @@
     "resources": "Ressources",
     "legal": "Mentions légales",
     "company": "Entreprise",
-    "builtWith": "Conçu avec"
+    "builtWith": "Conçu avec",
+    "support": "Soutenir {app}",
+    "copyright": "© {year} {app}. Pour des tests de sécurité autorisés uniquement.",
+    "scanner": "Scanner",
+    "history": "Historique",
+    "compare": "Comparer",
+    "badges": "Badges",
+    "freeTools": "Outils gratuits",
+    "checkReference": "Référence des vérifications",
+    "pricing": "Tarifs",
+    "contact": "Contact",
+    "documentation": "Documentation",
+    "apiReference": "Référence de l'API",
+    "setupGuide": "Guide d'installation",
+    "changelog": "Nouveautés",
+    "publicScans": "Analyses publiques",
+    "comparedToOthers": "Comparé aux autres scanners",
+    "security": "Sécurité",
+    "terms": "Conditions d'utilisation",
+    "privacy": "Politique de confidentialité",
+    "acceptableUse": "Usage acceptable",
+    "disclaimer": "Avertissement",
+    "dmca": "Politique DMCA",
+    "accessibility": "Accessibilité"
   },
   "email": {
     "verify": {

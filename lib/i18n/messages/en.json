@@ -13,7 +13,14 @@
     "signUp": "Sign up",
     "menu": "Navigation menu",
     "openMenu": "Open menu",
-    "goToScanner": "Go to scanner"
+    "goToScanner": "Go to scanner",
+    "pricing": "Pricing",
+    "docs": "Docs",
+    "demo": "Demo",
+    "changelog": "Changelog",
+    "contact": "Contact",
+    "dashboard": "Dashboard",
+    "startFree": "Start free"
   },
   "common": {
     "cancel": "Cancel",
@@ -88,7 +95,30 @@
     "resources": "Resources",
     "legal": "Legal",
     "company": "Company",
-    "builtWith": "Built with"
+    "builtWith": "Built with",
+    "support": "Support {app}",
+    "copyright": "© {year} {app}. For authorized security testing only.",
+    "scanner": "Scanner",
+    "history": "History",
+    "compare": "Compare",
+    "badges": "Badges",
+    "freeTools": "Free tools",
+    "checkReference": "Check reference",
+    "pricing": "Pricing",
+    "contact": "Contact",
+    "documentation": "Documentation",
+    "apiReference": "API reference",
+    "setupGuide": "Setup guide",
+    "changelog": "Changelog",
+    "publicScans": "Public scans",
+    "comparedToOthers": "Compared to other scanners",
+    "security": "Security",
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "acceptableUse": "Acceptable Use",
+    "disclaimer": "Disclaimer",
+    "dmca": "DMCA Policy",
+    "accessibility": "Accessibility"
   },
   "email": {
     "verify": {

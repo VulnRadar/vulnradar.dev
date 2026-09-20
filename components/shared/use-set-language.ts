@@ -28,9 +28,16 @@ export function useSetLanguage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ locale: next }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || "The language could not be saved.");
+      // The answer is judged by what came back, not by res.ok. A request that
+      // middleware sends to the login page is a 200 full of HTML once fetch
+      // has followed the redirect, which is exactly how this failed the first
+      // time: the site stayed in English and nothing was reported.
+      const body = (await res.json().catch(() => null)) as {
+        locale?: string;
+        error?: string;
+      } | null;
+      if (!res.ok || body?.locale !== next) {
+        throw new Error(body?.error || "The language could not be saved.");
       }
       startTransition(() => router.refresh());
     } catch (err) {

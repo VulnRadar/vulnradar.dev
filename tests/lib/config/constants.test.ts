@@ -126,6 +126,12 @@ describe("PUBLIC_PATHS tracks the API map", () => {
       API.CONTACT,
       API.LANDING_CONTACT,
       API.FINDING_TYPES,
+      // The language switcher. Anyone can change the language, signed in or
+      // not: the route sets the cookie rendering reads for everybody and only
+      // writes users.locale when there is a session. Left out, its PUT 307'd
+      // to /login, fetch followed the redirect, and the site quietly stayed in
+      // English.
+      API.ACCOUNT_LANGUAGE,
     ]) {
       expect(PUBLIC_PATHS).toContain(route);
     }

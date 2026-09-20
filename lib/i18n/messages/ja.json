@@ -13,7 +13,14 @@
     "signUp": "アカウント作成",
     "menu": "ナビゲーションメニュー",
     "openMenu": "メニューを開く",
-    "goToScanner": "スキャナーへ"
+    "goToScanner": "スキャナーへ",
+    "pricing": "料金",
+    "docs": "ドキュメント",
+    "demo": "デモ",
+    "changelog": "変更履歴",
+    "contact": "お問い合わせ",
+    "dashboard": "ダッシュボード",
+    "startFree": "無料で始める"
   },
   "common": {
     "cancel": "キャンセル",
@@ -88,7 +95,30 @@
     "resources": "リソース",
     "legal": "法務",
     "company": "会社",
-    "builtWith": "使用技術"
+    "builtWith": "使用技術",
+    "support": "{app} を支援する",
+    "copyright": "© {year} {app}. 許可されたセキュリティテストのみに使用してください。",
+    "scanner": "スキャナー",
+    "history": "履歴",
+    "compare": "比較",
+    "badges": "バッジ",
+    "freeTools": "無料ツール",
+    "checkReference": "チェック一覧",
+    "pricing": "料金",
+    "contact": "お問い合わせ",
+    "documentation": "ドキュメント",
+    "apiReference": "API リファレンス",
+    "setupGuide": "セットアップガイド",
+    "changelog": "変更履歴",
+    "publicScans": "公開スキャン",
+    "comparedToOthers": "他のスキャナーとの比較",
+    "security": "セキュリティ",
+    "terms": "利用規約",
+    "privacy": "プライバシーポリシー",
+    "acceptableUse": "利用許諾方針",
+    "disclaimer": "免責事項",
+    "dmca": "DMCA ポリシー",
+    "accessibility": "アクセシビリティ"
   },
   "email": {
     "verify": {

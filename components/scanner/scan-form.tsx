@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import {
   Loader2,
@@ -343,6 +344,7 @@ export function ScanForm({
     : me.bulkScanUrls === -1
       ? BULK_URL_UNLIMITED_CEILING
       : me.bulkScanUrls;
+  const t = useTranslations("scan");
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   // Set when the entered URL isn't a useful target (a search engine / results
@@ -792,10 +794,16 @@ export function ScanForm({
           className="flex items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5"
         >
           {[
-            { id: "quick" as const, label: "Quick", icon: Zap },
-            { id: "deep" as const, label: "Deep", icon: Globe },
+            { id: "quick" as const, label: t("modeQuick"), icon: Zap },
+            { id: "deep" as const, label: t("modeDeep"), icon: Globe },
             ...(featureBulkScans
-              ? [{ id: "bulk" as const, label: "Bulk", icon: ListChecks }]
+              ? [
+                  {
+                    id: "bulk" as const,
+                    label: t("modeBulk"),
+                    icon: ListChecks,
+                  },
+                ]
               : []),
           ].map(({ id, label, icon: Icon }) => {
             const active = mode === id;
@@ -821,8 +829,8 @@ export function ScanForm({
             );
           })}
           <span className="ml-auto hidden pr-1 text-[11px] text-muted-foreground sm:block">
-            {mode === "quick" && "One page, every enabled family"}
-            {mode === "deep" && "Crawl first, then pick the pages to scan"}
+            {mode === "quick" && t("modeQuickHint")}
+            {mode === "deep" && t("modeDeepHint")}
             {mode === "bulk" &&
               (bulkLimitKnown
                 ? `Up to ${bulkUrlLimit} URLs, one per line`
@@ -847,7 +855,7 @@ export function ScanForm({
             htmlFor="scan-keep-private"
             className="text-xs font-medium text-foreground"
           >
-            Keep this scan private
+            {t("keepPrivate")}
           </label>
           {/* Three states, not two. Saying "Findings go to the public host
               page" before the account default has loaded is a claim about
@@ -860,7 +868,7 @@ export function ScanForm({
                 ? "Uses your account default."
                 : keepPrivate
                   ? "Skips the public host page."
-                  : "Findings go to the public host page when this finishes."}
+                  : t("keepPrivateHint")}
           </span>
           <Switch
             id="scan-keep-private"
@@ -870,7 +878,7 @@ export function ScanForm({
               setKeepPrivate(checked);
             }}
             disabled={isScanning || isBulkScanning || privacyPending}
-            aria-label="Keep this scan private"
+            aria-label={t("keepPrivate")}
             className={cn("ml-auto", privacyPending && "opacity-50")}
           />
         </div>
@@ -881,7 +889,7 @@ export function ScanForm({
           className={cn("flex flex-col", mode === "bulk" && "hidden")}
         >
           <label htmlFor="scan-url-input" className="sr-only">
-            Domain, URL, or IPv4 address
+            {t("urlLabel")}
           </label>
           <div className="flex flex-col gap-2 p-2 sm:flex-row sm:p-2.5">
             <div className="relative flex-1">
@@ -893,7 +901,7 @@ export function ScanForm({
                 id="scan-url-input"
                 {...tourAnchor("scanUrlInput")}
                 type="text"
-                placeholder="example.com or 203.0.113.10"
+                placeholder={t("urlPlaceholder")}
                 value={url}
                 onChange={(e) => {
                   setUrl(e.target.value);
@@ -905,7 +913,7 @@ export function ScanForm({
                   "h-11 border-border bg-background pl-9 font-mono text-base sm:text-sm",
                   FOCUS_RING,
                 )}
-                aria-label="Domain, URL, or IPv4 address"
+                aria-label={t("urlLabel")}
                 aria-invalid={!!error}
                 aria-describedby={error ? "url-error" : undefined}
               />
@@ -1178,7 +1186,7 @@ export function ScanForm({
               htmlFor="scan-capture-screenshot"
               className="text-xs font-medium text-foreground"
             >
-              Capture page screenshot
+              {t("captureScreenshot")}
             </label>
             <span
               id="scan-capture-screenshot-reason"
@@ -1193,7 +1201,7 @@ export function ScanForm({
               checked={captureScreenshot && !authScanDropsExtras}
               onCheckedChange={setCaptureScreenshot}
               disabled={isScanning || authScanDropsExtras}
-              aria-label="Capture page screenshot"
+              aria-label={t("captureScreenshot")}
               aria-describedby={
                 authScanDropsExtras
                   ? "scan-capture-screenshot-reason"
@@ -1221,7 +1229,7 @@ export function ScanForm({
                 portScanBlocked ? "text-muted-foreground" : "text-foreground",
               )}
             >
-              Scan common ports
+              {t("scanPorts")}
             </label>
             <span className="hidden min-w-0 text-[11px] text-muted-foreground sm:block">
               {authScanDropsExtras ? (

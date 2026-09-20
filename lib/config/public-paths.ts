@@ -154,6 +154,13 @@ export const PUBLIC_PATHS = [
   // list. Without this it 307'd to /login and the capture silently no-op'd.
   // It only ever returns the caller's own IP, so exposing it needs no auth.
   v("/whoami-ip"),
+  // The language a visitor reads the site in. Public on purpose: it sets the
+  // cookie rendering reads (lib/i18n/request.ts) for everybody, and only
+  // writes users.locale when there IS a session, so a signed-out reader can
+  // still choose a language. Without this the switcher's PUT 307'd to /login,
+  // fetch followed it, res.ok was true on the login HTML, and the site stayed
+  // in English with nothing reported.
+  API.ACCOUNT_LANGUAGE,
   // OpenAPI spec: a public API description tools import without a session
   // (Postman, Insomnia, an explorer). Without this it 307'd to /login and
   // those tools got the login page back instead of the JSON spec.

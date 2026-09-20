@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { SocialLinks } from "@/components/shared/social-links";
 import { focus } from "@/lib/ui/animations";
+import { useTranslations } from "next-intl";
 
 // One shape for every icon link in the bottom bar, the pre-existing repo and
 // email marks included, so the row stays uniform however many social accounts
@@ -29,6 +30,13 @@ import { focus } from "@/lib/ui/animations";
 const iconLinkClass = `inline-flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ${focus.ring}`;
 
 export function Footer() {
+  // useTranslations, not the async getTranslations: this file renders inside
+  // server trees (the page shells) AND inside client ones (the docs, legal and
+  // demo shells, the attack-surface page), and an async server component
+  // cannot be rendered by a client component. next-intl's hook reads the
+  // request config on the server and the provider in the browser, so one call
+  // works in both.
+  const t = useTranslations("footer");
   return (
     <footer className="border-t border-border bg-background mt-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -56,8 +64,7 @@ export function Footer() {
               </span>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed mb-5 max-w-xs">
-              Open-source web security scanner. GPL-3.0, self-hostable, no
-              telemetry.
+              {t("tagline")}
             </p>
             <Link href={ROUTES.DONATE}>
               <Button
@@ -66,7 +73,7 @@ export function Footer() {
                 className="gap-2 h-9 border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary hover:border-primary/30"
               >
                 <Heart className="h-3.5 w-3.5 fill-current" />
-                Support {APP_NAME}
+                {t("support", { app: APP_NAME })}
               </Button>
             </Link>
           </div>
@@ -74,7 +81,7 @@ export function Footer() {
           {/* Product */}
           <div>
             <h3 className="font-semibold text-sm mb-4 text-foreground">
-              Product
+              {t("product")}
             </h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
               <li>
@@ -82,7 +89,7 @@ export function Footer() {
                   href={ROUTES.DASHBOARD}
                   className="hover:text-foreground transition-colors"
                 >
-                  Scanner
+                  {t("scanner")}
                 </Link>
               </li>
               <li>
@@ -90,7 +97,7 @@ export function Footer() {
                   href={ROUTES.HISTORY}
                   className="hover:text-foreground transition-colors"
                 >
-                  History
+                  {t("history")}
                 </Link>
               </li>
               <li>
@@ -98,7 +105,7 @@ export function Footer() {
                   href={ROUTES.COMPARE}
                   className="hover:text-foreground transition-colors"
                 >
-                  Compare
+                  {t("compare")}
                 </Link>
               </li>
               <li>
@@ -106,7 +113,7 @@ export function Footer() {
                   href={ROUTES.BADGE}
                   className="hover:text-foreground transition-colors"
                 >
-                  Badges
+                  {t("badges")}
                 </Link>
               </li>
               {/* Scanner, History, Compare and Badges all need a session, so a
@@ -117,7 +124,7 @@ export function Footer() {
                   href="/tools"
                   className="hover:text-foreground transition-colors"
                 >
-                  Free tools
+                  {t("freeTools")}
                 </Link>
               </li>
               <li>
@@ -125,7 +132,7 @@ export function Footer() {
                   href="/checks"
                   className="hover:text-foreground transition-colors"
                 >
-                  Check reference
+                  {t("checkReference")}
                 </Link>
               </li>
               {BILLING_ENABLED && (
@@ -134,7 +141,7 @@ export function Footer() {
                     href={ROUTES.PRICING}
                     className="hover:text-foreground transition-colors"
                   >
-                    Pricing
+                    {t("pricing")}
                   </Link>
                 </li>
               )}
@@ -144,7 +151,7 @@ export function Footer() {
           {/* Resources */}
           <div>
             <h3 className="font-semibold text-sm mb-4 text-foreground">
-              Resources
+              {t("resources")}
             </h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
               <li>
@@ -152,7 +159,7 @@ export function Footer() {
                   href={ROUTES.CONTACT}
                   className="hover:text-foreground transition-colors"
                 >
-                  Contact
+                  {t("contact")}
                 </Link>
               </li>
               <li>
@@ -160,7 +167,7 @@ export function Footer() {
                   href={ROUTES.DOCS}
                   className="hover:text-foreground transition-colors"
                 >
-                  Documentation
+                  {t("documentation")}
                 </Link>
               </li>
               <li>
@@ -168,7 +175,7 @@ export function Footer() {
                   href={ROUTES.DOCS_API}
                   className="hover:text-foreground transition-colors"
                 >
-                  API Reference
+                  {t("apiReference")}
                 </Link>
               </li>
               <li>
@@ -176,7 +183,7 @@ export function Footer() {
                   href={ROUTES.DOCS_SETUP}
                   className="hover:text-foreground transition-colors"
                 >
-                  Setup Guide
+                  {t("setupGuide")}
                 </Link>
               </li>
               <li>
@@ -184,7 +191,7 @@ export function Footer() {
                   href={ROUTES.CHANGELOG}
                   className="hover:text-foreground transition-colors"
                 >
-                  Changelog
+                  {t("changelog")}
                 </Link>
               </li>
               <li>
@@ -192,7 +199,7 @@ export function Footer() {
                   href={ROUTES.PUBLIC_SCANS}
                   className="hover:text-foreground transition-colors"
                 >
-                  Public scans
+                  {t("publicScans")}
                 </Link>
               </li>
               <li>
@@ -200,7 +207,7 @@ export function Footer() {
                   href="/alternatives"
                   className="hover:text-foreground transition-colors"
                 >
-                  Compared to other scanners
+                  {t("comparedToOthers")}
                 </Link>
               </li>
               <li>
@@ -208,7 +215,7 @@ export function Footer() {
                   href="/security"
                   className="hover:text-foreground transition-colors"
                 >
-                  Security
+                  {t("security")}
                 </Link>
               </li>
             </ul>
@@ -217,7 +224,7 @@ export function Footer() {
           {/* Legal */}
           <div>
             <h3 className="font-semibold text-sm mb-4 text-foreground">
-              Legal
+              {t("legal")}
             </h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
               <li>
@@ -225,7 +232,7 @@ export function Footer() {
                   href={ROUTES.LEGAL_TERMS}
                   className="hover:text-foreground transition-colors"
                 >
-                  Terms of Service
+                  {t("terms")}
                 </Link>
               </li>
               <li>
@@ -233,7 +240,7 @@ export function Footer() {
                   href={ROUTES.LEGAL_PRIVACY}
                   className="hover:text-foreground transition-colors"
                 >
-                  Privacy Policy
+                  {t("privacy")}
                 </Link>
               </li>
               <li>
@@ -241,7 +248,7 @@ export function Footer() {
                   href={ROUTES.LEGAL_ACCEPTABLE_USE}
                   className="hover:text-foreground transition-colors"
                 >
-                  Acceptable Use
+                  {t("acceptableUse")}
                 </Link>
               </li>
               <li>
@@ -249,7 +256,7 @@ export function Footer() {
                   href={ROUTES.LEGAL_DISCLAIMER}
                   className="hover:text-foreground transition-colors"
                 >
-                  Disclaimer
+                  {t("disclaimer")}
                 </Link>
               </li>
               <li>
@@ -257,7 +264,7 @@ export function Footer() {
                   href="/legal/dmca"
                   className="hover:text-foreground transition-colors"
                 >
-                  DMCA Policy
+                  {t("dmca")}
                 </Link>
               </li>
               <li>
@@ -265,7 +272,7 @@ export function Footer() {
                   href="/legal/accessibility"
                   className="hover:text-foreground transition-colors"
                 >
-                  Accessibility
+                  {t("accessibility")}
                 </Link>
               </li>
               <li>
@@ -283,8 +290,10 @@ export function Footer() {
         {/* Bottom bar */}
         <div className="border-t border-border pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
-            {"\u00A9"} {new Date().getFullYear()} {APP_NAME}. For authorized
-            security testing only.
+            {t("copyright", {
+              year: new Date().getFullYear(),
+              app: APP_NAME,
+            })}
           </p>
           {/* This row was already the footer's icon-link row (the repo mark
               and the support address), so the social accounts join it rather

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowRight, LayoutDashboard, Menu, X } from "lucide-react";
@@ -30,17 +31,21 @@ interface LandingNavProps {
 // gone. If a page needs a wider measure, widen the page, not the nav.
 const NAV_CONTAINER = "max-w-6xl";
 
+/** Each link's key under the "nav" namespace; the component translates it. */
 function navLinks(demoEnabled: boolean) {
   return [
-    ...(BILLING_ENABLED ? [{ href: ROUTES.PRICING, label: "Pricing" }] : []),
-    { href: ROUTES.DOCS, label: "Docs" },
-    ...(demoEnabled ? [{ href: ROUTES.DEMO, label: "Demo" }] : []),
-    { href: ROUTES.CHANGELOG, label: "Changelog" },
-    { href: ROUTES.CONTACT, label: "Contact" },
+    ...(BILLING_ENABLED
+      ? [{ href: ROUTES.PRICING, label: "pricing" as const }]
+      : []),
+    { href: ROUTES.DOCS, label: "docs" as const },
+    ...(demoEnabled ? [{ href: ROUTES.DEMO, label: "demo" as const }] : []),
+    { href: ROUTES.CHANGELOG, label: "changelog" as const },
+    { href: ROUTES.CONTACT, label: "contact" as const },
   ];
 }
 
 export function LandingNav({ badge }: LandingNavProps) {
+  const t = useTranslations("nav");
   const { me, isLoading } = useAuth();
   const { featureDemoMode } = useClientConfig();
   const pathname = usePathname();
@@ -119,7 +124,7 @@ export function LandingNav({ badge }: LandingNavProps) {
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {link.label}
+                {t(link.label)}
               </Link>
             ))}
           </div>
@@ -136,7 +141,7 @@ export function LandingNav({ badge }: LandingNavProps) {
               <Link href={ROUTES.DASHBOARD}>
                 <Button size="sm" className="h-8 gap-1.5">
                   <LayoutDashboard className="h-3.5 w-3.5" />
-                  Dashboard
+                  {t("dashboard")}
                 </Button>
               </Link>
             ) : (
@@ -147,7 +152,7 @@ export function LandingNav({ badge }: LandingNavProps) {
                     size="sm"
                     className="hidden sm:inline-flex h-8"
                   >
-                    Log in
+                    {t("logIn")}
                   </Button>
                 </Link>
                 <Link href={ROUTES.SIGNUP}>
@@ -155,7 +160,7 @@ export function LandingNav({ badge }: LandingNavProps) {
                     {/* "Get Started" was title case on a sentence-case page and
                         named no action. This is the first button a visitor
                         sees on a page whose whole argument is specificity. */}
-                    Start free
+                    {t("startFree")}
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Button>
                 </Link>
@@ -209,7 +214,7 @@ export function LandingNav({ badge }: LandingNavProps) {
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {link.label}
+                  {t(link.label)}
                 </Link>
               ))}
               <div className="flex items-center justify-between gap-3 pt-3 mt-1 border-t border-border/50">
@@ -220,7 +225,7 @@ export function LandingNav({ badge }: LandingNavProps) {
                 {!isLoading && !isLoggedIn && (
                   <Link href={ROUTES.LOGIN} onClick={() => setOpen(false)}>
                     <Button variant="outline" size="sm" className="h-8">
-                      Log in
+                      {t("logIn")}
                     </Button>
                   </Link>
                 )}
