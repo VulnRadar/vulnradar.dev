@@ -135,5 +135,30 @@
   "legal": {
     "languageTitle": "A versão em inglês é a que vale",
     "languageNotice": "Outros idiomas são oferecidos aqui para que mais pessoas entendam estes termos. A versão em inglês é a juridicamente válida: se uma tradução e o texto em inglês divergirem, ou se uma tradução não ficar clara, prevalece o texto em inglês. Mude o idioma para English no topo da página para lê-lo."
+  },
+  "dashboard": {
+    "firstRunTitle": "Ainda não há escaneamentos nesta conta",
+    "firstRunBody": "Coloque um host no campo acima e clique em Escanear. O primeiro leva alguns segundos e vai direto para o seu histórico, para você comparar com o próximo.",
+    "firstRunStep1": "Os resultados chegam ordenados por gravidade, com a evidência que disparou cada um.",
+    "firstRunStep2": "Exporte o relatório em JSON, CSV ou PDF, ou compartilhe um link somente leitura.",
+    "firstRunStep3": "Escaneie de novo pelo histórico sempre que publicar e veja os números mudarem.",
+    "scansRun": "Escaneamentos feitos",
+    "hostsCovered": "Hosts cobertos",
+    "criticalAndHigh": "Críticos e altos",
+    "startedFromApi": "Iniciados pela API",
+    "activityAlt": "Atividade de escaneamento de {from} a {to}",
+    "activityError": "Não foi possível carregar sua atividade de escaneamento",
+    "scansTotal": "{count, plural, one {# escaneamento} other {# escaneamentos}}",
+    "recentScans": "Escaneamentos recentes",
+    "allHistory": "Todo o histórico",
+    "recentEmpty": "Nada no último período. Faça um escaneamento acima e ele aparece aqui.",
+    "viaApi": "via API",
+    "findingsBySeverity": "Resultados por gravidade",
+    "mostCommonFindings": "Resultados mais comuns",
+    "patternsLater": "Os padrões aparecem aqui quando houver mais alguns escaneamentos registrados.",
+    "activityErrorBody": "Seus escaneamentos não são afetados. Isto é o resumo acima do scanner, não o scanner em si.",
+    "daysCount": "{count, plural, one {# dia} other {# dias}}",
+    "scansCount": "{count, plural, one {# escaneamento} other {# escaneamentos}}",
+    "issuesCount": "{count, plural, one {# problema} other {# problemas}}"
   }
 }

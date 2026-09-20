@@ -135,5 +135,30 @@
   "legal": {
     "languageTitle": "La version anglaise est celle qui s'applique",
     "languageNotice": "D'autres langues sont proposées ici pour que davantage de personnes puissent comprendre ces conditions. La version anglaise est celle qui fait foi juridiquement : en cas de divergence entre une traduction et le texte anglais, ou si une traduction est ambiguë, le texte anglais prévaut. Choisissez English en haut de la page pour le lire."
+  },
+  "dashboard": {
+    "firstRunTitle": "Aucune analyse sur ce compte pour l'instant",
+    "firstRunBody": "Saisissez un nom d'hôte dans le champ ci-dessus et lancez l'analyse. La première prend quelques secondes et arrive automatiquement dans votre historique, pour pouvoir la comparer à la suivante.",
+    "firstRunStep1": "Les résultats arrivent triés par gravité, avec la preuve qui a déclenché chacun.",
+    "firstRunStep2": "Exportez le rapport en JSON, CSV ou PDF, ou partagez un lien en lecture seule.",
+    "firstRunStep3": "Relancez une analyse depuis l'historique à chaque mise en production et regardez les compteurs bouger.",
+    "scansRun": "Analyses effectuées",
+    "hostsCovered": "Hôtes couverts",
+    "criticalAndHigh": "Critiques et élevés",
+    "startedFromApi": "Lancées depuis l'API",
+    "activityAlt": "Activité d'analyse du {from} au {to}",
+    "activityError": "Impossible de charger votre activité d'analyse",
+    "scansTotal": "{count, plural, one {# analyse} other {# analyses}}",
+    "recentScans": "Analyses récentes",
+    "allHistory": "Tout l'historique",
+    "recentEmpty": "Rien sur la dernière période. Lancez une analyse ci-dessus et elle apparaîtra ici.",
+    "viaApi": "via l'API",
+    "findingsBySeverity": "Résultats par gravité",
+    "mostCommonFindings": "Résultats les plus fréquents",
+    "patternsLater": "Les tendances apparaissent ici une fois quelques analyses de plus enregistrées.",
+    "activityErrorBody": "Vos analyses ne sont pas touchées. Il s'agit du résumé au-dessus du scanner, pas du scanner lui-même.",
+    "daysCount": "{count, plural, one {# jour} other {# jours}}",
+    "scansCount": "{count, plural, one {# analyse} other {# analyses}}",
+    "issuesCount": "{count, plural, one {# problème} other {# problèmes}}"
   }
 }

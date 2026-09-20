@@ -135,5 +135,30 @@
   "legal": {
     "languageTitle": "Es gilt die englische Fassung",
     "languageNotice": "Andere Sprachen werden hier angeboten, damit mehr Menschen diese Bedingungen verstehen können. Rechtlich verbindlich ist die englische Fassung: Weichen eine Übersetzung und der englische Text voneinander ab oder ist eine Übersetzung unklar, gilt der englische Text. Stelle die Sprache oben auf der Seite auf English, um ihn zu lesen."
+  },
+  "dashboard": {
+    "firstRunTitle": "Noch keine Scans in diesem Konto",
+    "firstRunBody": "Gib oben einen Hostnamen ein und starte den Scan. Der erste dauert ein paar Sekunden und landet automatisch in deinem Verlauf, sodass du ihn mit dem nächsten vergleichen kannst.",
+    "firstRunStep1": "Die Funde kommen nach Schweregrad sortiert, mit dem Beleg, der sie ausgelöst hat.",
+    "firstRunStep2": "Exportiere den Bericht als JSON, CSV oder PDF, oder teile einen Link mit Lesezugriff.",
+    "firstRunStep3": "Scanne nach jedem Release erneut aus dem Verlauf heraus und sieh zu, wie sich die Zahlen bewegen.",
+    "scansRun": "Scans gelaufen",
+    "hostsCovered": "Abgedeckte Hosts",
+    "criticalAndHigh": "Kritisch und hoch",
+    "startedFromApi": "Über die API gestartet",
+    "activityAlt": "Scan-Aktivität vom {from} bis {to}",
+    "activityError": "Deine Scan-Aktivität konnte nicht geladen werden",
+    "scansTotal": "{count, plural, one {# Scan} other {# Scans}}",
+    "recentScans": "Letzte Scans",
+    "allHistory": "Ganzer Verlauf",
+    "recentEmpty": "Nichts im letzten Zeitraum. Starte oben einen Scan, dann erscheint er hier.",
+    "viaApi": "über die API",
+    "findingsBySeverity": "Funde nach Schweregrad",
+    "mostCommonFindings": "Häufigste Funde",
+    "patternsLater": "Muster erscheinen hier, sobald ein paar Scans mehr vorliegen.",
+    "activityErrorBody": "Deine Scans sind davon nicht betroffen. Das ist die Übersicht über dem Scanner, nicht der Scanner selbst.",
+    "daysCount": "{count, plural, one {# Tag} other {# Tage}}",
+    "scansCount": "{count, plural, one {# Scan} other {# Scans}}",
+    "issuesCount": "{count, plural, one {# Problem} other {# Probleme}}"
   }
 }

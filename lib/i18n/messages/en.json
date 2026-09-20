@@ -135,5 +135,30 @@
   "legal": {
     "languageTitle": "English is the version that applies",
     "languageNotice": "Other languages are offered here so more people can understand these terms. The English version is the legally binding one: where a translation and the English text disagree, or a translation is unclear, the English text governs. Switch the language to English at the top of the page to read it."
+  },
+  "dashboard": {
+    "firstRunTitle": "No scans on this account yet",
+    "firstRunBody": "Put a hostname in the box above and hit Scan. The first run takes a few seconds and lands in your history automatically, so you can diff it against the next one.",
+    "firstRunStep1": "Findings arrive sorted by severity, with the evidence that triggered each one.",
+    "firstRunStep2": "Export the report as JSON, CSV or PDF, or hand out a read-only share link.",
+    "firstRunStep3": "Rescan from history whenever you ship, and watch the counts move.",
+    "scansRun": "Scans run",
+    "hostsCovered": "Hosts covered",
+    "criticalAndHigh": "Critical and high",
+    "startedFromApi": "Started from the API",
+    "activityAlt": "Scan activity from {from} to {to}",
+    "activityError": "Couldn't load your scan activity",
+    "scansTotal": "{count, plural, one {# scan} other {# scans}}",
+    "recentScans": "Recent scans",
+    "allHistory": "All history",
+    "recentEmpty": "Nothing in the last window. Run a scan above and it lands here.",
+    "viaApi": "via API",
+    "findingsBySeverity": "Findings by severity",
+    "mostCommonFindings": "Most common findings",
+    "patternsLater": "Patterns show up here once a few more scans are on record.",
+    "activityErrorBody": "Your scans are unaffected. This is the summary above the scanner, not the scanner itself.",
+    "daysCount": "{count, plural, one {# day} other {# days}}",
+    "scansCount": "{count, plural, one {# scan} other {# scans}}",
+    "issuesCount": "{count, plural, one {# issue} other {# issues}}"
   }
 }

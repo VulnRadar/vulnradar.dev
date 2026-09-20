@@ -135,5 +135,30 @@
   "legal": {
     "languageTitle": "適用されるのは英語版です",
     "languageNotice": "より多くの方に内容を理解していただくために、他の言語も用意しています。法的に効力を持つのは英語版です。翻訳と英語の本文が異なる場合、または翻訳が不明確な場合は、英語の本文が優先されます。ページ上部で言語を English に切り替えるとご覧いただけます。"
+  },
+  "dashboard": {
+    "firstRunTitle": "このアカウントにはまだスキャンがありません",
+    "firstRunBody": "上の入力欄にホスト名を入れて、スキャンを実行してください。最初のスキャンは数秒で終わり、自動的に履歴に保存されるので、次回の結果と比較できます。",
+    "firstRunStep1": "検出結果は重大度順に並び、根拠となった証拠が添えられます。",
+    "firstRunStep2": "レポートは JSON、CSV、PDF で書き出せます。閲覧専用の共有リンクも作成できます。",
+    "firstRunStep3": "リリースのたびに履歴から再スキャンして、件数の変化を確認できます。",
+    "scansRun": "実行したスキャン",
+    "hostsCovered": "対象ホスト数",
+    "criticalAndHigh": "重大と高",
+    "startedFromApi": "API から実行",
+    "activityAlt": "{from} から {to} までのスキャン状況",
+    "activityError": "スキャン状況を読み込めませんでした",
+    "scansTotal": "{count, plural, other {# 件のスキャン}}",
+    "recentScans": "最近のスキャン",
+    "allHistory": "すべての履歴",
+    "recentEmpty": "直近の期間には何もありません。上でスキャンを実行すると、ここに表示されます。",
+    "viaApi": "API 経由",
+    "findingsBySeverity": "重大度別の検出結果",
+    "mostCommonFindings": "よく出る検出結果",
+    "patternsLater": "スキャンがもう少し集まると、傾向がここに表示されます。",
+    "activityErrorBody": "スキャン自体には影響ありません。これはスキャナーの上に表示される概要であり、スキャナーそのものではありません。",
+    "daysCount": "{count, plural, other {# 日間}}",
+    "scansCount": "{count, plural, other {# 件のスキャン}}",
+    "issuesCount": "{count, plural, other {# 件の問題}}"
   }
 }

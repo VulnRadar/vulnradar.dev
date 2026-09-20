@@ -14,8 +14,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { pluralize } from "@/lib/ui/plural";
 import { formatRelativeTime } from "@/lib/ui/relative-time";
+import { useLocale, useTranslations } from "next-intl";
 import { scanRowState } from "@/components/history/history-types";
 import { parseUrl } from "@/lib/ui/parse-url";
 import { API, ROUTES } from "@/lib/config/client-constants";
@@ -79,16 +79,13 @@ interface DashboardData {
   sourceBreakdown: { source: string; count: number }[];
 }
 
-function getHostname(url: string) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
-
-function fmtDay(day: string) {
-  return new Date(day + "T12:00:00").toLocaleDateString("en-US", {
+/**
+ * A day on the activity strip, written the way the reader's language writes
+ * it. It was pinned to en-US, so a German reader got "Sep 14" in a column
+ * whose every other word was German.
+ */
+function fmtDay(day: string, locale: string) {
+  return new Date(day + "T12:00:00").toLocaleDateString(locale, {
     month: "short",
     day: "numeric",
   });
@@ -195,36 +192,33 @@ function SkeletonPanel({
 }
 
 function FirstRunPanel() {
+  const t = useTranslations("dashboard");
   return (
     <div className="mt-6 rounded-xl border border-dashed border-border bg-card/50 p-5 sm:p-6">
       <h2 className="text-base font-semibold tracking-tight text-foreground">
-        No scans on this account yet
+        {t("firstRunTitle")}
       </h2>
       <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-muted-foreground">
-        Put a hostname in the box above and hit Scan. The first run takes a few
-        seconds and lands in your history automatically, so you can diff it
-        against the next one.
+        {t("firstRunBody")}
       </p>
       <ol className="mt-4 flex flex-col gap-2 text-sm text-muted-foreground">
         <li className="flex gap-3">
           <span className="shrink-0 font-mono text-xs text-muted-foreground/70">
             01
           </span>
-          Findings arrive sorted by severity, with the evidence that triggered
-          each one.
+          {t("firstRunStep1")}
         </li>
         <li className="flex gap-3">
           <span className="shrink-0 font-mono text-xs text-muted-foreground/70">
             02
           </span>
-          Export the report as JSON, CSV or PDF, or hand out a read-only share
-          link.
+          {t("firstRunStep2")}
         </li>
         <li className="flex gap-3">
           <span className="shrink-0 font-mono text-xs text-muted-foreground/70">
             03
           </span>
-          Rescan from history whenever you ship, and watch the counts move.
+          {t("firstRunStep3")}
         </li>
       </ol>
     </div>
@@ -232,6 +226,8 @@ function FirstRunPanel() {
 }
 
 export function Dashboard() {
+  const t = useTranslations("dashboard");
+  const locale = useLocale();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -272,8 +268,8 @@ export function Dashboard() {
       <EmptyState
         className="mt-6"
         icon={AlertTriangle}
-        title="Couldn't load your scan activity"
-        description="Your scans are unaffected. This is the summary above the scanner, not the scanner itself."
+        title={t("activityError")}
+        description={t("activityErrorBody")}
         action={
           <Button
             variant="outline"
@@ -337,25 +333,25 @@ export function Dashboard() {
           items={[
             {
               value: data.totalScans,
-              label: "Scans run",
+              label: t("scansRun"),
               icon: BarChart3,
               iconTone: "primary",
             },
             {
               value: data.uniqueSites,
-              label: "Hosts covered",
+              label: t("hostsCovered"),
               icon: Globe,
               iconTone: "primary",
             },
             {
               value: highPlusCritical,
-              label: "Critical and high",
+              label: t("criticalAndHigh"),
               icon: ShieldAlert,
               iconTone: "severity-high",
             },
             {
               value: apiCount,
-              label: "Started from the API",
+              label: t("startedFromApi"),
               icon: Terminal,
               iconTone: "purple",
             },
@@ -366,15 +362,16 @@ export function Dashboard() {
         {activity.length > 0 && (
           <div className="flex items-center gap-3 border-t border-border bg-muted/30 px-4 py-2.5">
             <span className="shrink-0 text-[11px] text-muted-foreground">
-              {pluralize(activity.length, "day")}
+              {t("daysCount", { count: activity.length })}
             </span>
             <TooltipProvider delayDuration={100}>
               <div
                 className="flex h-8 flex-1 items-end gap-px"
                 role="img"
-                aria-label={`Scan activity from ${fmtDay(activity[0].day)} to ${fmtDay(
-                  activity[activity.length - 1].day,
-                )}, ${pluralize(recentHalf + priorHalf, "scan")} total`}
+                aria-label={`${t("activityAlt", {
+                  from: fmtDay(activity[0].day, locale),
+                  to: fmtDay(activity[activity.length - 1].day, locale),
+                })}, ${t("scansTotal", { count: recentHalf + priorHalf })}`}
               >
                 {activity.map((d, i) => (
                   <Tooltip key={i}>
@@ -395,10 +392,11 @@ export function Dashboard() {
                       />
                     </TooltipTrigger>
                     <TooltipContent side="top" className="text-xs">
-                      <p className="font-medium">{fmtDay(d.day)}</p>
+                      <p className="font-medium">{fmtDay(d.day, locale)}</p>
                       <p className="text-muted-foreground">
-                        {pluralize(d.scans, "scan")}
-                        {d.scans > 0 && ` · ${pluralize(d.issues, "issue")}`}
+                        {t("scansCount", { count: d.scans })}
+                        {d.scans > 0 &&
+                          ` · ${t("issuesCount", { count: d.issues })}`}
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -406,7 +404,7 @@ export function Dashboard() {
               </div>
             </TooltipProvider>
             <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground">
-              {pluralize(recentHalf + priorHalf, "scan")}
+              {t("scansCount", { count: recentHalf + priorHalf })}
               <TrendBadge current={recentHalf} previous={priorHalf} />
             </span>
           </div>
@@ -419,14 +417,14 @@ export function Dashboard() {
           <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
             <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <Clock aria-hidden className="h-3.5 w-3.5" />
-              Recent scans
+              {t("recentScans")}
             </h2>
             {recentScans.length > 0 && (
               <a
                 href={ROUTES.HISTORY}
                 className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
-                All history
+                {t("allHistory")}
                 <ArrowUpRight aria-hidden className="h-3 w-3" />
               </a>
             )}
@@ -434,7 +432,7 @@ export function Dashboard() {
 
           {recentScans.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-              Nothing in the last window. Run a scan above and it lands here.
+              {t("recentEmpty")}
             </p>
           ) : (
             <ul className="flex flex-1 flex-col divide-y divide-border">
@@ -463,7 +461,7 @@ export function Dashboard() {
                         </span>
                         <span className="mt-0.5 block text-xs text-muted-foreground">
                           {formatRelativeTime(scan.scanned_at)}
-                          {scan.source === "api" && " via API"}
+                          {scan.source === "api" && ` ${t("viaApi")}`}
                         </span>
                       </span>
                       {rowState !== "findings" ? (
@@ -510,7 +508,7 @@ export function Dashboard() {
             <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
               <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <AlertTriangle aria-hidden className="h-3.5 w-3.5" />
-                Findings by severity
+                {t("findingsBySeverity")}
               </h2>
               <span className="text-xs tabular-nums text-muted-foreground">
                 {totalIssues.toLocaleString()} total
@@ -523,7 +521,7 @@ export function Dashboard() {
                 const pct = totalIssues > 0 ? (count / totalIssues) * 100 : 0;
                 return (
                   <li key={sev} className="flex items-center gap-3 py-1.5">
-                    <span className="w-14 shrink-0 text-xs text-muted-foreground">
+                    <span className="min-w-14 shrink-0 text-xs text-muted-foreground">
                       {tone.label}
                     </span>
                     <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
@@ -546,12 +544,12 @@ export function Dashboard() {
             <div className="border-b border-border bg-muted/30 px-4 py-2.5">
               <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <ListOrdered aria-hidden className="h-3.5 w-3.5" />
-                Most common findings
+                {t("mostCommonFindings")}
               </h2>
             </div>
             {topVulnerabilities.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-                Patterns show up here once a few more scans are on record.
+                {t("patternsLater")}
               </p>
             ) : (
               <ol className="flex flex-col px-4 py-2">

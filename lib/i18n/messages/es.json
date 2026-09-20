@@ -135,5 +135,30 @@
   "legal": {
     "languageTitle": "La versión en inglés es la que se aplica",
     "languageNotice": "Se ofrecen otros idiomas para que más personas puedan entender estas condiciones. La versión en inglés es la jurídicamente vinculante: si una traducción y el texto en inglés difieren, o si una traducción no queda clara, prevalece el texto en inglés. Cambia el idioma a English en la parte superior de la página para leerlo."
+  },
+  "dashboard": {
+    "firstRunTitle": "Todavía no hay análisis en esta cuenta",
+    "firstRunBody": "Escribe un nombre de host en el campo de arriba y pulsa Analizar. El primer análisis tarda unos segundos y se guarda solo en tu historial, para que puedas compararlo con el siguiente.",
+    "firstRunStep1": "Los hallazgos llegan ordenados por gravedad, con la evidencia que activó cada uno.",
+    "firstRunStep2": "Exporta el informe en JSON, CSV o PDF, o comparte un enlace de solo lectura.",
+    "firstRunStep3": "Vuelve a analizar desde el historial cada vez que publiques y observa cómo cambian las cifras.",
+    "scansRun": "Análisis hechos",
+    "hostsCovered": "Hosts cubiertos",
+    "criticalAndHigh": "Críticos y altos",
+    "startedFromApi": "Iniciados desde la API",
+    "activityAlt": "Actividad de análisis del {from} al {to}",
+    "activityError": "No se pudo cargar tu actividad de análisis",
+    "scansTotal": "{count, plural, one {# análisis} other {# análisis}}",
+    "recentScans": "Análisis recientes",
+    "allHistory": "Todo el historial",
+    "recentEmpty": "Nada en el último periodo. Haz un análisis arriba y aparecerá aquí.",
+    "viaApi": "vía API",
+    "findingsBySeverity": "Hallazgos por gravedad",
+    "mostCommonFindings": "Hallazgos más frecuentes",
+    "patternsLater": "Los patrones aparecen aquí cuando haya algunos análisis más.",
+    "activityErrorBody": "Tus análisis no se ven afectados. Esto es el resumen que hay sobre el escáner, no el escáner en sí.",
+    "daysCount": "{count, plural, one {# día} other {# días}}",
+    "scansCount": "{count, plural, one {# análisis} other {# análisis}}",
+    "issuesCount": "{count, plural, one {# problema} other {# problemas}}"
   }
 }
