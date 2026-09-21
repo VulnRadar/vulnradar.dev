@@ -137,7 +137,7 @@
     "eslint-plugin-oxlint": "1.83.0",
     "oxlint": "1.83.0",
     "postcss": "8.5.28",
-    "prettier": "3.9.6",
+    "prettier": "3.9.8",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3"
   },
