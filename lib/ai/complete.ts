@@ -1,5 +1,6 @@
 import { callAnthropicMessages, AnthropicApiError } from "@/lib/ai/anthropic";
 import { isAnthropicProvider } from "@/lib/ai/provider";
+import { visibleText } from "@/lib/ai/think-parser";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import type { AiEndpoint } from "@/lib/ai/verify-findings";
 
@@ -13,7 +14,14 @@ import type { AiEndpoint } from "@/lib/ai/verify-findings";
  * attempt, and a translation is not.
  *
  * Returns null on any failure. A caller of this is always doing something the
- * product can do without: the untranslated message is still the message.
+ * product can do without: the untranslated message is still the message. The
+ * failure is logged, though: returning null quietly meant a wrong model id or
+ * an expired key looked, from the admin side, exactly like translation never
+ * having been asked for.
+ *
+ * Inline reasoning is cut from the answer. A model that thinks in <think>
+ * tags (MiniMax-M2, DeepSeek-R1) writes them into the content, and this
+ * helper's output is sent to a customer as their translated message.
  */
 export async function completeShortText(
   endpoint: AiEndpoint,
@@ -39,7 +47,7 @@ export async function completeShortText(
         },
         controller.signal,
       );
-      return text.trim() || null;
+      return visibleText(text) || null;
     }
 
     const headers: Record<string, string> = {
@@ -70,15 +78,34 @@ export async function completeShortText(
       }),
       signal: controller.signal,
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      console.error(
+        `[AI-SHORT-TEXT] HTTP ${res.status} from ${hostOf(endpoint.baseUrl)} (${endpoint.model}): ${detail.slice(0, 200)}`,
+      );
+      return null;
+    }
     const body = (await res.json()) as {
       choices?: { message?: { content?: string } }[];
     };
-    return body.choices?.[0]?.message?.content?.trim() || null;
+    return visibleText(body.choices?.[0]?.message?.content ?? "") || null;
   } catch (err) {
-    if (err instanceof AnthropicApiError) return null;
+    console.error(
+      `[AI-SHORT-TEXT] request to ${hostOf(endpoint.baseUrl)} (${endpoint.model}) failed:`,
+      err instanceof AnthropicApiError
+        ? `HTTP ${err.status} ${err.detail.slice(0, 200)}`
+        : err,
+    );
     return null;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+function hostOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return "invalid-url";
   }
 }

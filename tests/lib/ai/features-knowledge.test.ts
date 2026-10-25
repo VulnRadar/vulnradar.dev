@@ -149,13 +149,13 @@ describe("the /features command is wired everywhere the others are", () => {
     expect(buildHelpText()).toContain("/features");
   });
 
-  it("is handled by the context route", () => {
-    const route = readFileSync(
-      join(process.cwd(), "app", "api", "v3", "ai", "context", "route.ts"),
+  it("is run by the server-side slash command handler", () => {
+    const slash = readFileSync(
+      join(process.cwd(), "lib", "ai", "chat", "slash.ts"),
       "utf8",
     );
-    expect(route).toContain('case "features"');
-    expect(route).toContain("features-knowledge.md");
+    expect(slash).toContain('case "features"');
+    expect(slash).toContain("features-knowledge.md");
   });
 
   it("is named in the system prompt's command list", () => {

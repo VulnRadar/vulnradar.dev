@@ -115,11 +115,11 @@ export default function AiDocsPage() {
       <DocsSection id="vera" title="The Vera assistant">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Vera is the floating chat widget in the bottom-right corner (hidden on
-          the docs, admin, and live-browser pages). It is scoped to {APP_NAME}{" "}
-          only: it answers questions about scan findings, how to fix them, API
-          usage, and self-hosting, and declines anything off-topic. Sending a
-          message requires being signed in; the widget shows a sign-in gate
-          otherwise.
+          the docs, admin, and live-browser pages). It answers questions about{" "}
+          {APP_NAME} and about securing a website: scan findings and how to fix
+          them, API usage, self-hosting, headers, TLS, cookies and the like. It
+          declines anything else. Sending a message requires being signed in;
+          the widget shows a sign-in gate otherwise.
         </p>
 
         <DocsSubSection title="It reads the app's own knowledge">
@@ -129,17 +129,37 @@ export default function AiDocsPage() {
             come straight from the check registry, alongside the severity
             levels, the per-scan verdict signals (0-10 danger score, safe /
             caution / unsafe rating, engine confidence), the API reference, and
-            a set of common findings with their fixes. A few small account facts
-            are also baked in: your display name, plan, role, daily scan limit,
-            and the month you joined.
+            a short list of real check ids. A few small account facts are also
+            baked in: your display name, plan, role, daily scan limit, and the
+            month you joined.
           </p>
         </DocsSubSection>
 
-        <DocsSubSection title="Slash commands load context on demand">
+        <DocsSubSection title="It looks things up as it answers">
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-            To keep every message small, heavier context is loaded only when you
-            ask for it with a slash command. Type <InlineCode>/</InlineCode> in
-            the composer for autocomplete.
+            Vera has tools that read {APP_NAME}&rsquo;s own data, and calls them
+            when a question needs them: a search over the docs, the feature
+            inventory, the check index, the changelog and the legal pages; one
+            check&rsquo;s fix steps by id; release notes for a version; and, for
+            the signed-in reader only, their own scans, findings, plan and
+            today&rsquo;s quota. The widget shows what it is looking up while it
+            does. Its reasoning is never shown and never stored: the server
+            removes it before the reply leaves.
+          </p>
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Some self-hosted models cannot call tools. When the endpoint refuses
+            a request that carries them, Vera answers without tools for the next
+            30 minutes, and the server attaches the best matching knowledge
+            excerpts to each question instead.
+          </p>
+        </DocsSubSection>
+
+        <DocsSubSection title="Slash commands">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            A slash command is a shortcut to one of those lookups. It is sent as
+            typed, run on the server for that one message, and not carried into
+            the rest of the conversation. Type <InlineCode>/</InlineCode> in the
+            composer for autocomplete.
           </p>
           <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
@@ -147,10 +167,11 @@ export default function AiDocsPage() {
               <InlineCode>/docs</InlineCode>,{" "}
               <InlineCode>/changelog</InlineCode>,{" "}
               <InlineCode>/checks</InlineCode>, <InlineCode>/legal</InlineCode>,
-              and <InlineCode>/finding {"[id]"}</InlineCode> read the
-              app&rsquo;s own generated knowledge files (built by{" "}
-              <InlineCode>npm run build:knowledge</InlineCode>). No sign-in
-              needed.
+              <InlineCode>/features</InlineCode> and{" "}
+              <InlineCode>/finding {"[id]"}</InlineCode> read the app&rsquo;s
+              own knowledge: the generated files (built by{" "}
+              <InlineCode>npm run build:knowledge</InlineCode>) and the check
+              registry.
             </li>
             <li>
               <strong className="text-foreground">Your own data</strong>:{" "}
@@ -182,8 +203,8 @@ export default function AiDocsPage() {
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           The HTTP surface behind the features, all under{" "}
           <InlineCode>{APP_URL}/api/v3/</InlineCode>. Only{" "}
-          <InlineCode>/ai/info</InlineCode> is public; the chat and context
-          routes require a session.
+          <InlineCode>/ai/info</InlineCode> is public; the chat route requires a
+          session.
         </p>
 
         <DocsTable
@@ -203,13 +224,7 @@ export default function AiDocsPage() {
               method: "POST",
               endpoint: "/ai/chat",
               auth: "Session",
-              what: "Streams Vera's reply as plain text. Never refused for being over the token cap, and never spends purchased AI credits; capped instead at 60 messages per user per hour.",
-            },
-            {
-              method: "GET",
-              endpoint: "/ai/context",
-              auth: "Session",
-              what: "Returns the context block for a slash command (docs, checks, your history, your account, and so on).",
+              what: "Streams Vera's reply as newline-delimited JSON events (text, tool, error, done). Slash commands are sent as typed and run on the server. Never refused for being over the token cap, and never spends purchased AI credits; capped instead at 60 messages per user per hour.",
             },
             {
               method: "POST",
@@ -592,7 +607,7 @@ curl -sS -X POST "${APP_URL}/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=tr
           data={[
             {
               feature: "Vera chat",
-              sees: "The system prompt (public product knowledge plus small account facts: your name, plan, role, daily scan limit, join month), your messages, and any context you explicitly load with a slash command.",
+              sees: "The system prompt (public product knowledge plus small account facts: your name, plan, role, daily scan limit, join month), your messages, and what its tools return for that message: knowledge excerpts, and your own scans, findings and quota when the question is about them. Never your email address.",
             },
             {
               feature: "Finding verification",

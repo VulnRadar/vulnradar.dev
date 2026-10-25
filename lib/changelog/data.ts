@@ -290,6 +290,67 @@ const CHANGELOG: Release[] = [
         category: "added",
       },
       {
+        icon: Bot,
+        label: "Vera Looks Things Up While It Answers",
+        desc: "The in-app assistant now has tools. It searches the documentation, the feature list, the check reference, the changelog and the legal pages itself, reads one check's fix steps by its id, and, for you only, opens your own scans, findings, plan and today's scan quota. Before, it only knew what a slash command or a keyword match had pasted in ahead of your question, so anything those missed was answered from memory, and a follow-up about a scan you had loaded earlier was answered from text that had already been trimmed away. While it looks something up, the chat shows what it is checking. Self-hosted models that cannot use tools still work: the assistant notices, answers without them, and attaches the best matching excerpts to each question instead.",
+        category: "improved",
+      },
+      {
+        icon: Sparkles,
+        label: "Vera Answers Without Showing Its Working",
+        desc: 'Replies used to come with a "View reasoning" section holding the model\'s private working-out, and some models wrote it straight into the answer. The server now removes all of it before a reply leaves, so you only ever see the answer, and conversations saved before this change are shown the same way. Vera still thinks before answering where the model supports it; that thinking just stays private.',
+        category: "improved",
+      },
+      {
+        icon: MessageSquare,
+        label: "Vera Asks When It Does Not Understand",
+        desc: 'A message like "asdf" or "test" used to be matched against the documentation letter by letter, and the assistant would answer a question nobody asked: one reply explained a version manager that happens to be called asdf. It now says it did not catch what you need and offers a few things it can help with. It also answers general website security questions, such as which headers every site should send, which its own suggested questions were asking all along.',
+        category: "improved",
+      },
+      {
+        icon: Bug,
+        label: "/finding Works Again",
+        desc: "Typing /finding with a check id, for example /finding csp-missing, was meant to explain that check and how to fix it, but it never found any check: it searched a file whose headings were written differently from what it looked for. It now reads the check straight from the scanner's own definitions, fix steps and code examples included. /history now also reports a scan that failed or is still running as exactly that, instead of as a scan with no findings.",
+        category: "fixed",
+      },
+      {
+        icon: Bug,
+        label: "Vera No Longer Names Checks That Do Not Exist",
+        desc: "The assistant's built-in examples listed eleven check ids VulnRadar has never had, such as env-file-exposed and cookie-no-secure, so it told people to look for findings they could never get. The examples are now read from the scanner itself, and a test fails if one of them ever stops existing.",
+        category: "fixed",
+      },
+      {
+        icon: Shield,
+        label: "Chat Messages Can No Longer Carry Oversized Payloads",
+        desc: "The chat used to accept large blocks of reference text from the browser on a much bigger allowance than ordinary messages, and anyone could claim that allowance by typing the block's opening tag, which made each message far more expensive to answer than it should be. Reference text is now added only by the server, and only to the message that asked for it, so a long conversation no longer re-sends whole documents with every question either.",
+        category: "security",
+      },
+      {
+        icon: ShieldCheck,
+        label: "Chat Replies No Longer Reveal the AI Provider's Address",
+        desc: "Every chat reply carried a header with the address of the AI service the deployment uses. Nothing in the app read it, and on a self-hosted install it could reveal an internal address. It has been removed, and the assistant no longer passes your email address to the AI provider when it looks up your account.",
+        category: "security",
+      },
+      {
+        icon: Settings,
+        label: "Turning AI Off Now Turns the Chat Off",
+        desc: "Turning the assistant off under Profile, AI settings hid the chat button, but the chat itself still answered if it was called directly. It now refuses, the same as the other AI features do.",
+        category: "fixed",
+      },
+      {
+        icon: Languages,
+        label: "Translated Support Replies Never Include the Model's Notes",
+        desc: "Some AI models write their working-out into the answer itself. When one of those translated a support ticket, that working-out could end up in the translated message the other person read. It is now removed first, and a translation that fails is logged for staff instead of disappearing without a trace.",
+        category: "fixed",
+      },
+      {
+        icon: ServerCrash,
+        label:
+          "AI Verification Stops at a Wrong Key Instead of Logging Every Finding",
+        desc: "When the AI provider refused the deployment's key or did not recognise the configured model, verifying a scan still sent every finding and logged one error for each, which buried the cause under dozens of identical rows. It now stops at the first refusal and logs one line that says to check the AI key and model. An endpoint that rejects the reasoning setting is likewise noted once, not on every call.",
+        category: "improved",
+      },
+      {
         icon: UserCheck,
         label: "Password Managers Now Recognise the Sign-In Field",
         desc: "The email box on the sign-in and sign-up pages was labelled in a way that password managers did not recognise as the username field they should pair with your saved password, so some password managers would not offer to fill it in automatically. It is labelled correctly now, and it was our own scanner that caught the problem on our own site.",

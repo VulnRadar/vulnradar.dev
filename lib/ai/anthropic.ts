@@ -9,11 +9,9 @@
  * event shape (`message_start` / `content_block_start` /
  * `content_block_delta` / ...) instead of OpenAI's
  * `choices[0].delta.content` chunks. This file is the one place that speaks
- * that shape.
- *
- * Callers get back plain text with synthesized <think>...</think> tags
- * around any extended-thinking content, so lib/ai/think-parser.ts and the
- * chat widget need no changes to render it.
+ * that shape for the one-shot calls (verification, summaries, tags, source
+ * review). The chat streams through the AI SDK's Anthropic provider instead
+ * (lib/ai/chat/model.ts), which this file used to duplicate by hand.
  */
 
 export const ANTHROPIC_VERSION = "2023-06-01";
@@ -144,12 +142,8 @@ export interface AnthropicUsage {
  * extended-thinking text the model produced — kept apart rather than
  * inlined, since the caller decides whether that text is worth surfacing.
  * Also returns Anthropic's own reported `usage` (input_tokens/
- * output_tokens), unlike the streaming path below (fetchAnthropicStream),
- * whose SSE events aren't parsed for usage at all — callers of this
- * non-streaming call get real token counts for free; callers of the
- * streaming path fall back to a character-length estimate instead. See
- * lib/ai/verify-findings.ts and lib/ai/scan-summary.ts for callers that
- * feed this into lib/billing/ai-usage.ts's recordAiTokens.
+ * output_tokens). See lib/ai/verify-findings.ts and lib/ai/scan-summary.ts
+ * for callers that feed this into lib/billing/ai-usage.ts's recordAiTokens.
  */
 export async function callAnthropicMessages(
   opts: AnthropicCallOptions,
@@ -185,85 +179,4 @@ export async function callAnthropicMessages(
   };
 
   return { text, thinking, usage };
-}
-
-/**
- * Issues the streaming request. The caller checks res.ok the same way it
- * does for the OpenAI-compatible path, then feeds res.body chunks into
- * createAnthropicSseTranscoder().
- */
-export async function fetchAnthropicStream(
-  opts: AnthropicCallOptions,
-  signal?: AbortSignal,
-): Promise<Response> {
-  return fetch(`${opts.baseUrl}/messages`, {
-    method: "POST",
-    headers: buildAnthropicHeaders(opts.apiKey),
-    body: JSON.stringify(buildAnthropicBody(opts, true)),
-    signal,
-  });
-}
-
-/**
- * Converts Anthropic's SSE event stream into plain text, synthesizing
- * <think>...</think> tags around `thinking` content blocks so the existing
- * think-parser.ts / chat widget rendering pipeline works unmodified — it
- * already knows how to fold that markup out of the visible answer.
- *
- * feed() is stateful: pass each raw decoded chunk as it arrives and it
- * returns the plain text to emit immediately, buffering any incomplete
- * trailing line for the next call.
- */
-export function createAnthropicSseTranscoder() {
-  let buffer = "";
-  let inThinking = false;
-
-  function feed(chunkText: string): string {
-    buffer += chunkText;
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    let out = "";
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line.startsWith("data:")) continue;
-      const data = line.slice(5).trim();
-      if (!data) continue;
-
-      let json: {
-        type?: string;
-        content_block?: { type?: string };
-        delta?: { type?: string; text?: string; thinking?: string };
-      };
-      try {
-        json = JSON.parse(data);
-      } catch {
-        continue;
-      }
-
-      if (
-        json.type === "content_block_start" &&
-        json.content_block?.type === "thinking"
-      ) {
-        inThinking = true;
-        out += "<think>";
-      } else if (json.type === "content_block_delta") {
-        const delta = json.delta;
-        if (delta?.type === "text_delta" && typeof delta.text === "string") {
-          out += delta.text;
-        } else if (
-          delta?.type === "thinking_delta" &&
-          typeof delta.thinking === "string"
-        ) {
-          out += delta.thinking;
-        }
-      } else if (json.type === "content_block_stop" && inThinking) {
-        out += "</think>";
-        inThinking = false;
-      }
-    }
-    return out;
-  }
-
-  return { feed };
 }

@@ -29,13 +29,24 @@ describe("resolveOpenAiCompatReasoningExtras", () => {
     ).toEqual({});
   });
 
-  it("adds google.thinking_config for Gemini", () => {
+  it("adds google.thinking_config for Gemini outside chat", () => {
     expect(
       resolveOpenAiCompatReasoningExtras(
         "https://generativelanguage.googleapis.com/v1beta/openai",
         "gemini-2.5-flash",
+        "verify",
       ),
     ).toEqual({ google: { thinking_config: { include_thoughts: true } } });
+  });
+
+  it("never asks Gemini to return its thoughts for chat", () => {
+    expect(
+      resolveOpenAiCompatReasoningExtras(
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        "gemini-2.5-flash",
+        "chat",
+      ),
+    ).toEqual({ reasoning_effort: "medium" });
   });
 
   it("returns nothing for providers with no native reasoning wiring here", () => {

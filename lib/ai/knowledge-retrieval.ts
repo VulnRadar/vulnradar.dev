@@ -126,9 +126,21 @@ function readSection(file: string, offset: number, length: number): string {
  * once discarded an entire loaded context block and the assistant "forgot" a
  * page it had just been handed.
  */
+export interface RetrieveOptions {
+  maxChars?: number;
+  maxSections?: number;
+  /** Only sections from these files, by their slash-command name (features,
+   *  docs, checks, changelog, legal). Omitted or empty means every file. */
+  sources?: readonly string[];
+  /** A section must match at least this many distinct query terms (capped at
+   *  the number the query has). One common word such as "fix" otherwise
+   *  pulls in whichever eight sections use it most. */
+  minMatchedTerms?: number;
+}
+
 export function retrieveKnowledge(
   query: string,
-  options: { maxChars?: number; maxSections?: number } = {},
+  options: RetrieveOptions = {},
 ): RetrievedSection[] {
   const index = loadIndex();
   if (!index) return [];
@@ -144,6 +156,15 @@ export function retrieveKnowledge(
 
   const total = index.sections.length;
   const scores = new Map<number, number>();
+  const matched = new Map<number, number>();
+  const minMatched = Math.min(options.minMatchedTerms ?? 1, queryTerms.size);
+  const allowedFiles = options.sources?.length
+    ? new Set(
+        index.files
+          .map((f, i) => (options.sources!.includes(f.cmd) ? i : -1))
+          .filter((i) => i >= 0),
+      )
+    : null;
 
   for (const term of queryTerms.keys()) {
     const postings = index.postings[term];
@@ -155,17 +176,23 @@ export function retrieveKnowledge(
     const idf = Math.max(0, Math.log(1 + (total - df + 0.5) / (df + 0.5)));
     if (idf === 0) continue;
     for (const [sectionIdx, tf] of postings) {
+      if (allowedFiles && !allowedFiles.has(index.sections[sectionIdx][0]))
+        continue;
       const length = index.sections[sectionIdx][4] || 1;
       const norm = tf + K1 * (1 - B + (B * length) / index.avgTermCount);
       scores.set(
         sectionIdx,
         (scores.get(sectionIdx) ?? 0) + (idf * (tf * (K1 + 1))) / norm,
       );
+      matched.set(sectionIdx, (matched.get(sectionIdx) ?? 0) + 1);
     }
   }
 
   const ranked = [...scores.entries()]
-    .filter(([, score]) => score >= MIN_SCORE)
+    .filter(
+      ([idx, score]) =>
+        score >= MIN_SCORE && (matched.get(idx) ?? 0) >= minMatched,
+    )
     // Tie-break on the section's own order, which is SOURCES order in the
     // index builder: features before docs before checks before changelog
     // before legal. Two equally-scoring sections then resolve the same way on
@@ -207,7 +234,7 @@ export function retrieveKnowledge(
  */
 export function buildRetrievedContextBlock(
   query: string,
-  options: { maxChars?: number; maxSections?: number } = {},
+  options: RetrieveOptions = {},
 ): string | null {
   const sections = retrieveKnowledge(query, options);
   if (sections.length === 0) return null;
@@ -218,11 +245,11 @@ export function buildRetrievedContextBlock(
     .join("\n\n");
 
   return `<context cmd="auto">
-These excerpts were selected automatically from VulnRadar's own compiled
-knowledge files because they look relevant to the message below. They are
-current product facts, not a guess. Use them to answer.
+These excerpts were picked automatically from VulnRadar's own knowledge files
+because they share words with the message below. They may or may not be about
+what was asked. Use one only if it answers the question.
 
-If they do not cover the question, say so and suggest the command that loads
+If none of them covers the question, say so and suggest the command that loads
 the whole file (${commands.map((c) => `/${c}`).join(", ")}) rather than
 inventing an answer.
 

@@ -118,3 +118,42 @@ describe("assistant identity", () => {
     expect(numbers).toEqual([...new Set(numbers)]);
   });
 });
+
+describe("buildSystemPrompt: v4 knowledge and answering rules", () => {
+  it("names only check ids that exist in the registry", async () => {
+    const { COMMON_CHECK_IDS } = await import("@/lib/ai/system-prompt");
+    const { getCheckDef } = await import("@/lib/scanner/registry");
+    for (const id of COMMON_CHECK_IDS)
+      expect(getCheckDef(id), `${id} is not a real check`).toBeDefined();
+    const prompt = buildSystemPrompt({ name: "Alice" });
+    for (const invented of [
+      "env-file-exposed",
+      "cookie-no-secure",
+      "spf-missing",
+      "tls-old-protocol",
+      "x-frame-options-missing",
+    ])
+      expect(prompt).not.toContain(invented);
+  });
+
+  it("describes the tools only when the model has them", () => {
+    const withTools = buildSystemPrompt({ name: "Alice" }, { tools: true });
+    const without = buildSystemPrompt({ name: "Alice" });
+    expect(withTools).toContain("search_knowledge");
+    expect(withTools).toContain("Do not narrate tool use");
+    expect(without).not.toContain("search_knowledge");
+    expect(without).toContain('<context cmd="auto">');
+  });
+
+  it("asks what the reader meant instead of guessing at noise", () => {
+    const prompt = buildSystemPrompt({ name: "Alice" }, { tools: true });
+    expect(prompt).toContain(
+      '"asdf" is not a question about a version manager',
+    );
+  });
+
+  it("allows general website-security questions, which the starters ask", () => {
+    const prompt = buildSystemPrompt({ name: "Alice" });
+    expect(prompt).toContain("and securing a website");
+  });
+});

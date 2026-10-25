@@ -12,6 +12,10 @@ const MAX_SCAN_ID = 2147483647;
  */
 export interface ScanHistoryRow {
   id: number;
+  /** The opaque id URLs and the API use. Optional only for test fixtures. */
+  public_id?: string | null;
+  status?: string | null;
+  error_message?: string | null;
   user_id: number;
   team_id: number | null;
   url: string;

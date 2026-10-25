@@ -32,6 +32,7 @@ import {
   resolveAnthropicThinkingBudget,
   resolveOpenAiCompatReasoningExtras,
   resolveAiCallTimeoutMs,
+  noteReasoningRefusal,
 } from "@/lib/ai/reasoning";
 
 const REVIEW_SYSTEM_PROMPT_BASE = `You are a security code reviewer for ${APP_NAME}, a vulnerability scanner. You are given source files from a user's GitHub repository, each line prefixed with its line number. Review the code that is actually in front of you.
@@ -347,9 +348,7 @@ async function callReviewModel(
         /* ignore */
       }
       if (/reasoning/i.test(refusal)) {
-        console.error(
-          `[AI-REVIEW] ${endpoint.model} refused reasoning_effort; retrying without it.`,
-        );
+        noteReasoningRefusal("AI-REVIEW", endpoint.model);
         res = await post(baseBody);
       }
     }

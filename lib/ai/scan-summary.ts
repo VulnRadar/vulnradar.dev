@@ -42,6 +42,7 @@ import {
   resolveAnthropicThinkingBudget,
   resolveOpenAiCompatReasoningExtras,
   resolveAiCallTimeoutMs,
+  noteReasoningRefusal,
 } from "@/lib/ai/reasoning";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
@@ -185,9 +186,7 @@ async function callSummaryModel(
       /* ignore */
     }
     if (/reasoning/i.test(refusal)) {
-      console.error(
-        `[AI-SCAN-SUMMARY] ${endpoint.model} refused reasoning_effort; retrying without it.`,
-      );
+      noteReasoningRefusal("AI-SCAN-SUMMARY", endpoint.model);
       res = await post(baseBody);
     }
   }

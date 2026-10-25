@@ -2336,13 +2336,13 @@ summary or the verdict.
 - Detection in is deterministic: the same URL yields the same findings and the same stable IDs, with no model in the loop. AI sits on top of that as a set of opt-in conveniences, never as the thing that decides whether a finding exists.
 - Four features call a language model: Vera (the support chat widget), finding verification , scan summaries , and auto-tags . They all resolve a provider the same way: a user&rsquo;s own key if one is configured, otherwise the deployment&rsquo;s managed AI. On a self-hosted instance with no AI_BASE_URL set, each feature simply does nothing rather than erroring.
 - AI is also per-user switchable. Any user can turn it off entirely in Profile > AI settings, which hides the chat widget and refuses verify and summary calls. Server-side setup (provider, model, key) lives in the Configuration reference ; this page is about what the features do and how they are gated.
-- Vera is the floating chat widget in the bottom-right corner (hidden on the docs, admin, and live-browser pages). It is scoped to only: it answers questions about scan findings, how to fix them, API usage, and self-hosting, and declines anything off-topic. Sending a message requires being signed in; the widget shows a sign-in gate otherwise.
-- Vera&rsquo;s system prompt is built from the live codebase, not a hand-maintained copy. The scanner-category table and check counts come straight from the check registry, alongside the severity levels, the per-scan verdict signals (0-10 danger score, safe / caution / unsafe rating, engine confidence), the API reference, and a set of common findings with their fixes. A few small account facts are also baked in: your display name, plan, role, daily scan limit, and the month you joined.
-- To keep every message small, heavier context is loaded only when you ask for it with a slash command. Type / in the composer for autocomplete.
+- Vera is the floating chat widget in the bottom-right corner (hidden on the docs, admin, and live-browser pages). It answers questions about and about securing a website: scan findings and how to fix them, API usage, self-hosting, headers, TLS, cookies and the like. It declines anything else. Sending a message requires being signed in; the widget shows a sign-in gate otherwise.
+- Vera&rsquo;s system prompt is built from the live codebase, not a hand-maintained copy. The scanner-category table and check counts come straight from the check registry, alongside the severity levels, the per-scan verdict signals (0-10 danger score, safe / caution / unsafe rating, engine confidence), the API reference, and a short list of real check ids. A few small account facts are also baked in: your display name, plan, role, daily scan limit, and the month you joined.
+- Vera has tools that read &rsquo;s own data, and calls them when a question needs them: a search over the docs, the feature inventory, the check index, the changelog and the legal pages; one check&rsquo;s fix steps by id; release notes for a version; and, for the signed-in reader only, their own scans, findings, plan and today&rsquo;s quota. The widget shows what it is looking up while it does. Its reasoning is never shown and never stored: the server removes it before the reply leaves.
+- Some self-hosted models cannot call tools. When the endpoint refuses a request that carries them, Vera answers without tools for the next 30 minutes, and the server attaches the best matching knowledge excerpts to each question instead.
+- A slash command is a shortcut to one of those lookups. It is sent as typed, run on the server for that one message, and not carried into the rest of the conversation. Type / in the composer for autocomplete.
 - Account facts are passed as a structured data block, not interpolated into instruction text, so a display name that looks like an instruction is treated as data. Anything you paste in, including scan output and scanned page content, is likewise treated as untrusted data rather than instructions, because an attacker can embed text in a page that later gets scanned.
-- The HTTP surface behind the features, all under /api/v3/. Only /ai/info is public; the chat and context routes require a session.
-- POST /api/v3/scan/verify takes a scan you own and re-checks its findings with the model. For each finding it makes a fresh HTTP probe of the target (status code, final URL, response headers, and a bounded body snippet) and asks the model whether the finding is real given that live evidence. Each finding comes back with one of three verdicts, plus a confidence score and a short reason, and the enriched findings are written back onto the scan.
-- POST /api/v3/history/"}/summary is the whole-scan counterpart to verification: one call that reads the stored scan result and returns a short, plain-language write-up. It is owner-only and takes the same dual auth (session, or a key with scan:write).
+- The HTTP surface behind the features, all under /api/v3/. Only /ai/info is public; the chat route requires a session.
 
 ### Code examples
 ```bash
@@ -3011,7 +3011,7 @@ individual URLs instead.
 | `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 19 | 9 |
 | `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 22 | 0 |
 | `/docs/administration` | - | 10 | 6 | 0 | 0 | 0 | 0 | 31 | 0 |
-| `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 19 | 0 |
+| `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 21 | 0 |
 | `/docs/billing` | - | 8 | 7 | 0 | 0 | 0 | 0 | 21 | 0 |
 | `/docs/cli` | - | 6 | 1 | 0 | 6 | 0 | 0 | 11 | 0 |
 | `/docs/github` | ✓ | 8 | 4 | 0 | 1 | 0 | 0 | 24 | 0 |

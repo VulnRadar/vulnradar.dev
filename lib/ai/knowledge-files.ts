@@ -6,8 +6,9 @@ import { join } from "path";
  * lib/ai/checks-index.md).
  *
  * These are BUILD ARTIFACTS produced by scripts/knowledge/compile-*-knowledge.mjs and
- * they never change while the process is running, but GET /api/v3/ai/context
- * used to readFileSync them on every request. checks-knowledge.md alone is
+ * they never change while the process is running, but the old context route
+ * used to readFileSync them on every request (the chat's slash commands and
+ * tools read them now, lib/ai/chat/). checks-knowledge.md alone is
  * close to 1 MB, and a synchronous read of that size blocks the event loop for
  * the whole process, not just the request that asked for it, on a route any
  * signed-in user can hit in a loop.

@@ -39,16 +39,19 @@ import { useTourChromeSuppressed } from "@/lib/tour/tour-chrome";
 // The path form of the logo. constants' LOGO_URL is the absolute one, meant
 // for emails and structured data.
 import { CONFIG_LOGO_URL } from "@/lib/config/config-values";
-import { parseSegments } from "@/lib/ai/think-parser";
-// This widget used to carry its own byte-identical copies of the markdown
-// component map, MarkdownContent and ThinkBlock. message-content.tsx exists to
-// be the one renderer the widget and the admin conversation viewer share, and
-// its own comment says so, so a link rel or code-block change lands in both
-// places instead of one. Importing them is what makes that true.
+import { visibleText } from "@/lib/ai/think-parser";
 import {
-  MarkdownContent,
-  ThinkBlock,
-} from "@/components/ai-chat/message-content";
+  buildAiMessages,
+  type ChatMessage,
+} from "@/components/ai-chat/chat-history";
+// message-content.tsx is the one renderer the widget and the admin
+// conversation viewer share, so a link rel or code-block change lands in both.
+import { MarkdownContent } from "@/components/ai-chat/message-content";
+import {
+  createChatEventDecoder,
+  TOOL_ACTIVITY_FALLBACK,
+  TOOL_ACTIVITY_LABELS,
+} from "@/lib/ai/chat/stream-protocol";
 import {
   SLASH_COMMANDS,
   buildHelpText,
@@ -57,26 +60,6 @@ import {
 import { AI_CHAT_ASK_EVENT, type AiChatAskDetail } from "@/lib/ai/chat-bridge";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { LeadingIcon } from "@/components/shared/leading-icon";
-
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  /** Which slash command this message belongs to. Everything carrying one is
-   *  plumbing rather than transcript (the loaded knowledge, and the synthetic
-   *  prompt that tells the model it arrived), so the message list hides it and
-   *  loading the same command again replaces it. `help` is the exception: it
-   *  is output the user asked to see. */
-  contextCmd?: string;
-  /** Set only on the `<context cmd="...">` message itself, never on the
-   *  synthetic prompt beside it. Both carry `contextCmd`, so anything that
-   *  means "the knowledge for /changelog is already loaded" has to test this
-   *  as well or it matches the prompt and concludes the wrong thing. */
-  isContextBlock?: boolean;
-  /** Set when the bubble holds a failure rather than a reply, so it can be
-   *  rendered as one instead of passing for an answer. */
-  failed?: boolean;
-};
 
 type ProviderInfo = {
   configured: boolean;
@@ -278,40 +261,6 @@ function persistConversation(sessionId: string, messages: ChatMessage[]) {
   }).catch(() => {});
 }
 
-/**
- * The exact array of messages sent to /api/v3/ai/chat.
- *
- * Both send paths build this and both have the same trap: `messages` is the
- * value React handed this render, and handleCommand's setMessages has not
- * flushed yet, so the freshly loaded block is appended by hand while a STALE
- * copy of the previous block for that same command is still sitting in
- * `messages`. Every loaded command therefore went over the wire twice. With
- * the changelog at half a megabyte that was a request over a megabyte, which
- * is also the default body limit of the reverse proxy in front of us, and the
- * chat route then dropped one of them for exceeding its context budget. Both
- * of those look identical from the outside: the assistant does not know what
- * it was just handed.
- *
- * Keeping only the newest block per command is what handleCommand's own
- * filter intends and cannot achieve from a stale array.
- */
-function buildAiMessages(
-  history: ChatMessage[],
-): { role: string; content: string }[] {
-  const seen = new Set<string>();
-  return [...history]
-    .filter((m) => m.id !== "welcome")
-    .reverse()
-    .filter((m) => {
-      if (!m.isContextBlock || !m.contextCmd) return true;
-      if (seen.has(m.contextCmd)) return false;
-      seen.add(m.contextCmd);
-      return true;
-    })
-    .reverse()
-    .map((m) => ({ role: m.role, content: m.content }));
-}
-
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(async () => {
@@ -344,20 +293,14 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-// Reveals `raw` word-by-word when `active`. Think blocks are shown instantly;
-// only the response text after the last </think> is typewritten.
+// Reveals `raw` word-by-word while `active`.
 function useTypewriter(raw: string, active: boolean): string {
-  const thinkEnd = raw.lastIndexOf("</think>");
-  const splitIdx = thinkEnd >= 0 ? thinkEnd + 8 : 0;
-  const prefix = raw.slice(0, splitIdx);
-  const suffix = raw.slice(splitIdx);
-
-  const refState = useRef({ suffix, pos: 0, active });
+  const refState = useRef({ raw, pos: 0, active });
   const [pos, setPos] = useState(0);
   useEffect(() => {
-    refState.current.suffix = suffix;
+    refState.current.raw = raw;
     refState.current.active = active;
-  }, [suffix, active]);
+  }, [raw, active]);
 
   useEffect(() => {
     // Reduced motion shows the reply at once. The global CSS clamp cannot
@@ -375,7 +318,7 @@ function useTypewriter(raw: string, active: boolean): string {
     refState.current.pos = 0;
 
     const id = window.setInterval(() => {
-      const { suffix: s, pos: p, active: a } = refState.current;
+      const { raw: s, pos: p, active: a } = refState.current;
       if (!a || p >= s.length) return;
       let next = p;
       while (next < s.length && s[next] !== " " && s[next] !== "\n") next++;
@@ -388,7 +331,7 @@ function useTypewriter(raw: string, active: boolean): string {
   }, [active]);
 
   if (!active) return raw;
-  return prefix + suffix.slice(0, pos);
+  return raw.slice(0, pos);
 }
 
 function MessageBubble({
@@ -402,11 +345,11 @@ function MessageBubble({
   isTyping?: boolean;
   failed?: boolean;
 }) {
-  const displayContent = useTypewriter(content, isTyping);
-  const segments = useMemo(
-    () => (role === "user" ? [] : parseSegments(displayContent)),
-    [displayContent, role],
+  const answer = useMemo(
+    () => (role === "user" ? content : visibleText(content)),
+    [content, role],
   );
+  const displayContent = useTypewriter(answer, isTyping);
 
   const isUser = role === "user";
 
@@ -444,16 +387,8 @@ function MessageBubble({
             "mr-auto w-full pr-6 text-foreground",
       )}
     >
-      {isUser
-        ? displayContent
-        : segments.map((seg, i) =>
-            seg.type === "think" ? (
-              <ThinkBlock key={i} content={seg.content} />
-            ) : (
-              <MarkdownContent key={i} content={seg.content} />
-            ),
-          )}
-      <CopyButton text={content} />
+      {isUser ? displayContent : <MarkdownContent content={displayContent} />}
+      <CopyButton text={answer} />
     </div>
   );
 }
@@ -524,7 +459,7 @@ function ConversationStarters({
   );
 }
 
-function ThinkingBubble() {
+function ThinkingBubble({ activity }: { activity?: string }) {
   // No bubble, to match the reply that replaces it: a box that appears for two
   // seconds and then vanishes into unbubbled text is a flicker of chrome.
   return (
@@ -541,60 +476,12 @@ function ThinkingBubble() {
         className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
         style={{ animationDelay: "300ms", animationDuration: "1s" }}
       />
+      {activity && (
+        <span className="ml-1.5 text-xs text-muted-foreground">{activity}</span>
+      )}
     </div>
   );
 }
-
-const COMMAND_INTROS: Record<string, string> = {
-  docs: "The /docs context just loaded. In 1-2 sentences let me know and ask which part of the docs I need help with.",
-  changelog:
-    "The /changelog context just loaded. In 1-2 sentences mention it and ask what changes I'm curious about.",
-  checks:
-    "The /checks context just loaded. In 1-2 sentences let me know and ask what I want to know about the scanner checks.",
-  stats:
-    "The /stats context just loaded. Briefly summarize the key numbers and invite a follow-up question.",
-  me: "The /me context just loaded. In 1-2 sentences let me know my account info is available and offer to help with anything account-related.",
-  history:
-    "The /history context just loaded. In 1-2 sentences let me know and ask what I want to know about the scan results.",
-  finding:
-    "The /finding context just loaded. In 1-2 sentences let me know and offer to help me understand or fix the vulnerability.",
-};
-
-const CONTEXT_TRIGGERS: { keywords: string[]; cmd: string }[] = [
-  {
-    keywords: [
-      "how to",
-      "set up",
-      "setup",
-      "install",
-      "self-host",
-      "selfhost",
-      "deploy",
-      "docker",
-      "configure",
-      "configuration",
-      "documentation",
-      "getting started",
-      "quick start",
-      "env var",
-      "environment variable",
-    ],
-    cmd: "docs",
-  },
-  {
-    keywords: [
-      "changelog",
-      "release notes",
-      "what's new",
-      "what changed",
-      "latest version",
-      "new in v",
-      "recent update",
-      "release history",
-    ],
-    cmd: "changelog",
-  },
-];
 
 function getUniqueSuggestions(input: string): SlashCommand[] {
   const typed = input.slice(1).toLowerCase();
@@ -646,7 +533,6 @@ export function ChatWidget() {
   );
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [isLoadingCmd, setIsLoadingCmd] = useState(false);
   const [provider, setProvider] = useState<ProviderInfo | null>(null);
   const [cmdSuggestions, setCmdSuggestions] = useState<SlashCommand[]>([]);
   const [cmdHighlight, setCmdHighlight] = useState(0);
@@ -1123,7 +1009,7 @@ export function ChatWidget() {
   // never exceed it. "At the limit" is a full input, not an invalid one, it
   // must not block sending.
   const atLimit = input.length >= AI_CHAT_MAX_INPUT_LENGTH;
-  const canSend = input.trim().length > 0 && !isStreaming && !isLoadingCmd;
+  const canSend = input.trim().length > 0 && !isStreaming;
 
   const autoResize = useCallback(() => {
     const el = inputRef.current;
@@ -1161,6 +1047,10 @@ export function ChatWidget() {
     setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
+  function updateMessage(id: string, patch: (m: ChatMessage) => ChatMessage) {
+    setMessages((prev) => prev.map((m) => (m.id === id ? patch(m) : m)));
+  }
+
   async function streamToMessage(
     aiMessages: { role: string; content: string }[],
     aiMsgId: string,
@@ -1194,35 +1084,67 @@ export function ChatWidget() {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Request failed." }));
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === aiMsgId
-            ? {
-                ...m,
-                content:
-                  err.error ||
-                  "That request did not go through. Send it again.",
-                failed: true,
-              }
-            : m,
-        ),
-      );
+      updateMessage(aiMsgId, (m) => ({
+        ...m,
+        content: err.error || "That request did not go through. Send it again.",
+        failed: true,
+        activity: undefined,
+      }));
       return;
     }
 
+    // One JSON event per line (lib/ai/chat/stream-protocol.ts). Reasoning is
+    // never one of them: the server drops it before the reply leaves.
     const reader = res.body?.getReader();
     const decoder = new TextDecoder();
+    const events = createChatEventDecoder();
+    let text = "";
+    let errorMessage: string | null = null;
+    const apply = (chunk: string, final = false) => {
+      const batch = final ? events.flush() : events.feed(chunk);
+      for (const event of batch) {
+        if (event.type === "text") {
+          text += event.text;
+          updateMessage(aiMsgId, (m) => ({
+            ...m,
+            content: m.content + event.text,
+            activity: undefined,
+          }));
+        } else if (event.type === "tool") {
+          updateMessage(aiMsgId, (m) => ({
+            ...m,
+            activity:
+              TOOL_ACTIVITY_LABELS[event.name] ?? TOOL_ACTIVITY_FALLBACK,
+          }));
+        } else if (event.type === "error") {
+          errorMessage = event.message;
+        }
+      }
+    };
     if (reader) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === aiMsgId ? { ...m, content: m.content + chunk } : m,
-          ),
-        );
+        apply(decoder.decode(value, { stream: true }));
       }
+      apply(decoder.decode(), true);
+    }
+
+    // A reply that never produced words is a failure, not an answer still
+    // on its way: without this the typing dots stayed up forever.
+    if (!text.trim()) {
+      updateMessage(aiMsgId, (m) => ({
+        ...m,
+        content: errorMessage ?? "No answer came back. Send it again.",
+        failed: true,
+        activity: undefined,
+      }));
+    } else if (errorMessage) {
+      const note = errorMessage;
+      updateMessage(aiMsgId, (m) => ({
+        ...m,
+        content: `${m.content}\n\n_${note}_`,
+      }));
     }
     setMessages((prev) => {
       persistConversation(sessionId, prev);
@@ -1230,83 +1152,19 @@ export function ChatWidget() {
     });
   }
 
-  async function handleCommand(raw: string): Promise<ChatMessage[]> {
-    const parts = raw.trim().slice(1).split(/\s+/);
-    const cmd = parts[0].toLowerCase();
-    const arg = parts.slice(1).join(" ");
-
-    // /help renders a command list, the only command with visible output
-    if (cmd === "help") {
-      const helpMsg: ChatMessage = {
-        id: uid(),
-        role: "assistant",
-        content: buildHelpText(),
-        contextCmd: "help",
-      };
-      setMessages((prev) => [
-        ...prev.filter((m) => m.contextCmd !== "help"),
-        helpMsg,
-      ]);
-      return [helpMsg];
-    }
-
-    // All other commands inject context silently: no pills, no summaries
-    setIsLoadingCmd(true);
-    try {
-      const url = new URL("/api/v3/ai/context", window.location.origin);
-      url.searchParams.set("cmd", cmd);
-      if (arg) url.searchParams.set("id", arg);
-
-      const res = await fetch(url.toString());
-      if (!res.ok) {
-        // The route always returns a specific, actionable error (sign in,
-        // bad id, unknown command, etc.) in its body -- show it instead of
-        // just clearing the input and going quiet, which read as the
-        // command having been silently ignored.
-        const body = await res.json().catch(() => null);
-        const errMsg: ChatMessage = {
-          id: uid(),
-          role: "assistant",
-          content:
-            (body as { error?: string } | null)?.error ||
-            `Couldn't load /${cmd}. Try again in a moment.`,
-        };
-        setMessages((prev) => [...prev, errMsg]);
-        return [];
-      }
-
-      const data = (await res.json()) as {
-        cmd: string;
-        label: string;
-        summary: string;
-        content: string;
-      };
-
-      const contextMsg: ChatMessage = {
-        id: uid(),
-        role: "user",
-        content: `<context cmd="${data.cmd}">\n${data.content}\n</context>`,
-        contextCmd: cmd,
-        isContextBlock: true,
-      };
-
-      // Replace any stale context for this command, then append fresh one
-      setMessages((prev) => [
-        ...prev.filter((m) => m.contextCmd !== cmd),
-        contextMsg,
-      ]);
-      return [contextMsg];
-    } catch {
-      const errMsg: ChatMessage = {
-        id: uid(),
-        role: "assistant",
-        content: `Couldn't reach the server to load /${cmd}. Check your connection and try again.`,
-      };
-      setMessages((prev) => [...prev, errMsg]);
-      return [];
-    } finally {
-      setIsLoadingCmd(false);
-    }
+  /** /help is the one command the widget answers itself: it is a list of what
+   *  can be typed, and the model has nothing to add to it. */
+  function showHelp(): void {
+    const helpMsg: ChatMessage = {
+      id: uid(),
+      role: "assistant",
+      content: buildHelpText(),
+      contextCmd: "help",
+    };
+    setMessages((prev) => [
+      ...prev.filter((m) => m.contextCmd !== "help"),
+      helpMsg,
+    ]);
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -1341,98 +1199,21 @@ export function ChatWidget() {
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || isStreaming || isLoadingCmd) return;
+    if (!trimmed || isStreaming) return;
 
     setInput("");
     setCmdSuggestions([]);
     autoResize();
     inputRef.current?.focus();
 
-    // Slash command: load context, then stream an AI intro response. Only
-    // for a RECOGNIZED command word: typing "/" followed by anything else
-    // (a typo, a file path, a sentence that happens to start with a slash)
-    // falls through to the regular message path below instead of being
-    // silently swallowed here, since this used to clear the input and
-    // return nothing the moment the /api/v3/ai/context fetch 404'd for an
-    // unrecognized command, with zero feedback that anything went wrong.
-    const leadingCmd = trimmed.startsWith("/")
-      ? trimmed.slice(1).split(/\s+/)[0].toLowerCase()
-      : "";
-    const isRecognizedCommand =
-      leadingCmd === "help" || SLASH_COMMANDS.some((c) => c.cmd === leadingCmd);
-
-    if (trimmed.startsWith("/") && isRecognizedCommand) {
-      const cmdCtx = await handleCommand(trimmed);
-      const cmd = leadingCmd;
-      // help renders its own output; a failed fetch already pushed its own
-      // visible error message inside handleCommand, so returning here on
-      // an empty cmdCtx is safe, not silent.
-      if (cmd === "help" || cmdCtx.length === 0) return;
-
-      const introPrompt =
-        COMMAND_INTROS[cmd] ??
-        "Let me know the context was loaded and briefly offer to help.";
-      const triggerMsg: ChatMessage = {
-        id: uid(),
-        role: "user",
-        content: introPrompt,
-        contextCmd: cmd,
-      };
-      const aiMsgId = uid();
-      setMessages((prev) => [
-        ...prev,
-        triggerMsg,
-        { id: aiMsgId, role: "assistant", content: "" },
-      ]);
-      setIsStreaming(true);
-      setStreamingMsgId(aiMsgId);
-      try {
-        await streamToMessage(
-          buildAiMessages([...messages, ...cmdCtx, triggerMsg]),
-          aiMsgId,
-        );
-      } catch {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === aiMsgId
-              ? {
-                  ...m,
-                  content:
-                    "That did not reach the model. Check your connection and send it again.",
-                  failed: true,
-                }
-              : m,
-          ),
-        );
-      } finally {
-        setIsStreaming(false);
-        setStreamingMsgId(null);
-      }
+    if (/^\/help\s*$/i.test(trimmed)) {
+      showHelp();
       return;
     }
 
-    // Regular message: clear stale help context so the AI isn't confused
-    setMessages((prev) => prev.filter((m) => m.contextCmd !== "help"));
-
-    // Auto-load context when keywords match a trigger and it isn't already loaded
-    let autoCtx: ChatMessage[] = [];
-    const lower = trimmed.toLowerCase();
-    for (const trigger of CONTEXT_TRIGGERS) {
-      if (trigger.keywords.some((k) => lower.includes(k))) {
-        // Tested on isContextBlock, not contextCmd alone: the synthetic
-        // "the context loaded" prompt carries the same contextCmd, so the
-        // looser test would report a command as loaded when only its prompt
-        // was there.
-        const alreadyLoaded = messages.some(
-          (m) => m.isContextBlock && m.contextCmd === trigger.cmd,
-        );
-        if (!alreadyLoaded) {
-          autoCtx = await handleCommand(`/${trigger.cmd}`);
-        }
-        break;
-      }
-    }
-
+    // Every other slash command goes to the server as typed, which runs it
+    // for this turn (lib/ai/chat/slash.ts). The reader sees what they typed,
+    // the same as any other message.
     const userMsg: ChatMessage = {
       id: uid(),
       role: "user",
@@ -1441,7 +1222,7 @@ export function ChatWidget() {
     const aiMsgId = uid();
 
     setMessages((prev) => [
-      ...prev,
+      ...prev.filter((m) => m.contextCmd !== "help"),
       userMsg,
       { id: aiMsgId, role: "assistant", content: "" },
     ]);
@@ -1449,25 +1230,16 @@ export function ChatWidget() {
     setStreamingMsgId(aiMsgId);
 
     try {
-      // autoCtx is appended by hand because React state has not flushed the
-      // setMessages calls handleCommand just made.
-      await streamToMessage(
-        buildAiMessages([...messages, ...autoCtx, userMsg]),
-        aiMsgId,
-      );
-    } catch {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === aiMsgId
-            ? {
-                ...m,
-                content:
-                  "That did not reach the model. Check your connection and send it again.",
-                failed: true,
-              }
-            : m,
-        ),
-      );
+      await streamToMessage(buildAiMessages([...messages, userMsg]), aiMsgId);
+    } catch (err) {
+      if ((err as { name?: string })?.name === "AbortError") return;
+      updateMessage(aiMsgId, (m) => ({
+        ...m,
+        content:
+          "That did not reach the model. Check your connection and send it again.",
+        failed: true,
+        activity: undefined,
+      }));
     } finally {
       setIsStreaming(false);
       setStreamingMsgId(null);
@@ -1754,28 +1526,24 @@ export function ChatWidget() {
                           m.role === "user" ? "items-end" : "items-start",
                         )}
                       >
+                        {/* Which side is which is carried by alignment and
+                            colour, neither of which a screen reader reads. */}
+                        <span className="sr-only">
+                          {m.role === "user" ? "You:" : `${BOT_NAME}:`}
+                        </span>
                         {(() => {
-                          const thinkStart = m.content.indexOf("<think>");
-                          const thinkEnd = m.content.lastIndexOf("</think>");
-                          // If inside an unclosed think block, no response text yet
-                          let responseText: string;
-                          if (thinkStart >= 0 && thinkEnd < 0) {
-                            responseText = "";
-                          } else if (thinkEnd >= 0) {
-                            responseText = m.content.slice(thinkEnd + 8);
-                          } else {
-                            responseText = m.content;
-                          }
-                          const responseWords = responseText.trim()
-                            ? responseText.trim().split(/\s+/).length
+                          // A few words in is when a reply reads as one; before
+                          // that the dots (and what Vera is looking up) stay.
+                          const words = m.content.trim()
+                            ? m.content.trim().split(/\s+/).length
                             : 0;
                           const showDots =
                             m.role === "assistant" &&
                             !m.failed &&
                             (m.content === "" ||
-                              (m.id === streamingMsgId && responseWords < 6));
+                              (m.id === streamingMsgId && words < 6));
                           return showDots ? (
-                            <ThinkingBubble />
+                            <ThinkingBubble activity={m.activity} />
                           ) : (
                             <MessageBubble
                               content={m.content}
@@ -1884,7 +1652,7 @@ export function ChatWidget() {
                     <button
                       type="button"
                       onClick={openCommands}
-                      disabled={isStreaming || isLoadingCmd}
+                      disabled={isStreaming}
                       title="Slash commands"
                       aria-label="Show slash commands"
                       // Same trick the message copy button uses: a 36px control
@@ -1915,7 +1683,9 @@ export function ChatWidget() {
                           ? `chat-cmd-option-${cmdHighlight}`
                           : undefined
                       }
-                      disabled={isStreaming || isLoadingCmd}
+                      // Not disabled while a reply streams: disabling it threw
+                      // focus out of the composer on every send. Only sending
+                      // is gated (canSend).
                       maxLength={AI_CHAT_MAX_INPUT_LENGTH}
                       rows={1}
                       style={{ minHeight: "36px", maxHeight: "140px" }}
@@ -1942,7 +1712,7 @@ export function ChatWidget() {
                       className="relative h-9 w-9 p-0 shrink-0 rounded-md touch-manipulation after:absolute after:-inset-1.5 sm:after:hidden"
                       aria-label="Send"
                     >
-                      {isStreaming || isLoadingCmd ? (
+                      {isStreaming ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Send className="h-3.5 w-3.5" />

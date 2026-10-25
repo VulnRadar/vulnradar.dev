@@ -14,6 +14,7 @@ import {
   resolveAnthropicThinkingBudget,
   resolveOpenAiCompatReasoningExtras,
   resolveAiCallTimeoutMs,
+  noteReasoningRefusal,
 } from "@/lib/ai/reasoning";
 import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
@@ -335,7 +336,16 @@ interface CallVerifyResult {
    * way, and the one the user can act on (wait, or raise their plan).
    */
   rateLimited?: boolean;
+  /**
+   * The provider refused the credentials or does not know the model (401,
+   * 403, 404). Like a 429, every remaining finding would fail the same way,
+   * but unlike it waiting does not help: the configuration is wrong.
+   */
+  fatalStatus?: number;
 }
+
+/** Statuses after which no further finding in the pass can succeed. */
+const FATAL_STATUSES = new Set([401, 403, 404]);
 
 async function callVerify(
   url: string,
@@ -436,9 +446,7 @@ async function callVerify(
         /* ignore */
       }
       if (/reasoning/i.test(refusal)) {
-        console.error(
-          `[AI-VERIFY] ${endpoint.model} refused reasoning_effort; retrying without it.`,
-        );
+        noteReasoningRefusal("AI-VERIFY", endpoint.model);
         res = await post(baseBody);
       }
     }
@@ -449,6 +457,9 @@ async function callVerify(
       // error-log rows.
       if (res.status === 429) {
         return { result: null, tokensUsed: 0, rateLimited: true };
+      }
+      if (FATAL_STATUSES.has(res.status)) {
+        return { result: null, tokensUsed: 0, fatalStatus: res.status };
       }
       let body = "";
       try {
@@ -482,6 +493,9 @@ async function callVerify(
   } catch (err) {
     if (err instanceof AnthropicApiError && err.status === 429) {
       return { result: null, tokensUsed: 0, rateLimited: true };
+    }
+    if (err instanceof AnthropicApiError && FATAL_STATUSES.has(err.status)) {
+      return { result: null, tokensUsed: 0, fatalStatus: err.status };
     }
     // A template string, not console.error's "%s" placeholder: the admin error
     // log (lib/database/error-log-capture.ts) records the raw arguments, so the
@@ -536,6 +550,7 @@ async function verifyInChunks(
   const verdictMap = new Map<string, Omit<VerifyResult, "id">>();
   let totalTokens = 0;
   let rateLimited = false;
+  let fatalStatus: number | undefined;
 
   for (const group of chunkFindings(findings, settings.chunkSize)) {
     if (Date.now() >= deadline) break;
@@ -548,6 +563,7 @@ async function verifyInChunks(
       if (r.status === "fulfilled") {
         totalTokens += r.value.tokensUsed;
         if (r.value.rateLimited) rateLimited = true;
+        if (r.value.fatalStatus) fatalStatus = r.value.fatalStatus;
         if (r.value.result) {
           const { id, ...rest } = r.value.result;
           verdictMap.set(id, rest);
@@ -566,6 +582,12 @@ async function verifyInChunks(
     if (rateLimited) {
       console.error(
         `[AI-VERIFY] ${endpoint.baseUrl} rate-limited the pass for ${url}; stopped after ${verdictMap.size} of ${findings.length} verdicts.`,
+      );
+      break;
+    }
+    if (fatalStatus) {
+      console.error(
+        `[AI-VERIFY] ${endpoint.baseUrl} returned ${fatalStatus} for model ${endpoint.model} verifying ${url}; stopped after ${verdictMap.size} of ${findings.length} verdicts. Check the AI key and model.`,
       );
       break;
     }

@@ -52,20 +52,17 @@ scripts/
 │
 ├── knowledge/                     # Build the AI knowledge files (predev + prebuild)
 │   ├── compile-docs-knowledge.mjs # app/docs/**  -> lib/ai/docs-knowledge.md
-│   ├── compile-changelog-knowledge.mjs  # -> changelog-knowledge.md + changelog-index.md
+│   ├── compile-changelog-knowledge.mjs  # -> changelog-knowledge.md
 │   ├── compile-checks-knowledge.mjs  # -> checks-knowledge.md + checks-index.md,
 │   │                                 #    also lib/config/check-stats.generated.ts
 │   ├── compile-legal-knowledge.mjs
 │   ├── compile-features-knowledge.mjs  # the routes under app/ -> features-knowledge.md
 │   └── compile-knowledge-index.mjs     # BM25 index over the above -> knowledge-index.json
 │
-│   The two "-index.md" files exist because a slash command sends its file as
-│   one message: the full changelog and checks corpora are far past what that
-│   can carry, so /changelog and /checks send the index and the full file stays
-│   the retrieval corpus. tests/lib/ai/context-budget.test.ts fails if any of
-│   them outgrows the chat route's budget. Output must be a pure function of
-│   the input (no build timestamps): CI regenerates all of it and fails on any
-│   diff.
+│   checks-index.md is the compact one-line-per-check view the retrieval
+│   index uses for the checks source; full check detail comes from the
+│   registry (get_check). Output must be a pure function of the input (no
+│   build timestamps): CI regenerates all of it and fails on any diff.
 │
 ├── assets/
 │   └── build-og-image.mjs         # Render the Open Graph image (run by hand)

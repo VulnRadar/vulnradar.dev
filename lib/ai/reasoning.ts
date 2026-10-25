@@ -1,15 +1,14 @@
 import { resolveProviderName, isAnthropicProvider } from "./provider";
 
 /**
- * Per-provider "native reasoning" wiring, layered on top of the inline
- * <think> parsing in think-parser.ts (which stays exactly as-is for models
- * like MiniMax-M2.x, DeepSeek-R1, and QwQ that emit reasoning as plain text
- * with no request param needed at all).
+ * Per-provider "native reasoning" wiring. Models like MiniMax-M2.x,
+ * DeepSeek-R1 and QwQ need no request param at all: they reason inline as
+ * <think>...</think> text, which the chat strips (lib/ai/chat/model.ts) and
+ * the one-shot callers ignore.
  *
  * - Anthropic: a `thinking` request param plus `thinking` content blocks in
- *   the response. Handled entirely inside lib/ai/anthropic.ts, which
- *   synthesizes <think> tags around them so the rest of the pipeline
- *   doesn't need to know the difference.
+ *   the response, kept apart from the answer by lib/ai/anthropic.ts and by the
+ *   AI SDK's Anthropic provider.
  * - OpenAI o-series: a `reasoning_effort` request param. Chat Completions
  *   never returns the reasoning text itself (that's a Responses-API-only
  *   field) — the param only controls how hard the model reasons
@@ -39,8 +38,11 @@ export function resolveOpenAiCompatReasoningExtras(
   purpose: ReasoningPurpose = "chat",
 ): OpenAiCompatExtras {
   // Gemini takes its own shape rather than reasoning_effort when reached
-  // through Google's own OpenAI-compatibility layer.
-  if (resolveProviderName(baseUrl) === "Gemini") {
+  // through Google's own OpenAI-compatibility layer. Not for chat:
+  // include_thoughts asks for the thought text back, and a chat reply must
+  // never be able to carry it. Chat takes reasoning_effort below, which that
+  // layer also accepts and which reasons without returning the thoughts.
+  if (resolveProviderName(baseUrl) === "Gemini" && purpose !== "chat") {
     return { google: { thinking_config: { include_thoughts: true } } };
   }
   const effort = resolveOpenAiReasoningEffort(model, purpose);
@@ -166,4 +168,21 @@ export function resolveAiCallTimeoutMs(
   return callWillReason(baseUrl, model, purpose)
     ? Math.round(configuredMs * multiplier)
     : configuredMs;
+}
+
+const reasoningRefusals = new Set<string>();
+
+/**
+ * Log, once per process and model, that an endpoint refused the reasoning
+ * field. Every caller then retries without it, which works, so the refusal is
+ * a standing fact about the configuration rather than an event: logged on
+ * every call it was one error row per finding verified, per scan summarised
+ * and per repository reviewed, for as long as the model stayed configured.
+ */
+export function noteReasoningRefusal(scope: string, model: string): void {
+  if (reasoningRefusals.has(model)) return;
+  reasoningRefusals.add(model);
+  console.error(
+    `[${scope}] ${model} refused reasoning_effort; retrying without it (logged once per process).`,
+  );
 }

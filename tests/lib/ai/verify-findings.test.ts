@@ -295,6 +295,39 @@ describe("runAiVerification: says whether it actually ran", () => {
     expect(calls.n).toBeLessThanOrEqual(CONFIG_AI_VERIFY_CHUNK_SIZE);
   });
 
+  it("stops at a refused key or unknown model and says so once", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+    const calls = { n: 0 };
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      calls.n++;
+      return {
+        ok: false,
+        status: 401,
+        json: async () => ({}),
+        text: async () => "invalid api key",
+      };
+    });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const findings = Array.from(
+      { length: CONFIG_AI_VERIFY_CHUNK_SIZE * 4 },
+      (_, i) => makeFinding(`f${i}`),
+    );
+    const outcome = await runAiVerification(
+      "https://example.com",
+      findings,
+      42,
+      null,
+    );
+
+    expect(outcome.verdicts).toBe(0);
+    expect(calls.n).toBeLessThanOrEqual(CONFIG_AI_VERIFY_CHUNK_SIZE);
+    const lines = errors.mock.calls.map((c) => String(c[0]));
+    expect(lines.filter((l) => l.includes("returned 401"))).toHaveLength(1);
+    expect(lines.some((l) => l.includes('for "f'))).toBe(false);
+    errors.mockRestore();
+  });
+
   it("counts the findings that did get a verdict", async () => {
     mockQuery.mockResolvedValue({ rows: [] });
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>

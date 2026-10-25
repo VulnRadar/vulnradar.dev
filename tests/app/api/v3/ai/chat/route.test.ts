@@ -1,9 +1,11 @@
 /**
- * Route-level tests for POST /api/v3/ai/chat (streaming AI support chat).
- * The DB, session, rate-limit, and unified AI usage quota boundaries are
- * mocked; provider resolution (lib/ai/provider.ts) and the SSE
- * re-transcoding loop run for real against a mocked global.fetch, matching
- * the approach tests/lib/ai/verify-findings.test.ts uses.
+ * Route-level tests for POST /api/v3/ai/chat.
+ *
+ * The session, database, rate limit and usage recorder are mocked. The AI SDK,
+ * the provider adapters, the tools and the reasoning extractor run for real
+ * against a mocked global.fetch speaking each provider's own wire format, so
+ * these prove what actually reaches the provider and what actually reaches the
+ * reader.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -32,10 +34,19 @@ vi.mock("@/lib/config/runtime-config", () => ({
   getSettings: (...args: unknown[]) => mockGetSettings(...args),
 }));
 
-const mockCheckAiUsageQuota = vi.fn();
+vi.mock("@/lib/rate-limiting/daily-limits", () => ({
+  getDailyLimit: async () => 25,
+  canMakeRequest: async () => ({
+    allowed: true,
+    used: 3,
+    limit: 25,
+    remaining: 22,
+    resetsAt: "2026-10-26T00:00:00.000Z",
+  }),
+}));
+
 const mockRecordAiTokens = vi.fn();
 vi.mock("@/lib/billing/ai-usage", () => ({
-  checkAiUsageQuota: (...args: unknown[]) => mockCheckAiUsageQuota(...args),
   recordAiTokens: (...args: unknown[]) => mockRecordAiTokens(...args),
 }));
 
@@ -43,6 +54,7 @@ const { POST } = await import("@/app/api/v3/ai/chat/route");
 
 const originalFetch = global.fetch;
 const originalEnv = { ...process.env };
+const fetchMock = vi.fn();
 
 function postRequest(body: unknown): Request {
   return new Request("http://localhost/api/v3/ai/chat", {
@@ -52,26 +64,96 @@ function postRequest(body: unknown): Request {
   });
 }
 
-/** Builds a mocked upstream Response streaming OpenAI-compat SSE chunks. */
-function sseUpstreamResponse(events: unknown[]): Response {
+function ask(text: string, history: { role: string; content: string }[] = []) {
+  return POST(
+    postRequest({ messages: [...history, { role: "user", content: text }] }),
+  );
+}
+
+function sse(events: unknown[]): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      for (const event of events) {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
-        );
-      }
+      for (const e of events)
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
     },
   });
-  return new Response(stream, { status: 200 });
+  return new Response(stream, {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
 }
 
-async function drain(res: Response): Promise<string> {
-  return res.text();
+const chunk = (delta: unknown, finish: string | null = null) => ({
+  id: "c1",
+  created: 1,
+  model: "m",
+  choices: [{ index: 0, delta, finish_reason: finish }],
+});
+
+function textReply(text: string, usage?: Record<string, number>): Response {
+  return sse([
+    chunk({ role: "assistant", content: text }),
+    chunk({}, "stop"),
+    ...(usage
+      ? [{ id: "c1", created: 1, model: "m", choices: [], usage }]
+      : []),
+  ]);
 }
+
+function toolCallReply(name: string, args: unknown): Response {
+  return sse([
+    chunk({
+      role: "assistant",
+      tool_calls: [
+        {
+          index: 0,
+          id: "call_1",
+          type: "function",
+          function: { name, arguments: JSON.stringify(args) },
+        },
+      ],
+    }),
+    chunk({}, "tool_calls"),
+  ]);
+}
+
+async function events(res: Response) {
+  const body = await res.text();
+  return body
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map(
+      (l) =>
+        JSON.parse(l) as {
+          type: string;
+          text?: string;
+          name?: string;
+          message?: string;
+        },
+    );
+}
+
+const answerText = (evs: { type: string; text?: string }[]) =>
+  evs
+    .filter((e) => e.type === "text")
+    .map((e) => e.text)
+    .join("");
+
+function upstreamBody(call = 0): {
+  messages: { role: string; content: unknown }[];
+  tools?: { function: { name: string } }[];
+  reasoning_effort?: string;
+} {
+  const init = fetchMock.mock.calls[call][1] as RequestInit;
+  return JSON.parse(String(init.body));
+}
+
+const contentOf = (m: { content: unknown }) =>
+  typeof m.content === "string" ? m.content : JSON.stringify(m.content);
 
 beforeEach(() => {
   mockGetSession.mockReset();
@@ -81,9 +163,10 @@ beforeEach(() => {
     rows: [
       {
         ai_chat_banned: false,
+        ai_disabled: false,
         plan: "free",
-        daily_scan_limit: null,
         created_at: "2026-01-01T00:00:00.000Z",
+        locale: null,
       },
     ],
   });
@@ -98,21 +181,15 @@ beforeEach(() => {
     AI_CHAT_MAX_TOKENS: 2048,
     AI_CHAT_MAX_INPUT_LENGTH: 4000,
   });
-  mockCheckAiUsageQuota.mockReset();
-  mockCheckAiUsageQuota.mockResolvedValue({
-    allowed: true,
-    usingOwnAi: false,
-    usedTokens: 0,
-    limitTokens: 20_000,
-  });
   mockRecordAiTokens.mockReset();
 
   process.env.AI_BASE_URL = "https://api.example-llm.test/v1";
   process.env.AI_API_KEY = "test-key";
+  process.env.AI_MODEL = "test-model";
   delete process.env.AI_PROVIDER;
-  delete process.env.AI_MODEL;
 
-  global.fetch = vi.fn();
+  fetchMock.mockReset();
+  global.fetch = fetchMock as unknown as typeof fetch;
 });
 
 afterEach(() => {
@@ -120,325 +197,341 @@ afterEach(() => {
   process.env = { ...originalEnv };
 });
 
-describe("POST /api/v3/ai/chat: auth and gates", () => {
+describe("POST /api/v3/ai/chat: gates", () => {
   it("requires authentication", async () => {
     mockGetSession.mockResolvedValue(null);
-    const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "hi" }] }),
-    );
+    const res = await ask("hi");
     expect(res.status).toBe(401);
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("returns 429 when the flat rate limit is exceeded", async () => {
+  it("returns 429 when the hourly limit is spent", async () => {
     mockCheckRateLimit.mockResolvedValue({
       allowed: false,
       remaining: 0,
       retryAfterSeconds: 120,
     });
-    const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "hi" }] }),
-    );
+    const res = await ask("hi");
     expect(res.status).toBe(429);
-    const json = await res.json();
-    expect(json.error).toContain("Too many AI requests");
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("returns 403 when the account is banned from AI chat", async () => {
+  it("refuses an account banned from AI chat", async () => {
     mockQuery.mockResolvedValue({
       rows: [
         {
           ai_chat_banned: true,
+          ai_disabled: false,
           plan: "free",
-          daily_scan_limit: null,
           created_at: "2026-01-01",
         },
       ],
     });
-    const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "hi" }] }),
-    );
+    const res = await ask("hi");
     expect(res.status).toBe(403);
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
-});
 
-describe("POST /api/v3/ai/chat: input length enforcement", () => {
-  it("rejects when the newest (last) message exceeds the configured max length", async () => {
-    const res = await POST(
-      postRequest({
-        messages: [{ role: "user", content: "x".repeat(4001) }],
-      }),
-    );
+  it("refuses a reader who turned AI off, rather than only hiding the widget", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [
+        {
+          ai_chat_banned: false,
+          ai_disabled: true,
+          plan: "free",
+          created_at: "2026-01-01",
+        },
+      ],
+    });
+    const res = await ask("hi");
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/turned the AI assistant off/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("is 503 when no AI endpoint is configured", async () => {
+    delete process.env.AI_BASE_URL;
+    const res = await ask("hi");
+    expect(res.status).toBe(503);
+  });
+
+  it("rejects an over-long newest message and nothing else", async () => {
+    const res = await ask("x".repeat(4001));
     expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error).toContain("exceeds maximum length");
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
 
-  it("does not reject on an oversized earlier message (e.g. an auto-loaded /docs context block), only the newest one", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      sseUpstreamResponse([{ choices: [{ delta: { content: "hi" } }] }]),
-    );
-    const res = await POST(
-      postRequest({
-        messages: [
-          {
-            role: "user",
-            content: `<context cmd="docs">${"x".repeat(10_000)}</context>`,
-          },
-          { role: "assistant", content: "context loaded" },
-          { role: "user", content: "How do I self-host this?" },
-        ],
-      }),
-    );
-    expect(res.status).toBe(200);
-    expect(global.fetch).toHaveBeenCalled();
+    fetchMock.mockResolvedValue(textReply("ok"));
+    const ok = await ask("short", [
+      { role: "user", content: "y".repeat(9000) },
+      { role: "assistant", content: "noted" },
+    ]);
+    expect(ok.status).toBe(200);
   });
 });
 
-describe("POST /api/v3/ai/chat: large context blocks reach the model", () => {
-  /** Pull the messages[] actually forwarded to the upstream provider. */
-  function forwardedContent(): string {
-    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const sent = JSON.parse((init as RequestInit).body as string) as {
-      messages: { role: string; content: string }[];
-    };
-    return sent.messages.map((m) => m.content).join("\n");
-  }
-
-  it("forwards a server-injected context block that is larger than the conversational char budget (the /changelog case, ~250k)", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      sseUpstreamResponse([{ choices: [{ delta: { content: "ok" } }] }]),
-    );
-    // The real changelog-knowledge.md is ~250k chars; the conversational
-    // budget (max(maxInputLength,20k)*6 = 120k here) is far smaller, so the
-    // old backward-walk trim dropped the whole context and the AI "forgot"
-    // the changelog the user had just loaded.
-    const marker = "CHANGELOG_MARKER_zzq";
-    const bigContext = `<context cmd="changelog">${marker}${"x".repeat(250_000)}</context>`;
-    const res = await POST(
-      postRequest({
-        messages: [
-          { role: "user", content: bigContext },
-          { role: "assistant", content: "Changelog loaded." },
-          { role: "user", content: "What changed in the latest version?" },
-        ],
-      }),
-    );
+describe("POST /api/v3/ai/chat: what reaches the reader", () => {
+  it("streams the answer as NDJSON events ending in done", async () => {
+    fetchMock.mockResolvedValue(textReply("Hello there"));
+    const res = await ask("hi");
     expect(res.status).toBe(200);
-    // The loaded context MUST reach the provider, or /changelog is pointless.
-    expect(forwardedContent()).toContain(marker);
+    expect(res.headers.get("content-type")).toContain("application/x-ndjson");
+    const evs = await events(res);
+    expect(answerText(evs)).toBe("Hello there");
+    expect(evs[evs.length - 1]).toEqual({ type: "done" });
   });
 
-  it("still trims an abusive backlog of plain (non-context) turns to protect against cost amplification", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      sseUpstreamResponse([{ choices: [{ delta: { content: "ok" } }] }]),
-    );
-    // 40 plain user turns of 5k chars each = 200k, well over the 120k
-    // conversational budget: the OLDEST turns must be dropped.
-    const messages = [];
-    for (let i = 0; i < 40; i++) {
-      messages.push({
-        role: "user",
-        content: `OLD_TURN_${i} ${"y".repeat(5000)}`,
-      });
-      messages.push({ role: "assistant", content: `reply ${i}` });
-    }
-    messages.push({ role: "user", content: "NEWEST_QUESTION marker" });
-    const res = await POST(postRequest({ messages }));
-    expect(res.status).toBe(200);
-    const forwarded = forwardedContent();
-    expect(forwarded).toContain("NEWEST_QUESTION marker");
-    // The very oldest turn is beyond the budget and must have been trimmed.
-    expect(forwarded).not.toContain("OLD_TURN_0 ");
-  });
-});
-
-/**
- * The reported bug, at the level that actually matters: the owner asked "can
- * we do GitHub repo scanning?" with no slash command and got a flat no about
- * /repos. Knowledge only ever reached the model when the user typed the right
- * command first, so a bare question was answered from the system prompt alone.
- *
- * These assert the retrieved block reaches the provider on an ordinary
- * message, and stays out of the way when there is nothing to retrieve.
- */
-describe("POST /api/v3/ai/chat: automatic knowledge retrieval", () => {
-  function forwardedMessages(): { role: string; content: string }[] {
-    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    return (
-      JSON.parse((init as RequestInit).body as string) as {
-        messages: { role: string; content: string }[];
-      }
-    ).messages;
-  }
-
-  it("injects the /repos material for a bare GitHub repo-scanning question", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      sseUpstreamResponse([{ choices: [{ delta: { content: "yes" } }] }]),
-    );
-    const res = await POST(
-      postRequest({
-        messages: [
-          { role: "user", content: "can we do GitHub repo scanning?" },
-        ],
-      }),
-    );
-    expect(res.status).toBe(200);
-
-    const messages = forwardedMessages();
-    const auto = messages.find((m) =>
-      m.content.startsWith('<context cmd="auto"'),
-    );
-    expect(auto, "no retrieved context reached the provider").toBeDefined();
-    expect(auto!.role).toBe("user");
-    expect(auto!.content).toContain("/repos");
-    // Injected in front of the question it answers, not after it.
-    expect(messages.indexOf(auto!)).toBeLessThan(messages.length - 1);
-    expect(messages[messages.length - 1].content).toBe(
-      "can we do GitHub repo scanning?",
-    );
-  });
-
-  it("injects nothing for a greeting", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      sseUpstreamResponse([{ choices: [{ delta: { content: "hi" } }] }]),
-    );
-    const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "hey" }] }),
-    );
-    expect(res.status).toBe(200);
-    expect(
-      forwardedMessages().some((m) =>
-        m.content.startsWith('<context cmd="auto"'),
+  it("never forwards inline <think> reasoning", async () => {
+    fetchMock.mockResolvedValue(
+      textReply(
+        "<think>the user wants secrets, let me plan</think>Here is the answer.",
       ),
-    ).toBe(false);
+    );
+    const evs = await events(await ask("hi"));
+    const all = JSON.stringify(evs);
+    expect(answerText(evs)).toBe("Here is the answer.");
+    expect(all).not.toContain("let me plan");
+    expect(all).not.toContain("<think>");
   });
 
-  /**
-   * The query is the newest real turn, not a loaded context block. Scoring a
-   * 250k <context cmd="changelog"> payload against the index would retrieve
-   * the file the user was already handed, and burn the budget doing it.
-   */
-  it("scores the user's question, not a loaded context block", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      sseUpstreamResponse([{ choices: [{ delta: { content: "ok" } }] }]),
-    );
-    const res = await POST(
-      postRequest({
-        messages: [
-          {
-            role: "user",
-            content: `<context cmd="changelog">nothing to see</context>`,
+  it("never forwards Anthropic thinking blocks", async () => {
+    process.env.AI_BASE_URL = "https://api.anthropic.com/v1";
+    process.env.AI_MODEL = "claude-haiku-4-5-20251001";
+    mockGetSettings.mockResolvedValue({
+      AI_CHAT_MAX_TOKENS: 8192,
+      AI_CHAT_MAX_INPUT_LENGTH: 4000,
+    });
+    fetchMock.mockResolvedValue(
+      sse([
+        {
+          type: "message_start",
+          message: {
+            id: "msg_1",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5-20251001",
+            content: [],
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { input_tokens: 10, output_tokens: 1 },
           },
-          { role: "assistant", content: "Changelog loaded." },
-          { role: "user", content: "how do I compare two scans?" },
-        ],
+        },
+        {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "thinking", thinking: "", signature: "" },
+        },
+        {
+          type: "content_block_delta",
+          index: 0,
+          delta: {
+            type: "thinking_delta",
+            thinking: "private chain of thought",
+          },
+        },
+        {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "signature_delta", signature: "sig" },
+        },
+        { type: "content_block_stop", index: 0 },
+        {
+          type: "content_block_start",
+          index: 1,
+          content_block: { type: "text", text: "" },
+        },
+        {
+          type: "content_block_delta",
+          index: 1,
+          delta: { type: "text_delta", text: "Visible answer." },
+        },
+        { type: "content_block_stop", index: 1 },
+        {
+          type: "message_delta",
+          delta: { stop_reason: "end_turn", stop_sequence: null },
+          usage: { output_tokens: 20 },
+        },
+        { type: "message_stop" },
+      ]),
+    );
+    const evs = await events(await ask("hi"));
+    expect(answerText(evs)).toBe("Visible answer.");
+    expect(JSON.stringify(evs)).not.toContain("private chain of thought");
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toBe("https://api.anthropic.com/v1/messages");
+    const sent = JSON.parse(
+      String((fetchMock.mock.calls[0][1] as RequestInit).body),
+    );
+    // Thinking is still asked for: it improves the answer, it is just not shown.
+    expect(sent.thinking?.type).toBe("enabled");
+  });
+
+  it("reports a reply that produced no words as an error, not silence", async () => {
+    fetchMock.mockResolvedValue(
+      textReply("<think>only reasoning, never closed"),
+    );
+    const evs = await events(await ask("hi"));
+    expect(answerText(evs)).toBe("");
+    expect(evs.some((e) => e.type === "error")).toBe(true);
+  });
+
+  it("returns 502 with a plain message when the provider fails before answering", async () => {
+    fetchMock.mockResolvedValue(
+      new Response("upstream exploded", { status: 500 }),
+    );
+    const res = await ask("hi");
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toMatch(/temporarily unavailable/);
+  });
+
+  it("does not send the provider's base URL to the browser", async () => {
+    fetchMock.mockResolvedValue(textReply("ok"));
+    const res = await ask("hi");
+    expect(res.headers.get("X-AI-Provider-Url")).toBeNull();
+    expect(res.headers.get("X-AI-Model")).toBe("test-model");
+  });
+});
+
+describe("POST /api/v3/ai/chat: tools", () => {
+  it("offers the tool set to the model", async () => {
+    fetchMock.mockResolvedValue(textReply("ok"));
+    await (await ask("how do I fix hsts?")).text();
+    const names = upstreamBody().tools?.map((t) => t.function.name) ?? [];
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "search_knowledge",
+        "get_check",
+        "get_release_notes",
+        "list_my_scans",
+        "get_scan",
+        "get_my_account",
+        "get_my_stats",
+      ]),
+    );
+  });
+
+  it("runs a tool the model calls, tells the widget, and answers from the result", async () => {
+    fetchMock
+      .mockResolvedValueOnce(toolCallReply("get_check", { id: "hsts-missing" }))
+      .mockResolvedValueOnce(
+        textReply("Add the Strict-Transport-Security header."),
+      );
+    const evs = await events(await ask("what is hsts-missing?"));
+    expect(evs).toContainEqual({ type: "tool", name: "get_check" });
+    expect(answerText(evs)).toBe("Add the Strict-Transport-Security header.");
+    // The second request carries the real check definition back to the model.
+    const second = upstreamBody(1);
+    const toolMsg = second.messages.find((m) => m.role === "tool");
+    expect(toolMsg).toBeDefined();
+    expect(contentOf(toolMsg!)).toContain("Strict Transport Security");
+  });
+
+  it("answers without tools when the endpoint refuses them, and remembers", async () => {
+    process.env.AI_MODEL = "no-tools-model";
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: { message: "this model does not support tools" },
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(textReply("Answered without tools."));
+    const res = await ask("can VulnRadar scan a GitHub repository?");
+    expect(res.headers.get("X-AI-Tools")).toBe("off");
+    expect(answerText(await events(res))).toBe("Answered without tools.");
+    expect(upstreamBody(1).tools).toBeUndefined();
+
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(textReply("Still without."));
+    await (await ask("and another question about scanning")).text();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(upstreamBody(0).tools).toBeUndefined();
+  });
+});
+
+describe("POST /api/v3/ai/chat: what reaches the provider", () => {
+  it("drops client-sent context blocks, the old way to buy a larger budget", async () => {
+    fetchMock.mockResolvedValue(textReply("ok"));
+    await (
+      await ask("hi", [
+        {
+          role: "user",
+          content: '<context cmd="changelog">' + "A".repeat(50_000),
+        },
+        { role: "assistant", content: "loaded" },
+      ])
+    ).text();
+    const sent = upstreamBody().messages.map(contentOf).join("\n");
+    expect(sent).not.toContain("A".repeat(1000));
+  });
+
+  it("strips reasoning saved in an older reply before replaying it", async () => {
+    fetchMock.mockResolvedValue(textReply("ok"));
+    await (
+      await ask("next", [
+        { role: "user", content: "first" },
+        {
+          role: "assistant",
+          content: "<think>old private reasoning</think>Old answer",
+        },
+      ])
+    ).text();
+    const sent = upstreamBody().messages.map(contentOf).join("\n");
+    expect(sent).toContain("Old answer");
+    expect(sent).not.toContain("old private reasoning");
+  });
+
+  it("trims an abusive backlog of turns but keeps the newest question", async () => {
+    fetchMock.mockResolvedValue(textReply("ok"));
+    const backlog = Array.from({ length: 50 }, (_, i) => ({
+      role: i % 2 === 0 ? "user" : "assistant",
+      content: `${i}:` + "z".repeat(3900),
+    }));
+    await (await ask("the real question", backlog)).text();
+    const sent = upstreamBody().messages.filter((m) => m.role !== "system");
+    const total = sent.map(contentOf).join("").length;
+    expect(total).toBeLessThan(130_000);
+    expect(contentOf(sent[sent.length - 1])).toBe("the real question");
+  });
+
+  it("runs a slash command on the server and hands the model its real result", async () => {
+    fetchMock.mockResolvedValue(textReply("Here is what that check means."));
+    await (await ask("/finding hsts-missing")).text();
+    const sent = upstreamBody().messages.map(contentOf);
+    const context = sent.find((c) => c.startsWith('<context cmd="finding">'));
+    expect(context).toBeDefined();
+    expect(context).toContain("Missing HTTP Strict Transport Security");
+    expect(sent[sent.length - 1]).toContain('typed "/finding hsts-missing"');
+  });
+
+  it("asks for reasoning on a model that takes the field", async () => {
+    process.env.AI_MODEL = "gpt-5-mini";
+    fetchMock.mockResolvedValue(textReply("ok"));
+    await (await ask("hi")).text();
+    expect(upstreamBody().reasoning_effort).toBe("medium");
+  });
+});
+
+describe("POST /api/v3/ai/chat: usage", () => {
+  it("records the provider's real usage, without charging credits", async () => {
+    fetchMock.mockResolvedValue(
+      textReply("Hello", {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        total_tokens: 120,
       }),
     );
-    expect(res.status).toBe(200);
-    const auto = forwardedMessages().find((m) =>
-      m.content.startsWith('<context cmd="auto"'),
-    );
-    expect(auto).toBeDefined();
-    expect(auto!.content).toContain("/compare");
-  });
-});
-
-describe("POST /api/v3/ai/chat: unified AI usage quota", () => {
-  it("is free/unmetered: still calls the upstream provider even when the quota reports not allowed", async () => {
-    mockCheckAiUsageQuota.mockResolvedValue({
-      allowed: false,
-      usingOwnAi: false,
-      usedTokens: 20_000,
-      limitTokens: 20_000,
-      message: "You've used all your AI tokens for this window.",
-    });
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      sseUpstreamResponse([{ choices: [{ delta: { content: "hi" } }] }]),
-    );
-
-    const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "hi" }] }),
-    );
-    expect(res.status).not.toBe(429);
-    expect(global.fetch).toHaveBeenCalled();
-    expect(mockCheckAiUsageQuota).toHaveBeenCalledWith(42);
-  });
-});
-
-describe("POST /api/v3/ai/chat: token accounting", () => {
-  it("records REAL usage from a stream_options usage chunk, and requests it in the payload", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      sseUpstreamResponse([
-        { choices: [{ delta: { content: "Hello" } }] },
-        { choices: [{ delta: { content: " there" } }] },
-        {
-          choices: [],
-          usage: { prompt_tokens: 50, completion_tokens: 12, total_tokens: 62 },
-        },
-      ]),
-    );
-
-    const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "hi" }] }),
-    );
-    const text = await drain(res);
-
-    expect(text).toBe("Hello there");
-    // chargeCredits: false -- chat records window usage but must not drain
-    // the purchased AI-credit balance.
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 62, undefined, false);
-
-    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const sentPayload = JSON.parse((init as RequestInit).body as string);
-    expect(sentPayload.stream_options).toEqual({ include_usage: true });
+    await (await ask("hi")).text();
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 120, undefined, false);
   });
 
-  it("falls back to a character-length ESTIMATE when the provider never returns usage", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      sseUpstreamResponse([
-        { choices: [{ delta: { content: "Hi" } }] },
-        { choices: [{ delta: { content: "!" } }] },
-      ]),
-    );
-
-    const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "hi" }] }),
-    );
-    await drain(res);
-
+  it("falls back to an estimate when the provider reports no usage", async () => {
+    fetchMock.mockResolvedValue(textReply("Hello"));
+    await (await ask("hi")).text();
     expect(mockRecordAiTokens).toHaveBeenCalledTimes(1);
-    const [userIdArg, tokensArg] = mockRecordAiTokens.mock.calls[0];
-    expect(userIdArg).toBe(42);
-    // Real usage was never returned, so this must come from the character
-    // estimate (system prompt + "hi" input + "Hi!" output), never 0.
-    expect(tokensArg).toBeGreaterThan(0);
-  });
-
-  it("does not record usage when the caller is using their own AI key", async () => {
-    mockCheckAiUsageQuota.mockResolvedValue({
-      allowed: true,
-      usingOwnAi: true,
-      usedTokens: 0,
-      limitTokens: -1,
-    });
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      sseUpstreamResponse([
-        { choices: [{ delta: { content: "Hi" } }] },
-        {
-          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-        },
-      ]),
-    );
-
-    const res = await POST(
-      postRequest({ messages: [{ role: "user", content: "hi" }] }),
-    );
-    await drain(res);
-
-    expect(mockRecordAiTokens).not.toHaveBeenCalled();
+    const [userId, tokens, , charge] = mockRecordAiTokens.mock.calls[0];
+    expect(userId).toBe(42);
+    expect(tokens).toBeGreaterThan(0);
+    expect(charge).toBe(false);
   });
 });

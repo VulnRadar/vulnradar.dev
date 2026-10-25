@@ -3,9 +3,8 @@
 import { useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { parseSegments } from "@/lib/ai/think-parser";
+import { visibleText } from "@/lib/ai/think-parser";
 
 /**
  * The exact react-markdown component overrides the live chat widget
@@ -140,6 +139,10 @@ export const messageMarkdownComponents: Components = {
   hr: ({ node: _node, ...props }) => (
     <hr className="border-border/30 my-2" {...props} />
   ),
+  // Never rendered. A markdown image is a request from the reader's browser to
+  // whatever URL the model wrote, and the model writes what a scanned page or a
+  // pasted payload told it to: an image is how that leaks the conversation.
+  img: () => null,
 };
 
 export function MarkdownContent({ content }: { content: string }) {
@@ -153,28 +156,12 @@ export function MarkdownContent({ content }: { content: string }) {
   );
 }
 
-export function ThinkBlock({ content }: { content: string }) {
-  return (
-    <details className="group/thk mb-2">
-      <summary className="flex items-center gap-1.5 cursor-pointer text-[11px] sm:text-[10px] text-muted-foreground/50 hover:text-muted-foreground/70 transition-colors list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden select-none">
-        <ChevronDown className="h-2.5 w-2.5 transition-transform duration-150 group-open/thk:rotate-180" />
-        <span className="font-mono">View reasoning</span>
-      </summary>
-      <div className="mt-1.5 pl-3 border-l border-border/40 text-[11px] sm:text-[10px] text-muted-foreground/50 leading-relaxed whitespace-pre-wrap font-mono">
-        {content}
-      </div>
-    </details>
-  );
-}
-
 /**
- * Renders one stored message's content: for the assistant role, this parses
- * <think>...</think> segments via lib/ai/think-parser's parseSegments and
- * renders each as either a collapsed reasoning block or real markdown; for
- * the user role, it renders plain text. This is the single rendering path
- * meant to be shared by the live chat widget and the admin AI-chat viewer,
- * so the two can never drift into two different-looking renderers, and a
- * raw, unparsed `<think>` tag never reaches an admin's screen.
+ * Renders one stored message: markdown for the assistant, plain text for the
+ * user. Shared by the live chat widget and the admin AI-chat viewer so the two
+ * cannot drift apart. Reasoning saved in older conversations is dropped here
+ * (visibleText): nobody reads it, staff included, because it was never the
+ * answer and often argued its way to a different one.
  */
 export function MessageContent({
   content,
@@ -183,8 +170,8 @@ export function MessageContent({
   content: string;
   role: "user" | "assistant";
 }) {
-  const segments = useMemo(
-    () => (role === "user" ? [] : parseSegments(content)),
+  const answer = useMemo(
+    () => (role === "user" ? content : visibleText(content)),
     [content, role],
   );
 
@@ -192,15 +179,5 @@ export function MessageContent({
     return <span className="whitespace-pre-wrap">{content}</span>;
   }
 
-  return (
-    <>
-      {segments.map((seg, i) =>
-        seg.type === "think" ? (
-          <ThinkBlock key={i} content={seg.content} />
-        ) : (
-          <MarkdownContent key={i} content={seg.content} />
-        ),
-      )}
-    </>
-  );
+  return <MarkdownContent content={answer} />;
 }

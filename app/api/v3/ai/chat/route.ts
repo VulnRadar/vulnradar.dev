@@ -1,6 +1,15 @@
+import {
+  APICallError,
+  RetryError,
+  stepCountIs,
+  streamText,
+  type ModelMessage,
+  type TextStreamPart,
+  type ToolSet,
+} from "ai";
+
 import { buildSystemPrompt, sanitizeUserName } from "@/lib/ai/system-prompt";
 import { LOCALE_ENGLISH_NAMES, isLocale } from "@/lib/i18n/config";
-import { SLASH_COMMANDS } from "@/lib/ai/commands";
 import { buildRetrievedContextBlock } from "@/lib/ai/knowledge-retrieval";
 import {
   resolveProviderName,
@@ -8,25 +17,184 @@ import {
   resolveAiDefaultModel,
   isAnthropicProvider,
 } from "@/lib/ai/provider";
+import { resolveChatModel } from "@/lib/ai/chat/model";
+import { buildChatTools } from "@/lib/ai/chat/tools";
+import { expandSlashCommand, parseSlashCommand } from "@/lib/ai/chat/slash";
 import {
-  fetchAnthropicStream,
-  createAnthropicSseTranscoder,
-} from "@/lib/ai/anthropic";
-import {
-  resolveOpenAiCompatReasoningExtras,
-  resolveAnthropicThinkingBudget,
-} from "@/lib/ai/reasoning";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+  CHAT_STREAM_CONTENT_TYPE,
+  encodeChatEvent,
+  type ChatStreamEvent,
+} from "@/lib/ai/chat/stream-protocol";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getSettings } from "@/lib/config/runtime-config";
 import pool from "@/lib/database/db";
 import { getDailyLimit } from "@/lib/rate-limiting/daily-limits";
-import { checkAiUsageQuota, recordAiTokens } from "@/lib/billing/ai-usage";
+import { recordAiTokens } from "@/lib/billing/ai-usage";
 import { estimateTokens } from "@/lib/scanner/github-repo-scan";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Reasoning plus up to MAX_STEPS tool round trips does not fit in 60s on a
+// slow provider, and a cut-off reply is worse than a slow one.
+export const maxDuration = 120;
+
+/** Tool round trips per reply. Each one re-sends the conversation, so this is
+ *  also the ceiling on how much one message can cost. */
+const MAX_STEPS = 5;
+const MAX_CONVERSATION_MESSAGES = 60;
+
+/**
+ * Endpoints that refused a tool-carrying request recently, by base URL and
+ * model. Ollama with a model that has no tool template, an older LM Studio
+ * build, a gateway that strips the field: they answer the first request with
+ * a 400, and paying that failed round trip on every message would double the
+ * latency of every reply on exactly the deployments least able to afford it.
+ * Remembered per process, and only for a while, so a model swapped for one
+ * that does support tools is picked up without a restart.
+ */
+const TOOLS_REFUSED_FOR_MS = 30 * 60 * 1000;
+const toolsRefusedAt = new Map<string, number>();
+
+function toolsRecentlyRefused(key: string): boolean {
+  const at = toolsRefusedAt.get(key);
+  if (at === undefined) return false;
+  if (Date.now() - at > TOOLS_REFUSED_FOR_MS) {
+    toolsRefusedAt.delete(key);
+    return false;
+  }
+  return true;
+}
+
+/** The provider's own error, out of the SDK's retry wrapper. */
+function unwrap(err: unknown): unknown {
+  return RetryError.isInstance(err) ? err.lastError : err;
+}
+
+/** The request itself was refused (shape, a field, a tool), as opposed to
+ *  the provider being down or the key being wrong. Only these are worth
+ *  retrying without tools and reasoning fields. */
+function isRequestRejection(raw: unknown): boolean {
+  const err = unwrap(raw);
+  if (!APICallError.isInstance(err)) return false;
+  const status = err.statusCode ?? 0;
+  if ([400, 404, 422, 501].includes(status)) return true;
+  return /\b(tools?|function|tool_choice|reasoning)\b/i.test(
+    `${err.message} ${err.responseBody ?? ""}`,
+  );
+}
+
+function userFacingError(raw: unknown): string {
+  const err = unwrap(raw);
+  if (APICallError.isInstance(err)) {
+    const status = err.statusCode ?? 0;
+    if (status === 429)
+      return "The AI provider is limiting requests right now. Try again in a minute.";
+    if (status === 401 || status === 403)
+      return "The AI provider refused this deployment's credentials. An administrator needs to check the AI settings.";
+  }
+  if (err instanceof Error && /timeout|timed out|aborted/i.test(err.message))
+    return "The AI provider took too long to answer. Try again.";
+  return "The AI provider is temporarily unavailable. Please try again.";
+}
+
+function errorDetail(raw: unknown): string {
+  const err = unwrap(raw);
+  if (APICallError.isInstance(err))
+    return `HTTP ${err.statusCode ?? "?"} ${String(err.responseBody ?? err.message).slice(0, 300)}`;
+  return err instanceof Error ? err.message.slice(0, 300) : String(err);
+}
+
+// Reasoning written inline by older replies, still in a browser's saved
+// conversation. It is never sent back: it was never meant to be read, and
+// replaying it spent the turn budget on text nobody asked for.
+const THINK_BLOCK_RE = /<think>[\s\S]*?(?:<\/think>|$)/g;
+
+interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/**
+ * The client's history, reduced to what the model may see: user and
+ * assistant strings, no reasoning, and nothing that claims to be a context
+ * block. Those used to be pasted in by the widget and are now built only
+ * here, so a client-sent one is either a stale saved conversation or someone
+ * trying to buy the old, larger context budget by typing the tag.
+ */
+function sanitizeHistory(raw: unknown): ChatTurn[] {
+  if (!Array.isArray(raw)) return [];
+  const turns: ChatTurn[] = [];
+  for (const m of raw) {
+    if (!m || typeof m !== "object") continue;
+    const { role, content } = m as { role?: unknown; content?: unknown };
+    if (
+      (role !== "user" && role !== "assistant") ||
+      typeof content !== "string"
+    )
+      continue;
+    const text =
+      role === "assistant"
+        ? content.replace(THINK_BLOCK_RE, "").trim()
+        : content;
+    if (!text.trim() || text.trimStart().startsWith("<context")) continue;
+    turns.push({ role, content: text });
+  }
+  // A conversation opens with the reader, whatever the saved copy starts with.
+  while (turns.length && turns[0].role === "assistant") turns.shift();
+  return turns;
+}
+
+/**
+ * Newest first, skipping (not stopping at) a turn that does not fit, and
+ * always keeping the newest. Bounds what one request forwards to a provider
+ * this route pays for: only the last message is length-checked, so without it
+ * a caller could send a huge backlog on every request.
+ */
+function fitToBudget(turns: ChatTurn[], maxChars: number): ChatTurn[] {
+  const recent = turns.slice(-MAX_CONVERSATION_MESSAGES);
+  const kept: ChatTurn[] = [];
+  let budget = maxChars;
+  for (let i = recent.length - 1; i >= 0; i--) {
+    budget -= recent[i].content.length;
+    if (budget < 0 && kept.length > 0) continue;
+    kept.unshift(recent[i]);
+  }
+  while (kept.length && kept[0].role === "assistant") kept.shift();
+  return kept;
+}
+
+type Part = TextStreamPart<ToolSet>;
+
+/**
+ * Pull parts until the reply has visibly started (text or a tool call), it
+ * has finished, or it has failed. The response status is decided here: a
+ * provider that refuses the request outright gets a real error status, as it
+ * always did, instead of a 200 whose body happens to say it failed.
+ */
+async function prime(stream: AsyncIterable<Part>): Promise<{
+  it: AsyncIterator<Part>;
+  buffered: Part[];
+  error: unknown;
+}> {
+  const it = stream[Symbol.asyncIterator]();
+  const buffered: Part[] = [];
+  try {
+    while (true) {
+      const { value, done } = await it.next();
+      if (done) return { it, buffered, error: null };
+      if (value.type === "error") return { it, buffered, error: value.error };
+      buffered.push(value);
+      if (
+        value.type === "text-delta" ||
+        value.type === "tool-call" ||
+        value.type === "finish"
+      )
+        return { it, buffered, error: null };
+    }
+  } catch (err) {
+    return { it, buffered, error: err };
+  }
+}
 
 export async function POST(req: Request) {
   const session = await getSession();
@@ -37,7 +205,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Rate limit: 60 AI messages per user per hour to prevent cost amplification.
   const rl = await checkRateLimit({
     key: `ai-chat:${session.userId}`,
     ...RATE_LIMITS.aiChat,
@@ -51,19 +218,23 @@ export async function POST(req: Request) {
     );
   }
 
-  // Check if the user is banned from AI chat, and pull the small account
-  // facts that get baked into the system prompt (see buildSystemPrompt) in
-  // the same round trip.
+  // The ban, the reader's own off switch, and the small account facts the
+  // system prompt carries, in one round trip.
   const userRow = await pool.query<{
     ai_chat_banned: boolean;
+    ai_disabled: boolean | null;
     plan: string | null;
     created_at: string;
     locale: string | null;
   }>(
-    "SELECT ai_chat_banned, plan, created_at, locale FROM users WHERE id = $1",
+    `SELECT u.ai_chat_banned, c.ai_disabled, u.plan, u.created_at, u.locale
+       FROM users u
+       LEFT JOIN user_ai_configs c ON c.user_id = u.id
+      WHERE u.id = $1`,
     [session.userId],
   );
-  if (userRow.rows[0]?.ai_chat_banned) {
+  const userRecord = userRow.rows[0];
+  if (userRecord?.ai_chat_banned) {
     return Response.json(
       {
         error: "Your account has been restricted from using the AI assistant.",
@@ -71,17 +242,21 @@ export async function POST(req: Request) {
       { status: 403 },
     );
   }
-
-  // AI chat is free/unmetered -- not gated on the aiTokensPerWindow cap.
-  // Still resolves usingOwnAi (below) so usage recording matches the
-  // "own key = don't record against VulnRadar's counters" rule the metered
-  // AI features (verify, GitHub review) use, purely for admin cost
-  // visibility -- it never blocks the request.
-  const quota = await checkAiUsageQuota(session.userId);
+  // The widget hides itself for this, but the preference is the reader's, and
+  // a hidden button is not the same as the feature being off.
+  if (userRecord?.ai_disabled) {
+    return Response.json(
+      {
+        error:
+          "You turned the AI assistant off. Turn it back on under Profile, AI settings.",
+      },
+      { status: 403 },
+    );
+  }
 
   const baseUrl = resolveAiBaseUrl();
   const apiKey = process.env.AI_API_KEY ?? "";
-  const model = resolveAiDefaultModel(baseUrl);
+  const modelId = resolveAiDefaultModel(baseUrl);
   const {
     AI_CHAT_MAX_TOKENS: maxTokens,
     AI_CHAT_MAX_INPUT_LENGTH: maxInputLength,
@@ -100,40 +275,28 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: {
-    messages: Array<{ role: string; content: string }>;
-  };
+  let body: { messages?: unknown };
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { messages } = body;
-  if (!Array.isArray(messages) || messages.length === 0) {
+  const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
+  if (rawMessages.length === 0) {
     return Response.json(
       { error: "messages array is required." },
       { status: 400 },
     );
   }
 
-  // The client already caps the textarea at this same length for UX, but
-  // that's cosmetic: a direct API call bypasses it entirely. This is the
-  // actual enforcement point.
-  //
-  // Only the LAST message is checked, not the whole array: everything before
-  // it is either a prior turn (already validated when it was sent as the
-  // "last message" of its own request) or a server-defined context block
-  // (/docs, /changelog, /checks, etc. -- see handleCommand in chat-widget.tsx)
-  // that the app injects on the user's behalf and is expected to run well
-  // over this limit. Checking every message rejected the entire request the
-  // moment any context loaded, which broke every message sent afterward too
-  // since the oversized context entry stays in conversation history.
-  const lastMessage = messages[messages.length - 1];
+  // The client caps the textarea at the same length; this is the enforcement.
+  // Only the newest message is checked: everything before it was the newest
+  // message of its own request once.
+  const last = rawMessages[rawMessages.length - 1] as { content?: unknown };
   if (
-    lastMessage &&
-    typeof lastMessage.content === "string" &&
-    lastMessage.content.length > maxInputLength
+    typeof last?.content === "string" &&
+    last.content.length > maxInputLength
   ) {
     return Response.json(
       {
@@ -143,387 +306,298 @@ export async function POST(req: Request) {
     );
   }
 
-  const userRecord = userRow.rows[0];
-  const memberSince = userRecord?.created_at
-    ? new Date(userRecord.created_at).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-      })
-    : null;
+  const turns = fitToBudget(
+    sanitizeHistory(rawMessages),
+    Math.max(maxInputLength, 20_000) * 6,
+  );
+  const question = turns[turns.length - 1];
+  if (!question || question.role !== "user") {
+    return Response.json(
+      { error: "The last message must be from the user." },
+      { status: 400 },
+    );
+  }
+
+  // A slash command is run here, for this turn only, and its result travels
+  // as a message the model reads just before the instruction it implies.
+  const slash = await expandSlashCommand(question.content, session.userId);
+  const history = turns.slice(0, -1);
+  const finalTurns: ChatTurn[] = slash
+    ? [
+        ...history,
+        ...(slash.context
+          ? [
+              {
+                role: "user" as const,
+                content: `<context cmd="${slash.cmd}">\n${slash.context}\n</context>`,
+              },
+            ]
+          : []),
+        { role: "user", content: slash.instruction },
+      ]
+    : turns;
 
   const resolvedDailyLimit = await getDailyLimit(session.userId);
-
-  // Use the server-verified session name/role — never trust client-supplied
-  // account facts.
-  const systemPrompt = buildSystemPrompt({
+  const promptFacts = {
     name: session.name ? sanitizeUserName(session.name) : "User",
     plan: userRecord?.plan ?? null,
     role: session.role,
-    // Resolved live rather than read off users.daily_scan_limit, which
-    // nothing has written since the set_scan_limit admin action was
-    // removed, so this was absent for every user.
     dailyScanLimit: Number.isFinite(resolvedDailyLimit)
       ? resolvedDailyLimit
-      : "unlimited",
-    memberSince,
-    // The language this account reads the site in. The assistant answers in
-    // it, rather than in whatever language the question happened to be typed
-    // in, because it is the language they chose for everything else.
+      : ("unlimited" as const),
+    memberSince: userRecord?.created_at
+      ? new Date(userRecord.created_at).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+        })
+      : null,
+    // The language this account reads the site in, rather than whatever the
+    // question happened to be typed in.
     language: isLocale(userRecord?.locale)
       ? LOCALE_ENGLISH_NAMES[userRecord.locale]
       : null,
-  });
-
-  // Bound what we forward to the (paid, unmetered) provider. Only the last
-  // message was length-checked above, so without this a caller could send a
-  // huge or deeply-populated messages[] every request and amplify the AI bill.
-  //
-  // Two separate budgets, because there are two kinds of message with very
-  // different size profiles:
-  //   - Plain conversational turns (what the user typed, what the model
-  //     replied): each is small, and a long backlog of them is exactly the
-  //     cost-amplification vector, so they get a tight budget.
-  //   - Server-injected context blocks (/docs, /changelog, /checks, ... --
-  //     one message each, wrapped in <context ...> by handleCommand in
-  //     chat-widget.tsx): these are known server-side knowledge files and
-  //     routinely run FAR larger than a turn (the changelog alone is ~250k).
-  //     They are the entire point of the loaders, so counting them against
-  //     the turn budget silently dropped the context the user had just
-  //     loaded (the AI would "forget" the changelog the moment they asked
-  //     about it). They get their own generous budget instead.
-  //
-  // Walk newest -> oldest and SKIP (not stop at) anything over its budget, so
-  // an older-but-large context block is never cut off just because the turns
-  // in front of it already spent the turn budget.
-  const MAX_CONVERSATION_MESSAGES = 60;
-  const MAX_CONVERSATION_CHARS = Math.max(maxInputLength, 20_000) * 6; // ~120k
-  // Sized to fit every context loader that can be open at once, with margin,
-  // while still capping a caller who wraps an abusive payload in a <context>
-  // tag to defeat the turn budget.
-  //
-  // This number goes stale on its own: the loaders read generated knowledge
-  // files that grow with every release, and by 3.9.0 the changelog alone had
-  // reached 506k of a budget whose comment still claimed it was 250k, so all
-  // the loaders together no longer fit and the oldest block was being dropped
-  // from requests that had just asked for it. Serving /changelog from an
-  // index (see the route) brought it back under, and
-  // tests/lib/ai/context-budget.test.ts now measures the real files against
-  // this constant so the next file to outgrow it fails a build instead of
-  // quietly costing someone the context they loaded.
-  const MAX_CONTEXT_CHARS = 700_000;
-
-  // security: this used to be `content.startsWith("<context")`, which any
-  // caller could satisfy by typing that literal at the front of a message.
-  // Doing so moved the message off the ~120k turn budget and onto this
-  // 700k one, on a path the code itself describes as free and unmetered:
-  // roughly 12M input tokens an hour per free account, billed to us.
-  //
-  // handleCommand in the chat widget emits exactly `<context cmd="NAME">`
-  // where NAME is one of the fixed slash commands, so require that shape
-  // and check the name against the real command list. A hand-typed
-  // `<context` no longer qualifies and falls back to the turn budget.
-  const CONTEXT_BLOCK_RE = /^<context cmd="([a-z-]{1,32})">/;
-  const VALID_CONTEXT_CMDS = new Set(SLASH_COMMANDS.map((c) => c.cmd));
-  const isContextBlock = (content: string) => {
-    const m = CONTEXT_BLOCK_RE.exec(content);
-    return m !== null && VALID_CONTEXT_CMDS.has(m[1]);
   };
-  const recentMessages = messages
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .slice(-MAX_CONVERSATION_MESSAGES)
-    .map((m) => ({ role: m.role, content: String(m.content) }));
-  const conversationMessages: { role: string; content: string }[] = [];
-  let turnBudget = MAX_CONVERSATION_CHARS;
-  let contextBudget = MAX_CONTEXT_CHARS;
-  for (let i = recentMessages.length - 1; i >= 0; i--) {
-    const m = recentMessages[i];
-    if (isContextBlock(m.content)) {
-      contextBudget -= m.content.length;
-      if (contextBudget < 0 && conversationMessages.length > 0) continue;
-    } else {
-      turnBudget -= m.content.length;
-      if (turnBudget < 0 && conversationMessages.length > 0) continue;
-    }
-    conversationMessages.unshift(m);
-  }
-
-  // Automatic knowledge retrieval.
-  //
-  // The slash commands were the ONLY way knowledge ever reached the model, so
-  // a question nobody prefixed with a command was answered from the system
-  // prompt alone. "Can we do GitHub repo scanning?" got a flat no about a
-  // feature that has shipped, because nothing in the prompt had ever heard of
-  // /repos.
-  //
-  // So every message is scored against a build-time index of the same
-  // knowledge files (lib/ai/knowledge-retrieval.ts) and the best few sections
-  // are injected here. Server-side and keyword-based on purpose: this route
-  // speaks to Anthropic, any OpenAI-compatible endpoint, and whatever a
-  // self-hoster points AI_BASE_URL at, so anything that needed model-driven
-  // tool calls or an embedding provider would work on some of those and
-  // silently fail on the rest.
-  //
-  // The query is the newest real user turn, not a <context> block: when
-  // someone types /features the widget sends the whole file as its own
-  // message, and scoring that against the index would just retrieve the file
-  // it was already handed.
-  const retrievalQuery = [...conversationMessages]
-    .reverse()
-    .find((m) => m.role === "user" && !isContextBlock(m.content))?.content;
-  if (retrievalQuery) {
-    const retrieved = buildRetrievedContextBlock(retrievalQuery);
-    // Immediately before the final turn, which is where handleCommand in the
-    // chat widget puts a loaded context block too: near the question it is
-    // meant to answer, and after the earlier conversation rather than in
-    // front of it.
-    if (retrieved)
-      conversationMessages.splice(
-        Math.max(0, conversationMessages.length - 1),
-        0,
-        {
-          role: "user",
-          content: retrieved,
-        },
-      );
-  }
-
-  // Character-length estimate of the INPUT side, for the ESTIMATED-token
-  // fallback below (only used when a provider never returns real usage).
-  // Same rough chars-per-token approach as
-  // lib/scanner/github-repo-scan.ts's estimateTokens, reused for
-  // consistency rather than inventing a second divisor.
-  const inputCharCount =
-    systemPrompt.length +
-    conversationMessages.reduce((sum, m) => sum + m.content.length, 0);
 
   const providerName = resolveProviderName(baseUrl);
   const isAnthropic = isAnthropicProvider(baseUrl);
-
-  let upstreamRes: Response;
-  try {
-    if (isAnthropic) {
-      upstreamRes = await fetchAnthropicStream({
-        baseUrl,
-        apiKey,
-        model,
-        system: systemPrompt,
-        messages: conversationMessages as {
-          role: "user" | "assistant";
-          content: string;
-        }[],
-        maxTokens,
-        thinkingBudgetTokens: resolveAnthropicThinkingBudget(maxTokens),
-      });
-    } else {
-      // Build request payload in OpenAI chat completions format.
-      // This is supported by: OpenAI, Ollama, Groq, Mistral, OpenRouter,
-      // LM Studio, Together, DeepSeek, Gemini (via its OpenAI-compat
-      // endpoint), and more. Anthropic gets its own native adapter above —
-      // its real API doesn't speak this format at all.
-      const payload = {
-        model,
-        stream: true,
-        // Requests real token usage in one final SSE chunk, on the
-        // providers that support this OpenAI stream_options extension:
-        // OpenAI, Groq, MiniMax (VulnRadar's own hosted default -- see
-        // resolveAiDefaultModel in lib/ai/provider.ts), Mistral,
-        // OpenRouter, Together, and DeepSeek are all OpenAI-compatible
-        // chat/completions endpoints that pass this option through. A
-        // provider that doesn't recognize it (Ollama, LM Studio, and any
-        // other self-hosted/custom endpoint) just ignores the unknown key
-        // and streams normally with no usage chunk -- the read loop below
-        // falls back to a character-length ESTIMATE in that case, and
-        // always does so for the native Anthropic path (fetchAnthropicStream
-        // below), whose SSE event shape isn't parsed for usage at all.
-        stream_options: { include_usage: true },
-        max_tokens: maxTokens,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...conversationMessages,
-        ],
-        ...resolveOpenAiCompatReasoningExtras(baseUrl, model, "chat"),
-      };
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      // Most OpenAI-compatible endpoints use Bearer auth.
-      // Ollama works with no key or any placeholder value.
-      if (apiKey) {
-        headers["Authorization"] = `Bearer ${apiKey}`;
-      }
-
-      // OpenRouter requires a site URL header.
-      if (new URL(baseUrl).hostname.toLowerCase() === "openrouter.ai") {
-        // Identify THIS deployment to OpenRouter, not the SaaS: APP_URL already
-        // resolves NEXT_PUBLIC_APP_URL first, so a self-hoster's AI spend is no
-        // longer attributed to vulnradar.dev by a hardcoded fallback.
-        headers["HTTP-Referer"] = APP_URL;
-        headers["X-Title"] = APP_NAME;
-      }
-
-      upstreamRes = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-    }
-  } catch (err) {
-    console.error("[AI chat] fetch error:", err);
-    return Response.json(
-      { error: "Could not reach the AI endpoint. Is it running?" },
-      { status: 502 },
-    );
-  }
-
-  if (!upstreamRes.ok) {
-    let detail = "";
+  const host = (() => {
     try {
-      const errBody = await upstreamRes.json();
-      detail =
-        errBody?.error?.message ?? errBody?.error ?? JSON.stringify(errBody);
+      return new URL(baseUrl).host;
     } catch {
-      detail = await upstreamRes.text().catch(() => "");
-    }
-    console.error(`[AI chat] upstream ${upstreamRes.status}:`, detail);
-    return Response.json(
-      { error: "AI provider is temporarily unavailable. Please try again." },
-      { status: 502 },
-    );
-  }
-
-  if (!upstreamRes.body) {
-    return Response.json(
-      { error: "AI provider returned an empty response." },
-      { status: 502 },
-    );
-  }
-
-  // Parse the SSE stream from the upstream provider and re-emit plain text
-  // so the client can just read chunks directly without parsing SSE format.
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const writer = writable.getWriter();
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-
-  // Token accounting for this reply. realUsageTokens is set only when the
-  // OpenAI-compat path (below) receives a stream_options usage chunk from
-  // the provider -- REAL tokens, not an estimate. If it's never set (every
-  // Anthropic reply via the native streaming path, or an OpenAI-compat
-  // provider that ignored stream_options), the ESTIMATE fallback in the
-  // `finally` block below is used instead: (input chars + accumulated
-  // output chars) / the same chars-per-token divisor as
-  // lib/scanner/github-repo-scan.ts's estimateTokens.
-  let realUsageTokens: number | null = null;
-  let responseCharCount = 0;
-
-  (async () => {
-    const reader = upstreamRes.body!.getReader();
-
-    try {
-      if (isAnthropic) {
-        const transcoder = createAnthropicSseTranscoder();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const text = transcoder.feed(decoder.decode(value, { stream: true }));
-          if (text) {
-            await writer.write(encoder.encode(text));
-            responseCharCount += text.length;
-          }
-        }
-        return;
-      }
-
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // SSE events are newline-delimited. Split and process complete lines.
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const raw of lines) {
-          const line = raw.trim();
-          if (!line.startsWith("data:")) continue;
-
-          const data = line.slice(5).trim();
-          if (data === "[DONE]") continue;
-
-          try {
-            const json = JSON.parse(data);
-            // Standard OpenAI format: choices[0].delta.content
-            const text = json.choices?.[0]?.delta?.content;
-            if (typeof text === "string" && text.length > 0) {
-              await writer.write(encoder.encode(text));
-              responseCharCount += text.length;
-            }
-            // Real usage: with stream_options.include_usage requested in
-            // the payload above, a supporting provider sends one final
-            // chunk carrying a usage field (its own choices array is
-            // typically empty on that particular chunk).
-            if (json.usage && typeof json.usage === "object") {
-              const u = json.usage as {
-                prompt_tokens?: number;
-                completion_tokens?: number;
-                total_tokens?: number;
-              };
-              realUsageTokens =
-                typeof u.total_tokens === "number"
-                  ? u.total_tokens
-                  : (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0);
-            }
-          } catch {
-            // Not valid JSON — skip (can happen with provider-specific metadata lines)
-          }
-        }
-      }
-    } catch (err) {
-      console.error("[AI chat] stream read error:", err);
-    } finally {
-      if (!quota.usingOwnAi) {
-        const tokensUsed =
-          realUsageTokens ?? estimateTokens(inputCharCount + responseCharCount);
-        try {
-          // chargeCredits: false -- chat is free and must not drain the
-          // purchased AI-credit balance; it records window usage only.
-          await recordAiTokens(session.userId, tokensUsed, undefined, false);
-        } catch (err) {
-          console.error(
-            "[AI chat] Failed to record token usage (non-fatal):",
-            err instanceof Error ? err.message : err,
-          );
-        }
-      }
-      writer.close().catch(() => {});
+      return "invalid-url";
     }
   })();
+  const capabilityKey = `${baseUrl}|${modelId}`;
+  const abort = new AbortController();
+  req.signal.addEventListener("abort", () => abort.abort(), { once: true });
 
-  return new Response(readable, {
+  /**
+   * One attempt at the reply. With tools the model looks things up itself;
+   * without them (an endpoint that refused tools) the old keyword retrieval
+   * pastes the best matching excerpts in before the question instead.
+   */
+  function attempt(useTools: boolean) {
+    const system = buildSystemPrompt(promptFacts, { tools: useTools });
+    const messages: ModelMessage[] = finalTurns.map((t) => ({
+      role: t.role,
+      content: t.content,
+    }));
+    if (!useTools && !slash) {
+      // The last two questions, not one: "how do I fix that?" names nothing,
+      // and the turn before it is what "that" was.
+      const query = finalTurns
+        .filter((t) => t.role === "user" && !parseSlashCommand(t.content))
+        .slice(-2)
+        .map((t) => t.content)
+        .join("\n");
+      const retrieved = query
+        ? buildRetrievedContextBlock(query, { minMatchedTerms: 2 })
+        : null;
+      if (retrieved)
+        messages.splice(Math.max(0, messages.length - 1), 0, {
+          role: "user",
+          content: retrieved,
+        });
+    }
+    const inputChars =
+      system.length +
+      messages.reduce((n, m) => n + String(m.content).length, 0);
+    const { model, providerOptions } = resolveChatModel({
+      baseUrl: baseUrl!,
+      apiKey,
+      model: modelId,
+      maxTokens,
+      // The retry drops reasoning fields too: an endpoint that refused the
+      // request may have refused one of those rather than the tools.
+      reasoning: useTools,
+    });
+    const result = streamText({
+      model,
+      // The system prompt is the same on every turn, so on Anthropic it is a
+      // cache hit after the first message of a conversation.
+      system: isAnthropic
+        ? {
+            role: "system",
+            content: system,
+            providerOptions: {
+              anthropic: { cacheControl: { type: "ephemeral" } },
+            },
+          }
+        : system,
+      messages,
+      ...(useTools
+        ? {
+            tools: buildChatTools(session!.userId),
+            stopWhen: stepCountIs(MAX_STEPS),
+          }
+        : {}),
+      maxOutputTokens: maxTokens,
+      providerOptions: providerOptions as never,
+      abortSignal: abort.signal,
+      maxRetries: 1,
+      // The SDK prints every error with its stack by default. This route logs
+      // one line per failure itself, with the user and endpoint attached.
+      onError: () => {},
+    });
+    return { result, inputChars };
+  }
+
+  let useTools = !toolsRecentlyRefused(capabilityKey);
+  let current = attempt(useTools);
+  let primed = await prime(current.result.fullStream);
+
+  if (primed.error && useTools && isRequestRejection(primed.error)) {
+    console.error(
+      `[AI chat] ${host} (${modelId}) refused a request with tools; answering without them for ${TOOLS_REFUSED_FOR_MS / 60_000} minutes: ${errorDetail(primed.error)}`,
+    );
+    toolsRefusedAt.set(capabilityKey, Date.now());
+    useTools = false;
+    current = attempt(false);
+    primed = await prime(current.result.fullStream);
+  }
+
+  if (primed.error) {
+    if (abort.signal.aborted) return new Response(null, { status: 499 });
+    console.error(
+      `[AI chat] request failed for user ${session.userId} via ${host} (${modelId}): ${errorDetail(primed.error)}`,
+    );
+    return Response.json(
+      { error: userFacingError(primed.error) },
+      { status: 502 },
+    );
+  }
+
+  const encoder = new TextEncoder();
+  const userId = session.userId;
+  const { inputChars } = current;
+  const { it, buffered } = primed;
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: ChatStreamEvent) => {
+        try {
+          controller.enqueue(encoder.encode(encodeChatEvent(event)));
+        } catch {
+          // The reader went away; keep draining so usage is still recorded.
+        }
+      };
+      let chars = 0;
+      let usageTokens: number | null = null;
+      let finishReason: string | undefined;
+      let failure: unknown = null;
+      const tools: string[] = [];
+
+      const handle = (part: Part) => {
+        switch (part.type) {
+          case "text-delta":
+            if (part.text) {
+              chars += part.text.length;
+              send({ type: "text", text: part.text });
+            }
+            break;
+          case "tool-call":
+            tools.push(part.toolName);
+            send({ type: "tool", name: part.toolName });
+            break;
+          case "finish": {
+            finishReason = part.finishReason;
+            const u = part.totalUsage;
+            const total =
+              u?.totalTokens ??
+              (u?.inputTokens != null || u?.outputTokens != null
+                ? (u.inputTokens ?? 0) + (u.outputTokens ?? 0)
+                : undefined);
+            if (typeof total === "number" && total > 0) usageTokens = total;
+            break;
+          }
+          case "error":
+            failure = part.error;
+            break;
+          default:
+            // Reasoning parts end here: they are never forwarded.
+            break;
+        }
+      };
+
+      try {
+        for (const part of buffered) handle(part);
+        while (!failure) {
+          const { value, done } = await it.next();
+          if (done) break;
+          handle(value);
+        }
+      } catch (err) {
+        failure = err;
+      }
+
+      const clientGone = abort.signal.aborted;
+      if (failure && !clientGone) {
+        console.error(
+          `[AI chat] stream ended abnormally for user ${userId} via ${host} (${modelId}) after ${chars} chars, tools [${tools.join(", ")}]: ${errorDetail(failure)}`,
+        );
+        send({
+          type: "error",
+          message:
+            chars > 0
+              ? "The reply was cut off. Ask again to get the rest."
+              : userFacingError(failure),
+        });
+      } else if (chars === 0 && !clientGone) {
+        // A finished reply with no words: reasoning that never closed, a
+        // length cut inside it, or a model that only ever called tools.
+        console.error(
+          `[AI chat] empty reply for user ${userId} via ${host} (${modelId}), finish=${finishReason ?? "none"}, tools [${tools.join(", ")}]`,
+        );
+        send({
+          type: "error",
+          message:
+            finishReason === "length"
+              ? "The answer ran out of room before it started. Ask a narrower question."
+              : "No answer came back. Try asking again.",
+        });
+      } else if (finishReason === "length" && !clientGone) {
+        send({
+          type: "error",
+          message:
+            "The reply hit its length limit. Ask for the rest if you need it.",
+        });
+      }
+      send({ type: "done" });
+
+      // Always recorded: chat runs on the operator's key whatever the reader
+      // has configured for the metered features, and the counter exists so
+      // the operator can see what chat costs. Never charges credits.
+      const tokens = usageTokens ?? estimateTokens(inputChars + chars);
+      try {
+        await recordAiTokens(userId, tokens, undefined, false);
+      } catch (err) {
+        console.error(
+          "[AI chat] Failed to record token usage (non-fatal):",
+          err instanceof Error ? err.message : err,
+        );
+      }
+      try {
+        controller.close();
+      } catch {
+        // Already closed by a cancel.
+      }
+    },
+    cancel() {
+      abort.abort();
+    },
+  });
+
+  return new Response(stream, {
     headers: {
-      "Content-Type": "text/plain; charset=utf-8",
+      "Content-Type": CHAT_STREAM_CONTENT_TYPE,
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
-      // This is the only streaming response in the app, and nginx buffers
-      // proxied responses by default (proxy_buffering on). Without this the
-      // whole reply is held at the proxy and delivered in one lump when the
-      // model finishes, so a self-hosted deployment behind nginx sees the
-      // assistant "think" for twenty seconds and then paste an answer,
-      // instead of typing it. Nothing errors, which is why it would be a
-      // miserable thing to diagnose from the outside.
-      //
-      // The header is nginx-specific and harmless everywhere else: other
-      // proxies ignore an unknown X- header. Setting it here rather than
-      // telling every operator to add `proxy_buffering off;` means the
-      // default deployment streams correctly with no proxy config at all.
+      // nginx buffers proxied responses by default, which would hold the whole
+      // reply at the proxy and deliver it in one lump. Harmless elsewhere.
       "X-Accel-Buffering": "no",
-      "X-AI-Model": model,
+      "X-AI-Model": modelId,
       "X-AI-Provider-Name": providerName,
-      "X-AI-Provider-Url": baseUrl ?? "",
+      "X-AI-Tools": useTools ? "on" : "off",
     },
   });
 }

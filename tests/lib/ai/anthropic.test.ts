@@ -3,8 +3,6 @@ import {
   buildAnthropicHeaders,
   buildAnthropicBody,
   callAnthropicMessages,
-  fetchAnthropicStream,
-  createAnthropicSseTranscoder,
   anthropicUsesAdaptiveThinking,
   AnthropicApiError,
   ANTHROPIC_VERSION,
@@ -184,103 +182,5 @@ describe("callAnthropicMessages", () => {
     await expect(callAnthropicMessages(baseOpts)).rejects.toThrow(
       /invalid x-api-key/,
     );
-  });
-});
-
-describe("fetchAnthropicStream", () => {
-  const originalFetch = global.fetch;
-  beforeEach(() => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true });
-  });
-  afterEach(() => {
-    global.fetch = originalFetch;
-  });
-
-  it("posts to /messages with stream: true in the body", async () => {
-    await fetchAnthropicStream(baseOpts);
-    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock
-      .calls[0];
-    expect(url).toBe("https://api.anthropic.com/v1/messages");
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.stream).toBe(true);
-    expect((init as RequestInit).headers).toMatchObject({
-      "x-api-key": baseOpts.apiKey,
-    });
-  });
-});
-
-describe("createAnthropicSseTranscoder", () => {
-  function sseLine(obj: unknown): string {
-    return `data: ${JSON.stringify(obj)}\n\n`;
-  }
-
-  it("passes through plain text_delta content untouched", () => {
-    const { feed } = createAnthropicSseTranscoder();
-    const out = feed(
-      sseLine({
-        type: "content_block_delta",
-        delta: { type: "text_delta", text: "Hello" },
-      }) +
-        sseLine({
-          type: "content_block_delta",
-          delta: { type: "text_delta", text: " world" },
-        }),
-    );
-    expect(out).toBe("Hello world");
-  });
-
-  it("wraps thinking_delta content in synthesized <think> tags", () => {
-    const { feed } = createAnthropicSseTranscoder();
-    const out = feed(
-      sseLine({
-        type: "content_block_start",
-        content_block: { type: "thinking" },
-      }) +
-        sseLine({
-          type: "content_block_delta",
-          delta: { type: "thinking_delta", thinking: "reasoning..." },
-        }) +
-        sseLine({ type: "content_block_stop" }) +
-        sseLine({
-          type: "content_block_delta",
-          delta: { type: "text_delta", text: "Final answer." },
-        }),
-    );
-    expect(out).toBe("<think>reasoning...</think>Final answer.");
-  });
-
-  it("buffers an incomplete trailing line across feed() calls", () => {
-    const { feed } = createAnthropicSseTranscoder();
-    const full = sseLine({
-      type: "content_block_delta",
-      delta: { type: "text_delta", text: "split" },
-    });
-    const cut = Math.floor(full.length / 2);
-    const first = feed(full.slice(0, cut));
-    const second = feed(full.slice(cut));
-    expect(first + second).toBe("split");
-  });
-
-  it("ignores unknown event types and malformed JSON without throwing", () => {
-    const { feed } = createAnthropicSseTranscoder();
-    expect(() =>
-      feed(
-        "data: not-json\n\n" +
-          sseLine({ type: "message_start" }) +
-          sseLine({
-            type: "content_block_delta",
-            delta: { type: "text_delta", text: "ok" },
-          }),
-      ),
-    ).not.toThrow();
-    const { feed: feed2 } = createAnthropicSseTranscoder();
-    const out = feed2(
-      "data: not-json\n\n" +
-        sseLine({
-          type: "content_block_delta",
-          delta: { type: "text_delta", text: "ok" },
-        }),
-    );
-    expect(out).toBe("ok");
   });
 });
