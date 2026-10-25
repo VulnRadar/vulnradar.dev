@@ -941,7 +941,7 @@ function completedMeta(scanId: number) {
   const call = mockQuery.mock.calls.find(
     ([sql, params]) =>
       (sql as string).includes("status = 'completed'") &&
-      (params as unknown[])[8] === scanId,
+      (params as unknown[])[7] === scanId,
   );
   expect(call).toBeDefined();
   return JSON.parse((call![1] as unknown[])[6] as string);
@@ -1170,7 +1170,7 @@ describe("executeCrawlScan: the cancel window", () => {
       mockQuery.mock.calls.some(
         ([sql, params]) =>
           (sql as string).includes("status = 'completed'") &&
-          (params as unknown[])[8] === 80,
+          (params as unknown[])[7] === 80,
       ),
     ).toBe(false);
     expect(failureUpdate(80)).toEqual(["Cancelled", 80, "cancelled"]);
@@ -1438,7 +1438,7 @@ describe("executeCrawlScan: the async-checks ceiling", () => {
         mockQuery.mock.calls.some(
           ([sql, params]) =>
             (sql as string).includes("status = 'completed'") &&
-            (params as unknown[])[8] === 93,
+            (params as unknown[])[7] === 93,
         ),
       ).toBe(false);
 
