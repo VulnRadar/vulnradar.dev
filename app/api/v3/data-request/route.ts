@@ -210,6 +210,8 @@ export async function POST(_request: NextRequest) {
       scanScreenshotsData,
       scanTeamSharesData,
       contactSubmissionsData,
+      aiChatEventsData,
+      aiMessageFeedbackData,
     ] = await runInBatches([
       // Core user data (excluding password_hash, totp_secret, backup_codes for security)
       () =>
@@ -783,6 +785,40 @@ export async function POST(_request: NextRequest) {
       `,
           [session.userId, EXPORT_MAX_ROWS],
         ),
+
+      // What the server recorded about each assistant reply in your chats:
+      // the model and provider that answered, the tokens it used, and why it
+      // stopped. Keyed by conversation and position, so each row lines up
+      // with a message in aiConversations without repeating its text.
+      () =>
+        pool.query(
+          `
+        SELECT e.conversation_id, c.session_id, e.message_index, e.model,
+               e.provider, e.usage, e.finish_reason, e.tool_calls, e.error,
+               e.created_at
+        FROM ai_chat_events e
+        JOIN ai_conversations c ON c.id = e.conversation_id
+        WHERE e.user_id = $1
+        ORDER BY e.created_at DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
+
+      // The thumbs up or down you gave assistant replies, and any comment.
+      () =>
+        pool.query(
+          `
+        SELECT f.conversation_id, c.session_id, f.message_index, f.rating,
+               f.comment, f.created_at
+        FROM ai_message_feedback f
+        JOIN ai_conversations c ON c.id = f.conversation_id
+        WHERE f.user_id = $1
+        ORDER BY f.created_at DESC
+        LIMIT $2
+      `,
+          [session.userId, EXPORT_MAX_ROWS],
+        ),
     ]);
 
     // Remove user_id from notification_preferences for cleaner export
@@ -886,6 +922,8 @@ export async function POST(_request: NextRequest) {
           }
         : {}),
       aiConversations: aiConversationsData.rows,
+      aiChatEvents: aiChatEventsData.rows,
+      aiMessageFeedback: aiMessageFeedbackData.rows,
     };
 
     const jsonString = JSON.stringify(exportData, null, 2);

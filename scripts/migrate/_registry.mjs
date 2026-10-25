@@ -224,8 +224,10 @@ export const VERSIONS = [
         "admin_audit_log_archive",
         "admin_notifications",
         "admin_user_notes",
+        "ai_chat_events",
         "ai_conversations",
         "ai_credit_purchases",
+        "ai_message_feedback",
         "ai_usage",
         "api_keys",
         "api_usage",
@@ -466,7 +468,11 @@ export const VERSIONS = [
         // database that has not rebooted since the column was added would
         // stop matching 3.0.0 and be detected as 2.0.0, which is a worse
         // failure than an under-described fingerprint. instrumentation.ts
-        // ALTERs the column in on the next boot either way.
+        // ALTERs the column in on the next boot either way. The same goes
+        // for every column the v4.0.0 foundation adds (scan_id here,
+        // scan_history.failure_kind, the email_logs delivery columns,
+        // worker_failure_state's last_* columns, support_tickets.assigned_to),
+        // none of which is listed for that reason.
         system_error_logs: new Set(["id", "message", "detail", "created_at"]),
         auto_tag_dismissals: new Set([
           "id",

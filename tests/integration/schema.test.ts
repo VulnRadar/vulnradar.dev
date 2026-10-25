@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import pool from "@/lib/database/db";
 import { REQUIRED_TABLES } from "@/lib/database/required-tables";
-import { describeIntegration } from "./_db";
+import { createUser, describeIntegration } from "./_db";
 
 /**
  * What the real boot path actually built, checked against the live catalog.
@@ -200,6 +200,150 @@ describeIntegration("the schema the boot path builds", () => {
     expect(
       [...declared.indexes.keys()].filter((i) => !live.has(i)).sort(),
     ).toEqual([]);
+  });
+
+  it("added the v4.0.0 foundation columns, including to tables that already existed", async () => {
+    // Every one of these is also an ALTER ... ADD COLUMN IF NOT EXISTS step,
+    // which is the only way a database created before the column gets it.
+    // This database was built from empty, so it proves the DDL runs and the
+    // types are what the writers expect, not the upgrade path itself (the
+    // static parity suites hold the two paths together).
+    const expected: Record<string, Record<string, string>> = {
+      scan_history: { failure_kind: "text" },
+      system_error_logs: { scan_id: "integer" },
+      email_logs: {
+        template: "character varying",
+        from_address: "character varying",
+        smtp_host: "character varying",
+        smtp_code: "integer",
+        smtp_command: "character varying",
+        smtp_response: "text",
+        error_code: "character varying",
+        message_id: "text",
+      },
+      worker_failure_state: {
+        last_success_at: "timestamp with time zone",
+        last_failure_at: "timestamp with time zone",
+        last_error: "text",
+      },
+      support_tickets: { assigned_to: "integer" },
+    };
+    const { rows } = await pool.query<{
+      table_name: string;
+      column_name: string;
+      data_type: string;
+      is_nullable: string;
+    }>(
+      `SELECT table_name, column_name, data_type, is_nullable
+         FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+      [Object.keys(expected)],
+    );
+    const live = new Map(
+      rows.map((r) => [`${r.table_name}.${r.column_name}`, r]),
+    );
+    for (const [table, columns] of Object.entries(expected)) {
+      for (const [column, type] of Object.entries(columns)) {
+        const row = live.get(`${table}.${column}`);
+        expect(row?.data_type, `${table}.${column}`).toBe(type);
+        // All nullable: every existing row gets NULL, which each reader
+        // treats as "not recorded".
+        expect(row?.is_nullable, `${table}.${column}`).toBe("YES");
+      }
+    }
+  });
+
+  it("wires the new foreign keys to delete the way their comments say", async () => {
+    // 'c' CASCADE, 'n' SET NULL. The AI tables go with their conversation
+    // and with the account; a ticket outlives the staff member it was
+    // assigned to and goes back to the shared queue.
+    const { rows } = await pool.query<{
+      child: string;
+      column: string;
+      parent: string;
+      confdeltype: string;
+    }>(
+      `SELECT c.relname AS child, a.attname AS column, p.relname AS parent,
+              con.confdeltype
+         FROM pg_constraint con
+         JOIN pg_class c ON c.oid = con.conrelid
+         JOIN pg_class p ON p.oid = con.confrelid
+         JOIN pg_attribute a ON a.attrelid = con.conrelid
+                            AND a.attnum = ANY(con.conkey)
+        WHERE con.contype = 'f'
+          AND c.relname IN ('ai_chat_events', 'ai_message_feedback', 'support_tickets')`,
+    );
+    const rule = (child: string, column: string) =>
+      rows.find((r) => r.child === child && r.column === column);
+    expect(rule("ai_chat_events", "conversation_id")?.confdeltype).toBe("c");
+    expect(rule("ai_chat_events", "conversation_id")?.parent).toBe(
+      "ai_conversations",
+    );
+    expect(rule("ai_chat_events", "user_id")?.confdeltype).toBe("c");
+    expect(rule("ai_message_feedback", "conversation_id")?.confdeltype).toBe(
+      "c",
+    );
+    expect(rule("ai_message_feedback", "user_id")?.confdeltype).toBe("c");
+    expect(rule("support_tickets", "assigned_to")?.confdeltype).toBe("n");
+  });
+
+  it("enforces one rating per person per AI reply, of -1 or 1", async () => {
+    const userId = (await createUser()).id;
+    const { rows: convs } = await pool.query<{ id: number }>(
+      `INSERT INTO ai_conversations (session_id, user_id)
+       VALUES (gen_random_uuid(), $1) RETURNING id`,
+      [userId],
+    );
+    const conversationId = convs[0].id;
+    const rate = (rating: number) =>
+      pool.query(
+        `INSERT INTO ai_message_feedback (conversation_id, message_index, user_id, rating)
+         VALUES ($1, 1, $2, $3)
+         ON CONFLICT (conversation_id, message_index, user_id)
+         DO UPDATE SET rating = EXCLUDED.rating`,
+        [conversationId, userId, rating],
+      );
+
+    try {
+      await rate(1);
+      // Changing your mind updates the one row rather than adding a second.
+      await rate(-1);
+      const { rows } = await pool.query<{ rating: number }>(
+        "SELECT rating FROM ai_message_feedback WHERE conversation_id = $1",
+        [conversationId],
+      );
+      expect(rows.map((r) => r.rating)).toEqual([-1]);
+      await expect(rate(0)).rejects.toThrow(/check constraint/);
+
+      await pool.query(
+        `INSERT INTO ai_chat_events (conversation_id, user_id, message_index, model, usage)
+         VALUES ($1, $2, 1, 'test-model', '{"totalTokens": 12}'::jsonb)`,
+        [conversationId, userId],
+      );
+      // Deleting the conversation (the retention prune, or account erasure)
+      // takes both with it.
+      await pool.query("DELETE FROM ai_conversations WHERE id = $1", [
+        conversationId,
+      ]);
+      const { rows: left } = await pool.query<{ n: number }>(
+        `SELECT (SELECT COUNT(*) FROM ai_chat_events WHERE conversation_id = $1)
+              + (SELECT COUNT(*) FROM ai_message_feedback WHERE conversation_id = $1) AS n`,
+        [conversationId],
+      );
+      expect(Number(left[0].n)).toBe(0);
+    } finally {
+      await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+    }
+  });
+
+  it("retired the single-column audit target index for the composite one", async () => {
+    const { rows } = await pool.query<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes
+        WHERE indexname IN ('idx_admin_audit_target_user', 'idx_admin_audit_target_created')`,
+    );
+    expect(rows.map((r) => r.indexname)).toEqual([
+      "idx_admin_audit_target_created",
+    ]);
   });
 
   it("has a real unique index behind every ON CONFLICT target in the codebase", () => {

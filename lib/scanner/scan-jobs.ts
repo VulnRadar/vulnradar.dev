@@ -20,6 +20,7 @@
 
 import pool from "@/lib/database/db";
 import type { ScanProgressHook, Vulnerability } from "./types";
+import type { FailureKind } from "./failure-kinds";
 import { upsertHostReputation } from "./host-reputation";
 import {
   saveAutoTags,
@@ -510,15 +511,23 @@ const MAX_ERROR_MESSAGE_LENGTH = 2000;
  * Mark a scan `failed` with a real reason. Only takes effect if the row is
  * still `pending`/`running`, same guard and reasoning as
  * `finalizeScanSuccess`. Returns whether the write actually applied.
+ *
+ * `kind` says WHY (see lib/scanner/failure-kinds.ts). It defaults to
+ * `internal` because that is what every caller meant before the column
+ * existed; a caller that knows better (a cancel, a refused quota, a target
+ * that was down) passes it, so health views stop counting those as engine
+ * failures.
  */
 export async function finalizeScanFailure(
   scanId: number,
   reason: string,
+  kind: FailureKind = "internal",
 ): Promise<boolean> {
   const result = await pool.query(
     `UPDATE scan_history
      SET status = 'failed',
          error_message = $1,
+         failure_kind = $3,
          current_category = NULL,
          result_meta = COALESCE(result_meta, '{}'::jsonb) - 'partialFindings',
          duration = COALESCE(
@@ -527,7 +536,7 @@ export async function finalizeScanFailure(
          )
      WHERE id = $2 AND status IN ('pending', 'running')
      RETURNING id`,
-    [reason.slice(0, MAX_ERROR_MESSAGE_LENGTH), scanId],
+    [reason.slice(0, MAX_ERROR_MESSAGE_LENGTH), scanId, kind],
   );
   // Deliberately does NOT clearCancel. This write is how a cancel and the
   // watchdog record themselves, and both call requestCancel first so the job
@@ -566,8 +575,9 @@ export async function finalizeScanFailure(
 export function finalizeScanFailureQuietly(
   scanId: number,
   reason: string,
+  kind: FailureKind = "internal",
 ): Promise<void> {
-  return finalizeScanFailure(scanId, reason).then(
+  return finalizeScanFailure(scanId, reason, kind).then(
     () => {},
     (err) => {
       console.error(

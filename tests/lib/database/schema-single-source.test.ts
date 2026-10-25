@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { VALUE_SET_CHECKS } from "@/lib/database/schema/04-constraints.mjs";
+import {
+  REDUNDANT_INDEXES,
+  VALUE_SET_CHECKS,
+} from "@/lib/database/schema/04-constraints.mjs";
 
 /**
  * The guard that makes `npm run db:create` and the boot path structurally
@@ -180,8 +183,12 @@ describe("one schema, two consumers", () => {
       1,
     );
     expect(count(/CREATE TRIGGER trg_\w+_updated_at BEFORE UPDATE/i)).toBe(7);
-    // The redundant-index drops.
-    expect(count(/DROP INDEX CONCURRENTLY IF EXISTS/i)).toBe(28);
+    // The redundant-index drops, one statement each. Counted from the array
+    // for the same reason as the CHECKs above: this said 28, and retiring a
+    // superseded index failed here on the number rather than on the schema.
+    expect(count(/DROP INDEX CONCURRENTLY IF EXISTS/i)).toBe(
+      REDUNDANT_INDEXES.length,
+    );
   });
 
   it("leaves no unresolved template interpolation in any step", async () => {

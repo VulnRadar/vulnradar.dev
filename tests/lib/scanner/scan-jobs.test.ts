@@ -628,6 +628,20 @@ describe("finalizeScanFailure", () => {
     const applied = await finalizeScanFailure(9, "boom");
     expect(applied).toBe(false);
   });
+
+  it("records the failure kind, defaulting to internal", async () => {
+    // A caller that predates the column keeps meaning what it always meant:
+    // the engine failed. Only a caller that knows better says otherwise.
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 9 }], rowCount: 1 });
+    await finalizeScanFailure(9, "boom");
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("failure_kind = $3");
+    expect(params[2]).toBe("internal");
+
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 9 }], rowCount: 1 });
+    await finalizeScanFailure(9, "Cancelled", "cancelled");
+    expect(mockQuery.mock.calls[1][1][2]).toBe("cancelled");
+  });
 });
 
 describe("markScanRunning", () => {
@@ -770,6 +784,12 @@ describe("finalizeScanFailureQuietly", () => {
     await finalizeScanFailureQuietly(7, "Timed out");
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+
+  it("passes the failure kind through to the write", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 7 }], rowCount: 1 });
+    await finalizeScanFailureQuietly(7, "Timed out", "timeout");
+    expect(mockQuery.mock.calls[0][1][2]).toBe("timeout");
   });
 
   it("stays silent when the row was already terminal", async () => {

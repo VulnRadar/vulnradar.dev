@@ -815,6 +815,51 @@ const ADMIN_AUDIT_LOG_ARCHIVE_SQL = `
     ON admin_audit_log_archive(purged_at DESC);
 `;
 
+// One row per assistant reply the server produced (model, provider, real
+// usage, finish reason, tool calls, error). Copied from the boot schema's
+// ai-chat-events step in lib/database/schema/02-features.mjs, which explains
+// the shape. Comes after ai_conversations in addTables: it references it.
+const AI_CHAT_EVENTS_SQL = `
+  CREATE TABLE IF NOT EXISTS ai_chat_events (
+    id SERIAL PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    message_index INTEGER NOT NULL CHECK (message_index >= 0),
+    model VARCHAR(200),
+    provider VARCHAR(100),
+    usage JSONB,
+    finish_reason VARCHAR(40),
+    tool_calls JSONB NOT NULL DEFAULT '[]'::jsonb,
+    error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_chat_events_conversation
+    ON ai_chat_events(conversation_id, message_index);
+  CREATE INDEX IF NOT EXISTS idx_ai_chat_events_user
+    ON ai_chat_events(user_id) WHERE user_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_ai_chat_events_created
+    ON ai_chat_events(created_at DESC);
+`;
+
+// A thumbs up or down on one assistant reply, one per person per reply.
+// Copied from the boot schema's ai-message-feedback step.
+const AI_MESSAGE_FEEDBACK_SQL = `
+  CREATE TABLE IF NOT EXISTS ai_message_feedback (
+    id SERIAL PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
+    message_index INTEGER NOT NULL CHECK (message_index >= 0),
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rating SMALLINT NOT NULL CHECK (rating IN (-1, 1)),
+    comment TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (conversation_id, message_index, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_message_feedback_user
+    ON ai_message_feedback(user_id);
+  CREATE INDEX IF NOT EXISTS idx_ai_message_feedback_created
+    ON ai_message_feedback(created_at DESC);
+`;
+
 const ASSIGN_SUPER_ADMIN_SQL = `
   UPDATE users
   SET role = 'super_admin'
@@ -884,7 +929,12 @@ export const upgrade = {
     "preference on notification_preferences), data_requests.completed_at, " +
     "system_settings.setting_type, and broadcast_recipients.opened_at / " +
     ".clicked_at. Every one of them is NULL or its default on every row, " +
-    "so no data goes with them, and downgrade.addColumns restores them.",
+    "so no data goes with them, and downgrade.addColumns restores them. " +
+    "v4.0.0 foundation: failure_kind on scan_history, scan_id on " +
+    "system_error_logs, the SMTP delivery columns on email_logs, " +
+    "last_success_at / last_failure_at / last_error on " +
+    "worker_failure_state, assigned_to on support_tickets, and the " +
+    "ai_chat_events and ai_message_feedback tables.",
 
   addTables: [
     { name: "ai_conversations", sql: V3_NEW_TABLES.ai_conversations },
@@ -928,6 +978,10 @@ export const upgrade = {
     { name: "admin_audit_log_archive", sql: ADMIN_AUDIT_LOG_ARCHIVE_SQL },
     { name: "scan_history_teams", sql: SCAN_HISTORY_TEAMS_SQL },
     { name: "broadcast_templates", sql: BROADCAST_TEMPLATES_SQL },
+    // AI chat telemetry and the quality signal (v4.0.0 foundation). Both
+    // reference ai_conversations, created at the top of this list.
+    { name: "ai_chat_events", sql: AI_CHAT_EVENTS_SQL },
+    { name: "ai_message_feedback", sql: AI_MESSAGE_FEEDBACK_SQL },
   ],
 
   addColumns: [
@@ -1386,6 +1440,51 @@ export const upgrade = {
       column: "email_posture_digest",
       definition: "BOOLEAN NOT NULL DEFAULT true",
     },
+    // ── v4.0.0 foundation. Each definition matches its boot step, which
+    // carries the reasoning.
+    // Why a failed scan failed (lib/scanner/failure-kinds.ts). The inline
+    // CHECK is named scan_history_failure_kind_check by PostgreSQL, the same
+    // name VALUE_SET_CHECKS guards on, so the boot path does not add a second.
+    {
+      table: "scan_history",
+      column: "failure_kind",
+      definition:
+        "TEXT CHECK (failure_kind IN ('cancelled', 'admin_cancelled', 'quota_refused', 'not_run', 'interrupted', 'stale', 'timeout', 'target_unreachable', 'target_timeout', 'target_tls', 'target_redirect_offhost', 'target_blocked', 'internal'))",
+    },
+    // The scan an error row came from. No foreign key: see 01-core.mjs.
+    { table: "system_error_logs", column: "scan_id", definition: "INTEGER" },
+    // What the SMTP relay answered, so a rejection can be traced to a
+    // template and a stage.
+    { table: "email_logs", column: "template", definition: "VARCHAR(64)" },
+    {
+      table: "email_logs",
+      column: "from_address",
+      definition: "VARCHAR(255)",
+    },
+    { table: "email_logs", column: "smtp_host", definition: "VARCHAR(255)" },
+    { table: "email_logs", column: "smtp_code", definition: "INTEGER" },
+    { table: "email_logs", column: "smtp_command", definition: "VARCHAR(32)" },
+    { table: "email_logs", column: "smtp_response", definition: "TEXT" },
+    { table: "email_logs", column: "error_code", definition: "VARCHAR(64)" },
+    { table: "email_logs", column: "message_id", definition: "TEXT" },
+    // When a background worker last worked, last broke, and how.
+    {
+      table: "worker_failure_state",
+      column: "last_success_at",
+      definition: "TIMESTAMPTZ",
+    },
+    {
+      table: "worker_failure_state",
+      column: "last_failure_at",
+      definition: "TIMESTAMPTZ",
+    },
+    { table: "worker_failure_state", column: "last_error", definition: "TEXT" },
+    // The staff member a support ticket is assigned to.
+    {
+      table: "support_tickets",
+      column: "assigned_to",
+      definition: "INTEGER REFERENCES users(id) ON DELETE SET NULL",
+    },
   ],
 
   // AUDIT-011#drift-17: five columns a v2.0.0 database has that nothing ever
@@ -1461,9 +1560,12 @@ export const upgrade = {
       columns: "admin_id, created_at DESC",
     },
     {
-      name: "idx_admin_audit_target_user",
+      // Replaces idx_admin_audit_target_user (dropped below): the same
+      // predicate with created_at added, so one account's history reads in
+      // order without a sort.
+      name: "idx_admin_audit_target_created",
       table: "admin_audit_log",
-      columns: "target_user_id",
+      columns: "target_user_id, created_at DESC",
       where: "target_user_id IS NOT NULL",
     },
     {
@@ -1829,6 +1931,32 @@ export const upgrade = {
     // github_review_usage.updated_at: created via dataUpdates below with
     // the rest of that table's window_start rework, for the same
     // step-ordering reason the (user_id, window_start) constraint is.
+    //
+    // v4.0.0 foundation: the read paths for the columns added above.
+    {
+      name: "idx_scan_history_failed_scanned",
+      table: "scan_history",
+      columns: "scanned_at DESC",
+      where: "status = 'failed'",
+    },
+    {
+      name: "idx_system_error_logs_request_id",
+      table: "system_error_logs",
+      columns: "request_id",
+      where: "request_id IS NOT NULL",
+    },
+    {
+      name: "idx_system_error_logs_scan_id",
+      table: "system_error_logs",
+      columns: "scan_id",
+      where: "scan_id IS NOT NULL",
+    },
+    {
+      name: "idx_support_tickets_assigned",
+      table: "support_tickets",
+      columns: "assigned_to, last_message_at DESC",
+      where: "assigned_to IS NOT NULL",
+    },
   ],
 
   // Redundant indexes that a v2.0.0 database already has (AUDIT-013
@@ -1862,6 +1990,12 @@ export const upgrade = {
     // keep them until its next boot, when instrumentation.ts drops them, and
     // `npm run db:migrate` alone should be enough. DROP INDEX IF EXISTS is a
     // no-op wherever they were never created.
+    //
+    // idx_admin_audit_target_user is not a v2.0.0 index: this step used to
+    // create it, and idx_admin_audit_target_created (addIndexes) replaces
+    // it. Only a database that ran the earlier version of this step has it,
+    // and it has no downgrade.addIndexes entry because v2.0.0 never did.
+    "idx_admin_audit_target_user",
     "idx_users_stripe_customer",
     "idx_scan_history_share_token",
     "idx_badges_name",
@@ -2155,7 +2289,9 @@ export const downgrade = {
     "already lost above. Also DELETES every admin-promoted " +
     "auto-tag rule (promoted_auto_tag_rules) -- any concept an admin " +
     "already promoted out of the AI-suggestion path reverts to needing an " +
-    "AI call again until re-promoted. Re-adds the five unused v2.0.0 " +
+    "AI call again until re-promoted. Also DELETES every AI chat event " +
+    "and every thumbs up or down on an AI reply (ai_chat_events, " +
+    "ai_message_feedback), and every scan's failure_kind. Re-adds the five unused v2.0.0 " +
     "columns the upgrade dropped (AUDIT-011 drift-17), empty, so the " +
     "result is a true v2.0.0 shape.",
 
@@ -2168,6 +2304,9 @@ export const downgrade = {
     "finding_remediation",
     "scan_finding_feedback",
     "browser_sessions",
+    // Children of ai_conversations, so ahead of it.
+    "ai_message_feedback",
+    "ai_chat_events",
     "ai_conversations",
     // AUDIT-009 migration-01: missing from this file. host_reputation's
     // findings/response_headers/result_meta/authenticated/scanned_url
@@ -2277,6 +2416,10 @@ export const downgrade = {
     { table: "users", column: "digest_email_enabled" },
     { table: "users", column: "last_digest_sent_at" },
     { table: "notification_preferences", column: "email_posture_digest" },
+    // v4.0.0 foundation. The other columns it adds sit on tables dropped
+    // wholesale above (system_error_logs, email_logs, worker_failure_state,
+    // support_tickets), so only this one needs its own drop.
+    { table: "scan_history", column: "failure_kind" },
   ],
 
   // AUDIT-011#drift-17: the five dead columns the upgrade drops existed at
@@ -2368,6 +2511,7 @@ export const downgrade = {
     // database was not a true v2.0.0 shape.
     "idx_admin_audit_admin_created",
     "idx_admin_audit_target_user",
+    "idx_admin_audit_target_created",
     "idx_api_usage_key_used",
     "idx_scan_history_user_scanned",
     // AUDIT-013 migrate-01: the performance indexes the upgrade now adds
@@ -2432,6 +2576,9 @@ export const downgrade = {
     // CASCADE-drops its unique index, but DROP INDEX IF EXISTS is a safe
     // no-op either way.
     "idx_scan_history_public_id",
+    // The failed-scan read index. Its predicate names status, which the
+    // drops above remove, so this is the same belt-and-suspenders.
+    "idx_scan_history_failed_scanned",
   ],
 
   dataUpdates: [
