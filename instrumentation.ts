@@ -34,7 +34,30 @@
  * Phases 6 to 9 are inside the advisory lock and inside one try/catch: a
  * failure anywhere in them alerts and exits rather than serving traffic
  * against a database this process cannot vouch for (AUDIT-010, prodready-07).
+ *
+ * The file also exports onRequestError, Next's hook for errors nothing caught.
  */
+import type { Instrumentation } from "next";
+
+/**
+ * Next.js calls this for every error nothing caught: a route handler that
+ * throws outside withErrorHandling, a server component that fails to render,
+ * a server action. It records the method, path, route and x-request-id so the
+ * row says where it came from. See lib/logging/request-error.ts.
+ *
+ * Same `if (...) { everything }` shape as register() below, for the same
+ * reason: the dynamic import has to be dead code in the edge build.
+ */
+export const onRequestError: Instrumentation.onRequestError = async (
+  error,
+  request,
+  context,
+) => {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { reportRequestError } = await import("./lib/logging/request-error");
+    reportRequestError(error, request, context);
+  }
+};
 
 export async function register() {
   // `if (...) { everything }` and NOT an early `return`, which is the shape

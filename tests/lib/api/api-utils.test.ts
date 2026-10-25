@@ -483,6 +483,79 @@ describe("withErrorHandling", () => {
     // falls back to when called with no argument.
     expect((await res.json()).error).toBe("An unexpected error occurred");
   });
+
+  // The defect: the log line said "[API Error]" and nothing else, so a row
+  // told an operator that something threw and left the stack as the only clue
+  // to which of ~170 routes it was.
+  it("names the method and the path in its log line", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("kaboom");
+    const wrapped = withErrorHandling(async (_req: Request) => {
+      throw boom;
+    });
+
+    await wrapped(
+      new Request("https://vulnradar.dev/api/v3/scan", { method: "POST" }),
+    );
+
+    expect(spy.mock.calls[0][0]).toBe("[API Error] POST /api/v3/scan threw");
+    // The Error itself, not its message: the capture keeps a stack only for
+    // an Error argument.
+    expect(spy.mock.calls[0]).toContain(boom);
+    spy.mockRestore();
+  });
+
+  it("leaves the query string out of the log line", async () => {
+    // That is where reset tokens, OAuth codes and email addresses end up.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const wrapped = withErrorHandling(async (_req: Request) => {
+      throw new Error("kaboom");
+    });
+
+    await wrapped(
+      new Request(
+        "https://vulnradar.dev/api/v3/auth/reset?token=s3cret&email=a@b.co",
+      ),
+    );
+
+    const logged = JSON.stringify(spy.mock.calls[0]);
+    expect(logged).toContain("GET /api/v3/auth/reset threw");
+    expect(logged).not.toContain("s3cret");
+    expect(logged).not.toContain("a@b.co");
+    spy.mockRestore();
+  });
+
+  it("still logs a failure when the handler was not given a Request", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const wrapped = withErrorHandling(async () => {
+      throw new Error("kaboom");
+    });
+
+    const res = await wrapped();
+
+    expect(res.status).toBe(500);
+    expect(spy.mock.calls[0][0]).toBe("[API Error] an unknown route threw");
+    spy.mockRestore();
+  });
+
+  it("logs with the request id already entered, so the row carries it", async () => {
+    let idAtLogTime: string | null = null;
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      idAtLogTime = currentRequestId();
+    });
+    const wrapped = withErrorHandling(async (_req: Request) => {
+      throw new Error("kaboom");
+    });
+
+    await wrapped(
+      new Request("https://vulnradar.dev/api/v3/scan", {
+        headers: { "x-request-id": "c3d4e5f6-a7b8-4c9d-8e0f-2a3b4c5d6e7f" },
+      }),
+    );
+
+    expect(idAtLogTime).toBe("c3d4e5f6-a7b8-4c9d-8e0f-2a3b4c5d6e7f");
+    spy.mockRestore();
+  });
 });
 
 /**

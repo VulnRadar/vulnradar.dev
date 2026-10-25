@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { MAX_REQUEST_BODY_BYTES } from "@/lib/api/request-limits";
+import { logError } from "@/lib/logging/log";
 import {
   REQUEST_ID_HEADER,
   normalizeRequestId,
@@ -258,6 +259,18 @@ export async function safeQuery<T = unknown>(
   }
 }
 
+/** "GET /api/v3/scan", from the request alone. */
+function describeRequest(request: Request): string {
+  let pathname = "an unparseable URL";
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    // A Request cannot be built from a bad URL, so this is unreachable for a
+    // real one; a test double can still get here.
+  }
+  return `${request.method} ${pathname}`;
+}
+
 /**
  * Wrap async route handler with standardized error handling.
  * Accepts NextRequest (and its base Request) so route handlers can
@@ -296,7 +309,16 @@ export function withErrorHandling<TArgs extends unknown[]>(
       try {
         return await handler(...args);
       } catch (error) {
-        console.error("[API Error]", error);
+        // Name the route. This used to log "[API Error]" and the error, so a
+        // row said that something threw and the stack was the only clue to
+        // which of ~170 routes it was, and only when the stack survived. The
+        // pathname alone, never the query string: that is where tokens and
+        // email addresses end up.
+        logError(
+          "API Error",
+          `${first instanceof Request ? describeRequest(first) : "an unknown route"} threw`,
+          error,
+        );
         return ApiResponse.serverError("An unexpected error occurred");
       }
     });
