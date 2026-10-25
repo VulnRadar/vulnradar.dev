@@ -27,19 +27,25 @@ export function LanguageSelect({ className }: { className?: string }) {
   const { setLanguage, busy, error } = useSetLanguage();
 
   function choose(next: string) {
-    if (next === current) return;
+    if (busy || next === current) return;
     void setLanguage(next as Locale);
   }
 
   return (
     <div className={className}>
-      <Select value={current} onValueChange={choose} disabled={busy}>
+      {/* Busy is aria-busy on the trigger, not `disabled` on the Select. A
+          disabled trigger cannot keep focus, and the Select hands focus back
+          to it as the list closes, so a choice made from the keyboard left
+          focus on the page body. A second pick while a save is in flight is
+          ignored in choose() instead. */}
+      <Select value={current} onValueChange={choose}>
         {/* The trigger holds the value and nothing else. A globe next to
             SelectValue wrapped onto its own line, because the trigger already
             spends its width on the value and the chevron. */}
         <SelectTrigger
-          className="w-full sm:w-56"
+          className="w-full sm:w-56 aria-busy:opacity-60"
           aria-label={t("select")}
+          aria-busy={busy}
           id="language-select"
         >
           <SelectValue />
