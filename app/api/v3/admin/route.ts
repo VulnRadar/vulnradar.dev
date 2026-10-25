@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes, createHash } from "node:crypto";
-// R3/D1: requireStaff and logAction moved to lib/auth/authorization.ts
-// (single source of truth). Local wrappers kept as aliases so the 40+
-// existing call sites below don't need to change.
 import {
-  requireStaff as _requireStaff,
+  requireStaff,
   logAction,
   checkStaff2FALockout,
 } from "@/lib/auth/authorization";
+import { withErrorHandling } from "@/lib/api/api-utils";
 import {
   hasGodMode,
   hasStaffPermission,
@@ -103,12 +101,13 @@ async function getUserName(userId: number): Promise<string> {
   return result.rows[0]?.name || result.rows[0]?.email || "User";
 }
 
-async function requireStaff() {
-  return _requireStaff();
-}
-
 // GET: Admin dashboard stats + user list + audit log
-export async function GET(request: NextRequest) {
+//
+// Wrapped in withErrorHandling, like the staff-invites route beside it: an
+// uncaught throw here used to leave a system_error_logs row with no request id
+// and no route, and answer with Next's bare 500 instead of the JSON envelope
+// the panel reads.
+export const GET = withErrorHandling(async (request: NextRequest) => {
   const session = await requireStaff();
   if (!session) {
     if (await checkStaff2FALockout()) {
@@ -258,7 +257,10 @@ export async function GET(request: NextRequest) {
       );
     } catch (err) {
       // A failed audit write must never turn a read into an error page.
-      console.error("[admin] Failed to log user-detail read:", err);
+      logError("admin", "Could not record a user-detail read", err, {
+        userId: detailUserId,
+        adminId: session.userId,
+      });
     }
 
     return NextResponse.json({
@@ -438,7 +440,7 @@ export async function GET(request: NextRequest) {
     totalPages: Math.ceil(usersPage.total / limit),
     callerRole: session.role,
   });
-}
+});
 
 // Permission helpers per role.
 //
@@ -488,7 +490,7 @@ function canPerformAction(role: string, action: string): boolean {
 }
 
 // PATCH: Admin actions on users
-export async function PATCH(request: NextRequest) {
+export const PATCH = withErrorHandling(async (request: NextRequest) => {
   const session = await requireStaff();
   if (!session)
     return NextResponse.json(
@@ -501,7 +503,16 @@ export async function PATCH(request: NextRequest) {
   // `await request.json()` a second time inside the switch — the body stream
   // is single-use, so the second call rejected with `SyntaxError: Unexpected
   // end of JSON input`, silently turning those actions into no-ops.
-  const body = await request.json();
+  //
+  // A body that is not JSON is the caller's mistake, so it is a 400 rather than
+  // the wrapper's 500.
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return NextResponse.json(
+      { error: "Request body must be JSON." },
+      { status: 400 },
+    );
+  }
   const {
     action,
     userId: rawUserId,
@@ -847,19 +858,21 @@ export async function PATCH(request: NextRequest) {
       // not, and it is the one where a staff member now knows the account's
       // password and every session was destroyed. Sent through the same
       // helper, so the admin's "notify user" toggle still applies.
-      try {
-        await sendNotificationIfEnabled(
-          notifyUser,
-          targetUser.email,
-          passwordChangedEmail(false, {
-            ipAddress: ip,
-            userAgent: "Administrator action",
-          }),
-          targetUser.unsubscribe_token,
-        );
-      } catch (err) {
-        console.error("Failed to send admin password-change notice:", err);
-      }
+      //
+      // No unsubscribe token: a password change is a security notice, which
+      // lib/email/email.ts says deliberately carries none. Passing one added a
+      // List-Unsubscribe header whose one-click POST switches off every email
+      // preference the user has except the security one, and a preferences
+      // button to a message that is not optional. The helper reports send
+      // failures itself and cannot throw, so there is nothing to catch here.
+      await sendNotificationIfEnabled(
+        notifyUser,
+        targetUser.email,
+        passwordChangedEmail(false, {
+          ipAddress: ip,
+          userAgent: "Administrator action",
+        }),
+      );
       return NextResponse.json({ success: true });
     }
 
@@ -916,11 +929,13 @@ export async function PATCH(request: NextRequest) {
 
       const resetLink = `${APP_URL}/reset-password?token=${resetToken}`;
       const emailPayloadPwd = passwordResetEmail(resetLink);
+      // No unsubscribe token, for the same reason as update_password above: a
+      // password reset link is a security notice, not mail the user can opt out
+      // of, and a token puts a one-click unsubscribe on it.
       await sendNotificationIfEnabled(
         notifyUser,
         targetUser.email,
         emailPayloadPwd,
-        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true });
@@ -2468,4 +2483,4 @@ export async function PATCH(request: NextRequest) {
     default:
       return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   }
-}
+});

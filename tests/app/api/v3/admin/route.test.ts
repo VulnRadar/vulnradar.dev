@@ -121,6 +121,11 @@ vi.mock("@/lib/email/email", () => ({
     text: "t",
     html: "<p>h</p>",
   })),
+  passwordChangedEmail: vi.fn(() => ({
+    subject: "s",
+    text: "t",
+    html: "<p>h</p>",
+  })),
   twoFactorRecoveryCodeEmail: vi.fn((code: string) => ({
     subject: "s",
     text: `code ${code}`,
@@ -1464,7 +1469,12 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
     expect(mockClientQuery.mock.calls[nullUpdatedBy][1]).toEqual([5]);
   }, 20000);
 
-  it("rolls back and releases the client when a delete step fails, but the PATCH handler itself throws uncaught (no withErrorHandling wrapper on this route — a real gap: a mid-transaction failure surfaces as an unhandled exception instead of a clean 5xx JSON response)", async () => {
+  it("rolls back and releases the client when a delete step fails, and answers with a clean 500 JSON response", async () => {
+    // The route is wrapped in withErrorHandling now. Before, a mid-transaction
+    // failure surfaced as an unhandled exception instead.
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     queueRole("admin");
     queueTarget({
       email: "gone@example.com",
@@ -1475,15 +1485,18 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
     queueAdminPassword(adminHash);
     mockClientQuery.mockResolvedValueOnce({ rows: [] }); // BEGIN
     mockClientQuery.mockRejectedValueOnce(new Error("mid-transaction failure"));
-    await expect(
-      PATCH(
-        patchRequest({
-          action: "delete",
-          userId: 5,
-          currentAdminPassword: ADMIN_PASSWORD,
-        }),
-      ),
-    ).rejects.toThrow("mid-transaction failure");
+    const res = await PATCH(
+      patchRequest({
+        action: "delete",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({
+      error: "An unexpected error occurred",
+    });
+    consoleError.mockRestore();
     const rollbackCall = mockClientQuery.mock.calls.find(
       (c) => c[0] === "ROLLBACK",
     );
@@ -3071,5 +3084,153 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
       }),
     );
     expect(res.status).toBe(200);
+  });
+});
+
+// lib/email/email.ts says security notices "deliberately have no token", and
+// the admin route attached one to the password reset and the password-change
+// notice anyway. A token puts a List-Unsubscribe header on the message whose
+// one-click POST switches off every email preference the user has except the
+// security one, and a preferences button on mail the user cannot opt out of.
+describe("PATCH /api/v3/admin, security notices carry no unsubscribe token", () => {
+  const TOKEN = "unsub-token-that-must-not-ride-along";
+  const STRONG_PASSWORD = "Tr1cky-Horse-Battery-Staple-4291!";
+
+  function target() {
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      totp_enabled: false,
+      unsubscribe_token: TOKEN,
+    });
+  }
+
+  it("the reset link email is sent without the user's unsubscribe token", async () => {
+    queueRole("admin");
+    target();
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "reset_password",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    const sent = mockSendEmail.mock.calls[0][0];
+    expect(sent.to).toBe("t@example.com");
+    expect(sent.unsubscribeToken).toBeUndefined();
+    expect(JSON.stringify(sent)).not.toContain(TOKEN);
+  }, 20000);
+
+  it("the password-change notice is sent without it, and the admin-set password still lands", async () => {
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "PASSWORD_MIN_LENGTH" ? 12 : 1000,
+    );
+    queueRole("admin");
+    target();
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "update_password",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+        newPassword: STRONG_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(
+      mockQuery.mock.calls.some((c) =>
+        String(c[0]).includes("UPDATE users SET password_hash"),
+      ),
+    ).toBe(true);
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail.mock.calls[0][0].unsubscribeToken).toBeUndefined();
+  }, 30000);
+
+  it("does not send either one when the admin turns the notice off", async () => {
+    queueRole("admin");
+    target();
+    queueAdminPassword(adminHash);
+    await PATCH(
+      patchRequest({
+        action: "reset_password",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+        notifyUser: false,
+      }),
+    );
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  }, 20000);
+
+  // The fix is aimed at the two security templates, not at every admin email:
+  // an account-change notice is mail a preference can govern.
+  it("still gives an ordinary account-change notice the token", async () => {
+    queueRole("admin");
+    target();
+    queueAdminPassword(adminHash);
+    await PATCH(
+      patchRequest({
+        action: "revoke_sessions",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail.mock.calls[0][0].unsubscribeToken).toBe(TOKEN);
+  }, 20000);
+});
+
+// Wrapped in withErrorHandling like the staff-invites route beside it: an
+// uncaught throw used to leave an error-log row with no request id and answer
+// with Next's bare 500 instead of the JSON envelope the panel reads.
+describe("GET and PATCH /api/v3/admin, errors", () => {
+  it("answers a thrown GET with the JSON envelope, not a bare 500", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    queueRole("admin");
+    mockQuery.mockRejectedValueOnce(new Error("connection terminated"));
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=stats"),
+    );
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({
+      error: "An unexpected error occurred",
+    });
+    // Captured with the Error itself, so the stack reaches the error log.
+    expect(
+      consoleError.mock.calls.some((call) =>
+        call.some((arg) => arg instanceof Error),
+      ),
+    ).toBe(true);
+    consoleError.mockRestore();
+  });
+
+  it("answers a PATCH whose body is not JSON with 400, not 500", async () => {
+    queueRole("admin");
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/v3/admin", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: "{ this is not json",
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("JSON");
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("answers a PATCH whose body is JSON but not an object with 400", async () => {
+    queueRole("admin");
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/v3/admin", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: "null",
+      }),
+    );
+    expect(res.status).toBe(400);
   });
 });
