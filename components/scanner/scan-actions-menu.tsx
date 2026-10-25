@@ -43,6 +43,7 @@ import {
 } from "@/components/shared";
 import { useToast } from "@/components/ui/use-toast";
 import { downloadBlob } from "@/lib/ui/download";
+import { armScanAgain } from "@/lib/ui/scan-again";
 import { ShareModal } from "./share-modal";
 import { AiVerifyResultModal } from "./ai-verify-result-modal";
 import type { AiVerificationOutcome } from "@/lib/ai/verify-findings";
@@ -1149,10 +1150,15 @@ export function ScanActionsMenu({
                 title: "Scan this site again?",
                 description: `${hostOf(result.url) ?? result.url} is scanned fresh, which spends one of today's scans. This result is kept.`,
                 confirmLabel: "Scan again",
-                onConfirm: () =>
+                // The grant is what lets the dashboard start this scan by
+                // itself. A bare ?scan= only prefills the form (see
+                // lib/ui/scan-again.ts), and this is the click that asked.
+                onConfirm: () => {
+                  armScanAgain(result.url);
                   router.push(
                     `${ROUTES.DASHBOARD}?scan=${encodeURIComponent(result.url)}`,
-                  ),
+                  );
+                },
               }),
           },
           ...(isSurfaceEnabled("schedules", clientConfig)

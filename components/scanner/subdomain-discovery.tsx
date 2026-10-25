@@ -19,6 +19,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn, safeHref } from "@/lib/ui/utils";
 import { API, ROUTES } from "@/lib/config/client-constants";
 import { formatAge, formatRefreshAvailability } from "@/lib/ui/relative-time";
+import { armScanAgain } from "@/lib/ui/scan-again";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
   PremiumUpgradeModal,
@@ -537,6 +538,9 @@ function SubdomainRow({
     if (onScanSubdomain) {
       onScanSubdomain(sub.url);
     } else {
+      // Pressing Scan on a row is the request. Without the grant the dashboard
+      // would only prefill the form (lib/ui/scan-again.ts).
+      armScanAgain(sub.url);
       router.push(`${ROUTES.DASHBOARD}?scan=${encodeURIComponent(sub.url)}`);
     }
   }

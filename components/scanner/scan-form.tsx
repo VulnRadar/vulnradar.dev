@@ -215,6 +215,9 @@ export interface ScanFormPayload {
 
 interface ScanFormProps {
   onScan: (payload: ScanFormPayload) => void;
+  /** A target to put in the box when the form mounts, from a /dashboard?scan=
+   *  link. Only fills it in: the person still presses Scan. */
+  initialUrl?: string;
   /** `isPublic` is omitted while the account's privacy default is still
    *  loading, so the server applies it instead of the client guessing. */
   onBulkScan?: (urls: string[], isPublic?: boolean) => void;
@@ -327,6 +330,7 @@ export function ScanForm({
   bulkProgress,
   status,
   defaultPrivate,
+  initialUrl,
 }: ScanFormProps) {
   const { me, isLoading: authLoading } = useAuth();
   // The caller's real, admin-configurable bulk-scan cap (see
@@ -345,7 +349,7 @@ export function ScanForm({
       ? BULK_URL_UNLIMITED_CEILING
       : me.bulkScanUrls;
   const t = useTranslations("scan");
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl ?? "");
   const [error, setError] = useState("");
   // Set when the entered URL isn't a useful target (a search engine / results
   // page). We don't block -- the user can scan anyway -- we just warn first.

@@ -45,6 +45,12 @@ import {
   type ScanProgressState,
 } from "./poll-scan-status";
 import { buildScanRequest } from "./scan-request";
+import {
+  scanParamIsTarget,
+  scanParamPrefill,
+  scanParamToStart,
+} from "./scan-param";
+import { consumeScanAgain } from "@/lib/ui/scan-again";
 import { readRememberedScan, rememberRunningScan } from "./running-scan";
 
 import type {
@@ -68,17 +74,6 @@ import { useAuth } from "@/components/providers/auth-provider";
  *  reported as refused. See handleBulkScan. */
 const BULK_CONCURRENCY_RETRY_MS = 3000;
 const BULK_CONCURRENCY_MAX_WAIT_MS = 120000;
-
-/**
- * ?scan= is overloaded on this page. A URL/host-looking value is a target to
- * kick off a scan for; anything else -- an opaque history public_id (hex) or a
- * legacy numeric id -- is a saved scan to open in History. Hosts and URLs
- * always carry a dot, slash, or scheme colon, and neither an opaque public_id
- * nor a numeric id ever does, so that cleanly separates the two meanings.
- */
-function scanParamIsTarget(value: string): boolean {
-  return /[./:]/.test(value);
-}
 
 /**
  * The shell sits OUTSIDE the Suspense boundary on purpose. DashboardContent
@@ -966,13 +961,18 @@ function DashboardContent() {
   );
 
   useEffect(() => {
-    const scanUrl = searchParams.get("scan");
-    // Only a URL/host-looking ?scan= is a target to scan; an id-looking value
-    // is a saved scan the effect above redirects to History instead.
-    // Any state but a scan already running: "Scan this site again" pushes a
-    // target onto a dashboard showing a finished (or failed) result, and an
-    // idle-only check ignored it.
-    if (scanUrl && scanParamIsTarget(scanUrl) && status !== "scanning") {
+    // Only a target someone armed on purpose starts a scan. Any other
+    // URL-looking ?scan= -- a link from another site, a pasted address --
+    // lands on a form with the target filled in and waits to be told to go
+    // (see scan-param.ts). Any state but a scan already running qualifies:
+    // "Scan this site again" pushes a target onto a dashboard showing a
+    // finished (or failed) result, and an idle-only check ignored it.
+    const scanUrl = scanParamToStart(
+      searchParams.get("scan"),
+      status === "scanning",
+      consumeScanAgain,
+    );
+    if (scanUrl) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers an async scan; setState only fires after its own awaited network calls resolve, not synchronously here
       handleScan({ url: scanUrl, mode: "quick" });
     }
@@ -1132,6 +1132,7 @@ function DashboardContent() {
           <ScanHero />
           <ScanForm
             onScan={handleScan}
+            initialUrl={scanParamPrefill(searchParams.get("scan"))}
             status={status}
             onBulkScan={handleBulkScan}
             bulkStatus={bulkStatus}
