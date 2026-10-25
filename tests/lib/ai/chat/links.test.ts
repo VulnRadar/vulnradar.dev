@@ -70,16 +70,18 @@ describe("classifyChatLink: what a clickable link may still carry", () => {
     );
   });
 
-  it("never writes out a path that a browser would read as another host", () => {
+  it("never links a path that a browser would read as another host", () => {
     for (const raw of [
       "/.//attacker.example",
       "/a/..//attacker.example",
       `${APP}/..//attacker.example/x`,
-    ]) {
-      const out = classifyChatLink(raw, APP);
-      expect(out.href.startsWith("//"), raw).toBe(false);
-      expect(new URL(out.href, APP).origin, raw).toBe(APP);
-    }
+    ])
+      expect(classifyChatLink(raw, APP).kind, raw).toBe("plain");
+  });
+
+  it("does not let normalising a path get it past the API check", () => {
+    for (const raw of ["//api/v3/history", "/.//api/v3/x", "/%61pi/v3/keys"])
+      expect(classifyChatLink(raw, APP).kind, raw).toBe("plain");
   });
 
   it("strips the query from a reference link but keeps the page and anchor", () => {
