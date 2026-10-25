@@ -120,9 +120,9 @@ jobs:
       - name: Setup Node.js
         # release: needed to build the browser extension below. Same
         # pin as ci.yml (Node 22 LTS, see package.json#engines).
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.2"
+          node-version: "22.23.3"
 
       - name: Build + package browser extension
         # release: the workflow_run trigger does NOT check out the tagged
@@ -221,7 +221,7 @@ jobs:
         # included, since npm ci has already run there) and writes into the
         # same ARTIFACT_DIR, so the sha256sums step below picks it up with
         # the *.cdx.json glob it already has.
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: ${{ runner.temp }}/extension-src/extension
           format: cyclonedx-json
@@ -253,7 +253,7 @@ jobs:
         # attempt; the check in "Build artifact list" below makes a genuine
         # miss on the primary path loud instead of silent.
         if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: vulnradar-${{ steps.vars.outputs.tag }}.sbom.cdx.json
           run-id: ${{ github.event.workflow_run.id }}

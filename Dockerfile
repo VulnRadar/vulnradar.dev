@@ -3,11 +3,11 @@
 # longer receiving security patches.
 #
 # infra: base image pinned to a specific minor version
-# (`node:22.23.2-alpine`) instead of the moving `node:22-alpine` tag.
+# (`node:22.23.3-alpine`) instead of the moving `node:22-alpine` tag.
 # Self-hosters who want a fully immutable build should replace this
-# with `node:22.23.2-alpine@sha256:<digest>`: pull
-# `node:22.23.2-alpine` locally and grab the digest via
-# `docker images --digests node:22.23.2-alpine`.
+# with `node:22.23.3-alpine@sha256:<digest>`: pull
+# `node:22.23.3-alpine` locally and grab the digest via
+# `docker images --digests node:22.23.3-alpine`.
 FROM node:22.23.3-alpine AS builder
 
 WORKDIR /app

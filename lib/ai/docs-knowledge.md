@@ -2082,7 +2082,7 @@ license, type-safe models, real tests against a live instance.
 package.json is
 { "node": ">=22.0.0 . There
 is no fallback to Node 20 and no jump to 24 either: the Dockerfile
-builds and runs on node:22.23.2-alpine, and
+builds and runs on node:22.23.3-alpine, and
 CI runs the full lint, typecheck, test, and build matrix on Node 22
 only. Match that locally.
 
@@ -2151,7 +2151,7 @@ curl <value>/api/v3/finding-types
 
 ```bash
 # nvm / fnm / volta / asdf will all auto-pick this from the repo root
-nvm use          # reads .nvmrc (which pins 22.23.2)
+nvm use          # reads .nvmrc (which pins 22.23.3)
 
 # or install + use explicitly
 nvm install 22

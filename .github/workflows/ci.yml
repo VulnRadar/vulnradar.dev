@@ -52,7 +52,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           # Pinned to the EXACT patch the Dockerfile builds on, not the
           # floating "22" this used to be. A floating major resolves to
@@ -62,7 +62,7 @@ jobs:
           # step in the typecheck job fails the build if these two drift
           # apart again, so bump this, release.yml and the Dockerfile
           # together.
-          node-version: "22.23.2"
+          node-version: "22.23.3"
           cache: "npm"
 
       - name: Guard the lockfile
@@ -120,9 +120,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.2"
+          node-version: "22.23.3"
           cache: "npm"
 
       - name: Install dependencies
@@ -177,9 +177,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.2"
+          node-version: "22.23.3"
           cache: "npm"
 
       - name: Install dependencies
@@ -249,9 +249,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.2"
+          node-version: "22.23.3"
           cache: "npm"
 
       - name: Install dependencies
@@ -346,9 +346,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.2"
+          node-version: "22.23.3"
           cache: "npm"
           cache-dependency-path: extension/package-lock.json
 
@@ -470,9 +470,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.2"
+          node-version: "22.23.3"
           cache: "npm"
 
       - name: Install dependencies
@@ -614,9 +614,9 @@ jobs:
           docker exec vr-smoke wget --no-verbose --tries=1 --spider http://localhost:3000/api/v3/health
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.2"
+          node-version: "22.23.3"
           cache: "npm"
 
       - name: Install dependencies
