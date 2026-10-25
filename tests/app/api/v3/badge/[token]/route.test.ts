@@ -15,6 +15,18 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+// The per-IP limiter writes to the database itself, which would shift every
+// positional mockQuery assertion below, and getClientIp reads next/headers,
+// which only exists inside a request. Both are mocked at their own boundary.
+const mockCheckRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+}));
+vi.mock("@/lib/api/request-utils", () => ({
+  getClientIp: async () => "203.0.113.9",
+  rateLimitIpKey: (ip: string) => ip,
+}));
+
 const { GET } = await import("@/app/api/v3/badge/[token]/route");
 const { BRAND } = await import("@/lib/config/brand");
 
@@ -28,6 +40,74 @@ function callGet(token: string) {
 
 beforeEach(() => {
   mockQuery.mockReset();
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 599,
+    retryAfterSeconds: 0,
+  });
+});
+
+describe("per-IP rate limit", () => {
+  // The route is unauthenticated and every uncached hit parses a scan's whole
+  // findings array to print a three-word rating. The sibling /host routes
+  // already carry a per-IP cap; this one did not.
+  it("answers 429 with a readable SVG and a Retry-After, without touching scan data", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 37,
+    });
+
+    const res = await callGet("d".repeat(64));
+
+    expect(res.status).toBe(429);
+    // Still an image, so a throttled <img> draws something instead of a
+    // broken-image icon.
+    expect(res.headers.get("Content-Type")).toBe("image/svg+xml");
+    expect(res.headers.get("Retry-After")).toBe("37");
+    // Never cached: the next minute is a new bucket.
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(await res.text()).toContain("Busy, retry later");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("keys the bucket on the caller's address, with a ceiling that image proxies will not reach", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await callGet("e".repeat(64));
+
+    expect(mockCheckRateLimit).toHaveBeenCalledTimes(1);
+    const [config] = mockCheckRateLimit.mock.calls[0];
+    expect(config.key).toBe("badge-svg:203.0.113.9");
+    // Ten a second from one address. The /host routes allow 60 a minute and
+    // say outright that badges must be more lenient than that, because embeds
+    // are fetched through proxies that funnel many readers through few
+    // addresses.
+    expect(config.windowSeconds).toBe(60);
+    expect(config.maxAttempts).toBeGreaterThanOrEqual(300);
+  });
+
+  it("does not spend the limiter on a token that is not even 64 characters", async () => {
+    await callGet("short-token");
+    await callGet("");
+
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+});
+
+describe("error handling", () => {
+  it("answers 500 instead of rejecting when the lookup throws", async () => {
+    // The handler is wrapped in withErrorHandling, so a database failure is a
+    // response (and a system_error_logs row tied to a request id) rather than
+    // an exception escaping the route.
+    mockQuery.mockRejectedValue(new Error("db unavailable"));
+
+    const res = await callGet("f".repeat(64));
+
+    expect(res.status).toBe(500);
+  });
 });
 
 describe("GET /api/v3/badge/[token]", () => {
