@@ -206,6 +206,51 @@ describe("checkDnsVerification", () => {
     });
   });
 
+  describe("a hostname that spells a not-found code is not an answer", () => {
+    // The resolver's message names the host it was asked about. These pin that
+    // the classifier does not read it, because not_found downgrades a domain.
+    it("keeps a SERVFAIL for enotfound.example.com a lookup_error", async () => {
+      mockResolveTxt.mockRejectedValueOnce(
+        Object.assign(
+          new Error(
+            "queryTxt ESERVFAIL _vulnradar-verify.enotfound.example.com",
+          ),
+          { code: "ESERVFAIL" },
+        ),
+      );
+      const result = await checkDnsVerification(
+        "enotfound.example.com",
+        "abc123",
+      );
+      expect(result.outcome).toBe("lookup_error");
+    });
+
+    it("keeps a code-less failure for enodata.example.com a lookup_error", async () => {
+      mockResolveTxt.mockRejectedValueOnce(
+        new Error("queryTxt ESERVFAIL _vulnradar-verify.enodata.example.com"),
+      );
+      const result = await checkDnsVerification(
+        "enodata.example.com",
+        "abc123",
+      );
+      expect(result.outcome).toBe("lookup_error");
+    });
+
+    it("still reads not_found from the code for such a hostname", async () => {
+      mockResolveTxt.mockRejectedValueOnce(
+        Object.assign(
+          new Error("queryTxt ENODATA _vulnradar-verify.enodata.example.com"),
+          { code: "ENODATA" },
+        ),
+      );
+      const result = await checkDnsVerification(
+        "enodata.example.com",
+        "abc123",
+      );
+      expect(result.outcome).toBe("not_found");
+    });
+  });
+
   describe("no answer at all is lookup_error, never a verdict", () => {
     // Every one of these used to come back as `verified: false`, which the
     // worker could not tell from a domain that had changed hands.

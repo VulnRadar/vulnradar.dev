@@ -245,6 +245,23 @@ describe("POST /api/v3/domains/[id]/verify", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
+  // The route is wrapped in withErrorHandling so a failure carries a request id
+  // into the Error Logs; unwrapped, a thrown query surfaced as a bare 500 with
+  // no row to find.
+  it("answers 500 with the generic message instead of throwing when a query fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockRejectedValueOnce(new Error("connection terminated"));
+
+    const res = await POST(verifyRequest(), params("1"));
+
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toContain(
+      "connection terminated",
+    );
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
   it("allows a team member with write access to verify a team-assigned domain", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [

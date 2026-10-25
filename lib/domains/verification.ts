@@ -169,14 +169,16 @@ export async function checkDnsVerification(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // The code is on the error itself (`err.code`) and is also the middle
-    // word of its message, so test both: a resolver wrapper that keeps only
-    // the text still classifies.
+    // word of its message, so a resolver wrapper that keeps only the text
+    // still classifies. The message also names the host that was asked about,
+    // and a hostname can spell "enodata", so it is only read when there is no
+    // code and never with the record name left in it: this decides whether a
+    // domain is downgraded, and SERVFAIL for enotfound.example.com must stay a
+    // lookup_error.
     const code = (err as { code?: unknown } | null)?.code;
-    if (
-      /ENODATA|ENOTFOUND/i.test(
-        `${typeof code === "string" ? code : ""} ${message}`,
-      )
-    ) {
+    const verdictText =
+      typeof code === "string" ? code : message.split(recordName).join(" ");
+    if (/ENODATA|ENOTFOUND/i.test(verdictText)) {
       return {
         outcome: "not_found",
         error: `No TXT record found at ${recordName}. Add it and try again -- DNS changes can take a few minutes to propagate.`,
