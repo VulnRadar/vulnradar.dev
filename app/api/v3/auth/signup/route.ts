@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { negotiateLocale } from "@/lib/i18n/config";
+import { LOCALE_COOKIE, resolveLocale } from "@/lib/i18n/config";
 import { createUser, getUserByEmail } from "@/lib/auth";
 import {
   analyzePassword,
@@ -206,6 +206,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Create user
   const user = await createUser(email, password, name);
 
+  // The language this browser is actually in: the choice made with the site's
+  // own switcher (its cookie) first, then what the browser asks for. It is
+  // saved on the account here, the only moment the cookie and the header are
+  // both in hand. This route used to read the header alone for the first email
+  // and save nothing, so a visitor who had switched the site to German got an
+  // English verification mail, and every later mail (the resend included)
+  // came out in English until they found the Language setting and saved it.
+  const locale = resolveLocale({
+    cookie: request.cookies.get(LOCALE_COOKIE)?.value,
+    acceptLanguage: request.headers.get("accept-language"),
+  });
+  await pool.query("UPDATE users SET locale = $1 WHERE id = $2", [
+    locale,
+    user.id,
+  ]);
+
   // Try to fetch Gravatar or other avatar services (non-blocking)
   setImmediate(async () => {
     try {
@@ -248,28 +264,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     [user.id, tokenHash, expiresAt],
   );
 
-  // Create default notification preferences (all enabled except tips_guides) for the new user
+  // Create the preferences row and let the schema fill it in. Its column
+  // defaults are the one definition of what a new account gets (everything on
+  // except Tips & Guides, which is opt-in). A column list spelled out here was
+  // a second copy that had to be edited with the schema and only ever
+  // repeated it.
   await pool.query(
-    `INSERT INTO notification_preferences (
-        user_id,
-        email_security, email_new_login, email_password_change, email_2fa_change, email_session_revoked,
-        email_scan_complete, email_critical_findings, email_regression_alert, email_schedules,
-        email_api_keys, email_api_limit_warning, email_webhooks, email_webhook_failure,
-        email_data_requests, email_account_deletion, email_team_invite, email_team_changes,
-        email_product_updates, email_tips_guides
-      ) VALUES ($1, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false)
-         ON CONFLICT (user_id) DO NOTHING`,
+    "INSERT INTO notification_preferences (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",
     [user.id],
   );
 
   // Send verification email in background (don't block the response)
   const verifyLink = `${APP_URL}/verify-email?token=${token}`;
-  // A brand-new account has no saved language yet, so the verification mail
-  // goes out in the language this browser asked for.
   const emailContent = await emailVerificationEmail(
     name.trim(),
     verifyLink,
-    negotiateLocale(request.headers.get("accept-language")),
+    locale,
   );
 
   setImmediate(() => {

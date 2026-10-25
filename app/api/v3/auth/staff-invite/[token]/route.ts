@@ -19,6 +19,7 @@ import {
 } from "@/lib/api/api-utils";
 import { getSetting } from "@/lib/config/runtime-config";
 import { STAFF_ROLE_LABELS } from "@/lib/config/constants";
+import { LOCALE_COOKIE, resolveLocale } from "@/lib/i18n/config";
 
 /**
  * Public accept endpoints for a staff invite (AUDIT-010 admin-feature-gap).
@@ -91,6 +92,14 @@ export const POST = withErrorHandling(
     );
     if (!parsed.success) return ApiResponse.badRequest(parsed.error);
     const { password, name } = parsed.data;
+
+    // The language of the browser accepting the invite, saved with the
+    // account like the password signup route does, so the mail that follows is
+    // written in it rather than defaulting to English.
+    const locale = resolveLocale({
+      cookie: request.cookies.get(LOCALE_COOKIE)?.value,
+      acceptLanguage: request.headers.get("accept-language"),
+    });
 
     const tokenHash = hashToken(token);
     const client = await pool.connect();
@@ -197,10 +206,16 @@ export const POST = withErrorHandling(
         // verification.
         const insertRes = await client.query<{ id: number }>(
           `INSERT INTO users
-             (email, password_hash, name, plan, beta_access, role, auth_provider, email_verified_at)
-           VALUES ($1, $2, $3, 'free', false, $4, 'password', NOW())
+             (email, password_hash, name, plan, beta_access, role, auth_provider, email_verified_at, locale)
+           VALUES ($1, $2, $3, 'free', false, $4, 'password', NOW(), $5)
            RETURNING id`,
-          [invite.email, passwordHash, trimmedName || null, invite.role],
+          [
+            invite.email,
+            passwordHash,
+            trimmedName || null,
+            invite.role,
+            locale,
+          ],
         );
         userId = insertRes.rows[0].id;
       }

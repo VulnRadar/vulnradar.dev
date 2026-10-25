@@ -347,6 +347,99 @@ describe("POST /api/v3/auth/signup", () => {
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
   });
 
+  describe("language", () => {
+    const BODY = {
+      name: "Alex Morgan",
+      email: "alex.morgan@example.com",
+      password: STRONG_PASSWORD,
+    };
+
+    function localeWrites() {
+      return queries.filter((q) => q.sql.startsWith("UPDATE users SET locale"));
+    }
+
+    it("saves the language the site was switched to, ahead of what the browser asks for", async () => {
+      await POST(
+        postSignup(BODY, {
+          cookie: "vr_locale=de",
+          "accept-language": "fr-FR,fr;q=0.9",
+        }),
+      );
+
+      // Saved on the account, so the resend and every later mail follow it.
+      // It used to be read from the header alone and never written, so the
+      // first mail ignored the switcher and every later one came out English.
+      expect(localeWrites()).toHaveLength(1);
+      expect(localeWrites()[0].params).toEqual(["de", 100]);
+
+      await new Promise((resolve) => setImmediate(resolve));
+      const sent = mockSendEmail.mock.calls[0][0] as { subject: string };
+      expect(sent.subject).toBe(
+        `Bestätige deine E-Mail-Adresse für ${APP_NAME}`,
+      );
+    });
+
+    it("falls back to the browser's language when the switcher was never used", async () => {
+      await POST(postSignup(BODY, { "accept-language": "fr-FR,fr;q=0.9" }));
+      expect(localeWrites()[0].params).toEqual(["fr", 100]);
+    });
+
+    it("saves English when nothing says otherwise, which is what the site rendered", async () => {
+      await POST(postSignup(BODY));
+      expect(localeWrites()[0].params).toEqual(["en", 100]);
+    });
+
+    it("ignores a language cookie it does not speak", async () => {
+      await POST(
+        postSignup(BODY, {
+          cookie: "vr_locale=klingon",
+          "accept-language": "es",
+        }),
+      );
+      expect(localeWrites()[0].params).toEqual(["es", 100]);
+    });
+  });
+
+  it("lets the schema decide the notification defaults instead of spelling the columns out", async () => {
+    await POST(
+      postSignup({
+        name: "Alex Morgan",
+        email: "alex.morgan@example.com",
+        password: STRONG_PASSWORD,
+      }),
+    );
+
+    const prefs = queries.filter((q) =>
+      q.sql.startsWith("INSERT INTO notification_preferences"),
+    );
+    expect(prefs).toHaveLength(1);
+    // A positional list of twenty columns and values was a second copy of the
+    // schema's defaults, and it was the copy that had to be edited with it.
+    expect(prefs[0].sql).toBe(
+      "INSERT INTO notification_preferences (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",
+    );
+    expect(prefs[0].params).toEqual([100]);
+  });
+
+  it("leaves a link-bearing name out of the verification email sent to the unverified address", async () => {
+    await POST(
+      postSignup({
+        name: "Claim your payout at example.tld/x",
+        email: "alex.morgan@example.com",
+        password: STRONG_PASSWORD,
+      }),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const sent = mockSendEmail.mock.calls[0][0] as {
+      text: string;
+      html: string;
+    };
+    expect(sent.text).not.toContain("example.tld");
+    expect(sent.html).not.toContain("example.tld");
+    expect(sent.text).toContain("/verify-email?token=");
+  });
+
   it("rate limits repeated signups from the same IP", async () => {
     rateLimitCounts.set("signup:203.0.113.7", 3); // maxAttempts is 3 -> next call is denied
 

@@ -60,6 +60,7 @@ import {
   signupsPausedReason,
 } from "@/lib/admin/service-state";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
+import { LOCALE_COOKIE, resolveLocale } from "@/lib/i18n/config";
 
 // Separate cookie from the password-login AUTH_2FA_PENDING_COOKIE (see
 // lib/config/constants.ts) and distinct from Discord's own
@@ -249,18 +250,23 @@ export async function GET(
           : undefined,
       );
 
+      // The schema's own column defaults decide what a new account gets (see
+      // the matching INSERT in the password signup route).
       await pool.query(
-        `INSERT INTO notification_preferences (
-            user_id,
-            email_security, email_new_login, email_password_change, email_2fa_change, email_session_revoked,
-            email_scan_complete, email_critical_findings, email_regression_alert, email_schedules,
-            email_api_keys, email_api_limit_warning, email_webhooks, email_webhook_failure,
-            email_data_requests, email_account_deletion, email_team_invite, email_team_changes,
-            email_product_updates, email_tips_guides
-          ) VALUES ($1, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false)
-             ON CONFLICT (user_id) DO NOTHING`,
+        "INSERT INTO notification_preferences (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",
         [created.id],
       );
+
+      // Save the language this browser is in, which the password signup route
+      // does too. An account made here otherwise has none, and every mail
+      // after the first comes out in English however the site was set.
+      await pool.query("UPDATE users SET locale = $1 WHERE id = $2", [
+        resolveLocale({
+          cookie: cookieStore.get(LOCALE_COOKIE)?.value,
+          acceptLanguage: request.headers.get("accept-language"),
+        }),
+        created.id,
+      ]);
 
       if (userInfo.avatarUrl) {
         await pool.query(

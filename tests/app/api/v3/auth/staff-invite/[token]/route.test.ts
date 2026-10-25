@@ -302,6 +302,60 @@ describe("POST /api/v3/auth/staff-invite/[token] — accept lifecycle", () => {
     );
   });
 
+  it("saves the language of the browser that accepted the invite on the new account", async () => {
+    mockClientQuery.mockResolvedValueOnce({ rows: [] }); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [invite({ email: "brandnew@example.com", role: "support" })],
+    });
+    mockClientQuery.mockResolvedValueOnce({ rows: [] }); // existingUserRes: none
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ id: 900 }] }); // INSERT INTO users
+    mockClientQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE staff_invites accepted_at
+    mockClientQuery.mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+    const request = new NextRequest(
+      `http://localhost/api/v3/auth/staff-invite/${PLAINTEXT_TOKEN}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "accept-language": "ja,en;q=0.5",
+        },
+        body: JSON.stringify({ password: STRONG_PASSWORD, name: "New Person" }),
+      },
+    );
+    const res = await POST(request, ctx());
+    expect(res.status).toBe(200);
+
+    const insertCall = mockClientQuery.mock.calls.find(([sql]) =>
+      typeof sql === "string" ? sql.includes("INSERT INTO users") : false,
+    );
+    // Written in the same INSERT, so the account never exists without it and
+    // every mail after the first is in the language it was accepted in.
+    expect(insertCall![0]).toContain("locale");
+    expect((insertCall![1] as string[])[4]).toBe("ja");
+  });
+
+  it("defaults the saved language to English when the browser says nothing", async () => {
+    mockClientQuery.mockResolvedValueOnce({ rows: [] }); // BEGIN
+    mockClientQuery.mockResolvedValueOnce({
+      rows: [invite({ email: "brandnew@example.com", role: "support" })],
+    });
+    mockClientQuery.mockResolvedValueOnce({ rows: [] });
+    mockClientQuery.mockResolvedValueOnce({ rows: [{ id: 900 }] });
+    mockClientQuery.mockResolvedValueOnce({ rows: [] });
+    mockClientQuery.mockResolvedValueOnce({ rows: [] });
+
+    await POST(
+      postRequest({ password: STRONG_PASSWORD, name: "New Person" }),
+      ctx(),
+    );
+
+    const insertCall = mockClientQuery.mock.calls.find(([sql]) =>
+      typeof sql === "string" ? sql.includes("INSERT INTO users") : false,
+    );
+    expect((insertCall![1] as string[])[4]).toBe("en");
+  });
+
   it("rejects a weak password when creating a new account, and never inserts a row", async () => {
     mockClientQuery.mockResolvedValueOnce({ rows: [] }); // BEGIN
     mockClientQuery.mockResolvedValueOnce({

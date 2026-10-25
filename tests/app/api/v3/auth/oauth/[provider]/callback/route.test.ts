@@ -547,6 +547,73 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       expect(avatarUpdateCalls).toEqual([[googleUserFixture.picture, 900]]);
     });
 
+    it("saves the language the site was in on the new account, switcher cookie first", async () => {
+      userByEmailRow = null;
+      const state = signLoginState("google");
+      cookieState.set("vr_locale", "de");
+
+      const url = new URL("http://localhost/api/v3/auth/oauth/google/callback");
+      url.searchParams.set("code", "somecode");
+      url.searchParams.set("state", state);
+      await GET(
+        new Request(url.toString(), {
+          headers: {
+            "user-agent": "vitest-agent",
+            "accept-language": "fr-FR,fr;q=0.9",
+          },
+        }),
+        ctx("google"),
+      );
+
+      // An account made through this route had no saved language at all, so
+      // every email after the first came out in English however the site was
+      // set. Same rule as the password signup route.
+      const writes = queries.filter((q) =>
+        q.sql.startsWith("UPDATE users SET locale"),
+      );
+      expect(writes).toHaveLength(1);
+      expect(writes[0].params).toEqual(["de", 900]);
+    });
+
+    it("falls back to the browser's language when the switcher was never used", async () => {
+      userByEmailRow = null;
+      const state = signLoginState("google");
+
+      const url = new URL("http://localhost/api/v3/auth/oauth/google/callback");
+      url.searchParams.set("code", "somecode");
+      url.searchParams.set("state", state);
+      await GET(
+        new Request(url.toString(), {
+          headers: {
+            "user-agent": "vitest-agent",
+            "accept-language": "ja,en;q=0.5",
+          },
+        }),
+        ctx("google"),
+      );
+
+      const writes = queries.filter((q) =>
+        q.sql.startsWith("UPDATE users SET locale"),
+      );
+      expect(writes[0].params).toEqual(["ja", 900]);
+    });
+
+    it("never touches the language of an account that already exists", async () => {
+      userByEmailRow = {
+        id: 77,
+        auth_provider: "google",
+        disabled_at: null,
+      };
+      const state = signLoginState("google", { intent: "login" });
+      await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+      expect(
+        queries.some((q) => q.sql.startsWith("UPDATE users SET locale")),
+      ).toBe(false);
+    });
+
     it("intent=login refuses to create an account and sends the user to sign up instead", async () => {
       // The exact bug reported: clicking "Sign in with X" on the login
       // page silently created a brand new, disconnected account instead
