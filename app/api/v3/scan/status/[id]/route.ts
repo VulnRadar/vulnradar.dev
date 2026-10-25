@@ -10,7 +10,11 @@ import {
   type ApiKeyScope,
 } from "@/lib/api/api-key-scopes";
 import { requestCancel, finalizeScanFailure } from "@/lib/scanner/scan-jobs";
+import { isFailureKind } from "@/lib/scanner/failure-kinds";
+import { SCAN_CANCELLED_MESSAGE } from "@/lib/scanner/failure-messages";
 import { publicScanErrorMessage } from "@/lib/api/scan-error-message";
+import { scanNumericId } from "@/lib/history/resolve-scan";
+import { withErrorHandling } from "@/lib/api/api-utils";
 import type { ScanJobStatus, Vulnerability } from "@/lib/scanner/types";
 import { attachOwnerFindingState } from "@/lib/scanner/remediation-store";
 
@@ -31,6 +35,7 @@ interface ScanHistoryRow {
   response_headers: Record<string, string> | null;
   result_meta: Record<string, unknown> | null;
   error_message: string | null;
+  failure_kind: string | null;
 }
 
 /**
@@ -143,6 +148,14 @@ function scopeCheck(
  * partial findings ARE rendered by the console, so the split would have to
  * keep them for the status the poll spends all its time in, which is most of
  * the benefit gone for a second round trip and a merge.
+ *
+ * The id is either shape History hands out: the numeric id POST /scan returns,
+ * or the opaque public_id GET /history lists. The raw path segment used to go
+ * straight into `id = $1`, so the opaque one (and any other non-integer, or an
+ * integer past int4) made Postgres throw 22P02 and the route answer 500 for a
+ * scan that simply is not there. scanNumericId is the same rule every History
+ * subroute uses: an all-digits in-range value also matches the primary key,
+ * anything else can only match public_id, and a miss is a 404.
  */
 async function getOwnedScan(
   id: string,
@@ -152,10 +165,12 @@ async function getOwnedScan(
     `SELECT id, public_id, user_id, url, status, current_category,
             categories_completed, categories_total, started_at, duration,
             scanned_at, summary, findings, response_headers, result_meta,
-            error_message
+            error_message, failure_kind
      FROM scan_history
-     WHERE id = $1 AND user_id = $2`,
-    [id, userId],
+     WHERE (public_id = $1 OR ($2::bigint IS NOT NULL AND id = $2))
+       AND user_id = $3
+     LIMIT 1`,
+    [id, scanNumericId(id), userId],
   );
   return result.rows[0] ?? null;
 }
@@ -175,151 +190,171 @@ function elapsedMsFor(row: ScanHistoryRow): number {
   return Math.max(0, Date.now() - new Date(row.started_at).getTime());
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const auth = await authenticate(request);
-  if (!auth.ok) return auth.response;
-  const scopeError = scopeCheck(auth.keyScopes, API_KEY_SCOPES.SCAN_READ);
-  if (scopeError) return scopeError;
+export const GET = withErrorHandling(
+  async (
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const auth = await authenticate(request);
+    if (!auth.ok) return auth.response;
+    const scopeError = scopeCheck(auth.keyScopes, API_KEY_SCOPES.SCAN_READ);
+    if (scopeError) return scopeError;
 
-  const { id } = await params;
-  const row = await getOwnedScan(id, auth.userId);
-  if (!row) {
-    return NextResponse.json({ error: "Scan not found" }, { status: 404 });
-  }
+    const { id } = await params;
+    const row = await getOwnedScan(id, auth.userId);
+    if (!row) {
+      return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+    }
 
-  const responseBody: Record<string, unknown> = {
-    status: row.status,
-    currentCategory: row.current_category,
-    categoriesCompleted: row.categories_completed,
-    categoriesTotal: row.categories_total,
-    elapsedMs: elapsedMsFor(row),
-  };
+    const responseBody: Record<string, unknown> = {
+      status: row.status,
+      currentCategory: row.current_category,
+      categoriesCompleted: row.categories_completed,
+      categoriesTotal: row.categories_total,
+      elapsedMs: elapsedMsFor(row),
+    };
 
-  // Findings discovered SO FAR, live only. The poll used to carry a family
-  // name, two counters and a clock, so for a scan's whole duration the user
-  // was shown none of its output and then all of it at once. The scan engine
-  // now reports each category's findings as it finishes them and the progress
-  // tracker accumulates them (see lib/scanner/scan-jobs.ts), capped and
-  // stripped to severity plus title.
-  //
-  // Deliberately NOT sent on the completed branch: `result.findings` there is
-  // the authoritative, deduplicated list, and dedupeFindings runs after the
-  // last category, so this list can legitimately be LONGER than the final one.
-  // A consumer should label it "found so far" and let the completed result
-  // replace it wholesale. ref: AUDIT-014#scanui-02
-  if (row.status === "pending" || row.status === "running") {
-    const partial = (row.result_meta as { partialFindings?: unknown } | null)
-      ?.partialFindings;
-    if (Array.isArray(partial) && partial.length > 0) {
-      responseBody.partialFindings = partial.slice(
-        0,
-        MAX_PARTIAL_FINDINGS_SENT,
+    // Findings discovered SO FAR, live only. The poll used to carry a family
+    // name, two counters and a clock, so for a scan's whole duration the user
+    // was shown none of its output and then all of it at once. The scan engine
+    // now reports each category's findings as it finishes them and the progress
+    // tracker accumulates them (see lib/scanner/scan-jobs.ts), capped and
+    // stripped to severity plus title.
+    //
+    // Deliberately NOT sent on the completed branch: `result.findings` there is
+    // the authoritative, deduplicated list, and dedupeFindings runs after the
+    // last category, so this list can legitimately be LONGER than the final one.
+    // A consumer should label it "found so far" and let the completed result
+    // replace it wholesale. ref: AUDIT-014#scanui-02
+    if (row.status === "pending" || row.status === "running") {
+      const partial = (row.result_meta as { partialFindings?: unknown } | null)
+        ?.partialFindings;
+      if (Array.isArray(partial) && partial.length > 0) {
+        responseBody.partialFindings = partial.slice(
+          0,
+          MAX_PARTIAL_FINDINGS_SENT,
+        );
+      }
+    }
+
+    if (row.status === "completed") {
+      const meta = row.result_meta ?? {};
+      // Tags (lib/tags/auto-tags.ts's saveAutoTags, awaited by
+      // finalizeScanSuccess before it flips status to 'completed') are only
+      // worth a query once there's a result to attach them to -- not on every
+      // poll tick while the scan is still pending/running.
+      const tagsResult = await pool.query(
+        "SELECT tag, source FROM scan_tags WHERE scan_id = $1 AND user_id = $2 ORDER BY source, tag",
+        [row.id, row.user_id],
+      );
+      // Cross-rescan remediation: getOwnedScan already scoped this to the
+      // owner, so attach their current per-finding status by stable
+      // finding_id -- a finding marked "fixed" on an earlier scan of this
+      // target shows as "fixed" on this freshly completed one too.
+      //
+      // attachOwnerFindingState is the same call app/api/v3/history/[id]
+      // makes and this route did not, which is why a finding the owner had
+      // already dismissed came back unflagged on a fresh scan and only picked
+      // up its badge once the page was reloaded out of History. Same data,
+      // same owner, two views that disagreed for no reason.
+      const findingsWithRemediation = await attachOwnerFindingState(
+        row.user_id,
+        row.url,
+        (row.findings ?? []) as Vulnerability[],
+      );
+      responseBody.result = {
+        url: row.url,
+        scannedAt: row.scanned_at,
+        duration: row.duration,
+        findings: findingsWithRemediation,
+        summary: row.summary ?? {
+          critical: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+          info: 0,
+          total: 0,
+        },
+        responseHeaders: row.response_headers ?? undefined,
+        scanHistoryId: row.id,
+        // Opaque id for the URL (?scan=), so a finished scan shows the same
+        // non-enumerable token as History rather than the sequential row id.
+        // scanHistoryId stays numeric for the feedback route that needs it.
+        scanPublicId: row.public_id,
+        tags: tagsResult.rows,
+        ...meta,
+      };
+    } else if (row.status === "failed") {
+      // Never hand back the stored string unmodified: the pipeline persists any
+      // exception's raw `.message`, so this column can hold a pg driver error
+      // naming an internal table or a socket error naming a private IP and port,
+      // and the dashboard renders it verbatim with a "Copy error details"
+      // button. publicScanErrorMessage passes through the reasons the pipeline
+      // writes deliberately, answers from the failure kind where the row has
+      // one, and collapses everything else to a fixed sentence.
+      responseBody.error = publicScanErrorMessage(
+        row.error_message,
+        row.failure_kind,
+      );
+      // Why it failed, for a client that wants to tell a cancel or a refused
+      // quota from a scanner fault. Absent for a row with no recorded kind, so a
+      // consumer has to cope with that anyway.
+      if (isFailureKind(row.failure_kind)) {
+        responseBody.failureKind = row.failure_kind;
+      }
+    }
+
+    return NextResponse.json(responseBody);
+  },
+);
+
+export const DELETE = withErrorHandling(
+  async (
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const auth = await authenticate(request);
+    if (!auth.ok) return auth.response;
+    // scoping: cancelling a running scan is scan-execution control, not a
+    // read and not a destructive delete of stored history -- scan:write.
+    const scopeError = scopeCheck(auth.keyScopes, API_KEY_SCOPES.SCAN_WRITE);
+    if (scopeError) return scopeError;
+
+    const { id } = await params;
+    const row = await getOwnedScan(id, auth.userId);
+    if (!row) {
+      return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+    }
+
+    if (row.status !== "pending" && row.status !== "running") {
+      return NextResponse.json(
+        {
+          error: "This scan has already finished; there is nothing to cancel.",
+        },
+        { status: 409 },
       );
     }
-  }
 
-  if (row.status === "completed") {
-    const meta = row.result_meta ?? {};
-    // Tags (lib/tags/auto-tags.ts's saveAutoTags, awaited by
-    // finalizeScanSuccess before it flips status to 'completed') are only
-    // worth a query once there's a result to attach them to -- not on every
-    // poll tick while the scan is still pending/running.
-    const tagsResult = await pool.query(
-      "SELECT tag, source FROM scan_tags WHERE scan_id = $1 AND user_id = $2 ORDER BY source, tag",
-      [row.id, row.user_id],
+    // requestCancel flags the in-memory registry so the background job's
+    // next progress event aborts on its own; finalizeScanFailure writes the
+    // terminal state immediately rather than waiting for that to happen,
+    // since the job may be mid-fetch and not due to check in for seconds.
+    // Its own guard means this is a no-op if the scan reached a terminal
+    // state in the moment between the SELECT above and this UPDATE.
+    requestCancel(row.id);
+    const applied = await finalizeScanFailure(
+      row.id,
+      SCAN_CANCELLED_MESSAGE,
+      "cancelled",
     );
-    // Cross-rescan remediation: getOwnedScan already scoped this to the
-    // owner, so attach their current per-finding status by stable
-    // finding_id -- a finding marked "fixed" on an earlier scan of this
-    // target shows as "fixed" on this freshly completed one too.
-    //
-    // attachOwnerFindingState is the same call app/api/v3/history/[id]
-    // makes and this route did not, which is why a finding the owner had
-    // already dismissed came back unflagged on a fresh scan and only picked
-    // up its badge once the page was reloaded out of History. Same data,
-    // same owner, two views that disagreed for no reason.
-    const findingsWithRemediation = await attachOwnerFindingState(
-      row.user_id,
-      row.url,
-      (row.findings ?? []) as Vulnerability[],
-    );
-    responseBody.result = {
-      url: row.url,
-      scannedAt: row.scanned_at,
-      duration: row.duration,
-      findings: findingsWithRemediation,
-      summary: row.summary ?? {
-        critical: 0,
-        high: 0,
-        medium: 0,
-        low: 0,
-        info: 0,
-        total: 0,
-      },
-      responseHeaders: row.response_headers ?? undefined,
-      scanHistoryId: row.id,
-      // Opaque id for the URL (?scan=), so a finished scan shows the same
-      // non-enumerable token as History rather than the sequential row id.
-      // scanHistoryId stays numeric for the feedback route that needs it.
-      scanPublicId: row.public_id,
-      tags: tagsResult.rows,
-      ...meta,
-    };
-  } else if (row.status === "failed") {
-    // Never hand back the stored string unmodified: the pipeline persists any
-    // exception's raw `.message`, so this column can hold a pg driver error
-    // naming an internal table or a socket error naming a private IP and port,
-    // and the dashboard renders it verbatim with a "Copy error details"
-    // button. publicScanErrorMessage passes through the reasons the pipeline
-    // writes deliberately and collapses everything else to a fixed sentence.
-    responseBody.error = publicScanErrorMessage(row.error_message);
-  }
 
-  return NextResponse.json(responseBody);
-}
+    if (!applied) {
+      return NextResponse.json(
+        { error: "This scan finished just before it could be cancelled." },
+        { status: 409 },
+      );
+    }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const auth = await authenticate(request);
-  if (!auth.ok) return auth.response;
-  // scoping: cancelling a running scan is scan-execution control, not a
-  // read and not a destructive delete of stored history -- scan:write.
-  const scopeError = scopeCheck(auth.keyScopes, API_KEY_SCOPES.SCAN_WRITE);
-  if (scopeError) return scopeError;
-
-  const { id } = await params;
-  const row = await getOwnedScan(id, auth.userId);
-  if (!row) {
-    return NextResponse.json({ error: "Scan not found" }, { status: 404 });
-  }
-
-  if (row.status !== "pending" && row.status !== "running") {
-    return NextResponse.json(
-      { error: "This scan has already finished; there is nothing to cancel." },
-      { status: 409 },
-    );
-  }
-
-  // requestCancel flags the in-memory registry so the background job's
-  // next progress event aborts on its own; finalizeScanFailure writes the
-  // terminal state immediately rather than waiting for that to happen,
-  // since the job may be mid-fetch and not due to check in for seconds.
-  // Its own guard means this is a no-op if the scan reached a terminal
-  // state in the moment between the SELECT above and this UPDATE.
-  requestCancel(row.id);
-  const applied = await finalizeScanFailure(row.id, "Cancelled");
-
-  if (!applied) {
-    return NextResponse.json(
-      { error: "This scan finished just before it could be cancelled." },
-      { status: 409 },
-    );
-  }
-
-  return NextResponse.json({ status: "failed", cancelled: true });
-}
+    return NextResponse.json({ status: "failed", cancelled: true });
+  },
+);

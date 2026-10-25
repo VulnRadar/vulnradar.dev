@@ -223,10 +223,11 @@ export async function POST() {
   }
 
   try {
-    const [swept, graceSeconds] = await Promise.all([
-      sweepStaleScans(),
+    const [sweptRows, graceSeconds] = await Promise.all([
+      sweepStaleScans("admin"),
       staleScanGraceSeconds(),
     ]);
+    const swept = sweptRows.length;
     try {
       await logAction(
         admin.id,

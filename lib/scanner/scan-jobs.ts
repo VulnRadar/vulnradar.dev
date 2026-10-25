@@ -28,6 +28,11 @@ import {
   loadPromotedRules,
 } from "@/lib/tags/auto-tags";
 import { getSettings } from "@/lib/config/runtime-config";
+import { logError } from "@/lib/logging/log";
+import {
+  SCAN_INTERRUPTED_MESSAGE,
+  SCAN_STALE_MESSAGE,
+} from "./failure-messages";
 
 /** Thrown by a progress hook when the scan it belongs to has been cancelled. */
 export class ScanCancelledError extends Error {
@@ -269,10 +274,22 @@ export function createProgressTracker(scanId: number): ProgressTracker {
 
 /**
  * Start the watchdog for a scan job. If the job has not reached a terminal
- * state within `timeoutMs`, this marks it `failed` with `reason`. The
- * `WHERE status IN ('pending','running')` guard means a scan that finishes
- * (successfully or not) just before the timer fires is left alone — the
- * real completion always wins the race.
+ * state within `timeoutMs`, this marks it `failed` (kind `timeout`) with
+ * `reason`. The `WHERE status IN ('pending','running')` guard means a scan
+ * that finishes (successfully or not) just before the timer fires is left
+ * alone: the real completion always wins the race.
+ *
+ * A watchdog that fires is an engine failure, and it used to leave no trace.
+ * The quiet finalize only logged when its own UPDATE rejected, and the job's
+ * later cancellation wrote nothing, so a scan that hit its ceiling had no
+ * row in the error log and no record of where it was stuck. It now logs once,
+ * and only when it really flipped the row, with the category the scan was in
+ * (which the row keeps as `result_meta.timedOutIn`).
+ *
+ * `onTimeout` runs synchronously when the timer fires, before anything is
+ * written. The job uses it to know its own cancellation came from the
+ * watchdog, so its catch records `timeout` instead of racing the watchdog's
+ * write with a `cancelled` of its own.
  *
  * The caller must `clearTimeout` the returned handle once the job settles,
  * or the timer (and the closure holding `scanId`/`reason`) leaks for the
@@ -282,25 +299,45 @@ export function startWatchdog(
   scanId: number,
   timeoutMs: number,
   reason: string,
+  onTimeout?: () => void,
 ): NodeJS.Timeout {
   return setTimeout(() => {
+    onTimeout?.();
     // Abort the work BEFORE flipping the row. Marking the row `failed`
     // immediately returns the concurrency slot (the limiter counts rows
     // `WHERE status IN ('pending','running')`), so without this the scan the
     // watchdog just declared dead kept issuing outbound requests against the
     // target with its slot already handed to someone else. requestCancel
-    // aborts the AbortController the job holds via getCancelSignal, and it
-    // has to run first: finalizeScanFailure calls clearCancel, which drops
-    // that controller from the map, so a requestCancel afterwards would find
-    // nothing left to abort. ref: AUDIT-012#abuse-06
+    // aborts the AbortController the job holds via getCancelSignal, so it
+    // goes first and the abort is in flight before the slot is released.
+    // ref: AUDIT-012#abuse-06
     requestCancel(scanId);
-    // The quiet form, and this is the site that most needs it: the watchdog
-    // fires precisely when a scan is stuck, which is disproportionately
-    // because the DB is already unhealthy, the moment the write is most
-    // likely to reject. An unguarded rejection here would surface from a
-    // timer with no handler above it and, on Node's default, terminate the
-    // whole persistent process.
-    void finalizeScanFailureQuietly(scanId, reason);
+    // Never an unguarded rejection, and this is the site that most needs it:
+    // the watchdog fires precisely when a scan is stuck, which is
+    // disproportionately because the DB is already unhealthy, the moment the
+    // write is most likely to reject. A bare rejection here would surface
+    // from a timer with no handler above it and, on Node's default,
+    // terminate the whole persistent process.
+    void recordScanFailure(scanId, reason, "timeout").then(
+      (failed) => {
+        if (!failed) return;
+        logError(
+          "scan",
+          "scan ran past its time limit and was stopped",
+          undefined,
+          {
+            scanId,
+            userId: failed.userId,
+            source: failed.source,
+            budgetSeconds: Math.round(timeoutMs / 1000),
+            currentCategory: failed.timedOutIn,
+            categoriesCompleted: failed.categoriesCompleted,
+            categoriesTotal: failed.categoriesTotal,
+          },
+        );
+      },
+      (err) => logRecordFailure(scanId, reason, "timeout", err),
+    );
   }, timeoutMs);
 }
 
@@ -507,10 +544,89 @@ export async function finalizeScanSuccess(
 /** Cap on how much of an error message is stored, matching other free-text columns. */
 const MAX_ERROR_MESSAGE_LENGTH = 2000;
 
+/** What the failure write read back off the row it just closed. */
+export interface FailedScanDetail {
+  userId: number | null;
+  source: string | null;
+  categoriesCompleted: number | null;
+  categoriesTotal: number | null;
+  /** The category a `timeout` scan was in, or null (any other kind, or none yet). */
+  timedOutIn: string | null;
+}
+
 /**
- * Mark a scan `failed` with a real reason. Only takes effect if the row is
- * still `pending`/`running`, same guard and reasoning as
- * `finalizeScanSuccess`. Returns whether the write actually applied.
+ * Mark a scan `failed` with a real reason, and report what it closed. Null
+ * means the row was already terminal (or does not exist), so nothing was
+ * written. Only takes effect while the row is `pending`/`running`, same
+ * guard and reasoning as `finalizeScanSuccess`.
+ *
+ * `scanned_at` is stamped here. It is the finish time every list and the
+ * admin queue window sort and filter on, and a failure used to leave it at the
+ * INSERT default, so a failed scan was dated from when it was queued and its
+ * `scanned_at - started_at` came out zero or negative.
+ *
+ * A `timeout` keeps the category it was stuck in as `result_meta.timedOutIn`
+ * before the live column is cleared: that one field says where the scan hung,
+ * and nulling `current_category` erased it. The column's old value is read in
+ * the same statement, so there is no second round trip on a database that is
+ * likely to be struggling.
+ */
+export async function recordScanFailure(
+  scanId: number,
+  reason: string,
+  kind: FailureKind = "internal",
+): Promise<FailedScanDetail | null> {
+  const result = await pool.query<{
+    user_id: number | null;
+    source: string | null;
+    categories_completed: number | null;
+    categories_total: number | null;
+    timed_out_in: string | null;
+  }>(
+    `UPDATE scan_history
+     SET status = 'failed',
+         error_message = $1,
+         failure_kind = $3::text,
+         scanned_at = NOW(),
+         result_meta = (COALESCE(result_meta, '{}'::jsonb) - 'partialFindings')
+           || CASE
+                WHEN $3::text = 'timeout' AND current_category IS NOT NULL
+                THEN jsonb_build_object('timedOutIn', current_category)
+                ELSE '{}'::jsonb
+              END,
+         current_category = NULL,
+         duration = COALESCE(
+           (EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000)::INTEGER,
+           duration
+         )
+     WHERE id = $2 AND status IN ('pending', 'running')
+     RETURNING id, user_id, source, categories_completed, categories_total,
+               result_meta->>'timedOutIn' AS timed_out_in`,
+    [reason.slice(0, MAX_ERROR_MESSAGE_LENGTH), scanId, kind],
+  );
+  // Deliberately does NOT clearCancel. This write is how a cancel and the
+  // watchdog record themselves, and both call requestCancel so the job
+  // stops on its own. Clearing here forgot that flag microseconds after it was
+  // set: isCancelled() went back to false, the job's next progress event did
+  // not throw, and the work ran to completion with only its result blocked by
+  // the status guard above. A crawl cancelled five seconds in kept fetching
+  // for another thirty and saved 250 page rows. The running job clears its own
+  // flag when it stops (see executeScan / executeCrawlScan), and
+  // CANCEL_FLAG_TTL_MS covers a cancel with no job left to stop.
+  if ((result.rowCount ?? 0) === 0) return null;
+  const row = result.rows[0];
+  return {
+    userId: row?.user_id ?? null,
+    source: row?.source ?? null,
+    categoriesCompleted: row?.categories_completed ?? null,
+    categoriesTotal: row?.categories_total ?? null,
+    timedOutIn: row?.timed_out_in ?? null,
+  };
+}
+
+/**
+ * Mark a scan `failed` with a real reason. Returns whether the write
+ * actually applied.
  *
  * `kind` says WHY (see lib/scanner/failure-kinds.ts). It defaults to
  * `internal` because that is what every caller meant before the column
@@ -523,31 +639,7 @@ export async function finalizeScanFailure(
   reason: string,
   kind: FailureKind = "internal",
 ): Promise<boolean> {
-  const result = await pool.query(
-    `UPDATE scan_history
-     SET status = 'failed',
-         error_message = $1,
-         failure_kind = $3,
-         current_category = NULL,
-         result_meta = COALESCE(result_meta, '{}'::jsonb) - 'partialFindings',
-         duration = COALESCE(
-           (EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000)::INTEGER,
-           duration
-         )
-     WHERE id = $2 AND status IN ('pending', 'running')
-     RETURNING id`,
-    [reason.slice(0, MAX_ERROR_MESSAGE_LENGTH), scanId, kind],
-  );
-  // Deliberately does NOT clearCancel. This write is how a cancel and the
-  // watchdog record themselves, and both call requestCancel first so the job
-  // stops on its own. Clearing here forgot that flag microseconds after it was
-  // set: isCancelled() went back to false, the job's next progress event did
-  // not throw, and the work ran to completion with only its result blocked by
-  // the status guard above. A crawl cancelled five seconds in kept fetching
-  // for another thirty and saved 250 page rows. The running job clears its own
-  // flag when it stops (see executeScan / executeCrawlScan), and
-  // CANCEL_FLAG_TTL_MS covers a cancel with no job left to stop.
-  return (result.rowCount ?? 0) > 0;
+  return (await recordScanFailure(scanId, reason, kind)) !== null;
 }
 
 /**
@@ -567,7 +659,7 @@ export async function finalizeScanFailure(
  * alerts an admin, but it can only say "this scan is stale", not "the write
  * that would have marked it failed was rejected, here is the error".
  *
- * console.error rather than a silent swallow because
+ * It logs through logError (an error, not a swallow) because
  * lib/database/error-log-capture.ts persists console.error into
  * system_error_logs with its redaction pass, so this reaches the admin error
  * log the operator is already reading.
@@ -579,13 +671,21 @@ export function finalizeScanFailureQuietly(
 ): Promise<void> {
   return finalizeScanFailure(scanId, reason, kind).then(
     () => {},
-    (err) => {
-      console.error(
-        `[scan-jobs] could not mark scan ${scanId} failed (${reason}):`,
-        err,
-      );
-    },
+    (err) => logRecordFailure(scanId, reason, kind, err),
   );
+}
+
+/** The failure write itself was rejected: the row is still open and nothing else says why. */
+function logRecordFailure(
+  scanId: number,
+  reason: string,
+  kind: FailureKind,
+  err: unknown,
+): void {
+  logError("scan", `could not record a scan as failed (${reason})`, err, {
+    scanId,
+    failureKind: kind,
+  });
 }
 
 /**
@@ -612,30 +712,6 @@ export async function markScanRunning(scanId: number): Promise<void> {
     .catch(() => {});
 }
 
-/**
- * Fail every scan_history row still `pending`/`running` that is older than
- * the grace window below. Run once at boot AND on a timer thereafter, both
- * through lib/scanner/stale-scan-sweep.ts, as the counterpart to the
- * in-memory watchdog above: that watchdog dies with its process, so a scan
- * whose process was killed mid-run (a deploy, an OOM kill, a crash) had
- * nothing left to rescue it and stayed "running" forever on the owner's
- * dashboard until they manually noticed (AUDIT-010, production-readiness #2).
- * Every real completion path (finalizeScanSuccess/finalizeScanFailure)
- * already guards on `WHERE status IN ('pending', 'running')`, so this can
- * never race a scan that's genuinely still in-flight in the CURRENT process.
- *
- * It CAN race another process, though, which is why the sweep is bounded by
- * an age guard rather than taking every non-terminal row. "There is no
- * current process yet when this runs" is only true of a single instance.
- * instrumentation.ts takes a boot advisory lock precisely because two
- * instances can start at once, and a rolling deploy has a booting instance
- * overlapping a draining one: an unbounded sweep marks the draining
- * instance's live scans `failed`, and because finalizeScanSuccess guards on
- * `WHERE status IN ('pending','running')` the real completion then matches
- * nothing. The owner is told their scan was interrupted by a restart, and
- * the results it actually produced are dropped. Returns the number of rows
- * swept.
- */
 /**
  * Floor for the stale-scan sweep's age guard. A scan cannot outlive its
  * watchdog by more than its own budget, so fifteen minutes is comfortably
@@ -674,22 +750,88 @@ export async function staleScanGraceSeconds(): Promise<number> {
   );
 }
 
-export async function sweepStaleScans(): Promise<number> {
+/** Who ran the sweep. It decides what the swept scans are told. */
+export type StaleSweepTrigger = "boot" | "periodic" | "admin";
+
+/** One scan the sweep closed, as much of it as an operator needs to find it. */
+export interface SweptScan {
+  id: number;
+  user_id: number;
+  url: string;
+  source: string;
+  /** The category it had last reported, from before the sweep cleared it. */
+  current_category: string | null;
+  started_at: string | null;
+}
+
+/**
+ * Fail every scan_history row still `pending`/`running` that is older than
+ * the grace window above, and hand back the rows it closed. Run once at boot
+ * AND on a timer thereafter, both through lib/scanner/stale-scan-sweep.ts, and
+ * on demand from the admin queue, as the counterpart to the in-memory
+ * watchdog above: that watchdog dies with its process, so a scan whose
+ * process was killed mid-run (a deploy, an OOM kill, a crash) had nothing
+ * left to rescue it and stayed "running" forever on the owner's dashboard
+ * until they manually noticed (AUDIT-010, production-readiness #2). Every
+ * real completion path (finalizeScanSuccess/finalizeScanFailure) already
+ * guards on `WHERE status IN ('pending', 'running')`, so this can never race
+ * a scan that's genuinely still in-flight in the CURRENT process.
+ *
+ * It CAN race another process, though, which is why the sweep is bounded by
+ * an age guard rather than taking every non-terminal row. "There is no
+ * current process yet when this runs" is only true of a single instance.
+ * instrumentation.ts takes a boot advisory lock precisely because two
+ * instances can start at once, and a rolling deploy has a booting instance
+ * overlapping a draining one: an unbounded sweep marks the draining
+ * instance's live scans `failed`, and because finalizeScanSuccess guards on
+ * `WHERE status IN ('pending','running')` the real completion then matches
+ * nothing. The owner is told their scan was interrupted by a restart, and
+ * the results it actually produced are dropped.
+ *
+ * The trigger picks the reason, because only the boot sweep can honestly say a
+ * restart happened. The timer and the admin button close a scan in a process
+ * that was up the whole time, and telling that owner "a server restart" sent
+ * them looking for an outage that never occurred. The rows come back instead
+ * of a count so the log and the alert can name them: a count says THAT scans
+ * went stale, the ids say which, and an operator has to start from one.
+ */
+export async function sweepStaleScans(
+  trigger: StaleSweepTrigger,
+): Promise<SweptScan[]> {
   const graceSeconds = await staleScanGraceSeconds();
-  const result = await pool.query(
-    `UPDATE scan_history
-     SET status = 'failed',
-         error_message = 'Scan interrupted by a server restart. Please run it again.',
-         current_category = NULL,
-         duration = COALESCE(
-           (EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000)::INTEGER,
-           duration
-         )
-     WHERE status IN ('pending', 'running')
-       AND COALESCE(started_at, scanned_at, TIMESTAMP 'epoch')
-             < NOW() - ($1 || ' seconds')::interval
-     RETURNING id`,
-    [String(graceSeconds)],
+  const outcome =
+    trigger === "boot"
+      ? { kind: "interrupted" as const, message: SCAN_INTERRUPTED_MESSAGE }
+      : { kind: "stale" as const, message: SCAN_STALE_MESSAGE };
+  // The old current_category is read in the CTE because RETURNING on the
+  // UPDATE would show the NULL it just wrote. FOR UPDATE makes two sweeps that
+  // overlap (two instances booting together) queue on the same rows instead of
+  // both reporting them.
+  const result = await pool.query<SweptScan>(
+    `WITH stale AS (
+       SELECT id, current_category
+         FROM scan_history
+        WHERE status IN ('pending', 'running')
+          AND COALESCE(started_at, scanned_at, TIMESTAMP 'epoch')
+                < NOW() - ($1 || ' seconds')::interval
+          FOR UPDATE
+     )
+     UPDATE scan_history AS sh
+        SET status = 'failed',
+            error_message = $2,
+            failure_kind = $3::text,
+            scanned_at = NOW(),
+            current_category = NULL,
+            duration = COALESCE(
+              (EXTRACT(EPOCH FROM (NOW() - sh.started_at)) * 1000)::INTEGER,
+              sh.duration
+            )
+       FROM stale
+      WHERE sh.id = stale.id
+        AND sh.status IN ('pending', 'running')
+     RETURNING sh.id, sh.user_id, sh.url, sh.source, sh.started_at,
+               stale.current_category`,
+    [String(graceSeconds), outcome.message, outcome.kind],
   );
-  return result.rowCount ?? 0;
+  return result.rows ?? [];
 }

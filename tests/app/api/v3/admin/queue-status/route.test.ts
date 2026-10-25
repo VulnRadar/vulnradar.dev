@@ -21,7 +21,7 @@ vi.mock("@/lib/auth", () => ({
 const mockSweepStaleScans = vi.fn();
 const mockStaleScanGraceSeconds = vi.fn();
 vi.mock("@/lib/scanner/scan-jobs", () => ({
-  sweepStaleScans: () => mockSweepStaleScans(),
+  sweepStaleScans: (...args: unknown[]) => mockSweepStaleScans(...args),
   staleScanGraceSeconds: () => mockStaleScanGraceSeconds(),
 }));
 vi.mock("@/lib/api/request-utils", () => ({
@@ -297,13 +297,15 @@ describe("POST /api/v3/admin/queue-status (fail stuck scans)", () => {
 
   it("runs the stale-scan sweep and reports what it cleared and the grace period", async () => {
     withAdmin();
-    mockSweepStaleScans.mockResolvedValue(2);
+    mockSweepStaleScans.mockResolvedValue([{ id: 11 }, { id: 12 }]);
     mockStaleScanGraceSeconds.mockResolvedValue(3600);
     mockQuery.mockResolvedValue({ rows: [], rowCount: 1 }); // audit insert
     const res = await POST();
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ swept: 2, graceSeconds: 3600 });
     expect(mockSweepStaleScans).toHaveBeenCalledTimes(1);
+    // The button is not a restart, and the sweep words the reason from this.
+    expect(mockSweepStaleScans).toHaveBeenCalledWith("admin");
     const audit = mockQuery.mock.calls.find(([sql]) =>
       String(sql).includes("admin_audit_log"),
     );

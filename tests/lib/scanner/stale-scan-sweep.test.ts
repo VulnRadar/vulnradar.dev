@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockSweepStaleScans = vi.fn();
 vi.mock("@/lib/scanner/scan-jobs", () => ({
-  sweepStaleScans: () => mockSweepStaleScans(),
+  sweepStaleScans: (...args: unknown[]) => mockSweepStaleScans(...args),
 }));
 
 const mockSendAdminAlert = vi.fn();
@@ -39,12 +39,23 @@ const { CONFIG_STALE_SCAN_SWEEP_INTERVAL_MS } =
 
 beforeEach(() => {
   mockSweepStaleScans.mockReset();
-  mockSweepStaleScans.mockResolvedValue(0);
+  mockSweepStaleScans.mockResolvedValue([]);
   mockSendAdminAlert.mockReset();
   mockSendAdminAlert.mockResolvedValue({ delivered: true, status: 200 });
   mockRecordSuccess.mockReset();
   mockRecordFailure.mockReset();
 });
+
+function sweptRows(ids: number[], category: string | null = null) {
+  return ids.map((id) => ({
+    id,
+    user_id: id * 10,
+    url: `https://customer-${id}.example/`,
+    source: "web",
+    current_category: category,
+    started_at: "2026-08-13T10:00:00.000Z",
+  }));
+}
 
 describe("runStaleScanSweep", () => {
   it("says nothing when there was nothing to sweep", async () => {
@@ -53,8 +64,14 @@ describe("runStaleScanSweep", () => {
     expect(mockSendAdminAlert).not.toHaveBeenCalled();
   });
 
+  it("hands the trigger to the sweep, which picks the reason from it", async () => {
+    await runStaleScanSweep("boot");
+    await runStaleScanSweep("periodic");
+    expect(mockSweepStaleScans.mock.calls).toEqual([["boot"], ["periodic"]]);
+  });
+
   it("alerts about an unclean restart when the boot pass finds rows", async () => {
-    mockSweepStaleScans.mockResolvedValue(3);
+    mockSweepStaleScans.mockResolvedValue(sweptRows([5, 6, 7]));
 
     const swept = await runStaleScanSweep("boot");
 
@@ -62,7 +79,11 @@ describe("runStaleScanSweep", () => {
     const alert = mockSendAdminAlert.mock.calls[0][0];
     expect(alert.event).toBe("stale_scans_swept");
     expect(alert.message).toContain("previous process");
-    expect(alert.context).toEqual({ count: 3, trigger: "boot" });
+    expect(alert.context).toEqual({
+      count: 3,
+      trigger: "boot",
+      scanIds: [5, 6, 7],
+    });
   });
 
   // The two cases are different bugs. A boot sweep means the process died
@@ -70,14 +91,65 @@ describe("runStaleScanSweep", () => {
   // closing its row, which no restart explains and which the watchdog was
   // supposed to prevent.
   it("says the rows went stale while the server was up when the timer finds them", async () => {
-    mockSweepStaleScans.mockResolvedValue(2);
+    mockSweepStaleScans.mockResolvedValue(sweptRows([8, 9]));
 
     await runStaleScanSweep("periodic");
 
     const alert = mockSendAdminAlert.mock.calls[0][0];
     expect(alert.message).toContain("while the server was running");
     expect(alert.message).not.toContain("previous process");
-    expect(alert.context).toEqual({ count: 2, trigger: "periodic" });
+    expect(alert.context).toEqual({
+      count: 2,
+      trigger: "periodic",
+      scanIds: [8, 9],
+    });
+  });
+
+  // A count says THAT scans went stale; the ids say which. The line and the
+  // alert both used to carry only the count.
+  it("names the scans in the log line as well as the alert", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockSweepStaleScans.mockResolvedValue(sweptRows([41, 42], "dns"));
+
+    await runStaleScanSweep("periodic");
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [message, context] = spy.mock.calls[0];
+    expect(String(message)).toContain("went stale");
+    expect(context).toMatchObject({
+      count: 2,
+      trigger: "periodic",
+      scanIds: "41,42",
+      categories: "dns",
+    });
+    spy.mockRestore();
+  });
+
+  it("names at most twenty, and still reports the true count", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockSweepStaleScans.mockResolvedValue(
+      sweptRows(Array.from({ length: 30 }, (_, i) => i + 1)),
+    );
+
+    await runStaleScanSweep("periodic");
+
+    const alert = mockSendAdminAlert.mock.calls[0][0];
+    expect(alert.context.count).toBe(30);
+    expect(alert.context.scanIds).toHaveLength(20);
+    expect(alert.context.scanIds[0]).toBe(1);
+    spy.mockRestore();
+  });
+
+  it("never puts a customer's URL or user id in the alert", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockSweepStaleScans.mockResolvedValue(sweptRows([3]));
+
+    await runStaleScanSweep("periodic");
+
+    const alert = JSON.stringify(mockSendAdminAlert.mock.calls[0][0]);
+    expect(alert).not.toContain("customer-3.example");
+    expect(alert).not.toContain("user_id");
+    spy.mockRestore();
   });
 
   it("propagates a sweep failure so its caller can count a failed pass", async () => {

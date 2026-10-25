@@ -62,6 +62,7 @@ const {
   finalizeScanSuccess,
   finalizeScanFailure,
   finalizeScanFailureQuietly,
+  recordScanFailure,
   markScanRunning,
   sweepStaleScans,
 } = await import("@/lib/scanner/scan-jobs");
@@ -280,6 +281,7 @@ describe("startWatchdog", () => {
   });
 
   it("marks the scan failed with the given reason once the timeout elapses", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const handle = startWatchdog(7, 1000, "Scan exceeded the 1s time limit.");
 
     await vi.advanceTimersByTimeAsync(1000);
@@ -290,8 +292,103 @@ describe("startWatchdog", () => {
     expect(sql).toContain("status IN ('pending', 'running')");
     expect(params[0]).toBe("Scan exceeded the 1s time limit.");
     expect(params[1]).toBe(7);
+    // A watchdog is the one writer that is always an engine failure.
+    expect(params[2]).toBe("timeout");
 
     clearTimeout(handle);
+    errSpy.mockRestore();
+  });
+
+  // A scan that hit its ceiling used to leave nothing in the error log: the
+  // quiet finalize only logged when its own UPDATE rejected. The line has to
+  // say where the scan was, because the row's current_category is cleared.
+  it("logs once, with where the scan was stuck, when it really closed the row", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [
+        {
+          id: 7,
+          user_id: 42,
+          source: "api",
+          categories_completed: 3,
+          categories_total: 9,
+          timed_out_in: "cookies",
+        },
+      ],
+    });
+    const handle = startWatchdog(
+      7,
+      300_000,
+      "Scan exceeded the 300s time limit.",
+    );
+
+    await vi.advanceTimersByTimeAsync(300_000);
+
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    const [message, context] = errSpy.mock.calls[0];
+    expect(String(message)).toContain("[scan]");
+    expect(context).toEqual({
+      scanId: 7,
+      userId: 42,
+      source: "api",
+      budgetSeconds: 300,
+      currentCategory: "cookies",
+      categoriesCompleted: 3,
+      categoriesTotal: 9,
+    });
+
+    clearTimeout(handle);
+    errSpy.mockRestore();
+  });
+
+  it("stays silent when the scan finished first and the guard matched nothing", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const handle = startWatchdog(7, 1000, "too slow");
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(errSpy).not.toHaveBeenCalled();
+
+    clearTimeout(handle);
+    errSpy.mockRestore();
+  });
+
+  it("tells the job it fired before it writes anything", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const order: string[] = [];
+    mockQuery.mockImplementation(async () => {
+      order.push("write");
+      return { rows: [{ id: 7 }], rowCount: 1 };
+    });
+    const handle = startWatchdog(7, 1000, "too slow", () => {
+      order.push("onTimeout");
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // The job's catch reads this flag to record `timeout`, so it has to be set
+    // before the write could possibly land.
+    expect(order).toEqual(["onTimeout", "write"]);
+
+    clearTimeout(handle);
+    errSpy.mockRestore();
+  });
+
+  it("does not reject when its own write does, and says so", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("connection terminated");
+    mockQuery.mockRejectedValueOnce(boom);
+    const handle = startWatchdog(7, 1000, "too slow");
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(errSpy.mock.calls[0]).toContain(boom);
+
+    clearTimeout(handle);
+    errSpy.mockRestore();
   });
 
   it("does nothing before the timeout elapses", async () => {
@@ -642,6 +739,86 @@ describe("finalizeScanFailure", () => {
     await finalizeScanFailure(9, "Cancelled", "cancelled");
     expect(mockQuery.mock.calls[1][1][2]).toBe("cancelled");
   });
+
+  // scanned_at is the finish time every list and the admin queue's 24h window
+  // sort on. A failure left it at the INSERT default, so the queue dated every
+  // failed scan from when it was queued and computed "ran 0.0s" from a
+  // scanned_at that was never later than started_at.
+  it("stamps scanned_at, so a failed scan is dated from when it failed", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 9 }], rowCount: 1 });
+    await finalizeScanFailure(9, "boom");
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("scanned_at = NOW()");
+  });
+
+  it("keeps the category a timed-out scan was in, and only for a timeout", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 9 }], rowCount: 1 });
+    await finalizeScanFailure(
+      9,
+      "Scan exceeded the 300s time limit.",
+      "timeout",
+    );
+    const [sql, params] = mockQuery.mock.calls[0];
+    // Read from the row's own column in the same statement, before the live
+    // column is cleared, and only when the kind says the scan hung.
+    expect(sql).toContain("jsonb_build_object('timedOutIn', current_category)");
+    expect(sql).toContain("$3::text = 'timeout'");
+    expect(sql).toContain("current_category = NULL");
+    expect(params[2]).toBe("timeout");
+  });
+
+  it("drops the in-progress findings preview whatever the kind", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 9 }], rowCount: 1 });
+    await finalizeScanFailure(9, "boom");
+    expect(mockQuery.mock.calls[0][0]).toContain("- 'partialFindings'");
+  });
+});
+
+describe("recordScanFailure", () => {
+  it("reports what it read off the row it closed", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [
+        {
+          id: 9,
+          user_id: 42,
+          source: "web",
+          categories_completed: 4,
+          categories_total: 12,
+          timed_out_in: "headers",
+        },
+      ],
+    });
+    expect(
+      await recordScanFailure(
+        9,
+        "Scan exceeded the 300s time limit.",
+        "timeout",
+      ),
+    ).toEqual({
+      userId: 42,
+      source: "web",
+      categoriesCompleted: 4,
+      categoriesTotal: 12,
+      timedOutIn: "headers",
+    });
+  });
+
+  it("returns null when the row was already terminal", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    expect(await recordScanFailure(9, "boom")).toBeNull();
+  });
+
+  it("still counts as applied when the driver returns no row body", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    expect(await recordScanFailure(9, "boom")).toEqual({
+      userId: null,
+      source: null,
+      categoriesCompleted: null,
+      categoriesTotal: null,
+      timedOutIn: null,
+    });
+  });
 });
 
 describe("markScanRunning", () => {
@@ -661,18 +838,38 @@ describe("markScanRunning", () => {
 });
 
 describe("sweepStaleScans", () => {
-  it("fails stale pending/running rows and returns the count", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
-      rowCount: 3,
-    });
+  it("fails stale pending/running rows and returns the rows it closed", async () => {
+    const swept = [
+      {
+        id: 1,
+        user_id: 4,
+        url: "https://a.example/",
+        source: "web",
+        current_category: "headers",
+        started_at: "2026-08-13T10:00:00.000Z",
+      },
+      {
+        id: 2,
+        user_id: 5,
+        url: "https://b.example/",
+        source: "api",
+        current_category: null,
+        started_at: null,
+      },
+    ];
+    mockQuery.mockResolvedValueOnce({ rows: swept, rowCount: 2 });
 
-    const count = await sweepStaleScans();
+    const rows = await sweepStaleScans("periodic");
 
-    expect(count).toBe(3);
+    // The rows, not a count: a count says THAT scans went stale, and the
+    // operator has to start from which.
+    expect(rows).toEqual(swept);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("status = 'failed'");
     expect(sql).toContain("WHERE status IN ('pending', 'running')");
+    // The category it had reported, read before the UPDATE clears it.
+    expect(sql).toContain("stale.current_category");
+    expect(sql).toContain("scanned_at = NOW()");
     // Bounded by age, not by scan id. The previous form of this test asserted
     // the statement took no parameters at all, which pinned the bug: an
     // unbounded sweep fails the scans a CONCURRENT instance is still running
@@ -681,8 +878,35 @@ describe("sweepStaleScans", () => {
       "COALESCE(started_at, scanned_at, TIMESTAMP 'epoch')",
     );
     expect(sql).toContain("NOW() - ($1 || ' seconds')::interval");
-    expect(params).toEqual([String(900 * 2)]);
+    expect((params as unknown[])[0]).toBe(String(900 * 2));
   });
+
+  // Only the boot sweep can honestly say a restart happened. The timer and the
+  // admin button close a scan in a process that was up the whole time, and
+  // telling that owner "a server restart" sent them looking for an outage.
+  it("says a restart interrupted the scan only when the boot sweep ran", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await sweepStaleScans("boot");
+    const [, bootParams] = mockQuery.mock.calls[0];
+    expect(bootParams[1]).toBe(
+      "Scan interrupted by a server restart. Please run it again.",
+    );
+    expect(bootParams[2]).toBe("interrupted");
+  });
+
+  it.each(["periodic", "admin"] as const)(
+    "closes a scan as stale, with no restart claimed, when the %s sweep ran",
+    async (trigger) => {
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      await sweepStaleScans(trigger);
+      const [, params] = mockQuery.mock.calls[0];
+      expect(params[1]).toBe(
+        "The scan stopped responding and was closed. Please run it again.",
+      );
+      expect(params[1]).not.toMatch(/restart/i);
+      expect(params[2]).toBe("stale");
+    },
+  );
 
   it("sizes the age guard at twice the longest configured budget", async () => {
     mockGetSettings.mockResolvedValue({
@@ -692,10 +916,10 @@ describe("sweepStaleScans", () => {
     });
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
-    await sweepStaleScans();
+    await sweepStaleScans("boot");
 
     // the single scan budget wins here, not the crawl one
-    expect(mockQuery.mock.calls[0][1]).toEqual([String(1800 * 2)]);
+    expect(mockQuery.mock.calls[0][1][0]).toBe(String(1800 * 2));
   });
 
   it("never drops below the fifteen-minute floor", async () => {
@@ -706,10 +930,10 @@ describe("sweepStaleScans", () => {
     });
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
-    await sweepStaleScans();
+    await sweepStaleScans("boot");
 
     // 60 * 2 = 120s would sweep a scan a healthy instance is still running
-    expect(mockQuery.mock.calls[0][1]).toEqual([String(15 * 60)]);
+    expect(mockQuery.mock.calls[0][1][0]).toBe(String(15 * 60));
   });
 
   // A bulk batch writes all its rows 'pending' up front and drains them for
@@ -723,21 +947,14 @@ describe("sweepStaleScans", () => {
     });
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
-    await sweepStaleScans();
+    await sweepStaleScans("boot");
 
-    expect(mockQuery.mock.calls[0][1]).toEqual([String(3600 * 2)]);
+    expect(mockQuery.mock.calls[0][1][0]).toBe(String(3600 * 2));
   });
 
-  it("returns 0 when nothing was stale", async () => {
+  it("returns no rows when nothing was stale", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    const count = await sweepStaleScans();
-    expect(count).toBe(0);
-  });
-
-  it("returns 0 when rowCount is null", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: null });
-    const count = await sweepStaleScans();
-    expect(count).toBe(0);
+    expect(await sweepStaleScans("periodic")).toEqual([]);
   });
 });
 
@@ -769,11 +986,13 @@ describe("finalizeScanFailureQuietly", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     await finalizeScanFailureQuietly(7, "Timed out");
     expect(spy).toHaveBeenCalledTimes(1);
-    const [message, err] = spy.mock.calls[0];
+    const [message, context, err] = spy.mock.calls[0];
     // All three, because the stale-scan sweep can already tell an admin that
-    // a scan is stale; what it cannot tell them is this.
-    expect(String(message)).toContain("7");
+    // a scan is stale; what it cannot tell them is this. The id rides in the
+    // context object (STYLE.md, Logging) and the Error is passed as itself, so
+    // the stack survives into system_error_logs.
     expect(String(message)).toContain("Timed out");
+    expect(context).toMatchObject({ scanId: 7 });
     expect(err).toBe(boom);
     spy.mockRestore();
   });

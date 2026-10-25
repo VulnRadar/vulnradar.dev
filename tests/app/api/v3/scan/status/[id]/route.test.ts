@@ -61,6 +61,7 @@ function row(overrides: Record<string, unknown> = {}) {
     response_headers: null,
     result_meta: null,
     error_message: null,
+    failure_kind: null,
     ...overrides,
   };
 }
@@ -210,8 +211,97 @@ describe("GET /api/v3/scan/status/:id", () => {
     expect((await res.json()).error).toBe("Scan not found");
 
     const [sql, params] = mockQuery.mock.calls[0];
-    expect(String(sql)).toContain("WHERE id = $1 AND user_id = $2");
-    expect(params).toEqual(["1", OWNER_ID]);
+    expect(String(sql)).toContain("AND user_id = $3");
+    // The id is resolved the way every History subroute resolves it: the raw
+    // segment against the opaque public_id, and a numeric reading of it
+    // against the primary key.
+    expect(params).toEqual(["1", 1, OWNER_ID]);
+  });
+
+  // GET /history lists scans by public_id, and this route handed the raw
+  // segment to `id = $1`. Postgres rejects a 32-character hex string as an
+  // integer (22P02), nothing here caught it, and the answer was a 500 for a
+  // scan that simply is not there.
+  it("looks an opaque public id up by public_id, with no numeric reading of it", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [row({ status: "running", public_id: "a".repeat(32) })],
+    });
+
+    const res = await GET(req(), ctx("a".repeat(32)));
+
+    expect(res.status).toBe(200);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(String(sql)).toContain("public_id = $1");
+    expect(params).toEqual(["a".repeat(32), null, OWNER_ID]);
+  });
+
+  it.each(["not-a-scan", "99999999999999999999", "-3", "1.5"])(
+    "answers 404, not 500, for an id that is not a scan: %s",
+    async (id) => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await GET(req(), ctx(id));
+
+      expect(res.status).toBe(404);
+      expect(mockQuery.mock.calls[0][1]).toEqual([id, null, OWNER_ID]);
+    },
+  );
+
+  it("reports why a failed scan failed, as a kind a client can branch on", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        row({
+          status: "failed",
+          error_message: "Cancelled",
+          failure_kind: "cancelled",
+          duration: 800,
+        }),
+      ],
+    });
+
+    const json = await (await GET(req(), ctx("1"))).json();
+
+    expect(json.status).toBe("failed");
+    expect(json.failureKind).toBe("cancelled");
+    expect(json.error).toBe("Cancelled");
+  });
+
+  it("answers from the failure kind, not from what the raw text happens to say", async () => {
+    // Recorded against the engine, but the text reads like a target refusal:
+    // the kind wins, so the person who ran the scan is not told their site
+    // refused a connection that was our own database's.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        row({
+          status: "failed",
+          error_message: "connect ECONNREFUSED 10.0.0.5:5432",
+          failure_kind: "internal",
+        }),
+      ],
+    });
+
+    const json = await (await GET(req(), ctx("1"))).json();
+
+    expect(json.failureKind).toBe("internal");
+    expect(json.error).toBe(
+      "The scan could not be completed because of an internal error. Please try again.",
+    );
+  });
+
+  it("omits failureKind for a row that has none, and for a scan that has not failed", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        row({ status: "failed", error_message: "boom", failure_kind: null }),
+      ],
+    });
+    expect((await (await GET(req(), ctx("1"))).json()).failureKind).toBe(
+      undefined,
+    );
+
+    mockQuery.mockResolvedValueOnce({ rows: [row({ status: "running" })] });
+    expect((await (await GET(req(), ctx("1"))).json()).failureKind).toBe(
+      undefined,
+    );
   });
 
   it("rejects an unauthenticated caller", async () => {
@@ -266,6 +356,9 @@ describe("DELETE /api/v3/scan/status/:id", () => {
     expect(sql).toContain("status = 'failed'");
     expect(params[0]).toBe("Cancelled");
     expect(params[1]).toBe(1);
+    // A cancel is the owner getting what they asked for. It used to be
+    // recorded as an engine failure and counted toward the health alarm.
+    expect(params[2]).toBe("cancelled");
   });
 
   it("returns 409 for a scan that already finished", async () => {
@@ -290,8 +383,17 @@ describe("DELETE /api/v3/scan/status/:id", () => {
     expect(res.status).toBe(404);
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockQuery.mock.calls[0];
-    expect(String(sql)).toContain("user_id = $2");
-    expect(params).toEqual(["1", OWNER_ID]);
+    expect(String(sql)).toContain("user_id = $3");
+    expect(params).toEqual(["1", 1, OWNER_ID]);
+  });
+
+  it("answers 404 for an id that is not a scan instead of throwing from the cancel", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await DELETE(req("DELETE"), ctx("not-a-scan"));
+
+    expect(res.status).toBe(404);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
   it("returns 409 when the scan finishes in the race between the SELECT and the cancel UPDATE", async () => {

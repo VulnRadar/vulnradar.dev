@@ -4,7 +4,9 @@ import pool from "@/lib/database/db";
 import {
   finalizeScanSuccess,
   finalizeScanFailure,
+  recordScanFailure,
   markScanRunning,
+  sweepStaleScans,
 } from "@/lib/scanner/scan-jobs";
 import { reserveConcurrentScanSlot } from "@/lib/rate-limiting/concurrent-scans";
 import { describeIntegration, createUser, createTeam } from "./_db";
@@ -184,6 +186,197 @@ describeIntegration("scan_history insert then finalize", () => {
       [scanId],
     );
     expect(rows[0].error_message.length).toBe(2000);
+  });
+
+  it("records why a scan failed, and when, in the same statement", async () => {
+    const user = await createUser();
+    const scanId = await insertPendingScan(user.id, null);
+    await markScanRunning(scanId);
+
+    expect(await finalizeScanFailure(scanId, "Cancelled", "cancelled")).toBe(
+      true,
+    );
+
+    const { rows } = await pool.query<{
+      status: string;
+      failure_kind: string | null;
+      started_at: Date;
+      scanned_at: Date;
+    }>(
+      "SELECT status, failure_kind, started_at, scanned_at FROM scan_history WHERE id = $1",
+      [scanId],
+    );
+    expect(rows[0].status).toBe("failed");
+    expect(rows[0].failure_kind).toBe("cancelled");
+    // The finish time, not the queue time. The INSERT default left scanned_at
+    // equal to the first started_at, so the admin queue computed "ran 0.0s"
+    // from a scanned_at that was never later than started_at.
+    expect(rows[0].scanned_at.getTime()).toBeGreaterThanOrEqual(
+      rows[0].started_at.getTime(),
+    );
+  });
+
+  it("keeps the category a timed-out scan was stuck in, and drops the live preview", async () => {
+    const user = await createUser();
+    const scanId = await insertPendingScan(user.id, null);
+    await pool.query(
+      `UPDATE scan_history
+          SET status = 'running', current_category = 'dns',
+              categories_completed = 3, categories_total = 12,
+              result_meta = '{"partialFindings":[{"severity":"low","title":"x"}]}'::jsonb
+        WHERE id = $1`,
+      [scanId],
+    );
+
+    const failed = await recordScanFailure(
+      scanId,
+      "Scan exceeded the 300s time limit.",
+      "timeout",
+    );
+
+    // Read back by the same statement, so the watchdog can log where it hung
+    // without a second query against a database that may be the problem.
+    expect(failed).toMatchObject({
+      timedOutIn: "dns",
+      categoriesCompleted: 3,
+      categoriesTotal: 12,
+      userId: user.id,
+    });
+    const { rows } = await pool.query<{
+      current_category: string | null;
+      failure_kind: string;
+      result_meta: Record<string, unknown>;
+    }>(
+      "SELECT current_category, failure_kind, result_meta FROM scan_history WHERE id = $1",
+      [scanId],
+    );
+    expect(rows[0].failure_kind).toBe("timeout");
+    expect(rows[0].current_category).toBeNull();
+    expect(rows[0].result_meta.timedOutIn).toBe("dns");
+    expect(rows[0].result_meta.partialFindings).toBeUndefined();
+  });
+
+  it("keeps timedOutIn for a timeout only, not for a cancel", async () => {
+    const user = await createUser();
+    const scanId = await insertPendingScan(user.id, null);
+    await pool.query(
+      "UPDATE scan_history SET status = 'running', current_category = 'dns' WHERE id = $1",
+      [scanId],
+    );
+
+    await finalizeScanFailure(scanId, "Cancelled", "cancelled");
+
+    const { rows } = await pool.query<{
+      result_meta: Record<string, unknown> | null;
+    }>("SELECT result_meta FROM scan_history WHERE id = $1", [scanId]);
+    expect(rows[0].result_meta?.timedOutIn).toBeUndefined();
+  });
+
+  it("returns null and writes nothing for a scan that already finished", async () => {
+    const user = await createUser();
+    const scanId = await insertPendingScan(user.id, null);
+    expect(await finalizeScanSuccess(scanId, successData())).toBe(true);
+
+    expect(await recordScanFailure(scanId, "late", "timeout")).toBeNull();
+
+    const { rows } = await pool.query<{
+      status: string;
+      failure_kind: string | null;
+    }>("SELECT status, failure_kind FROM scan_history WHERE id = $1", [scanId]);
+    expect(rows[0].status).toBe("completed");
+    expect(rows[0].failure_kind).toBeNull();
+  });
+
+  /**
+   * Stale rows backdated past the grace window (twice the longest scan budget,
+   * 30 minutes at the shipped defaults). Asserted by id, not by count: the
+   * sweep takes every stale row in the database, and this tier shares one.
+   */
+  async function insertStaleScan(
+    userId: number,
+    category: string | null,
+  ): Promise<number> {
+    const { rows } = await pool.query<{ id: number }>(
+      `INSERT INTO scan_history
+         (user_id, url, source, status, started_at, current_category)
+       VALUES ($1, 'https://stale.example.test/', 'api', 'running',
+               NOW() - INTERVAL '3 hours', $2)
+       RETURNING id`,
+      [userId, category],
+    );
+    return rows[0].id;
+  }
+
+  it("closes a stale scan as interrupted at boot and as stale from the timer, and hands the rows back", async () => {
+    const user = await createUser();
+    const bootScan = await insertStaleScan(user.id, "headers");
+
+    const boot = await sweepStaleScans("boot");
+    const swept = boot.find((r) => r.id === bootScan);
+    // The category it had reported, from before the UPDATE cleared it.
+    expect(swept).toMatchObject({
+      id: bootScan,
+      user_id: user.id,
+      url: "https://stale.example.test/",
+      source: "api",
+      current_category: "headers",
+    });
+
+    const periodicScan = await insertStaleScan(user.id, null);
+    const periodic = await sweepStaleScans("periodic");
+    expect(periodic.some((r) => r.id === periodicScan)).toBe(true);
+
+    const { rows } = await pool.query<{
+      id: number;
+      status: string;
+      failure_kind: string;
+      error_message: string;
+      current_category: string | null;
+      scanned_at: Date;
+      started_at: Date;
+    }>(
+      `SELECT id, status, failure_kind, error_message, current_category,
+              scanned_at, started_at
+         FROM scan_history WHERE id = ANY($1::int[]) ORDER BY id`,
+      [[bootScan, periodicScan]],
+    );
+    const [boot0, periodic0] = rows;
+    expect(boot0).toMatchObject({
+      status: "failed",
+      failure_kind: "interrupted",
+      error_message:
+        "Scan interrupted by a server restart. Please run it again.",
+      current_category: null,
+    });
+    // No restart happened for this one, so none is claimed.
+    expect(periodic0).toMatchObject({
+      status: "failed",
+      failure_kind: "stale",
+      error_message:
+        "The scan stopped responding and was closed. Please run it again.",
+    });
+    expect(boot0.scanned_at.getTime()).toBeGreaterThan(
+      boot0.started_at.getTime(),
+    );
+  });
+
+  it("leaves a scan younger than the grace window alone", async () => {
+    const user = await createUser();
+    const fresh = await pool.query<{ id: number }>(
+      `INSERT INTO scan_history (user_id, url, status, started_at)
+       VALUES ($1, 'https://fresh.example.test/', 'running', NOW())
+       RETURNING id`,
+      [user.id],
+    );
+
+    const swept = await sweepStaleScans("admin");
+
+    expect(swept.some((r) => r.id === fresh.rows[0].id)).toBe(false);
+    const { rows } = await pool.query<{ status: string }>(
+      "SELECT status FROM scan_history WHERE id = $1",
+      [fresh.rows[0].id],
+    );
+    expect(rows[0].status).toBe("running");
   });
 
   it("caches host reputation for a public scan and never for a private one", async () => {
