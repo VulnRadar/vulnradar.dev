@@ -5,7 +5,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { TosGate } from "@/components/auth/tos-gate";
-import { BackupCodesModal } from "@/components/shared/notification-center";
+import { BackupCodesMount } from "@/components/shared/backup-codes-mount";
 import { DiscordProfileModalWrapper } from "@/components/modals/discord-profile-modal-wrapper";
 import { GithubProfileModalWrapper } from "@/components/modals/github-profile-modal-wrapper";
 import { AuthProvider } from "@/components/providers/auth-provider";
@@ -16,7 +16,7 @@ import { SiteNotificationsWrapper } from "@/components/shared/site-notifications
 import { CookieNotice } from "@/components/shared/cookie-notice";
 import { Ipv4Capture } from "@/components/shared/ipv4-capture";
 import { OfflineBanner } from "@/components/shared/offline-banner";
-import { CommandPalette } from "@/components/shared/command-palette";
+import { CommandPaletteMount } from "@/components/shared/command-palette-mount";
 import { MaintenanceScreen } from "@/components/shared/maintenance-screen";
 import { maintenanceGate } from "@/lib/admin/service-state";
 import {
@@ -291,13 +291,19 @@ export default async function RootLayout({
                 every crossing. TourMount keeps the tour's own code off the
                 ~790 public routes that will never run it. */}
               <TourMount />
-              <BackupCodesModal />
+              {/* These four are in every route's entry chunk, so each is a
+                small gate that imports the real surface only when it has
+                something to show: backup codes for an account that needs
+                rotating, the OAuth prompts for the redirect that carries
+                their parameters, the palette on the first Cmd/Ctrl+K. The
+                terms modal is gated the same way inside TosGate. */}
+              <BackupCodesMount />
               <DiscordProfileModalWrapper />
               <GithubProfileModalWrapper />
               <ChatWidgetMount />
               <CookieNotice />
               <OfflineBanner />
-              <CommandPalette />
+              <CommandPaletteMount />
               <Toaster />
             </AuthProvider>
           </ThemeProvider>

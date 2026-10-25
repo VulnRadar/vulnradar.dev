@@ -178,7 +178,7 @@ export const MODAL_INVENTORY: readonly InventoryEntry[] = [
   },
   {
     name: "Backup codes",
-    source: "components/shared/notification-center.tsx",
+    source: "components/shared/backup-codes-modal.tsx",
     tier: "overlay",
     size: "md",
   },

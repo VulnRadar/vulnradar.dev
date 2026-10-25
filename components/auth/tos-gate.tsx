@@ -3,8 +3,16 @@
 import React from "react";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { TosModal } from "@/components/modals/tos-modal";
 import { useAuth } from "@/components/providers/auth-provider";
+import { LazyMount } from "@/components/shared/lazy-mount";
+
+// The modal is ~490 lines and only a signed-in account with terms to accept
+// ever sees it, but this gate wraps every page, so a static import put it in
+// the entry chunk of every route. It is fetched once the gate's own status says
+// acceptance is needed; until it lands the page behind it is already blurred
+// and inert, so there is no window in which the app is usable.
+const loadTosModal = () =>
+  import("@/components/modals/tos-modal").then((mod) => mod.TosModal);
 
 // Paths the terms modal must never cover. Beyond the auth entry points, these
 // are the flows a signed-in account with pending or needs_reaccept status still
@@ -79,9 +87,13 @@ export function TosGate({ children }: { children: React.ReactNode }) {
         >
           {children}
         </div>
-        <TosModal
-          onAccept={() => setAcceptedNow(true)}
-          isUpdate={status === "needs_reaccept"}
+        <LazyMount
+          wanted
+          load={loadTosModal}
+          componentProps={{
+            onAccept: () => setAcceptedNow(true),
+            isUpdate: status === "needs_reaccept",
+          }}
         />
       </>
     );

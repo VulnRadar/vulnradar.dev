@@ -57,7 +57,9 @@ interface PaletteGroup {
 }
 
 /**
- * Cmd/Ctrl-K palette, mounted once in app/layout.tsx.
+ * Cmd/Ctrl-K palette, mounted once in app/layout.tsx through
+ * command-palette-mount.tsx, which imports this file on the first Cmd/Ctrl-K
+ * and mounts it open (`defaultOpen`) so that keystroke is not lost.
  *
  * The app has eight top-level sections and no global search of any kind, so
  * every destination was a navigation exercise: scheduled scans meant Profile,
@@ -70,8 +72,12 @@ interface PaletteGroup {
  * scan, mint an API key) need the target page's own state and confirmation
  * flow, so they belong on the pages that own them.
  */
-export function CommandPalette() {
-  const [open, setOpen] = useState(false);
+export function CommandPalette({
+  defaultOpen = false,
+}: {
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const router = useRouter();
   const pathname = usePathname();
   const { me, isStaff } = useAuth();
@@ -107,10 +113,15 @@ export function CommandPalette() {
   // Close on navigation. The palette is outside the route subtree, so a
   // client-side navigation does not unmount it and it would otherwise stay
   // open on top of the page it just sent the user to.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reacts to a route change, which is external to React state
+  //
+  // Compared during render rather than in an effect on [pathname]: an effect
+  // also runs once on mount, where it would shut a palette that was mounted
+  // open (`defaultOpen`) in the same commit that opened it.
+  const [seenPathname, setSeenPathname] = useState(pathname);
+  if (pathname !== seenPathname) {
+    setSeenPathname(pathname);
     setOpen(false);
-  }, [pathname]);
+  }
 
   const groups = useMemo<PaletteGroup[]>(() => {
     const out: PaletteGroup[] = [];
