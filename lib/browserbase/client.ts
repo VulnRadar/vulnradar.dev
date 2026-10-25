@@ -39,6 +39,7 @@
  */
 
 import { getSetting } from "@/lib/config/runtime-config";
+import { logError } from "@/lib/logging/log";
 
 const BROWSERBASE_BASE_URL = "https://api.browserbase.com/v1";
 
@@ -210,16 +211,35 @@ export async function getBrowserLiveUrls(
   return normalizeSession(raw);
 }
 
+/**
+ * Ask Browserbase to release a session. Never throws: callers run this in a
+ * `finally`, and a failed release must not replace the result they were about
+ * to return.
+ *
+ * It is best-effort for the caller but not silent. Browserbase bills a session
+ * until it ends, and the interactive sessions are created with keepAlive, so a
+ * release that is refused (fetch resolves on a 4xx or 5xx) or that never
+ * arrives keeps costing money until the TTL, with nothing to say so.
+ */
 export async function endBrowserSession(id: string): Promise<void> {
   if (!isConfigured()) return;
   try {
-    await fetch(`${BROWSERBASE_BASE_URL}/sessions/${encodeURIComponent(id)}`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ status: "REQUEST_RELEASE" }),
-    });
-  } catch {
-    /* best-effort */
+    const res = await fetch(
+      `${BROWSERBASE_BASE_URL}/sessions/${encodeURIComponent(id)}`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ status: "REQUEST_RELEASE" }),
+      },
+    );
+    if (!res.ok) {
+      logError("browserbase", "session release was refused", undefined, {
+        sessionId: id,
+        status: res.status,
+      });
+    }
+  } catch (err) {
+    logError("browserbase", "session release failed", err, { sessionId: id });
   }
 }
 

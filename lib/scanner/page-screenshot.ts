@@ -55,6 +55,7 @@ import {
 import { getUserPlan } from "@/lib/rate-limiting/daily-limits";
 import pool from "@/lib/database/db";
 import { APP_NAME } from "@/lib/config/constants";
+import { logError } from "@/lib/logging/log";
 import {
   CONFIG_SCAN_SCREENSHOT_JPEG_QUALITY,
   CONFIG_SCAN_SCREENSHOT_MAX_BYTES,
@@ -352,7 +353,16 @@ export async function capturePageScreenshot(
         1,
         Math.round((Date.now() - startedAt) / 1000),
       );
-      recordBrowserbaseSeconds(opts.userId, elapsedSeconds).catch(() => {});
+      // Swallowed so a usage write never fails the scan, but logged: a
+      // persistent failure stops this time being metered against the plan
+      // while the operator's Browserbase bill keeps growing.
+      recordBrowserbaseSeconds(opts.userId, elapsedSeconds).catch((err) =>
+        logError("browserbase", "could not record screenshot usage", err, {
+          userId: opts.userId,
+          sessionId,
+          elapsedSeconds,
+        }),
+      );
     }
     // Always release the slot taken above, on every path.
     releaseConcurrencySlot().catch(() => {});

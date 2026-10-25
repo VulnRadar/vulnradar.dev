@@ -606,6 +606,20 @@ describe("GET /api/v3/browser/sessions", () => {
     expect(mockGetBrowserSession).not.toHaveBeenCalled();
   });
 
+  it("logs a failed ownership lookup, so a database error is not indistinguishable from a real denial", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("connection reset");
+    mockQuery.mockRejectedValue(boom);
+
+    const res = await GET(getRequest("sess_dbfail"));
+
+    expect(res.status).toBe(403);
+    const row = errSpy.mock.calls.find((c) => c.includes(boom));
+    expect(row?.[0]).toBe("[browser-sessions] ownership lookup failed");
+    expect(row?.[1]).toEqual({ sessionId: "sess_dbfail", userId: 42 });
+    errSpy.mockRestore();
+  });
+
   it("keeps the provider's status but answers in our own words", async () => {
     mockQuery.mockResolvedValue({ rows: [{ user_id: 42 }] });
     mockGetBrowserSession.mockRejectedValue(
@@ -698,6 +712,68 @@ describe("DELETE /api/v3/browser/sessions", () => {
     expect(userId).toBe(42);
     expect(seconds).toBeGreaterThanOrEqual(89);
     expect(seconds).toBeLessThanOrEqual(92);
+  });
+
+  it("logs a failed ownership lookup with the session and user before failing closed", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("connection reset");
+    mockQuery.mockRejectedValue(boom);
+
+    const res = await DELETE(getRequest("sess_dbfail"));
+
+    expect(res.status).toBe(403);
+    const row = errSpy.mock.calls.find((c) => c.includes(boom));
+    expect(row?.[0]).toBe("[browser-sessions] ownership lookup failed");
+    expect(row?.[1]).toEqual({ sessionId: "sess_dbfail", userId: 42 });
+    errSpy.mockRestore();
+  });
+
+  it("logs a failed row delete, which skips the usage write and the slot release, instead of returning ended with no trace", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("could not serialize access");
+    const createdAt = new Date(Date.now() - 90_000).toISOString();
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("DELETE FROM browser_sessions")) throw boom;
+      return { rows: [{ user_id: 42, created_at: createdAt }] };
+    });
+
+    const res = await DELETE(getRequest("sess_mine"));
+
+    expect(res.status).toBe(200);
+    expect(mockEndBrowserSession).toHaveBeenCalledWith("sess_mine");
+    expect(mockRecordBrowserbaseSeconds).not.toHaveBeenCalled();
+    expect(mockReleaseConcurrencySlot).not.toHaveBeenCalled();
+    const row = errSpy.mock.calls.find((c) => c.includes(boom));
+    expect(row?.[0]).toBe(
+      "[browser-sessions] could not delete the session row",
+    );
+    expect(row?.[1]).toEqual({ sessionId: "sess_mine", userId: 42 });
+    errSpy.mockRestore();
+  });
+
+  it("logs a failed usage write with the user, session and seconds, and still ends the session", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("deadlock detected");
+    const createdAt = new Date(Date.now() - 90_000).toISOString();
+    mockQuery.mockResolvedValue({
+      rows: [{ user_id: 42, created_at: createdAt }],
+    });
+    mockRecordBrowserbaseSeconds.mockRejectedValue(boom);
+
+    const res = await DELETE(getRequest("sess_mine"));
+
+    expect(res.status).toBe(200);
+    await vi.waitFor(() =>
+      expect(errSpy.mock.calls.some((c) => c.includes(boom))).toBe(true),
+    );
+    const row = errSpy.mock.calls.find((c) => c.includes(boom));
+    expect(row?.[0]).toBe("[browser-sessions] could not record usage");
+    expect(row?.[1]).toEqual({
+      userId: 42,
+      sessionId: "sess_mine",
+      elapsedSeconds: expect.any(Number),
+    });
+    errSpy.mockRestore();
   });
 
   it("never records usage when no ownership row exists to compute a duration from", async () => {

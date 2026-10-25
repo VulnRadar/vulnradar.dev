@@ -20,6 +20,7 @@ import {
   beforeAll,
   afterAll,
   vi,
+  type MockInstance,
 } from "vitest";
 import { NextRequest } from "next/server";
 import Stripe from "stripe";
@@ -1752,8 +1753,8 @@ describe("POST /api/v3/webhooks/stripe: unhandled event types and failures", () 
  *     purchase.
  */
 describe("POST /api/v3/webhooks/stripe: a paid event that matches no account", () => {
-  let errSpy: ReturnType<typeof vi.spyOn>;
-  let logSpy: ReturnType<typeof vi.spyOn>;
+  let errSpy: MockInstance<typeof console.error>;
+  let logSpy: MockInstance<typeof console.log>;
 
   beforeEach(() => {
     errSpy = vi.spyOn(console, "error").mockImplementation(() => {});

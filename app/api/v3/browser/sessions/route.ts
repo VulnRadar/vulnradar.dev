@@ -27,6 +27,7 @@ import {
   releaseConcurrencySlot,
 } from "@/lib/browserbase/concurrency-queue";
 import { getUserPlan } from "@/lib/rate-limiting/daily-limits";
+import { logError } from "@/lib/logging/log";
 import pool from "@/lib/database/db";
 
 interface CreateBody {
@@ -280,7 +281,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       "SELECT user_id FROM browser_sessions WHERE id = $1",
       [id],
     )
-    .catch(() => null);
+    .catch((err) => {
+      // Still fails closed, but a database error here answers 403 to an owner
+      // who did nothing wrong, so it must not look identical to a real denial.
+      logError("browser-sessions", "ownership lookup failed", err, {
+        sessionId: id,
+        userId: session.userId,
+      });
+      return null;
+    });
   if (
     !ownerRow ||
     ownerRow.rows.length === 0 ||
@@ -351,7 +360,13 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
       "SELECT user_id, created_at FROM browser_sessions WHERE id = $1",
       [id],
     )
-    .catch(() => null);
+    .catch((err) => {
+      logError("browser-sessions", "ownership lookup failed", err, {
+        sessionId: id,
+        userId: session.userId,
+      });
+      return null;
+    });
   if (
     !ownerRow ||
     ownerRow.rows.length === 0 ||
@@ -373,7 +388,17 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
       "DELETE FROM browser_sessions WHERE id = $1 RETURNING user_id, created_at",
       [id],
     )
-    .catch(() => null);
+    .catch((err) => {
+      // Skips the usage write and the slot release below. Nothing is lost for
+      // good, since the row stays and the cleanup sweep reaps it after
+      // expires_at, but until then those seconds are unmetered and the slot is
+      // held, and nothing said so.
+      logError("browser-sessions", "could not delete the session row", err, {
+        sessionId: id,
+        userId: session.userId,
+      });
+      return null;
+    });
 
   const deletedRow = deleted?.rows[0];
   if (deletedRow) {
@@ -390,10 +415,11 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
       // while the operator's real bill kept growing, with no signal anywhere.
       recordBrowserbaseSeconds(deletedRow.user_id, elapsedSeconds).catch(
         (err) =>
-          console.error(
-            `[browser-sessions] Failed to record browserbase seconds for user ${deletedRow.user_id}:`,
-            err,
-          ),
+          logError("browser-sessions", "could not record usage", err, {
+            userId: deletedRow.user_id,
+            sessionId: id,
+            elapsedSeconds,
+          }),
       );
     }
     // Free the concurrency slot this session held, admitting the next

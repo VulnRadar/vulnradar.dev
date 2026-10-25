@@ -43,6 +43,7 @@ import {
 } from "@/lib/browserbase/concurrency-queue";
 import { getUserPlan } from "@/lib/rate-limiting/daily-limits";
 import { APP_NAME } from "@/lib/config/constants";
+import { logError } from "@/lib/logging/log";
 import {
   CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS,
   CONFIG_SCAN_AUTH_BROWSER_MAX_WAIT_MS,
@@ -617,7 +618,15 @@ export async function establishBrowserFormSession(
         1,
         Math.round((Date.now() - startedAt) / 1000),
       );
-      recordBrowserbaseSeconds(userId, elapsedSeconds).catch(() => {});
+      // Logged for the same reason the interactive route logs it: a failing
+      // usage write leaves this time unmetered with nothing to say so.
+      recordBrowserbaseSeconds(userId, elapsedSeconds).catch((err) =>
+        logError("browserbase", "could not record login-browser usage", err, {
+          userId,
+          sessionId,
+          elapsedSeconds,
+        }),
+      );
     }
     // Always release the slot taken above, on every path.
     releaseConcurrencySlot().catch(() => {});

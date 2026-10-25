@@ -169,9 +169,45 @@ describe("endBrowserSession", () => {
     );
   });
 
-  it("stays silent (never throws) when the release call fails", async () => {
-    fetchMock.mockRejectedValue(new Error("socket hang up"));
+  it("never throws when the release call fails, and says so in the error log", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("socket hang up");
+    fetchMock.mockRejectedValue(boom);
+
     await expect(endBrowserSession("sess_x")).resolves.toBeUndefined();
+
+    const row = errSpy.mock.calls.find((c) =>
+      String(c[0]).startsWith("[browserbase]"),
+    );
+    expect(row?.[1]).toEqual({ sessionId: "sess_x" });
+    // The error itself rides along, so the row keeps its stack.
+    expect(row).toContain(boom);
+    errSpy.mockRestore();
+  });
+
+  it("logs a release Browserbase refused, with the session id and the status, instead of ignoring it", async () => {
+    // fetch resolves on a 4xx or 5xx, so before this the refusal was invisible
+    // and the session kept billing until its TTL.
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock.mockResolvedValue(jsonResponse({ message: "busy" }, 503));
+
+    await expect(endBrowserSession("sess_busy")).resolves.toBeUndefined();
+
+    const row = errSpy.mock.calls.find((c) =>
+      String(c[0]).startsWith("[browserbase]"),
+    );
+    expect(row?.[1]).toEqual({ sessionId: "sess_busy", status: 503 });
+    errSpy.mockRestore();
+  });
+
+  it("logs nothing for a release Browserbase accepted", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock.mockResolvedValue(jsonResponse({ id: "sess_ok" }));
+
+    await endBrowserSession("sess_ok");
+
+    expect(errSpy).not.toHaveBeenCalled();
+    errSpy.mockRestore();
   });
 
   it("does nothing at all when the integration is not configured", async () => {

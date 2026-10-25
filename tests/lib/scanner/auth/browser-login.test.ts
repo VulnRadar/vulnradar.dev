@@ -565,6 +565,38 @@ describe("establishBrowserFormSession: metering and capacity", () => {
     vi.doUnmock("@/lib/browserbase/client");
     vi.resetModules();
   });
+
+  it("logs a failed usage write with the user, session and seconds, and still finishes and frees the slot", async () => {
+    // The write is fire-and-forget so it can never fail a login, which is also
+    // why a failure used to vanish: the time went unmetered while the
+    // operator's Browserbase bill kept growing, with nothing in the error log.
+    vi.resetModules();
+    mockClientWithLiveSession("sess_meter_4");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("deadlock detected");
+    meter.recordBrowserbaseSeconds.mockRejectedValue(boom);
+
+    const { establishBrowserFormSession: establish } =
+      await import("@/lib/scanner/auth/browser-login");
+    const result = await establish(AUTH, ORIGIN, USER_ID);
+
+    // Failed for its own reason (the page held no form), not because of the meter.
+    expect(result.ok).toBe(false);
+    expect(meter.releaseConcurrencySlot).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() =>
+      expect(errSpy.mock.calls.some((c) => c.includes(boom))).toBe(true),
+    );
+    const row = errSpy.mock.calls.find((c) => c.includes(boom));
+    expect(row?.[0]).toBe("[browserbase] could not record login-browser usage");
+    expect(row?.[1]).toEqual({
+      userId: USER_ID,
+      sessionId: "sess_meter_4",
+      elapsedSeconds: expect.any(Number),
+    });
+    errSpy.mockRestore();
+    vi.doUnmock("@/lib/browserbase/client");
+    vi.resetModules();
+  });
 });
 
 describe("establishScanSession (form): runs verifySession after a successful browser login", () => {
