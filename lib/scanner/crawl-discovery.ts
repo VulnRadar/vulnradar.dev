@@ -19,11 +19,12 @@
  * ever enters the set. Sitemap handling is best-effort: any failure degrades
  * to link-crawling only and never throws.
  */
+import { isIP } from "node:net";
 import { safeFetch } from "./safe-fetch";
 import { safeReadBody } from "./read-bounded-body";
 import { APP_NAME } from "@/lib/config/constants";
 import type { ScanSessionBinding } from "./auth/types";
-import { canonicalPageUrl } from "./page-url";
+import { canonicalPageUrl, isSamePageUrl } from "./page-url";
 
 /**
  * The User-Agent this crawler sends. It is also the token a site's robots.txt
@@ -115,6 +116,79 @@ function isSameOriginPageUrl(resolved: URL, entryHostname: string): boolean {
 /** Drop the hash and a trailing slash, keep origin + path + query. */
 function normalizePageUrl(u: URL): string {
   return canonicalPageUrl(u);
+}
+
+/**
+ * A host in the one spelling two names for it compare equal in: lower case,
+ * no trailing dot, no IPv6 brackets. URL parsing already lower-cases and
+ * punycodes, but it keeps the root-label dot, so `example.com.` and
+ * `example.com` are the same host that a plain `===` called different.
+ */
+export function normalizeHost(hostname: string): string {
+  return hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "");
+}
+
+/**
+ * Whether `url` is on `hostname`, compared by normalised host. The crawl pins
+ * every fetch to the entry host, so a response that reports another one is
+ * either a redirect it must not follow or a connection detail it must not
+ * mistake for one. Unparseable input is not on any host.
+ */
+export function isSameHost(url: string, hostname: string): boolean {
+  try {
+    return normalizeHost(new URL(url).hostname) === normalizeHost(hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `url` with its host spelled the way the crawl spells the entry host. Called
+ * only after isSameHost has said they are one host, so the result is the same
+ * page under the spelling the same-origin checks compare against.
+ */
+function respellHost(url: string, hostname: string): string {
+  const respelled = new URL(url);
+  respelled.hostname = hostname;
+  return respelled.href;
+}
+
+/**
+ * The page a fetch ended up on, when that differs from the page the crawl
+ * asked for, and `undefined` when there is nothing to tell the detectors.
+ *
+ * Two things look like a redirect here and are not. The same page spelled two
+ * ways (`https://example.com` against `https://example.com/`) is compared by
+ * canonical page identity, not by string. And for a plain-http target safeFetch
+ * connects to the resolved IP and puts the real name in the Host header, so a
+ * response can report a bare IP for a request that named a host. safeFetch
+ * rejects every cross-host redirect, so an IP landing under a named request is
+ * always that pin and never a real hop. Handing it on made every http page look
+ * redirected to an IP, and the detectors then judged the page against the
+ * wrong origin.
+ */
+export function landedPageUrl(
+  requested: string,
+  finalUrl: string | null | undefined,
+): string | undefined {
+  if (!finalUrl) return undefined;
+  let from: URL;
+  let to: URL;
+  try {
+    from = new URL(requested);
+    to = new URL(finalUrl);
+  } catch {
+    return undefined;
+  }
+  const fromHost = normalizeHost(from.hostname);
+  const toHost = normalizeHost(to.hostname);
+  if (toHost !== fromHost && isIP(toHost) !== 0 && isIP(fromHost) === 0) {
+    return undefined;
+  }
+  return isSamePageUrl(requested, finalUrl) ? undefined : finalUrl;
 }
 
 /**
@@ -291,7 +365,7 @@ async function readRobots(
       fetchTimeoutMs,
       session,
     );
-    if (new URL(res.url).hostname !== entryHostname) return empty;
+    if (!isSameHost(res.url, entryHostname)) return empty;
     if (!res.ok) return empty;
     const text = await safeReadBody(res, SITEMAP_BODY_MAX_BYTES);
     return parseRobots(text, CRAWLER_UA);
@@ -365,9 +439,9 @@ export async function collectSitemapUrls(
         fetchTimeoutMs,
         session,
       );
-      if (new URL(res.url).hostname !== entryHostname) continue;
+      if (!isSameHost(res.url, entryHostname)) continue;
       if (!res.ok) continue;
-      finalUrl = res.url;
+      finalUrl = respellHost(res.url, entryHostname);
       text = await safeReadBody(res, SITEMAP_BODY_MAX_BYTES);
     } catch {
       continue;
@@ -507,10 +581,14 @@ export async function discoverPages(
     }
 
     try {
-      // Only follow a redirect that stayed on the exact entry hostname.
-      const redirectedUrl = new URL(res.url);
-      if (redirectedUrl.hostname !== entryHostname) continue;
-      const actualUrl = res.url;
+      // Only follow a redirect that stayed on the entry host, compared by
+      // normalised host so a trailing-dot spelling is not a different site.
+      if (!isSameHost(res.url, entryHostname)) continue;
+      // Re-spelled with the entry host, so the page listed below and every
+      // link resolved against it carry the host the rest of the crawl uses
+      // rather than a trailing-dot variant of it.
+      const actualUrl = respellHost(res.url, entryHostname);
+      const redirectedUrl = new URL(actualUrl);
 
       // A same-host redirect to a new path is itself a discovered page.
       const redirectNormalized = normalizePageUrl(redirectedUrl);
