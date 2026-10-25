@@ -787,7 +787,9 @@ describe("safeFetch (the caller's deadline governs)", () => {
   it("falls back to the registry maximum for a caller signal that never aborts", async () => {
     const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
     const max = SETTINGS_REGISTRY.SCAN_FETCH_TIMEOUT_MS.max;
-    expect(max).toBe(120_000);
+    // The number itself belongs to the registry; what safeFetch owes is that it
+    // reads it from there and that it sits above the no-signal default.
+    expect(max).toBeGreaterThan(15_000);
     const seen = hangsUntilAborted(fetchMock);
 
     const outcome = track(
@@ -1112,6 +1114,8 @@ describe("safeFetch (thrown errors carry a code)", () => {
       "ENETUNREACH",
       "ENOTFOUND",
       "EAI_AGAIN",
+      "ECONNABORTED",
+      "EPIPE",
       "UND_ERR_SOCKET",
     ])("fetch failing with cause.code %s", async (code) => {
       resolvesTo("93.184.216.34");
@@ -1160,6 +1164,7 @@ describe("safeFetch (thrown errors carry a code)", () => {
       "ERR_TLS_CERT_ALTNAME_INVALID",
       "ERR_SSL_WRONG_VERSION_NUMBER",
       "ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE",
+      "EPROTO",
     ])("fetch failing with cause.code %s", async (code) => {
       resolvesTo("93.184.216.34");
       fetchMock.mockRejectedValueOnce(fetchFailed(code));
@@ -1178,6 +1183,7 @@ describe("safeFetch (thrown errors carry a code)", () => {
       "UND_ERR_HEADERS_TIMEOUT",
       "UND_ERR_BODY_TIMEOUT",
       "ETIMEDOUT",
+      "ESOCKETTIMEDOUT",
     ])("fetch failing with cause.code %s", async (code) => {
       resolvesTo("93.184.216.34");
       fetchMock.mockRejectedValueOnce(fetchFailed(code));
