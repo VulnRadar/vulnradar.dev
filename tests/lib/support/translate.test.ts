@@ -6,7 +6,7 @@
  * generated once and then read from the cache, and nothing about the thread
  * breaks when there is no AI provider to ask.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -181,5 +181,83 @@ describe("prepareMessageTranslation", () => {
     expect(JSON.parse((wrote![1] as unknown[])[0] as string)).toEqual({
       en: "The scan will not start",
     });
+  });
+});
+
+describe("a cache that cannot be written", () => {
+  // Every one of these used to be `.catch(() => {})`. A cache that never
+  // writes means every reader pays for the model again, which reaches the
+  // operator as a bill and never as an error. The translation itself must
+  // still reach the reader, so none of these may throw.
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  const writeFailure = new Error("deadlock detected");
+
+  beforeEach(() => {
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockRejectedValue(writeFailure);
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  it("still returns the translation, and logs the message and language", async () => {
+    mockComplete.mockResolvedValue("I cannot scan my domain");
+
+    const result = await translateTicketMessage(
+      {
+        id: 7,
+        body: "No puedo escanear mi dominio",
+        body_locale: "es",
+        translations: null,
+      },
+      "en",
+    );
+
+    expect(result).toEqual({ text: "I cannot scan my domain", cached: false });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [message, ctx, err] = errorSpy.mock.calls[0];
+    expect(message).toBe("[support] could not cache a ticket translation");
+    expect(ctx).toEqual({ messageId: 7, locale: "en" });
+    expect(err).toBe(writeFailure);
+  });
+
+  it("logs a failure to store the detected language, and carries on translating", async () => {
+    mockComplete
+      .mockResolvedValueOnce("es")
+      .mockResolvedValueOnce("I cannot scan my domain");
+
+    await expect(
+      prepareMessageTranslation({
+        messageId: 11,
+        body: "No puedo escanear mi dominio",
+        authorLocale: null,
+        counterpartLocales: ["en"],
+      }),
+    ).resolves.toBeUndefined();
+
+    const messages = errorSpy.mock.calls.map((c: unknown[]) => c[0]);
+    expect(messages).toEqual([
+      "[support] could not store a ticket message's language",
+      "[support] could not cache a ticket translation",
+    ]);
+    expect(errorSpy.mock.calls[0][1]).toEqual({ messageId: 11, locale: "es" });
+    expect(errorSpy.mock.calls[1][1]).toEqual({ messageId: 11, locale: "en" });
+  });
+
+  it("is silent when the writes succeed", async () => {
+    mockQuery.mockReset();
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 1 });
+    mockComplete.mockResolvedValue("I cannot scan my domain");
+    await translateTicketMessage(
+      {
+        id: 7,
+        body: "No puedo escanear mi dominio",
+        body_locale: "es",
+        translations: null,
+      },
+      "en",
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });

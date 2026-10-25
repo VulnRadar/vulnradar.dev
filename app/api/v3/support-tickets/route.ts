@@ -3,18 +3,25 @@ import { prepareMessageTranslation } from "@/lib/support/translate";
 import { getUserLocale } from "@/lib/i18n/translate";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
+import { withErrorHandling } from "@/lib/api/api-utils";
 import { getClientIp } from "@/lib/api/request-utils";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { TURNSTILE_ENABLED } from "@/lib/config/constants";
 import {
   confirmTicketToUser,
   notifyStaffOfTicketActivity,
 } from "@/lib/support/ticket-notify";
 import {
+  countTicketsAgainstCap,
+  MAX_OPEN_TICKETS_PER_USER,
+} from "@/lib/support/ticket-limits";
+import {
   TICKET_CATEGORIES,
   TICKET_SUBJECT_MAX,
   TICKET_MESSAGE_MAX,
   type TicketCategory,
 } from "@/lib/support/ticket-constants";
+import { logError } from "@/lib/logging/log";
 
 /** Rows returned per request. Named so the response can report it. */
 const TICKET_LIST_LIMIT = 100;
@@ -27,10 +34,7 @@ const TICKET_LIST_LIMIT = 100;
  * staff-wide inbox is /api/v3/admin/support-tickets.
  */
 
-// A user may not stockpile open tickets. Resolved/closed ones don't count.
-const MAX_OPEN_TICKETS_PER_USER = 20;
-
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -72,12 +76,32 @@ export async function GET() {
     limit: TICKET_LIST_LIMIT,
     truncated: result.rows.length === TICKET_LIST_LIMIT,
   });
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Each ticket emails staff and the opener, and runs a language-detection
+  // call on the operator's AI key, so how fast one account can open them is
+  // bounded before anything else is paid for. Per user, not per IP: opening a
+  // ticket needs a verified account. Checked ahead of Turnstile so a throttled
+  // caller does not also cost a siteverify round trip per attempt.
+  const rl = await checkRateLimit({
+    key: `ticket-create:${session.userId}`,
+    ...RATE_LIMITS.supportTicketCreate,
+  });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      {
+        error: `You are opening tickets too quickly. Please wait ${Math.ceil(
+          rl.retryAfterSeconds / 60,
+        )} minute(s) and try again.`,
+      },
+      { status: 429 },
+    );
   }
 
   let body: {
@@ -162,16 +186,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid category." }, { status: 400 });
   }
 
-  const openCount = await pool.query<{ n: number }>(
-    `SELECT COUNT(*)::int AS n FROM support_tickets
-     WHERE user_id = $1 AND status IN ('open', 'awaiting_staff', 'awaiting_user')`,
-    [session.userId],
-  );
-  if ((openCount.rows[0]?.n ?? 0) >= MAX_OPEN_TICKETS_PER_USER) {
+  // Open tickets, plus the ones closed in the last day: closing a ticket does
+  // not give its slot back, or open-close-open would never reach the cap.
+  if (
+    (await countTicketsAgainstCap(session.userId)) >= MAX_OPEN_TICKETS_PER_USER
+  ) {
     return NextResponse.json(
       {
         error:
-          "You have too many open tickets. Please wait for a reply before opening another.",
+          "You have too many open or recently closed tickets. Please wait for a reply, or try again tomorrow.",
       },
       { status: 429 },
     );
@@ -206,7 +229,10 @@ export async function POST(request: NextRequest) {
         counterpartLocales: [],
       });
     })().catch((err) => {
-      console.error("Ticket translation failed:", err);
+      logError("support", "ticket translation failed", err, {
+        ticketId: ticket.id,
+        messageId: firstMessage.rows[0]?.id,
+      });
     });
   });
 
@@ -236,9 +262,11 @@ export async function POST(request: NextRequest) {
         body: message,
       });
     } catch (err) {
-      console.error("Ticket notifications failed:", err);
+      logError("support", "ticket notifications failed", err, {
+        ticketId: ticket.id,
+      });
     }
   });
 
   return NextResponse.json({ ticket }, { status: 201 });
-}
+});

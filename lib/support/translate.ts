@@ -1,4 +1,5 @@
 import pool from "@/lib/database/db";
+import { logError } from "@/lib/logging/log";
 import { completeShortText } from "@/lib/ai/complete";
 import { resolveServerEndpoint } from "@/lib/ai/verify-findings";
 import {
@@ -132,9 +133,15 @@ export async function translateTicketMessage(
         WHERE id = $2`,
       [JSON.stringify({ [target]: text }), message.id],
     )
-    .catch(() => {
+    .catch((err) => {
       // A cache that could not be written costs the next reader one more
-      // call. It does not cost this one their translation.
+      // call. It does not cost this one their translation, so this still
+      // returns it. It is logged because a cache that never writes means every
+      // reader pays for the model again, and that shows up as a bill.
+      logError("support", "could not cache a ticket translation", err, {
+        messageId: message.id,
+        locale: target,
+      });
     });
   return { text, cached: false };
 }
@@ -161,7 +168,17 @@ export async function prepareMessageTranslation(input: {
         "UPDATE support_ticket_messages SET body_locale = $1 WHERE id = $2",
         [detected, input.messageId],
       )
-      .catch(() => {});
+      .catch((err) => {
+        logError(
+          "support",
+          "could not store a ticket message's language",
+          err,
+          {
+            messageId: input.messageId,
+            locale: detected,
+          },
+        );
+      });
   }
 
   const wanted = new Set(
@@ -185,6 +202,11 @@ export async function prepareMessageTranslation(input: {
           WHERE id = $2`,
         [JSON.stringify({ [locale]: text }), input.messageId],
       )
-      .catch(() => {});
+      .catch((err) => {
+        logError("support", "could not cache a ticket translation", err, {
+          messageId: input.messageId,
+          locale,
+        });
+      });
   }
 }

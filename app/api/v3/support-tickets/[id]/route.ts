@@ -3,7 +3,11 @@ import { prepareMessageTranslation } from "@/lib/support/translate";
 import { getUserLocale } from "@/lib/i18n/translate";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
+import { logAction } from "@/lib/auth/authorization";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { getClientIp } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { logError } from "@/lib/logging/log";
 import {
   resolveTicketAccess,
   viewerIsSupportStaff,
@@ -23,7 +27,8 @@ import {
 /**
  * GET   /api/v3/support-tickets/[id]  -> a ticket + its full message thread
  * POST  /api/v3/support-tickets/[id]  -> add a reply
- * PATCH /api/v3/support-tickets/[id]  -> change status (resolve/close/reopen)
+ * PATCH /api/v3/support-tickets/[id]  -> change status (resolve/close/reopen),
+ *                                        or, for staff, take/release a ticket
  *
  * Access: the ticket's owner, or any staffer with MANAGE_SUPPORT_TICKETS.
  * Staff status goes through requirePermission, the same gate the admin inbox
@@ -45,15 +50,19 @@ interface TicketRow {
   last_message_at: string;
   owner_email: string;
   owner_name: string | null;
+  assigned_to: number | null;
+  assigned_to_name: string | null;
 }
 
 async function loadTicket(id: number): Promise<TicketRow | null> {
   const res = await pool.query<TicketRow>(
     `SELECT t.id, t.user_id, t.subject, t.category, t.status, t.created_at,
-            t.updated_at, t.last_message_at,
-            u.email AS owner_email, u.name AS owner_name
+            t.updated_at, t.last_message_at, t.assigned_to,
+            u.email AS owner_email, u.name AS owner_name,
+            au.name AS assigned_to_name
      FROM support_tickets t
      JOIN users u ON u.id = t.user_id
+     LEFT JOIN users au ON au.id = t.assigned_to
      WHERE t.id = $1`,
     [id],
   );
@@ -65,395 +74,584 @@ function parseId(raw: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+/**
+ * One staff action on a customer's ticket, in the audit log.
+ *
+ * Best-effort on purpose. This runs after the change has been written, so a
+ * failure here cannot undo it, and answering 500 for a status that did change
+ * would invite a retry that changes it again. It is logged instead, with the
+ * ticket id, because an audit row that silently did not happen is the one
+ * failure this function exists to prevent.
+ */
+async function auditTicketAction(
+  staffId: number,
+  ticket: TicketRow,
+  change: "status" | "assignment",
+  details: string,
+): Promise<void> {
+  const isStatus = change === "status";
+  try {
+    const ip = await getClientIp();
+    await logAction(
+      staffId,
+      ticket.user_id,
+      // Written out as a ternary of literals rather than passed in: the audit
+      // registry test finds action names by reading each call site.
+      isStatus ? "ticket_status_changed" : "ticket_assigned",
+      details,
+      ip,
+    );
+  } catch (err) {
+    logError("support", "could not write the ticket audit row", err, {
+      ticketId: ticket.id,
+      userId: staffId,
+      change,
+    });
   }
-  const { id: rawId } = await params;
-  const id = parseId(rawId);
-  if (id === null) {
-    return NextResponse.json({ error: "Invalid ticket id." }, { status: 400 });
-  }
+}
 
-  const ticket = await loadTicket(id);
-  if (!ticket) {
-    return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
-  }
-  const access = await resolveTicketAccess({
-    ticketOwnerId: ticket.user_id,
-    ticketId: id,
-    viewerId: session.userId,
-    isStaff: await viewerIsSupportStaff(),
-  });
-  if (!access.canView) {
-    return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
-  }
+/** "#12" for an assignee, "nobody" for none: ids only, never a name or address. */
+function assigneeLabel(userId: number | null): string {
+  return userId === null ? "nobody" : `#${userId}`;
+}
 
-  const messagesRes = await pool.query<{
-    id: number;
-    is_staff: boolean;
-    body: string;
-    body_locale: string | null;
-    translations: Record<string, string> | null;
-    created_at: string;
-    author_name: string | null;
-    author_user_id: number | null;
-  }>(
-    `SELECT m.id, m.is_staff, m.body, m.body_locale, m.translations,
+export const GET = withErrorHandling(
+  async (
+    _request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id: rawId } = await params;
+    const id = parseId(rawId);
+    if (id === null) {
+      return NextResponse.json(
+        { error: "Invalid ticket id." },
+        { status: 400 },
+      );
+    }
+
+    const ticket = await loadTicket(id);
+    if (!ticket) {
+      return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
+    }
+    const access = await resolveTicketAccess({
+      ticketOwnerId: ticket.user_id,
+      ticketId: id,
+      viewerId: session.userId,
+      isStaff: await viewerIsSupportStaff(),
+    });
+    if (!access.canView) {
+      return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
+    }
+
+    const messagesRes = await pool.query<{
+      id: number;
+      is_staff: boolean;
+      body: string;
+      body_locale: string | null;
+      translations: Record<string, string> | null;
+      created_at: string;
+      author_name: string | null;
+      author_user_id: number | null;
+    }>(
+      `SELECT m.id, m.is_staff, m.body, m.body_locale, m.translations,
             m.created_at, m.author_user_id, u.name AS author_name
      FROM support_ticket_messages m
      LEFT JOIN users u ON u.id = m.author_user_id
      WHERE m.ticket_id = $1
      ORDER BY m.created_at ASC`,
-    [id],
-  );
-
-  // The language this reader reads. A message written in another one carries
-  // its translation with it when there is one, so the thread opens readable
-  // rather than a wall of Translate buttons (lib/support/translate.ts).
-  const viewerLocale = await getUserLocale(session.userId);
-
-  const messages = messagesRes.rows.map((m) => ({
-    id: m.id,
-    isStaff: m.is_staff,
-    body: m.body,
-    bodyLocale: m.body_locale,
-    translation:
-      m.body_locale && m.body_locale !== viewerLocale
-        ? (m.translations?.[viewerLocale] ?? null)
-        : null,
-    viewerLocale,
-    createdAt: m.created_at,
-    // The viewer's own messages render as "You"; a shared teammate or the owner
-    // sees each other's names on the non-staff replies.
-    mine: m.author_user_id === session.userId,
-    // A non-staff viewer sees staff replies as "Support", never a staffer's real
-    // name. Staff viewers see everyone's name.
-    authorName: m.is_staff && !access.isStaff ? null : m.author_name,
-  }));
-
-  return NextResponse.json({
-    ticket: {
-      id: ticket.id,
-      subject: ticket.subject,
-      category: ticket.category,
-      status: ticket.status,
-      createdAt: ticket.created_at,
-      updatedAt: ticket.updated_at,
-      lastMessageAt: ticket.last_message_at,
-      // Owner identity is only exposed to staff.
-      ...(access.isStaff
-        ? { ownerEmail: ticket.owner_email, ownerName: ticket.owner_name }
-        : {}),
-    },
-    messages,
-    viewerIsStaff: access.isStaff,
-    viewerIsOwner: access.isOwner,
-  });
-}
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const { id: rawId } = await params;
-  const id = parseId(rawId);
-  if (id === null) {
-    return NextResponse.json({ error: "Invalid ticket id." }, { status: 400 });
-  }
-
-  let body: { message?: unknown };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid request body." },
-      { status: 400 },
+      [id],
     );
-  }
-  const message = typeof body.message === "string" ? body.message.trim() : "";
-  if (!message) {
-    return NextResponse.json(
-      { error: "A message is required." },
-      { status: 400 },
-    );
-  }
-  if (message.length > TICKET_MESSAGE_MAX) {
-    return NextResponse.json(
-      { error: `Message must be ${TICKET_MESSAGE_MAX} characters or fewer.` },
-      { status: 400 },
-    );
-  }
 
-  // Each reply emails the other party (staff or the owner), so cap how fast one
-  // user can post replies. Per-user, not per-IP: replies are authenticated.
-  const rl = await checkRateLimit({
-    key: `ticket-reply:${session.userId}`,
-    ...RATE_LIMITS.api,
-  });
-  if (!rl.allowed) {
-    return NextResponse.json(
-      {
-        error: `Too many replies. Please wait ${Math.ceil(
-          rl.retryAfterSeconds / 60,
-        )} minute(s) and try again.`,
-      },
-      { status: 429 },
-    );
-  }
+    // The language this reader reads. A message written in another one carries
+    // its translation with it when there is one, so the thread opens readable
+    // rather than a wall of Translate buttons (lib/support/translate.ts).
+    const viewerLocale = await getUserLocale(session.userId);
 
-  const ticket = await loadTicket(id);
-  if (!ticket) {
-    return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
-  }
-  const access = await resolveTicketAccess({
-    ticketOwnerId: ticket.user_id,
-    ticketId: id,
-    viewerId: session.userId,
-    isStaff: await viewerIsSupportStaff(),
-  });
-  if (!access.canView) {
-    return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
-  }
-  if (ticket.status === "closed") {
-    return NextResponse.json(
-      { error: "This ticket is closed. Open a new ticket to continue." },
-      { status: 409 },
-    );
-  }
+    const messages = messagesRes.rows.map((m) => ({
+      id: m.id,
+      isStaff: m.is_staff,
+      body: m.body,
+      bodyLocale: m.body_locale,
+      translation:
+        m.body_locale && m.body_locale !== viewerLocale
+          ? (m.translations?.[viewerLocale] ?? null)
+          : null,
+      viewerLocale,
+      createdAt: m.created_at,
+      // The viewer's own messages render as "You"; a shared teammate or the owner
+      // sees each other's names on the non-staff replies.
+      mine: m.author_user_id === session.userId,
+      // A non-staff viewer sees staff replies as "Support", never a staffer's real
+      // name. Staff viewers see everyone's name.
+      authorName: m.is_staff && !access.isStaff ? null : m.author_name,
+    }));
 
-  // A staffer replying to someone else's ticket acts as staff; the owner and any
-  // shared teammate reply as ordinary participants.
-  const actingAsStaff = access.isStaff && !access.isOwner;
-  // Staff reply -> waiting on the user. User reply -> waiting on staff (and a
-  // reply on a resolved ticket reopens it).
-  const newStatus: TicketStatus = actingAsStaff
-    ? "awaiting_user"
-    : "awaiting_staff";
-
-  const inserted = await pool.query<{
-    id: number;
-    is_staff: boolean;
-    body: string;
-    created_at: string;
-  }>(
-    `INSERT INTO support_ticket_messages (ticket_id, author_user_id, is_staff, body)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, is_staff, body, created_at`,
-    [id, session.userId, actingAsStaff, message],
-  );
-  await pool.query(
-    `UPDATE support_tickets SET status = $1, last_message_at = NOW(), updated_at = NOW() WHERE id = $2`,
-    [newStatus, id],
-  );
-
-  // The other side may not read this language. Detect what was written and
-  // translate it for them now, rather than when they open the ticket, so the
-  // thread is already readable (lib/support/translate.ts). Fire-and-forget:
-  // the reply is saved, and an untranslated message is still the message.
-  queueMicrotask(() => {
-    void (async () => {
-      const [authorLocale, ownerLocale] = await Promise.all([
-        getUserLocale(session.userId),
-        getUserLocale(ticket.user_id),
-      ]);
-      await prepareMessageTranslation({
-        messageId: inserted.rows[0].id,
-        body: message,
-        authorLocale,
-        // A staff reply is for the owner; the owner's reply is for staff,
-        // who have no one locale, so prepareMessageTranslation falls back to
-        // the deployment's default language.
-        counterpartLocales: actingAsStaff ? [ownerLocale] : [],
-      });
-    })().catch((err) => {
-      console.error("Ticket reply translation failed:", err);
-    });
-  });
-
-  queueMicrotask(() => {
-    try {
-      if (actingAsStaff) {
-        void notifyUserOfStaffReply({
-          ticketId: id,
-          subject: ticket.subject,
-          ownerUserId: ticket.user_id,
-          ownerEmail: ticket.owner_email,
-          body: message,
-        });
-      } else {
-        void notifyStaffOfTicketActivity({
-          ticketId: id,
-          subject: ticket.subject,
-          category: ticket.category,
-          fromEmail: session.email,
-          body: message,
-          isNew: false,
-        });
-      }
-    } catch (err) {
-      console.error("Ticket reply notification failed:", err);
-    }
-  });
-
-  const m = inserted.rows[0];
-  return NextResponse.json(
-    {
-      message: {
-        id: m.id,
-        isStaff: m.is_staff,
-        body: m.body,
-        createdAt: m.created_at,
-        authorName: actingAsStaff ? null : (session.name ?? null),
-      },
-      status: newStatus,
-    },
-    { status: 201 },
-  );
-}
-
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const { id: rawId } = await params;
-  const id = parseId(rawId);
-  if (id === null) {
-    return NextResponse.json({ error: "Invalid ticket id." }, { status: 400 });
-  }
-
-  let body: { status?: unknown };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid request body." },
-      { status: 400 },
-    );
-  }
-  const status = body.status as TicketStatus;
-  if (!TICKET_STATUSES.includes(status)) {
-    return NextResponse.json({ error: "Invalid status." }, { status: 400 });
-  }
-
-  const ticket = await loadTicket(id);
-  if (!ticket) {
-    return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
-  }
-  const access = await resolveTicketAccess({
-    ticketOwnerId: ticket.user_id,
-    ticketId: id,
-    viewerId: session.userId,
-    isStaff: await viewerIsSupportStaff(),
-  });
-  if (!access.canView) {
-    return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
-  }
-  // Only the owner or staff change status; a shared teammate can read/reply but
-  // not resolve, close, or reopen someone else's ticket.
-  if (!access.isOwner && !access.isStaff) {
-    return NextResponse.json(
-      { error: "Only the ticket owner can change its status." },
-      { status: 403 },
-    );
-  }
-  // A ticket owner may resolve or close their own ticket, and may reopen one
-  // they resolved. Staff may move it to any state.
-  //
-  // The reopen arm is not a new capability: POST on this route already sets
-  // awaiting_staff when the owner replies, and its own comment calls that
-  // "a reply on a resolved ticket reopens it". The owner could therefore
-  // always reopen a resolved ticket, just never without typing a message
-  // first, and the UI offered no way to say "this is not fixed" on its own
-  // (AUDIT-011#drift-21). `closed` stays terminal for the owner on purpose:
-  // that state is signposted as final ("Open a new ticket to continue") and
-  // POST refuses to reply to it, so only staff bring one back.
-  // Terminal means terminal, which the guard below could not express.
-  //
-  // It branched only on the REQUESTED status, never the current one, so
-  // PATCH {"status":"resolved"} on a closed ticket walked straight past it:
-  // "resolved" is not "resolved"? false, so the whole condition collapsed and
-  // the write went through. The reply box then renders again and POST accepts
-  // it, landing the thread back in the staff queue. Closing is how staff end
-  // an abusive thread, so the owner reopening it is the case the comment
-  // above says only staff may do.
-  if (!access.isStaff && ticket.status === "closed") {
-    return NextResponse.json(
-      {
-        error:
-          "This ticket is closed. Open a new ticket to continue the conversation.",
-      },
-      { status: 403 },
-    );
-  }
-
-  const ownerMayReopen =
-    ticket.status === "resolved" && status === "awaiting_staff";
-  if (
-    !access.isStaff &&
-    status !== "resolved" &&
-    status !== "closed" &&
-    !ownerMayReopen
-  ) {
-    return NextResponse.json(
-      { error: "You can only resolve or close your own ticket." },
-      { status: 403 },
-    );
-  }
-
-  await pool.query(
-    `UPDATE support_tickets SET status = $1, updated_at = NOW() WHERE id = $2`,
-    [status, id],
-  );
-
-  // The mirror of the arm below. Staff resolving or closing a ticket without a
-  // final reply is the commonest way a ticket ends, and it was silent: the
-  // owner learned about it only by reopening the page, and never learned that
-  // replying reopens it. Only a staff-initiated change sends, because an owner
-  // who resolved their own ticket does not need to be told they did.
-  if (access.isStaff && !access.isOwner) {
-    queueMicrotask(() => {
-      try {
-        void notifyUserOfTicketStatus({
-          ticketId: id,
-          subject: ticket.subject,
-          ownerEmail: ticket.owner_email,
-          status,
-        });
-      } catch (err) {
-        console.error("Ticket status notification failed:", err);
-      }
-    });
-  }
-
-  // A reopen with no message would otherwise slide back into the queue with
-  // nothing to announce it: the reply path notifies staff, so this one has to
-  // as well or "reopen" means "hope somebody rechecks the list". Fire and
-  // forget, exactly like the reply path's own notification.
-  if (ownerMayReopen) {
-    queueMicrotask(() => {
-      void notifyStaffOfTicketActivity({
-        ticketId: id,
+    return NextResponse.json({
+      ticket: {
+        id: ticket.id,
         subject: ticket.subject,
         category: ticket.category,
-        fromEmail: session.email,
-        body: "Reopened this ticket: the issue is not resolved.",
-        isNew: false,
+        status: ticket.status,
+        createdAt: ticket.created_at,
+        updatedAt: ticket.updated_at,
+        lastMessageAt: ticket.last_message_at,
+        // Owner identity, and which staffer holds the ticket, are only exposed
+        // to staff. Who is working a customer's ticket is an internal fact.
+        ...(access.isStaff
+          ? {
+              ownerEmail: ticket.owner_email,
+              ownerName: ticket.owner_name,
+              assignedTo: ticket.assigned_to
+                ? {
+                    id: ticket.assigned_to,
+                    name: ticket.assigned_to_name,
+                    mine: ticket.assigned_to === session.userId,
+                  }
+                : null,
+            }
+          : {}),
+      },
+      messages,
+      viewerIsStaff: access.isStaff,
+      viewerIsOwner: access.isOwner,
+    });
+  },
+);
+
+export const POST = withErrorHandling(
+  async (
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id: rawId } = await params;
+    const id = parseId(rawId);
+    if (id === null) {
+      return NextResponse.json(
+        { error: "Invalid ticket id." },
+        { status: 400 },
+      );
+    }
+
+    let body: { message?: unknown };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid request body." },
+        { status: 400 },
+      );
+    }
+    const message = typeof body.message === "string" ? body.message.trim() : "";
+    if (!message) {
+      return NextResponse.json(
+        { error: "A message is required." },
+        { status: 400 },
+      );
+    }
+    if (message.length > TICKET_MESSAGE_MAX) {
+      return NextResponse.json(
+        {
+          error: `Message must be ${TICKET_MESSAGE_MAX} characters or fewer.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    // Each reply emails the other party (staff or the owner), so cap how fast one
+    // user can post replies. Per-user, not per-IP: replies are authenticated.
+    const rl = await checkRateLimit({
+      key: `ticket-reply:${session.userId}`,
+      ...RATE_LIMITS.api,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many replies. Please wait ${Math.ceil(
+            rl.retryAfterSeconds / 60,
+          )} minute(s) and try again.`,
+        },
+        { status: 429 },
+      );
+    }
+
+    const ticket = await loadTicket(id);
+    if (!ticket) {
+      return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
+    }
+    const access = await resolveTicketAccess({
+      ticketOwnerId: ticket.user_id,
+      ticketId: id,
+      viewerId: session.userId,
+      isStaff: await viewerIsSupportStaff(),
+    });
+    if (!access.canView) {
+      return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
+    }
+    if (ticket.status === "closed") {
+      return NextResponse.json(
+        { error: "This ticket is closed. Open a new ticket to continue." },
+        { status: 409 },
+      );
+    }
+
+    // A staffer replying to someone else's ticket acts as staff; the owner and any
+    // shared teammate reply as ordinary participants.
+    const actingAsStaff = access.isStaff && !access.isOwner;
+    // Staff reply -> waiting on the user. User reply -> waiting on staff (and a
+    // reply on a resolved ticket reopens it).
+    const newStatus: TicketStatus = actingAsStaff
+      ? "awaiting_user"
+      : "awaiting_staff";
+
+    const inserted = await pool.query<{
+      id: number;
+      is_staff: boolean;
+      body: string;
+      created_at: string;
+    }>(
+      `INSERT INTO support_ticket_messages (ticket_id, author_user_id, is_staff, body)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, is_staff, body, created_at`,
+      [id, session.userId, actingAsStaff, message],
+    );
+    await pool.query(
+      `UPDATE support_tickets SET status = $1, last_message_at = NOW(), updated_at = NOW() WHERE id = $2`,
+      [newStatus, id],
+    );
+
+    // The other side may not read this language. Detect what was written and
+    // translate it for them now, rather than when they open the ticket, so the
+    // thread is already readable (lib/support/translate.ts). Fire-and-forget:
+    // the reply is saved, and an untranslated message is still the message.
+    queueMicrotask(() => {
+      void (async () => {
+        const [authorLocale, ownerLocale] = await Promise.all([
+          getUserLocale(session.userId),
+          getUserLocale(ticket.user_id),
+        ]);
+        await prepareMessageTranslation({
+          messageId: inserted.rows[0].id,
+          body: message,
+          authorLocale,
+          // A staff reply is for the owner; the owner's reply is for staff,
+          // who have no one locale, so prepareMessageTranslation falls back to
+          // the deployment's default language.
+          counterpartLocales: actingAsStaff ? [ownerLocale] : [],
+        });
+      })().catch((err) => {
+        logError("support", "ticket reply translation failed", err, {
+          ticketId: id,
+          messageId: inserted.rows[0].id,
+        });
       });
     });
-  }
 
-  return NextResponse.json({ status });
-}
+    queueMicrotask(() => {
+      try {
+        if (actingAsStaff) {
+          void notifyUserOfStaffReply({
+            ticketId: id,
+            subject: ticket.subject,
+            ownerUserId: ticket.user_id,
+            ownerEmail: ticket.owner_email,
+            body: message,
+          });
+        } else {
+          void notifyStaffOfTicketActivity({
+            ticketId: id,
+            subject: ticket.subject,
+            category: ticket.category,
+            fromEmail: session.email,
+            body: message,
+            isNew: false,
+          });
+        }
+      } catch (err) {
+        logError("support", "ticket reply notification failed", err, {
+          ticketId: id,
+        });
+      }
+    });
+
+    const m = inserted.rows[0];
+    return NextResponse.json(
+      {
+        message: {
+          id: m.id,
+          isStaff: m.is_staff,
+          body: m.body,
+          createdAt: m.created_at,
+          authorName: actingAsStaff ? null : (session.name ?? null),
+        },
+        status: newStatus,
+      },
+      { status: 201 },
+    );
+  },
+);
+
+/** One reopen notice per ticket per hour. See the debounce in PATCH. */
+const REOPEN_NOTICE_WINDOW_SECONDS = 60 * 60;
+
+export const PATCH = withErrorHandling(
+  async (
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id: rawId } = await params;
+    const id = parseId(rawId);
+    if (id === null) {
+      return NextResponse.json(
+        { error: "Invalid ticket id." },
+        { status: 400 },
+      );
+    }
+
+    // Two independent changes share this route: the status, which the owner
+    // and staff both set, and the assignee, which only staff do. A body may
+    // carry either or both.
+    let body: { status?: unknown; assign?: unknown };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid request body." },
+        { status: 400 },
+      );
+    }
+    const wantsAssign = body.assign !== undefined;
+    const wantsStatus = body.status !== undefined || !wantsAssign;
+    const status = body.status as TicketStatus;
+    if (wantsStatus && !TICKET_STATUSES.includes(status)) {
+      return NextResponse.json({ error: "Invalid status." }, { status: 400 });
+    }
+    if (wantsAssign && body.assign !== "me" && body.assign !== "none") {
+      return NextResponse.json(
+        { error: "Invalid assignment." },
+        { status: 400 },
+      );
+    }
+
+    const ticket = await loadTicket(id);
+    if (!ticket) {
+      return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
+    }
+    const access = await resolveTicketAccess({
+      ticketOwnerId: ticket.user_id,
+      ticketId: id,
+      viewerId: session.userId,
+      isStaff: await viewerIsSupportStaff(),
+    });
+    if (!access.canView) {
+      return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
+    }
+    // Only the owner or staff change status; a shared teammate can read/reply but
+    // not resolve, close, or reopen someone else's ticket.
+    if (!access.isOwner && !access.isStaff) {
+      return NextResponse.json(
+        { error: "Only the ticket owner can change its status." },
+        { status: 403 },
+      );
+    }
+    // Staff acting on somebody else's ticket. A staffer looking at their own
+    // ticket is its owner for every rule below, exactly as in POST.
+    const actingAsStaff = access.isStaff && !access.isOwner;
+    if (wantsAssign && !actingAsStaff) {
+      return NextResponse.json(
+        { error: "Only support staff can assign a ticket." },
+        { status: 403 },
+      );
+    }
+
+    // A ticket owner may resolve or close their own ticket, and may reopen one
+    // they resolved. Staff may move it to any state.
+    //
+    // The reopen arm is not a new capability: POST on this route already sets
+    // awaiting_staff when the owner replies, and its own comment calls that
+    // "a reply on a resolved ticket reopens it". The owner could therefore
+    // always reopen a resolved ticket, just never without typing a message
+    // first, and the UI offered no way to say "this is not fixed" on its own
+    // (AUDIT-011#drift-21). `closed` stays terminal for the owner on purpose:
+    // that state is signposted as final ("Open a new ticket to continue") and
+    // POST refuses to reply to it, so only staff bring one back.
+    // Terminal means terminal, which the guard below could not express.
+    //
+    // It branched only on the REQUESTED status, never the current one, so
+    // PATCH {"status":"resolved"} on a closed ticket walked straight past it:
+    // "resolved" is not "resolved"? false, so the whole condition collapsed and
+    // the write went through. The reply box then renders again and POST accepts
+    // it, landing the thread back in the staff queue. Closing is how staff end
+    // an abusive thread, so the owner reopening it is the case the comment
+    // above says only staff may do.
+    const ownerMayReopen =
+      wantsStatus &&
+      ticket.status === "resolved" &&
+      status === "awaiting_staff";
+    if (wantsStatus) {
+      if (!access.isStaff && ticket.status === "closed") {
+        return NextResponse.json(
+          {
+            error:
+              "This ticket is closed. Open a new ticket to continue the conversation.",
+          },
+          { status: 403 },
+        );
+      }
+      if (
+        !access.isStaff &&
+        status !== "resolved" &&
+        status !== "closed" &&
+        !ownerMayReopen
+      ) {
+        return NextResponse.json(
+          { error: "You can only resolve or close your own ticket." },
+          { status: 403 },
+        );
+      }
+    }
+
+    // Only the owner's changes are limited. They are the ones that can loop:
+    // resolve, reopen, resolve, reopen, with a staff email on every reopen.
+    // Staff working a queue change statuses all day and are not the abuse case.
+    // It sits after the refusals above so a request that was never going to
+    // succeed does not spend the owner's budget.
+    if (!actingAsStaff) {
+      const rl = await checkRateLimit({
+        key: `ticket-status:${session.userId}`,
+        ...RATE_LIMITS.supportTicketStatus,
+      });
+      if (!rl.allowed) {
+        return NextResponse.json(
+          {
+            error: `Too many changes to your tickets. Please wait ${Math.ceil(
+              rl.retryAfterSeconds / 60,
+            )} minute(s) and try again.`,
+          },
+          { status: 429 },
+        );
+      }
+    }
+
+    if (wantsStatus) {
+      await pool.query(
+        `UPDATE support_tickets SET status = $1, updated_at = NOW() WHERE id = $2`,
+        [status, id],
+      );
+
+      // A staff status change is the one place support staff can cut a
+      // customer off (a closed ticket takes no replies), so it leaves a row
+      // saying who did it. Without one, a disputed closure had no answer.
+      // Only a real change: re-pressing Resolve is not an event.
+      if (actingAsStaff && ticket.status !== status) {
+        await auditTicketAction(
+          session.userId,
+          ticket,
+          "status",
+          `Ticket #${id}: ${ticket.status} -> ${status}`,
+        );
+      }
+    }
+
+    let assignedTo: number | null = ticket.assigned_to;
+    if (wantsAssign) {
+      assignedTo = body.assign === "me" ? session.userId : null;
+      await pool.query(
+        `UPDATE support_tickets SET assigned_to = $1, updated_at = NOW() WHERE id = $2`,
+        [assignedTo, id],
+      );
+      if (ticket.assigned_to !== assignedTo) {
+        await auditTicketAction(
+          session.userId,
+          ticket,
+          "assignment",
+          `Ticket #${id}: ${assigneeLabel(ticket.assigned_to)} -> ${assigneeLabel(assignedTo)}`,
+        );
+      }
+    }
+
+    // The mirror of the arm below. Staff resolving or closing a ticket without a
+    // final reply is the commonest way a ticket ends, and it was silent: the
+    // owner learned about it only by reopening the page, and never learned that
+    // replying reopens it. Only a staff-initiated change sends, because an owner
+    // who resolved their own ticket does not need to be told they did.
+    if (wantsStatus && actingAsStaff) {
+      queueMicrotask(() => {
+        try {
+          void notifyUserOfTicketStatus({
+            ticketId: id,
+            subject: ticket.subject,
+            ownerEmail: ticket.owner_email,
+            status,
+          });
+        } catch (err) {
+          logError("support", "ticket status notification failed", err, {
+            ticketId: id,
+          });
+        }
+      });
+    }
+
+    // A reopen with no message would otherwise slide back into the queue with
+    // nothing to announce it: the reply path notifies staff, so this one has to
+    // as well or "reopen" means "hope somebody rechecks the list". Fire and
+    // forget, exactly like the reply path's own notification.
+    //
+    // At most one notice per ticket per hour. Resolve and reopen are both open
+    // to the owner, so without this a loop of the two sent staff one email per
+    // pair of requests. The status change itself still happens every time (the
+    // ticket does return to the queue); only the email is debounced. The
+    // limiter is a fixed window, so two notices can land either side of an hour
+    // boundary, which is still a flood-stopper and not a promise.
+    if (ownerMayReopen) {
+      queueMicrotask(() => {
+        void (async () => {
+          let allowed = true;
+          try {
+            allowed = (
+              await checkRateLimit({
+                key: `ticket-reopen-notice:${id}`,
+                maxAttempts: 1,
+                windowSeconds: REOPEN_NOTICE_WINDOW_SECONDS,
+              })
+            ).allowed;
+          } catch (err) {
+            // A limiter that cannot answer should not swallow a real reopen.
+            logError("support", "reopen notice debounce failed", err, {
+              ticketId: id,
+            });
+          }
+          if (!allowed) return;
+          await notifyStaffOfTicketActivity({
+            ticketId: id,
+            subject: ticket.subject,
+            category: ticket.category,
+            fromEmail: session.email,
+            body: "Reopened this ticket: the issue is not resolved.",
+            isNew: false,
+          });
+        })().catch((err) => {
+          logError("support", "ticket reopen notification failed", err, {
+            ticketId: id,
+          });
+        });
+      });
+    }
+
+    return NextResponse.json({
+      status: wantsStatus ? status : ticket.status,
+      ...(wantsAssign ? { assignedTo } : {}),
+    });
+  },
+);

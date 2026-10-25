@@ -26,6 +26,7 @@ vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
  * enforcement is holding out (requirePermission returns null for both cases).
  */
 let staff2FAGateBlocks = false;
+const mockLogAction = vi.fn(async (..._args: unknown[]) => {});
 vi.mock("@/lib/auth/authorization", async () => {
   const { hasStaffPermission } = await import("@/lib/auth/permissions-client");
   type StaffPermission = Parameters<typeof hasStaffPermission>[1];
@@ -37,30 +38,48 @@ vi.mock("@/lib/auth/authorization", async () => {
       if (staff2FAGateBlocks) return null;
       return { ...session, id: session.userId };
     },
+    logAction: (...args: unknown[]) => mockLogAction(...args),
   };
 });
 
+// getClientIp reads next/headers, which has no request scope under vitest.
+vi.mock("@/lib/api/request-utils", () => ({
+  getClientIp: async () => "203.0.113.9",
+}));
+
+const mockNotifyStaff = vi.fn(async (..._args: unknown[]) => {});
+const mockNotifyUserOfStatus = vi.fn(async (..._args: unknown[]) => {});
 vi.mock("@/lib/support/ticket-notify", () => ({
-  notifyStaffOfTicketActivity: vi.fn(),
+  notifyStaffOfTicketActivity: (...args: unknown[]) => mockNotifyStaff(...args),
   notifyUserOfStaffReply: vi.fn(),
   confirmTicketToUser: vi.fn(),
-  notifyUserOfTicketStatus: vi.fn(),
+  notifyUserOfTicketStatus: (...args: unknown[]) =>
+    mockNotifyUserOfStatus(...args),
 }));
 
 // Mock the rate limiter so it never touches the (mocked) db pool and so the
 // POST tests' mockQuery call order stays load -> insert -> update. Default:
-// allow; a test flips it to deny to assert the 429.
-const mockCheckRateLimit = vi.fn(async () => ({
+// allow; a test flips it to deny to assert the 429. The args are forwarded so
+// a test can read which bucket a route asked for.
+const mockCheckRateLimit = vi.fn(async (..._args: unknown[]) => ({
   allowed: true,
   retryAfterSeconds: 0,
 }));
 vi.mock("@/lib/rate-limiting/rate-limit", () => ({
-  checkRateLimit: (..._args: unknown[]) => mockCheckRateLimit(),
-  RATE_LIMITS: { api: { limit: "api" } },
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  RATE_LIMITS: {
+    api: { limit: "api" },
+    supportTicketStatus: { limit: "supportTicketStatus" },
+  },
 }));
 
 const { GET, POST, PATCH } =
   await import("@/app/api/v3/support-tickets/[id]/route");
+
+/** The route fires notifications from queueMicrotask; let them settle. */
+async function flushMicrotasks() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 function ticketRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -74,6 +93,8 @@ function ticketRow(overrides: Record<string, unknown> = {}) {
     last_message_at: "2026-01-01T00:00:00.000Z",
     owner_email: "owner@example.com",
     owner_name: "Owner",
+    assigned_to: null,
+    assigned_to_name: null,
     ...overrides,
   };
 }
@@ -102,6 +123,10 @@ beforeEach(() => {
   mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
   mockCheckRateLimit.mockReset();
   mockCheckRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
+  mockLogAction.mockReset();
+  mockLogAction.mockResolvedValue(undefined);
+  mockNotifyStaff.mockClear();
+  mockNotifyUserOfStatus.mockClear();
 });
 
 describe("GET /api/v3/support-tickets/[id]", () => {
@@ -417,5 +442,399 @@ describe("PATCH /api/v3/support-tickets/[id] (status)", () => {
     const res = await PATCH(req("PATCH", { status: "awaiting_staff" }), params);
     // Either "not shared with you" (404) or "owner only" (403); never a write.
     expect([403, 404]).toContain(res.status);
+  });
+});
+
+describe("PATCH /api/v3/support-tickets/[id] abuse limits", () => {
+  it("limits the owner's status changes per account in the supportTicketStatus bucket", async () => {
+    asUser(7, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [] });
+    await PATCH(req("PATCH", { status: "resolved" }), params);
+    expect(mockCheckRateLimit).toHaveBeenCalledWith({
+      key: "ticket-status:7",
+      limit: "supportTicketStatus",
+    });
+  });
+
+  it("429s an owner who is changing status too fast, without writing the change", async () => {
+    asUser(7, "user");
+    mockCheckRateLimit.mockResolvedValueOnce({
+      allowed: false,
+      retryAfterSeconds: 600,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [ticketRow()] });
+    const res = await PATCH(req("PATCH", { status: "resolved" }), params);
+    expect(res.status).toBe(429);
+    const writes = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("UPDATE support_tickets"),
+    );
+    expect(writes).toEqual([]);
+  });
+
+  it("does not limit staff working somebody else's ticket", async () => {
+    // A support agent clears a queue all day. The loop this limit exists for
+    // is the owner's: resolve, reopen, resolve, reopen.
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(req("PATCH", { status: "resolved" }), params);
+    expect(res.status).toBe(200);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("does not spend the owner's budget on a request that was refused anyway", async () => {
+    asUser(7, "user");
+    mockQuery.mockResolvedValueOnce({ rows: [ticketRow({ status: "open" })] });
+    const res = await PATCH(req("PATCH", { status: "awaiting_staff" }), params);
+    expect(res.status).toBe(403);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("emails staff about a reopen, then holds the next one back for the hour", async () => {
+    // Resolve and reopen are both open to the owner, so the pair looped for
+    // one staff email per two requests. The status change still happens each
+    // time; only the notice is debounced, per ticket.
+    asUser(7, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow({ status: "resolved" })] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockCheckRateLimit
+      .mockResolvedValueOnce({ allowed: true, retryAfterSeconds: 0 }) // status bucket
+      .mockResolvedValueOnce({ allowed: true, retryAfterSeconds: 0 }); // first notice
+    await PATCH(req("PATCH", { status: "awaiting_staff" }), params);
+    await flushMicrotasks();
+    expect(mockNotifyStaff).toHaveBeenCalledTimes(1);
+    expect(mockCheckRateLimit).toHaveBeenLastCalledWith({
+      key: "ticket-reopen-notice:42",
+      maxAttempts: 1,
+      windowSeconds: 3600,
+    });
+
+    mockNotifyStaff.mockClear();
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow({ status: "resolved" })] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockCheckRateLimit
+      .mockResolvedValueOnce({ allowed: true, retryAfterSeconds: 0 }) // status bucket
+      .mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 3000 }); // second notice
+    const second = await PATCH(
+      req("PATCH", { status: "awaiting_staff" }),
+      params,
+    );
+    await flushMicrotasks();
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ status: "awaiting_staff" });
+    expect(mockNotifyStaff).not.toHaveBeenCalled();
+    // The ticket did go back to the queue: only the email was held.
+    expect(
+      mockQuery.mock.calls.filter(([sql]) =>
+        String(sql).includes("UPDATE support_tickets SET status"),
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("still sends the reopen notice when the debounce cannot be checked, and logs why", async () => {
+    asUser(7, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow({ status: "resolved" })] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockCheckRateLimit
+      .mockResolvedValueOnce({ allowed: true, retryAfterSeconds: 0 })
+      .mockRejectedValueOnce(new Error("rate_limits unavailable"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await PATCH(
+        req("PATCH", { status: "awaiting_staff" }),
+        params,
+      );
+      await flushMicrotasks();
+      expect(res.status).toBe(200);
+      expect(mockNotifyStaff).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][0]).toBe(
+        "[support] reopen notice debounce failed",
+      );
+      expect(spy.mock.calls[0][1]).toEqual({ ticketId: 42 });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("does not send a notice for a plain resolve", async () => {
+    asUser(7, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [] });
+    await PATCH(req("PATCH", { status: "resolved" }), params);
+    await flushMicrotasks();
+    expect(mockNotifyStaff).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /api/v3/support-tickets/[id] audit", () => {
+  it("records who changed a ticket's status when staff do it", async () => {
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [ticketRow({ status: "awaiting_staff" })],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(req("PATCH", { status: "closed" }), params);
+    expect(res.status).toBe(200);
+    // Actor, the ticket's owner as the target, the registered action, a
+    // details string of ids and statuses only, and the caller's address.
+    expect(mockLogAction).toHaveBeenCalledWith(
+      99,
+      7,
+      "ticket_status_changed",
+      "Ticket #42: awaiting_staff -> closed",
+      "203.0.113.9",
+    );
+  });
+
+  it("does not audit an owner changing their own ticket", async () => {
+    asUser(7, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [] });
+    await PATCH(req("PATCH", { status: "closed" }), params);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("does not audit a staff PATCH that changes nothing", async () => {
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow({ status: "resolved" })] })
+      .mockResolvedValueOnce({ rows: [] });
+    await PATCH(req("PATCH", { status: "resolved" }), params);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("does not audit a request that was refused", async () => {
+    asUser(8, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [{ ok: 1 }] });
+    const res = await PATCH(req("PATCH", { status: "closed" }), params);
+    expect(res.status).toBe(403);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("keeps a status change that happened when its audit row cannot be written, and logs the miss", async () => {
+    // The change is already made by the time the audit write runs, so a 500
+    // here would invite a retry of something that worked.
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockLogAction.mockRejectedValueOnce(new Error("audit table locked"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await PATCH(req("PATCH", { status: "resolved" }), params);
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0]).toBe(
+        "[support] could not write the ticket audit row",
+      );
+      expect(spy.mock.calls[0][1]).toEqual({
+        ticketId: 42,
+        userId: 99,
+        change: "status",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("PATCH /api/v3/support-tickets/[id] assignment", () => {
+  it("lets staff take a ticket and records it", async () => {
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(req("PATCH", { assign: "me" }), params);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: "open", assignedTo: 99 });
+    const update = mockQuery.mock.calls[1];
+    expect(update[0]).toContain("SET assigned_to = $1");
+    expect(update[1]).toEqual([99, 42]);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      99,
+      7,
+      "ticket_assigned",
+      "Ticket #42: nobody -> #99",
+      "203.0.113.9",
+    );
+  });
+
+  it("changes only the assignee when only an assignee is sent", async () => {
+    // No status in the body means no status write, no audit row for one, and
+    // no email to the customer saying their ticket changed.
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [ticketRow({ status: "awaiting_staff" })],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(req("PATCH", { assign: "me" }), params);
+    await flushMicrotasks();
+    expect((await res.json()).status).toBe("awaiting_staff");
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("SET status = $1"),
+      ),
+    ).toBe(false);
+    expect(mockNotifyUserOfStatus).not.toHaveBeenCalled();
+    expect(mockLogAction.mock.calls.map((c) => c[2])).toEqual([
+      "ticket_assigned",
+    ]);
+  });
+
+  it("lets staff take a ticket another staffer holds, naming both in the audit row", async () => {
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow({ assigned_to: 5 })] })
+      .mockResolvedValueOnce({ rows: [] });
+    await PATCH(req("PATCH", { assign: "me" }), params);
+    expect(mockLogAction.mock.calls[0][3]).toBe("Ticket #42: #5 -> #99");
+  });
+
+  it("releases a ticket back to the shared queue", async () => {
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow({ assigned_to: 99 })] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(req("PATCH", { assign: "none" }), params);
+    expect(await res.json()).toEqual({ status: "open", assignedTo: null });
+    expect(mockQuery.mock.calls[1][1]).toEqual([null, 42]);
+    expect(mockLogAction.mock.calls[0][3]).toBe("Ticket #42: #99 -> nobody");
+  });
+
+  it("does not audit taking a ticket you already hold", async () => {
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow({ assigned_to: 99 })] })
+      .mockResolvedValueOnce({ rows: [] });
+    await PATCH(req("PATCH", { assign: "me" }), params);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("can change status and assignee in one request", async () => {
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(
+      req("PATCH", { status: "awaiting_user", assign: "me" }),
+      params,
+    );
+    expect(await res.json()).toEqual({
+      status: "awaiting_user",
+      assignedTo: 99,
+    });
+    expect(mockLogAction.mock.calls.map((c) => c[2])).toEqual([
+      "ticket_status_changed",
+      "ticket_assigned",
+    ]);
+  });
+
+  it("refuses the ticket's owner, who is not staff on their own ticket", async () => {
+    asUser(7, "user");
+    mockQuery.mockResolvedValueOnce({ rows: [ticketRow()] });
+    const res = await PATCH(req("PATCH", { assign: "me" }), params);
+    expect(res.status).toBe(403);
+    expect(
+      mockQuery.mock.calls.filter(([sql]) =>
+        String(sql).includes("UPDATE support_tickets"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses a staffer assigning a ticket they own themselves", async () => {
+    asUser(7, "support");
+    mockQuery.mockResolvedValueOnce({ rows: [ticketRow()] });
+    const res = await PATCH(req("PATCH", { assign: "me" }), params);
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses a shared teammate", async () => {
+    asUser(8, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [{ ok: 1 }] });
+    const res = await PATCH(req("PATCH", { assign: "me" }), params);
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects an assignment it does not know", async () => {
+    asUser(99, "support");
+    // Nobody can be assigned a ticket by id from the client: the only targets
+    // are the caller and no one.
+    const res = await PATCH(req("PATCH", { assign: 5 }), params);
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("still rejects a body with neither a status nor an assignment", async () => {
+    asUser(99, "support");
+    const res = await PATCH(req("PATCH", { note: "hello" }), params);
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /api/v3/support-tickets/[id] assignment", () => {
+  it("shows staff who holds a ticket, and whether it is them", async () => {
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [ticketRow({ assigned_to: 99, assigned_to_name: "Agent" })],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    const body = await (await GET(req("GET"), params)).json();
+    expect(body.ticket.assignedTo).toEqual({
+      id: 99,
+      name: "Agent",
+      mine: true,
+    });
+  });
+
+  it("shows staff an unassigned ticket as null", async () => {
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [] });
+    const body = await (await GET(req("GET"), params)).json();
+    expect(body.ticket.assignedTo).toBeNull();
+  });
+
+  it("never tells the customer which staffer is working their ticket", async () => {
+    asUser(7, "user");
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [ticketRow({ assigned_to: 99, assigned_to_name: "Agent" })],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    const body = await (await GET(req("GET"), params)).json();
+    expect(body.ticket).not.toHaveProperty("assignedTo");
+    expect(JSON.stringify(body)).not.toContain("Agent");
+  });
+});
+
+describe("withErrorHandling", () => {
+  it("answers a failing write with a 500 instead of throwing out of the route", async () => {
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockRejectedValueOnce(new Error("db down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await PATCH(req("PATCH", { status: "resolved" }), params);
+      expect(res.status).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

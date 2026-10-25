@@ -9,6 +9,7 @@ import {
 } from "@/lib/email/email";
 import { createUserNotification } from "@/lib/notifications/user-notifications";
 import { APP_URL, SUPPORT_EMAIL } from "@/lib/config/constants";
+import { logError } from "@/lib/logging/log";
 import type { TicketCategory } from "./ticket-constants";
 
 // The bodies used to be built here, as bare `<p>` strings with a fourth
@@ -17,10 +18,24 @@ import type { TicketCategory } from "./ticket-constants";
 // that did not look like the product. They are templates in lib/email/email.ts
 // now, like everything else.
 
+// Every helper below is best-effort and fired without awaiting, so a send that
+// fails cannot fail the request that caused it. That is also why each one logs:
+// sendEmail records a failed row in email_logs, but a catch that says nothing
+// leaves the server log blank, and a failed delivery is the one thing in this
+// file an operator has to be able to find. The context is ids only. Never the
+// address: the capture stores whatever it is given.
+
 /**
  * A new ticket or a user reply: notify the staff support inbox. Best-effort;
  * callers fire it without awaiting so it never blocks the HTTP response, and it
  * swallows its own errors (an email hiccup must not fail creating the ticket).
+ *
+ * There is no Reply-To. It used to be the ticket owner's own address, so a
+ * message sent from our domain carried somebody else's mailbox (often a
+ * freemail one) as its reply target, a pattern spam filters score on every
+ * ticket before any content is read. The admin inbox already handles the reply
+ * and routes it to the owner, so a reply from a mail client was a second,
+ * worse path to the same place.
  */
 export async function notifyStaffOfTicketActivity(opts: {
   ticketId: number;
@@ -34,11 +49,12 @@ export async function notifyStaffOfTicketActivity(opts: {
     await sendEmail({
       to: SUPPORT_EMAIL,
       ...supportTicketStaffAlertEmail(opts),
-      // Let staff reply straight to the user from their mail client too.
-      replyTo: opts.fromEmail,
     });
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    logError("support", "could not email staff about a ticket", err, {
+      ticketId: opts.ticketId,
+      isNew: opts.isNew,
+    });
   }
 }
 
@@ -62,8 +78,10 @@ export async function confirmTicketToUser(opts: {
       to: opts.ownerEmail,
       ...supportTicketReceivedEmail(opts),
     });
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    logError("support", "could not confirm a ticket to its owner", err, {
+      ticketId: opts.ticketId,
+    });
   }
 }
 
@@ -91,16 +109,24 @@ export async function notifyUserOfStaffReply(opts: {
       relatedType: "support_ticket",
       relatedId: opts.ticketId,
     });
-  } catch {
-    /* best-effort: the bell is a convenience, the email below is the real notice */
+  } catch (err) {
+    // The bell is a convenience and the email below is the real notice, so
+    // this does not stop the send. It still goes in the log.
+    logError("support", "could not create the reply notification", err, {
+      ticketId: opts.ticketId,
+      userId: opts.ownerUserId,
+    });
   }
   try {
     await sendEmail({
       to: opts.ownerEmail,
       ...supportTicketReplyEmail(opts),
     });
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    logError("support", "could not email a ticket reply", err, {
+      ticketId: opts.ticketId,
+      userId: opts.ownerUserId,
+    });
   }
 }
 
@@ -122,7 +148,10 @@ export async function notifyUserOfTicketStatus(opts: {
       to: opts.ownerEmail,
       ...supportTicketStatusChangedEmail(opts),
     });
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    logError("support", "could not email a ticket status change", err, {
+      ticketId: opts.ticketId,
+      status: opts.status,
+    });
   }
 }

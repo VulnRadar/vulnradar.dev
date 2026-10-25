@@ -21,6 +21,22 @@ vi.mock("@/lib/support/ticket-notify", () => ({
   notifyUserOfTicketStatus: vi.fn(),
 }));
 
+// The limiter goes through the (mocked) pool, so left real it would take the
+// first positional mockQuery answer and shift every assertion below. Default:
+// allow. A test flips it to deny, and reads the args to see which bucket the
+// route asked for.
+const mockCheckRateLimit = vi.fn(async (..._args: unknown[]) => ({
+  allowed: true,
+  remaining: 4,
+  retryAfterSeconds: 0,
+}));
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  RATE_LIMITS: {
+    supportTicketCreate: { limit: "supportTicketCreate" },
+  },
+}));
+
 const { GET, POST } = await import("@/app/api/v3/support-tickets/route");
 
 function postRequest(body: unknown) {
@@ -33,6 +49,12 @@ function postRequest(body: unknown) {
 beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
+  mockCheckRateLimit.mockClear();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 4,
+    retryAfterSeconds: 0,
+  });
   mockGetSession.mockResolvedValue({
     userId: 7,
     email: "user@example.com",
@@ -100,7 +122,7 @@ describe("POST /api/v3/support-tickets", () => {
           },
         ],
       }) // insert ticket
-      .mockResolvedValueOnce({ rows: [] }); // insert message
+      .mockResolvedValueOnce({ rows: [{ id: 5 }] }); // insert message
 
     const res = await POST(
       postRequest({
@@ -122,5 +144,72 @@ describe("POST /api/v3/support-tickets", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ n: 20 }] });
     const res = await POST(postRequest({ subject: "s", message: "m" }));
     expect(res.status).toBe(429);
+  });
+
+  it("counts tickets closed in the last day toward that cap, so closing one does not free its slot", async () => {
+    // open, close, open, close: the open count never moved, so the loop was
+    // bounded only by how fast somebody could click. The count now includes
+    // anything resolved or closed within CLOSED_TICKET_SLOT_HOURS.
+    mockQuery.mockResolvedValueOnce({ rows: [{ n: 20 }] });
+    await POST(postRequest({ subject: "s", message: "m" }));
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("status = ANY($2::text[])");
+    expect(sql).toContain(
+      "updated_at > NOW() - make_interval(hours => $3::int)",
+    );
+    expect(params).toEqual([
+      7,
+      ["open", "awaiting_staff", "awaiting_user"],
+      24,
+    ]);
+  });
+});
+
+describe("POST /api/v3/support-tickets rate limit", () => {
+  it("429s a user who is opening tickets too fast, before paying for anything else", async () => {
+    mockCheckRateLimit.mockResolvedValueOnce({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 1800,
+    });
+    const res = await POST(postRequest({ subject: "s", message: "m" }));
+    const body = await res.json();
+    expect(res.status).toBe(429);
+    expect(body.error).toContain("30 minute(s)");
+    // No count, no insert: the throttled request touched nothing.
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("limits per account, in the supportTicketCreate bucket", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 42 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    await POST(postRequest({ subject: "s", message: "m" }));
+    expect(mockCheckRateLimit).toHaveBeenCalledTimes(1);
+    expect(mockCheckRateLimit).toHaveBeenCalledWith({
+      key: "ticket-create:7",
+      limit: "supportTicketCreate",
+    });
+  });
+
+  it("does not rate limit an anonymous request into existence", async () => {
+    mockGetSession.mockResolvedValueOnce(null);
+    const res = await POST(postRequest({ subject: "s", message: "m" }));
+    expect(res.status).toBe(401);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+});
+
+describe("withErrorHandling", () => {
+  it("answers a database failure with a 500 instead of throwing out of the route", async () => {
+    mockQuery.mockRejectedValueOnce(new Error("db down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await GET();
+      expect(res.status).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
