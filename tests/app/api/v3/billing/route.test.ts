@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 /**
@@ -34,6 +34,11 @@ vi.mock("@/lib/billing/github-review-usage", () => ({
     mockCheckGithubReviewQuota(...args),
 }));
 
+const mockSendAdminAlert = vi.fn();
+vi.mock("@/lib/admin/alert-webhook", () => ({
+  sendAdminAlert: (...args: unknown[]) => mockSendAdminAlert(...args),
+}));
+
 const { GET, POST } = await import("@/app/api/v3/billing/route");
 const { PLAN_LIMITS } = await import("@/lib/rate-limiting/daily-limits");
 const { getPlanById } = await import("@/lib/billing/catalog");
@@ -44,6 +49,8 @@ beforeEach(() => {
   mockGetSession.mockReset();
   mockGetStripe.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
+  mockSendAdminAlert.mockReset();
+  mockSendAdminAlert.mockResolvedValue({ delivered: false, reason: "test" });
   mockCheckAiUsageQuota.mockReset();
   mockCheckAiUsageQuota.mockResolvedValue({
     allowed: true,
@@ -722,5 +729,206 @@ describe("POST /api/v3/billing", () => {
     expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error).toBe("Failed to process request");
+  });
+});
+
+/**
+ * GET /api/v3/billing changes a paid account's plan when Stripe says the stored
+ * subscription does not exist. That is deliberate, and it is also the one place
+ * a read endpoint rewrites a user's plan, so the only acceptable version of it
+ * is one that leaves a trace an operator can find. It used to leave a
+ * console.warn with no user and no subscription id, which the error-log capture
+ * does not even record.
+ */
+describe("GET /api/v3/billing: an automatic downgrade is recorded and alerted", () => {
+  const savedKey = process.env.STRIPE_SECRET_KEY;
+
+  afterEach(() => {
+    if (savedKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = savedKey;
+    vi.restoreAllMocks();
+  });
+
+  function orphanedUser(over: Record<string, unknown> = {}) {
+    return {
+      plan: "core_supporter",
+      subscription_status: "active",
+      stripe_customer_id: "cus_1",
+      stripe_subscription_id: "sub_gone",
+      role: "user",
+      ...over,
+    };
+  }
+
+  function arrange(
+    stripeError: unknown,
+    user: Record<string, unknown> = orphanedUser(),
+  ) {
+    const retrieve = vi.fn().mockRejectedValue(stripeError);
+    mockGetStripe.mockReturnValue({ subscriptions: { retrieve } });
+    setupPoolForGet({
+      user,
+      dailyPlanRow: { plan: "free", role: user.role, gifted_plan: null },
+    });
+  }
+
+  it("logs at error level with the user, the plan lost, the dangling subscription and the key's mode", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_not_a_real_key";
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    arrange({ code: "resource_missing" });
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+
+    const row = errSpy.mock.calls.find(
+      (c) =>
+        String(c[0]).startsWith("[billing]") &&
+        JSON.stringify(c[1] ?? {}).includes("sub_gone"),
+    );
+    expect(row).toBeDefined();
+    expect(row?.[1]).toEqual({
+      userId: 42,
+      previousPlan: "core_supporter",
+      newPlan: "free",
+      staleSubscriptionId: "sub_gone",
+      stripeMode: "test",
+    });
+    // The key itself must never reach a log line.
+    expect(JSON.stringify(errSpy.mock.calls)).not.toContain(
+      "sk_test_not_a_real_key",
+    );
+  });
+
+  it("keeps Stripe's own error on that row, so a key from the wrong environment is visible", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stripeErr = Object.assign(
+      new Error(
+        "No such subscription: 'sub_gone'; a similar object exists in test mode, but a live mode key was used",
+      ),
+      { code: "resource_missing" },
+    );
+    arrange(stripeErr);
+
+    await GET();
+
+    const row = errSpy.mock.calls.find((c) => c.includes(stripeErr));
+    expect(row).toBeDefined();
+  });
+
+  it("alerts an operator, critical when the plan actually changed", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_live_not_a_real_key";
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    arrange({ code: "resource_missing" });
+
+    await GET();
+
+    expect(mockSendAdminAlert).toHaveBeenCalledTimes(1);
+    expect(mockSendAdminAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "billing_orphaned_subscription_downgrade",
+        severity: "critical",
+        context: {
+          userId: 42,
+          previousPlan: "core_supporter",
+          newPlan: "free",
+          staleSubscriptionId: "sub_gone",
+          stripeMode: "live",
+        },
+      }),
+    );
+  });
+
+  it("is only a warning when the account was already on its fallback plan and only a dangling id was cleared", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    arrange(
+      { code: "resource_missing" },
+      orphanedUser({ plan: "free", subscription_status: null }),
+    );
+
+    await GET();
+
+    expect(mockSendAdminAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ severity: "warning" }),
+    );
+  });
+
+  it("does not alert, or downgrade, when Stripe merely could not be reached", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    arrange(Object.assign(new Error("socket hang up"), { code: "ETIMEDOUT" }));
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+
+    expect(mockSendAdminAlert).not.toHaveBeenCalled();
+    expect(
+      mockQuery.mock.calls.some((c) =>
+        String(c[0]).includes("stripe_subscription_id = NULL"),
+      ),
+    ).toBe(false);
+    // Still a failure somebody should see, now carrying the account.
+    const row = errSpy.mock.calls.find((c) =>
+      String(c[0]).startsWith("[billing]"),
+    );
+    expect(row?.[1]).toEqual({ userId: 42, subscriptionId: "sub_gone" });
+  });
+
+  it("never claims a downgrade that did not happen: no alert when the UPDATE itself fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    arrange({ code: "resource_missing" });
+    const base = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (String(sql).includes("stripe_subscription_id = NULL")) {
+        throw new Error("deadlock detected");
+      }
+      return base(sql, params);
+    });
+
+    const res = await GET();
+
+    expect(res.status).toBe(500);
+    expect(mockSendAdminAlert).not.toHaveBeenCalled();
+  });
+
+  it("reports a subscription with no period data as ONE line carrying the ids and item count, not four", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const retrieve = vi.fn().mockResolvedValue({
+      id: "sub_noperiod",
+      status: "active",
+      items: { data: [{}, {}] },
+    });
+    mockGetStripe.mockReturnValue({ subscriptions: { retrieve } });
+    setupPoolForGet({
+      user: orphanedUser({ stripe_subscription_id: "sub_noperiod" }),
+      dailyPlanRow: { plan: "core_supporter", role: "user", gifted_plan: null },
+    });
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][1]).toEqual({
+      userId: 42,
+      subscriptionId: "sub_noperiod",
+      items: 2,
+    });
+  });
+
+  it("is wrapped, so a failure outside the route's own try still answers 500 JSON instead of throwing", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockGetSession.mockRejectedValue(new Error("session store down"));
+
+    const res = await GET();
+
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toHaveProperty("error");
+  });
+
+  it("wraps POST as well", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockGetSession.mockRejectedValue(new Error("session store down"));
+
+    const res = await POST(postRequest({ action: "cancel" }));
+
+    expect(res.status).toBe(500);
   });
 });

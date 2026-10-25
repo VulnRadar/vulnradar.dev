@@ -5,6 +5,10 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
+import { stripeKeyMode } from "@/lib/billing/stripe-mode";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { logError } from "@/lib/logging/log";
+import { sendAdminAlert } from "@/lib/admin/alert-webhook";
 import { canMakeRequest } from "@/lib/rate-limiting/daily-limits";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
@@ -18,7 +22,7 @@ import {
 } from "@/lib/billing/staff-plan";
 
 // GET /api/v3/billing - Get user's billing info and usage
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -63,7 +67,9 @@ export async function GET() {
     // gate, let the same failure surface, because a quota that cannot be read
     // must not be assumed spent-free.
     const usageInfo = await canMakeRequest(session.userId).catch((error) => {
-      console.error("[Billing] Could not resolve daily usage:", error);
+      logError("billing", "could not resolve daily usage", error, {
+        userId: session.userId,
+      });
       return null;
     });
     const billingEnabled = await getSetting("BILLING_ENABLED");
@@ -193,28 +199,17 @@ export async function GET() {
               : new Date(itemPeriodEnd * 1000).toISOString(),
           };
         } else {
-          console.warn(
-            "[Billing] Subscription exists but has no period data:",
-            subscription?.id,
-          );
-          console.warn(
-            "[Billing] item?.current_period_start:",
-            item?.current_period_start,
-          );
-          console.warn(
-            "[Billing] item?.current_period_end:",
-            item?.current_period_end,
-          );
-          console.warn(
-            "[Billing] subscription.items.data length:",
-            subscription.items?.data?.length,
-          );
+          // One line, and a warn on purpose: this repeats on every billing
+          // page load for the same subscription, so persisting it as an error
+          // would fill the error log with copies of one fact. It used to be
+          // four consecutive lines, which interleave with other requests.
+          console.warn("[Billing] subscription has no period data", {
+            userId: session.userId,
+            subscriptionId: subscription?.id,
+            items: subscription.items?.data?.length ?? 0,
+          });
         }
       } catch (stripeErr: unknown) {
-        console.error(
-          "[Billing] Error fetching subscription from Stripe:",
-          stripeErr,
-        );
         // If the subscription doesn't exist in Stripe (a dangling ID left
         // behind by e.g. a database migration from a different Stripe
         // account/mode), clear it AND downgrade the plan -- matching what
@@ -238,19 +233,59 @@ export async function GET() {
           const fallbackPlan = isStaffRole(user.role)
             ? "pro_supporter"
             : "free";
-          console.warn(
-            `[Billing] Clearing orphaned subscription and downgrading to ${fallbackPlan}`,
+          const downgrade = {
+            userId: session.userId,
+            previousPlan: user.plan as string,
+            newPlan: fallbackPlan,
+            staleSubscriptionId: user.stripe_subscription_id as string,
+            stripeMode: stripeKeyMode(),
+          };
+          // Logged before the write so a failing UPDATE is still explained,
+          // and with Stripe's own error attached: its message is what says
+          // whether the subscription was deleted or the key points at the
+          // wrong environment ("a similar object exists in test mode").
+          logError(
+            "billing",
+            "subscription missing in Stripe, downgrading the plan",
+            stripeErr,
+            downgrade,
           );
           await pool.query(
             `UPDATE users SET plan = $1, stripe_subscription_id = NULL, subscription_status = NULL WHERE id = $2`,
             [fallbackPlan, session.userId],
           );
+          // After the write, so the alert never reports a downgrade that did
+          // not happen. A read endpoint rewriting a plan is the one thing
+          // here that must not be silent: if a key from the wrong
+          // environment makes every subscription look missing, this is how
+          // the first affected account becomes visible instead of the
+          // hundredth. Critical only when the plan really moved; clearing a
+          // dangling id off an account already on its fallback costs nobody
+          // anything. No audit row (owner decision): admin_audit_log needs an
+          // admin, and this was nobody's action.
+          void sendAdminAlert({
+            event: "billing_orphaned_subscription_downgrade",
+            severity:
+              downgrade.previousPlan !== fallbackPlan ? "critical" : "warning",
+            message: `User ${session.userId} went from ${downgrade.previousPlan} to ${fallbackPlan} because subscription ${downgrade.staleSubscriptionId} no longer exists in Stripe (${downgrade.stripeMode} mode key).`,
+            context: downgrade,
+          });
           // Reflect the downgrade in this same response instead of only
           // the database -- effectivePlan below reads from this in-memory
           // object, not a fresh query.
           user.plan = fallbackPlan;
           user.subscription_status = null;
           user.stripe_subscription_id = null;
+        } else {
+          logError(
+            "billing",
+            "could not fetch the subscription from Stripe",
+            stripeErr,
+            {
+              userId: session.userId,
+              subscriptionId: user.stripe_subscription_id,
+            },
+          );
         }
       }
     }
@@ -320,16 +355,18 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error("[Billing] Error fetching billing info:", error);
+    logError("billing", "could not fetch billing info", error, {
+      userId: session.userId,
+    });
     return NextResponse.json(
       { error: "Failed to fetch billing info" },
       { status: 500 },
     );
   }
-}
+});
 
 // POST /api/v3/billing - Cancel subscription
-export async function POST(request: Request) {
+export const POST = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -506,10 +543,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
-    console.error("[Billing] Error processing billing action:", error);
+    logError("billing", "could not process the billing action", error, {
+      userId: session.userId,
+    });
     return NextResponse.json(
       { error: "Failed to process request" },
       { status: 500 },
     );
   }
-}
+});
