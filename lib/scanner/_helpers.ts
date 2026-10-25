@@ -343,8 +343,10 @@ export function isAuthoredInlineScript(
  * file fixed, its siblings left on the old behaviour.
  */
 export function extractScriptContents(input: string): string[] {
+  // Wrapped, not passed bare: filter would hand the index in as `truncated`.
+  // tagElementContents only returns closed elements, so none is truncated.
   return tagElementContents(input, ["script"], scriptTagRunsInlineCode).filter(
-    isAuthoredScriptContent,
+    (content) => isAuthoredScriptContent(content),
   );
 }
 
@@ -354,8 +356,10 @@ export function extractScriptContents(input: string): string[] {
  * `__CF$cv$params` anywhere in the content, so one comment line naming either
  * one hid a script's document.write or eval from every code check.
  */
-function isAuthoredScriptContent(content: string): boolean {
-  return !isFlightPayload(content) && !isCloudflareBootstrap(content);
+function isAuthoredScriptContent(content: string, truncated = false): boolean {
+  return (
+    !isFlightPayload(content, truncated) && !isCloudflareBootstrap(content)
+  );
 }
 
 const FLIGHT_PUSH_PREFIXES = [
@@ -367,14 +371,27 @@ const FLIGHT_PUSH_PREFIXES = [
  * A Next.js flight-data script: nothing but `self.__next_f.push(...)` calls,
  * each passing one JSON array. Next serializes every chunk with
  * JSON.stringify, so any code added to the script stops the argument parsing.
+ *
+ * `truncated` is a script whose closing tag never arrived, which is what the
+ * scanner's body cap leaves at the end of a page bigger than it reads. Its
+ * last statement is cut mid-string and can never parse, so a flight payload
+ * cut there used to be read as authored code: the self-scan of /checks
+ * reported eval() in our own client script, because the cut happened to land
+ * just after a check title that says "eval() usage". For a truncated script
+ * the last statement only has to open the way a push does; every complete
+ * statement before it still has to parse, so code in front of the cut is
+ * still code.
  */
-function isFlightPayload(content: string): boolean {
+function isFlightPayload(content: string, truncated = false): boolean {
   if (!content.includes("__next_f")) return false;
   const statements = content.trim().split(/;\s*(?=\(?self\.__next_f\b)/);
-  return statements.every((raw) => {
+  return statements.every((raw, index) => {
     const statement = raw.trim().replace(/;$/, "");
     const prefix = FLIGHT_PUSH_PREFIXES.find((p) => statement.startsWith(p));
-    if (!prefix || !statement.endsWith(")")) return false;
+    if (!prefix) return false;
+    if (truncated && index === statements.length - 1)
+      return statement.slice(prefix.length).trimStart().startsWith("[");
+    if (!statement.endsWith(")")) return false;
     try {
       return Array.isArray(JSON.parse(statement.slice(prefix.length, -1)));
     } catch {
@@ -590,7 +607,7 @@ function buildProseView(body: string): string {
         out.push(`${tag}</script>`);
       } else if (
         scriptTagRunsInlineCode(tag) &&
-        isAuthoredScriptContent(content)
+        isAuthoredScriptContent(content, !close)
       ) {
         out.push(`${tag}${content}</script>`);
       }
