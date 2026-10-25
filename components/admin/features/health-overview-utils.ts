@@ -26,14 +26,55 @@ import {
 
 export type HealthState = "ok" | "warn" | "crit" | "unknown";
 
+/** One background worker as GET /api/v3/admin/health reports it. */
+export interface WorkerHealth {
+  event: string;
+  label: string;
+  /** How often it ticks, so "silent for N intervals" can be judged. */
+  intervalMs: number;
+  consecutiveFailures: number;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastError: string | null;
+  /** When it last recorded anything, success or failure. Null: never. */
+  updatedAt: string | null;
+}
+
 /**
- * A run of scans where a quarter of them failed is a broken scanner, not
- * user error. Below MIN_SCAN_VOLUME_FOR_RATE the ratio is noise (one failure
+ * A run of scans where a quarter of them failed inside the engine is a broken
+ * scanner. Below MIN_SCAN_VOLUME_FOR_RATE the ratio is noise (one failure
  * out of three scans is 33% and means nothing), so the rate only escalates
  * to red once there is enough volume for it to mean something.
+ *
+ * "Failed" here means ENGINE failures only (lib/scanner/failure-kinds.ts's
+ * ENGINE_FAILURE_KINDS, plus a legacy row with no kind). A user pressing
+ * Cancel, a quota refusing a bulk batch and a target that was simply down all
+ * end `failed` too, and counting them made a busy day look like an outage.
+ * They are reported on the row, separately, and never feed the rate.
  */
 export const FAILED_SCAN_RATE_CRIT = 0.25;
 export const MIN_SCAN_VOLUME_FOR_RATE = 20;
+
+/**
+ * A worker that has failed this many ticks in a row is down, not unlucky. It
+ * is the same threshold lib/admin/failure-escalation.ts pages on, so the
+ * panel goes red at the moment the webhook would have fired.
+ */
+export const WORKER_FAILURE_CRIT = 3;
+
+/**
+ * A worker that has not recorded anything for this many of its own intervals
+ * has stopped ticking. Three rather than two so a restart, a slow tick or a
+ * single skipped pass does not flash amber.
+ */
+export const WORKER_STALE_INTERVALS = 3;
+
+/**
+ * Overdue schedules are already 30 minutes late by the time they are counted
+ * (the route's cutoff). One this far behind is not a slow queue: the
+ * scheduled-scans worker has not been running schedules for hours.
+ */
+export const OVERDUE_SCHEDULE_CRIT_MS = 6 * 60 * 60 * 1000;
 
 /** Same shape of judgement for outbound mail: any failure is worth a look,
  *  a quarter of the last day's sends failing is a broken transport. */
@@ -72,7 +113,24 @@ export interface HealthMetrics {
     oldestPendingAgeMs: number | null;
     oldestRunningAgeMs: number | null;
     completedLast24h: number;
+    /** ENGINE failures only. The three counts below are the rest. */
     failedLast24h: number;
+    /** Cancelled by the owner or by staff. */
+    cancelledLast24h: number;
+    /** Refused by a limit, or part of a batch that stopped before it ran. */
+    refusedLast24h: number;
+    /** The target was unreachable, timed out, failed TLS, redirected away or was blocked. */
+    targetFailedLast24h: number;
+  } | null;
+  workers?: {
+    /** False on a serverless host, where no worker ever ticks. */
+    workersRun: boolean;
+    rows: WorkerHealth[];
+  } | null;
+  overdueSchedules?: {
+    workersRun: boolean;
+    count: number;
+    oldestOverdueMs: number | null;
   } | null;
   backup?: {
     lastBackupAt: string | null;
@@ -159,7 +217,30 @@ function scanQueueRow(m: NonNullable<HealthMetrics["scanQueue"]>): HealthRow {
   };
 }
 
+/**
+ * The failed scans that are not the engine's doing, as a trailing sentence on
+ * the failed-scans row. Said out loud rather than dropped: an operator who
+ * sees "0 failed" beside a queue full of red rows needs to know where those
+ * went.
+ */
+function notCountedSentence(
+  m: NonNullable<HealthMetrics["scanQueue"]>,
+): string {
+  const parts: string[] = [];
+  if (m.cancelledLast24h > 0) parts.push(`${m.cancelledLast24h} cancelled`);
+  if (m.refusedLast24h > 0) {
+    parts.push(`${m.refusedLast24h} refused by a limit or never run`);
+  }
+  if (m.targetFailedLast24h > 0) {
+    parts.push(`${m.targetFailedLast24h} stopped at the target`);
+  }
+  return parts.length > 0 ? ` Not counted: ${parts.join(", ")}.` : "";
+}
+
 function failedScansRow(m: NonNullable<HealthMetrics["scanQueue"]>): HealthRow {
+  // The denominator is what the engine either finished or broke on. A cancel,
+  // a refusal and a down target are in neither, so they cannot dilute the
+  // rate any more than they can inflate it.
   const total = m.completedLast24h + m.failedLast24h;
   const rate = total > 0 ? m.failedLast24h / total : 0;
   const state: HealthState =
@@ -168,14 +249,136 @@ function failedScansRow(m: NonNullable<HealthMetrics["scanQueue"]>): HealthRow {
       : total >= MIN_SCAN_VOLUME_FOR_RATE && rate >= FAILED_SCAN_RATE_CRIT
         ? "crit"
         : "warn";
+  const headline =
+    m.failedLast24h === 0
+      ? total === 0
+        ? "No scan finished or broke in the last day."
+        : `All ${m.completedLast24h} ${pluralScans(m.completedLast24h)} the engine ran in the last day finished.`
+      : `${m.failedLast24h} of ${total} ${pluralScans(total)} in the last day failed inside the engine (${Math.round(rate * 100)}%).`;
   return {
     key: "failed-scans",
-    label: "Failed scans (24h)",
+    label: "Engine failures (24h)",
     value: String(m.failedLast24h),
+    detail: `${headline}${notCountedSentence(m)}`,
+    state,
+    tab: "queue-status",
+  };
+}
+
+export interface WorkerVerdict {
+  state: HealthState;
+  /** One sentence naming the problem, or null for a worker with nothing wrong. */
+  problem: string | null;
+}
+
+function endWithPeriod(text: string): string {
+  const t = text.trim();
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
+/**
+ * One worker's verdict. Red at WORKER_FAILURE_CRIT failures in a row, amber
+ * once it has been silent for WORKER_STALE_INTERVALS of its own intervals.
+ *
+ * A worker with no row at all has never recorded a tick on this database. That
+ * is the normal state of a fresh install and of a serverless host, so it is
+ * not judged: a stalled timer is a worker that DID tick and then stopped. A
+ * worker that cannot arm at all is logged at boot, which the error-log row
+ * already catches.
+ */
+export function workerVerdict(w: WorkerHealth): WorkerVerdict {
+  if (w.consecutiveFailures >= WORKER_FAILURE_CRIT) {
+    const reason = w.lastError ? `: ${endWithPeriod(w.lastError)}` : ".";
+    return {
+      state: "crit",
+      problem: `${w.label} has failed ${w.consecutiveFailures} times in a row${reason}`,
+    };
+  }
+  const silentFor = ageOf(w.updatedAt);
+  if (
+    silentFor !== null &&
+    w.intervalMs > 0 &&
+    silentFor > w.intervalMs * WORKER_STALE_INTERVALS
+  ) {
+    return {
+      state: "warn",
+      problem: `${w.label} last reported ${formatAgeMs(silentFor)} ago and should tick about every ${formatAgeMs(w.intervalMs)}.`,
+    };
+  }
+  return { state: "ok", problem: null };
+}
+
+function workersRow(m: NonNullable<HealthMetrics["workers"]>): HealthRow {
+  if (!m.workersRun) {
+    return {
+      key: "workers",
+      label: "Background workers",
+      value: "not applicable",
+      detail:
+        "This host is serverless, so its processes do not live long enough for a worker to tick. Scheduled scans, digests and automatic backups need a long-running host.",
+      state: "ok",
+      tab: "error-logs",
+    };
+  }
+  const verdicts = m.rows.map((w) => ({ w, v: workerVerdict(w) }));
+  const crit = verdicts.filter((x) => x.v.state === "crit");
+  const warn = verdicts.filter((x) => x.v.state === "warn");
+  const reporting = m.rows.filter((w) => w.updatedAt !== null).length;
+  const state: HealthState =
+    crit.length > 0 ? "crit" : warn.length > 0 ? "warn" : "ok";
+  if (state !== "ok") {
+    const problems = [...crit, ...warn].map((x) => x.v.problem);
+    return {
+      key: "workers",
+      label: "Background workers",
+      value: `${problems.length} of ${m.rows.length} need attention`,
+      detail: problems.join(" "),
+      state,
+      tab: "error-logs",
+    };
+  }
+  const silent = m.rows.filter((w) => w.updatedAt === null);
+  return {
+    key: "workers",
+    label: "Background workers",
+    value: `${reporting} of ${m.rows.length} reporting`,
     detail:
-      m.failedLast24h === 0
-        ? `All ${m.completedLast24h} ${pluralScans(m.completedLast24h)} in the last day finished.`
-        : `${m.failedLast24h} of ${total} ${pluralScans(total)} in the last day failed (${Math.round(rate * 100)}%).`,
+      silent.length === 0
+        ? "Every worker has ticked inside its expected interval."
+        : `${silent.map((w) => w.label).join(", ")} ${silent.length === 1 ? "has" : "have"} not recorded a tick yet. That is normal on a new install; the slower workers take hours to tick.`,
+    state,
+    tab: "error-logs",
+  };
+}
+
+function overdueSchedulesRow(
+  m: NonNullable<HealthMetrics["overdueSchedules"]>,
+): HealthRow {
+  if (!m.workersRun) {
+    return {
+      key: "overdue-schedules",
+      label: "Overdue schedules",
+      value: "not applicable",
+      detail:
+        "This host is serverless, so the scheduled-scans worker never runs and schedules are not executed here.",
+      state: "ok",
+      tab: "queue-status",
+    };
+  }
+  const state: HealthState =
+    m.count === 0
+      ? "ok"
+      : (m.oldestOverdueMs ?? 0) >= OVERDUE_SCHEDULE_CRIT_MS
+        ? "crit"
+        : "warn";
+  return {
+    key: "overdue-schedules",
+    label: "Overdue schedules",
+    value: String(m.count),
+    detail:
+      m.count === 0
+        ? "Every active schedule is running on time."
+        : `${m.count} active ${m.count === 1 ? "schedule was" : "schedules were"} due more than 30 minutes ago and ${m.count === 1 ? "has" : "have"} not run${m.oldestOverdueMs !== null ? `; the oldest is ${formatAgeMs(m.oldestOverdueMs)} late` : ""}. The scheduled-scans worker is down or failing, or scanning is paused.`,
     state,
     tab: "queue-status",
   };
@@ -358,12 +561,26 @@ export function buildHealthRows(
       if (metrics.scanQueue === null) {
         rows.push(unknownRow("scan-queue", "Scanner queue", "queue-status"));
         rows.push(
-          unknownRow("failed-scans", "Failed scans (24h)", "queue-status"),
+          unknownRow("failed-scans", "Engine failures (24h)", "queue-status"),
         );
       } else {
         rows.push(scanQueueRow(metrics.scanQueue));
         rows.push(failedScansRow(metrics.scanQueue));
       }
+    }
+    if (metrics.workers !== undefined) {
+      rows.push(
+        metrics.workers === null
+          ? unknownRow("workers", "Background workers", "error-logs")
+          : workersRow(metrics.workers),
+      );
+    }
+    if (metrics.overdueSchedules !== undefined) {
+      rows.push(
+        metrics.overdueSchedules === null
+          ? unknownRow("overdue-schedules", "Overdue schedules", "queue-status")
+          : overdueSchedulesRow(metrics.overdueSchedules),
+      );
     }
     if (metrics.backup !== undefined) {
       rows.push(
@@ -444,6 +661,8 @@ export function buildHealthRows(
  */
 export const HEALTH_CHECK_KEYS = [
   "scanQueue",
+  "workers",
+  "overdueSchedules",
   "backup",
   "errorLogs",
   "email",

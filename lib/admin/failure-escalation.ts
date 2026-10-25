@@ -46,22 +46,70 @@ async function loadState(
   }
 }
 
+/** The longest failure reason the table keeps; the alert carries the rest. */
+const MAX_LAST_ERROR_LENGTH = 1000;
+
+/**
+ * What a persist call is recording, so each timestamp only moves for the
+ * event it describes. "alerted" is the same failure being marked as
+ * announced: it must not push last_failure_at forward, or the health view
+ * would read a delivered alert as a fresh failure.
+ */
+type Outcome =
+  | { kind: "success" }
+  | { kind: "failure"; reason: string }
+  | { kind: "alerted" };
+
+// last_success_at / last_failure_at / last_error are what the Admin health
+// view needs to say more than "3 in a row": when the worker last worked, when
+// it last broke, and how. updated_at alone could not tell a worker that
+// recovered an hour ago from one that has not ticked since.
+//
+// A success leaves last_failure_at and last_error alone on purpose: they are
+// the history of the last break, which is still worth reading after recovery.
+// Three statements rather than one with CASE-guarded columns, so each says
+// plainly which columns it moves.
+const UPSERT_SUCCESS = `INSERT INTO worker_failure_state (event, consecutive_failures, alerted, last_success_at, updated_at)
+     VALUES ($1, $2, $3, NOW(), NOW())
+   ON CONFLICT (event) DO UPDATE
+     SET consecutive_failures = EXCLUDED.consecutive_failures,
+         alerted = EXCLUDED.alerted,
+         last_success_at = NOW(),
+         updated_at = NOW()`;
+
+const UPSERT_FAILURE = `INSERT INTO worker_failure_state (event, consecutive_failures, alerted, last_failure_at, last_error, updated_at)
+     VALUES ($1, $2, $3, NOW(), $4, NOW())
+   ON CONFLICT (event) DO UPDATE
+     SET consecutive_failures = EXCLUDED.consecutive_failures,
+         alerted = EXCLUDED.alerted,
+         last_failure_at = NOW(),
+         last_error = EXCLUDED.last_error,
+         updated_at = NOW()`;
+
+const UPSERT_ALERTED = `INSERT INTO worker_failure_state (event, consecutive_failures, alerted, updated_at)
+     VALUES ($1, $2, $3, NOW())
+   ON CONFLICT (event) DO UPDATE
+     SET consecutive_failures = EXCLUDED.consecutive_failures,
+         alerted = EXCLUDED.alerted,
+         updated_at = NOW()`;
+
 function persistState(
   event: string,
   consecutiveFailures: number,
   alerted: boolean,
+  outcome: Outcome,
 ): void {
-  void pool
-    .query(
-      `INSERT INTO worker_failure_state (event, consecutive_failures, alerted, updated_at)
-         VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (event) DO UPDATE
-         SET consecutive_failures = EXCLUDED.consecutive_failures,
-             alerted = EXCLUDED.alerted,
-             updated_at = NOW()`,
-      [event, consecutiveFailures, alerted],
-    )
-    .catch(() => {});
+  const base = [event, consecutiveFailures, alerted];
+  const [sql, params] =
+    outcome.kind === "success"
+      ? [UPSERT_SUCCESS, base]
+      : outcome.kind === "failure"
+        ? [
+            UPSERT_FAILURE,
+            [...base, outcome.reason.slice(0, MAX_LAST_ERROR_LENGTH)],
+          ]
+        : [UPSERT_ALERTED, base];
+  void pool.query(sql, params).catch(() => {});
 }
 
 export function createFailureEscalator(
@@ -85,14 +133,15 @@ export function createFailureEscalator(
       touched = true;
       consecutiveFailures = 0;
       alerted = false;
-      persistState(event, 0, false);
+      persistState(event, 0, false, { kind: "success" });
     },
     recordFailure(message, context) {
       touched = true;
       consecutiveFailures++;
       const shouldAlert = consecutiveFailures >= threshold && !alerted;
+      const failure: Outcome = { kind: "failure", reason: message };
       if (!shouldAlert) {
-        persistState(event, consecutiveFailures, alerted);
+        persistState(event, consecutiveFailures, alerted, failure);
         return;
       }
 
@@ -111,7 +160,7 @@ export function createFailureEscalator(
       // Awaited, so the delivery result is known before it is recorded. The
       // failure count is persisted either way; the flag only advances on a
       // delivery that happened, so the next tick tries again.
-      persistState(event, consecutiveFailures, alerted);
+      persistState(event, consecutiveFailures, alerted, failure);
       void (async () => {
         try {
           const result = await sendAdminAlert({
@@ -122,7 +171,9 @@ export function createFailureEscalator(
           });
           if (result?.delivered) {
             alerted = true;
-            persistState(event, consecutiveFailures, true);
+            persistState(event, consecutiveFailures, true, {
+              kind: "alerted",
+            });
           } else {
             console.error(
               `[FailureEscalation] ${event}: alert not delivered${result?.reason ? `: ${result.reason}` : ""}. Will retry on the next failure.`,

@@ -107,3 +107,70 @@ describe("createFailureEscalator", () => {
     expect(mockSendAdminAlert).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * What the Admin health view reads back. updated_at alone could not tell a
+ * worker that recovered an hour ago from one that has not ticked since, so
+ * each tick also records when it last worked, when it last broke and how.
+ * These pin which columns each outcome moves, because a success that wiped
+ * last_error or an alert that bumped last_failure_at would make the panel lie.
+ */
+describe("createFailureEscalator: what is persisted", () => {
+  const writes = () =>
+    mockDbQuery.mock.calls
+      .map((c) => c as unknown as [string, unknown[]])
+      .filter(([sql]) =>
+        String(sql).includes("INSERT INTO worker_failure_state"),
+      );
+
+  it("records the time of a success and leaves the failure history alone", () => {
+    const escalator = createFailureEscalator("persist_success", 3);
+    escalator.recordSuccess();
+
+    const [sql, params] = writes()[0];
+    expect(sql).toContain("last_success_at = NOW()");
+    expect(sql).not.toContain("last_failure_at");
+    expect(sql).not.toContain("last_error");
+    expect(params).toEqual(["persist_success", 0, false]);
+  });
+
+  it("records the time and the reason of a failure", () => {
+    const escalator = createFailureEscalator("persist_failure", 3);
+    escalator.recordFailure("The worker could not reach the database");
+
+    const [sql, params] = writes()[0];
+    expect(sql).toContain("last_failure_at = NOW()");
+    expect(sql).toContain("last_error = EXCLUDED.last_error");
+    expect(sql).not.toContain("last_success_at");
+    expect(params).toEqual([
+      "persist_failure",
+      1,
+      false,
+      "The worker could not reach the database",
+    ]);
+  });
+
+  it("keeps a runaway reason to a bounded length", () => {
+    const escalator = createFailureEscalator("persist_long", 3);
+    escalator.recordFailure("x".repeat(5000));
+
+    const params = writes()[0][1];
+    expect(String(params[3]).length).toBe(1000);
+  });
+
+  it("does not treat a delivered alert as a fresh failure", async () => {
+    mockSendAdminAlert.mockResolvedValue({ delivered: true, status: 204 });
+    const escalator = createFailureEscalator("persist_alerted", 1);
+    escalator.recordFailure("down");
+    await vi.waitFor(() => expect(writes()).toHaveLength(2));
+
+    const all = writes();
+    // First: the failure itself, with its timestamp and reason.
+    expect(all[0][0]).toContain("last_failure_at");
+    // Second: only the flag moves. Re-stamping last_failure_at here would make
+    // the panel read the alert going out as the worker failing again.
+    expect(all[1][0]).not.toContain("last_failure_at");
+    expect(all[1][0]).not.toContain("last_error");
+    expect(all[1][1]).toEqual(["persist_alerted", 1, true]);
+  });
+});

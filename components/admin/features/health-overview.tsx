@@ -24,9 +24,11 @@ import {
  * directory behind two rows of headcount counters, none of which can go red,
  * so nothing anywhere answered "is anything wrong right now". This is one
  * status list, worst first, of the signals that can actually indicate a
- * fault: scanner backlog, failed scans, backup age against the configured
- * interval, error volume, mail delivery, unresolved alerts, tickets waiting
- * on staff, staff invites that expired unaccepted, and an available update.
+ * fault: scanner backlog, engine failures (a user's Cancel or a down target
+ * is not one), background workers that are failing or have stopped ticking,
+ * schedules that are overdue, backup age against the configured interval,
+ * error volume, mail delivery, unresolved alerts, tickets waiting on staff,
+ * staff invites that expired unaccepted, and an available update.
  *
  * A divided list rather than another card grid, per design-language.md D4:
  * these rows are one comparison down a single column (which of these is
