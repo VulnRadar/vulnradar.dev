@@ -43,9 +43,12 @@ import {
   creditBrowserbaseCreditPurchase,
   reverseBrowserbaseCreditPurchase,
 } from "@/lib/billing/browserbase-usage";
+import { findAccountForSubscriptionEvent } from "@/lib/billing/subscription-lookup";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
 import { sendAdminAlert } from "@/lib/admin/alert-webhook";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { logError } from "@/lib/logging/log";
 
 // getPlanFromProductId() only recognizes our own catalog ids (e.g.
 // "core_supporter_monthly"), never a raw Stripe product id like
@@ -233,7 +236,76 @@ function creditAmountMatches(
   return true;
 }
 
-export async function POST(req: NextRequest) {
+/**
+ * A paid event that no account claims: the customer has been charged and
+ * nobody received the plan. The handler still answers 200, so Stripe does not
+ * retry and this is the only chance anyone has to hear about it.
+ *
+ * Only ids go in the row and the alert. The event id is enough to find the
+ * customer in the Stripe dashboard, and an address never belongs in a log.
+ */
+function reportNoAccount(
+  event: Stripe.Event,
+  ids: { customerId?: string | null; subscriptionId?: string | null },
+  paid: boolean,
+): void {
+  if (!paid) {
+    // Nothing was charged, so there is nothing to lose: an incomplete
+    // subscription for somebody we have no record of is routine.
+    console.log(
+      `[Stripe] ${event.type} matched no account and nothing was paid (event ${event.id})`,
+    );
+    return;
+  }
+  const context = {
+    eventId: event.id,
+    eventType: event.type,
+    customerId: ids.customerId ?? undefined,
+    subscriptionId: ids.subscriptionId ?? undefined,
+  };
+  logError("stripe", "a paid event matched no account", undefined, context);
+  void sendAdminAlert({
+    event: "stripe_payment_unmatched",
+    severity: "critical",
+    message: `Stripe event ${event.id} (${event.type}) is for a subscription that is paying, and no account claims it. Nobody received the plan: find the customer in Stripe and apply it by hand.`,
+    context,
+  });
+}
+
+/**
+ * A subscription write that changed no row, sorted into what it means.
+ *
+ * "No row updated" covers two cases that must not be treated alike. If an
+ * account exists for the event, the ownership guard refused to touch it
+ * because it already holds this subscription or is on another live one: the
+ * normal result of a `created` that arrives after the buyer confirmed payment,
+ * and the account is exactly where it should be. If none exists, a paying
+ * customer has nobody to receive the plan. Only that second case may alert, or
+ * a successful purchase raises a critical alarm.
+ *
+ * `lookup` holds only the keys the write actually tried; see
+ * findAccountForSubscriptionEvent.
+ */
+async function reportUnappliedSubscriptionEvent(
+  event: Stripe.Event,
+  ids: { customerId?: string | null; subscriptionId?: string | null },
+  lookup: {
+    userId?: number | null;
+    customerId?: string | null;
+    email?: string | null;
+  },
+  paid: boolean,
+): Promise<void> {
+  if (await findAccountForSubscriptionEvent(lookup)) {
+    console.log(
+      `[Stripe] ${event.type} found its account but the account already holds this subscription or another live one; leaving it as it is (event ${event.id})`,
+    );
+    return;
+  }
+  reportNoAccount(event, ids, paid);
+}
+
+export const POST = withErrorHandling(async (req: NextRequest) => {
   const stripe = getStripe();
   if (!stripe) {
     return NextResponse.json(
@@ -450,13 +522,20 @@ export async function POST(req: NextRequest) {
                 `[Stripe] User ID ${result.rows[0].id} upgraded to ${planToWrite} (by-email fallback)`,
               );
               if (sessionIsPaid) await grantPremiumBadge(result.rows[0].id);
-            } else {
-              // No PII in this branch either — we don't have a userId to
-              // log, but we can log the Stripe event id for correlation.
-              console.log(
-                `[Stripe] checkout.session.completed but no user found (event ${event.id})`,
-              );
             }
+          }
+
+          // Outside the email guard above: a session with no customer_email
+          // and a userId that matched nothing used to log nothing at all. The
+          // lookup uses only the two keys the UPDATEs used, so a user found
+          // by some other key is not mistaken for a refusal.
+          if (!result || result.rowCount === 0) {
+            await reportUnappliedSubscriptionEvent(
+              event,
+              { customerId, subscriptionId },
+              { userId, email: customerEmail },
+              sessionIsPaid,
+            );
           }
         }
         break;
@@ -559,10 +638,12 @@ export async function POST(req: NextRequest) {
         }
 
         // Last fallback: Try email from Stripe customer
+        let stripeCustomerEmail: string | null = null;
         if (!matchedUserId) {
           const customer = (await stripe.customers.retrieve(
             customerId,
           )) as Stripe.Customer;
+          stripeCustomerEmail = customer.email;
           if (customer.email) {
             matchedUserId = (
               await applySubscriptionCreated(write, {
@@ -579,12 +660,22 @@ export async function POST(req: NextRequest) {
               if (planToWrite !== "free") {
                 await grantPremiumBadge(matchedUserId);
               }
-            } else {
-              console.log(
-                `[Stripe] Subscription created but no user found (event ${event.id})`,
-              );
             }
           }
+        }
+
+        // Outside the email guard above, so a Stripe customer with no email
+        // is reported too. All three lookups can come back empty because the
+        // guard refused a row that already knows this subscription (a
+        // `created` delivered after the buyer confirmed payment), not only
+        // because no account exists; the report tells the two apart.
+        if (!matchedUserId) {
+          await reportUnappliedSubscriptionEvent(
+            event,
+            { customerId, subscriptionId: subscription.id },
+            { userId, customerId, email: stripeCustomerEmail },
+            ACTIVE_SUBSCRIPTION_STATUSES.includes(subscription.status),
+          );
         }
 
         // Best-effort "subscription started" notice, only when the create
@@ -682,6 +773,9 @@ export async function POST(req: NextRequest) {
           stripe_subscription_id: string | null;
           subscription_status: string | null;
         } | null = null;
+        // A null previousRow means two different things: no account holds this
+        // customer, or the read threw. Only the first is a missing account.
+        let previousRowReadFailed = false;
         try {
           const prev = await pool.query<{
             id: number;
@@ -695,6 +789,7 @@ export async function POST(req: NextRequest) {
           );
           previousRow = prev.rows[0] ?? null;
         } catch (prevErr) {
+          previousRowReadFailed = true;
           console.error(
             "[Stripe] previous-plan read failed (continuing):",
             prevErr,
@@ -770,6 +865,19 @@ export async function POST(req: NextRequest) {
               );
             }
           }
+        } else if (!previousRow && !previousRowReadFailed) {
+          // No account holds this customer, so the write could not have
+          // matched. This is where a paid activation lands, and it used to
+          // end here without a word.
+          reportNoAccount(
+            event,
+            { customerId, subscriptionId: subscription.id },
+            isPaid,
+          );
+        } else if (previousRow && !rowOwnsThisSubscription) {
+          console.log(
+            `[Stripe] Subscription ${subscription.id} updated but customer ${customerId} is on another live subscription; leaving the account as it is (event ${event.id})`,
+          );
         }
         break;
       }
@@ -1296,4 +1404,4 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
-}
+});

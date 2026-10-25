@@ -16,6 +16,7 @@ import {
   it,
   expect,
   beforeEach,
+  afterEach,
   beforeAll,
   afterAll,
   vi,
@@ -64,6 +65,14 @@ vi.mock("@/lib/billing/browserbase-usage", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/billing/browserbase-usage")>()),
   reverseBrowserbaseCreditPurchase: (...args: unknown[]) =>
     mockReverseBrowserbaseCreditPurchase(...args),
+}));
+
+// The unmatched-payment alert is asserted on directly. Left real, it would
+// resolve the webhook URL through the same mocked pool and consume queued
+// answers meant for the handler.
+const mockSendAdminAlert = vi.fn();
+vi.mock("@/lib/admin/alert-webhook", () => ({
+  sendAdminAlert: (...args: unknown[]) => mockSendAdminAlert(...args),
 }));
 
 const { POST } = await import("@/app/api/v3/webhooks/stripe/route");
@@ -137,6 +146,8 @@ beforeEach(() => {
   mockProductRetrieve.mockResolvedValue({ metadata: {} });
   mockGetStripe.mockReset();
   mockGetStripe.mockReturnValue(fakeStripe());
+  mockSendAdminAlert.mockReset();
+  mockSendAdminAlert.mockResolvedValue({ delivered: false, reason: "test" });
   mockReverseAiCreditPurchase.mockReset();
   mockReverseAiCreditPurchase.mockResolvedValue({ reversed: false });
   mockReverseGithubCreditPurchase.mockReset();
@@ -327,6 +338,7 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
       items: { data: [{ price: { nickname: "" } }] },
     });
     mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE by email, no match
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // account lookup: nobody, so it is reported
 
     const res = await POST(
       signedRequest(
@@ -346,7 +358,7 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
     );
     expect(res.status).toBe(200);
     expect(mockSubRetrieve).toHaveBeenCalledWith("sub_9");
-    expect(mockQuery).toHaveBeenCalledTimes(2); // idempotency + email UPDATE only, no badge queries
+    expect(mockQuery).toHaveBeenCalledTimes(3); // idempotency + email UPDATE + account lookup, no badge queries
 
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("LOWER(email) = LOWER($5)");
@@ -402,6 +414,7 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
     withIdempotency("evt_checkout_unpaid_guard");
     mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // guard refused
     mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // email fallback, also refused
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] }); // the account exists: refused, not unmatched
 
     const res = await POST(
       signedRequest(
@@ -644,6 +657,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE by userId, guard refuses
     mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE by customer, guard refuses
     mockCustomerRetrieve.mockResolvedValue({ email: null });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] }); // the account exists: refused, not unmatched
 
     const res = await POST(
       signedRequest(
@@ -665,8 +679,9 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     const [sql] = mockQuery.mock.calls[1];
     expect(sql).toContain("stripe_subscription_id IS DISTINCT FROM $2");
     // No badge work and no "subscription started" email lookup ran: nothing
-    // matched, so there is no account to act on.
-    expect(mockQuery).toHaveBeenCalledTimes(3);
+    // was written. The one extra query is the read that tells a refusal
+    // from an event with no account at all.
+    expect(mockQuery).toHaveBeenCalledTimes(4);
   });
 
   it("BUG: when metadata is absent, the items[].price.product fallback compares Stripe's real product id against internal plan-name prefixes and silently resolves to 'free'", async () => {
@@ -1715,5 +1730,424 @@ describe("POST /api/v3/webhooks/stripe: unhandled event types and failures", () 
     expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error).toBe("Webhook handler failed");
+  });
+});
+
+/**
+ * A customer who paid and matched no account used to leave a console.log, or
+ * nothing at all: the log sat inside an `&& customerEmail` guard, so a session
+ * with no email said nothing, and `customer.subscription.updated`, where a
+ * paid activation actually lands, had no branch for "nobody to give the plan
+ * to". console.log is not captured into the error log and no alert fired, so
+ * staff learned of it when the customer wrote in.
+ *
+ * Two outcomes look identical from the write ("no row updated") and must not
+ * be treated alike:
+ *   - no account exists for the event: a paid customer with nobody to receive
+ *     the plan. This is the one that pages.
+ *   - an account exists and the ownership guard refused to touch it, because
+ *     it already knows this subscription or is on another live one. Routine:
+ *     a `created` delivered after the buyer confirmed payment is refused on
+ *     purpose. Alerting on it would raise a critical alarm on a successful
+ *     purchase.
+ */
+describe("POST /api/v3/webhooks/stripe: a paid event that matches no account", () => {
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  function send(id: string, type: string, object: Record<string, unknown>) {
+    return POST(signedRequest(JSON.stringify({ id, type, data: { object } })));
+  }
+
+  /** The error-level rows this suite's logError calls produced for the event. */
+  function unmatchedRows() {
+    return errSpy.mock.calls.filter((c) =>
+      String(c[0]).includes("matched no account"),
+    );
+  }
+
+  function expectReported(
+    eventId: string,
+    eventType: string,
+    ids: { customerId?: string; subscriptionId?: string },
+  ) {
+    expect(unmatchedRows()).toHaveLength(1);
+    expect(unmatchedRows()[0][1]).toEqual({
+      eventId,
+      eventType,
+      customerId: ids.customerId,
+      subscriptionId: ids.subscriptionId,
+    });
+    expect(mockSendAdminAlert).toHaveBeenCalledTimes(1);
+    expect(mockSendAdminAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "stripe_payment_unmatched",
+        severity: "critical",
+        context: {
+          eventId,
+          eventType,
+          customerId: ids.customerId,
+          subscriptionId: ids.subscriptionId,
+        },
+      }),
+    );
+  }
+
+  function expectQuiet() {
+    expect(unmatchedRows()).toHaveLength(0);
+    expect(mockSendAdminAlert).not.toHaveBeenCalled();
+  }
+
+  describe("checkout.session.completed", () => {
+    it("reports a paid session with a user id that matches nothing and no email to fall back on", async () => {
+      withIdempotency("evt_co_noemail");
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE by userId
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // account lookup
+
+      const res = await send("evt_co_noemail", "checkout.session.completed", {
+        customer: "cus_1",
+        subscription: "sub_1",
+        customer_email: null,
+        metadata: { userId: "42", planId: "pro_supporter" },
+      });
+
+      expect(res.status).toBe(200);
+      expectReported("evt_co_noemail", "checkout.session.completed", {
+        customerId: "cus_1",
+        subscriptionId: "sub_1",
+      });
+    });
+
+    it("reports a paid session with neither a user id nor an email, without needing a lookup", async () => {
+      withIdempotency("evt_co_nokeys");
+      mockSubRetrieve.mockResolvedValue({
+        metadata: {},
+        items: { data: [{ price: { nickname: "" } }] },
+      });
+
+      const res = await send("evt_co_nokeys", "checkout.session.completed", {
+        customer: "cus_2",
+        subscription: "sub_2",
+        customer_email: null,
+        metadata: {},
+      });
+
+      expect(res.status).toBe(200);
+      // Idempotency only: with nothing to look an account up by, there is no
+      // query to run and no account to find.
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expectReported("evt_co_nokeys", "checkout.session.completed", {
+        customerId: "cus_2",
+        subscriptionId: "sub_2",
+      });
+    });
+
+    it("reports a paid session whose email fallback matched nothing", async () => {
+      withIdempotency("evt_co_email");
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE by email
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // account lookup
+
+      await send("evt_co_email", "checkout.session.completed", {
+        customer: "cus_3",
+        subscription: "sub_3",
+        customer_email: "nobody@example.com",
+        metadata: { planId: "pro_supporter" },
+      });
+
+      expectReported("evt_co_email", "checkout.session.completed", {
+        customerId: "cus_3",
+        subscriptionId: "sub_3",
+      });
+      // No address in any log or alert.
+      expect(JSON.stringify(errSpy.mock.calls)).not.toContain(
+        "nobody@example.com",
+      );
+      expect(JSON.stringify(mockSendAdminAlert.mock.calls)).not.toContain(
+        "nobody@example.com",
+      );
+    });
+
+    it("does not report an unpaid session the ownership guard refused: an account exists and was left alone", async () => {
+      withIdempotency("evt_co_refused");
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // by userId, refused
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // by email, refused
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] }); // account exists
+
+      await send("evt_co_refused", "checkout.session.completed", {
+        customer: "cus_1",
+        subscription: "sub_abandoned",
+        customer_email: "a@b.com",
+        payment_status: "unpaid",
+        metadata: { userId: "42", planId: "pro_supporter" },
+      });
+
+      expectQuiet();
+    });
+
+    it("does not alert for an unpaid session with no account: nothing was charged", async () => {
+      withIdempotency("evt_co_unpaid_nobody");
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // account lookup
+
+      await send("evt_co_unpaid_nobody", "checkout.session.completed", {
+        customer: "cus_1",
+        subscription: "sub_1",
+        customer_email: null,
+        payment_status: "unpaid",
+        metadata: { userId: "42", planId: "pro_supporter" },
+      });
+
+      expectQuiet();
+    });
+
+    it("stays quiet when the session matched its account", async () => {
+      withIdempotency("evt_co_ok");
+      mockQuery.mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{ id: 42, email: "a@b.com" }],
+      });
+      mockQuery.mockResolvedValueOnce(badgeRow);
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      await send("evt_co_ok", "checkout.session.completed", {
+        customer: "cus_1",
+        subscription: "sub_1",
+        customer_email: null,
+        metadata: { userId: "42", planId: "pro_supporter" },
+      });
+
+      expectQuiet();
+    });
+  });
+
+  describe("customer.subscription.created", () => {
+    it("reports an active subscription with no account behind it, even though the Stripe customer has no email", async () => {
+      withIdempotency("evt_cr_nobody");
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // by customer
+      mockCustomerRetrieve.mockResolvedValue({ email: null });
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // account lookup
+
+      const res = await send("evt_cr_nobody", "customer.subscription.created", {
+        id: "sub_n",
+        customer: "cus_n",
+        status: "active",
+        metadata: { planId: "pro_supporter" },
+      });
+
+      expect(res.status).toBe(200);
+      expectReported("evt_cr_nobody", "customer.subscription.created", {
+        customerId: "cus_n",
+        subscriptionId: "sub_n",
+      });
+    });
+
+    it("looks the account up by every key the write tried, and only those", async () => {
+      withIdempotency("evt_cr_keys");
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // by id
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // by customer
+      mockCustomerRetrieve.mockResolvedValue({ email: "Who@Example.com" });
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // by email
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // account lookup
+
+      await send("evt_cr_keys", "customer.subscription.created", {
+        id: "sub_k",
+        customer: "cus_k",
+        status: "active",
+        metadata: { userId: "42", planId: "pro_supporter" },
+      });
+
+      const [, params] = mockQuery.mock.calls[mockQuery.mock.calls.length - 1];
+      expect(params).toEqual([42, "cus_k", "Who@Example.com"]);
+    });
+
+    it("does NOT alert when the ownership guard refused an active subscription the account already holds", async () => {
+      // The scenario the audit warned about: a subscription that settles
+      // straight to active has its plan written by the checkout confirmation
+      // first. This `created` is then refused by all three lookups, and the
+      // account is exactly where it should be. Raising a critical alert here
+      // would fire on a successful purchase.
+      withIdempotency("evt_cr_late_active");
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // by id, refused
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // by customer, refused
+      mockCustomerRetrieve.mockResolvedValue({ email: null });
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] }); // account exists
+
+      const res = await send(
+        "evt_cr_late_active",
+        "customer.subscription.created",
+        {
+          id: "sub_late",
+          customer: "cus_late",
+          status: "active",
+          metadata: { userId: "42", planId: "elite_supporter" },
+        },
+      );
+
+      expect(res.status).toBe(200);
+      expectQuiet();
+    });
+
+    it("does not alert for an incomplete subscription with no account: nothing has been paid yet", async () => {
+      withIdempotency("evt_cr_incomplete");
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // by customer
+      mockCustomerRetrieve.mockResolvedValue({ email: null });
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // account lookup
+
+      await send("evt_cr_incomplete", "customer.subscription.created", {
+        id: "sub_i",
+        customer: "cus_i",
+        status: "incomplete",
+        metadata: { planId: "pro_supporter" },
+      });
+
+      expectQuiet();
+    });
+  });
+
+  describe("customer.subscription.updated", () => {
+    const activeSub = (over: Record<string, unknown> = {}) => ({
+      id: "sub_u",
+      customer: "cus_u",
+      status: "active",
+      metadata: { productId: "elite_supporter_monthly" },
+      ...over,
+    });
+
+    it("reports a paid activation when no account holds the Stripe customer, which used to log nothing", async () => {
+      withIdempotency("evt_up_nobody");
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // pre-read: no such customer
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE
+
+      const res = await send(
+        "evt_up_nobody",
+        "customer.subscription.updated",
+        activeSub(),
+      );
+
+      expect(res.status).toBe(200);
+      expectReported("evt_up_nobody", "customer.subscription.updated", {
+        customerId: "cus_u",
+        subscriptionId: "sub_u",
+      });
+    });
+
+    it("does not alert when the guard refused it: the account is on another live subscription", async () => {
+      withIdempotency("evt_up_refused");
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 42,
+            email: "a@b.com",
+            plan: "elite_supporter",
+            stripe_subscription_id: "sub_other",
+            subscription_status: "active",
+          },
+        ],
+      });
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE, refused
+
+      await send(
+        "evt_up_refused",
+        "customer.subscription.updated",
+        activeSub(),
+      );
+
+      expectQuiet();
+    });
+
+    it("does not alert when the event changed nothing: the account is already up to date", async () => {
+      withIdempotency("evt_up_noop");
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 42,
+            email: "a@b.com",
+            plan: "elite_supporter",
+            stripe_subscription_id: "sub_u",
+            subscription_status: "active",
+          },
+        ],
+      });
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE, no-op
+      mockQuery.mockResolvedValueOnce(badgeRow); // badge reconcile
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      await send("evt_up_noop", "customer.subscription.updated", activeSub());
+
+      expectQuiet();
+      expect(
+        errSpy.mock.calls.filter((c) => String(c[0]).startsWith("[stripe]")),
+      ).toHaveLength(0);
+    });
+
+    it("does not alert for a subscription that was never paid and has no account", async () => {
+      withIdempotency("evt_up_unpaid");
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+      await send(
+        "evt_up_unpaid",
+        "customer.subscription.updated",
+        activeSub({ status: "incomplete_expired" }),
+      );
+
+      expectQuiet();
+    });
+
+    it("does not claim the account is missing when the pre-read itself failed", async () => {
+      // previousRow is null both when no account exists and when the read
+      // threw. The read's failure is logged where it happens; calling it an
+      // unmatched payment would be a guess.
+      withIdempotency("evt_up_readfail");
+      mockQuery.mockRejectedValueOnce(new Error("connection reset"));
+      mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+      const res = await send(
+        "evt_up_readfail",
+        "customer.subscription.updated",
+        activeSub(),
+      );
+
+      expect(res.status).toBe(200);
+      expectQuiet();
+    });
+  });
+
+  describe("the route wrapper", () => {
+    it("turns an error thrown outside the handler's own try into a JSON 500 rather than an unhandled throw", async () => {
+      mockGetStripe.mockImplementation(() => {
+        throw new Error("stripe client exploded");
+      });
+
+      const res = await POST(unsignedRequest("{}"));
+
+      expect(res.status).toBe(500);
+      await expect(res.json()).resolves.toHaveProperty("error");
+    });
+
+    it("leaves the raw body untouched for signature verification", async () => {
+      // Stripe signs the exact bytes it sent. Whitespace and key order in this
+      // payload are deliberately not what JSON.stringify of its parse would
+      // give, so a wrapper that parsed and re-serialised the body would fail
+      // verification with a 400.
+      const payload =
+        '{ "id":"evt_raw",  "type":"customer.created",\n "data":{"object":{}} }';
+      withIdempotency("evt_raw");
+
+      const res = await POST(signedRequest(payload));
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toEqual({ received: true });
+    });
   });
 });
