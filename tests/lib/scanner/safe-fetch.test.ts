@@ -474,3 +474,188 @@ describe("safeFetch (SSRF-guarded redirect loop)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+// ── plain-HTTP targets ─────────────────────────────────────────────────────
+
+function redirectTo(status: number, location: string) {
+  return new Response(null, { status, headers: { location } });
+}
+
+describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockLookup.mockReset();
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const hostHeaderOf = (call: unknown[]) =>
+    new Headers((call[1] as RequestInit).headers as HeadersInit).get("host");
+
+  // The audit's repro. The Location was resolved against the pinned-IP URL, so
+  // "/next" became http://93.184.216.34/next, the cross-host test read the IP as
+  // a different host, and a site that answered normally failed the whole scan.
+  it("follows a relative redirect on an http target instead of calling the IP a different host", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock
+      .mockResolvedValueOnce(redirectTo(302, "/next"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const res = await safeFetch("http://example.com/start");
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "http://93.184.216.34/start",
+    );
+    expect(String(fetchMock.mock.calls[1][0])).toBe(
+      "http://93.184.216.34/next",
+    );
+    // Same host both times: the second hop still names it in Host.
+    expect(hostHeaderOf(fetchMock.mock.calls[0])).toBe("example.com");
+    expect(hostHeaderOf(fetchMock.mock.calls[1])).toBe("example.com");
+  });
+
+  it.each(["/docs/", "docs/", "?page=2", "#frag"])(
+    "resolves the relative Location %j against the hostname URL",
+    async (location) => {
+      resolvesTo("93.184.216.34");
+      fetchMock
+        .mockResolvedValueOnce(redirectTo(301, location))
+        .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+      const res = await safeFetch("http://example.com/docs");
+
+      expect(res.status).toBe(200);
+      expect(new URL(res.url).hostname).toBe("example.com");
+    },
+  );
+
+  it("keeps the port on a relative redirect", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock
+      .mockResolvedValueOnce(redirectTo(302, "/next"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const res = await safeFetch("http://example.com:8080/start");
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "http://93.184.216.34:8080/start",
+    );
+    expect(String(fetchMock.mock.calls[1][0])).toBe(
+      "http://93.184.216.34:8080/next",
+    );
+    expect(res.url).toBe("http://example.com:8080/next");
+  });
+
+  it("follows an absolute Location to the default port instead of carrying the old port over", async () => {
+    // The old code copied the previous hop's port onto a Location that named
+    // none, so the request went to :8080 while the URL it reported said :80.
+    resolvesTo("93.184.216.34");
+    fetchMock
+      .mockResolvedValueOnce(redirectTo(301, "http://example.com/x"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const res = await safeFetch("http://example.com:8080/start");
+
+    expect(String(fetchMock.mock.calls[1][0])).toBe("http://93.184.216.34/x");
+    expect(res.url).toBe("http://example.com/x");
+  });
+
+  it("still refuses a scheme-relative Location that names another host", async () => {
+    // The base for resolving Location changed, so this is the case that proves
+    // the cross-host guard did not loosen with it.
+    resolvesTo("93.184.216.34");
+    fetchMock.mockResolvedValueOnce(redirectTo(302, "//evil.example/x"));
+
+    await expect(safeFetch("http://example.com/start")).rejects.toThrow(
+      "Redirect to a different host (evil.example) is not allowed.",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the hostname URL as response.url when nothing redirected", async () => {
+    resolvesTo("93.184.216.34");
+    // undici reports the URL it dialled, which for http is the pinned IP.
+    const upstream = new Response("ok", { status: 200 });
+    Object.defineProperty(upstream, "url", {
+      value: "http://93.184.216.34/page?a=1",
+      configurable: true,
+    });
+    fetchMock.mockResolvedValueOnce(upstream);
+
+    const res = await safeFetch("http://example.com/page?a=1");
+
+    expect(res.url).toBe("http://example.com/page?a=1");
+  });
+
+  it("reports the URL after a same-host redirect, by name", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock
+      .mockResolvedValueOnce(redirectTo(302, "/final"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const res = await safeFetch("http://example.com/start");
+
+    expect(res.url).toBe("http://example.com/final");
+  });
+
+  it("reports the www host after an apex-to-www redirect", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock
+      .mockResolvedValueOnce(redirectTo(301, "http://www.example.com/"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const res = await safeFetch("http://example.com/");
+
+    expect(res.url).toBe("http://www.example.com/");
+    expect(hostHeaderOf(fetchMock.mock.calls[1])).toBe("www.example.com");
+  });
+
+  it("reports the hostname for https targets too", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock.mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const res = await safeFetch("https://example.com/secure");
+
+    expect(res.url).toBe("https://example.com/secure");
+  });
+
+  it("reports the hostname URL on a 3xx it hands back at the redirect cap", async () => {
+    resolvesTo("93.184.216.34");
+    for (let i = 0; i < 6; i++) {
+      fetchMock.mockResolvedValueOnce(redirectTo(302, "/loop"));
+    }
+
+    const res = await safeFetch("http://example.com/start");
+
+    expect(res.status).toBe(302);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(res.url).toBe("http://example.com/loop");
+  });
+
+  it("reports the hostname URL on a 3xx with no Location", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 304 }));
+
+    const res = await safeFetch("http://example.com/cached");
+
+    expect(res.status).toBe(304);
+    expect(res.url).toBe("http://example.com/cached");
+  });
+
+  it("is a no-op for a caller comparing response.url to the URL it asked for", async () => {
+    // execute-scan treats any difference as "the page redirected elsewhere".
+    resolvesTo("93.184.216.34");
+    fetchMock.mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    const asked = new URL("http://example.com/").href;
+
+    const res = await safeFetch(asked);
+
+    expect(res.url).toBe(asked);
+  });
+});

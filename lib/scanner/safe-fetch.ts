@@ -20,6 +20,23 @@ const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 // already was.
 const DEFAULT_FETCH_TIMEOUT_MS = CONFIG_SCAN_FETCH_TIMEOUT_MS;
 
+/**
+ * Make `response.url` the URL the target was asked for, not the address safeFetch
+ * dialled. For plain HTTP the request goes to the pinned IP with the real host
+ * in a Host header, so undici reports `http://93.184.216.34/` even when nothing
+ * redirected. Every caller that compares `response.url` to the URL it asked
+ * for read that as a redirect and persisted the IP as the scanned URL.
+ * `url` is a getter on Response.prototype; an own property shadows it.
+ */
+function withLogicalUrl(response: Response, logicalUrl: string): Response {
+  Object.defineProperty(response, "url", {
+    value: logicalUrl,
+    enumerable: true,
+    configurable: true,
+  });
+  return response;
+}
+
 // Basic hostname patterns we never want to scan directly, regardless of DNS resolution.
 // These are a fast, syntactic safeguard that complements validateScanTarget's IP-based checks.
 const DISALLOWED_HOSTNAMES = ["localhost"];
@@ -610,6 +627,9 @@ function assertSafePublicHttpUrl(rawUrl: string): URL {
  *                  problem. Session headers are recomputed per hop and are
  *                  never written back into the caller's init, so they cannot
  *                  survive into a later request.
+ *
+ * The returned Response's `url` is the final hop's hostname URL, never the IP
+ * a plain-HTTP request was pinned to.
  */
 export async function safeFetch(
   url: string,
@@ -782,7 +802,7 @@ export async function safeFetch(
       // Non-3xx: return as-is. The caller handles success/error semantics.
       if (response.status < 300 || response.status >= 400) {
         handedResponseToCaller = true;
-        return response;
+        return withLogicalUrl(response, currentLogicalUrl);
       }
 
       // 3xx: parse Location. If absent, return the response (browsers
@@ -790,26 +810,29 @@ export async function safeFetch(
       const location = response.headers.get("location");
       if (!location) {
         handedResponseToCaller = true;
-        return response;
+        return withLogicalUrl(response, currentLogicalUrl);
       }
 
       // Reached the redirect cap — return what we have so the caller
       // can decide what to do with the chain.
       if (hop === MAX_REDIRECT_HOPS) {
         handedResponseToCaller = true;
-        return response;
+        return withLogicalUrl(response, currentLogicalUrl);
       }
 
-      // Resolve the Location URL against the current URL (handles
-      // relative redirects). Then run the full SSRF guard on the
-      // resolved absolute URL.
+      // Resolve the Location URL against the URL the target sees (handles
+      // relative redirects). Then run the full SSRF guard on the resolved
+      // absolute URL. NOT against currentUrl: for plain HTTP that holds the
+      // pinned IP, so `Location: /next` resolved to `http://<ip>/next`, the
+      // cross-host test below read the IP as a different host, and a site
+      // that answered normally failed the scan.
       let nextUrlObj: URL;
       try {
-        nextUrlObj = new URL(location, currentUrl);
+        nextUrlObj = new URL(location, currentLogicalUrl);
       } catch {
         // Invalid Location header — return the 3xx response.
         handedResponseToCaller = true;
-        return response;
+        return withLogicalUrl(response, currentLogicalUrl);
       }
 
       // Every hop passes the same syntactic gate the entry URL did. Without
@@ -896,12 +919,12 @@ export async function safeFetch(
           isIP(nextSafety.resolvedIp) === 6
             ? `[${nextSafety.resolvedIp}]`
             : nextSafety.resolvedIp;
+        // Setting `hostname` keeps the port, so the dialled URL has exactly the
+        // port the logical URL does. This used to copy the previous hop's port
+        // onto a Location that named none, which sent
+        // `http://example.com:8080/` -> `http://example.com/x` back to :8080
+        // while response.url reported port 80.
         urlWithIp.hostname = host;
-        if (urlWithIp.port === "") {
-          // preserve original port (URL strips it after hostname reassignment)
-          const parsedOriginal = new URL(currentUrl);
-          if (parsedOriginal.port) urlWithIp.port = parsedOriginal.port;
-        }
         currentUrl = urlWithIp.href;
         currentInit = setHostHeader(currentInit, nextUrlObj.hostname);
       } else {
