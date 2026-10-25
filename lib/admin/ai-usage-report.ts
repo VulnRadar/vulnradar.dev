@@ -9,9 +9,12 @@ import { resolveCurrentWindow } from "@/lib/billing/ai-usage";
  * plan's allowance or to find one account eating it. ai_usage already holds
  * one row per user per fixed window, so both answers are reads.
  *
- * ai_usage has no index on window_start alone, so both queries are bounded by
- * it: the history to the last 30 windows' worth of time, the leaderboard to
- * the one window it names. A table that grows with users stays a range scan.
+ * Both queries are bounded by window_start (the history to the last 30
+ * windows' worth of time, the leaderboard to the one window it names), but the
+ * table's only index leads with user_id, so each is a filtered scan of the
+ * whole table rather than a range scan. That is one row per user per window
+ * and fine at this size; an index on window_start is the fix if it ever is
+ * not, and it belongs in the schema files, not here.
  */
 
 /** Windows of history shown. */
