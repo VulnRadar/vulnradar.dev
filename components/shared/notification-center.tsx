@@ -36,6 +36,7 @@ import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import { useOnline } from "@/lib/hooks/use-online";
 import { matchesPathPattern } from "@/lib/notifications/match-path";
 import { fetchActiveNotifications } from "@/components/shared/active-notifications";
+import { focusAfterRemoval } from "@/components/shared/notification-focus";
 
 const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES);
 
@@ -125,6 +126,34 @@ const VARIANT_CONFIG: Record<
   },
 };
 
+// ─── Row controls ────────────────────────────────────────────────
+
+// A row's text action ("View", "Accept invite", "View Changelog"). These were
+// bare text-xs elements, one 12px line and about 16px tall, under the 24x24
+// floor for a standalone control. The padding sits on the control and a
+// matching negative margin takes it back out, so the row's rhythm stays where
+// it was and only the target grows.
+const ROW_ACTION = cn(
+  "-my-1.5 inline-flex items-center gap-1 rounded-sm py-1.5 text-xs font-medium text-primary transition-colors hover:text-primary/80",
+  focus.ring,
+);
+
+// The invite's Accept is the one thing this panel exists to offer, and it is
+// a thumb target on a phone: 44px there, back to the row action size from sm.
+const ROW_ACTION_PRIMARY = cn(
+  ROW_ACTION,
+  "-my-3 min-h-11 py-3 disabled:opacity-50 sm:-my-1.5 sm:min-h-0 sm:py-1.5",
+);
+
+// The single dismiss control every row carries. The text "Dismiss" buttons
+// that used to sit beside it did the same thing, which gave a screen-reader
+// user two controls with the same name per row. It is an icon button, so
+// rounded-full by the radius ladder, 44px on a phone and 24px from sm up.
+const ROW_DISMISS = cn(
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 sm:h-6 sm:w-6",
+  focus.ring,
+);
+
 // ─── Notification Bell (header dropdown) ─────────────────────────
 
 export function NotificationBell() {
@@ -150,6 +179,13 @@ export function NotificationBell() {
   const [reloadKey, setReloadKey] = useState(0);
   const online = useOnline();
   const [showVersionNotif, setShowVersionNotif] = useState(false);
+  // Where focus goes after a dismissal removes the row it was on
+  // (notification-focus.ts). The pending entry is written by the dismiss
+  // click, which is the only moment the row's position is still known, and
+  // read by the effect below once the row has actually left the list.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const pendingFocusRef = useRef<{ key: string; index: number } | null>(null);
 
   const isStaff =
     me?.role && (STAFF_ROLE_VALUES as readonly string[]).includes(me.role);
@@ -316,6 +352,8 @@ export function NotificationBell() {
         await apiPatch(API.NOTIFICATIONS, { id: n.id });
         setUserNotifications((prev) => prev.filter((x) => x.id !== n.id));
       } catch {
+        // The row is staying, so there is nothing for focus to move on from.
+        pendingFocusRef.current = null;
         toast({
           variant: "destructive",
           title: "Could not dismiss the notification",
@@ -361,6 +399,41 @@ export function NotificationBell() {
     );
     setShowVersionNotif(false);
   }, [clientConfig.versionCookieMaxAgeSeconds]);
+
+  // Called from a row's dismiss control, before the row goes: this is the last
+  // moment its position in the list can be read.
+  const rememberRow = useCallback((from: HTMLElement) => {
+    const row = from.closest<HTMLElement>("[data-notif-row]");
+    const panel = panelRef.current;
+    if (!row || !panel) return;
+    const rows = Array.from(
+      panel.querySelectorAll<HTMLElement>("[data-notif-row]"),
+    );
+    pendingFocusRef.current = {
+      key: row.dataset.notifRow ?? "",
+      index: rows.indexOf(row),
+    };
+  }, []);
+
+  // Runs after any change to what the list holds, and acts only once the
+  // remembered row is really gone: a dismissal that is still in flight, or a
+  // poll that re-rendered the list first, leaves it standing and the entry
+  // waiting.
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (!pending) return;
+    const panel = panelRef.current;
+    if (!open || !panel) {
+      pendingFocusRef.current = null;
+      return;
+    }
+    const rows = Array.from(
+      panel.querySelectorAll<HTMLElement>("[data-notif-row]"),
+    );
+    if (rows.some((row) => row.dataset.notifRow === pending.key)) return;
+    pendingFocusRef.current = null;
+    focusAfterRemoval(rows, pending.index, headingRef.current);
+  }, [userNotifications, dismissedIds, showVersionNotif, open]);
 
   // Filter out dismissed notifications (check both Set and cookie) and
   // any whose page filter doesn't match the current route.
@@ -415,10 +488,19 @@ export function NotificationBell() {
         // width is the one the rows were built for.
         className="w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden p-0"
       >
-        <div className="overflow-hidden">
+        <div ref={panelRef} className="overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-4 py-2.5">
-            <h2 className="text-sm font-semibold tracking-tight text-foreground">
+            {/* tabIndex -1 so it can take focus when the last row is
+                dismissed and there is no row left to hand it to. */}
+            <h2
+              ref={headingRef}
+              tabIndex={-1}
+              className={cn(
+                "rounded-sm text-base font-semibold tracking-tight text-foreground",
+                focus.ring,
+              )}
+            >
               Notifications
             </h2>
             {count > 0 && !loading && (
@@ -460,7 +542,7 @@ export function NotificationBell() {
                 type="button"
                 onClick={() => setReloadKey((k) => k + 1)}
                 className={cn(
-                  "rounded-sm text-xs text-primary hover:underline",
+                  "-my-1.5 rounded-sm py-1.5 text-xs text-primary hover:underline",
                   focus.ring,
                 )}
               >
@@ -487,10 +569,12 @@ export function NotificationBell() {
               {/* Per-user notifications (e.g. team invites) */}
               {userNotifications.map((n) => {
                 const isTeamInvite = n.type === "team_invite";
+                const hasAction = isTeamInvite || !!n.action_url;
                 const busy = actingOnId === n.id;
                 return (
                   <div
                     key={`user-${n.id}`}
+                    data-notif-row={`user-${n.id}`}
                     className="px-4 py-3 transition-colors hover:bg-muted/40"
                   >
                     <div className="flex items-start gap-3">
@@ -501,34 +585,30 @@ export function NotificationBell() {
                         <p className="text-sm font-medium text-foreground mb-0.5">
                           {n.title}
                         </p>
-                        <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap mb-2">
+                        <p
+                          className={cn(
+                            "text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap",
+                            hasAction && "mb-2",
+                          )}
+                        >
                           {n.message}
                         </p>
-                        <div className="flex items-center gap-3">
-                          {isTeamInvite ? (
-                            <>
+                        {hasAction && (
+                          <div className="flex items-center gap-3">
+                            {isTeamInvite ? (
                               <button
                                 onClick={() => acceptTeamInvite(n)}
                                 disabled={busy}
-                                className="text-xs font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+                                className={ROW_ACTION_PRIMARY}
                               >
                                 {busy ? "Joining..." : "Accept invite"}
                               </button>
-                              <button
-                                onClick={() => dismissUserNotification(n)}
-                                disabled={busy}
-                                className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                              >
-                                Dismiss
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              {n.action_url && (
+                            ) : (
+                              n.action_url && (
                                 <a
                                   href={safeHref(n.action_url)}
                                   onClick={() => setOpen(false)}
-                                  className="text-xs font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
+                                  className={ROW_ACTION}
                                 >
                                   {n.action_label || "View"}
                                   <ArrowRight
@@ -536,22 +616,19 @@ export function NotificationBell() {
                                     aria-hidden="true"
                                   />
                                 </a>
-                              )}
-                              <button
-                                onClick={() => dismissUserNotification(n)}
-                                disabled={busy}
-                                className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                              >
-                                Dismiss
-                              </button>
-                            </>
-                          )}
-                        </div>
+                              )
+                            )}
+                          </div>
+                        )}
                       </div>
                       <button
-                        onClick={() => dismissUserNotification(n)}
+                        onClick={(e) => {
+                          rememberRow(e.currentTarget);
+                          void dismissUserNotification(n);
+                        }}
                         disabled={busy}
-                        className="shrink-0 rounded flex h-11 w-11 items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 sm:h-auto sm:w-auto sm:p-1"
+                        data-notif-dismiss=""
+                        className={ROW_DISMISS}
                         aria-label={`Dismiss ${n.title}`}
                       >
                         <X className="h-4 w-4" aria-hidden="true" />
@@ -563,7 +640,10 @@ export function NotificationBell() {
 
               {/* Version notification */}
               {showVersionNotif && (
-                <div className="px-4 py-3 transition-colors hover:bg-muted/40">
+                <div
+                  data-notif-row="version"
+                  className="px-4 py-3 transition-colors hover:bg-muted/40"
+                >
                   <div className="flex items-start gap-3">
                     <div className="shrink-0 p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary">
                       <Sparkles className="h-4 w-4" aria-hidden="true" />
@@ -582,22 +662,20 @@ export function NotificationBell() {
                             dismissVersionNotif();
                             setOpen(false);
                           }}
-                          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
+                          className={ROW_ACTION}
                         >
                           View Changelog
                           <ArrowRight className="h-3 w-3" aria-hidden="true" />
                         </a>
-                        <button
-                          onClick={dismissVersionNotif}
-                          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          Dismiss
-                        </button>
                       </div>
                     </div>
                     <button
-                      onClick={dismissVersionNotif}
-                      className="shrink-0 rounded flex h-11 w-11 items-center justify-center text-muted-foreground hover:text-foreground transition-colors sm:h-auto sm:w-auto sm:p-1"
+                      onClick={(e) => {
+                        rememberRow(e.currentTarget);
+                        dismissVersionNotif();
+                      }}
+                      data-notif-dismiss=""
+                      className={ROW_DISMISS}
                       aria-label="Dismiss version notification"
                     >
                       <X className="h-4 w-4" aria-hidden="true" />
@@ -609,9 +687,11 @@ export function NotificationBell() {
               {/* API-driven notifications */}
               {visibleNotifications.map((n) => {
                 const config = VARIANT_CONFIG[n.variant] || VARIANT_CONFIG.info;
+                const hasAction = !!n.action_url || !!n.action_url_2;
                 return (
                   <div
                     key={n.id}
+                    data-notif-row={`api-${n.id}`}
                     className="px-4 py-3 transition-colors hover:bg-muted/40"
                   >
                     <div className="flex items-start gap-3">
@@ -630,102 +710,100 @@ export function NotificationBell() {
                         <p className="text-sm font-medium text-foreground mb-0.5">
                           {n.title}
                         </p>
-                        <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap mb-2">
+                        <p
+                          className={cn(
+                            "text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap",
+                            hasAction && "mb-2",
+                          )}
+                        >
                           {n.message}
                         </p>
 
-                        <div className="flex items-center gap-2">
-                          {n.action_url && (
-                            <a
-                              href={safeHref(n.action_url)}
-                              target={n.action_external ? "_blank" : "_self"}
-                              rel={
-                                n.action_external
-                                  ? "noopener noreferrer"
-                                  : undefined
-                              }
-                              onClick={() => {
-                                if (n.is_dismissible)
-                                  dismissNotification(
-                                    n.cookie_id,
-                                    n.dismiss_duration_hours,
-                                  );
-                                setOpen(false);
-                              }}
-                              className="text-xs font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
-                            >
-                              {n.action_label || "View"}
-                              {n.action_external ? (
-                                <ExternalLink
-                                  className="h-3 w-3"
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <ArrowRight
-                                  className="h-3 w-3"
-                                  aria-hidden="true"
-                                />
-                              )}
-                            </a>
-                          )}
-                          {n.action_url_2 && (
-                            <a
-                              href={safeHref(n.action_url_2)}
-                              target={n.action_external_2 ? "_blank" : "_self"}
-                              rel={
-                                n.action_external_2
-                                  ? "noopener noreferrer"
-                                  : undefined
-                              }
-                              onClick={() => {
-                                if (n.is_dismissible)
-                                  dismissNotification(
-                                    n.cookie_id,
-                                    n.dismiss_duration_hours,
-                                  );
-                                setOpen(false);
-                              }}
-                              className="text-xs font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
-                            >
-                              {n.action_label_2 || "View"}
-                              {n.action_external_2 ? (
-                                <ExternalLink
-                                  className="h-3 w-3"
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <ArrowRight
-                                  className="h-3 w-3"
-                                  aria-hidden="true"
-                                />
-                              )}
-                            </a>
-                          )}
-                          {n.is_dismissible && (
-                            <button
-                              onClick={() =>
-                                dismissNotification(
-                                  n.cookie_id,
-                                  n.dismiss_duration_hours,
-                                )
-                              }
-                              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                              Dismiss
-                            </button>
-                          )}
-                        </div>
+                        {hasAction && (
+                          <div className="flex items-center gap-3">
+                            {n.action_url && (
+                              <a
+                                href={safeHref(n.action_url)}
+                                target={n.action_external ? "_blank" : "_self"}
+                                rel={
+                                  n.action_external
+                                    ? "noopener noreferrer"
+                                    : undefined
+                                }
+                                onClick={() => {
+                                  if (n.is_dismissible)
+                                    dismissNotification(
+                                      n.cookie_id,
+                                      n.dismiss_duration_hours,
+                                    );
+                                  setOpen(false);
+                                }}
+                                className={ROW_ACTION}
+                              >
+                                {n.action_label || "View"}
+                                {n.action_external ? (
+                                  <ExternalLink
+                                    className="h-3 w-3"
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <ArrowRight
+                                    className="h-3 w-3"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                              </a>
+                            )}
+                            {n.action_url_2 && (
+                              <a
+                                href={safeHref(n.action_url_2)}
+                                target={
+                                  n.action_external_2 ? "_blank" : "_self"
+                                }
+                                rel={
+                                  n.action_external_2
+                                    ? "noopener noreferrer"
+                                    : undefined
+                                }
+                                onClick={() => {
+                                  if (n.is_dismissible)
+                                    dismissNotification(
+                                      n.cookie_id,
+                                      n.dismiss_duration_hours,
+                                    );
+                                  setOpen(false);
+                                }}
+                                className={ROW_ACTION}
+                              >
+                                {n.action_label_2 || "View"}
+                                {n.action_external_2 ? (
+                                  <ExternalLink
+                                    className="h-3 w-3"
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <ArrowRight
+                                    className="h-3 w-3"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {n.is_dismissible && (
                         <button
-                          onClick={() =>
+                          onClick={(e) => {
+                            rememberRow(e.currentTarget);
                             dismissNotification(
                               n.cookie_id,
                               n.dismiss_duration_hours,
-                            )
-                          }
-                          className="shrink-0 rounded flex h-11 w-11 items-center justify-center text-muted-foreground hover:text-foreground transition-colors sm:h-auto sm:w-auto sm:p-1"
+                            );
+                          }}
+                          data-notif-dismiss=""
+                          className={ROW_DISMISS}
                           aria-label={`Dismiss ${n.title}`}
                         >
                           <X className="h-4 w-4" aria-hidden="true" />
