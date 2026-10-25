@@ -12,6 +12,7 @@
  * bundle of that file never pulls in node:async_hooks.
  */
 import { logError } from "@/lib/logging/log";
+import { redactPathTokens } from "@/lib/logging/redact-path";
 import {
   REQUEST_ID_HEADER,
   normalizeRequestId,
@@ -42,8 +43,9 @@ export function reportRequestError(
   );
   // The path without its query string: that is where reset tokens, OAuth
   // codes and email addresses end up, and a row an admin can read should not
-  // carry them.
-  const path = request.path.split("?")[0];
+  // carry them. A token in the path itself (/staff-invite/[token]) is masked
+  // too; routePath, below, still says which route it was.
+  const path = redactPathTokens(request.path.split("?")[0]);
   const digest =
     error && typeof error === "object" && "digest" in error
       ? String((error as { digest?: unknown }).digest ?? "")

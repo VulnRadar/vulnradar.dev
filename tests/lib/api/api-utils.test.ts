@@ -505,6 +505,27 @@ describe("withErrorHandling", () => {
     spy.mockRestore();
   });
 
+  it("masks a token that sits in the path itself", async () => {
+    // /staff-invite/[token] carries the raw invite token. The row is readable
+    // by every role with the error-log grant, and an invite is how a lower
+    // role becomes a higher one.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const token =
+      "9f2c61a07be44d3a8c15e6f0b7d2a3948a1c5e7f0b3d6a92c4e8f1b5d7a0c3e6";
+    const wrapped = withErrorHandling(async (_req: Request) => {
+      throw new Error("kaboom");
+    });
+
+    await wrapped(
+      new Request(`https://vulnradar.dev/api/v3/auth/staff-invite/${token}`),
+    );
+
+    const logged = JSON.stringify(spy.mock.calls[0]);
+    expect(logged).toContain("GET /api/v3/auth/staff-invite/[redacted] threw");
+    expect(logged).not.toContain(token);
+    spy.mockRestore();
+  });
+
   it("leaves the query string out of the log line", async () => {
     // That is where reset tokens, OAuth codes and email addresses end up.
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});

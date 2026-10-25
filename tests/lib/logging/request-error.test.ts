@@ -75,6 +75,27 @@ describe("reportRequestError", () => {
     expect(seen).toBe(RID);
   });
 
+  it("masks a token that sits in the path itself", () => {
+    // /staff-invite/[token] holds the raw invite token; the route template
+    // in routePath is what still says which route it was.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const token =
+      "9f2c61a07be44d3a8c15e6f0b7d2a3948a1c5e7f0b3d6a92c4e8f1b5d7a0c3e6";
+
+    reportRequestError(
+      new Error("x"),
+      request({ path: `/staff-invite/${token}`, method: "GET" }),
+      { routePath: "/staff-invite/[token]", routeType: "render" },
+    );
+
+    const logged = JSON.stringify(spy.mock.calls[0]);
+    expect(spy.mock.calls[0][0]).toBe(
+      "[route-error] GET /staff-invite/[redacted] threw",
+    );
+    expect(logged).toContain('"routePath":"/staff-invite/[token]"');
+    expect(logged).not.toContain(token);
+  });
+
   it("leaves the query string out", () => {
     // Reset tokens, OAuth codes and addresses end up there.
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});

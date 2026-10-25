@@ -5,6 +5,7 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { MAX_REQUEST_BODY_BYTES } from "@/lib/api/request-limits";
 import { logError } from "@/lib/logging/log";
+import { redactPathTokens } from "@/lib/logging/redact-path";
 import {
   REQUEST_ID_HEADER,
   normalizeRequestId,
@@ -268,7 +269,7 @@ function describeRequest(request: Request): string {
     // A Request cannot be built from a bad URL, so this is unreachable for a
     // real one; a test double can still get here.
   }
-  return `${request.method} ${pathname}`;
+  return `${request.method} ${redactPathTokens(pathname)}`;
 }
 
 /**
@@ -313,7 +314,8 @@ export function withErrorHandling<TArgs extends unknown[]>(
         // row said that something threw and the stack was the only clue to
         // which of ~170 routes it was, and only when the stack survived. The
         // pathname alone, never the query string: that is where tokens and
-        // email addresses end up.
+        // email addresses end up. Token-shaped path segments are masked too,
+        // since /staff-invite/[token] carries a raw invite token in the path.
         logError(
           "API Error",
           `${first instanceof Request ? describeRequest(first) : "an unknown route"} threw`,
