@@ -529,6 +529,27 @@ describe("POST /api/v3/admin/queue-status (fail stuck scans)", () => {
       String(sql).includes("admin_audit_log"),
     );
     expect(audit?.[1]).toEqual(expect.arrayContaining(["sweep_stale_scans"]));
+    // Which scans, by id and nothing else: the row would otherwise say only
+    // how many were closed, and the scans carry a customer's URL.
+    expect(JSON.stringify(audit?.[1])).toContain("#11, #12");
+  });
+
+  it("names at most twenty swept scans in the audit row, and counts the rest", async () => {
+    withAdmin();
+    mockSweepStaleScans.mockResolvedValue(
+      Array.from({ length: 23 }, (_, i) => ({ id: i + 1 })),
+    );
+    mockStaleScanGraceSeconds.mockResolvedValue(3600);
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 1 });
+    const res = await POST();
+    expect(await res.json()).toEqual({ swept: 23, graceSeconds: 3600 });
+    const audit = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("admin_audit_log"),
+    );
+    const details = JSON.stringify(audit?.[1]);
+    expect(details).toContain("#20");
+    expect(details).not.toContain("#21");
+    expect(details).toContain("and 3 more");
   });
 
   it("returns a 500 when the sweep fails", async () => {
