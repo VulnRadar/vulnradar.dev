@@ -120,13 +120,20 @@ export interface ScheduleTimingPrefs {
 /**
  * The next UTC instant a schedule should run, strictly after `now`.
  *
- * hourly/6hourly/daily all reduce to "the next time-of-day slot at or after
- * now whose hour is `preferredHourUtc` plus a whole multiple of the
- * interval" — for hourly (1h interval) every hour satisfies that trivially,
- * so it naturally becomes "the next top of the hour" regardless of
- * `preferredHourUtc`. weekly/monthly additionally require the day to match.
- * Deterministic per-schedule jitter (see `jitterMinutesForSchedule`) is
- * added on top of whichever slot is found.
+ * hourly/6hourly/daily all reduce to "the next time-of-day slot after now
+ * whose hour is `preferredHourUtc` plus or minus a whole multiple of the
+ * interval". For hourly (1h interval) every hour satisfies that, so it is
+ * the next top of the hour whatever `preferredHourUtc` is. For 6hourly the
+ * anchor only decides the phase: 20 gives 02, 08, 14, 20. weekly/monthly
+ * additionally require the day to match. Deterministic per-schedule jitter
+ * (see `jitterMinutesForSchedule`) is added on top of whichever slot is found.
+ *
+ * The search starts from the EARLIEST slot of today's UTC day
+ * (`preferredHourUtc % interval`) and walks forward. Starting at
+ * `preferredHourUtc` itself and only walking forward looked equivalent, but
+ * it skipped every slot before the anchor whenever `now` fell earlier in the
+ * day than the anchor: an hourly schedule anchored at 14 that rolled over
+ * midnight jumped to 14:00 and lost hours 01 to 13, every day.
  */
 export function computeNextRunAt(
   scheduleId: number,
@@ -135,13 +142,16 @@ export function computeNextRunAt(
 ): Date {
   const def = FREQUENCIES[prefs.frequency];
   const hour = ((prefs.preferredHourUtc % 24) + 24) % 24;
+  // Sub-daily cadences repeat within the day, so the first slot of the day is
+  // the anchor reduced modulo the interval. Daily and slower keep the anchor.
+  const startHour = def.hours < 24 ? hour % def.hours : hour;
 
   const candidate = new Date(
     Date.UTC(
       now.getUTCFullYear(),
       now.getUTCMonth(),
       now.getUTCDate(),
-      hour,
+      startHour,
       0,
       0,
       0,

@@ -21,6 +21,13 @@
 
 import type { Pool } from "pg";
 import { DEFAULT_BADGES_SQL } from "@/lib/database/schema/seeds.mjs";
+import { logError } from "@/lib/logging/log";
+import {
+  FREQUENCIES,
+  SCHEDULE_FREQUENCIES,
+  computeNextRunAt,
+  isScheduleFrequency,
+} from "@/lib/scanner/schedule-timing";
 
 export async function runBootBackfills(
   pool: Pool,
@@ -32,6 +39,7 @@ export async function runBootBackfills(
   await reconcileStaffPlans(appName);
   await seedDefaultBadges(pool, appName);
   await backfillWebhookSecrets(appName);
+  await backfillSubDailyScheduleSlots(pool, appName);
 }
 
 /**
@@ -173,6 +181,97 @@ async function backfillWebhookSecrets(appName: string): Promise<void> {
     console.error(
       `[${appName}] Failed to backfill plaintext webhook secrets (non-fatal):`,
       err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+interface SubDailyScheduleRow {
+  id: number;
+  frequency: string;
+  preferred_hour_utc: number;
+  preferred_day_of_week: number;
+  preferred_day_of_month: number;
+  next_run_at: Date;
+}
+
+/**
+ * HOURLY AND 6-HOURLY SCHEDULES PARKED TOO FAR AHEAD.
+ *
+ * computeNextRunAt used to start its slot search at the schedule's anchor hour
+ * and only walk forward, so a sub-daily schedule that rolled past midnight
+ * before its anchor jumped straight to the anchor and skipped every slot in
+ * between (lib/scanner/schedule-timing.ts has the trace). The function is
+ * fixed, but the worker only rewrites next_run_at after a run, so each row it
+ * mis-scheduled still holds the bad value: an hourly schedule parked at 14:00
+ * when it is 00:05 would sit idle for fourteen hours before the corrected
+ * code ever got a chance to run for it.
+ *
+ * The correct next slot is never later than the buggy one, so a row whose
+ * stored next_run_at is LATER than the recomputed value is exactly a parked
+ * row, and moving it earlier is the whole repair. Rows that are due, overdue
+ * or already correct are never touched, so this cannot postpone a scan. The
+ * one thing it can move is a claim lease that happens to outlast the next
+ * slot, and only on a boot that lands in the minutes after a claim; the worst
+ * case there is the scan being claimed again once its slot arrives.
+ *
+ * Idempotent: once a row is correct the recomputed value equals the stored
+ * one and nothing is written.
+ */
+export async function backfillSubDailyScheduleSlots(
+  pool: Pool,
+  appName: string,
+): Promise<void> {
+  try {
+    const subDaily = SCHEDULE_FREQUENCIES.filter(
+      (frequency) => FREQUENCIES[frequency].hours < 24,
+    );
+    const { rows } = await pool.query<SubDailyScheduleRow>(
+      `SELECT id, frequency, preferred_hour_utc, preferred_day_of_week,
+              preferred_day_of_month, next_run_at
+         FROM scheduled_scans
+        WHERE active = true
+          AND next_run_at IS NOT NULL
+          AND frequency = ANY($1::text[])`,
+      [subDaily],
+    );
+
+    const now = new Date();
+    let moved = 0;
+    for (const row of rows) {
+      if (!isScheduleFrequency(row.frequency)) continue;
+      const correct = computeNextRunAt(
+        row.id,
+        {
+          frequency: row.frequency,
+          preferredHourUtc: row.preferred_hour_utc,
+          preferredDayOfWeek: row.preferred_day_of_week,
+          preferredDayOfMonth: row.preferred_day_of_month,
+        },
+        now,
+      );
+      if (row.next_run_at.getTime() <= correct.getTime()) continue;
+
+      // Re-checked in the WHERE so a run that finished and rescheduled the row
+      // between the SELECT and here is not overwritten with an older answer.
+      const result = await pool.query(
+        `UPDATE scheduled_scans
+            SET next_run_at = $2
+          WHERE id = $1 AND active = true AND next_run_at > $2`,
+        [row.id, correct.toISOString()],
+      );
+      moved += result.rowCount ?? 0;
+    }
+
+    if (moved > 0) {
+      console.log(
+        `[${appName}] Moved ${moved} hourly or 6-hourly schedule(s) that were parked past their next slot back to it.`,
+      );
+    }
+  } catch (err) {
+    logError(
+      "schedules",
+      "Failed to recompute sub-daily schedule slots (non-fatal)",
+      err,
     );
   }
 }

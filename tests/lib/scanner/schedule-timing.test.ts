@@ -132,6 +132,120 @@ describe("computeNextRunAt", () => {
     expect(next.getTime()).toBeGreaterThan(now.getTime());
   });
 
+  // The anchor used to be the first slot searched, and the search only walks
+  // forward, so a `now` earlier in the UTC day than the anchor returned the
+  // anchor itself and skipped every slot before it. The cases above all use an
+  // anchor EARLIER than now, which is the one shape that cannot show it.
+  describe("sub-daily schedules whose anchor hour is later than now", () => {
+    const early = new Date("2026-08-12T00:05:00.000Z");
+
+    it("hourly anchored at 14 runs at the next top of the hour at 00:05, not at 14:00", () => {
+      const next = computeNextRunAt(
+        1,
+        {
+          frequency: "hourly",
+          preferredHourUtc: 14,
+          preferredDayOfWeek: 1,
+          preferredDayOfMonth: 1,
+        },
+        early,
+      );
+      expect(next.getUTCDate()).toBe(12);
+      expect(next.getUTCHours()).toBe(1);
+      expect(next.getUTCMinutes()).toBeLessThanOrEqual(15);
+    });
+
+    it("hourly anchored at 23 still runs hourly at 02:30", () => {
+      const next = computeNextRunAt(
+        1,
+        {
+          frequency: "hourly",
+          preferredHourUtc: 23,
+          preferredDayOfWeek: 1,
+          preferredDayOfMonth: 1,
+        },
+        new Date("2026-08-12T02:30:00.000Z"),
+      );
+      expect(next.getUTCHours()).toBe(3);
+    });
+
+    it("6hourly anchored at 20 keeps the 02/08/14/20 phase, so 00:05 goes to 02", () => {
+      const next = computeNextRunAt(
+        2,
+        {
+          frequency: "6hourly",
+          preferredHourUtc: 20,
+          preferredDayOfWeek: 1,
+          preferredDayOfMonth: 1,
+        },
+        early,
+      );
+      expect(next.getUTCDate()).toBe(12);
+      expect(next.getUTCHours()).toBe(2);
+    });
+
+    it("6hourly anchored at 14 goes from 03:00 to 08, the slot before its anchor", () => {
+      const next = computeNextRunAt(
+        2,
+        {
+          frequency: "6hourly",
+          preferredHourUtc: 14,
+          preferredDayOfWeek: 1,
+          preferredDayOfMonth: 1,
+        },
+        new Date("2026-08-12T03:00:00.000Z"),
+      );
+      expect(next.getUTCHours()).toBe(8);
+    });
+
+    it("6hourly anchored at 5 runs at 05, 11, 17, 23", () => {
+      const next = computeNextRunAt(
+        2,
+        {
+          frequency: "6hourly",
+          preferredHourUtc: 5,
+          preferredDayOfWeek: 1,
+          preferredDayOfMonth: 1,
+        },
+        now,
+      );
+      // now is 10:00 and the slots are {5, 11, 17, 23}.
+      expect(next.getUTCHours()).toBe(11);
+    });
+
+    it("a schedule that reschedules from each run never skips a slot, for every anchor hour", () => {
+      // The worker recomputes with `now` = the run time after every run, so
+      // walking the function through its own output is the real cadence.
+      for (const frequency of ["hourly", "6hourly"] as const) {
+        const intervalMs = FREQUENCIES[frequency].hours * 60 * 60 * 1000;
+        for (let anchor = 0; anchor < 24; anchor++) {
+          let at = new Date("2026-08-12T00:05:00.000Z");
+          const hoursSeen = new Set<number>();
+          for (let run = 0; run < 48; run++) {
+            const next = computeNextRunAt(
+              17,
+              {
+                frequency,
+                preferredHourUtc: anchor,
+                preferredDayOfWeek: 1,
+                preferredDayOfMonth: 1,
+              },
+              at,
+            );
+            // Same schedule id, same jitter: consecutive runs are exactly one
+            // interval apart, never a longer jump.
+            if (run > 0) {
+              expect(next.getTime() - at.getTime()).toBe(intervalMs);
+            }
+            hoursSeen.add(next.getUTCHours());
+            at = next;
+          }
+          expect(hoursSeen.size).toBe(24 / FREQUENCIES[frequency].hours);
+        }
+      }
+    });
+  });
+
   it("daily lands on the next occurrence of preferredHourUtc, today if it hasn't passed yet", () => {
     const next = computeNextRunAt(
       3,
