@@ -114,7 +114,7 @@ export const ADMIN_PANEL_SHAPES: Record<AdminTabKey, PanelShape> = {
   "support-tickets": { heading: true, panes: true },
   "ai-chats": {
     heading: true,
-    stats: 4,
+    stats: 6,
     cards: [{ filterRows: 1, body: "table" }],
   },
   "security-alerts": { stats: 5, cards: [{ body: "rows", rows: 4 }] },

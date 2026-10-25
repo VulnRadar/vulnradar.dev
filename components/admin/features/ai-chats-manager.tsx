@@ -211,7 +211,7 @@ export function AIChatsManager() {
       </div>
 
       {loading && conversations.length === 0 ? (
-        <StatBarSkeleton segments={4} />
+        <StatBarSkeleton segments={6} />
       ) : (
         <StatBar
           items={[
