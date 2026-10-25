@@ -16,7 +16,11 @@ import {
 import { cn } from "@/lib/ui/utils";
 import { formatRelativeTime } from "@/lib/ui/relative-time";
 import { useLocale, useTranslations } from "next-intl";
-import { scanRowState } from "@/components/history/history-types";
+import {
+  scanRowState,
+  SCAN_ROW_STATE_LABEL,
+  PARTIAL_SCAN_HINT,
+} from "@/components/history/history-types";
 import { parseUrl } from "@/lib/ui/parse-url";
 import { API, ROUTES } from "@/lib/config/client-constants";
 import {
@@ -66,6 +70,7 @@ interface DashboardData {
     source?: string;
     status?: string;
     error_message?: string | null;
+    incomplete?: boolean;
   }[];
   severityBreakdown: {
     critical: number;
@@ -176,7 +181,9 @@ function SkeletonPanel({
   return (
     <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
-        <div className="h-4 w-32 rounded bg-muted" />
+        {/* h-6: the real heading is the panel-heading tier (text-base, a 24px
+            line box), not the 16px eyebrow it replaced. */}
+        <div className="h-6 w-32 rounded bg-muted" />
         {withAction && <div className="h-4 w-16 rounded bg-muted" />}
       </div>
       <div className="flex flex-1 flex-col justify-center gap-3 px-4 py-3">
@@ -415,8 +422,11 @@ export function Dashboard() {
         {/* Recent scans: the list people actually click. */}
         <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-card">
           <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
-            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <Clock aria-hidden className="h-3.5 w-3.5" />
+            <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
+              <Clock
+                aria-hidden
+                className="h-4 w-4 shrink-0 text-muted-foreground"
+              />
               {t("recentScans")}
             </h2>
             {recentScans.length > 0 && (
@@ -452,7 +462,14 @@ export function Dashboard() {
                         aria-hidden
                         className={cn(
                           "absolute inset-y-0 left-0 w-[3px]",
-                          tone ? tone.solid : "bg-[hsl(var(--success))]",
+                          // Green is for a scan that came back clean. A
+                          // running, failed or partly checked one has no
+                          // findings either, and used to wear the same rail.
+                          tone
+                            ? tone.solid
+                            : rowState === "clean"
+                              ? "bg-[hsl(var(--success))]"
+                              : "bg-[hsl(var(--warning))]",
                         )}
                       />
                       <span className="min-w-0 flex-1 leading-tight">
@@ -466,6 +483,11 @@ export function Dashboard() {
                       </span>
                       {rowState !== "findings" ? (
                         <span
+                          title={
+                            rowState === "partial"
+                              ? PARTIAL_SCAN_HINT
+                              : undefined
+                          }
                           className={cn(
                             "shrink-0 text-xs font-medium",
                             rowState === "clean"
@@ -475,11 +497,7 @@ export function Dashboard() {
                         >
                           {rowState === "clean"
                             ? "Clean"
-                            : rowState === "cancelled"
-                              ? "Cancelled"
-                              : rowState === "running"
-                                ? "Running"
-                                : "Did not finish"}
+                            : SCAN_ROW_STATE_LABEL[rowState]}
                         </span>
                       ) : (
                         <span
@@ -506,8 +524,11 @@ export function Dashboard() {
           {/* Severity totals across every scan */}
           <section className="rounded-xl border border-border bg-card">
             <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
-              <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <AlertTriangle aria-hidden className="h-3.5 w-3.5" />
+              <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
+                <AlertTriangle
+                  aria-hidden
+                  className="h-4 w-4 shrink-0 text-muted-foreground"
+                />
                 {t("findingsBySeverity")}
               </h2>
               <span className="text-xs tabular-nums text-muted-foreground">
@@ -542,8 +563,11 @@ export function Dashboard() {
           {/* Most common findings, ranked */}
           <section className="flex flex-col rounded-xl border border-border bg-card">
             <div className="border-b border-border bg-muted/30 px-4 py-2.5">
-              <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <ListOrdered aria-hidden className="h-3.5 w-3.5" />
+              <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
+                <ListOrdered
+                  aria-hidden
+                  className="h-4 w-4 shrink-0 text-muted-foreground"
+                />
                 {t("mostCommonFindings")}
               </h2>
             </div>

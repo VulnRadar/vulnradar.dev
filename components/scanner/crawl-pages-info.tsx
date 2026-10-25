@@ -5,6 +5,13 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { severityTone } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
+import { plural } from "@/lib/ui/plural";
+import {
+  readOtherPages,
+  unreadPageCounts,
+  unreadSummary,
+  type UnreadablePage,
+} from "./crawl-pages-utils";
 
 /** Canonical crawl result_meta shapes, imported everywhere a crawl result is
  *  rendered so a new per-page field only has to be added here once. */
@@ -19,6 +26,13 @@ export interface CrawlPageData {
 export interface CrawlInfo {
   pagesDiscovered: number;
   pagesScanned: number;
+  /** Discovered pages the crawl never got to (a page, time or quota limit).
+   *  Absent on a crawl stored before the count was reported. */
+  pagesSkipped?: number;
+  /** Pages the crawl tried to read and could not: the fetch failed, or the
+   *  site answered with a bot challenge. They have no findings because they
+   *  were never read, so they are listed apart from `pages`. */
+  pagesUnreachable?: UnreadablePage[];
   pages: CrawlPageData[];
 }
 
@@ -44,11 +58,14 @@ export function CrawlPagesInfo({
   const [open, setOpen] = useState(false);
   const [expandedPage, setExpandedPage] = useState<string | null>(null);
 
-  const otherPages = crawlInfo.pages.slice(1);
+  const otherPages = readOtherPages(crawlInfo.pages, crawlInfo);
   const totalOtherIssues = otherPages.reduce(
     (sum, p) => sum + p.findings_count,
     0,
   );
+  const unreachable = crawlInfo.pagesUnreachable ?? [];
+  const { skipped } = unreadPageCounts(crawlInfo);
+  const unreadLine = unreadSummary(crawlInfo);
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -62,9 +79,19 @@ export function CrawlPagesInfo({
         <span className="flex-1 text-sm font-medium text-foreground">
           Other pages in this crawl
         </span>
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-          {otherPages.length} {otherPages.length === 1 ? "page" : "pages"},{" "}
-          {totalOtherIssues} {totalOtherIssues === 1 ? "finding" : "findings"}
+        {/* Two lines when part of the crawl was not read: the second one is
+            the reason the first line's "0 findings" cannot be taken as a
+            clean bill, and it has to be visible without opening the panel. */}
+        <span className="flex shrink-0 flex-col items-end text-xs tabular-nums">
+          <span className="text-muted-foreground">
+            {otherPages.length} {plural(otherPages.length, "page")},{" "}
+            {totalOtherIssues} {plural(totalOtherIssues, "finding")}
+          </span>
+          {unreadLine && (
+            <span className="font-medium text-[hsl(var(--warning))]">
+              {unreadLine}
+            </span>
+          )}
         </span>
         <ChevronDown
           aria-hidden
@@ -157,6 +184,61 @@ export function CrawlPagesInfo({
               );
             })}
           </ul>
+
+          {/* Pages the crawl never read. Below the results, because they are
+              the caveat on them, and in the warning hue rather than the
+              success one: "no findings" here means "not looked at". */}
+          {(unreachable.length > 0 || skipped > 0) && (
+            <div className="border-t border-border bg-muted/20 px-4 py-3">
+              {unreachable.length > 0 && (
+                <>
+                  <p className="text-xs font-medium text-foreground">
+                    {unreachable.length} {plural(unreachable.length, "page")}{" "}
+                    could not be read
+                  </p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                    Nothing is reported for{" "}
+                    {unreachable.length === 1 ? "this page" : "these pages"}{" "}
+                    because the crawler never saw{" "}
+                    {unreachable.length === 1 ? "it" : "them"}. Treat{" "}
+                    {unreachable.length === 1 ? "it" : "them"} as unchecked, not
+                    clean.
+                  </p>
+                  <ul className="mt-2 divide-y divide-border/50">
+                    {unreachable.map((page) => (
+                      <li key={page.url} className="py-1.5">
+                        <div className="flex items-baseline gap-3">
+                          <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
+                            {getPath(page.url)}
+                          </span>
+                          <span className="shrink-0 text-xs font-medium text-[hsl(var(--warning))]">
+                            not read
+                          </span>
+                        </div>
+                        {page.reason && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {page.reason}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {skipped > 0 && (
+                <p
+                  className={cn(
+                    "text-xs leading-relaxed text-muted-foreground",
+                    unreachable.length > 0 && "mt-3",
+                  )}
+                >
+                  {skipped} more {plural(skipped, "page was", "pages were")}{" "}
+                  found but not scanned, because the crawl reached its page,
+                  time or quota limit.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
