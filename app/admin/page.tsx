@@ -561,6 +561,17 @@ function AdminContent() {
     (next: AuditFilters) => {
       auditFiltersRef.current = next;
       setAuditFilters(next);
+      // A ?targetUserId= deep link is only where the filter starts. It has to
+      // follow the chip, or handleQueryChange (which re-runs whenever
+      // fetchAudit changes identity, e.g. on a page-size change) would read the
+      // stale param back and put a cleared chip on again.
+      const urlTarget = getAllQueryParams().targetUserId;
+      if (urlTarget !== undefined) {
+        const wanted = next.target ? String(next.target.id) : null;
+        if (wanted !== urlTarget) {
+          setQueryParam("targetUserId", wanted, { replace: true });
+        }
+      }
       void fetchAudit(1, auditPageSize, next);
     },
     [fetchAudit, auditPageSize],

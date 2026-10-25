@@ -57,3 +57,14 @@ describe("the staff heartbeat's request", () => {
     expect(source).not.toMatch(/["'`]\/api\/v3\//);
   });
 });
+
+describe("the audit deep link", () => {
+  // handleQueryChange re-runs whenever fetchAudit changes identity (a page-size
+  // change does it), and it reads ?targetUserId= back. If the param does not
+  // follow the chip, clearing the chip and then changing the page size puts it
+  // back on.
+  it("keeps ?targetUserId= in step with the target chip", () => {
+    const page = read("app/admin/page.tsx");
+    expect(page).toMatch(/setQueryParam\("targetUserId", wanted/);
+  });
+});
