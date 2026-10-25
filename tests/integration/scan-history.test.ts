@@ -212,15 +212,21 @@ describeIntegration("scan_history insert then finalize", () => {
     };
     const meta = { checksRun: 310, redirect };
 
+    // finalUrl is the field that used to move the row. It is gone from the
+    // type, and it is still passed here on purpose: a stale caller handing the
+    // landed URL in must not be able to rewrite scan_history.url, which is what
+    // makes this fail against the old COALESCE($8, url) and pass against the
+    // fix. Without it nothing in this test would ever have written the column.
+    const staleCaller = { finalUrl: redirect.finalUrl };
     const first = await insertPendingScan(user.id, null);
     await finalizeScanSuccess(
       first,
-      successData({ findings: [critical], resultMeta: meta }),
+      successData({ findings: [critical], resultMeta: meta, ...staleCaller }),
     );
     const second = await insertPendingScan(user.id, null);
     await finalizeScanSuccess(
       second,
-      successData({ findings: [critical], resultMeta: meta }),
+      successData({ findings: [critical], resultMeta: meta, ...staleCaller }),
     );
 
     const { rows } = await pool.query<{

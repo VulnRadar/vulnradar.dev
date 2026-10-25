@@ -430,7 +430,7 @@ describe("executeCrawlScan", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 41,
+        (params as unknown[])[7] === 41,
     );
     const findings = JSON.parse((completedCall![1] as unknown[])[0] as string);
     expect(findings.map((f: { id: string }) => f.id)).toEqual(["host-dns-1"]);
@@ -455,7 +455,7 @@ describe("executeCrawlScan", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 42,
+        (params as unknown[])[7] === 42,
     );
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
@@ -505,7 +505,7 @@ describe("executeCrawlScan", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 13,
+        (params as unknown[])[7] === 13,
     );
     expect(completedCall).toBeDefined();
     const resultMeta = JSON.parse(
@@ -549,11 +549,11 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 20,
+        (params as unknown[])[7] === 20,
     );
     expect(completedCall).toBeDefined();
     // authenticated is the last bound param of the finalize UPDATE.
-    expect((completedCall![1] as unknown[])[9]).toBe(true);
+    expect((completedCall![1] as unknown[])[8]).toBe(true);
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
     );
@@ -576,7 +576,7 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 21,
+        (params as unknown[])[7] === 21,
     );
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
@@ -598,7 +598,7 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 23,
+        (params as unknown[])[7] === 23,
     );
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
@@ -631,7 +631,7 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 26,
+        (params as unknown[])[7] === 26,
     );
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
@@ -655,7 +655,7 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 25,
+        (params as unknown[])[7] === 25,
     );
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
@@ -671,7 +671,7 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 24,
+        (params as unknown[])[7] === 24,
     );
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
@@ -685,10 +685,10 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 22,
+        (params as unknown[])[7] === 22,
     );
     // authenticated param is null -> COALESCE leaves the column's false default.
-    expect((completedCall![1] as unknown[])[9]).toBeNull();
+    expect((completedCall![1] as unknown[])[8]).toBeNull();
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
     );
@@ -720,7 +720,7 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 61,
+        (params as unknown[])[7] === 61,
     );
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
@@ -754,7 +754,7 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 30,
+        (params as unknown[])[7] === 30,
     );
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
@@ -773,7 +773,7 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 31,
+        (params as unknown[])[7] === 31,
     );
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
@@ -787,7 +787,7 @@ describe("executeCrawlScan (authenticated)", () => {
     const completeCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 32,
+        (params as unknown[])[7] === 32,
     );
     const completeMeta = JSON.parse(
       (completeCall![1] as unknown[])[6] as string,
@@ -805,7 +805,7 @@ describe("executeCrawlScan (authenticated)", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 33,
+        (params as unknown[])[7] === 33,
     );
     const resultMeta = JSON.parse(
       (completedCall![1] as unknown[])[6] as string,
