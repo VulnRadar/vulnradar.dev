@@ -2,7 +2,8 @@ import { ImageResponse } from "next/og";
 import { APP_NAME } from "@/lib/config/constants";
 import { OgCard, OG_SIZE, OG_CONTENT_TYPE, severityRow } from "@/app/_og/card";
 import { OG_LIVE_DATA_HEADERS } from "@/app/_og/cache";
-import { getHostSummary, decodeHostParam } from "./host-summary";
+import { getHostSummary } from "./host-summary";
+import { unscannedHostHeadline } from "./og-headline";
 
 export const alt = `Host security report on ${APP_NAME}`;
 export const size = OG_SIZE;
@@ -24,7 +25,7 @@ export default async function OpengraphImage({
     return new ImageResponse(
       <OgCard
         eyebrow="Host report"
-        headline={decodeHostParam(hostname)}
+        headline={unscannedHostHeadline(hostname)}
         subline="No public scan on record for this host yet."
       />,
       options,
