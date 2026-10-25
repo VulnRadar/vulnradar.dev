@@ -107,7 +107,15 @@ export function TeamDetailHeader({
             )}
             <div className="min-w-0 flex-1">
               {editingName ? (
-                <div className="flex items-center gap-2">
+                // The row sits between the 48px picture and the card edge, so
+                // below sm it has roughly 170-250px for an input and two 44px
+                // buttons. The input used to be a fixed w-48 that could not
+                // shrink and pushed Cancel past the card (cut off by the
+                // body's overflow-x: clip, so unreachable). min-w-0 flex-1
+                // lets it give way; basis-32 plus flex-wrap drops the buttons
+                // under it instead of squeezing a team that has a picture,
+                // and so a Remove button, down to a 43-73px field.
+                <div className="flex flex-wrap items-center gap-2">
                   <Input
                     value={nameInput}
                     onChange={(e) => onNameInputChange(e.target.value)}
@@ -116,7 +124,7 @@ export function TeamDetailHeader({
                       if (e.key === "Enter") onSaveName();
                       if (e.key === "Escape") onCancelEdit();
                     }}
-                    className="h-9 text-base font-semibold w-48 sm:w-64"
+                    className="h-9 min-w-0 flex-1 basis-32 text-base font-semibold sm:w-64 sm:flex-none"
                     autoFocus
                     maxLength={50}
                   />

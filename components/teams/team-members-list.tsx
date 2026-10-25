@@ -159,7 +159,7 @@ export function TeamMembersList({
                         ROLE_BADGE_STYLES[m.staff_role] && (
                           <span
                             className={cn(
-                              "inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider border shrink-0",
+                              "inline-flex items-center px-1.5 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider border shrink-0",
                               ROLE_BADGE_STYLES[m.staff_role],
                             )}
                           >

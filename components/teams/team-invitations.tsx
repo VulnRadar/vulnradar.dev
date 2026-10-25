@@ -29,7 +29,7 @@ export function TeamInvitations({
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center gap-2">
         <Mail className="h-4 w-4 text-primary" aria-hidden="true" />
-        <h2 className="text-sm font-semibold tracking-tight">
+        <h2 className="text-base font-semibold tracking-tight text-foreground">
           Invitations
           <span className="ml-1.5 text-muted-foreground tabular-nums">
             {invitations.length}
