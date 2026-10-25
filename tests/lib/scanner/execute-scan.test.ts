@@ -215,9 +215,9 @@ describe("executeScan", () => {
     );
     expect(completedCall).toBeDefined();
     const [, completedParams] = completedCall!;
-    // findings JSON, count, summary JSON, duration, scannedAt, headers JSON, resultMeta JSON, finalUrl, id
-    expect((completedParams as unknown[])[7]).toBeNull(); // no redirect in this fixture
-    expect((completedParams as unknown[])[8]).toBe(1);
+    // findings JSON, count, summary JSON, duration, scannedAt, headers JSON, resultMeta JSON, id, authenticated
+    expect((completedParams as unknown[])[7]).toBe(1);
+    expect((completedParams as unknown[])[8]).toBeNull();
   });
 
   it("does not grade a bot challenge as the site, and says the page was not checked", async () => {
@@ -412,7 +412,7 @@ describe("executeScan", () => {
     expect(mockSafeFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("records the post-redirect URL as finalUrl when safeFetch followed one to a different path", async () => {
+  it("records where a redirect landed in result_meta and leaves scan_history.url as requested", async () => {
     // Response.url is a read-only property the Fetch spec normally sets
     // from the real request -- the constructor ignores a `url` field in
     // its init, so it has to be overridden directly to simulate what
@@ -442,16 +442,32 @@ describe("executeScan", () => {
     const completedCall = mockQuery.mock.calls.find(([sql]) =>
       (sql as string).includes("status = 'completed'"),
     );
-    const [, completedParams] = completedCall!;
-    expect((completedParams as unknown[])[7]).toBe(
-      "https://example.com/landing",
-    );
+    const [completedSql, completedParams] = completedCall!;
+    // The row keeps the URL the scan was requested with. It is the key the
+    // next scan of this target is looked up by (regression diff, suppression,
+    // triage), and overwriting it with the landing page meant a target that
+    // redirects never matched its own previous scan and re-alerted every run.
+    expect(completedSql as string).not.toMatch(/\burl\s*=/);
+    expect(
+      (completedParams as unknown[]).some(
+        (p) => p === "https://example.com/landing",
+      ),
+    ).toBe(false);
+    const resultMeta = JSON.parse((completedParams as unknown[])[6] as string);
+    expect(resultMeta.redirect).toMatchObject({
+      requestedUrl: "https://example.com/",
+      finalUrl: "https://example.com/landing",
+    });
   });
 
-  it("marks the row failed with a real reason when the target is unreachable", async () => {
-    mockSafeFetch.mockRejectedValue(new Error("ECONNREFUSED"));
+  it("marks the row failed with a real reason when the page fetch throws something that is not recognisably the target's doing", async () => {
+    // No code, no cause, no name that says timeout: that is not a verdict on
+    // the target, so it is treated as the engine failing, which is louder.
+    mockSafeFetch.mockRejectedValue(new Error("socket exploded"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await executeScan(baseParams({ scanId: 2 }));
+    errSpy.mockRestore();
 
     const calls = mockQuery.mock.calls;
     const failedCall = calls.find(([sql]) =>

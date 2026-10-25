@@ -431,7 +431,6 @@ describe("finalizeScanSuccess", () => {
       "2026-01-01T00:00:00.000Z",
       JSON.stringify({ "x-test": "1" }),
       JSON.stringify({ checksRun: 10, dangerScore: 2 }),
-      null, // finalUrl not passed -- COALESCE(NULL, url) leaves url untouched
       5,
       null, // authenticated not passed -- COALESCE(NULL, authenticated) leaves it
     ]);
@@ -441,7 +440,12 @@ describe("finalizeScanSuccess", () => {
     expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 
-  it("writes finalUrl into the url column when safeFetch followed a redirect", async () => {
+  // scan_history.url is the key the next scan of this target is looked up by
+  // (regression diff, suppression, triage). It used to be overwritten with the
+  // page a same-host redirect landed on, so a redirecting target never matched
+  // its own previous scan and re-announced every critical finding as new on
+  // every run. Where the fetch ended up is result_meta.redirect.
+  it("never writes the url column, whatever the scan was redirected to", async () => {
     mockUpdateResult({ rows: [{ id: 5 }], rowCount: 1 });
 
     await finalizeScanSuccess(5, {
@@ -450,15 +454,21 @@ describe("finalizeScanSuccess", () => {
       duration: 1,
       scannedAt: "2026-01-01T00:00:00.000Z",
       responseHeaders: {},
-      resultMeta: {},
-      finalUrl: "https://sandbox.vulnradar.dev/landing",
+      resultMeta: {
+        redirect: {
+          requestedUrl: "https://sandbox.vulnradar.dev/",
+          finalUrl: "https://sandbox.vulnradar.dev/landing",
+        },
+      },
     });
 
     const [sql, params] = mockClientQuery.mock.calls[1];
-    expect(sql).toContain("url = COALESCE($8, url)");
-    expect((params as unknown[])[7]).toBe(
-      "https://sandbox.vulnradar.dev/landing",
-    );
+    // Assigned nowhere in the SET list; RETURNING still reads it back.
+    expect(sql).not.toMatch(/\burl\s*=/);
+    expect(sql).toContain("RETURNING id, url, user_id");
+    expect(
+      (params as unknown[]).includes("https://sandbox.vulnradar.dev/landing"),
+    ).toBe(false);
   });
 
   it("returns false when the row already reached a terminal state (guard no-op)", async () => {

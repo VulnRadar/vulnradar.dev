@@ -82,7 +82,7 @@ export default function TroubleshootingPage() {
             {
               status: "failed",
               meaning:
-                "The scan stopped without a result. The reason is stored on the scan and shown on the scanning screen.",
+                "The scan stopped without a result. The reason is stored on the scan and shown on the scanning screen. Failed covers more than a crash: you cancelling, a limit turning the scan away before it ran, and a bulk URL the batch never reached all end here, each with its own reason.",
             },
           ]}
         />
@@ -92,8 +92,13 @@ export default function TroubleshootingPage() {
             saved yet. On the next boot, any scan left in progress past a grace
             period is marked failed with{" "}
             <em>Scan interrupted by a server restart. Please run it again.</em>{" "}
-            Running it again is the fix, and it is not a sign of a problem with
-            the target.
+            A scan that goes quiet while the server stays up is closed the same
+            way by a sweep that runs every few minutes, and says{" "}
+            <em>
+              The scan stopped responding and was closed. Please run it again.
+            </em>{" "}
+            instead, because no restart happened. Running it again is the fix
+            for both, and neither is a sign of a problem with the target.
           </p>
         </DocsCallout>
       </DocsSection>
@@ -102,7 +107,11 @@ export default function TroubleshootingPage() {
         <p className="text-sm leading-relaxed text-muted-foreground">
           Failure reasons are deliberately normalised before you see them: the
           raw error can contain internal detail, so it is classified into one of
-          a small set of messages. Here is what each one means in practice.
+          a small set of messages. Each failed scan also records a kind (you
+          cancelled it, a limit refused it, the target was the problem, the
+          scanner broke), and the message follows the kind, so a database fault
+          is never reported as your site timing out. Scans recorded before the
+          kind existed may show an older wording for the same cause.
         </p>
         <DocsTable
           caption="Every scan failure message and its usual cause"
@@ -132,8 +141,43 @@ export default function TroubleshootingPage() {
                 "Self-signed, expired, wrong hostname, or an incomplete chain. This is a real finding about the site, not a scanner fault: check it in a browser.",
             },
             {
+              message:
+                "The target could not be reached: the hostname did not resolve, or the connection was refused or closed early.",
+              cause:
+                "Seen on older scans. A page that simply will not answer no longer fails a single-URL scan: see below.",
+            },
+            {
+              message:
+                "The target redirected to a different host, which the scanner does not follow. Scan the address it redirects to instead.",
+              cause:
+                "Seen on older scans. Today a redirect from example.com to app.example.com still completes the scan: the original host's DNS, TLS and reputation checks run, and the report names the host it pointed at.",
+            },
+            {
+              message:
+                "The target resolves to an address the scanner is not allowed to reach.",
+              cause:
+                "The hostname points at a private or internal address. See the section on targets we refuse to scan.",
+            },
+            {
               message: "Cancelled",
               cause: "You stopped the scan. Nothing was recorded.",
+            },
+            {
+              message: "Cancelled by an administrator.",
+              cause:
+                "An operator stopped it from the scanner queue, usually because it was stuck. Run it again.",
+            },
+            {
+              message:
+                "This scan did not run because a daily scan limit was reached. Nothing was scanned.",
+              cause:
+                "A bulk batch ran into your daily scan allowance or your API key's daily limit part-way through. The URLs after that point were turned away.",
+            },
+            {
+              message:
+                "This scan did not run: the batch it belonged to stopped before reaching it.",
+              cause:
+                "A bulk batch works through its URLs one at a time and has a time limit for the whole batch. URLs it had not reached by then never started. Submit them again in a smaller batch.",
             },
             {
               message: `Scan exceeded the ${CONFIG_SCAN_TIMEOUT_SECONDS}s time limit.`,
@@ -148,6 +192,19 @@ export default function TroubleshootingPage() {
             },
           ]}
         />
+        <DocsCallout variant="info" title="A page that cannot be fetched">
+          <p>
+            If the page itself will not load (the connection is refused, the
+            request times out, the certificate is rejected, or the site
+            redirects to another host) the scan still completes. DNS, the TLS
+            handshake and reputation never read the page, so they run and
+            report. The result lists{" "}
+            <strong className="text-foreground">the page</strong> as not
+            checked, says why, and drops the engine confidence figure, so a
+            short report here means the page was out of reach and not that it
+            was clean.
+          </p>
+        </DocsCallout>
         <DocsCallout variant="info" title="Retrying">
           <p>
             The scanning screen&rsquo;s <strong>Try again</strong> keeps every
@@ -195,7 +252,8 @@ export default function TroubleshootingPage() {
           page. A request hitting that limit does{" "}
           <strong className="text-foreground">not</strong> fail the scan: the
           affected group of checks is reported as incomplete and the rest of the
-          scan continues.
+          scan continues. That includes the page fetch itself, which is then
+          reported as not checked while the checks that never read a page run.
         </p>
         <DocsCallout
           variant="warning"
@@ -414,6 +472,11 @@ export default function TroubleshootingPage() {
               quota: "Not charged",
             },
             { outcome: "Started, then failed or timed out", quota: "Charged" },
+            {
+              outcome:
+                "A bulk URL its batch never reached before the time limit",
+              quota: "Charged",
+            },
             { outcome: "Cancelled by you after it started", quota: "Charged" },
             { outcome: "Completed", quota: "Charged" },
           ]}

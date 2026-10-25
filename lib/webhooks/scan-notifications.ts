@@ -71,6 +71,12 @@ export interface ScanNotificationSummary {
  * lib/scanner/regression-alert.ts diffs on, so a value that does not match
  * the stored row silently turns every scan into "first scan of this target"
  * and re-alerts forever.
+ *
+ * For a single-URL scan that is the URL the scan was requested with.
+ * finalizeScanSuccess never rewrites scan_history.url, so a same-host redirect
+ * (the landed URL is in result_meta.redirect) cannot make the two diverge. It
+ * used to, and a target that redirected re-announced every critical finding as
+ * new on every run.
  */
 export interface ScanNotificationTarget {
   kind: "url" | "repository";

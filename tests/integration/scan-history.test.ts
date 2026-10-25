@@ -9,6 +9,7 @@ import {
   sweepStaleScans,
 } from "@/lib/scanner/scan-jobs";
 import { reserveConcurrentScanSlot } from "@/lib/rate-limiting/concurrent-scans";
+import { checkForNewCriticalOrHighFindings } from "@/lib/scanner/regression-alert";
 import { describeIntegration, createUser, createTeam } from "./_db";
 
 /**
@@ -186,6 +187,65 @@ describeIntegration("scan_history insert then finalize", () => {
       [scanId],
     );
     expect(rows[0].error_message.length).toBe(2000);
+  });
+
+  /**
+   * A target that redirects (http to https, / to /en/, apex to www) used to
+   * have scan_history.url rewritten to the page it landed on. The regression
+   * diff looks the previous scan up by the URL the scan was REQUESTED with, so
+   * the second scan found no first scan, read every critical finding as new,
+   * and re-alerted on every run. The landed URL lives in result_meta.redirect.
+   */
+  it("keeps the requested url on a redirected scan, so the next scan finds this one", async () => {
+    const user = await createUser();
+    const requested = "https://example.test/app";
+    const redirect = {
+      requestedUrl: requested,
+      finalUrl: "https://example.test/en/app",
+      kind: "other",
+      reason: "The page you asked for redirected elsewhere.",
+    };
+    const critical = {
+      ...FINDINGS[0],
+      id: "exposed-env--abc",
+      severity: "critical",
+    };
+    const meta = { checksRun: 310, redirect };
+
+    const first = await insertPendingScan(user.id, null);
+    await finalizeScanSuccess(
+      first,
+      successData({ findings: [critical], resultMeta: meta }),
+    );
+    const second = await insertPendingScan(user.id, null);
+    await finalizeScanSuccess(
+      second,
+      successData({ findings: [critical], resultMeta: meta }),
+    );
+
+    const { rows } = await pool.query<{
+      url: string;
+      result_meta: { redirect?: { finalUrl?: string } };
+    }>("SELECT url, result_meta FROM scan_history WHERE id = ANY($1::int[])", [
+      [first, second],
+    ]);
+    for (const row of rows) {
+      expect(row.url).toBe(requested);
+      expect(row.result_meta.redirect?.finalUrl).toBe(
+        "https://example.test/en/app",
+      );
+    }
+
+    // And the lookup the alert uses, keyed on the requested URL, now lands on
+    // the first scan: the finding is not new, so nothing is announced.
+    const verdict = await checkForNewCriticalOrHighFindings({
+      userId: user.id,
+      url: requested,
+      scanId: second,
+      currentFindings: [critical as never],
+    });
+    expect(verdict.hasNewCriticalOrHigh).toBe(false);
+    expect(verdict.outstandingFindings).toHaveLength(1);
   });
 
   it("records why a scan failed, and when, in the same statement", async () => {

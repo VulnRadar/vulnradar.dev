@@ -39,6 +39,13 @@ import {
   requestSignal,
 } from "./scan-jobs";
 import { SCAN_CANCELLED_MESSAGE } from "./failure-messages";
+import {
+  PAGE_UNREACHABLE_INCOMPLETE,
+  ScanTargetError,
+  classifyTargetFailure,
+  pageUnreachableFrom,
+  type PageUnreachable,
+} from "./target-failure";
 import type { Category, Vulnerability } from "./types";
 import {
   APP_NAME,
@@ -339,12 +346,16 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
     let protocolSpecificFindings: Vulnerability[] = [];
     // Set below, only when safeFetch actually followed a same-host redirect
     // away from normalizedUrl (e.g. https://host/ -> https://host/landing).
-    // Passed to finalizeScanSuccess so scan_history.url reflects the page
-    // that was really scanned, not just the URL the scan was requested
-    // with. Finding ids and DNS/email checks keep using normalizedUrl; the
-    // sync checks judge finalScanUrl, since the headers and body they read
-    // came from it (see checkPasses in engine.ts).
+    // Recorded in result_meta.redirect, NOT in scan_history.url: the row keeps
+    // the URL the scan was requested with, because that is what the next scan
+    // of this target is looked up by. Finding ids and DNS/email checks keep
+    // using normalizedUrl; the sync checks judge finalScanUrl, since the
+    // headers and body they read came from it (see checkPasses in engine.ts).
     let finalScanUrl: string | undefined;
+    // Set when the page fetch failed for a reason that says something about
+    // the target rather than about the scanner. The scan carries on without
+    // a page; see the catch below.
+    let pageUnreachable: PageUnreachable | null = null;
 
     // Get protocol-specific findings first (only meaningful when URL scheme
     // is non-HTTP). For plain https/http inputs, this is a no-op.
@@ -517,11 +528,40 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
             finalScanUrl = response.url;
           }
         } catch (fetchError) {
+          // A cancel (or the watchdog) aborts the fetch like any other abort;
+          // it must not be read as the target timing out and carried on from.
+          if (cancelSignal.aborted || isCancelled(scanId)) {
+            throw new ScanCancelledError();
+          }
           const message =
             fetchError instanceof Error ? fetchError.message : "Unknown error";
-          throw new Error(
-            `Could not reach the target URL: ${message}. The site may be down, blocking automated requests, or not publicly accessible.`,
-          );
+          const failure = classifyTargetFailure(fetchError);
+          if (!failure) {
+            // Not recognisably the target's doing, so it is treated as the
+            // engine failing: louder, and logged with its stack.
+            throw new Error(
+              `Could not reach the target URL: ${message}. The site may be down, blocking automated requests, or not publicly accessible.`,
+            );
+          }
+          if (failure.code === "blocked") {
+            // The SSRF guard refused the address, and every network check
+            // after this one would be refused by the same guard. Nothing is
+            // left to run, so this is the one target problem that ends the
+            // scan.
+            throw new ScanTargetError(
+              `Could not reach the target URL: ${message}`,
+              failure.kind,
+            );
+          }
+          // The target answered badly or not at all, but the checks that never
+          // read the page (DNS, the TLS handshake, reputation) still describe
+          // the real site, and a certificate the scanner rejects is exactly
+          // what the TLS check exists to report. Failing the whole scan hid
+          // it. Handled the way a bot challenge is: no page, the network half
+          // of the checks, and the scan says plainly the page was not checked.
+          // Nothing to reset: safeFetch threw before `response` was assigned,
+          // and safeReadBody keeps what it read rather than throwing.
+          pageUnreachable = pageUnreachableFrom(failure);
         }
       }
     }
@@ -545,8 +585,9 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
       response && !isRawIpTarget
         ? detectBotChallenge(response.status, headers, responseBody)
         : null;
-    const noPage = isRawIpTarget || botChallenge !== null;
-    const asyncScope = botChallenge ? "network" : "all";
+    const noPage =
+      isRawIpTarget || botChallenge !== null || pageUnreachable !== null;
+    const asyncScope = botChallenge || pageUnreachable ? "network" : "all";
 
     // Automatic subdomain discovery: kicked off here so it runs concurrently
     // with the rest of the scan. It resolves as soon as the per-domain cache
@@ -864,6 +905,7 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
       ...asyncResult.incomplete,
       ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
       ...(botChallenge ? [BOT_CHALLENGE_INCOMPLETE] : []),
+      ...(pageUnreachable ? [PAGE_UNREACHABLE_INCOMPLETE] : []),
     ];
     const engineConfidence = getEngineConfidence(
       findings,
@@ -976,6 +1018,11 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
           ? { softwareInventory: softwareInventory.inventory }
           : {}),
         ...(incomplete.length > 0 ? { incomplete } : {}),
+        // Why there is no page behind this result (a fixed sentence, a code
+        // and, for an off-host redirect, where it pointed), so the report can
+        // say the page was not checked and why instead of showing a scan that
+        // looks complete.
+        ...(pageUnreachable ? { pageUnreachable } : {}),
         // If the fetch followed a redirect to a different page (e.g. an
         // auth-gated page bouncing to /login), record what happened so the UI
         // can warn "this scan is of the page it landed on, not the one you
@@ -987,7 +1034,6 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
           return redirect ? { redirect } : {};
         })(),
       },
-      finalUrl: finalScanUrl,
     });
 
     // Row already reached a terminal state (watchdog timeout or
@@ -1029,8 +1075,10 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
       userId: authedUserId,
       scanId,
       // normalizedUrl, not finalScanUrl: this is the key the regression diff
-      // looks up prior scans by, and changing it would make every scan that
-      // followed a redirect read as the first scan of a new target.
+      // looks up prior scans by, and it is also what scan_history.url holds
+      // (finalizeScanSuccess never rewrites it), so the two always agree.
+      // Passing the landed URL here would make every scan that followed a
+      // redirect read as the first scan of a new target.
       target: { kind: "url", value: normalizedUrl },
       summary,
       findings,
@@ -1062,16 +1110,22 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
         error instanceof Error
           ? error.message
           : "An unexpected error occurred during the scan.";
-      // The Error itself, with the ids that find the row again. Only the
-      // message used to be logged, so the stack was dropped and two scans
+      const kind =
+        error instanceof ScanTargetError ? error.failureKind : "internal";
+      // A target the scanner is not allowed to reach is the guard working: it
+      // is recorded on the row and nowhere else. Anything the engine failed
+      // at gets the Error itself, with the ids that find the row again. Only
+      // the message used to be logged, so the stack was dropped and two scans
       // failing the same way within five seconds collapsed into one row.
-      logError("scan", "scan failed", error, {
-        scanId,
-        userId: authedUserId,
-        source,
-        url: normalizedUrl,
-      });
-      await finalizeScanFailure(scanId, message, "internal");
+      if (kind === "internal") {
+        logError("scan", "scan failed", error, {
+          scanId,
+          userId: authedUserId,
+          source,
+          url: normalizedUrl,
+        });
+      }
+      await finalizeScanFailure(scanId, message, kind);
     }
   } finally {
     clearTimeout(watchdog);

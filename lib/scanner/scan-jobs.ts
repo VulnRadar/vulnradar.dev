@@ -350,16 +350,6 @@ export interface ScanSuccessData {
   /** Fields that don't have their own column: checksRun, dangerScore, etc. */
   resultMeta: Record<string, unknown>;
   /**
-   * The URL actually fetched, if safeFetch followed a same-host redirect
-   * away from the URL the scan was requested with (e.g. https://host/ ->
-   * https://host/landing). Only set when it differs from the requested
-   * URL -- the COALESCE below leaves scan_history.url exactly as the
-   * initial INSERT (app/api/v3/scan/route.ts) wrote it otherwise, so
-   * every caller that doesn't pass this (crawl scans, which record each
-   * page's own URL individually) is unaffected.
-   */
-  finalUrl?: string;
-  /**
    * Set true by an authenticated crawl (lib/scanner/execute-crawl-scan.ts) to
    * record the non-secret fact that the crawl ran behind a login. Only the
    * boolean reaches this column -- never any credential material. Left
@@ -376,6 +366,16 @@ export interface ScanSuccessData {
  * `failed` (watchdog timeout, cancellation) keeps that status even if the
  * underlying work eventually finishes and calls this. Returns whether the
  * write actually applied.
+ *
+ * `url` is never written here. It is the address the scan was requested with,
+ * set once by the INSERT, and it is the key the regression diff, the
+ * suppression lookups and the triage marks all match on. This used to
+ * overwrite it with the page a same-host redirect landed on, so a target that
+ * redirects (http to https, / to /en/, apex to www) never stored the URL the
+ * next scan was looked up by, found no previous scan, and re-announced every
+ * critical finding as new on every run. Where the fetch really ended up is
+ * `result_meta.redirect`, which says so whenever the difference is worth a
+ * warning.
  */
 export async function finalizeScanSuccess(
   scanId: number,
@@ -439,12 +439,11 @@ export async function finalizeScanSuccess(
            -- this column, so a poll of a finished scan can never carry two
            -- lists. ref: AUDIT-014#scanui-02
            result_meta = $7,
-           url = COALESCE($8, url),
-           authenticated = COALESCE($10, authenticated),
+           authenticated = COALESCE($9, authenticated),
            current_category = NULL,
            categories_completed = categories_total,
            error_message = NULL
-       WHERE id = $9 AND status IN ('pending', 'running')
+       WHERE id = $8 AND status IN ('pending', 'running')
        RETURNING id, url, user_id, is_public, authenticated`,
       [
         JSON.stringify(data.findings),
@@ -454,7 +453,6 @@ export async function finalizeScanSuccess(
         data.scannedAt,
         JSON.stringify(data.responseHeaders),
         JSON.stringify(data.resultMeta),
-        data.finalUrl ?? null,
         scanId,
         data.authenticated ?? null,
       ],

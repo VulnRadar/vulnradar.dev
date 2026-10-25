@@ -163,6 +163,18 @@ function completedWrites() {
 
 let errorSpy: ReturnType<typeof vi.spyOn>;
 
+/**
+ * The scan pipeline's own error lines. Other background work (the adaptive
+ * confidence cache refresh, for one) shares console.error and logs when its
+ * query has no real database behind it, so "logged nothing" has to mean
+ * nothing from the scan, not nothing at all.
+ */
+function scanLogs(): unknown[][] {
+  return (errorSpy.mock.calls as unknown[][]).filter(([message]) =>
+    /^\[scan(?:ner)?\]/.test(String(message)),
+  );
+}
+
 beforeEach(() => {
   mockQuery.mockReset();
   installDefaultQueryMock();
@@ -198,7 +210,7 @@ describe("executeScan: a scan that is cancelled", () => {
     expect(failureWrites()).toEqual([
       { reason: "Cancelled", scanId: 11, kind: "cancelled" },
     ]);
-    expect(errorSpy).not.toHaveBeenCalled();
+    expect(scanLogs()).toEqual([]);
     expect(completedWrites()).toHaveLength(0);
     clearCancel(11);
   });
@@ -224,7 +236,7 @@ describe("executeScan: a scan that is cancelled", () => {
     expect(failureWrites()).toEqual([
       { reason: "Cancelled", scanId: 12, kind: "cancelled" },
     ]);
-    expect(errorSpy).not.toHaveBeenCalled();
+    expect(scanLogs()).toEqual([]);
     clearCancel(12);
   });
 });
@@ -245,8 +257,8 @@ describe("executeScan: a scan the engine fails", () => {
 
     // One line, with the stack (the Error object, not its message) and the
     // ids that find the row again. It used to be `.message` alone.
-    expect(errorSpy).toHaveBeenCalledTimes(1);
-    const [message, context, err] = errorSpy.mock.calls[0];
+    expect(scanLogs()).toHaveLength(1);
+    const [message, context, err] = scanLogs()[0];
     expect(String(message)).toBe("[scan] scan failed");
     expect(context).toEqual({
       scanId: 21,
@@ -329,8 +341,8 @@ describe("executeScan: the watchdog", () => {
     }
     expect(writes.some((w) => w.kind === "cancelled")).toBe(false);
     // Logged once, by the watchdog, and not a second time as "scan failed".
-    expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(String(errorSpy.mock.calls[0][0])).toContain("time limit");
+    expect(scanLogs()).toHaveLength(1);
+    expect(String(scanLogs()[0][0])).toContain("time limit");
     clearCancel(31);
   });
 
@@ -365,7 +377,7 @@ describe("executeScan: the watchdog", () => {
     await vi.advanceTimersByTimeAsync(2000);
     await done;
 
-    const calls = errorSpy.mock.calls as unknown[][];
+    const calls = scanLogs();
     const lines = calls.map(([message]) => String(message));
     expect(lines.some((m) => m.includes("time limit"))).toBe(true);
     const late = calls.find(([message]) =>
@@ -400,7 +412,7 @@ describe("executeScan: the watchdog", () => {
 
     await executeScan(baseParams({ scanId: 33 }));
 
-    expect(errorSpy).not.toHaveBeenCalled();
+    expect(scanLogs()).toEqual([]);
     clearCancel(33);
   });
 
@@ -415,8 +427,8 @@ describe("executeScan: the watchdog", () => {
 
     await executeScan(baseParams({ scanId: 34 }));
 
-    expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(String(errorSpy.mock.calls[0][0])).toContain("result discarded");
+    expect(scanLogs()).toHaveLength(1);
+    expect(String(scanLogs()[0][0])).toContain("result discarded");
   });
 });
 
@@ -509,5 +521,214 @@ describe("executeScan: the async-checks race", () => {
     await done;
 
     expect(completedWrites()).toHaveLength(1);
+  });
+});
+
+/**
+ * A page that cannot be fetched is not a scan that cannot run. The DNS
+ * records, the TLS handshake and the reputation lookups never read the page,
+ * and a certificate the scanner rejects is exactly what the TLS check exists
+ * to report. The scan used to be marked failed before any of them started.
+ */
+describe("executeScan: a page that cannot be fetched", () => {
+  /** What undici throws: the real code sits one level down, on the cause. */
+  function undiciError(code: string, detail = `connect ${code}`) {
+    return Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error(detail), { code }),
+    });
+  }
+
+  function resultMetaOf(call: unknown[]) {
+    return JSON.parse((call[1] as unknown[])[6] as string);
+  }
+
+  function dnsFindingFor(id: string) {
+    return {
+      id,
+      title: id,
+      severity: "medium",
+      category: "dns",
+      description: "d",
+      evidence: "e",
+      riskImpact: "r",
+      explanation: "x",
+      fixSteps: [],
+      codeExamples: [],
+    };
+  }
+
+  it("completes the scan with the network checks only, and says the page was not checked", async () => {
+    mockSafeFetch.mockRejectedValue(undiciError("ECONNREFUSED"));
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [dnsFindingFor("dmarc-missing")],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams({ scanId: 51 }));
+
+    expect(failureWrites()).toEqual([]);
+    expect(completedWrites()).toHaveLength(1);
+    // Nothing that reads the page runs; the host-level half of the async
+    // layer does.
+    expect(mockRunSyncChecks).not.toHaveBeenCalled();
+    expect(mockRunAsyncChecksDetailed.mock.calls[0][4]).toBe("network");
+
+    const meta = resultMetaOf(completedWrites()[0]);
+    expect(meta.incomplete).toContain("page-unreachable");
+    expect(meta.pageUnreachable).toEqual({
+      code: "unreachable",
+      message: expect.stringMatching(/could not be reached/i),
+    });
+    // The result is not presented as a full-confidence one.
+    expect(meta.engineConfidence).toBeLessThan(100);
+    const findings = JSON.parse(
+      (completedWrites()[0][1] as unknown[])[0] as string,
+    );
+    expect(findings.map((f: { id: string }) => f.id)).toEqual([
+      "dmarc-missing",
+    ]);
+    // An unreachable target is the product working, not an error to page on.
+    expect(scanLogs()).toEqual([]);
+  });
+
+  it.each([
+    ["ENOTFOUND", "unreachable"],
+    ["ECONNRESET", "unreachable"],
+    ["UND_ERR_SOCKET", "unreachable"],
+    ["UND_ERR_CONNECT_TIMEOUT", "timeout"],
+    ["ETIMEDOUT", "timeout"],
+    ["CERT_HAS_EXPIRED", "tls"],
+    ["DEPTH_ZERO_SELF_SIGNED_CERT", "tls"],
+    ["ERR_TLS_CERT_ALTNAME_INVALID", "tls"],
+    ["UNABLE_TO_VERIFY_LEAF_SIGNATURE", "tls"],
+  ])("reads %s off the cause chain as %s", async (nodeCode, expected) => {
+    mockSafeFetch.mockRejectedValue(undiciError(nodeCode));
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams({ scanId: 52 }));
+
+    expect(resultMetaOf(completedWrites()[0]).pageUnreachable.code).toBe(
+      expected,
+    );
+  });
+
+  it("uses the code safeFetch itself puts on the error, ahead of anything below it", async () => {
+    mockSafeFetch.mockRejectedValue(
+      Object.assign(
+        new Error(
+          "Redirect to a different host (app.example.com) is not allowed.",
+        ),
+        { code: "cross_host_redirect", redirectHost: "app.example.com" },
+      ),
+    );
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams({ scanId: 53 }));
+
+    // Where it pointed, so the user can scan that instead.
+    expect(resultMetaOf(completedWrites()[0]).pageUnreachable).toEqual({
+      code: "cross_host_redirect",
+      message: expect.stringMatching(/different host/i),
+      redirectHost: "app.example.com",
+    });
+  });
+
+  it("still recognises an off-host redirect from the message safeFetch has always thrown", async () => {
+    mockSafeFetch.mockRejectedValue(
+      new Error(
+        "Redirect to a different host (shop.example.com) is not allowed.",
+      ),
+    );
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams({ scanId: 54 }));
+
+    expect(resultMetaOf(completedWrites()[0]).pageUnreachable).toMatchObject({
+      code: "cross_host_redirect",
+      redirectHost: "shop.example.com",
+    });
+  });
+
+  it("reads an abort that nobody asked for as the fetch's own timeout", async () => {
+    mockSafeFetch.mockRejectedValue(
+      Object.assign(new Error("This operation was aborted"), {
+        name: "AbortError",
+      }),
+    );
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams({ scanId: 55 }));
+
+    expect(resultMetaOf(completedWrites()[0]).pageUnreachable.code).toBe(
+      "timeout",
+    );
+  });
+
+  it("fails the scan, with its kind and no error log, when the SSRF guard refused the address", async () => {
+    // Every network check after this would be refused by the same guard, so
+    // there is no partial scan to finish.
+    mockSafeFetch.mockRejectedValue(
+      Object.assign(
+        new Error(
+          "Domain resolves to internal IP address. Scanning internal networks is not allowed.",
+        ),
+        { code: "blocked" },
+      ),
+    );
+
+    await executeScan(baseParams({ scanId: 57 }));
+
+    expect(completedWrites()).toHaveLength(0);
+    expect(mockRunAsyncChecksDetailed).not.toHaveBeenCalled();
+    expect(failureWrites()).toEqual([
+      {
+        reason: expect.stringMatching(
+          /^Could not reach the target URL: Domain resolves/,
+        ),
+        scanId: 57,
+        kind: "target_blocked",
+      },
+    ]);
+    expect(scanLogs()).toEqual([]);
+  });
+
+  it("fails the scan as an engine failure when the throw is not recognisably the target", async () => {
+    mockSafeFetch.mockRejectedValue(
+      new Error("something inside safeFetch broke"),
+    );
+
+    await executeScan(baseParams({ scanId: 58 }));
+
+    expect(completedWrites()).toHaveLength(0);
+    expect(failureWrites()).toHaveLength(1);
+    expect(failureWrites()[0].kind).toBe("internal");
+    expect(scanLogs()).toHaveLength(1);
+  });
+
+  it("never treats a cancel during the fetch as an unreachable page", async () => {
+    mockSafeFetch.mockImplementation(async () => {
+      requestCancel(59);
+      throw undiciError("ECONNRESET");
+    });
+
+    await executeScan(baseParams({ scanId: 59 }));
+
+    expect(completedWrites()).toHaveLength(0);
+    expect(failureWrites()).toEqual([
+      { reason: "Cancelled", scanId: 59, kind: "cancelled" },
+    ]);
+    clearCancel(59);
   });
 });
