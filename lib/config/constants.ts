@@ -113,6 +113,12 @@ import {
   CONFIG_DATA_EXPORT_COOLDOWN_DAYS,
   CONFIG_RATE_LIMIT_2FA_VERIFY_ATTEMPTS,
   CONFIG_RATE_LIMIT_2FA_VERIFY_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_SUPPORT_TICKET_CREATE_ATTEMPTS,
+  CONFIG_RATE_LIMIT_SUPPORT_TICKET_CREATE_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_SUPPORT_TICKET_STATUS_ATTEMPTS,
+  CONFIG_RATE_LIMIT_SUPPORT_TICKET_STATUS_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_CONTACT_FORM_ATTEMPTS,
+  CONFIG_RATE_LIMIT_CONTACT_FORM_WINDOW_MINUTES,
 } from "./config-values";
 // Imported for local use below (LOGO_URL, TOTP_ISSUER, VERSION_CHECK_URL);
 // the same names are re-exported wholesale at the bottom of this file.
@@ -482,6 +488,23 @@ export const RATE_LIMIT_DEFAULTS = {
   twoFactorVerify: {
     maxAttempts: CONFIG_RATE_LIMIT_2FA_VERIFY_ATTEMPTS,
     windowSeconds: 60 * CONFIG_RATE_LIMIT_2FA_VERIFY_WINDOW_MINUTES,
+  },
+  // rate-limit: per-user cap on opening support tickets. Each one emails
+  // staff, so this bounds the inbox and the mailbox together.
+  supportTicketCreate: {
+    maxAttempts: CONFIG_RATE_LIMIT_SUPPORT_TICKET_CREATE_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_SUPPORT_TICKET_CREATE_WINDOW_MINUTES,
+  },
+  // rate-limit: per-user cap on an owner closing/reopening their own
+  // tickets, since a reopen notifies staff.
+  supportTicketStatus: {
+    maxAttempts: CONFIG_RATE_LIMIT_SUPPORT_TICKET_STATUS_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_SUPPORT_TICKET_STATUS_WINDOW_MINUTES,
+  },
+  // rate-limit: per-IP cap on the contact forms, which need no account.
+  contactForm: {
+    maxAttempts: CONFIG_RATE_LIMIT_CONTACT_FORM_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_CONTACT_FORM_WINDOW_MINUTES,
   },
 };
 

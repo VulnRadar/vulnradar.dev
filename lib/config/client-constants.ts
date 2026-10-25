@@ -330,6 +330,18 @@ export const API = {
   /** Scanner queue counts (GET, VIEW_SYSTEM_STATS; ?failures=1 adds the
    *  failed rows) and failing stuck scans (POST, admin). */
   ADMIN_QUEUE_STATUS: `/api/${API_VERSION}/admin/queue-status`,
+  /** Staff cancel of one running scan (POST { scanId }), recorded as
+   *  failure_kind 'admin_cancelled' and audited as admin_cancel_scan. */
+  ADMIN_QUEUE_CANCEL: `/api/${API_VERSION}/admin/queue-status/cancel`,
+  /** One scan as staff see it (VIEW_ALL_SCANS): status, failure_kind, the
+   *  raw error, timings and result_meta. Takes a public_id or a numeric id,
+   *  and every read is audited as view_scan. */
+  ADMIN_SCAN: (id: string | number) => `/api/${API_VERSION}/admin/scans/${id}`,
+  /** Contact-form submissions, with whether the staff email went out. */
+  ADMIN_CONTACT_SUBMISSIONS: `/api/${API_VERSION}/admin/contact-submissions`,
+  /** Auto-tag rules promoted from AI tags: GET to list, DELETE to remove
+   *  one (audited as demote_ai_tag). */
+  ADMIN_PROMOTED_TAGS: `/api/${API_VERSION}/admin/engine-feedback/promoted-tags`,
   ADMIN: `/api/${API_VERSION}/admin`,
   BADGE: `/api/${API_VERSION}/badge`,
   BADGE_SCANS: `/api/${API_VERSION}/badge/scans`,
@@ -375,9 +387,15 @@ export const API = {
   /** Public, unauthenticated: the whole check catalogue (id, type, title,
    *  category, severity, description) plus per-category counts. */
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
+  /** Streamed assistant reply (POST { messages, sessionId, contexts?,
+   *  scanId? }), visible text only. */
+  AI_CHAT: `/api/${API_VERSION}/ai/chat`,
   AI_INFO: `/api/${API_VERSION}/ai/info`,
   /** The signed-in user's assistant conversations (GET list or ?id=, POST), and staff review. */
   AI_CONVERSATIONS: `/api/${API_VERSION}/ai/conversations`,
+  /** A thumbs up or down on one assistant reply (POST { conversationId,
+   *  messageIndex, rating: 1 | -1, comment? }). */
+  AI_FEEDBACK: `/api/${API_VERSION}/ai/feedback`,
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   COMPARE: `/api/${API_VERSION}/compare`,
   BILLING: `/api/${API_VERSION}/billing`,
@@ -439,6 +457,9 @@ export const ROUTES = {
   DOCS_SETUP: "/docs/setup",
   DOCS_DEVELOPERS: "/docs/developers",
   ADMIN: "/admin",
+  /** Staff inspector for one scan (public_id or numeric id). Linked from the
+   *  admin queue, user detail and anywhere else a scan id appears in admin. */
+  ADMIN_SCAN: (id: string | number) => `/admin/scans/${id}`,
   BROWSER: (id: string) => `/browser/${id}`,
   /** Public, no-login scan report for a host's latest public scan (see app/host/[hostname]/page.tsx). */
   HOST: (hostname: string) => `/host/${hostname}`,

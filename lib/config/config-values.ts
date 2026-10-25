@@ -711,6 +711,25 @@ export const CONFIG_RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES = 1;
 export const CONFIG_RATE_LIMIT_2FA_VERIFY_ATTEMPTS = 5;
 export const CONFIG_RATE_LIMIT_2FA_VERIFY_WINDOW_MINUTES = 5;
 
+// Per-user cap on opening support tickets (POST /api/v3/support-tickets).
+// Every new ticket emails staff, so without its own bucket one account could
+// fill the support inbox and the staff mailbox in a minute. Five an hour is
+// more than a real person with a real problem opens.
+export const CONFIG_RATE_LIMIT_SUPPORT_TICKET_CREATE_ATTEMPTS = 5;
+export const CONFIG_RATE_LIMIT_SUPPORT_TICKET_CREATE_WINDOW_MINUTES = 60;
+
+// Per-user cap on a ticket owner closing and reopening their own tickets
+// (PATCH /api/v3/support-tickets/[id]). A reopen notifies staff, so a
+// close/reopen loop was an email loop.
+export const CONFIG_RATE_LIMIT_SUPPORT_TICKET_STATUS_ATTEMPTS = 20;
+export const CONFIG_RATE_LIMIT_SUPPORT_TICKET_STATUS_WINDOW_MINUTES = 60;
+
+// Per-IP cap on the contact forms. They used the general API bucket (100 an
+// hour), which is two orders of magnitude more mail than a person sends
+// through a contact form, from a route that needs no account at all.
+export const CONFIG_RATE_LIMIT_CONTACT_FORM_ATTEMPTS = 5;
+export const CONFIG_RATE_LIMIT_CONTACT_FORM_WINDOW_MINUTES = 60;
+
 // SCANNING CONFIGURATION - UPDATE IF NEEDED
 
 export const CONFIG_MAX_URL_LENGTH = 2048;
@@ -948,6 +967,12 @@ export const CONFIG_AI_CHAT_MAX_TOKENS = 8192;
 // public promise since lib/database/cleanup.ts enforces this exact setting.
 export const CONFIG_AI_CHAT_HISTORY_DAYS = 90;
 export const CONFIG_AI_CHAT_MAX_INPUT_LENGTH = 2000;
+// Whether the support chat lets the model call tools (look up the user's own
+// scans, checks and account) or falls back to retrieval, where matching
+// knowledge is pasted into the prompt instead. "auto" trusts the model
+// catalog's supportsTools for the configured model; "on" and "off" override
+// it for a model the catalog gets wrong or does not list.
+export const CONFIG_AI_CHAT_TOOLS = "auto";
 
 // AI VERIFICATION (deep scan) CONFIGURATION
 // CONFIG_AI_VERIFY_MAX_TOKENS: budget for each per-finding AI call.

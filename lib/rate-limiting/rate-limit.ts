@@ -82,6 +82,18 @@ const CONFIGURABLE_LIMITS: Partial<
     "RATE_LIMIT_2FA_VERIFY_ATTEMPTS",
     "RATE_LIMIT_2FA_VERIFY_WINDOW_MINUTES",
   ],
+  supportTicketCreate: [
+    "RATE_LIMIT_SUPPORT_TICKET_CREATE_ATTEMPTS",
+    "RATE_LIMIT_SUPPORT_TICKET_CREATE_WINDOW_MINUTES",
+  ],
+  supportTicketStatus: [
+    "RATE_LIMIT_SUPPORT_TICKET_STATUS_ATTEMPTS",
+    "RATE_LIMIT_SUPPORT_TICKET_STATUS_WINDOW_MINUTES",
+  ],
+  contactForm: [
+    "RATE_LIMIT_CONTACT_FORM_ATTEMPTS",
+    "RATE_LIMIT_CONTACT_FORM_WINDOW_MINUTES",
+  ],
 };
 
 /** Resolve a named limit through the admin settings resolver. */
@@ -321,4 +333,13 @@ export const RATE_LIMITS = {
     limit: "twoFactorVerify",
     ...RATE_LIMIT_DEFAULTS.twoFactorVerify,
   },
+  supportTicketCreate: {
+    limit: "supportTicketCreate",
+    ...RATE_LIMIT_DEFAULTS.supportTicketCreate,
+  },
+  supportTicketStatus: {
+    limit: "supportTicketStatus",
+    ...RATE_LIMIT_DEFAULTS.supportTicketStatus,
+  },
+  contactForm: { limit: "contactForm", ...RATE_LIMIT_DEFAULTS.contactForm },
 } as const satisfies Record<RateLimitName, RateLimitPair & { limit: string }>;
