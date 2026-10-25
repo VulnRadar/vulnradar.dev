@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +11,7 @@ import {
   Clock,
   ChevronDown,
   XCircle,
+  Activity,
 } from "lucide-react";
 import {
   SkeletonRegion,
@@ -22,15 +24,22 @@ import {
 } from "@/components/admin/shared";
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
-import { API } from "@/lib/config/client-constants";
+import { pluralize } from "@/lib/ui/plural";
+import { API, ROUTES } from "@/lib/config/client-constants";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import {
   formatAgeMs,
   computeBackedUp,
   groupFailures,
+  describeOtherEndings,
+  endedWithoutResultCount,
+  otherEndedCount,
+  ranForLabel,
+  adminUserHref,
   STALE_PENDING_MS,
   STALE_RUNNING_MS,
   type FailedScan,
+  type InflightScan,
   type QueueStatusResponse,
 } from "./queue-status-utils";
 import { LeadingIcon } from "@/components/shared/leading-icon";
@@ -43,6 +52,14 @@ import { formatRelativeTime } from "@/components/admin/utils";
 // (updater-manager.tsx, error-logs-manager.tsx) hand-rolls fetch +
 // setInterval, so this follows that established convention instead.
 const POLL_INTERVAL_MS = 45_000;
+
+/**
+ * A link that is at least 24px tall without making its row taller: the
+ * padding is on the link and pulled back with a negative margin, so the
+ * target is the link and not the row around it.
+ */
+const ROW_LINK =
+  "-my-1 rounded-sm py-1 hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * Admin > System > Scanner Queue. AUDIT-010 admin-feature-gap: there was
@@ -63,10 +80,15 @@ export function QueueStatusManager() {
   // The rows behind the Failed count, fetched separately and only once the
   // operator opens the list. They carry a customer URL and a user id, unlike
   // the aggregate counts above, so the 45-second poll does not pull them.
+  // The live list below is the same: opt-in, and not part of the poll.
   const [failures, setFailures] = useState<FailedScan[] | null>(null);
   const [failuresTruncated, setFailuresTruncated] = useState(false);
   const [failuresOpen, setFailuresOpen] = useState(false);
   const [failuresLoading, setFailuresLoading] = useState(false);
+  const [inflight, setInflight] = useState<InflightScan[] | null>(null);
+  const [inflightTruncated, setInflightTruncated] = useState(false);
+  const [inflightOpen, setInflightOpen] = useState(false);
+  const [inflightLoading, setInflightLoading] = useState(false);
   const [sweeping, setSweeping] = useState(false);
   const { confirm, confirmDialog } = useConfirm();
 
@@ -90,6 +112,26 @@ export function QueueStatusManager() {
     setFailuresLoading(false);
   }, []);
 
+  const fetchInflight = useCallback(async () => {
+    setInflightLoading(true);
+    try {
+      const res = await fetch(`${API.ADMIN_QUEUE_STATUS}?inflight=1`);
+      if (res.ok) {
+        const json: QueueStatusResponse = await res.json();
+        setInflight(json.inflight ?? []);
+        setInflightTruncated(!!json.inflightTruncated);
+      } else {
+        setToast({
+          message: "Failed to load the running scans.",
+          type: "error",
+        });
+      }
+    } catch {
+      setToast({ message: "Failed to load the running scans.", type: "error" });
+    }
+    setInflightLoading(false);
+  }, []);
+
   // Opening fetches; re-opening reuses what is already there. The Refresh
   // button re-fetches an open list, so a stale list is never the only option.
   const toggleFailures = useCallback(() => {
@@ -98,6 +140,13 @@ export function QueueStatusManager() {
       return !open;
     });
   }, [failures, fetchFailures]);
+
+  const toggleInflight = useCallback(() => {
+    setInflightOpen((open) => {
+      if (!open && inflight === null) void fetchInflight();
+      return !open;
+    });
+  }, [inflight, fetchInflight]);
 
   const fetchStatus = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);
@@ -141,7 +190,7 @@ export function QueueStatusManager() {
         setToast({
           message:
             json.swept > 0
-              ? `Marked ${json.swept} stuck scan${json.swept === 1 ? "" : "s"} as failed.`
+              ? `Marked ${pluralize(json.swept, "stuck scan")} as failed.`
               : `Nothing was old enough to clear. Scans are cleared once they pass ${minutes} minutes.`,
           type: "success",
         });
@@ -154,6 +203,34 @@ export function QueueStatusManager() {
     }
     setSweeping(false);
   }, [fetchStatus]);
+
+  // One scan, by id. Throws on a refusal so the confirm dialog stays open and
+  // says why: "it just finished" is a real answer here, and a toast that
+  // vanished after five seconds would let it read as a cancel that worked.
+  const cancelScan = useCallback(
+    async (scanId: number) => {
+      const res = await fetch(API.ADMIN_QUEUE_CANCEL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId }),
+      });
+      // Either way the list is out of date: the scan is gone, or it was
+      // already gone.
+      void fetchStatus(false);
+      void fetchInflight();
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        throw new Error(
+          typeof json?.error === "string"
+            ? json.error
+            : "Failed to cancel the scan.",
+        );
+      }
+      setToast({ message: `Scan #${scanId} cancelled.`, type: "success" });
+      if (failuresOpen) void fetchFailures();
+    },
+    [fetchStatus, fetchInflight, fetchFailures, failuresOpen],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
@@ -186,6 +263,11 @@ export function QueueStatusManager() {
   const oldestPending = data ? formatAgeMs(data.oldestPendingAgeMs) : null;
   const oldestRunning = data ? formatAgeMs(data.oldestRunningAgeMs) : null;
 
+  const engineFailed = data?.counts.failedLast24h ?? 0;
+  const otherEnded = data ? otherEndedCount(data.counts) : 0;
+  const otherEndings = data ? describeOtherEndings(data.counts) : null;
+  const inFlightCount = data ? data.counts.pending + data.counts.running : 0;
+
   return (
     <div className="space-y-6">
       <Card className="border-border/50 bg-card/50 overflow-hidden">
@@ -214,6 +296,7 @@ export function QueueStatusManager() {
                 // is worse than a stale card: the two disagree and
                 // neither of them says so.
                 if (failuresOpen) void fetchFailures();
+                if (inflightOpen) void fetchInflight();
               }}
               disabled={loading || refreshing}
               aria-label="Refresh scanner queue status"
@@ -278,13 +361,22 @@ export function QueueStatusManager() {
                     tone: "success",
                   },
                   {
+                    // The engine's own failures only. A cancel, a limit that
+                    // turned a URL away and a target that was down are not
+                    // the scanner breaking; they are counted just below.
                     label: `Failed (${data.recentWindowHours}h)`,
-                    value: data.counts.failedLast24h,
-                    tone:
-                      data.counts.failedLast24h > 0 ? "destructive" : "muted",
+                    value: engineFailed,
+                    tone: engineFailed > 0 ? "destructive" : "muted",
                   },
                 ]}
               />
+
+              {otherEndings && (
+                <p className="text-xs text-muted-foreground">
+                  Also ended without a result, and not counted as failed:{" "}
+                  {otherEndings}.
+                </p>
+              )}
 
               {/* The two ages are the sharpest diagnostic on this card: the
                   counts say how much work exists, these say whether any of it
@@ -355,7 +447,135 @@ export function QueueStatusManager() {
                 </div>
               )}
 
-              {/* The rows behind the Failed count.
+              {/* Which scans are running, and the one action that can be
+                  taken on a single one.
+                  ------------------------------------------------------------
+                  The counts say how many scans are in flight and the only
+                  action was a sweep of the ones past the grace period, so a
+                  single stuck scan, or one aimed at a target that should not
+                  be hit any longer, could not be named or stopped. Oldest
+                  first: the stuck one is the one that has been going longest. */}
+              {inFlightCount > 0 && (
+                <div className="rounded-md border border-border/40 bg-muted/20">
+                  <button
+                    type="button"
+                    onClick={toggleInflight}
+                    aria-expanded={inflightOpen}
+                    aria-controls="queue-inflight-scans"
+                    className="flex w-full items-start gap-2.5 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <LeadingIcon
+                      line="sm"
+                      icon={Activity}
+                      className="text-primary"
+                    />
+                    <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
+                      {pluralize(inFlightCount, "scan")} in flight, oldest first
+                    </span>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={cn(
+                        "icon-lead h-4 w-4 text-muted-foreground transition-transform",
+                        inflightOpen && "rotate-180",
+                      )}
+                    />
+                  </button>
+
+                  {inflightOpen && (
+                    <div
+                      id="queue-inflight-scans"
+                      className="border-t border-border/40 px-3 py-3"
+                    >
+                      {inflightLoading && inflight === null ? (
+                        <p className="text-xs text-muted-foreground">
+                          Loading the running scans...
+                        </p>
+                      ) : !inflight || inflight.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Nothing is in flight now. The count above is from an
+                          earlier poll, so they have since finished.
+                        </p>
+                      ) : (
+                        <>
+                          <ul className="space-y-3">
+                            {inflight.map((scan) => (
+                              <li
+                                key={scan.id}
+                                className="flex min-w-0 flex-wrap items-start justify-between gap-x-3 gap-y-2 text-xs"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  {/* break-all: a scanned URL is a single
+                                      unbroken token with no spaces to wrap
+                                      at, and it is exactly the value that
+                                      pushes a panel past the viewport on a
+                                      phone. */}
+                                  <Link
+                                    href={ROUTES.ADMIN_SCAN(scan.id)}
+                                    className={cn(
+                                      "block break-all font-mono text-foreground",
+                                      ROW_LINK,
+                                    )}
+                                  >
+                                    {scan.url}
+                                  </Link>
+                                  <span className="text-muted-foreground">
+                                    {scan.status === "running"
+                                      ? "Running"
+                                      : "Queued"}
+                                    {scan.currentCategory
+                                      ? ` in ${scan.currentCategory}`
+                                      : ""}
+                                    {scan.startedAt
+                                      ? ` · started ${formatRelativeTime(new Date(scan.startedAt))}`
+                                      : ""}{" "}
+                                    &middot;{" "}
+                                    <Link
+                                      href={adminUserHref(scan.userId)}
+                                      className={cn("inline-block", ROW_LINK)}
+                                    >
+                                      user #{scan.userId}
+                                    </Link>{" "}
+                                    &middot; {scan.source}
+                                  </span>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 shrink-0 gap-1.5"
+                                  onClick={() =>
+                                    confirm({
+                                      title: `Cancel scan #${scan.id}?`,
+                                      description: `This stops the scan for user #${scan.userId}. They see it fail with "Cancelled by an administrator.", whatever it had found so far is discarded, and there is no action that undoes this.`,
+                                      confirmLabel: "Cancel scan",
+                                      danger: true,
+                                      onConfirm: () => cancelScan(scan.id),
+                                    })
+                                  }
+                                  aria-label={`Cancel scan #${scan.id}`}
+                                >
+                                  <XCircle
+                                    className="h-3.5 w-3.5"
+                                    aria-hidden="true"
+                                  />
+                                  Cancel
+                                </Button>
+                              </li>
+                            ))}
+                          </ul>
+                          {inflightTruncated && (
+                            <p className="mt-3 text-xs text-muted-foreground">
+                              Showing the {inflight.length} that have been going
+                              longest. There are more in flight.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* The rows behind the counts.
                   ------------------------------------------------------------
                   This tile was a bare number for its whole life: the panel
                   could tell an operator THAT scans were failing and never
@@ -363,29 +583,52 @@ export function QueueStatusManager() {
                   GROUP BY and never selected a single row. Knowing the count
                   is 25 is the least useful form of that fact.
 
-                  Grouped by error text rather than listed flat, because the
-                  first question is never "which 25 scans" - it is "is this
-                  one problem 25 times, or 25 problems". Twenty-five identical
-                  timeouts and twenty-five different errors are the same tile
-                  and completely different incidents. */}
-              {data.counts.failedLast24h > 0 && (
-                <div className="rounded-md border border-destructive/25 bg-destructive/5">
+                  Grouped by why first, then by error text. The first question
+                  is "did the scanner break, or did people cancel", and only
+                  the first is an incident. The second is "is this one problem
+                  25 times, or 25 problems": twenty-five identical timeouts
+                  and twenty-five different errors are the same tile and
+                  completely different incidents. */}
+              {endedWithoutResultCount(data.counts) > 0 && (
+                <div
+                  className={cn(
+                    "rounded-md border",
+                    engineFailed > 0
+                      ? "border-destructive/25 bg-destructive/5"
+                      : "border-border/40 bg-muted/20",
+                  )}
+                >
                   <button
                     type="button"
                     onClick={toggleFailures}
                     aria-expanded={failuresOpen}
                     aria-controls="queue-failed-scans"
-                    className="flex w-full items-start gap-2.5 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-destructive/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={cn(
+                      "flex w-full items-start gap-2.5 rounded-md px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      engineFailed > 0
+                        ? "hover:bg-destructive/5"
+                        : "hover:bg-muted/30",
+                    )}
                   >
                     <LeadingIcon
                       line="sm"
                       icon={XCircle}
-                      className="text-destructive"
+                      className={
+                        engineFailed > 0
+                          ? "text-destructive"
+                          : "text-muted-foreground"
+                      }
                     />
                     <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
-                      {data.counts.failedLast24h}{" "}
-                      {data.counts.failedLast24h === 1 ? "scan" : "scans"}{" "}
-                      failed in the last {data.recentWindowHours}h
+                      {engineFailed > 0
+                        ? `${pluralize(engineFailed, "scan")} failed in the last ${data.recentWindowHours}h`
+                        : `No scanner failures in the last ${data.recentWindowHours}h`}
+                      {otherEnded > 0 && (
+                        <span className="font-normal text-muted-foreground">
+                          {" "}
+                          &middot; {otherEnded} more ended without a result
+                        </span>
+                      )}
                     </span>
                     <ChevronDown
                       aria-hidden="true"
@@ -399,7 +642,12 @@ export function QueueStatusManager() {
                   {failuresOpen && (
                     <div
                       id="queue-failed-scans"
-                      className="space-y-2 border-t border-destructive/20 px-3 py-3"
+                      className={cn(
+                        "space-y-2 border-t px-3 py-3",
+                        engineFailed > 0
+                          ? "border-destructive/20"
+                          : "border-border/40",
+                      )}
                     >
                       {failuresLoading && failures === null ? (
                         <p className="text-xs text-muted-foreground">
@@ -413,54 +661,107 @@ export function QueueStatusManager() {
                         </p>
                       ) : (
                         <>
-                          {groupFailures(failures).map((group) => (
+                          {groupFailures(failures).map((kindGroup) => (
                             <div
-                              key={group.error}
+                              key={kindGroup.kind ?? "unrecorded"}
                               className="rounded-md border border-border/40 bg-background/40 p-3"
                             >
-                              <div className="flex items-start gap-2">
-                                <span className="shrink-0 rounded-sm bg-destructive/10 px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-destructive">
-                                  {group.count}&times;
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={cn(
+                                    "shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums",
+                                    kindGroup.engine
+                                      ? "bg-destructive/10 text-destructive"
+                                      : "bg-muted text-muted-foreground",
+                                  )}
+                                >
+                                  {kindGroup.count}&times;
                                 </span>
-                                {/* Raw driver text, so it wraps rather than
-                                    truncates: the tail of a pg or socket
-                                    error is usually the part that identifies
-                                    it. break-words, not break-all, because
-                                    these are sentences. */}
-                                <p className="min-w-0 flex-1 break-words font-mono text-xs leading-relaxed text-destructive">
-                                  {group.error}
-                                </p>
+                                <h3 className="text-sm font-semibold tracking-tight text-foreground">
+                                  {kindGroup.label}
+                                </h3>
+                                {!kindGroup.engine && (
+                                  <span className="text-xs text-muted-foreground">
+                                    not counted as failed
+                                  </span>
+                                )}
                               </div>
-                              <ul className="mt-2 space-y-2 border-t border-border/30 pt-2">
-                                {group.scans.map((scan) => (
-                                  <li key={scan.id} className="min-w-0 text-xs">
-                                    {/* break-all: a scanned URL is a single
-                                        unbroken token with no spaces to wrap
-                                        at, and it is exactly the value that
-                                        pushes a panel past the viewport on a
-                                        phone. */}
-                                    <span className="block break-all font-mono text-foreground">
-                                      {scan.url}
-                                    </span>
-                                    <span className="text-muted-foreground">
-                                      user #{scan.userId} &middot; {scan.source}
-                                      {scan.failedAt
-                                        ? ` · ${formatRelativeTime(new Date(scan.failedAt))}`
-                                        : ""}
-                                      {scan.ranForMs != null
-                                        ? ` · ran ${(scan.ranForMs / 1000).toFixed(1)}s`
-                                        : ""}
-                                    </span>
-                                  </li>
+                              <div className="mt-2 space-y-3">
+                                {kindGroup.byText.map((group) => (
+                                  <div
+                                    key={group.error}
+                                    className="border-t border-border/30 pt-2"
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      <span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-muted-foreground">
+                                        {group.count}&times;
+                                      </span>
+                                      {/* Raw driver text, so it wraps rather
+                                          than truncates: the tail of a pg or
+                                          socket error is usually the part
+                                          that identifies it. break-words, not
+                                          break-all, because these are
+                                          sentences. */}
+                                      <p
+                                        className={cn(
+                                          "min-w-0 flex-1 break-words font-mono text-xs leading-relaxed",
+                                          kindGroup.engine
+                                            ? "text-destructive"
+                                            : "text-muted-foreground",
+                                        )}
+                                      >
+                                        {group.error}
+                                      </p>
+                                    </div>
+                                    <ul className="mt-2 space-y-2">
+                                      {group.scans.map((scan) => {
+                                        const ran = ranForLabel(scan);
+                                        return (
+                                          <li
+                                            key={scan.id}
+                                            className="min-w-0 text-xs"
+                                          >
+                                            <Link
+                                              href={ROUTES.ADMIN_SCAN(scan.id)}
+                                              className={cn(
+                                                "block break-all font-mono text-foreground",
+                                                ROW_LINK,
+                                              )}
+                                            >
+                                              {scan.url}
+                                            </Link>
+                                            <span className="text-muted-foreground">
+                                              <Link
+                                                href={adminUserHref(
+                                                  scan.userId,
+                                                )}
+                                                className={cn(
+                                                  "inline-block",
+                                                  ROW_LINK,
+                                                )}
+                                              >
+                                                user #{scan.userId}
+                                              </Link>{" "}
+                                              &middot; {scan.source}
+                                              {scan.failedAt
+                                                ? ` · ${formatRelativeTime(new Date(scan.failedAt))}`
+                                                : ""}
+                                              {ran ? ` · ${ran}` : ""}
+                                            </span>
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  </div>
                                 ))}
-                              </ul>
+                              </div>
                             </div>
                           ))}
                           {failuresTruncated && (
                             <p className="text-xs text-muted-foreground">
-                              Showing the most recent {failures.length}. There
-                              are more in the window: check the server logs for
-                              the full picture.
+                              Showing {failures.length}, scanner failures first.
+                              There are more in the window: check the server
+                              logs for the full picture.
                             </p>
                           )}
                         </>

@@ -91,6 +91,10 @@ describe("GET /api/v3/admin/queue-status", () => {
       running: 0,
       completedLast24h: 0,
       failedLast24h: 0,
+      cancelledLast24h: 0,
+      refusedLast24h: 0,
+      notRunLast24h: 0,
+      targetFailedLast24h: 0,
     });
     expect(json.oldestPendingAgeMs).toBeNull();
     expect(json.oldestRunningAgeMs).toBeNull();
@@ -125,10 +129,122 @@ describe("GET /api/v3/admin/queue-status", () => {
       pending: 3,
       running: 1,
       completedLast24h: 40,
+      // A row with no recorded kind is counted as the engine's: undercounting
+      // real failures is the worse mistake for a health check.
       failedLast24h: 2,
+      cancelledLast24h: 0,
+      refusedLast24h: 0,
+      notRunLast24h: 0,
+      targetFailedLast24h: 0,
     });
     expect(json.oldestPendingAgeMs).toBe(60_000);
     expect(json.oldestRunningAgeMs).toBe(5 * 60_000);
+  });
+
+  // "Failed" was every row with status = 'failed': a user pressing Cancel, a
+  // limit turning a bulk URL away, a URL its batch never reached and a target
+  // that was down all counted as the scanner breaking, and a busy day looked
+  // like an incident.
+  it("counts only the engine's own failures as Failed, and every other ending separately", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { status: "completed", failure_kind: null, count: 40, oldest_at: null },
+        {
+          status: "failed",
+          failure_kind: "internal",
+          count: 2,
+          oldest_at: null,
+        },
+        {
+          status: "failed",
+          failure_kind: "timeout",
+          count: 1,
+          oldest_at: null,
+        },
+        {
+          status: "failed",
+          failure_kind: "interrupted",
+          count: 3,
+          oldest_at: null,
+        },
+        { status: "failed", failure_kind: "stale", count: 1, oldest_at: null },
+        { status: "failed", failure_kind: null, count: 4, oldest_at: null },
+        {
+          status: "failed",
+          failure_kind: "cancelled",
+          count: 9,
+          oldest_at: null,
+        },
+        {
+          status: "failed",
+          failure_kind: "admin_cancelled",
+          count: 1,
+          oldest_at: null,
+        },
+        {
+          status: "failed",
+          failure_kind: "quota_refused",
+          count: 6,
+          oldest_at: null,
+        },
+        {
+          status: "failed",
+          failure_kind: "not_run",
+          count: 30,
+          oldest_at: null,
+        },
+        {
+          status: "failed",
+          failure_kind: "target_unreachable",
+          count: 5,
+          oldest_at: null,
+        },
+        {
+          status: "failed",
+          failure_kind: "target_tls",
+          count: 2,
+          oldest_at: null,
+        },
+      ],
+    });
+
+    const json = await (await GET(req())).json();
+
+    expect(json.counts).toMatchObject({
+      completedLast24h: 40,
+      // internal 2 + timeout 1 + interrupted 3 + stale 1 + unrecorded 4
+      failedLast24h: 11,
+      cancelledLast24h: 10,
+      refusedLast24h: 6,
+      notRunLast24h: 30,
+      targetFailedLast24h: 7,
+    });
+  });
+
+  it("takes the oldest start across rows when a status appears more than once", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          status: "running",
+          failure_kind: null,
+          count: 1,
+          oldest_at: "2026-08-13T11:50:00.000Z",
+        },
+        {
+          status: "running",
+          failure_kind: null,
+          count: 1,
+          oldest_at: "2026-08-13T11:40:00.000Z",
+        },
+      ],
+    });
+
+    const json = await (await GET(req())).json();
+
+    expect(json.counts.running).toBe(2);
+    expect(json.oldestRunningAgeMs).toBe(20 * 60_000);
   });
 
   it("scopes pending/running to all-time and completed/failed to the 24h window", async () => {
@@ -141,7 +257,8 @@ describe("GET /api/v3/admin/queue-status", () => {
     expect(sql).toContain("status IN ('pending', 'running')");
     expect(sql).toContain("status IN ('completed', 'failed')");
     expect(sql).toContain("NOW() - INTERVAL '24 hours'");
-    expect(sql).toContain("GROUP BY status");
+    // By kind as well, so the engine's failures can be told from the rest.
+    expect(sql).toContain("GROUP BY status, failure_kind");
   });
 
   it("returns a graceful 500 when the query fails", async () => {
@@ -163,9 +280,9 @@ describe("GET /api/v3/admin/queue-status?failures=1", () => {
     user_id: 4,
     url: "https://example.com/checkout",
     error_message: "connect ECONNREFUSED 10.0.0.5:5432",
+    failure_kind: "internal",
     source: "web",
     duration: 1200,
-    started_at: "2026-08-13T11:58:00.000Z",
     scanned_at: "2026-08-13T11:58:03.000Z",
   };
 
@@ -208,22 +325,45 @@ describe("GET /api/v3/admin/queue-status?failures=1", () => {
     const [sql] = mockQuery.mock.calls[2] as [string];
     expect(sql).toContain("status = 'failed'");
     expect(sql).toContain("NOW() - INTERVAL '24 hours'");
-    expect(sql).toContain("ORDER BY scanned_at DESC");
+    // The engine's own failures first, then newest first. A bulk batch cut off
+    // by a limit writes dozens of rows at once and used to push the one real
+    // fault out of the sample.
+    expect(sql).toMatch(
+      /ORDER BY \(failure_kind IS NULL OR failure_kind = ANY\(\$1::text\[\]\)\) DESC,\s+scanned_at DESC/,
+    );
     expect(sql).toContain("LIMIT 25");
+    const [, sampleParams] = mockQuery.mock.calls[2] as [string, unknown[]];
+    expect(sampleParams).toEqual([
+      ["internal", "interrupted", "stale", "timeout"],
+    ]);
 
+    // The duration the failure write recorded, not a second subtraction of two
+    // timestamps that were never apart ("ran 0.0s" on every failure).
     expect(json.failures).toEqual([
       {
         id: 91,
         userId: 4,
         url: "https://example.com/checkout",
         error: "connect ECONNREFUSED 10.0.0.5:5432",
+        kind: "internal",
         source: "web",
         durationMs: 1200,
         failedAt: "2026-08-13T11:58:03.000Z",
-        ranForMs: 3000,
       },
     ]);
     expect(json.failuresTruncated).toBe(false);
+  });
+
+  it("reports a null kind for a row the backfill has not reached", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...failedRow, failure_kind: null }],
+    });
+
+    const json = await (await GET(req("?failures=1"))).json();
+
+    expect(json.failures[0].kind).toBeNull();
   });
 
   it("passes error_message through RAW, not through the public sanitizer", async () => {
@@ -266,17 +406,96 @@ describe("GET /api/v3/admin/queue-status?failures=1", () => {
     expect(json.failures).toHaveLength(25);
     expect(json.failuresTruncated).toBe(true);
   });
+});
 
-  it("leaves ranForMs null when the row never started", async () => {
+/**
+ * Which scans are in flight right now. The counts said how many and the only
+ * action was a sweep of the ones past the grace period, so a single stuck scan
+ * could not be named, let alone stopped.
+ */
+describe("GET /api/v3/admin/queue-status?inflight=1", () => {
+  const liveRow = {
+    id: 120,
+    user_id: 8,
+    url: "https://slow.example.com/",
+    source: "api",
+    status: "running",
+    started_at: "2026-08-13T11:40:00.000Z",
+    current_category: "dns",
+  };
+
+  it("does not touch the in-flight rows unless asked", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const json = await (await GET(req())).json();
+
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(json.inflight).toBeUndefined();
+    expect(json.inflightTruncated).toBeUndefined();
+  });
+
+  it("returns pending and running scans, oldest first and capped at fifty", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [liveRow] });
+
+    const json = await (await GET(req("?inflight=1"))).json();
+
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    const [sql] = mockQuery.mock.calls[2] as [string];
+    expect(sql).toContain("status IN ('pending', 'running')");
+    expect(sql).toContain("ORDER BY started_at ASC");
+    expect(sql).toContain("LIMIT 50");
+    expect(sql).not.toMatch(/\bJOIN\b/i);
+
+    expect(json.inflight).toEqual([
+      {
+        id: 120,
+        userId: 8,
+        url: "https://slow.example.com/",
+        source: "api",
+        status: "running",
+        startedAt: "2026-08-13T11:40:00.000Z",
+        currentCategory: "dns",
+      },
+    ]);
+    expect(json.inflightTruncated).toBe(false);
+  });
+
+  it("flags truncation when more than fifty are in flight", async () => {
     withAdmin();
     mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({
-      rows: [{ ...failedRow, started_at: null }],
+      rows: Array.from({ length: 50 }, (_, i) => ({ ...liveRow, id: i + 1 })),
     });
 
-    const json = await (await GET(req("?failures=1"))).json();
+    const json = await (await GET(req("?inflight=1"))).json();
 
-    expect(json.failures[0].ranForMs).toBeNull();
+    expect(json.inflight).toHaveLength(50);
+    expect(json.inflightTruncated).toBe(true);
+  });
+
+  it("can return the failures and the live list in one request", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [liveRow] });
+
+    const json = await (await GET(req("?failures=1&inflight=1"))).json();
+
+    expect(json.failures).toEqual([]);
+    expect(json.inflight).toHaveLength(1);
+  });
+
+  it("ignores any value other than exactly 1", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const json = await (await GET(req("?inflight=true"))).json();
+
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(json.inflight).toBeUndefined();
   });
 });
 

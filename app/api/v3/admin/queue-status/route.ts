@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import pool from "@/lib/database/db";
 import {
   logAction,
   requireAdmin,
@@ -7,62 +6,39 @@ import {
 } from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { logError } from "@/lib/logging/log";
 import {
   staleScanGraceSeconds,
   sweepStaleScans,
 } from "@/lib/scanner/scan-jobs";
+import {
+  FAILED_SAMPLE_LIMIT,
+  INFLIGHT_LIMIT,
+  readFailureSample,
+  readInflight,
+  readQueueSnapshot,
+} from "@/lib/scanner/queue-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const RECENT_WINDOW = "24 hours";
-
-/** Enough to see the shape of an incident without turning this into a log
- *  viewer. If an operator needs more than the last 25 failures, the failure
- *  is systemic and the server logs are the right tool. */
-const FAILED_SAMPLE_LIMIT = 25;
-
-type QueueStatusRow = {
-  status: "pending" | "running" | "completed" | "failed";
-  count: string;
-  oldest_at: string | null;
-};
-
-type FailedScanRow = {
-  id: number;
-  user_id: number;
-  url: string;
-  error_message: string | null;
-  source: string;
-  duration: number;
-  started_at: string | null;
-  scanned_at: string | null;
-};
 
 /**
  * GET /api/v3/admin/queue-status
  *
  * AUDIT-010 admin-feature-gap: there was no way for an operator to tell
  * "is the scanner backed up right now" without direct DB access. One
- * grouped COUNT(*) over scan_history.status, plus the oldest pending/
- * running row's age, answers that. Powers
- * components/admin/features/queue-status-manager.tsx.
+ * grouped COUNT(*) over scan_history, plus the oldest pending/running row's
+ * age, answers that. Powers
+ * components/admin/features/queue-status-manager.tsx. The queries themselves
+ * are in lib/scanner/queue-status.ts, where the integration tier can run them.
  *
- * pending/running counts are all-time (backed by the partial index
- * idx_scan_history_status_pending_running -- a healthy queue keeps both
- * near zero, so scanning the whole table for just those two statuses is
- * cheap). completed/failed are capped to the last 24h (backed by
- * idx_scan_history_scanned_at) so this stays a fast, bounded query on a
- * scan_history table that otherwise grows without limit -- an all-time
- * COUNT(*) grouped by every status would degrade into a full table scan
- * as history accumulates.
- *
- * started_at is set to NOW() at INSERT time for every scan (see
- * app/api/v3/scan/route.ts), including ones still 'pending', so it
- * doubles as "when this row entered the queue" for both pending and
- * running rows -- scanned_at is only meaningful once a scan finishes.
+ * "Failed" is the scanner's own failures only. A cancel, a limit that turned a
+ * URL away, a URL a batch never reached and a target that was down each have
+ * their own count: the product working is not an incident, and an incident
+ * must not hide among the cancels.
  */
-export async function GET(request: Request) {
+export const GET = withErrorHandling(async (request: Request) => {
   const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_SYSTEM_STATS);
   if (!admin) {
     return NextResponse.json(
@@ -78,56 +54,20 @@ export async function GET(request: Request) {
   // opposite - a URL somebody scanned, tied to their user id - so shipping
   // them on every poll would put customer targets on the wire continuously
   // to render a section that is collapsed most of the time. The operator
-  // asks for them when they open the list, and not before.
-  const wantFailures =
-    new URL(request.url).searchParams.get("failures") === "1";
+  // asks for them when they open the list, and not before. The in-flight
+  // list is the same: a URL and a user id per row.
+  const params = new URL(request.url).searchParams;
+  const wantFailures = params.get("failures") === "1";
+  const wantInflight = params.get("inflight") === "1";
 
   try {
-    const result = await pool.query<QueueStatusRow>(
-      `SELECT
-         status,
-         COUNT(*)::int AS count,
-         MIN(COALESCE(started_at, scanned_at)) AS oldest_at
-       FROM scan_history
-       WHERE status IN ('pending', 'running')
-          OR (status IN ('completed', 'failed')
-              AND scanned_at > NOW() - INTERVAL '${RECENT_WINDOW}')
-       GROUP BY status`,
-    );
-
-    const counts = {
-      pending: 0,
-      running: 0,
-      completedLast24h: 0,
-      failedLast24h: 0,
-    };
-    let oldestPendingAt: string | null = null;
-    let oldestRunningAt: string | null = null;
-
-    for (const row of result.rows) {
-      const count = Number(row.count) || 0;
-      if (row.status === "pending") {
-        counts.pending = count;
-        oldestPendingAt = row.oldest_at;
-      } else if (row.status === "running") {
-        counts.running = count;
-        oldestRunningAt = row.oldest_at;
-      } else if (row.status === "completed") {
-        counts.completedLast24h = count;
-      } else if (row.status === "failed") {
-        counts.failedLast24h = count;
-      }
-    }
+    const { counts, oldestPendingAt, oldestRunningAt } =
+      await readQueueSnapshot();
 
     const now = Date.now();
     const ageMs = (at: string | null) =>
       at ? Math.max(0, now - new Date(at).getTime()) : null;
 
-    // The rows behind the "Failed (24h)" count. That tile was a bare number
-    // with nothing underneath it, so an operator could see THAT scans were
-    // failing and never what failed or why - the one question the panel
-    // exists to answer.
-    //
     // error_message is returned RAW, which is the deliberate part. The
     // sanitizer in lib/api/scan-error-message.ts exists because the scan
     // pipeline persists `error.message` verbatim and that string can name an
@@ -144,19 +84,8 @@ export async function GET(request: Request) {
     // an id answers that. Putting a name to the id is VIEW_USERS' job, in the
     // Users tab, and joining users here would quietly widen what this
     // endpoint's own permission grants.
-    let failures: FailedScanRow[] | undefined;
-    if (wantFailures) {
-      const failed = await pool.query<FailedScanRow>(
-        `SELECT id, user_id, url, error_message, source, duration,
-                started_at, scanned_at
-           FROM scan_history
-          WHERE status = 'failed'
-            AND scanned_at > NOW() - INTERVAL '${RECENT_WINDOW}'
-          ORDER BY scanned_at DESC
-          LIMIT ${FAILED_SAMPLE_LIMIT}`,
-      );
-      failures = failed.rows;
-    }
+    const failures = wantFailures ? await readFailureSample() : undefined;
+    const inflight = wantInflight ? await readInflight() : undefined;
 
     return NextResponse.json({
       counts,
@@ -171,33 +100,37 @@ export async function GET(request: Request) {
               userId: row.user_id,
               url: row.url,
               error: row.error_message,
+              kind: row.failure_kind ?? null,
               source: row.source,
               durationMs: row.duration,
               failedAt: row.scanned_at,
-              ranForMs:
-                row.started_at && row.scanned_at
-                  ? Math.max(
-                      0,
-                      new Date(row.scanned_at).getTime() -
-                        new Date(row.started_at).getTime(),
-                    )
-                  : null,
             })),
             failuresTruncated: failures.length === FAILED_SAMPLE_LIMIT,
           }
         : {}),
+      ...(inflight
+        ? {
+            inflight: inflight.map((row) => ({
+              id: row.id,
+              userId: row.user_id,
+              url: row.url,
+              source: row.source,
+              status: row.status,
+              startedAt: row.started_at,
+              currentCategory: row.current_category,
+            })),
+            inflightTruncated: inflight.length === INFLIGHT_LIMIT,
+          }
+        : {}),
     });
   } catch (error) {
-    console.error(
-      "[admin/queue-status] Failed to fetch scanner queue status:",
-      error,
-    );
+    logError("admin", "failed to fetch the scanner queue status", error);
     return NextResponse.json(
       { error: "Failed to fetch scanner queue status." },
       { status: 500 },
     );
   }
-}
+});
 
 /**
  * POST /api/v3/admin/queue-status
@@ -213,7 +146,7 @@ export async function GET(request: Request) {
  * scans. CSRF middleware applies (same-origin POST). Audit-logged
  * best-effort, since the sweep has already run.
  */
-export async function POST() {
+export const POST = withErrorHandling(async () => {
   const admin = await requireAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -237,17 +170,18 @@ export async function POST() {
         await getClientIp(),
       );
     } catch (auditErr) {
-      console.error(
-        "[admin/queue-status] Failed to write audit log for sweep_stale_scans (non-fatal):",
+      logError(
+        "admin",
+        "failed to write the audit log for sweep_stale_scans (non-fatal)",
         auditErr,
       );
     }
     return NextResponse.json({ swept, graceSeconds });
   } catch (error) {
-    console.error("[admin/queue-status] Stale scan sweep failed:", error);
+    logError("admin", "stale scan sweep failed", error);
     return NextResponse.json(
       { error: "Failed to clear stale scans." },
       { status: 500 },
     );
   }
-}
+});
