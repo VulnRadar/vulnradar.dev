@@ -33,7 +33,8 @@ const SCANNING_INDICATOR = readFileSync(
  *  EPSS and CVSS. */
 const METADATA_ROW = ISSUE_DETAIL.slice(
   ISSUE_DETAIL.indexOf("{tone.label}"),
-  ISSUE_DETAIL.indexOf("<h2 className="),
+  // The finding's title, which is the view's h1 and follows the metadata row.
+  ISSUE_DETAIL.indexOf("<h1"),
 );
 
 describe("issue detail: CWE and OWASP", () => {

@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -45,6 +52,7 @@ import {
   type TaxonomyRef,
 } from "@/lib/scanner/finding-display";
 import { useTeammates } from "./use-teammates";
+import { noteFindingClosed } from "./finding-focus";
 import {
   getQueryParam,
   removeQueryParam,
@@ -713,9 +721,9 @@ function EvidenceExcerpts({ excerpts }: { excerpts: unknown }) {
   return (
     <div className="border-t border-border">
       <div className="flex items-center justify-between gap-2 bg-muted/40 px-4 py-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Verbatim proof
-        </h4>
+        </h3>
         <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
           {items.length} {items.length === 1 ? "excerpt" : "excerpts"}
         </span>
@@ -805,9 +813,9 @@ function Evidence({
       className="overflow-hidden rounded-xl border border-border bg-card"
     >
       <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           What the scanner saw
-        </h3>
+        </h2>
         <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
           {lines.length} {lines.length === 1 ? "line" : "lines"}
         </span>
@@ -886,9 +894,20 @@ export function IssueDetail({
   // Opening a finding swaps the list for this detail view in place, so the
   // window keeps whatever scroll position the list happened to be at
   // (often mid-page) instead of landing at the top of the new content.
+  //
+  // Focus goes to the title for the same reason: the row that was activated
+  // has just been unmounted, which leaves focus on <body>, and a screen reader
+  // is given no sign that the content changed. The title is also this view's
+  // h1 (see below), so it is where a reader expects to land.
+  const titleRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     window.scrollTo(0, 0);
+    titleRef.current?.focus({ preventScroll: true });
   }, [issue.id]);
+
+  // Lets the list that replaces this view put focus back on the row that
+  // opened it (see finding-focus.ts).
+  useEffect(() => noteFindingClosed, []);
 
   // Deep-linkable selection, other half of results-list.tsx: if the
   // ?finding= param stops matching this issue (browser back/forward, or
@@ -1056,9 +1075,19 @@ export function IssueDetail({
               </>
             )}
           </div>
-          <h2 className="text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">
+          {/* The view's h1. A finding replaces the whole report, including
+              the scanned URL's h1, so the outline used to start at an h2.
+              tabIndex={-1} makes it the place focus lands when this opens. */}
+          <h1
+            ref={titleRef}
+            tabIndex={-1}
+            className={cn(
+              "rounded-sm text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl",
+              FOCUS_RING,
+            )}
+          >
             {issue.title}
-          </h2>
+          </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
             {issue.description}
           </p>
@@ -1182,9 +1211,9 @@ export function IssueDetail({
       {/* Why it matters: prose with the risk pulled out, not another icon card. */}
       <section className="grid grid-cols-1 gap-6 rounded-xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex flex-col gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             What this means
-          </h3>
+          </h2>
           <p className="text-sm leading-relaxed text-foreground/90">
             {issue.explanation}
           </p>
@@ -1195,9 +1224,9 @@ export function IssueDetail({
             tone.border,
           )}
         >
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             If left unfixed
-          </h3>
+          </h2>
           <p className="text-sm leading-relaxed text-foreground/90">
             {issue.riskImpact}
           </p>
@@ -1206,9 +1235,9 @@ export function IssueDetail({
 
       {/* Fix: the reason anyone opened this page. Numbered prose, no badges. */}
       <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
-        <h3 className="mb-3 text-sm font-semibold text-foreground">
+        <h2 className="mb-3 text-sm font-semibold text-foreground">
           How to fix it
-        </h3>
+        </h2>
         <ol className="flex flex-col gap-3">
           {issue.fixSteps.map((step, i) => (
             <li key={i} className="flex gap-3 text-sm">
@@ -1234,9 +1263,9 @@ export function IssueDetail({
       {issue.codeExamples.length > 0 && (
         <section className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-foreground">
+            <h2 className="text-sm font-semibold text-foreground">
               Working example
-            </h3>
+            </h2>
             {/* A group of toggle buttons, not a tablist: role="tab" promises
                 a matching role="tabpanel" with aria-controls and arrow-key
                 navigation, none of which this control has, so the promise

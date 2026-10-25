@@ -44,6 +44,11 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { SEVERITY_PRIORITY, API } from "@/lib/config/client-constants";
 import { categoryLabel, findingMatchesQuery } from "./finding-search";
 import { pruneSelectionToVisible } from "./finding-selection";
+import {
+  focusFindingRow,
+  rememberOpenedFinding,
+  takeFindingToRefocus,
+} from "./finding-focus";
 import { useTeammates } from "./use-teammates";
 import {
   getQueryParam,
@@ -364,9 +369,16 @@ export function ResultsList({
   // but only when it's the same findings list that scroll was saved
   // against (see savedListKey's comment above).
   useEffect(() => {
-    if (savedListScrollY > 0 && savedListKey === listKey(findings)) {
+    const sameList = savedListKey === listKey(findings);
+    if (savedListScrollY > 0 && sameList) {
       window.scrollTo(0, savedListScrollY);
     }
+    // And focus, which went to <body> when the opened row unmounted. Only when
+    // this list is replacing a finding that just closed, so a list that mounts
+    // for any other reason keeps the focus it was given. The row can be gone
+    // if a filter hid it, and then there is nothing to put focus on.
+    const reopened = takeFindingToRefocus();
+    if (reopened && sameList) focusFindingRow(document, reopened);
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -374,6 +386,7 @@ export function ResultsList({
     (issue: Vulnerability) => {
       savedListScrollY = window.scrollY;
       savedListKey = listKey(findings);
+      rememberOpenedFinding(issue.id);
       setQueryParam(FINDING_QUERY_PARAM, issue.id);
       onSelectIssue(issue);
     },
@@ -561,11 +574,6 @@ export function ResultsList({
           <button
             type="button"
             onClick={() => setSortAsc(!sortAsc)}
-            aria-label={
-              sortAsc
-                ? "Sort by severity, most severe first"
-                : "Sort by severity, least severe first"
-            }
             className={cn(
               "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-xs font-medium text-muted-foreground hover:text-foreground transition-colors",
               FOCUS_RING,
@@ -576,6 +584,12 @@ export function ResultsList({
             ) : (
               <ArrowDownWideNarrow className="h-3.5 w-3.5" />
             )}
+            {/* No aria-label: it named the action ("most severe first")
+                while the button shows the state ("Least severe first"), so a
+                screen reader said the opposite of the screen and a voice user
+                saying the visible words matched nothing (SC 2.5.3). The
+                visible text is the name; the prefix says what it controls. */}
+            <span className="sr-only">Sort by severity: </span>
             {sortAsc ? "Least severe first" : "Most severe first"}
           </button>
 
@@ -1069,6 +1083,9 @@ function FindingRow({
       // anchor to the first copy with a real box, so this works whichever rows
       // a severity filter has left on screen.
       {...tourAnchor("findingRow")}
+      // How focus finds this row again after the finding it opened is closed
+      // (see finding-focus.ts).
+      data-finding-id={issue.id}
       // role="checkbox" only in select mode: the row really is a checkbox
       // there, and aria-pressed (what this used to send) describes a toggle
       // button, which is not what a screen reader should announce for a row
