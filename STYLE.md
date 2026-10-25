@@ -314,3 +314,70 @@ app-wide. Admin text is never below 11px (`tests/components/admin/admin-type-flo
 - Card padding: `p-4 sm:p-5` or `p-5 sm:p-6`
 
 ---
+
+## Logging
+
+`lib/database/error-log-capture.ts` and `instrumentation.ts` both cite this
+section, and for a long time it did not exist. Without it the call sites
+drifted: about ninety stripped the stack, payment failures went out at
+`console.warn`, and dozens of messages named no route, scan or user.
+
+### Only genuine errors use console.error, routine status uses console.log
+
+Every `console.error` is persisted. The capture wraps it once at boot and
+writes each call to `system_error_logs`, which staff read in Admin > System >
+Error Logs. So `console.error` means "an operator should look at this", and
+nothing else:
+
+- A real failure: an exception, a write that was rejected, a provider that
+  answered 500. `console.error`, through `logError` below.
+- Routine status: a worker started, a sweep closed three scans, a cache was
+  rebuilt. `console.log`. It reaches the server log and stops there.
+- Never a failure at `console.warn` or `console.log`. Neither is captured, so a
+  failure logged that way is invisible to every admin who does not have a
+  shell on the box.
+- An expected outcome is not an error. A cancelled scan, a target that was
+  down, a quota that refused a request: record it on the row (a scan's
+  `failure_kind`, an email's `status`) and do not log it. Logging them is how
+  the error log filled with noise that hid the real failures.
+
+### Use logError, and pass the error itself
+
+```ts
+import { logError } from "@/lib/logging/log";
+
+logError("scan", "scan failed", err, { scanId, userId, url });
+```
+
+- `scope` is a short area tag, printed as `[scope]`: `scan`, `billing`,
+  `email`, `ai-chat`.
+- `message` says what failed in words. Ids do not go in the sentence.
+- `err` is whatever was thrown, unchanged. Never `err.message` and never
+  `err instanceof Error ? err.message : err`: the capture keeps a stack only
+  when an argument is an Error, so the message alone is a row that says
+  "connection terminated" and nothing about where.
+- `ctx` carries the ids that let someone find the row again: `scanId`,
+  `userId`, `ticketId`, `domainId`. Never an email address, a token, a
+  password, a cookie or a request body. The capture redacts the common shapes,
+  but that is a backstop, not permission.
+
+A caught error that is deliberately not rethrown still gets logged.
+`.catch(() => {})` is allowed only where losing the failure really costs
+nothing, with a comment saying why. `finalizeScanFailureQuietly` in
+`lib/scanner/scan-jobs.ts` is the pattern: it never throws and it always logs.
+
+### Correlation ids come from context, not from arguments
+
+`lib/database/request-context.ts` holds two ambient ids, so nothing has to
+pass them down:
+
+- `currentRequestId()`, set by `withErrorHandling` from `lib/api/api-utils.ts`.
+  A route that is not wrapped logs with no request id, so wrap new routes.
+- `currentScanId()`, set by `runWithScanId(scanId, fn)`. Scan work runs inside
+  it, so the errors of a background or scheduled scan, which has no request of
+  its own, can still be tied to the scan.
+
+Neither has to be passed to `logError`. Put the scan id in `ctx` anyway when
+you have it: it makes the printed line readable on its own.
+
+---
