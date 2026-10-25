@@ -3210,8 +3210,9 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_ADMIN_ALERT_WEBHOOK_URL,
     group: "Advanced",
     label: "Admin alert webhook URL",
-    help: "Receives a signed POST for critical system events (boot-time schema failures, scans orphaned by an unclean shutdown). Points at any endpoint that accepts an incoming webhook -- Slack, Discord, PagerDuty, a SIEM. Leave empty to disable.",
+    help: "Receives a signed POST for critical system events (boot-time schema failures, scans orphaned by an unclean shutdown). Points at any endpoint that accepts an incoming webhook: Slack, Discord, PagerDuty, a SIEM. Write-only, because a Slack or Discord webhook URL is itself the credential: once saved it is not shown again or written to the audit log. Reset it to disable alerts.",
     max: 2048,
+    secret: true,
   },
   ADMIN_ALERT_WEBHOOK_SECRET: {
     tier: "runtime",

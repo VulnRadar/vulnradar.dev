@@ -5,6 +5,7 @@ import {
   NEVER_CONFIGURABLE,
   SETTINGS_REGISTRY,
   coerceSettingValue,
+  isSecretSetting,
   isSettingKey,
   validateSettingValue,
   type SettingKey,
@@ -224,5 +225,46 @@ describe("coerceSettingValue", () => {
       undefined,
     );
     expect(coerceSettingValue("BILLING_ENABLED", "maybe")).toBe(undefined);
+  });
+});
+
+describe("credential settings", () => {
+  // A key whose value is itself a bearer credential. Each one that is not
+  // marked `secret` has its value written into admin_audit_log by the
+  // settings route, where lower staff roles can read it.
+  const CREDENTIALS: SettingKey[] = [
+    "ADMIN_ALERT_WEBHOOK_URL",
+    "ADMIN_ALERT_WEBHOOK_SECRET",
+    "STAFF_OIDC_CLIENT_SECRET",
+  ];
+
+  it.each(CREDENTIALS)("marks %s secret", (key) => {
+    expect(isSecretSetting(key)).toBe(true);
+  });
+
+  it("does not mark an ordinary setting secret", () => {
+    expect(isSecretSetting("RATE_LIMIT_LOGIN_ATTEMPTS")).toBe(false);
+    expect(isSecretSetting("SUPPORT_EMAIL")).toBe(false);
+    expect(isSecretSetting("not-a-setting")).toBe(false);
+  });
+
+  it("keeps a secret setting writable, so an operator can still set and clear it", () => {
+    for (const key of CREDENTIALS) {
+      expect(SETTINGS_REGISTRY[key].tier, key).toBe("runtime");
+    }
+    expect(validateSettingValue("ADMIN_ALERT_WEBHOOK_URL", "").ok).toBe(true);
+    expect(
+      validateSettingValue(
+        "ADMIN_ALERT_WEBHOOK_URL",
+        "https://hooks.example.com/services/T0/B0/token",
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("is exactly these keys, so a new credential has to be added here on purpose", () => {
+    const secret = (Object.keys(SETTINGS_REGISTRY) as SettingKey[]).filter(
+      isSecretSetting,
+    );
+    expect(secret.sort()).toEqual([...CREDENTIALS].sort());
   });
 });
