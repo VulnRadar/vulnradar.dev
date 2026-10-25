@@ -494,15 +494,21 @@ export const DELETE = withErrorHandling(async (request: Request) => {
     );
   }
 
-  // Can't remove owner
   const targetRole = await pool.query(
     "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
     [teamId, targetUserId],
   );
-  if (
-    targetRole.rows.length > 0 &&
-    targetRole.rows[0].role === TEAM_ROLES.OWNER
-  ) {
+  // Not on this team (they left in another tab, or the id is made up), so
+  // there is nothing to remove. This has to stop here: the notify block below
+  // mails whoever the id belongs to "you were removed from <team>", and any
+  // admin could aim that at an account that never joined, with a team name of
+  // their own choosing. Answering success keeps a stale member list working:
+  // the end state the caller asked for already holds, and the refresh that
+  // follows drops the row.
+  if (targetRole.rows.length === 0) return NextResponse.json({ success: true });
+
+  // Can't remove owner
+  if (targetRole.rows[0].role === TEAM_ROLES.OWNER) {
     return NextResponse.json(
       { error: "Cannot remove the team owner." },
       { status: 400 },
@@ -513,10 +519,7 @@ export const DELETE = withErrorHandling(async (request: Request) => {
   // lacks (e.g. a manager removing an admin). Owner passes (holds every
   // permission). Without this, manage_members alone would let a manager evict
   // higher-privileged admins.
-  if (
-    targetRole.rows.length > 0 &&
-    !canAssignTeamRole(myRole.rows[0].role, targetRole.rows[0].role)
-  ) {
+  if (!canAssignTeamRole(myRole.rows[0].role, targetRole.rows[0].role)) {
     return NextResponse.json(
       {
         error:

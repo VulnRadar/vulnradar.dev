@@ -760,7 +760,13 @@ export default function TeamsPage() {
             }}
             onNameInputChange={setNameInput}
             onSaveName={handleRename}
-            onCancelEdit={() => setEditingName(false)}
+            onCancelEdit={() => {
+              setEditingName(false);
+              // A refused rename left its reason in the banner. Giving up on
+              // the edit would otherwise leave that sentence up for a rename
+              // that is no longer being attempted.
+              setActionError(null);
+            }}
             onToggleInvite={() => {
               setShowInvite(!showInvite);
               setInviteToken(null);

@@ -95,7 +95,11 @@ vi.mock("@/lib/billing/plan-limits", async (importOriginal) => {
 
 const { GET, POST, DELETE } = await import("@/app/api/v3/teams/members/route");
 
-beforeEach(() => {
+beforeEach(async () => {
+  // A removal sends its mail on setImmediate, so the previous test's can still
+  // be pending here. Let it land before the mocks are reset, or it is counted
+  // against whichever test happens to run next.
+  await new Promise((resolve) => setImmediate(resolve));
   mockQuery.mockReset();
   mockSendNotificationEmail.mockReset();
   mockSendNotificationEmail.mockResolvedValue(undefined);
@@ -529,6 +533,39 @@ describe("DELETE /api/v3/teams/members", () => {
 
       expect(res.status).toBe(200);
       expect(membershipDelete()?.[1]).toEqual([5, 2]);
+    });
+
+    it("tells the member they were removed", async () => {
+      routeMemberQueries({ 1: "admin", 2: "member" });
+
+      await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+      // The mail goes out on setImmediate, after the response.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockSendNotificationEmail).toHaveBeenCalledTimes(1);
+      expect(mockSendNotificationEmail.mock.calls[0][0]).toMatchObject({
+        userId: 2,
+        userEmail: "gone@example.com",
+        type: "team_changes",
+      });
+    });
+
+    it("does not act, or send a removal mail, for someone who is not on the team", async () => {
+      // Without this stop an admin could name any account's id and have the
+      // platform mail it "you were removed from <their team's name>".
+      routeMemberQueries({ 1: "admin" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, userId: 77 }));
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(res.status).toBe(200);
+      expect(membershipDelete()).toBeUndefined();
+      expect(mockSendNotificationEmail).not.toHaveBeenCalled();
+      expect(
+        mockQuery.mock.calls.some(([sql]) =>
+          String(sql).includes("SELECT email FROM users"),
+        ),
+      ).toBe(false);
     });
 
     it("accepts the target as a numeric string", async () => {

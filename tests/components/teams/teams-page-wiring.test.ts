@@ -100,6 +100,12 @@ describe("renaming a team", () => {
     expect(body).toContain("err.message");
   });
 
+  it("clears the refusal when the person gives up on the edit", () => {
+    expect(PAGE).toMatch(
+      /onCancelEdit=\{\(\) => \{\s*setEditingName\(false\);[\s\S]*?setActionError\(null\);/,
+    );
+  });
+
   it("closes the editor only after the rename went through", () => {
     const afterRequest = body.slice(body.indexOf("sendTeamsRequest("));
     const closes = afterRequest.indexOf("setEditingName(false)");
