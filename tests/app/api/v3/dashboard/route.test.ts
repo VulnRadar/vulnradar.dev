@@ -5,6 +5,7 @@
  * disabled-account check, and per-user query scoping run for real.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { publicScanErrorMessage } from "@/lib/api/scan-error-message";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -158,6 +159,69 @@ describe("GET /api/v3/dashboard", () => {
       { source: "api", count: 4 },
     ]);
     expect(json.uniqueSites).toBe(3);
+  });
+
+  it("picks each target's latest COMPLETED scan for both posture widgets", async () => {
+    // A scan row exists as 'pending' with summary '{}' from the moment it is
+    // queued, and a failed or cancelled one keeps those defaults. The two
+    // DISTINCT ON CTEs used to pick the newest row of any status, so a rescan
+    // in flight (or one that died) replaced the last real result with zeros.
+    // The SQL itself is run against PostgreSQL in
+    // tests/integration/list-reads.test.ts; this pins that both CTEs carry the
+    // filter and that the no-op NOT NULL predicates it replaced are gone.
+    await GET();
+
+    const posture = mockQuery.mock.calls
+      .map(([sql]) => String(sql))
+      .filter((sql) => sql.includes("latest_per_target"));
+    expect(posture).toHaveLength(2);
+    for (const sql of posture) {
+      expect(sql).toContain("status = 'completed'");
+      expect(sql).toContain("DISTINCT ON (url)");
+      expect(sql).not.toContain("IS NOT NULL");
+    }
+  });
+
+  it("sanitizes the error_message of a recent scan and projects the incomplete flag", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT disabled_at FROM users")) {
+        return { rows: [{ disabled_at: null }] };
+      }
+      if (sql.includes("ORDER BY scanned_at DESC LIMIT $2")) {
+        // The projection is part of the SELECT that returned these rows.
+        expect(sql).toContain("AS incomplete");
+        expect(sql).toContain("result_meta -> 'incomplete'");
+        return {
+          rows: [
+            {
+              id: "a",
+              url: "https://a.com",
+              status: "failed",
+              error_message: "connect ECONNREFUSED 10.0.0.5:5432",
+              incomplete: false,
+            },
+            {
+              id: "b",
+              url: "https://b.com",
+              status: "completed",
+              findings_count: 0,
+              incomplete: true,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const json = await (await GET()).json();
+
+    expect(json.recentScans[0].error_message).toBe(
+      publicScanErrorMessage("connect ECONNREFUSED 10.0.0.5:5432"),
+    );
+    expect(JSON.stringify(json)).not.toContain("10.0.0.5");
+    // A completed scan has no error_message, and gains none.
+    expect("error_message" in json.recentScans[1]).toBe(false);
+    expect(json.recentScans[1].incomplete).toBe(true);
   });
 
   it("falls back to 0 for totalScans and uniqueSites when the queries return no rows", async () => {

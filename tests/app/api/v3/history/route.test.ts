@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { SUCCESS_MESSAGES } from "@/lib/config/constants";
+import { publicScanErrorMessage } from "@/lib/api/scan-error-message";
 
 // GET now also resolves the caller's plan retention setting live via
 // lib/config/runtime-config's getSettings(), which issues its own
@@ -156,6 +157,70 @@ describe("GET /api/v3/history", () => {
     const [sql] = mockBusinessQuery.mock.calls[1];
     expect(sql).toContain("sh.public_id AS id");
     expect(json.scans[0].id).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
+  });
+
+  describe("what a list row is allowed to say", () => {
+    // The stored error_message can be a pg driver string naming an internal
+    // table or a socket error naming a private address and port. The status
+    // route already sanitizes it on the way out; this list, reachable with an
+    // API key, did not, so the same failed scan returned a clean sentence from
+    // one endpoint and the raw string from the other.
+    it("returns a failed scan's error_message through the public sanitizer", async () => {
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ plan: "free", role: "user" }],
+      });
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: "f1",
+            url: "https://a.test",
+            status: "failed",
+            error_message: "connect ECONNREFUSED 10.0.0.5:5432",
+          },
+          {
+            id: "f2",
+            url: "https://b.test",
+            status: "failed",
+            error_message: "Cancelled",
+          },
+          { id: "ok", url: "https://c.test", status: "completed" },
+        ],
+      });
+      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: 3 }] });
+
+      const res = await GET(getRequest());
+      const json = await res.json();
+
+      expect(json.scans[0].error_message).toBe(
+        publicScanErrorMessage("connect ECONNREFUSED 10.0.0.5:5432"),
+      );
+      expect(JSON.stringify(json)).not.toContain("10.0.0.5");
+      // Kept verbatim: scanRowState on the client keys on it to say
+      // "Cancelled" instead of "Did not finish".
+      expect(json.scans[1].error_message).toBe("Cancelled");
+      // A scan that worked has no error_message and must not gain one.
+      expect("error_message" in json.scans[2]).toBe(false);
+    });
+
+    it("projects whether the scan finished all its work, without shipping result_meta", async () => {
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ plan: "free", role: "user" }],
+      });
+      mockBusinessQuery.mockResolvedValueOnce({ rows: [] });
+
+      await GET(getRequest());
+
+      const [sql] = mockBusinessQuery.mock.calls[1];
+      // A boolean read off result_meta.incomplete, so the row can say "Partly
+      // checked" instead of "Clean". The blob itself stays out of the list: a
+      // crawl's result_meta holds every page's findings.
+      expect(sql).toContain("AS incomplete");
+      const mentions = sql.match(/sh\.result_meta/g) ?? [];
+      const onlyIncomplete =
+        sql.match(/sh\.result_meta -> 'incomplete'/g) ?? [];
+      expect(mentions.length).toBeGreaterThan(0);
+      expect(onlyIncomplete).toHaveLength(mentions.length);
+    });
   });
 
   it("gives staff roles unlimited retention regardless of plan", async () => {

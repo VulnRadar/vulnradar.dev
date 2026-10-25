@@ -3,6 +3,10 @@ import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import {
+  incompleteFlagSql,
+  withPublicErrorMessage,
+} from "@/lib/history/list-row";
 
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
@@ -59,7 +63,12 @@ export const GET = withErrorHandling(async () => {
       // summary '{}', findings_count 0, duration 0, so without this a scan
       // still in flight (or a cancelled/watchdog-killed one) rendered
       // identically to a genuinely clean result: "0 findings, 0.0s".
-      `SELECT public_id AS id, url, summary, findings_count, duration, scanned_at, source, status, error_message
+      //
+      // `incomplete` is the same distinction for a scan that finished but did
+      // not read all of the host: nothing found there is "partly checked", not
+      // "clean".
+      `SELECT public_id AS id, url, summary, findings_count, duration, scanned_at, source, status, error_message,
+              ${incompleteFlagSql("result_meta")} AS incomplete
        FROM scan_history WHERE user_id = $1
        ORDER BY scanned_at DESC LIMIT $2`,
       [userId, widgetLimit],
@@ -75,10 +84,18 @@ export const GET = withErrorHandling(async () => {
       // Current posture is the most recent scan per distinct target. Fixing
       // something and rescanning now replaces that target's contribution, so
       // the number falls the way a user expects.
+      //
+      // "Most recent" means most recent COMPLETED. A scan row exists as
+      // 'pending' with summary '{}' from the moment it is queued, and a failed
+      // or cancelled one keeps those empty defaults, so without the status
+      // filter a rescan that is still running, or died, became the target's
+      // latest and its zeros replaced the criticals found last time. (The
+      // `summary IS NOT NULL` this used to carry excluded nothing: the column
+      // is NOT NULL DEFAULT '{}'.)
       `WITH latest_per_target AS (
          SELECT DISTINCT ON (url) url, summary
          FROM scan_history
-         WHERE user_id = $1 AND summary IS NOT NULL
+         WHERE user_id = $1 AND status = 'completed'
          ORDER BY url, scanned_at DESC
        )
        SELECT
@@ -99,11 +116,12 @@ export const GET = withErrorHandling(async () => {
       // fifty times counted its unfixed finding fifty times, so the ranking
       // mostly reflected which site was scanned most, not which finding is
       // most common. Ranking the latest scan per distinct target fixes both,
-      // and matches how the severity widget above already reads posture.
+      // and matches how the severity widget above already reads posture,
+      // including its "latest COMPLETED scan" rule (see the note there).
       `WITH latest_per_target AS (
          SELECT DISTINCT ON (url) findings
          FROM scan_history
-         WHERE user_id = $1 AND findings IS NOT NULL
+         WHERE user_id = $1 AND status = 'completed'
          ORDER BY url, scanned_at DESC
        )
        SELECT elem->>'title' as title, elem->>'severity' as severity, COUNT(*)::int as count
@@ -147,7 +165,9 @@ export const GET = withErrorHandling(async () => {
 
   return ApiResponse.success({
     totalScans: counts?.total_scans || 0,
-    recentScans: recentScansRes.rows,
+    // error_message is sanitized for the same reason the status route does it:
+    // the stored string can name an internal table or a private address.
+    recentScans: recentScansRes.rows.map(withPublicErrorMessage),
     severityBreakdown: severityBreakdownRes.rows[0],
     topVulnerabilities: topVulnsRes.rows,
     dailyActivity: weeklyActivityRes.rows.map(

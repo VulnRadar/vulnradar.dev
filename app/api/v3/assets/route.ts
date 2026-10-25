@@ -30,7 +30,7 @@ import type { Vulnerability } from "@/lib/scanner/types";
  * hides it.
  *
  * Each row's safety rating comes from getSafetyRating() run against that
- * host's latest scan's full findings array -- the same function and the
+ * host's latest COMPLETED scan's full findings array -- the same function and the
  * same "safe / caution / unsafe" verdict GET /api/v3/public-scans computes
  * per row -- not a re-derivation from the aggregated severity counts alone.
  */
@@ -129,6 +129,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // public at /host/[hostname]; a caller's own private scans never appear here.
   // That claim only holds because scanned_url is NOT selected below: it is the
   // one column here that /host/[hostname] never returns.
+  //
+  // This branch needs no status filter, unlike the per-user one below:
+  // host_reputation is written only by finalizeScanSuccess, so every row is a
+  // completed scan's snapshot and a later pending or failed attempt never
+  // replaces it.
   if (request.nextUrl.searchParams.get("scope") === "all") {
     const res = await pool.query<{
       host: string;
@@ -205,16 +210,27 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // GitHub repo scans are excluded here for the same reason GET
   // /api/v3/history excludes them: they get their own dedicated history at
   // /repos, scoped per-repo instead of mixed into this host list.
+  //
+  // Only COMPLETED scans, in both the unlimited and the dated branch. A row is
+  // 'pending' with summary '{}' and no findings from the moment it is queued,
+  // and a failed or cancelled one keeps those defaults, so letting one in made
+  // it the host's "latest" and the page reported 0 findings and a "safe"
+  // rating for a site whose last real result had criticals. Filtering in SQL
+  // also keeps failed rows from spending the HISTORY_LIST_MAX_ROWS cap, at the
+  // price that a host with no completed scan at all has no posture to show and
+  // does not appear (its attempts are still in History).
   const result = await pool.query<ScanHistoryRow>(
     retentionDays <= 0
       ? `SELECT id, url, summary, findings_count, scanned_at, is_public
          FROM scan_history
          WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')
+           AND status = 'completed'
          ORDER BY scanned_at DESC
          LIMIT $2`
       : `SELECT id, url, summary, findings_count, scanned_at, is_public
          FROM scan_history
          WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')
+           AND status = 'completed'
            AND scanned_at > NOW() - ($2 * INTERVAL '1 day')
          ORDER BY scanned_at DESC
          LIMIT $3`,
@@ -224,8 +240,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   );
 
   // Rows arrive most-recent-first (ORDER BY scanned_at DESC above), so the
-  // first row seen for a given host is already that host's latest scan --
-  // no re-sorting needed once grouped.
+  // first row seen for a given host is already that host's latest COMPLETED
+  // scan -- no re-sorting needed once grouped. scanCount counts completed
+  // scans for the same reason.
   const groups = new Map<
     string,
     { host: string; scanCount: number; latest: ScanHistoryRow }

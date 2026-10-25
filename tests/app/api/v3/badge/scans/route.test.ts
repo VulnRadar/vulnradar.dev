@@ -147,6 +147,26 @@ describe("GET /api/v3/badge/scans", () => {
     expect(sql).toContain("hb.scope AS site_badge_scope");
   });
 
+  it("picks each URL's newest COMPLETED scan, so an in-flight or failed rescan cannot read as clean", async () => {
+    // The builder rates every row from its findings. A pending, failed or
+    // cancelled row has none, so as the newest row it labelled the URL
+    // "Clean" while the real latest result had criticals. Proven against
+    // PostgreSQL in tests/integration/list-reads.test.ts; the filter has to
+    // sit INSIDE the DISTINCT ON subquery, or it picks the wrong row first and
+    // filters afterwards.
+    mockGetSession.mockResolvedValue({ userId: 42 });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await GET();
+
+    const [sql] = mockQuery.mock.calls[0];
+    const inner = sql.slice(
+      sql.indexOf("DISTINCT ON (sh.url)"),
+      sql.indexOf(") latest_per_url"),
+    );
+    expect(inner).toContain("sh.status = 'completed'");
+  });
+
   it("dedupes to one row per URL, keeping the newest scan", async () => {
     mockGetSession.mockResolvedValue({ userId: 42 });
     mockQuery.mockResolvedValueOnce({ rows: [] });

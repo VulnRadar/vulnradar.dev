@@ -326,6 +326,58 @@ describe("GET /api/v3/assets", () => {
     expect(scanCall?.[1]).toEqual([7, 100]);
   });
 
+  describe("only a COMPLETED scan can be a host's latest", () => {
+    // A scan row exists as 'pending' with summary '{}' and no findings from
+    // the moment it is queued, and a failed or cancelled one keeps those
+    // defaults. Taken as "latest", one of them made the host read as 0
+    // findings and "safe" when its last real result had criticals. Which row
+    // PostgreSQL actually returns is proven in tests/integration/list-reads
+    // .test.ts; this pins that both retention branches carry the filter.
+    it.each([
+      ["unlimited retention", -1, [7, 100]],
+      ["a dated retention window", 30, [7, 30, 100]],
+    ] as const)(
+      "filters on status in the %s query",
+      async (_name, days, params) => {
+        settingsOverride.BILLING_FREE_RETENTION = days;
+        installDefaultQueryMock([], []);
+
+        await GET(getRequest());
+
+        const scanCall = mockQuery.mock.calls.find(
+          ([sql]) =>
+            sql.includes("FROM scan_history") &&
+            sql.includes("ORDER BY scanned_at DESC"),
+        );
+        expect(scanCall?.[0]).toContain("status = 'completed'");
+        expect(scanCall?.[1]).toEqual(params);
+      },
+    );
+
+    it("leaves the public all-hosts branch alone: host_reputation only ever holds completed scans", async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes("SELECT plan, role, disabled_at FROM users")) {
+          return { rows: [{ plan: "free", role: "user", disabled_at: null }] };
+        }
+        return { rows: [] };
+      });
+
+      await GET(
+        new NextRequest("http://localhost/api/v3/assets?scope=all", {
+          method: "GET",
+        }),
+      );
+
+      const hostSql = String(
+        mockQuery.mock.calls.find((c) =>
+          String(c[0]).includes("FROM host_reputation"),
+        )![0],
+      );
+      expect(hostSql).not.toContain("scan_history");
+      expect(hostSql).not.toContain("status");
+    });
+  });
+
   it("returns 500 when a query throws", async () => {
     mockQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT plan, role, disabled_at FROM users")) {

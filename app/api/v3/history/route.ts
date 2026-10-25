@@ -12,6 +12,10 @@ import { getSettings } from "@/lib/config/runtime-config";
 import type { SettingKey } from "@/lib/config/registry";
 import { buildHistoryFilter } from "@/lib/history/list-filter";
 import {
+  incompleteFlagSql,
+  withPublicErrorMessage,
+} from "@/lib/history/list-row";
+import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
   recordUsage,
@@ -193,8 +197,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // 'pending' before any work starts, with summary '{}', findings_count 0 and
   // duration 0, so a scan the user navigated away from used to appear in
   // History wearing a clean result's clothes: "0 findings in 0.0s".
+  //
+  // `incomplete` is the same idea one level down: a COMPLETED scan with zero
+  // findings and an area that never ran (result_meta.incomplete) is not a clean
+  // result either. It is a boolean, not result_meta itself, because the list
+  // must not ship (or the client parse) a blob that can hold a whole crawl.
   const result = await pool.query(
     `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source, sh.status, sh.error_message,
+         ${incompleteFlagSql("sh.result_meta")} AS incomplete,
          COALESCE(
            (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
             FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),
@@ -262,7 +272,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
 
   return ApiResponse.success({
-    scans: result.rows,
+    // error_message goes through the same read-boundary sanitizer the status
+    // route uses: this list is reachable with an API key, and the raw column
+    // can name an internal table or a private address and port.
+    scans: result.rows.map(withPublicErrorMessage),
     total,
     matched,
     // Echoed back so a client can tell what the server actually filtered on

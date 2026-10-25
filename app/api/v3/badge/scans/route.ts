@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
+import { withErrorHandling } from "@/lib/api/api-utils";
 
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,6 +20,12 @@ export async function GET() {
   // stable, auto-updating badge token already issued for this URL (if any),
   // so the badge page can show "you already have a badge for this" instead
   // of offering to create a second, redundant one.
+  //
+  // The newest COMPLETED scan, not the newest row: a rescan that is still
+  // pending, or that failed, has empty findings, and the builder rates each
+  // row from them, so it labelled the URL "Clean" while its real latest result
+  // had criticals. This matches what the badge image itself resolves to
+  // (app/api/v3/badge/[token] reads the latest completed scan of the URL).
   const result = await pool.query(
     `SELECT * FROM (
        SELECT DISTINCT ON (sh.url)
@@ -27,7 +34,7 @@ export async function GET() {
        FROM scan_history sh
        LEFT JOIN host_badges hb
          ON hb.user_id = sh.user_id AND hb.url = sh.url AND hb.revoked_at IS NULL
-       WHERE sh.user_id = $1
+       WHERE sh.user_id = $1 AND sh.status = 'completed'
        ORDER BY sh.url, sh.scanned_at DESC
      ) latest_per_url
      ORDER BY scanned_at DESC
@@ -54,4 +61,4 @@ export async function GET() {
   // Named envelope, like every other collection route. A bare array leaves
   // nowhere to put a total or a cursor later without breaking callers.
   return NextResponse.json({ scans });
-}
+});
