@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TranslatableMessage } from "@/components/support/translatable-message";
+import { useFocusIntent } from "@/components/support/use-focus-intent";
 import {
   AlertCircle,
   ArrowLeft,
@@ -21,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { cn } from "@/lib/ui/utils";
+import { focus } from "@/lib/ui/animations";
 import { formatRelativeTime } from "@/lib/ui/relative-time";
 import { getQueryParamInt } from "@/lib/ui/url-state";
 import { API, ROUTES, TURNSTILE_ENABLED } from "@/lib/config/client-constants";
@@ -143,6 +145,13 @@ function StatusBadge({ status }: { status: TicketStatus }) {
   );
 }
 
+/** What a screen reader hears once a status change has gone through. */
+const STATUS_ANNOUNCEMENT: Partial<Record<TicketStatus, string>> = {
+  resolved: "Ticket marked resolved.",
+  closed: "Ticket closed.",
+  awaiting_staff: "Ticket reopened.",
+};
+
 export function SupportTickets() {
   const { me, isLoading } = useAuth();
 
@@ -181,6 +190,17 @@ export function SupportTickets() {
   // user sent weeks ago instead of the reply they came here to read.
   const messagesRef = useRef<HTMLDivElement>(null);
 
+  // Switching view unmounts whatever had focus (the New ticket button, the row
+  // that was clicked, the whole composer), so each handler says where focus
+  // goes next instead of leaving it on <body>.
+  const rootRef = useRef<HTMLElement>(null);
+  const focusOn = useFocusIntent(rootRef);
+
+  // Spoken, not shown: a reply that went through changes nothing a screen
+  // reader would otherwise notice. Cleared when the next attempt starts so
+  // that sending a second reply says "Reply sent." a second time.
+  const [announcement, setAnnouncement] = useState("");
+
   const loadTickets = useCallback(async () => {
     try {
       const res = await fetch(API.SUPPORT_TICKETS);
@@ -193,30 +213,39 @@ export function SupportTickets() {
     }
   }, []);
 
-  const openThread = useCallback(async (id: number) => {
-    setView("thread");
-    setThreadId(id);
-    // Drop a previously open thread before fetching a different one. The header
-    // renders from `thread`, so holding the old object showed one ticket's
-    // subject and status above another ticket's loading spinner. A reload of
-    // the SAME ticket (after a reply or a status change) keeps it, so those do
-    // not flash the header away.
-    setThread((prev) => (prev && prev.ticket.id === id ? prev : null));
-    setThreadLoading(true);
-    setShowShare(false);
-    setError(null);
-    try {
-      const res = await fetch(API.SUPPORT_TICKET(id));
-      if (!res.ok) throw new Error("Could not open this ticket.");
-      setThread(await res.json());
-    } catch {
-      // No banner: the thread pane's own failure state says this, and carries
-      // the retry button. Setting both stated one failure twice on one screen.
-      setThread(null);
-    } finally {
-      setThreadLoading(false);
-    }
-  }, []);
+  const openThread = useCallback(
+    async (id: number, opts: { moveFocus?: boolean } = {}) => {
+      setView("thread");
+      setThreadId(id);
+      // Drop a previously open thread before fetching a different one. The header
+      // renders from `thread`, so holding the old object showed one ticket's
+      // subject and status above another ticket's loading spinner. A reload of
+      // the SAME ticket (after a reply or a status change) keeps it, so those do
+      // not flash the header away, and so the composer under it stays mounted
+      // with whatever has focus.
+      setThread((prev) => (prev && prev.ticket.id === id ? prev : null));
+      setThreadLoading(true);
+      setShowShare(false);
+      setError(null);
+      // Only when the person chose to open it. A reload after a reply or a
+      // status change leaves focus where they put it, and the deep link from
+      // an email does not take focus on page load.
+      if (opts.moveFocus) focusOn("thread-heading");
+      try {
+        const res = await fetch(API.SUPPORT_TICKET(id));
+        if (!res.ok) throw new Error("Could not open this ticket.");
+        setThread(await res.json());
+      } catch {
+        // No banner: the thread pane's own failure state says this, and carries
+        // the retry button. Setting both stated one failure twice on one screen.
+        setThread(null);
+        focusOn(null);
+      } finally {
+        setThreadLoading(false);
+      }
+    },
+    [focusOn],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState runs only in loadTickets' async continuation
@@ -295,7 +324,8 @@ export function SupportTickets() {
       setCategory("other");
       setTurnstileToken(null);
       await loadTickets();
-      await openThread(data.ticket.id);
+      // The form that had focus is gone; the new ticket's thread is next.
+      await openThread(data.ticket.id, { moveFocus: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not open the ticket.");
     } finally {
@@ -308,6 +338,7 @@ export function SupportTickets() {
     if (replying || !thread) return;
     setReplying(true);
     setError(null);
+    setAnnouncement("");
     try {
       const res = await fetch(API.SUPPORT_TICKET(thread.ticket.id), {
         method: "POST",
@@ -317,7 +348,11 @@ export function SupportTickets() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Could not send your reply.");
       setReply("");
+      // The Send button was focused and is about to be disabled for the
+      // duration of the reload; the composer is where they go on typing.
+      focusOn("reply");
       await openThread(thread.ticket.id);
+      setAnnouncement("Reply sent.");
       void loadTickets();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not send your reply.");
@@ -326,9 +361,13 @@ export function SupportTickets() {
     }
   }
 
-  async function setStatus(status: TicketStatus) {
+  async function setStatus(
+    status: TicketStatus,
+    opts: { focusHeading?: boolean } = {},
+  ) {
     if (!thread) return;
     setError(null);
+    setAnnouncement("");
     try {
       const res = await fetch(API.SUPPORT_TICKET(thread.ticket.id), {
         method: "PATCH",
@@ -340,6 +379,11 @@ export function SupportTickets() {
         throw new Error(data?.error || "Could not update the ticket.");
       }
       await openThread(thread.ticket.id);
+      // Resolving, closing and reopening each remove the very button that was
+      // pressed (the strip's buttons depend on the status), so focus has to be
+      // given somewhere or it falls to <body>.
+      if (opts.focusHeading) focusOn("thread-heading");
+      setAnnouncement(STATUS_ANNOUNCEMENT[status] ?? "Ticket updated.");
       void loadTickets();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update the ticket.");
@@ -351,7 +395,10 @@ export function SupportTickets() {
   // as domain-control-panel's confirmed actions, which close on both outcomes
   // and let the page-level error state say what went wrong.
   async function handleCloseTicket() {
-    await setStatus("closed");
+    // The button that opened the dialog is gone along with the rest of the
+    // strip, so focus goes to the heading. The dialog's focus trap holds it
+    // until it has finished closing; the intent waits that out.
+    await setStatus("closed", { focusHeading: true });
     setConfirmClose(false);
   }
 
@@ -417,7 +464,12 @@ export function SupportTickets() {
     !!thread?.viewerIsOwner && thread.ticket.status === "resolved";
 
   return (
-    <section className="mt-10 border-t border-border/50 pt-8">
+    <section ref={rootRef} className="mt-10 border-t border-border/50 pt-8">
+      {/* Always mounted: a live region that appears already holding its text is
+          not announced. */}
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-foreground">
@@ -435,9 +487,12 @@ export function SupportTickets() {
           <Button
             size="sm"
             className="h-9 shrink-0 gap-1.5 px-3"
+            data-focus-id="new-ticket"
             onClick={() => {
               setView("new");
               setError(null);
+              // This button is removed the moment the form opens.
+              focusOn("ticket-subject");
             }}
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -467,6 +522,7 @@ export function SupportTickets() {
               <Label htmlFor="ticket-subject">Subject</Label>
               <Input
                 id="ticket-subject"
+                data-focus-id="ticket-subject"
                 value={subject}
                 maxLength={TICKET_SUBJECT_MAX}
                 onChange={(e) => setSubject(e.target.value)}
@@ -523,6 +579,8 @@ export function SupportTickets() {
                   setView("list");
                   setError(null);
                   setTurnstileToken(null);
+                  // Back to the button that opened the form.
+                  focusOn("new-ticket");
                 }}
               >
                 Cancel
@@ -573,7 +631,8 @@ export function SupportTickets() {
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => openThread(t.id)}
+                  data-focus-id={`ticket-row-${t.id}`}
+                  onClick={() => openThread(t.id, { moveFocus: true })}
                   className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors duration-200 ease-out hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-4"
                 >
                   {/* The coloured status dot that used to lead this row said
@@ -620,6 +679,13 @@ export function SupportTickets() {
               onClick={() => {
                 setView("list");
                 setThread(null);
+                // The row they came from, or the New ticket button when there
+                // is no such row (a deep link, a ticket just opened).
+                focusOn(
+                  threadId !== null
+                    ? [`ticket-row-${threadId}`, "new-ticket"]
+                    : "new-ticket",
+                );
               }}
             >
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
@@ -646,7 +712,16 @@ export function SupportTickets() {
             // they wrapped into the subject line.
             <div className="border-b border-border/60 px-3 py-3.5 sm:px-4">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-semibold text-foreground">
+                {/* tabIndex -1: focusable by script, not a tab stop. Opening a
+                    thread lands here, so the subject is the first thing read. */}
+                <h3
+                  data-focus-id="thread-heading"
+                  tabIndex={-1}
+                  className={cn(
+                    "rounded-sm text-base font-semibold text-foreground",
+                    focus.ring,
+                  )}
+                >
                   {thread.ticket.subject}
                 </h3>
                 <StatusBadge status={thread.ticket.status} />
@@ -684,7 +759,9 @@ export function SupportTickets() {
                           size="sm"
                           variant="outline"
                           className="h-8 px-2.5 text-xs"
-                          onClick={() => setStatus("resolved")}
+                          onClick={() =>
+                            setStatus("resolved", { focusHeading: true })
+                          }
                         >
                           Mark resolved
                         </Button>
@@ -709,7 +786,9 @@ export function SupportTickets() {
                         size="sm"
                         variant="outline"
                         className="h-8 px-2.5 text-xs"
-                        onClick={() => setStatus("awaiting_staff")}
+                        onClick={() =>
+                          setStatus("awaiting_staff", { focusHeading: true })
+                        }
                       >
                         Reopen
                       </Button>
@@ -773,15 +852,17 @@ export function SupportTickets() {
             </div>
           )}
 
-          {threadLoading ? (
-            <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Loading conversation...
-            </div>
-          ) : thread ? (
+          {/* The thread wins over the spinner. A reload of the ticket that is
+              already open (after a reply, a resolve) used to swap the whole
+              pane for "Loading conversation...", which unmounted the reply box
+              under the person typing in it and dropped focus to <body>. The
+              spinner is now only for a thread that has not arrived at all;
+              openThread has already discarded a different ticket's. */}
+          {thread ? (
             <>
               <div
                 ref={messagesRef}
+                aria-busy={threadLoading}
                 className="max-h-[26rem] space-y-4 overflow-y-auto px-3 py-4 sm:px-4"
               >
                 {thread.messages.map((m) => (
@@ -834,6 +915,7 @@ export function SupportTickets() {
                   className="border-t border-border/60 bg-muted/10 p-3 sm:p-4"
                 >
                   <Textarea
+                    data-focus-id="reply"
                     value={reply}
                     maxLength={TICKET_MESSAGE_MAX}
                     onChange={(e) => setReply(e.target.value)}
@@ -862,6 +944,14 @@ export function SupportTickets() {
                 </form>
               )}
             </>
+          ) : threadLoading ? (
+            <div
+              role="status"
+              className="flex items-center gap-2 p-4 text-sm text-muted-foreground"
+            >
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Loading conversation...
+            </div>
           ) : (
             <EmptyState
               variant="inline"

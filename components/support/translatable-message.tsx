@@ -6,6 +6,10 @@ import { cn } from "@/lib/ui/utils";
 import { focus } from "@/lib/ui/animations";
 import { API } from "@/lib/config/client-constants";
 import { LOCALE_NAMES, isLocale } from "@/lib/i18n/config";
+import {
+  originalTextLang,
+  translateStatusText,
+} from "@/components/support/translatable-message-utils";
 
 export interface TranslatableMessageProps {
   ticketId: number;
@@ -48,7 +52,11 @@ export function TranslatableMessage({
 
   // Nothing to offer when the message is already in the reader's language:
   // the API only sends a translation, or a foreign bodyLocale, when it is not.
-  const canTranslate = Boolean(bodyLocale) && (translated !== null || !failed);
+  //
+  // A failed attempt keeps the button. It used to take it away, and with it
+  // the failure message that was meant to replace it, so the control a keyboard
+  // user had just pressed vanished and focus fell to <body> with nothing said.
+  const canTranslate = Boolean(bodyLocale);
   const writtenIn =
     bodyLocale && isLocale(bodyLocale) ? LOCALE_NAMES[bodyLocale] : bodyLocale;
 
@@ -78,11 +86,29 @@ export function TranslatableMessage({
   const readingTranslation = Boolean(translated) && !showingOriginal;
 
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
-      <div className="whitespace-pre-wrap break-words">{showing}</div>
-      {canTranslate && (
-        <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground">
-          {translated ? (
+    <div className={cn("flex flex-col", className)}>
+      {/* The author's own words are in their language, and a screen reader
+          needs to be told. A translation is in the reader's, so it inherits. */}
+      <div
+        lang={originalTextLang(bodyLocale, readingTranslation)}
+        className="whitespace-pre-wrap break-words"
+      >
+        {showing}
+      </div>
+      {/* This row is always mounted. A live region that appears with its text
+          already inside it is not announced, so the failure message used to be
+          silent even in the one state it could show, and a swap between the
+          original and the translation changes the text above without a word.
+          Padding only when there is something in the row, so a message with
+          nothing to offer takes no more room than it did. */}
+      <div
+        className={cn(
+          "flex items-center gap-2 text-[11px] text-muted-foreground",
+          canTranslate && "pt-2",
+        )}
+      >
+        {canTranslate &&
+          (translated ? (
             <button
               type="button"
               onClick={() => setShowingOriginal((v) => !v)}
@@ -113,14 +139,15 @@ export function TranslatableMessage({
               ) : (
                 <Languages aria-hidden className="h-3 w-3" />
               )}
-              {writtenIn ? `Translate from ${writtenIn}` : "Translate"}
+              {failed
+                ? "Try again"
+                : writtenIn
+                  ? `Translate from ${writtenIn}`
+                  : "Translate"}
             </button>
-          )}
-          {failed && (
-            <span>Could not translate this one. It is shown as written.</span>
-          )}
-        </div>
-      )}
+          ))}
+        <span role="status">{translateStatusText(failed)}</span>
+      </div>
     </div>
   );
 }

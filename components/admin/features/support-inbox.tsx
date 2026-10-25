@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TranslatableMessage } from "@/components/support/translatable-message";
+import { useFocusIntent } from "@/components/support/use-focus-intent";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -219,6 +220,15 @@ function TicketInbox() {
   // not land on top of a newer one. Only the latest request may write.
   const inboxRequest = useRef(0);
 
+  // Opening a ticket, going back and resolving one each remove the control
+  // that had focus, so each says where focus goes next.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const focusOn = useFocusIntent(rootRef);
+
+  // Spoken, not shown. Cleared when the next attempt starts so sending a
+  // second reply says "Reply sent." a second time.
+  const [announcement, setAnnouncement] = useState("");
+
   // The list row behind the open thread. The thread endpoint returns the
   // owner's id for staff, but the row is the fallback for a thread that
   // predates it.
@@ -278,21 +288,35 @@ function TicketInbox() {
     }
   }, [filterParams, nextCursor, loadingMore]);
 
-  const openThread = useCallback(async (id: number) => {
-    setOpenId(id);
-    setThreadLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(API.SUPPORT_TICKET(id));
-      if (!res.ok) throw new Error("Could not open this ticket.");
-      setThread(await res.json());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not open this ticket.");
-      setThread(null);
-    } finally {
-      setThreadLoading(false);
-    }
-  }, []);
+  const openThread = useCallback(
+    async (id: number, opts: { moveFocus?: boolean } = {}) => {
+      setOpenId(id);
+      // A different ticket's thread is dropped before this one loads, so its
+      // header is never shown over the new one's skeleton. A reload of the
+      // SAME ticket (after a reply, a resolve, an assignment) keeps it, which
+      // keeps the reply box mounted under the person typing in it.
+      setThread((prev) => (prev && prev.ticket.id === id ? prev : null));
+      setThreadLoading(true);
+      setError(null);
+      // Only when staff chose to open it. A reload after a reply leaves focus
+      // where they put it.
+      if (opts.moveFocus) focusOn("thread-heading");
+      try {
+        const res = await fetch(API.SUPPORT_TICKET(id));
+        if (!res.ok) throw new Error("Could not open this ticket.");
+        setThread(await res.json());
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : "Could not open this ticket.",
+        );
+        setThread(null);
+        focusOn(null);
+      } finally {
+        setThreadLoading(false);
+      }
+    },
+    [focusOn],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState runs only in loadInbox' async continuation
@@ -324,6 +348,7 @@ function TicketInbox() {
     if (replying || !thread) return;
     setReplying(true);
     setError(null);
+    setAnnouncement("");
     try {
       const res = await fetch(API.SUPPORT_TICKET(thread.ticket.id), {
         method: "POST",
@@ -333,7 +358,11 @@ function TicketInbox() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Could not send the reply.");
       setReply("");
+      // The Send button was focused and is disabled while the thread reloads;
+      // the composer is where they go on typing.
+      focusOn("reply");
       await openThread(thread.ticket.id);
+      setAnnouncement("Reply sent.");
       void loadInbox();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not send the reply.");
@@ -344,10 +373,18 @@ function TicketInbox() {
 
   async function patchTicket(
     body: { status: TicketStatus } | { assign: "me" | "none" },
-    fallback: string,
+    outcome: {
+      /** Shown if the request fails and the server gave no reason. */
+      fallback: string;
+      /** Spoken once it has gone through. */
+      announce: string;
+      /** Where focus goes afterwards, for a control that is about to vanish. */
+      focus: string;
+    },
   ) {
     if (!thread) return;
     setError(null);
+    setAnnouncement("");
     try {
       const res = await fetch(API.SUPPORT_TICKET(thread.ticket.id), {
         method: "PATCH",
@@ -356,24 +393,49 @@ function TicketInbox() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || fallback);
+        throw new Error(data?.error || outcome.fallback);
       }
       await openThread(thread.ticket.id);
+      focusOn(outcome.focus);
+      setAnnouncement(outcome.announce);
       void loadInbox();
     } catch (e) {
-      setError(e instanceof Error ? e.message : fallback);
+      setError(e instanceof Error ? e.message : outcome.fallback);
     }
   }
 
   function setStatus(status: TicketStatus) {
-    return patchTicket({ status }, "Could not update the ticket.");
+    // Resolve and Close each take themselves off the screen (the buttons
+    // depend on the status), so focus has to be handed to something that stays.
+    return patchTicket(
+      { status },
+      {
+        fallback: "Could not update the ticket.",
+        announce:
+          status === "resolved"
+            ? "Ticket marked resolved."
+            : status === "closed"
+              ? "Ticket closed."
+              : "Ticket updated.",
+        focus: "thread-heading",
+      },
+    );
   }
 
   async function assign(target: "me" | "none") {
     if (assigning) return;
     setAssigning(true);
     try {
-      await patchTicket({ assign: target }, "Could not assign the ticket.");
+      await patchTicket(
+        { assign: target },
+        {
+          fallback: "Could not assign the ticket.",
+          announce:
+            target === "me" ? "Ticket assigned to you." : "Ticket unassigned.",
+          // Assign to me and Unassign swap in the same place.
+          focus: "assign-toggle",
+        },
+      );
     } finally {
       setAssigning(false);
     }
@@ -425,7 +487,12 @@ function TicketInbox() {
       : "Try another filter to see tickets in other states.";
 
   return (
-    <div className="space-y-4">
+    <div ref={rootRef} className="space-y-4">
+      {/* Always mounted: a live region that appears already holding its text
+          is not announced. */}
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-foreground">
@@ -592,7 +659,8 @@ function TicketInbox() {
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => openThread(t.id)}
+                      data-focus-id={`ticket-row-${t.id}`}
+                      onClick={() => openThread(t.id, { moveFocus: true })}
                       aria-current={openId === t.id ? "true" : undefined}
                       className={cn(
                         "relative flex w-full flex-col gap-1 border-b border-border/40 px-4 py-3 pl-5 text-left transition-colors duration-200 ease-out last:border-b-0",
@@ -677,36 +745,24 @@ function TicketInbox() {
               description="Pick a ticket on the left to read the conversation and reply."
               className="my-auto"
             />
-          ) : threadLoading ? (
-            // The thread's own shape: the subject bar the pane pins to the
-            // top, then message blocks. A centred spinner was 60px of nothing
-            // where a header and a transcript arrive, and on a phone (where
-            // this pane is not the fixed 38rem it is on desktop) the pane grew
-            // to several screens the moment the fetch landed.
-            <SkeletonRegion label="Loading conversation" className="gap-0">
-              <div className="shrink-0 border-b border-border/60 px-4 py-3 space-y-2">
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-3 w-2/3" />
-              </div>
-              <div className="space-y-4 p-4">
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className={cn("flex", i % 2 === 0 ? "" : "justify-end")}
-                  >
-                    <Skeleton className="h-16 w-full max-w-[85%] rounded-lg" />
-                  </div>
-                ))}
-              </div>
-            </SkeletonRegion>
           ) : thread ? (
+            // The thread wins over the skeleton. A reload of the ticket that
+            // is already open (after a reply, a resolve, an assignment) used
+            // to swap the whole pane for the skeleton, which unmounted the
+            // reply box under the person typing in it and dropped focus to
+            // <body>. The skeleton is only for a thread that has not arrived.
             <>
               <div className="shrink-0 border-b border-border/60 px-4 py-3">
                 <Button
                   variant="ghost"
                   size="sm"
                   className="-ml-2 mb-1 h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground lg:hidden"
-                  onClick={resetSelection}
+                  onClick={() => {
+                    // The row they came from, if it is still in the list.
+                    const from = openId;
+                    resetSelection();
+                    focusOn(from !== null ? `ticket-row-${from}` : null);
+                  }}
                 >
                   <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
                   Back to inbox
@@ -714,7 +770,17 @@ function TicketInbox() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="truncate text-sm font-semibold text-foreground">
+                      {/* tabIndex -1: focusable by script, not a tab stop.
+                          Opening a ticket lands here, so the subject is the
+                          first thing read. */}
+                      <h3
+                        data-focus-id="thread-heading"
+                        tabIndex={-1}
+                        className={cn(
+                          "truncate rounded-sm text-sm font-semibold text-foreground",
+                          focus.ring,
+                        )}
+                      >
                         {thread.ticket.subject}
                       </h3>
                       <StatusBadge status={thread.ticket.status} />
@@ -760,6 +826,7 @@ function TicketInbox() {
                           size="sm"
                           variant="ghost"
                           className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          data-focus-id="assign-toggle"
                           onClick={() => assign("none")}
                           disabled={assigning}
                         >
@@ -774,6 +841,7 @@ function TicketInbox() {
                           size="sm"
                           variant="outline"
                           className="h-7 gap-1.5 px-2 text-xs"
+                          data-focus-id="assign-toggle"
                           onClick={() => assign("me")}
                           disabled={assigning}
                         >
@@ -887,6 +955,7 @@ function TicketInbox() {
                   className="shrink-0 border-t border-border/60 bg-muted/10 p-3"
                 >
                   <Textarea
+                    data-focus-id="reply"
                     value={reply}
                     maxLength={TICKET_MESSAGE_MAX}
                     onChange={(e) => setReply(e.target.value)}
@@ -915,6 +984,28 @@ function TicketInbox() {
                 </form>
               )}
             </>
+          ) : threadLoading ? (
+            // The thread's own shape: the subject bar the pane pins to the
+            // top, then message blocks. A centred spinner was 60px of nothing
+            // where a header and a transcript arrive, and on a phone (where
+            // this pane is not the fixed 38rem it is on desktop) the pane grew
+            // to several screens the moment the fetch landed.
+            <SkeletonRegion label="Loading conversation" className="gap-0">
+              <div className="shrink-0 border-b border-border/60 px-4 py-3 space-y-2">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-3 w-2/3" />
+              </div>
+              <div className="space-y-4 p-4">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className={cn("flex", i % 2 === 0 ? "" : "justify-end")}
+                  >
+                    <Skeleton className="h-16 w-full max-w-[85%] rounded-lg" />
+                  </div>
+                ))}
+              </div>
+            </SkeletonRegion>
           ) : (
             <EmptyState
               variant="inline"
