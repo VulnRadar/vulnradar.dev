@@ -10,15 +10,179 @@ import { isIP } from "net";
 import { blockedForAuthenticatedRequest } from "./auth/logout-guard";
 import type { ScanSessionBinding } from "./auth/types";
 import { CONFIG_SCAN_FETCH_TIMEOUT_MS } from "@/lib/config/config-values";
+import { SETTINGS_REGISTRY } from "@/lib/config/registry";
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
-// The scan routes' own fetch timeout, imported rather than restated. The
-// comment here used to say "keep in sync with scan route timeout defaults
-// (crawl: 8s, scan routes: 15s)", which was already false: the crawl's
-// per-page scan fetch was on 15s too. A comment asking a human to keep two
-// numbers equal is a number that will eventually be wrong, and this one
-// already was.
+// The deadline for a call that brings no signal of its own, imported rather
+// than restated. The comment here used to say "keep in sync with scan route
+// timeout defaults (crawl: 8s, scan routes: 15s)", which was already false:
+// the crawl's per-page scan fetch was on 15s too. A comment asking a human to
+// keep two numbers equal is a number that will eventually be wrong, and this
+// one already was.
 const DEFAULT_FETCH_TIMEOUT_MS = CONFIG_SCAN_FETCH_TIMEOUT_MS;
+// The deadline for a call that DOES bring a signal. Every scan fetch passes
+// `requestSignal(fetchTimeoutMs, cancelSignal)`, and `fetchTimeoutMs` is the
+// admin-configurable SCAN_FETCH_TIMEOUT_MS. safeFetch used to arm its own
+// compiled 15s timer next to it and let whichever fired first win, so the
+// setting could lower the timeout but never raise it: an admin who lifted it
+// to 60s for a slow target still got "This operation was aborted" at 15s.
+// With a caller signal the caller's deadline governs and this is only the
+// backstop for a signal that carries no deadline of its own, held at the
+// setting's registry maximum so no configured value can ever exceed it.
+const CALLER_GOVERNED_BACKSTOP_MS = SETTINGS_REGISTRY.SCAN_FETCH_TIMEOUT_MS.max;
+
+export type SafeFetchErrorCode =
+  "cross_host_redirect" | "timeout" | "tls" | "unreachable" | "blocked";
+
+/**
+ * What safeFetch throws when it knows why a request did not happen.
+ *
+ * The scan pipeline used to store `error.message` and nothing else, and every
+ * message that mattered was wrong by the time it got there: undici's reason
+ * for a refused connection, a failed handshake or an unresolvable name is on
+ * `err.cause.code` while the message is the unhelpful `fetch failed`, and a
+ * redirect to another host was a sentence to be pattern-matched. A code is
+ * the structured answer. Callers read `code`, `redirectHost` and `cause`
+ * without importing this class (the check is `err.code === "timeout"`), so
+ * the shape is a contract: add codes, never rename one.
+ *
+ * - `cross_host_redirect`: the target answered, but sent us to another host.
+ *   `redirectHost` names it.
+ * - `timeout`: the deadline fired, or undici's connect/headers timeout did.
+ * - `tls`: the certificate or handshake was refused.
+ * - `unreachable`: refused, reset, no route, or the name did not resolve.
+ * - `blocked`: safeFetch refused to make the request at all (private address,
+ *   internal hostname, bad scheme, outside the allow-list, sign-out URL).
+ *
+ * The message is whatever the underlying failure already said. Wrapping must
+ * not reword it: stored error text and the sanitizer in
+ * lib/api/scan-error-message.ts both match on it.
+ */
+export class SafeFetchError extends Error {
+  readonly code: SafeFetchErrorCode;
+  readonly redirectHost?: string;
+
+  constructor(
+    message: string,
+    code: SafeFetchErrorCode,
+    options?: { cause?: unknown; redirectHost?: string },
+  ) {
+    super(
+      message,
+      options?.cause !== undefined ? { cause: options.cause } : {},
+    );
+    this.name = "SafeFetchError";
+    this.code = code;
+    if (options?.redirectHost !== undefined) {
+      this.redirectHost = options.redirectHost;
+    }
+  }
+}
+
+// undici and Node report a certificate or handshake failure on `cause.code`.
+// EPROTO is the errno wrapper OpenSSL's own failures come through.
+const TLS_ERROR_CODE =
+  /^(CERT_|ERR_CERT|ERR_TLS|ERR_SSL|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|DEPTH_ZERO_SELF_SIGNED|SELF_SIGNED_CERT|EPROTO$)/;
+const TIMEOUT_ERROR_CODES = new Set([
+  "ETIMEDOUT",
+  "ESOCKETTIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+]);
+const UNREACHABLE_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ECONNABORTED",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+  "UND_ERR_SOCKET",
+]);
+
+/**
+ * Every string `code` on an error and the errors it wraps. undici puts the
+ * socket error on `cause`, and a dual-stack connect puts one per address on
+ * an AggregateError's `errors`. A DOMException's `code` is a number and is
+ * skipped by the typeof check.
+ */
+function errorCodes(err: unknown): string[] {
+  const codes: string[] = [];
+  const seen = new Set<unknown>();
+  const walk = (e: unknown, depth: number) => {
+    if (!e || typeof e !== "object" || seen.has(e) || depth > 4) return;
+    seen.add(e);
+    const { code, cause, errors } = e as {
+      code?: unknown;
+      cause?: unknown;
+      errors?: unknown;
+    };
+    if (typeof code === "string") codes.push(code);
+    walk(cause, depth + 1);
+    if (Array.isArray(errors)) {
+      for (const inner of errors) walk(inner, depth + 1);
+    }
+  };
+  walk(err, 0);
+  return codes;
+}
+
+function isTimeoutReason(reason: unknown): boolean {
+  return (
+    typeof reason === "object" &&
+    reason !== null &&
+    (reason as { name?: unknown }).name === "TimeoutError"
+  );
+}
+
+/**
+ * Tag a failure from `fetch` itself with its class, or return null when it is
+ * none of the five (a user cancel aborts with an AbortError and must reach
+ * the caller untouched, as must anything the engine does not understand).
+ *
+ * `signal` is the one the request ran under. fetch rejects with the signal's
+ * reason, but reading it back from the signal as well keeps this correct on
+ * an undici that wraps the reason in a generic AbortError.
+ */
+function classifyFetchFailure(
+  err: unknown,
+  signal: AbortSignal,
+): SafeFetchError | null {
+  const message = err instanceof Error ? err.message : String(err);
+
+  if (
+    (signal.aborted && isTimeoutReason(signal.reason)) ||
+    isTimeoutReason(err)
+  ) {
+    return new SafeFetchError(message, "timeout", { cause: err });
+  }
+
+  const codes = errorCodes(err);
+  if (codes.some((c) => TLS_ERROR_CODE.test(c))) {
+    return new SafeFetchError(message, "tls", { cause: err });
+  }
+  if (codes.some((c) => TIMEOUT_ERROR_CODES.has(c))) {
+    return new SafeFetchError(message, "timeout", { cause: err });
+  }
+  if (codes.some((c) => UNREACHABLE_ERROR_CODES.has(c))) {
+    return new SafeFetchError(message, "unreachable", { cause: err });
+  }
+  return null;
+}
+
+/** The error for a validateScanTarget refusal, keeping its reason verbatim. */
+function refusalFrom(
+  safety: SafetyCheckResult,
+  fallbackReason: string,
+): SafeFetchError {
+  return new SafeFetchError(
+    safety.reason || fallbackReason,
+    safety.code ?? "blocked",
+    { cause: safety.cause },
+  );
+}
 
 /**
  * Make `response.url` the URL the target was asked for, not the address safeFetch
@@ -45,6 +209,13 @@ const DISALLOWED_HOSTNAME_SUFFIXES = [".local", ".internal", ".lan"];
 /**
  * Combine a required timeout signal with an optional caller-provided signal so that
  * the returned signal aborts when either source signal aborts.
+ *
+ * The combined signal aborts WITH the source's reason. `controller.abort()`
+ * with no argument made every abort an AbortError, which threw away the
+ * TimeoutError a deadline carries and left every page timeout stored as "This
+ * operation was aborted". With the reason forwarded, a deadline stays a
+ * TimeoutError and a user cancel stays an AbortError, and the difference is
+ * readable by whoever catches the rejection.
  */
 function combineAbortSignals(
   timeoutSignal: AbortSignal,
@@ -57,24 +228,28 @@ function combineAbortSignals(
   // If either signal is already aborted, return a signal in the aborted state.
   if (timeoutSignal.aborted || callerSignal.aborted) {
     const controller = new AbortController();
-    controller.abort();
+    controller.abort(
+      timeoutSignal.aborted ? timeoutSignal.reason : callerSignal.reason,
+    );
     return { signal: controller.signal, cleanup: undefined };
   }
 
   const controller = new AbortController();
 
-  const onAbort = () => {
+  const forwardAbortFrom = (source: AbortSignal) => () => {
     if (!controller.signal.aborted) {
-      controller.abort();
+      controller.abort(source.reason);
     }
   };
+  const onTimeoutAbort = forwardAbortFrom(timeoutSignal);
+  const onCallerAbort = forwardAbortFrom(callerSignal);
 
-  timeoutSignal.addEventListener("abort", onAbort, { once: true });
-  callerSignal.addEventListener("abort", onAbort, { once: true });
+  timeoutSignal.addEventListener("abort", onTimeoutAbort, { once: true });
+  callerSignal.addEventListener("abort", onCallerAbort, { once: true });
 
   const cleanup = () => {
-    timeoutSignal.removeEventListener("abort", onAbort);
-    callerSignal.removeEventListener("abort", onAbort);
+    timeoutSignal.removeEventListener("abort", onTimeoutAbort);
+    callerSignal.removeEventListener("abort", onCallerAbort);
   };
 
   return { signal: controller.signal, cleanup };
@@ -148,6 +323,16 @@ export interface SafetyCheckResult {
   safe: boolean;
   reason?: string;
   resolvedIp?: string;
+  /**
+   * Set on a refusal, and it is what safeFetch's thrown error carries. A name
+   * that does not resolve is "unreachable": the target is down or mistyped,
+   * and the guard refuses it only because it cannot prove the address is
+   * public. Everything else (scheme, private range, internal hostname) is
+   * "blocked".
+   */
+  code?: "blocked" | "unreachable";
+  /** The resolver's own error, when DNS is why the target was refused. */
+  cause?: unknown;
 }
 
 /**
@@ -507,6 +692,7 @@ export async function validateScanTarget(
       return {
         safe: false,
         reason: "Only http and https URLs can be scanned.",
+        code: "blocked",
       };
     }
 
@@ -520,6 +706,7 @@ export async function validateScanTarget(
         return {
           safe: false,
           reason: `Scanning internal/private IP addresses is not allowed for security reasons.`,
+          code: "blocked",
         };
       }
       return { safe: true, resolvedIp: hostname };
@@ -530,6 +717,7 @@ export async function validateScanTarget(
       return {
         safe: false,
         reason: `Scanning internal hostnames (${hostname}) is not allowed for security reasons.`,
+        code: "blocked",
       };
     }
 
@@ -542,6 +730,7 @@ export async function validateScanTarget(
             safe: false,
             reason: `Domain resolves to internal IP address. Scanning internal networks is not allowed.`,
             resolvedIp: addr.address,
+            code: "blocked",
           };
         }
       }
@@ -554,6 +743,7 @@ export async function validateScanTarget(
         safe: false,
         reason:
           "Domain resolved to no addresses — cannot verify target is safe to scan.",
+        code: "unreachable",
       };
     } catch (error) {
       // DNS resolution failed — cannot verify the target resolves to a public IP,
@@ -561,12 +751,15 @@ export async function validateScanTarget(
       return {
         safe: false,
         reason: "DNS resolution failed — cannot verify target is safe to scan.",
+        code: "unreachable",
+        cause: error,
       };
     }
   } catch {
     return {
       safe: false,
       reason: "Invalid URL format.",
+      code: "blocked",
     };
   }
 }
@@ -581,31 +774,43 @@ function assertSafePublicHttpUrl(rawUrl: string): URL {
   try {
     urlObj = new URL(rawUrl);
   } catch {
-    throw new Error("Invalid URL format");
+    throw new SafeFetchError("Invalid URL format", "blocked");
   }
 
   const protocol = urlObj.protocol;
   if (!ALLOWED_PROTOCOLS.has(protocol)) {
-    throw new Error("Invalid protocol - only http: and https: are allowed");
+    throw new SafeFetchError(
+      "Invalid protocol - only http: and https: are allowed",
+      "blocked",
+    );
   }
 
   const hostname = urlObj.hostname.toLowerCase();
 
   // Disallow blocked hostnames (including exact and subdomain matches)
   if (isBlockedHostname(hostname)) {
-    throw new Error("Access to local hostnames is not allowed");
+    throw new SafeFetchError(
+      "Access to local hostnames is not allowed",
+      "blocked",
+    );
   }
 
   // Disallow common internal TLD-like suffixes
   for (const suffix of DISALLOWED_HOSTNAME_SUFFIXES) {
     if (hostname.endsWith(suffix)) {
-      throw new Error("Access to internal hostnames is not allowed");
+      throw new SafeFetchError(
+        "Access to internal hostnames is not allowed",
+        "blocked",
+      );
     }
   }
 
   // Optionally require at least one dot to avoid bare hostnames like "devbox"
   if (!hostname.includes(".")) {
-    throw new Error("Access to unqualified hostnames is not allowed");
+    throw new SafeFetchError(
+      "Access to unqualified hostnames is not allowed",
+      "blocked",
+    );
   }
 
   return urlObj;
@@ -629,7 +834,13 @@ function assertSafePublicHttpUrl(rawUrl: string): URL {
  *                  survive into a later request.
  *
  * The returned Response's `url` is the final hop's hostname URL, never the IP
- * a plain-HTTP request was pinned to.
+ * a plain-HTTP request was pinned to. Every refusal and network failure is a
+ * SafeFetchError carrying a `code`; an abort the caller asked for (a cancelled
+ * scan) and anything unrecognised are rethrown as they came.
+ *
+ * Deadline: with `init.signal` the caller's deadline governs (the internal
+ * timer is only a backstop, see CALLER_GOVERNED_BACKSTOP_MS). Without one the
+ * request is cut off after the 15s default.
  */
 export async function safeFetch(
   url: string,
@@ -648,7 +859,7 @@ export async function safeFetch(
   // the scan must not walk into /logout at all.
   if (session && isSameOrigin(normalizedUrl, session.origin)) {
     const blocked = blockedForAuthenticatedRequest(normalizedUrl);
-    if (blocked) throw new Error(blocked);
+    if (blocked) throw new SafeFetchError(blocked, "blocked");
   }
 
   // If allowedHostnames is provided, enforce that the hostname matches
@@ -658,14 +869,17 @@ export async function safeFetch(
       (allowed) => allowed.toLowerCase() === requestHostname,
     );
     if (!isAllowed) {
-      throw new Error(`Hostname ${requestHostname} is not in the allowed list`);
+      throw new SafeFetchError(
+        `Hostname ${requestHostname} is not in the allowed list`,
+        "blocked",
+      );
     }
   }
 
   const safety = await validateScanTarget(normalizedUrl);
 
   if (!safety.safe) {
-    throw new Error(safety.reason || "URL blocked for security reasons");
+    throw refusalFrom(safety, "URL blocked for security reasons");
   }
 
   // We already parsed and normalized the URL in assertSafePublicHttpUrl above.
@@ -727,9 +941,21 @@ export async function safeFetch(
 
   const MAX_REDIRECT_HOPS = 5;
   const controller = new AbortController();
-  const timeoutMs = DEFAULT_FETCH_TIMEOUT_MS;
+  // A caller that brings a signal owns the deadline (see
+  // CALLER_GOVERNED_BACKSTOP_MS); one that does not gets the 15s default.
+  const timeoutMs =
+    init?.signal != null
+      ? CALLER_GOVERNED_BACKSTOP_MS
+      : DEFAULT_FETCH_TIMEOUT_MS;
+  // Same name and wording as the reason AbortSignal.timeout() aborts with, so
+  // a deadline reads identically whichever side's timer fired.
   const timeoutId = setTimeout(() => {
-    controller.abort();
+    controller.abort(
+      new DOMException(
+        "The operation was aborted due to timeout",
+        "TimeoutError",
+      ),
+    );
   }, timeoutMs);
 
   // ssrf: the deadline has to outlive this function when it hands a Response
@@ -790,8 +1016,13 @@ export async function safeFetch(
       // Safe: currentUrl is re-validated by validateScanTarget on every
       // iteration of this loop. The manual redirect loop exists precisely
       // to enforce that re-validation hop-by-hop.
-      // codeql[js/request-forgery]
-      const response = await fetch(currentUrl, requestInit);
+      let response: Response;
+      try {
+        // codeql[js/request-forgery]
+        response = await fetch(currentUrl, requestInit);
+      } catch (err) {
+        throw classifyFetchFailure(err, combinedSignal) ?? err;
+      }
 
       // Let the session absorb cookies and notice if it has been dropped.
       // It ignores anything off its own origin.
@@ -845,10 +1076,12 @@ export async function safeFetch(
       try {
         assertSafePublicHttpUrl(nextUrlObj.href);
       } catch (err) {
-        throw new Error(
+        throw new SafeFetchError(
           `Redirect to ${nextUrlObj.protocol}//${nextUrlObj.hostname} is not allowed: ${
             err instanceof Error ? err.message : "unsafe redirect target"
           }`,
+          "blocked",
+          { cause: err },
         );
       }
 
@@ -863,8 +1096,10 @@ export async function safeFetch(
         nextHostname === `www.${initialHostname}` ||
         initialHostname === `www.${nextHostname}`;
       if (!sameRegisteredHost) {
-        throw new Error(
+        throw new SafeFetchError(
           `Redirect to a different host (${nextUrlObj.hostname}) is not allowed.`,
+          "cross_host_redirect",
+          { redirectHost: nextUrlObj.hostname },
         );
       }
 
@@ -874,9 +1109,9 @@ export async function safeFetch(
       // rebinding inside the same hostname), reject.
       const nextSafety = await validateScanTarget(nextUrlObj.href);
       if (!nextSafety.safe) {
-        throw new Error(
-          nextSafety.reason ||
-            `Redirect target ${nextUrlObj.hostname} blocked for security reasons`,
+        throw refusalFrom(
+          nextSafety,
+          `Redirect target ${nextUrlObj.hostname} blocked for security reasons`,
         );
       }
 
@@ -885,7 +1120,7 @@ export async function safeFetch(
       // directly.
       if (session && isSameOrigin(nextUrlObj.href, session.origin)) {
         const blockedNext = blockedForAuthenticatedRequest(nextUrlObj.href);
-        if (blockedNext) throw new Error(blockedNext);
+        if (blockedNext) throw new SafeFetchError(blockedNext, "blocked");
       }
 
       // A 301, 302 or 303 becomes a GET with no body, exactly as a browser

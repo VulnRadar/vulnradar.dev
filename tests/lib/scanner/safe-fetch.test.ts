@@ -8,7 +8,7 @@ vi.mock("dns/promises", () => ({
   lookup: (...args: unknown[]) => mockLookup(...args),
 }));
 
-const { isPrivateIP, validateScanTarget, safeFetch } =
+const { isPrivateIP, validateScanTarget, safeFetch, SafeFetchError } =
   await import("@/lib/scanner/safe-fetch");
 
 /** dns/promises lookup(host, {all:true}) shape. */
@@ -475,10 +475,39 @@ describe("safeFetch (SSRF-guarded redirect loop)", () => {
   });
 });
 
-// ── plain-HTTP targets ─────────────────────────────────────────────────────
+// ── shared by the blocks below ─────────────────────────────────────────────
 
 function redirectTo(status: number, location: string) {
   return new Response(null, { status, headers: { location } });
+}
+
+/** What undici throws for a socket-level failure: a bare "fetch failed" with
+ *  the real reason, code included, on `cause`. */
+function fetchFailed(code: string) {
+  const cause = Object.assign(new Error(`connect ${code} 93.184.216.34:443`), {
+    code,
+  });
+  return new TypeError("fetch failed", { cause });
+}
+
+/** A fetch that never answers on its own and rejects with the signal's reason
+ *  the moment the signal aborts, which is what undici does. */
+function hangsUntilAborted(
+  fetchMock: ReturnType<typeof vi.fn>,
+  seen: { signal?: AbortSignal } = {},
+) {
+  fetchMock.mockImplementation(
+    (_url: unknown, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        seen.signal = signal;
+        if (signal.aborted) return reject(signal.reason);
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      }),
+  );
+  return seen;
 }
 
 describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)", () => {
@@ -572,9 +601,10 @@ describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)"
     resolvesTo("93.184.216.34");
     fetchMock.mockResolvedValueOnce(redirectTo(302, "//evil.example/x"));
 
-    await expect(safeFetch("http://example.com/start")).rejects.toThrow(
-      "Redirect to a different host (evil.example) is not allowed.",
-    );
+    await expect(safeFetch("http://example.com/start")).rejects.toMatchObject({
+      code: "cross_host_redirect",
+      redirectHost: "evil.example",
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -657,5 +687,533 @@ describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)"
     const res = await safeFetch(asked);
 
     expect(res.url).toBe(asked);
+  });
+});
+
+describe("safeFetch (the caller's deadline governs)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockLookup.mockReset();
+    resolvesTo("93.184.216.34");
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** Settle a safeFetch promise without leaving a rejection unhandled while
+   *  fake time is advanced under it. */
+  function track<T>(p: Promise<T>) {
+    const state: { done: boolean; value?: T; error?: unknown } = {
+      done: false,
+    };
+    p.then(
+      (value) => Object.assign(state, { done: true, value }),
+      (error) => Object.assign(state, { done: true, error }),
+    );
+    return state;
+  }
+
+  const timeoutReason = () =>
+    new DOMException(
+      "The operation was aborted due to timeout",
+      "TimeoutError",
+    );
+
+  it("cuts a call with no signal off at the 15s default, with a TimeoutError", async () => {
+    const seen = hangsUntilAborted(fetchMock);
+    const outcome = track(safeFetch("https://example.com/"));
+
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(outcome.done).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(outcome.done).toBe(true);
+    expect(outcome.error).toMatchObject({ code: "timeout" });
+    expect(seen.signal?.reason).toMatchObject({ name: "TimeoutError" });
+  });
+
+  // The audit's repro: SCAN_FETCH_TIMEOUT_MS raised to 60s, request cut off at
+  // 15s anyway because the compiled timer ran next to the caller's.
+  it("lets a caller signal outlive the 15s default", async () => {
+    const caller = new AbortController();
+    setTimeout(() => caller.abort(timeoutReason()), 60_000);
+    fetchMock.mockImplementation(
+      (_url: unknown, init?: RequestInit) =>
+        new Promise((resolve, reject) => {
+          const signal = init?.signal as AbortSignal;
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+          setTimeout(
+            () => resolve(new Response("slow", { status: 200 })),
+            40_000,
+          );
+        }),
+    );
+
+    const outcome = track(
+      safeFetch("https://example.com/", { signal: caller.signal }),
+    );
+    await vi.advanceTimersByTimeAsync(40_000);
+
+    expect(outcome.done).toBe(true);
+    expect(outcome.error).toBeUndefined();
+    expect((outcome.value as Response).status).toBe(200);
+  });
+
+  it("aborts at the caller's own deadline and surfaces the caller's reason", async () => {
+    const caller = new AbortController();
+    const reason = timeoutReason();
+    setTimeout(() => caller.abort(reason), 20_000);
+    const seen = hangsUntilAborted(fetchMock);
+
+    const outcome = track(
+      safeFetch("https://example.com/", { signal: caller.signal }),
+    );
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(outcome.done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(outcome.error).toMatchObject({ code: "timeout" });
+    expect(seen.signal?.reason).toBe(reason);
+    expect((outcome.error as Error).cause).toBe(reason);
+  });
+
+  it("falls back to the registry maximum for a caller signal that never aborts", async () => {
+    const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+    const max = SETTINGS_REGISTRY.SCAN_FETCH_TIMEOUT_MS.max;
+    expect(max).toBe(120_000);
+    const seen = hangsUntilAborted(fetchMock);
+
+    const outcome = track(
+      safeFetch("https://example.com/", {
+        signal: new AbortController().signal,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(max - 1);
+    expect(outcome.done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(outcome.error).toMatchObject({ code: "timeout" });
+    expect(seen.signal?.reason).toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("treats an explicit null signal as no signal", async () => {
+    hangsUntilAborted(fetchMock);
+
+    const outcome = track(safeFetch("https://example.com/", { signal: null }));
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(outcome.error).toMatchObject({ code: "timeout" });
+  });
+
+  it("recognises a deadline from a runtime that wraps the reason in a generic AbortError", async () => {
+    // Older undici rejects with its own AbortError rather than signal.reason.
+    // The signal still says why it aborted.
+    fetchMock.mockImplementation(
+      (_url: unknown, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          (init?.signal as AbortSignal).addEventListener(
+            "abort",
+            () =>
+              reject(
+                new DOMException("This operation was aborted", "AbortError"),
+              ),
+            { once: true },
+          );
+        }),
+    );
+
+    const outcome = track(safeFetch("https://example.com/"));
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(outcome.error).toMatchObject({
+      code: "timeout",
+      message: "This operation was aborted",
+    });
+  });
+});
+
+describe("safeFetch (abort reasons survive the signal merge)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockLookup.mockReset();
+    resolvesTo("93.184.216.34");
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Let safeFetch get as far as awaiting fetch (it awaits a DNS lookup first). */
+  const untilFetchStarted = () =>
+    vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+  it("hands fetch the caller's TimeoutError, not a bare AbortError", async () => {
+    const caller = new AbortController();
+    const seen = hangsUntilAborted(fetchMock);
+
+    const outcome = safeFetch("https://example.com/", {
+      signal: caller.signal,
+    }).catch((e) => e);
+    await untilFetchStarted();
+    const reason = new DOMException(
+      "The operation was aborted due to timeout",
+      "TimeoutError",
+    );
+    caller.abort(reason);
+
+    expect(await outcome).toMatchObject({ code: "timeout" });
+    expect(seen.signal?.reason).toBe(reason);
+  });
+
+  it("hands fetch an already-aborted caller signal's own reason", async () => {
+    const reason = new DOMException(
+      "The operation was aborted due to timeout",
+      "TimeoutError",
+    );
+    hangsUntilAborted(fetchMock);
+
+    await expect(
+      safeFetch("https://example.com/", { signal: AbortSignal.abort(reason) }),
+    ).rejects.toMatchObject({ code: "timeout", cause: reason });
+  });
+
+  it("lets a cancelled scan's AbortError through untouched and unclassified", async () => {
+    // Callers tell a cancel from a failure by the AbortError, and a cancel is
+    // not one of the five codes: wrapping it would turn Cancel into a failure.
+    const cancel = new AbortController();
+    hangsUntilAborted(fetchMock);
+
+    const outcome = safeFetch("https://example.com/", {
+      signal: cancel.signal,
+    }).catch((e) => e);
+    await untilFetchStarted();
+    cancel.abort();
+
+    const err = await outcome;
+    expect(err).toBe(cancel.signal.reason);
+    expect(err).not.toBeInstanceOf(SafeFetchError);
+    expect(err.name).toBe("AbortError");
+  });
+
+  it("forwards the reason on the second hop of a redirect chain", async () => {
+    const caller = new AbortController();
+    const seenSignals: AbortSignal[] = [];
+    fetchMock
+      .mockImplementationOnce((_url: unknown, init?: RequestInit) => {
+        seenSignals.push(init?.signal as AbortSignal);
+        return Promise.resolve(redirectTo(302, "https://example.com/two"));
+      })
+      .mockImplementationOnce(
+        (_url: unknown, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            const signal = init?.signal as AbortSignal;
+            seenSignals.push(signal);
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          }),
+      );
+
+    const outcome = safeFetch("https://example.com/one", {
+      signal: caller.signal,
+    }).catch((e) => e);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const reason = new DOMException("t", "TimeoutError");
+    caller.abort(reason);
+
+    expect(await outcome).toMatchObject({ code: "timeout" });
+    expect(seenSignals).toHaveLength(2);
+    expect(seenSignals[1].reason).toBe(reason);
+  });
+});
+
+describe("safeFetch (thrown errors carry a code)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockLookup.mockReset();
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("cross_host_redirect names the host it refused to follow, message unchanged", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock.mockResolvedValueOnce(
+      redirectTo(302, "https://app.other.example/login"),
+    );
+
+    const err = await safeFetch("https://example.com/").catch((e) => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err.code).toBe("cross_host_redirect");
+    expect(err.redirectHost).toBe("app.other.example");
+    expect(err.message).toBe(
+      "Redirect to a different host (app.other.example) is not allowed.",
+    );
+  });
+
+  it("cross_host_redirect also covers a redirect straight to a private address", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock.mockResolvedValueOnce(
+      redirectTo(302, "http://169.254.169.254/latest/meta-data/"),
+    );
+
+    await expect(safeFetch("https://example.com/")).rejects.toMatchObject({
+      code: "cross_host_redirect",
+      redirectHost: "169.254.169.254",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  describe("blocked", () => {
+    it("a hostname that resolves to a private address", async () => {
+      resolvesTo("192.168.1.10");
+      const err = await safeFetch("http://internal.example.com/").catch(
+        (e) => e,
+      );
+      expect(err.code).toBe("blocked");
+      expect(err.message).toBe(
+        "Domain resolves to internal IP address. Scanning internal networks is not allowed.",
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("a private IP literal", async () => {
+      const err = await safeFetch("http://169.254.169.254/").catch((e) => e);
+      expect(err.code).toBe("blocked");
+      expect(err.message).toBe(
+        "Scanning internal/private IP addresses is not allowed for security reasons.",
+      );
+    });
+
+    it.each([
+      [
+        "file:///etc/passwd",
+        "Invalid protocol - only http: and https: are allowed",
+      ],
+      ["not a url", "Invalid URL format"],
+      ["http://localhost/", "Access to local hostnames is not allowed"],
+      ["http://db.internal/", "Access to local hostnames is not allowed"],
+      ["http://devbox/", "Access to unqualified hostnames is not allowed"],
+    ])("the syntactic gate on %s", async (url, message) => {
+      const err = await safeFetch(url).catch((e) => e);
+      expect(err.code).toBe("blocked");
+      expect(err.message).toBe(message);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("a host outside allowedHostnames", async () => {
+      const err = await safeFetch("https://other.example/", undefined, [
+        "example.com",
+      ]).catch((e) => e);
+      expect(err.code).toBe("blocked");
+      expect(err.message).toBe(
+        "Hostname other.example is not in the allowed list",
+      );
+    });
+
+    it("a same-host redirect whose address rebinds to a private one", async () => {
+      mockLookup
+        .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }])
+        .mockResolvedValueOnce([{ address: "10.0.0.9", family: 4 }]);
+      fetchMock.mockResolvedValueOnce(
+        redirectTo(302, "https://example.com/next"),
+      );
+
+      await expect(
+        safeFetch("https://example.com/start"),
+      ).rejects.toMatchObject({ code: "blocked" });
+    });
+
+    it("a same-host redirect that changes the scheme", async () => {
+      resolvesTo("93.184.216.34");
+      fetchMock.mockResolvedValueOnce(redirectTo(302, "ftp://example.com/x"));
+
+      const err = await safeFetch("https://example.com/start").catch((e) => e);
+      expect(err.code).toBe("blocked");
+      expect(err.message).toMatch(
+        /^Redirect to ftp:\/\/example\.com is not allowed:/,
+      );
+    });
+
+    it("a sign-out URL on an authenticated request", async () => {
+      resolvesTo("93.184.216.34");
+      const binding = {
+        origin: "https://example.com",
+        lost: false,
+        authHeadersFor: () => ({ cookie: "sid=x" }),
+        observe() {},
+      };
+
+      await expect(
+        safeFetch("https://example.com/logout", undefined, undefined, binding),
+      ).rejects.toMatchObject({ code: "blocked" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("unreachable", () => {
+    it("a name that does not resolve is the target being down, not a block", async () => {
+      const dnsError = Object.assign(
+        new Error("getaddrinfo ENOTFOUND nope.example"),
+        { code: "ENOTFOUND" },
+      );
+      mockLookup.mockRejectedValue(dnsError);
+
+      const err = await safeFetch("https://nope.example/").catch((e) => e);
+
+      expect(err.code).toBe("unreachable");
+      expect(err.message).toBe(
+        "DNS resolution failed — cannot verify target is safe to scan.",
+      );
+      expect(err.cause).toBe(dnsError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("a name that resolves to nothing", async () => {
+      mockLookup.mockResolvedValue([]);
+
+      await expect(safeFetch("https://empty.example/")).rejects.toMatchObject({
+        code: "unreachable",
+        message:
+          "Domain resolved to no addresses — cannot verify target is safe to scan.",
+      });
+    });
+
+    it("a same-host redirect whose name stops resolving", async () => {
+      mockLookup
+        .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }])
+        .mockRejectedValueOnce(new Error("ESERVFAIL"));
+      fetchMock.mockResolvedValueOnce(
+        redirectTo(302, "https://example.com/next"),
+      );
+
+      await expect(
+        safeFetch("https://example.com/start"),
+      ).rejects.toMatchObject({ code: "unreachable" });
+    });
+
+    it.each([
+      "ECONNREFUSED",
+      "ECONNRESET",
+      "EHOSTUNREACH",
+      "ENETUNREACH",
+      "ENOTFOUND",
+      "EAI_AGAIN",
+      "UND_ERR_SOCKET",
+    ])("fetch failing with cause.code %s", async (code) => {
+      resolvesTo("93.184.216.34");
+      const failure = fetchFailed(code);
+      fetchMock.mockRejectedValueOnce(failure);
+
+      const err = await safeFetch("https://example.com/").catch((e) => e);
+
+      expect(err.code).toBe("unreachable");
+      expect(err.message).toBe("fetch failed");
+      expect(err.cause).toBe(failure);
+      expect(err.cause.cause.code).toBe(code);
+    });
+
+    it("a dual-stack connect failure, where the code sits on an inner error", async () => {
+      resolvesTo("93.184.216.34");
+      const aggregate = new AggregateError(
+        [
+          Object.assign(new Error("connect ECONNREFUSED ::1:443"), {
+            code: "ECONNREFUSED",
+          }),
+          Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:443"), {
+            code: "ECONNREFUSED",
+          }),
+        ],
+        "",
+      );
+      fetchMock.mockRejectedValueOnce(
+        new TypeError("fetch failed", { cause: aggregate }),
+      );
+
+      await expect(safeFetch("https://example.com/")).rejects.toMatchObject({
+        code: "unreachable",
+      });
+    });
+  });
+
+  describe("tls", () => {
+    it.each([
+      "CERT_HAS_EXPIRED",
+      "CERT_NOT_YET_VALID",
+      "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+      "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+      "DEPTH_ZERO_SELF_SIGNED_CERT",
+      "SELF_SIGNED_CERT_IN_CHAIN",
+      "ERR_TLS_CERT_ALTNAME_INVALID",
+      "ERR_SSL_WRONG_VERSION_NUMBER",
+      "ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE",
+    ])("fetch failing with cause.code %s", async (code) => {
+      resolvesTo("93.184.216.34");
+      fetchMock.mockRejectedValueOnce(fetchFailed(code));
+
+      const err = await safeFetch("https://example.com/").catch((e) => e);
+
+      expect(err.code).toBe("tls");
+      expect(err.message).toBe("fetch failed");
+      expect(err.cause.cause.code).toBe(code);
+    });
+  });
+
+  describe("timeout", () => {
+    it.each([
+      "UND_ERR_CONNECT_TIMEOUT",
+      "UND_ERR_HEADERS_TIMEOUT",
+      "UND_ERR_BODY_TIMEOUT",
+      "ETIMEDOUT",
+    ])("fetch failing with cause.code %s", async (code) => {
+      resolvesTo("93.184.216.34");
+      fetchMock.mockRejectedValueOnce(fetchFailed(code));
+
+      const err = await safeFetch("https://example.com/").catch((e) => e);
+
+      expect(err.code).toBe("timeout");
+      expect(err.message).toBe("fetch failed");
+    });
+  });
+
+  describe("everything else", () => {
+    it("rethrows a failure it cannot classify as the very error fetch threw", async () => {
+      resolvesTo("93.184.216.34");
+      const failure = new TypeError("fetch failed", {
+        cause: Object.assign(new Error("bad header"), {
+          code: "ERR_INVALID_CHAR",
+        }),
+      });
+      fetchMock.mockRejectedValueOnce(failure);
+
+      const err = await safeFetch("https://example.com/").catch((e) => e);
+
+      expect(err).toBe(failure);
+      expect(err).not.toBeInstanceOf(SafeFetchError);
+    });
+
+    it("throws a SafeFetchError an Error subclass named for what it is", async () => {
+      resolvesTo("93.184.216.34");
+      fetchMock.mockRejectedValueOnce(fetchFailed("ECONNREFUSED"));
+
+      const err = await safeFetch("https://example.com/").catch((e) => e);
+
+      expect(err).toBeInstanceOf(SafeFetchError);
+      expect(err).toBeInstanceOf(Error);
+      expect(err.name).toBe("SafeFetchError");
+    });
   });
 });
