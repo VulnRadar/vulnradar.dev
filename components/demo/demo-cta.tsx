@@ -35,7 +35,7 @@ export function DemoCTA() {
                 asChild
                 size="lg"
                 shape="pill"
-                className="h-11 px-6 gap-2 w-full"
+                className="h-11 px-6 gap-2"
               >
                 <Link href={ROUTES.DASHBOARD}>
                   <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
@@ -48,7 +48,7 @@ export function DemoCTA() {
                   asChild
                   size="lg"
                   shape="pill"
-                  className="h-11 px-6 gap-2 w-full"
+                  className="h-11 px-6 gap-2"
                 >
                   <Link href={ROUTES.SIGNUP}>
                     Create a free account
@@ -61,7 +61,7 @@ export function DemoCTA() {
                     size="lg"
                     shape="pill"
                     variant="outline"
-                    className="h-11 px-6 w-full"
+                    className="h-11 px-6"
                   >
                     <Link href={ROUTES.PRICING}>See the limits</Link>
                   </Button>

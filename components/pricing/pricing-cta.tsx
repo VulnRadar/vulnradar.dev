@@ -32,12 +32,7 @@ export function PricingCta({ isLoggedIn }: PricingCtaProps) {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
-            <Button
-              asChild
-              size="lg"
-              shape="pill"
-              className="h-11 px-6 gap-2 w-full"
-            >
+            <Button asChild size="lg" shape="pill" className="h-11 px-6 gap-2">
               <Link href={isLoggedIn ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
                 {isLoggedIn ? "Go to Scanner" : "Start scanning free"}
                 <ArrowRight className="h-4 w-4" />
@@ -48,7 +43,7 @@ export function PricingCta({ isLoggedIn }: PricingCtaProps) {
               size="lg"
               shape="pill"
               variant="outline"
-              className="h-11 px-6 w-full"
+              className="h-11 px-6"
             >
               <Link href={ROUTES.DOCS}>Read the docs</Link>
             </Button>

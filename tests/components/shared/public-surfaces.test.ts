@@ -111,6 +111,27 @@ describe("closing calls to action are pills", () => {
   });
 });
 
+describe("the closing call to action's buttons take their width from the row", () => {
+  // The three bands put their buttons in `flex flex-col sm:flex-row
+  // lg:flex-col`. Column direction already stretches them to one width. With
+  // the old Link wrapper a `w-full` on the Button was harmless, because it
+  // resolved against a shrink-to-fit anchor. On a Button asChild the class is
+  // on the anchor that IS the flex item, so in the sm row two `width: 100%`
+  // items split the whole band between them: 348px and 350px buttons on a
+  // 768px tablet, measured, where the natural widths are 167px and 139px.
+  it.each([
+    "components/pricing/pricing-cta.tsx",
+    "components/demo/demo-cta.tsx",
+    "components/landing/landing-cta.tsx",
+  ])("%s", (rel) => {
+    const buttons = code(rel).match(/<Button\b[^>]*>/g) ?? [];
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const button of buttons) {
+      expect(button, `${rel}: ${button}`).not.toMatch(/\bw-full\b/);
+    }
+  });
+});
+
 describe("the plan comparison table keeps its row labels in view on a phone", () => {
   const src = code("components/pricing/pricing-features.tsx");
 
