@@ -78,7 +78,9 @@ describe("RouteError keeps the page's chrome", () => {
 });
 
 describe("each route boundary picks the chrome its page wears", () => {
-  /** Boundaries whose page is reachable logged out and wears a public shell. */
+  /** Boundaries whose page does not wear the signed-in app header: a logged-out
+   *  visitor can reach it (/contact, /public-scans, /checkout/success), or it
+   *  is the checkout funnel, which drops the app nav on purpose. */
   const PUBLIC = ["contact", "checkout", "public-scans"];
 
   const boundaries = fs
@@ -108,7 +110,7 @@ describe("each route boundary picks the chrome its page wears", () => {
     }
   });
 
-  it("the public routes' pages really do wear a public shell", () => {
+  it("the public routes' pages really do wear a shell of their own", () => {
     expect(read("app/contact/page.tsx")).toContain("<PublicPageShell");
     expect(read("app/checkout/[productId]/page.tsx")).toContain(
       "<CheckoutShell",

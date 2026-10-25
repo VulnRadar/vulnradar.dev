@@ -34,9 +34,9 @@ export function LanguageSelect({ className }: { className?: string }) {
   return (
     <div className={className}>
       {/* Busy is aria-busy on the trigger, not `disabled` on the Select. A
-          disabled trigger cannot keep focus, and the Select hands focus back
-          to it as the list closes, so a choice made from the keyboard left
-          focus on the page body. A second pick while a save is in flight is
+          disabled trigger cannot hold focus, so a Select that disabled itself
+          while saving would leave a keyboard user's focus on the page body
+          once the list closed. A second pick while a save is in flight is
           ignored in choose() instead. */}
       <Select value={current} onValueChange={choose}>
         {/* The trigger holds the value and nothing else. A globe next to
