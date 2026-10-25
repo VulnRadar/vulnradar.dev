@@ -5,6 +5,9 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/providers/auth-provider";
 import { LazyMount } from "@/components/shared/lazy-mount";
+import { Button } from "@/components/ui/button";
+import { modalPanel } from "@/components/ui/modal-grammar";
+import { cn } from "@/lib/ui/utils";
 
 // The modal is ~490 lines and only a signed-in account with terms to accept
 // ever sees it, but this gate wraps every page, so a static import put it in
@@ -13,6 +16,31 @@ import { LazyMount } from "@/components/shared/lazy-mount";
 // and inert, so there is no window in which the app is usable.
 const loadTosModal = () =>
   import("@/components/modals/tos-modal").then((mod) => mod.TosModal);
+
+// What stands in if that chunk never arrives (a stale deploy, a dropped
+// connection). The page behind is blurred and inert, so without this the
+// reader is left on a dead screen with nothing to press: the one place a
+// failed import cannot just leave the surface absent. A reload fetches the
+// current build and asks again.
+function TermsDialogUnavailable() {
+  return (
+    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-background/65 backdrop-blur-xl" />
+      <div role="alert" className={cn(modalPanel, "grid max-w-sm gap-4 p-5")}>
+        <div className="grid gap-1">
+          <p className="text-base font-semibold tracking-tight text-foreground">
+            The terms dialog did not load
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Reload the page to try again. The terms have to be accepted before
+            the app opens.
+          </p>
+        </div>
+        <Button onClick={() => window.location.reload()}>Reload page</Button>
+      </div>
+    </div>
+  );
+}
 
 // Paths the terms modal must never cover. Beyond the auth entry points, these
 // are the flows a signed-in account with pending or needs_reaccept status still
@@ -90,6 +118,7 @@ export function TosGate({ children }: { children: React.ReactNode }) {
         <LazyMount
           wanted
           load={loadTosModal}
+          fallback={<TermsDialogUnavailable />}
           componentProps={{
             onAccept: () => setAcceptedNow(true),
             isUpdate: status === "needs_reaccept",

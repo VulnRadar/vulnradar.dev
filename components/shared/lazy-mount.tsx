@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 interface LazyMountProps<P extends object> {
   /** Flips true when the surface has something to show. Never flipped back:
@@ -13,6 +13,11 @@ interface LazyMountProps<P extends object> {
   load: () => Promise<ComponentType<P>>;
   /** Props handed to the component once it has loaded. */
   componentProps?: P;
+  /** Drawn if the import fails. Most surfaces leave this off: they were
+   *  absent before they were wanted, and staying absent is a fair failure.
+   *  It is for the one that something else is waiting on, where a missing
+   *  surface is a dead end rather than a missing extra. */
+  fallback?: ReactNode;
 }
 
 /**
@@ -33,8 +38,10 @@ export function LazyMount<P extends object = Record<string, never>>({
   wanted,
   load,
   componentProps,
+  fallback,
 }: LazyMountProps<P>) {
   const [Component, setComponent] = useState<ComponentType<P> | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!wanted || Component) return;
@@ -46,15 +53,18 @@ export function LazyMount<P extends object = Record<string, never>>({
         if (!cancelled) setComponent(() => loaded);
       })
       .catch((err: unknown) => {
-        // A chunk that 404s after a deploy lands here. The surface stays
-        // unmounted, which is what it was before it was ever wanted, so this
-        // reports and leaves it at that.
+        // A chunk that 404s after a deploy, or a dropped connection, lands
+        // here. The surface stays unmounted, which is what it was before it
+        // was ever wanted, so this reports it and draws the fallback if the
+        // caller gave one.
         console.error("[lazy-mount] failed to load:", err);
+        if (!cancelled) setFailed(true);
       });
     return () => {
       cancelled = true;
     };
   }, [wanted, Component, load]);
 
-  return Component ? <Component {...(componentProps as P)} /> : null;
+  if (Component) return <Component {...(componentProps as P)} />;
+  return failed ? (fallback ?? null) : null;
 }

@@ -168,6 +168,13 @@ describe("LazyMount", () => {
   it("reports a chunk that fails to load instead of swallowing it", () => {
     expect(src).toMatch(/\.catch\(\(err: unknown\) => \{[\s\S]*console\.error/);
   });
+
+  it("draws the caller's fallback when the import fails, and only then", () => {
+    expect(src).toContain("fallback?: ReactNode");
+    expect(src).toContain("if (!cancelled) setFailed(true)");
+    expect(src).toContain("if (Component) return <Component");
+    expect(src).toContain("return failed ? (fallback ?? null) : null");
+  });
 });
 
 describe("the command palette loads on the first Cmd or Ctrl+K", () => {
@@ -256,5 +263,17 @@ describe("the terms modal loads only when acceptance is needed", () => {
 
   it("keeps the page behind it blurred and inert while the chunk loads", () => {
     expect(src).toContain("pointer-events-none select-none opacity-20 blur-xs");
+  });
+
+  it("offers a reload if the chunk never arrives, so the inert page is not a dead end", () => {
+    // The page behind the gate cannot be clicked, so a modal that failed to
+    // import would otherwise leave nothing on screen to press.
+    const needed = src.slice(
+      src.indexOf('(status === "pending" || status === "needs_reaccept")'),
+    );
+    expect(needed).toContain("fallback={<TermsDialogUnavailable />}");
+    expect(src).toMatch(
+      /function TermsDialogUnavailable\(\)[\s\S]*window\.location\.reload\(\)/,
+    );
   });
 });
