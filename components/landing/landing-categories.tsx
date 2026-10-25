@@ -46,9 +46,13 @@ export function LandingCategories() {
                 link to none of them, so the site's strongest page sent no
                 traffic into the surface it was describing. Every row is a link
                 now, and this is the index. */}
+            {/* py-1.5 with the margins pulled back by the same amount, so the
+                link keeps its place: a bare text-sm anchor is 20px tall, under
+                the 24px floor, and this is the link the whole section exists
+                to send people through. */}
             <Link
               href="/checks"
-              className="mt-1 inline-block text-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              className="-mt-0.5 -mb-1.5 inline-block py-1.5 text-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             >
               Browse every check
             </Link>
@@ -142,9 +146,11 @@ export function LandingCategories() {
                         isFlagship ? "text-primary" : "text-foreground",
                       )}
                     >
+                      {/* The row is 44px and the text is 20px. Padding on the
+                          anchor, pulled back so the row keeps its height. */}
                       <Link
                         href={`/checks/category/${key}`}
-                        className="hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        className="-my-1.5 block w-fit py-1.5 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                       >
                         {CATEGORY_META[key].label}
                       </Link>

@@ -39,13 +39,18 @@ export function Footer() {
   const t = useTranslations("footer");
   return (
     <footer className="border-t border-border bg-background mt-auto">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      {/* max-w-6xl and a flat px-6, the measure the nav and every public page
+          above it use. This was max-w-7xl with a lg:px-8, so on a wide screen
+          the footer's wordmark started about 56px to the left of the nav's. */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+        {/* Two columns below md. One column stacked the brand block and 22 links
+            into a screen and a half on a phone. The brand block spans both. */}
         <nav
           aria-label="Footer navigation"
-          className="grid grid-cols-1 md:grid-cols-5 gap-10 mb-12"
+          className="grid grid-cols-2 md:grid-cols-5 gap-x-6 gap-y-10 md:gap-10 mb-12"
         >
           {/* Brand */}
-          <div className="md:col-span-2">
+          <div className="col-span-2">
             <div className="flex items-center gap-2.5 mb-4">
               <ThemedLogo
                 width={24}
@@ -66,16 +71,17 @@ export function Footer() {
             <p className="text-sm text-muted-foreground leading-relaxed mb-5 max-w-xs">
               {t("tagline")}
             </p>
-            <Link href={ROUTES.DONATE}>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 h-9 border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary hover:border-primary/30"
-              >
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="gap-2 h-9 border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary hover:border-primary/30"
+            >
+              <Link href={ROUTES.DONATE}>
                 <Heart className="h-3.5 w-3.5 fill-current" />
                 {t("support", { app: APP_NAME })}
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
 
           {/* Product */}
