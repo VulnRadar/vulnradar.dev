@@ -1,3 +1,8 @@
+import {
+  PAGE_UNREACHABLE_INCOMPLETE,
+  PAGE_UNREACHABLE_LABEL,
+} from "./target-failure";
+
 /**
  * Plain-language names for the areas `ScanResult.incomplete` lists.
  *
@@ -39,6 +44,10 @@ export const INCOMPLETE_LABELS: Record<string, string> = {
   // headers and the files beside it was skipped.
   "bot-challenge":
     "The page, its headers and its files: the site showed the scanner a bot challenge instead",
+  // The page fetch failed for a reason that says something about the target
+  // (lib/scanner/target-failure.ts), so the scan ran without a page. Without
+  // this entry the report showed the raw slug as the area that was not checked.
+  [PAGE_UNREACHABLE_INCOMPLETE]: PAGE_UNREACHABLE_LABEL,
 };
 
 /**

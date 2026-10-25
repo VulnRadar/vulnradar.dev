@@ -15,6 +15,7 @@ import {
 import { getPlannedAsyncBranches } from "@/lib/scanner/async-checks";
 import { PAGE_CHECKS_INCOMPLETE } from "@/lib/scanner/engine";
 import { BOT_CHALLENGE_INCOMPLETE } from "@/lib/scanner/bot-challenge";
+import { PAGE_UNREACHABLE_INCOMPLETE } from "@/lib/scanner/target-failure";
 
 /**
  * `ScanResult.incomplete` carries engine slugs, and two surfaces render them
@@ -42,6 +43,12 @@ describe("incomplete area labels", () => {
     expect(INCOMPLETE_LABELS["authenticated-session"]).toBeTruthy();
     // Every scan path, when the site answered with a bot challenge.
     expect(INCOMPLETE_LABELS[BOT_CHALLENGE_INCOMPLETE]).toBeTruthy();
+    // executeScan, when the page fetch failed for a reason that is the
+    // target's: without an entry the report names the slug itself.
+    expect(INCOMPLETE_LABELS[PAGE_UNREACHABLE_INCOMPLETE]).toBeTruthy();
+    expect(describeIncompleteAreas([PAGE_UNREACHABLE_INCOMPLETE])[0]).not.toBe(
+      PAGE_UNREACHABLE_INCOMPLETE,
+    );
   });
 
   it("keeps an unknown area visible rather than dropping it", () => {
