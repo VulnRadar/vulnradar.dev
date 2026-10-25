@@ -25,7 +25,8 @@
 
 import { executeScan, type ProtocolType } from "./execute-scan";
 import { finalizeScanFailureQuietly } from "./scan-jobs";
-import { APP_NAME } from "@/lib/config/constants";
+import { BULK_STOPPED_MESSAGE, bulkDeadlineMessage } from "./failure-messages";
+import { logError } from "@/lib/logging/log";
 
 /** One admitted URL: its reserved row plus everything executeScan needs. */
 export interface BulkQueuedScan {
@@ -43,6 +44,8 @@ export interface RunBulkBatchParams {
   authedUserId: number;
   /** BULK_SCAN_TIMEOUT_SECONDS: the whole batch's wall-clock budget. */
   timeoutSeconds: number;
+  /** "web" or "api", as the rows were inserted. Only labels the logs. */
+  source?: string;
 }
 
 /**
@@ -65,6 +68,7 @@ export async function runBulkBatch({
   scans,
   authedUserId,
   timeoutSeconds,
+  source,
 }: RunBulkBatchParams): Promise<void> {
   const deadline = Date.now() + timeoutSeconds * 1000;
   const unstarted = new Set(scans.map((s) => s.scanId));
@@ -83,6 +87,7 @@ export async function runBulkBatch({
           selectedScanners: null,
           authedUserId,
           categoriesTotal: scan.categoriesTotal,
+          source,
         });
       } catch (err) {
         // executeScan finalizes its own failures; reaching here means the
@@ -90,7 +95,12 @@ export async function runBulkBatch({
         // watchdog was armed), which would otherwise leave this row 'pending'.
         const message =
           err instanceof Error ? err.message : "Scan failed to start.";
-        console.error(`[${APP_NAME}] Bulk scan job failed:`, message);
+        logError("scan", "bulk scan failed to start", err, {
+          scanId: scan.scanId,
+          userId: authedUserId,
+          source,
+          url: scan.normalizedUrl,
+        });
         await finalizeScanFailureQuietly(scan.scanId, message);
       }
     }
@@ -98,11 +108,16 @@ export async function runBulkBatch({
     if (unstarted.size > 0) {
       const timedOut = Date.now() >= deadline;
       const reason = timedOut
-        ? `Bulk scan batch exceeded its ${timeoutSeconds}s time limit before this URL ran.`
-        : "The bulk scan batch this URL belonged to stopped before it ran.";
+        ? bulkDeadlineMessage(timeoutSeconds)
+        : BULK_STOPPED_MESSAGE;
+      // not_run, not a failure of the engine: these rows never started, so
+      // counting them toward the failure rate made one slow batch look like an
+      // incident. Their daily quota was charged at admission and stays charged
+      // (there is no refund path, by decision); the kind is what lets an
+      // operator see that is what happened.
       await Promise.all(
         [...unstarted].map((scanId) =>
-          finalizeScanFailureQuietly(scanId, reason),
+          finalizeScanFailureQuietly(scanId, reason, "not_run"),
         ),
       );
     }

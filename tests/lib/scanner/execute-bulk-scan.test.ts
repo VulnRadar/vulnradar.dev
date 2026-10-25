@@ -114,6 +114,86 @@ describe("runBulkBatch", () => {
     consoleErrorSpy.mockRestore();
   });
 
+  // The dispatch catch used to log only error.message, so the stack was gone
+  // and the line named neither the scan, the user nor the URL.
+  it("logs a dispatch failure with the Error itself and the ids that find the row", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const boom = new Error("settings unavailable");
+    mockExecuteScan.mockRejectedValueOnce(boom);
+
+    await runBulkBatch({
+      scans: [queuedScan(9, "https://nine.example.com/")],
+      authedUserId: 42,
+      timeoutSeconds: 1800,
+      source: "api",
+    });
+
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    const [message, context, err] = consoleErrorSpy.mock.calls[0];
+    expect(String(message)).toContain("[scan]");
+    expect(context).toEqual({
+      scanId: 9,
+      userId: 42,
+      source: "api",
+      url: "https://nine.example.com/",
+    });
+    expect(err).toBe(boom);
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("tells executeScan how the batch was started", async () => {
+    await runBulkBatch({
+      scans: [queuedScan(7, "https://example.com/")],
+      authedUserId: 42,
+      timeoutSeconds: 1800,
+      source: "api",
+    });
+
+    expect(mockExecuteScan.mock.calls[0][0].source).toBe("api");
+  });
+
+  it("records not_run, with the stopped-batch wording, when the loop dies for a reason other than the clock", async () => {
+    // Only reachable when something between rows throws; the deadline is far
+    // away, so the reason must not claim a time limit.
+    let calls = 0;
+    mockExecuteScan.mockImplementation(async () => {
+      calls++;
+    });
+    const scans = [
+      queuedScan(1, "https://one.example.com/"),
+      queuedScan(2, "https://two.example.com/"),
+    ];
+    // A getter that throws on the second element stops the for-of loop.
+    const throwing = new Proxy(scans, {
+      get(target, prop, receiver) {
+        if (prop === Symbol.iterator) {
+          return function* () {
+            yield target[0];
+            throw new Error("iterator exploded");
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    await expect(
+      runBulkBatch({
+        scans: throwing,
+        authedUserId: 42,
+        timeoutSeconds: 1800,
+      }),
+    ).rejects.toThrow("iterator exploded");
+
+    expect(calls).toBe(1);
+    expect(mockFinalizeScanFailure).toHaveBeenCalledWith(
+      2,
+      "The bulk scan batch this URL belonged to stopped before it ran.",
+      "not_run",
+    );
+  });
+
   it("stops at the batch deadline and fails every URL that never ran", async () => {
     // A zero-second budget is already past its deadline on the first check, so
     // nothing runs and all three rows have to be closed out.
@@ -130,9 +210,11 @@ describe("runBulkBatch", () => {
     expect(mockExecuteScan).not.toHaveBeenCalled();
     expect(mockFinalizeScanFailure).toHaveBeenCalledTimes(3);
     for (const scanId of [1, 2, 3]) {
+      // not_run: the row never started, so it is not an engine failure.
       expect(mockFinalizeScanFailure).toHaveBeenCalledWith(
         scanId,
         expect.stringMatching(/exceeded its 0s time limit/),
+        "not_run",
       );
     }
   });

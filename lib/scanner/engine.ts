@@ -27,6 +27,8 @@ import {
 import { buildPageContext } from "./page-context";
 import { dedupeFindings } from "./dedupe";
 import { generateId } from "./_helpers";
+import { logError } from "@/lib/logging/log";
+import { currentScanId } from "@/lib/database/request-context";
 
 export interface SyncCheckResult {
   findings: Vulnerability[];
@@ -362,9 +364,11 @@ function* checkPasses(
         // is neither a finding nor evidence of a clean result.
         checksErrored++;
         erroredChecks.push(check.checkId ?? "unknown");
-        console.error(
-          `[scanner] check "${check.checkId ?? "unknown"}" threw and did not run:`,
+        logError(
+          "scanner",
+          `check "${check.checkId ?? "unknown"}" threw and did not run`,
           err,
+          { scanId: currentScanId() ?? undefined, url },
         );
       }
       if (++sinceYield >= YIELD_EVERY_CHECKS) {
@@ -402,10 +406,10 @@ function* checkPasses(
         // Same guarantee, and the same accounting, as the legacy loop above.
         checksErrored++;
         erroredChecks.push(check.id);
-        console.error(
-          `[scanner] check "${check.id}" threw and did not run:`,
-          err,
-        );
+        logError("scanner", `check "${check.id}" threw and did not run`, err, {
+          scanId: currentScanId() ?? undefined,
+          url,
+        });
       }
     }
 

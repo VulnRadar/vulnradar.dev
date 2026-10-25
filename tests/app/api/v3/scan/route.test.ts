@@ -436,6 +436,56 @@ describe("POST /api/v3/scan", () => {
     );
   });
 
+  it("tells executeScan how the scan was started, so its failure log can say", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 78 }] });
+
+    await POST(postRequest({ url: "https://example.com" }));
+
+    expect(mockExecuteScan).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "web" }),
+    );
+  });
+
+  // A throw before executeScan arms its watchdog leaves the row pending. The
+  // route closes it, and used to log only error.message with no scan, user or
+  // stack, in a handler that was not wrapped in withErrorHandling either.
+  it("logs a dispatch failure with the Error and the ids, and closes the row out", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("settings unavailable");
+    mockExecuteScan.mockRejectedValueOnce(boom);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 79 }] });
+    mockQuery.mockResolvedValue({ rows: [{ id: 79 }], rowCount: 1 });
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+    expect(res.status).toBe(200);
+    // The dispatch catch runs detached from the response.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const logged = errSpy.mock.calls.find(([message]) =>
+      String(message).includes("scan failed to start"),
+    );
+    expect(logged).toBeDefined();
+    expect(logged![1]).toEqual({
+      scanId: 79,
+      userId: 42,
+      source: "web",
+      url: "https://example.com",
+    });
+    expect(logged![2]).toBe(boom);
+
+    const failedWrite = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("status = 'failed'"),
+    );
+    expect(failedWrite?.[1]).toEqual(["settings unavailable", 79, "internal"]);
+    errSpy.mockRestore();
+  });
+
   it("returns 500 and never dispatches a scan when the row cannot be created", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ scans_private_by_default: false }],
@@ -650,6 +700,9 @@ describe("POST /api/v3/scan", () => {
     );
 
     expect(res.status).toBe(200);
+    expect(mockExecuteScan).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "api" }),
+    );
   });
 });
 

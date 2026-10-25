@@ -44,17 +44,16 @@ import {
 } from "@/lib/scanner/execute-bulk-scan";
 import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
 import {
-  APP_NAME,
-  BEARER_PREFIX,
-  DEFAULT_SCAN_NOTE,
-} from "@/lib/config/constants";
+  API_KEY_LIMIT_MESSAGE,
+  DAILY_LIMIT_MESSAGE,
+} from "@/lib/scanner/failure-messages";
+import { BEARER_PREFIX, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
+import { logError } from "@/lib/logging/log";
+import { withErrorHandling } from "@/lib/api/api-utils";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { scanningPausedResponse } from "@/lib/admin/service-state";
-
-const DAILY_LIMIT_MESSAGE =
-  "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.";
 
 /** One entry in the batch response: either a queued scan or a refusal. */
 type BulkResultEntry =
@@ -116,7 +115,7 @@ async function validateBulkTarget(
   return null;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it) before the
   // feature flag: "scanning is paused" is the more accurate answer when both
   // apply, and a bulk submission is N scans, not one.
@@ -503,10 +502,9 @@ export async function POST(request: NextRequest) {
       },
     );
   } catch (err) {
-    console.error(
-      `[${APP_NAME}] Failed to create bulk scan_history rows:`,
-      err instanceof Error ? err.message : err,
-    );
+    logError("scan", "failed to create the bulk scan_history rows", err, {
+      userId: authedUserId,
+    });
     return NextResponse.json(
       { error: "Failed to start the scans. Please try again." },
       { status: 500 },
@@ -572,7 +570,7 @@ export async function POST(request: NextRequest) {
         apiKeyDailyLimit,
       );
       if (!lastApiKeyRateLimit.allowed) {
-        refusal = "API key daily limit reached mid-batch.";
+        refusal = API_KEY_LIMIT_MESSAGE;
       }
     }
 
@@ -581,8 +579,12 @@ export async function POST(request: NextRequest) {
       // refuses the rest of the batch too, so close them all out at once
       // instead of issuing a doomed charge per remaining URL.
       const abandoned = reservation.scanIds.slice(i);
+      // quota_refused: a limit turned these away before anything ran, which
+      // is the system working, not the engine failing.
       await Promise.all(
-        abandoned.map((id) => finalizeScanFailureQuietly(id, refusal!)),
+        abandoned.map((id) =>
+          finalizeScanFailureQuietly(id, refusal!, "quota_refused"),
+        ),
       );
       for (let j = i; j < admissible.length; j++) {
         results.push({
@@ -618,11 +620,12 @@ export async function POST(request: NextRequest) {
       scans: queued,
       authedUserId: authedUserId!,
       timeoutSeconds: bulkScanTimeoutSeconds,
+      source: isApiKeyAuth ? "api" : "web",
     }).catch((err) => {
-      console.error(
-        `[${APP_NAME}] Bulk batch dispatch failed:`,
-        err instanceof Error ? err.message : err,
-      );
+      logError("scan", "bulk batch dispatch failed", err, {
+        userId: authedUserId,
+        queued: queued.length,
+      });
     });
   }
 
@@ -650,7 +653,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(responseData, {
     headers: getRateLimitHeaders(finalQuota),
   });
-}
+});
 
 /**
  * The batch response. `queued` replaces the old `successful` count: the

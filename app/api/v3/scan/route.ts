@@ -27,11 +27,9 @@ import {
   getRateLimitHeaders,
 } from "@/lib/rate-limiting/daily-limits";
 import type { Category } from "@/lib/scanner/types";
-import {
-  APP_NAME,
-  BEARER_PREFIX,
-  DEFAULT_SCAN_NOTE,
-} from "@/lib/config/constants";
+import { BEARER_PREFIX, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
+import { logError } from "@/lib/logging/log";
+import { withErrorHandling } from "@/lib/api/api-utils";
 import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
@@ -54,7 +52,7 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { rateLimitedEmail } from "@/lib/email/email";
 import { scanningPausedResponse } from "@/lib/admin/service-state";
 
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   try {
     // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). First thing in
     // the handler, ahead of auth, rate limiting and quota: a scan that is
@@ -118,6 +116,7 @@ export async function POST(request: NextRequest) {
         // 500. Gated by api_usage_alerts (email_api_limit_warning), so a
         // caller that hammers past its limit repeatedly can turn this off
         // rather than being flooded with one email per rejected request.
+        const limitedUserId = keyData.userId;
         (async () => {
           const rateLimitIp = await getClientIp();
           await sendNotificationEmail({
@@ -130,10 +129,9 @@ export async function POST(request: NextRequest) {
             }),
           });
         })().catch((err) =>
-          console.error(
-            `[${APP_NAME}] Failed to send rate-limit notification:`,
-            err,
-          ),
+          logError("scan", "failed to send the rate-limit notification", err, {
+            userId: limitedUserId,
+          }),
         );
 
         return rateLimitedResponse(rateLimit);
@@ -474,10 +472,9 @@ export async function POST(request: NextRequest) {
       // the row exists.
       await incrementDailyCountCapped(authedUserId, dailyQuota.limit);
     } catch (err) {
-      console.error(
-        `[${APP_NAME}] Failed to create scan_history row:`,
-        err instanceof Error ? err.message : err,
-      );
+      logError("scan", "failed to create the scan_history row", err, {
+        userId: authedUserId,
+      });
       return NextResponse.json(
         { error: "Failed to start the scan. Please try again." },
         { status: 500 },
@@ -504,10 +501,16 @@ export async function POST(request: NextRequest) {
       categoriesTotal,
       captureScreenshot,
       portScan,
+      source: isApiKeyAuth ? "api" : "web",
     }).catch(async (err) => {
       const message =
         err instanceof Error ? err.message : "Scan failed to start.";
-      console.error(`[${APP_NAME}] executeScan dispatch failed:`, message);
+      logError("scan", "scan failed to start", err, {
+        scanId: scanHistoryId,
+        userId: authedUserId,
+        source: isApiKeyAuth ? "api" : "web",
+        url: normalizedUrl,
+      });
       await finalizeScanFailureQuietly(scanHistoryId, message);
     });
 
@@ -531,13 +534,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ scanId: scanHistoryId, status: "running" });
   } catch (error) {
-    console.error(
-      `[${APP_NAME}] Scan error:`,
-      error instanceof Error ? error.message : error,
-    );
+    logError("scan", "scan request failed", error);
     return NextResponse.json(
       { error: "An unexpected error occurred during the scan." },
       { status: 500 },
     );
   }
-}
+});

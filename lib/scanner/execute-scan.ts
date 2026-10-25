@@ -35,8 +35,10 @@ import {
   ScanCancelledError,
   getCancelSignal,
   clearCancel,
+  isCancelled,
   requestSignal,
 } from "./scan-jobs";
+import { SCAN_CANCELLED_MESSAGE } from "./failure-messages";
 import type { Category, Vulnerability } from "./types";
 import {
   APP_NAME,
@@ -44,6 +46,8 @@ import {
   SEVERITY_PRIORITY,
 } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
+import { logError } from "@/lib/logging/log";
+import { runWithScanId } from "@/lib/database/request-context";
 import {
   getProtocolFromUrl,
   getProtocolFindings,
@@ -197,7 +201,21 @@ export interface ExecuteScanParams {
    * any private/internal resolved address as defence in depth.
    */
   portScan?: boolean;
+  /**
+   * "web", "api" or "scheduled": how the scan was started. The row already
+   * says so; this only puts it on the log line when the scan fails, so an
+   * operator reading the error log does not have to open the row to learn
+   * whether a customer's key or the schedule worker produced it.
+   */
+  source?: string;
 }
+
+/**
+ * Extra time the outer async-checks race gets over one branch's own ceiling.
+ * The branch timer starts only after its settings read, and the race has to be
+ * the thing that loses when the two are close.
+ */
+const ASYNC_RACE_MARGIN_MS = 2000;
 
 /**
  * Run the actual scan and persist every stage of it to `scan_history`.
@@ -208,7 +226,16 @@ export interface ExecuteScanParams {
  * of this being killed once the HTTP response has been sent, the way there
  * would be on Vercel-style deployments.
  */
-export async function executeScan(params: ExecuteScanParams): Promise<void> {
+export function executeScan(params: ExecuteScanParams): Promise<void> {
+  // The whole job runs inside the scan's own context, so every console.error a
+  // check, a safeFetch or an async branch raises on its way is attributed to
+  // this scan in system_error_logs without any of them being handed the id.
+  // The scheduled-scan worker has no request to inherit one from, which is
+  // what made its failures unfindable.
+  return runWithScanId(params.scanId, () => runScan(params));
+}
+
+async function runScan(params: ExecuteScanParams): Promise<void> {
   const {
     scanId,
     normalizedUrl,
@@ -220,6 +247,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     silenceRoutineEmail = false,
     captureScreenshot = false,
     portScan = false,
+    source,
   } = params;
 
   const startTime = Date.now();
@@ -241,10 +269,19 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
     "SCAN_FETCH_TIMEOUT_MS",
   ] as const);
+  const timeoutReason = `Scan exceeded the ${scanTimeoutSeconds}s time limit.`;
+  // Set by the watchdog the instant it fires, before its write. The catch
+  // below needs to know a cancellation came from the watchdog, because it
+  // arrives looking exactly like a user's cancel (the watchdog calls
+  // requestCancel) and the two must not be recorded as each other.
+  let timedOut = false;
   const watchdog = startWatchdog(
     scanId,
     scanTimeoutSeconds * 1000,
-    `Scan exceeded the ${scanTimeoutSeconds}s time limit.`,
+    timeoutReason,
+    () => {
+      timedOut = true;
+    },
   );
   const {
     onProgress,
@@ -553,6 +590,17 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // since a promise can have more than one handler attached to it.
     asyncPromise.catch(() => {});
     let asyncTimedOut = false;
+    // Never shorter than one branch's own ceiling plus a margin. The two are
+    // separate admin settings with no cross-check, and the race below is a
+    // safety net only while it is the LONGER of the two: set below the
+    // branch ceiling it wins while branches are still working, and its
+    // result is an empty finding list with every branch marked not checked,
+    // which throws away the DNS, TLS and reputation findings that had already
+    // finished.
+    const asyncRaceMs = Math.max(
+      asyncChecksTimeoutMs,
+      asyncBranchTimeoutMs + ASYNC_RACE_MARGIN_MS,
+    );
     // Hold the timer handle so it can be cleared once the race settles. Without
     // clearing, a scan that wins the race via asyncPromise (async checks
     // completed) but then spends real time on the port sweep + software/CVE
@@ -580,7 +628,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         // bulk and authenticated routes and not the main pipeline, which is
         // the one that runs almost every scan, so raising it moved three
         // routes and left the fourth on a literal.
-      }, asyncChecksTimeoutMs);
+      }, asyncRaceMs);
     });
 
     // Run synchronous body/header checks and the parsed-page checks through
@@ -945,7 +993,30 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // Row already reached a terminal state (watchdog timeout or
     // cancellation raced this completion). Don't fire notifications or
     // webhooks for a result nobody will see.
-    if (!applied) return;
+    if (!applied) {
+      // A cancel is the owner (or staff) getting what they asked for and
+      // needs no line. A watchdog, or a sweep that beat a scan still running,
+      // means a scan that really did finish its work lost the race, and a
+      // rising count of those is how a time limit that is set too tight shows
+      // up. It used to return here without a trace. cancelSignal.aborted
+      // stays true after the flag is cleared, which finalizeScanSuccess has
+      // already done by this point.
+      if (timedOut || !cancelSignal.aborted) {
+        logError(
+          "scan",
+          "scan finished after its row was already closed; result discarded",
+          undefined,
+          {
+            scanId,
+            userId: authedUserId,
+            source,
+            lateByMs: Math.max(0, duration - scanTimeoutSeconds * 1000),
+            findingsCount: findings.length,
+          },
+        );
+      }
+      return;
+    }
 
     // Every notification this scan produces (scan-complete email,
     // critical/high regression alert, and every webhook the owner or the
@@ -969,15 +1040,38 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       silenceRoutineEmail,
     });
   } catch (error) {
-    if (error instanceof ScanCancelledError) {
-      await finalizeScanFailure(scanId, "Cancelled");
+    if (timedOut) {
+      // The watchdog got there first and has logged it. This write is normally
+      // a no-op behind its guard; it is here so that when the job's own catch
+      // outruns the watchdog's write, the row still says timeout and not a
+      // cancel nobody asked for.
+      await finalizeScanFailure(scanId, timeoutReason, "timeout");
+    } else if (
+      error instanceof ScanCancelledError ||
+      isCancelled(scanId) ||
+      cancelSignal.aborted
+    ) {
+      // Checked on the flag and the signal, not only on the error type. A
+      // cancel during the page fetch surfaces as the fetch's own abort error,
+      // not as a ScanCancelledError, so it used to fall through to the branch
+      // below and land in the admin error log as a scan failure. Nothing here
+      // is an error: the user (or staff) stopped it.
+      await finalizeScanFailure(scanId, SCAN_CANCELLED_MESSAGE, "cancelled");
     } else {
       const message =
         error instanceof Error
           ? error.message
           : "An unexpected error occurred during the scan.";
-      console.error(`[${APP_NAME}] Background scan failed:`, message);
-      await finalizeScanFailure(scanId, message);
+      // The Error itself, with the ids that find the row again. Only the
+      // message used to be logged, so the stack was dropped and two scans
+      // failing the same way within five seconds collapsed into one row.
+      logError("scan", "scan failed", error, {
+        scanId,
+        userId: authedUserId,
+        source,
+        url: normalizedUrl,
+      });
+      await finalizeScanFailure(scanId, message, "internal");
     }
   } finally {
     clearTimeout(watchdog);

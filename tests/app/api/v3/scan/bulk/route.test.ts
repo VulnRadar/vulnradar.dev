@@ -553,6 +553,7 @@ describe("POST /api/v3/scan/bulk - queueing", () => {
       1, 2,
     ]);
     expect(batchArgs.scans[0].url).toBe("https://one.example.com/");
+    expect(batchArgs.source).toBe("web");
 
     releaseBatch?.();
   });
@@ -578,6 +579,7 @@ describe("POST /api/v3/scan/bulk - queueing", () => {
     const [, params] = rows[0];
     expect(params[0]).toBe(99);
     expect(params[2]).toBe("api");
+    expect(mockRunBulkBatch.mock.calls[0][0].source).toBe("api");
 
     // dailyScans applies regardless of auth method -- API-key requests used
     // to skip it entirely, bounded only by apiRequestsPerDay (unbounded on
@@ -964,13 +966,17 @@ describe("POST /api/v3/scan/bulk - daily quota", () => {
     expect(json.queued).toBe(1);
     expect(json.failed).toBe(2);
     expect(mockFinalizeScanFailure).toHaveBeenCalledTimes(2);
+    // quota_refused: a limit turned them away, so they do not count as the
+    // engine failing.
     expect(mockFinalizeScanFailure).toHaveBeenCalledWith(
       2,
       expect.stringMatching(/Daily scan limit reached/),
+      "quota_refused",
     );
     expect(mockFinalizeScanFailure).toHaveBeenCalledWith(
       3,
       expect.stringMatching(/Daily scan limit reached/),
+      "quota_refused",
     );
     // Only the URL that was actually charged is handed to the background job.
     const [batchArgs] = mockRunBulkBatch.mock.calls[0];
@@ -1041,6 +1047,10 @@ describe("POST /api/v3/scan/bulk - API key per-URL rate limiting", () => {
     );
     // The two URLs that lost their charge had their reserved rows closed out.
     expect(mockFinalizeScanFailure).toHaveBeenCalledTimes(2);
+    for (const call of mockFinalizeScanFailure.mock.calls) {
+      expect(call[1]).toBe("API key daily limit reached mid-batch.");
+      expect(call[2]).toBe("quota_refused");
+    }
     expect(res.headers.get("X-RateLimit-Limit")).toBe("2");
     expect(res.headers.get("X-RateLimit-Remaining")).toBe("0");
   });

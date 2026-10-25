@@ -137,8 +137,11 @@ describe("runSyncChecks", () => {
     // anyone looks at the stored scan.
     expect(result.erroredChecks).toEqual(["test-throwing-detector"]);
     expect(clean.erroredChecks).toEqual([]);
+    // Logged with the URL it was scanning and the Error itself, so the row
+    // in system_error_logs has a stack and says which scan it belongs to.
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-throwing-detector"),
+      expect.objectContaining({ url: "https://example.com/" }),
       expect.any(Error),
     );
 
