@@ -71,7 +71,7 @@ const ARROW_PX = 6 + 16;
 function textPx(label: string): number {
   let px = 0;
   for (const ch of label) {
-    px += /[　-鿿＀-￯]/.test(ch) ? CJK_PX : LATIN_PX;
+    px += /[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? CJK_PX : LATIN_PX;
   }
   return px;
 }
