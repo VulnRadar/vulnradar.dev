@@ -123,13 +123,125 @@ describe("GET /api/v3/admin/error-logs", () => {
     // search matches any character and a bare "%" degrades to a full scan of
     // system_error_logs. The bound value is escaped to match.
     expect(countCall[0]).toContain(
-      "WHERE message ILIKE $1 ESCAPE '\\' OR detail ILIKE $1 ESCAPE '\\'",
+      "WHERE (message ILIKE $1 ESCAPE '\\' OR detail ILIKE $1 ESCAPE '\\')",
     );
     expect(countCall[1]).toEqual(["%timeout%"]);
 
     const selectCall = mockQuery.mock.calls[2] as [string, unknown[]];
     expect(selectCall[1]).toEqual(["%timeout%", 20, 0]);
   });
+
+  it("returns the request and scan each row belongs to", async () => {
+    // Both columns were written on every row and returned nowhere, so the
+    // correlation they exist for was only reachable from SQL.
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 3,
+          message: "scan failed",
+          detail: null,
+          request_id: "3f9a1c2e-1111-4222-8333-444455556666",
+          scan_id: 4812,
+          created_at: "2026-08-10T00:00:00Z",
+        },
+      ],
+    });
+
+    const res = await GET(getRequest());
+    const json = await res.json();
+
+    expect(json.logs[0].request_id).toBe(
+      "3f9a1c2e-1111-4222-8333-444455556666",
+    );
+    expect(json.logs[0].scan_id).toBe(4812);
+    const selectCall = mockQuery.mock.calls[2] as [string, unknown[]];
+    expect(selectCall[0]).toContain(
+      "SELECT id, message, detail, request_id, scan_id, created_at",
+    );
+  });
+
+  it("filters on an exact request id", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "2" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await GET(
+      getRequest("?requestId=3f9a1c2e-1111-4222-8333-444455556666"),
+    );
+
+    expect(res.status).toBe(200);
+    const countCall = mockQuery.mock.calls[1] as [string, unknown[]];
+    expect(countCall[0]).toContain("WHERE request_id = $1");
+    expect(countCall[1]).toEqual(["3f9a1c2e-1111-4222-8333-444455556666"]);
+    const selectCall = mockQuery.mock.calls[2] as [string, unknown[]];
+    expect(selectCall[1]).toEqual([
+      "3f9a1c2e-1111-4222-8333-444455556666",
+      20,
+      0,
+    ]);
+  });
+
+  it("filters on an exact scan id", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await GET(getRequest("?scanId=4812"));
+
+    const countCall = mockQuery.mock.calls[1] as [string, unknown[]];
+    expect(countCall[0]).toContain("WHERE scan_id = $1");
+    expect(countCall[1]).toEqual([4812]);
+  });
+
+  it("combines search, request and scan with AND and numbers the parameters in order", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "0" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await GET(
+      getRequest(
+        "?search=timeout&requestId=3f9a1c2e-1111-4222-8333-444455556666&scanId=7",
+      ),
+    );
+
+    const selectCall = mockQuery.mock.calls[2] as [string, unknown[]];
+    expect(selectCall[0]).toContain(
+      "WHERE (message ILIKE $1 ESCAPE '\\' OR detail ILIKE $1 ESCAPE '\\') AND request_id = $2 AND scan_id = $3",
+    );
+    expect(selectCall[0]).toContain("LIMIT $4 OFFSET $5");
+    expect(selectCall[1]).toEqual([
+      "%timeout%",
+      "3f9a1c2e-1111-4222-8333-444455556666",
+      7,
+      20,
+      0,
+    ]);
+  });
+
+  it("refuses a malformed request id instead of returning an empty list", async () => {
+    withAdmin();
+
+    const res = await GET(getRequest("?requestId=x%27%3B--"));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("That is not a request id.");
+    // Only the role lookup ran: nothing was searched.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["abc", "-4", "0", "1e3", "99999999999"])(
+    "refuses %s as a scan id",
+    async (bad) => {
+      withAdmin();
+
+      const res = await GET(getRequest(`?scanId=${bad}`));
+
+      expect(res.status).toBe(400);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("computes the correct OFFSET for page 2", async () => {
     withAdmin();
@@ -158,6 +270,23 @@ describe("GET /api/v3/admin/error-logs", () => {
     mockQuery.mockRejectedValueOnce(new Error("db exploded"));
     const res = await GET(getRequest());
     expect(res.status).toBe(500);
+  });
+
+  it("turns a throw outside the query into a 500 that names the route", async () => {
+    // The auth lookup is outside the handler's own try/catch. Wrapped in
+    // withErrorHandling, a failure there is logged against this route with
+    // the request id entered, instead of reaching Next's default handler as
+    // a bare stack.
+    mockGetSession.mockRejectedValue(new Error("session store down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await GET(getRequest());
+
+    expect(res.status).toBe(500);
+    expect(String(spy.mock.calls[0][0])).toContain(
+      "GET /api/v3/admin/error-logs",
+    );
+    spy.mockRestore();
   });
 });
 

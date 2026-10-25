@@ -5,7 +5,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PaginationControl } from "@/components/ui/pagination-control";
-import { Bug, RefreshCw, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  AlertTriangle,
+  Bug,
+  RefreshCw,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  X,
+} from "lucide-react";
 import {
   SkeletonRegion,
   AdminPanelHeader,
@@ -24,17 +32,47 @@ import {
 const formatTimestamp = (iso: string) => formatAdminTimestamp(iso, true);
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
-import { API } from "@/lib/config/client-constants";
+import { API, STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
+import { getRoleLevel } from "@/lib/auth/permissions-client";
+import { useAuth } from "@/components/providers/auth-provider";
+import { isCaptureNotice } from "@/lib/logging/capture-notice";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 interface ErrorLogEntry {
   id: number;
   message: string;
   detail: string | null;
+  request_id: string | null;
+  scan_id: number | null;
   created_at: string;
 }
 
+/** Exact-match filters the API takes alongside the free-text search. */
+interface LogFilters {
+  requestId: string | null;
+  scanId: number | null;
+}
+
+const NO_FILTERS: LogFilters = { requestId: null, scanId: null };
+
 const DEFAULT_PAGE_SIZE = 20;
+
+/** Long enough to tell two requests apart, short enough to sit on a row. */
+const REQUEST_ID_CHIP_LENGTH = 8;
+
+const CHIP_CLASSES =
+  "inline-flex h-6 items-center gap-1 rounded-md border px-2 font-mono text-[11px] leading-none transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
+
+/** A deep link such as /admin?tab=error-logs&scanId=4812 seeds the filters. */
+function filtersFromLocation(): LogFilters {
+  if (typeof window === "undefined") return NO_FILTERS;
+  const params = new URLSearchParams(window.location.search);
+  const scan = Number.parseInt(params.get("scanId") ?? "", 10);
+  return {
+    requestId: params.get("requestId")?.trim() || null,
+    scanId: Number.isSafeInteger(scan) && scan > 0 ? scan : null,
+  };
+}
 
 /**
  * Admin > System > Error Logs. Shows console.error calls captured by
@@ -43,8 +81,21 @@ const DEFAULT_PAGE_SIZE = 20;
  * server instead of relying on raw stdout (which routine console.log
  * status lines like lib/database/cleanup.ts's periodic run summary
  * drown out).
+ *
+ * Every row carries the request and scan it belongs to when there was one.
+ * Clicking either chip narrows the list to that id, which is how the several
+ * rows one failing request wrote (route, scan, a check, the fetch) are read
+ * together, and how an x-request-id copied from a user's devtools is looked
+ * up.
  */
 export function ErrorLogsManager() {
+  const { me } = useAuth();
+  // The API refuses DELETE below admin (requireAdmin). The ops role can read
+  // this log, so the button used to be offered to it and answered with a 403
+  // after the confirm dialog. Hidden until the role is known, not shown and
+  // then taken away.
+  const canClear = getRoleLevel(me?.role) >= STAFF_ROLE_HIERARCHY.admin;
+
   const [logs, setLogs] = useState<ErrorLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,13 +104,20 @@ export function ErrorLogsManager() {
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<LogFilters>(NO_FILTERS);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const searchInitRef = useRef(false);
 
   const fetchLogs = useCallback(
-    async (p: number, s: string, limit: number, isInitial = false) => {
+    async (
+      p: number,
+      s: string,
+      limit: number,
+      f: LogFilters,
+      isInitial = false,
+    ) => {
       if (isInitial) setLoading(true);
       else setRefreshing(true);
       try {
@@ -68,6 +126,8 @@ export function ErrorLogsManager() {
           limit: String(limit),
         });
         if (s.trim()) params.set("search", s.trim());
+        if (f.requestId) params.set("requestId", f.requestId);
+        if (f.scanId !== null) params.set("scanId", String(f.scanId));
         const res = await fetch(`${API.ADMIN}/error-logs?${params}`);
         if (res.ok) {
           const data = await res.json();
@@ -76,7 +136,15 @@ export function ErrorLogsManager() {
           setTotalPages(data.totalPages || 1);
           setTotal(data.total || 0);
         } else {
-          setToast({ message: "Failed to load error logs.", type: "error" });
+          // A 400 names what was wrong with a filter; anything else is ours.
+          const data = await res.json().catch(() => null);
+          setToast({
+            message:
+              res.status === 400 && data?.error
+                ? data.error
+                : "Failed to load error logs.",
+            type: "error",
+          });
         }
       } catch {
         setToast({ message: "Failed to load error logs.", type: "error" });
@@ -88,8 +156,10 @@ export function ErrorLogsManager() {
   );
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
-    fetchLogs(1, "", pageSize, true);
+    const seeded = filtersFromLocation();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the deep link once on mount, then fetches; the filters are only known client-side
+    setFilters(seeded);
+    fetchLogs(1, "", pageSize, seeded, true);
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -100,18 +170,24 @@ export function ErrorLogsManager() {
       return;
     }
     const timeout = setTimeout(() => {
-      fetchLogs(1, search, pageSize);
+      fetchLogs(1, search, pageSize, filters);
     }, 300);
     return () => clearTimeout(timeout);
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
+
+  const applyFilters = (next: LogFilters) => {
+    setFilters(next);
+    setExpandedId(null);
+    fetchLogs(1, search, pageSize, next);
+  };
 
   const handleClear = async () => {
     try {
       const res = await fetch(`${API.ADMIN}/error-logs`, {
         method: "DELETE",
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setToast({
           message: `Cleared ${data.deletedCount || 0} error log ${
@@ -120,7 +196,12 @@ export function ErrorLogsManager() {
           type: "success",
         });
         setExpandedId(null);
-        await fetchLogs(1, search, pageSize);
+        await fetchLogs(1, search, pageSize, filters);
+      } else if (res.status === 403) {
+        setToast({
+          message: "Only admins can clear the error logs.",
+          type: "error",
+        });
       } else {
         setToast({
           message: data.error || "Failed to clear error logs.",
@@ -134,6 +215,8 @@ export function ErrorLogsManager() {
     }
   };
 
+  const filtered = filters.requestId !== null || filters.scanId !== null;
+
   return (
     <div className="space-y-6">
       <Card className="border-border/50 bg-card/50 overflow-hidden">
@@ -146,7 +229,7 @@ export function ErrorLogsManager() {
           // and this endpoint only knows the all-time total.
           tone={total > 0 ? "warn" : "ok"}
           title="Error Logs"
-          subtitle="Every console.error call from the running server, most recent first."
+          subtitle="Every console.error call from the running server, most recent first. A warning row means some errors were left out of the list."
           status={
             <StatusPill tone={total > 0 ? "warn" : "ok"}>
               <span className="tabular-nums">{total.toLocaleString()}</span>
@@ -159,7 +242,7 @@ export function ErrorLogsManager() {
                 variant="outline"
                 size="sm"
                 className="h-9 px-3 gap-2 border-border/40"
-                onClick={() => fetchLogs(page, search, pageSize)}
+                onClick={() => fetchLogs(page, search, pageSize, filters)}
                 disabled={refreshing}
                 aria-label="Refresh error logs"
               >
@@ -174,17 +257,19 @@ export function ErrorLogsManager() {
                   in the whole System area, and as the loudest control on the
                   card it pulled the eye away from the failures listed below
                   it. The destructive border still says what it does. */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 px-3 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => setConfirmOpen(true)}
-                disabled={loading || total === 0}
-                aria-label="Clear all error logs"
-              >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Clear logs</span>
-              </Button>
+              {canClear && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={loading || total === 0}
+                  aria-label="Clear all error logs"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">Clear logs</span>
+                </Button>
+              )}
             </>
           }
         >
@@ -197,6 +282,40 @@ export function ErrorLogsManager() {
         </AdminPanelHeader>
 
         <CardContent className="p-0">
+          {filtered && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-border/50 bg-muted/20 px-5 py-3 text-xs text-muted-foreground">
+              <span>Showing only</span>
+              {filters.requestId && (
+                <button
+                  type="button"
+                  onClick={() => applyFilters({ ...filters, requestId: null })}
+                  className={cn(
+                    CHIP_CLASSES,
+                    "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15",
+                  )}
+                  aria-label={`Remove the request filter ${filters.requestId}`}
+                >
+                  request {filters.requestId}
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </button>
+              )}
+              {filters.scanId !== null && (
+                <button
+                  type="button"
+                  onClick={() => applyFilters({ ...filters, scanId: null })}
+                  className={cn(
+                    CHIP_CLASSES,
+                    "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15",
+                  )}
+                  aria-label={`Remove the scan filter ${filters.scanId}`}
+                >
+                  scan #{filters.scanId}
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
+
           {loading ? (
             // The list's own shape, not DataTableSkeleton: this panel has no
             // table header and no avatar column, so that skeleton drew a
@@ -209,8 +328,8 @@ export function ErrorLogsManager() {
               icon={Bug}
               title="No errors captured"
               description={
-                search
-                  ? `No results for "${search}".`
+                search || filtered
+                  ? "Nothing matches the search and filters you have set."
                   : "Nothing has called console.error since this started capturing. That's a good sign."
               }
             />
@@ -223,6 +342,11 @@ export function ErrorLogsManager() {
             >
               {logs.map((log) => {
                 const isExpanded = expandedId === log.id;
+                // A row the capture wrote about itself, not an application
+                // error: some errors were left out, and this is the only
+                // place that says so. Styled as a warning so a page of
+                // errors does not read as the whole story.
+                const notice = isCaptureNotice(log.message);
                 // The message is the row's subject and gets the weight; the
                 // time is metadata and gets the muted micro-line. Every row
                 // used to be one undifferentiated block of mono text at a
@@ -236,7 +360,12 @@ export function ErrorLogsManager() {
                       <p className="text-sm font-medium text-foreground leading-snug wrap-break-word line-clamp-2">
                         {log.message}
                       </p>
-                      <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        {notice && (
+                          <StatusPill tone="warn" icon={AlertTriangle}>
+                            Capture notice
+                          </StatusPill>
+                        )}
                         <time
                           dateTime={log.created_at}
                           className="tabular-nums"
@@ -271,8 +400,16 @@ export function ErrorLogsManager() {
                     )}
                   </>
                 );
+                const requestActive = filters.requestId === log.request_id;
+                const scanActive = filters.scanId === log.scan_id;
                 return (
-                  <div key={log.id}>
+                  <div
+                    key={log.id}
+                    className={cn(
+                      notice &&
+                        "border-l-2 border-l-[hsl(var(--warning))] bg-[hsl(var(--warning))]/5",
+                    )}
+                  >
                     {/* A row with no stored detail has nothing to expand, so
                         it renders as a plain row. It used to render as a
                         DISABLED button, which kept the hover affordance's
@@ -291,6 +428,59 @@ export function ErrorLogsManager() {
                     ) : (
                       <div className="w-full flex items-start gap-3 px-5 py-3.5">
                         {rowBody}
+                      </div>
+                    )}
+                    {/* Outside the expand button on purpose: a button inside
+                        a button is invalid, and a click on a chip must
+                        filter, not open the stack. */}
+                    {(log.request_id || log.scan_id !== null) && (
+                      <div className="flex flex-wrap items-center gap-2 px-5 pb-3.5 -mt-1.5">
+                        {log.request_id && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              applyFilters({
+                                ...filters,
+                                requestId: requestActive
+                                  ? null
+                                  : log.request_id,
+                              })
+                            }
+                            aria-pressed={requestActive}
+                            aria-label={`Show only rows from request ${log.request_id}`}
+                            title={log.request_id}
+                            className={cn(
+                              CHIP_CLASSES,
+                              requestActive
+                                ? "border-primary/40 bg-primary/10 text-primary"
+                                : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                            )}
+                          >
+                            req{" "}
+                            {log.request_id.slice(0, REQUEST_ID_CHIP_LENGTH)}
+                          </button>
+                        )}
+                        {log.scan_id !== null && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              applyFilters({
+                                ...filters,
+                                scanId: scanActive ? null : log.scan_id,
+                              })
+                            }
+                            aria-pressed={scanActive}
+                            aria-label={`Show only rows from scan ${log.scan_id}`}
+                            className={cn(
+                              CHIP_CLASSES,
+                              scanActive
+                                ? "border-primary/40 bg-primary/10 text-primary"
+                                : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                            )}
+                          >
+                            scan #{log.scan_id}
+                          </button>
+                        )}
                       </div>
                     )}
                     {isExpanded && log.detail && (
@@ -313,12 +503,12 @@ export function ErrorLogsManager() {
               <PaginationControl
                 currentPage={page}
                 totalPages={totalPages}
-                onPageChange={(p) => fetchLogs(p, search, pageSize)}
+                onPageChange={(p) => fetchLogs(p, search, pageSize, filters)}
                 pageSize={pageSize}
                 totalItems={total}
                 onPageSizeChange={(s) => {
                   setPageSize(s);
-                  fetchLogs(1, search, s);
+                  fetchLogs(1, search, s, filters);
                 }}
               />
             </div>
@@ -329,9 +519,16 @@ export function ErrorLogsManager() {
       <ConfirmDialog
         open={confirmOpen}
         title="Clear error logs"
-        description={`This permanently deletes all ${total.toLocaleString()} captured error log ${
-          total === 1 ? "entry" : "entries"
-        }. This cannot be undone.`}
+        // The delete is not scoped to the list: it empties the table. With a
+        // search or filter on, `total` is only the rows that match, so quoting
+        // it would promise a smaller delete than the one that happens.
+        description={
+          search.trim() || filtered
+            ? "This permanently deletes every captured error log entry, including the ones your search and filters are hiding. This cannot be undone."
+            : `This permanently deletes all ${total.toLocaleString()} captured error log ${
+                total === 1 ? "entry" : "entries"
+              }. This cannot be undone.`
+        }
         confirmLabel="Clear logs"
         danger
         onConfirm={handleClear}

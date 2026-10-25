@@ -8,6 +8,12 @@ import {
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
 import { parsePagination } from "@/lib/api/pagination";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { logError } from "@/lib/logging/log";
+import {
+  buildErrorLogWhere,
+  parseErrorLogFilter,
+} from "@/lib/admin/error-log-filter";
 import {
   CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
   CONFIG_PAGINATION_MAX_PAGE_SIZE,
@@ -20,6 +26,8 @@ interface ErrorLogRow {
   id: number;
   message: string;
   detail: string | null;
+  request_id: string | null;
+  scan_id: number | null;
   created_at: string;
 }
 
@@ -34,9 +42,14 @@ interface ErrorLogRow {
  * drowns out errors" problem this whole feature exists to solve).
  *
  * Query params: page, limit, search (matches message or detail text,
- * case-insensitive).
+ * case-insensitive), requestId (exact match on the x-request-id a user can
+ * read from devtools or an error page) and scanId (exact match: every error
+ * that scan produced). The three combine with AND.
+ *
+ * request_id and scan_id used to be written on every row and returned
+ * nowhere, so the correlation they exist for was only reachable from SQL.
  */
-export async function GET(request: NextRequest) {
+export const GET = withErrorHandling(async (request: NextRequest) => {
   const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_ERROR_LOGS);
   if (!admin) {
     return NextResponse.json(
@@ -47,20 +60,15 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const { page, limit, offset } = parsePagination(searchParams);
-  const search = (searchParams.get("search") || "").trim();
+  const parsed = parseErrorLogFilter(searchParams);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
 
   try {
-    const whereClause = search
-      ? "WHERE message ILIKE $1 ESCAPE '\\' OR detail ILIKE $1 ESCAPE '\\'"
-      : "";
-    // Escape LIKE metacharacters so the search is exact-substring, not a
-    // pattern. Without this a literal "_" matches any character and a bare
-    // "%" degrades to a full scan of system_error_logs, one of the
-    // highest-volume tables in the schema. Same one-liner the user and team
-    // searches use (app/api/v3/admin/route.ts, admin/teams/route.ts).
-    const whereParams = search
-      ? [`%${search.replace(/[\\%_]/g, "\\$&")}%`]
-      : [];
+    const { clause: whereClause, params: whereParams } = buildErrorLogWhere(
+      parsed.filter,
+    );
 
     // perf: COUNT(*) scans the whole matching set regardless of the sibling
     // LIMIT, so running it before the page query doubled the wall time of
@@ -71,7 +79,7 @@ export async function GET(request: NextRequest) {
         whereParams,
       ),
       pool.query<ErrorLogRow>(
-        `SELECT id, message, detail, created_at FROM system_error_logs
+        `SELECT id, message, detail, request_id, scan_id, created_at FROM system_error_logs
        ${whereClause}
        ORDER BY created_at DESC
        LIMIT $${whereParams.length + 1} OFFSET $${whereParams.length + 2}`,
@@ -88,13 +96,13 @@ export async function GET(request: NextRequest) {
       total,
     });
   } catch (error) {
-    console.error("[admin/error-logs] Failed to fetch error logs:", error);
+    logError("admin/error-logs", "failed to fetch error logs", error);
     return NextResponse.json(
       { error: "Failed to fetch error logs." },
       { status: 500 },
     );
   }
-}
+});
 
 /**
  * DELETE /api/v3/admin/error-logs
@@ -105,7 +113,7 @@ export async function GET(request: NextRequest) {
  * fires -- and recorded to admin_audit_log like every other admin
  * bulk-delete in this codebase.
  */
-export async function DELETE() {
+export const DELETE = withErrorHandling(async () => {
   // Wiping the error-log trail is a destructive, audit-relevant action, so it
   // requires full admin -- not the VIEW_ERROR_LOGS read grant (which the
   // non-admin `ops` role holds and which correctly gates the GET above). A
@@ -133,10 +141,10 @@ export async function DELETE() {
 
     return NextResponse.json({ success: true, deletedCount });
   } catch (error) {
-    console.error("[admin/error-logs] Failed to clear error logs:", error);
+    logError("admin/error-logs", "failed to clear error logs", error);
     return NextResponse.json(
       { error: "Failed to clear error logs." },
       { status: 500 },
     );
   }
-}
+});
