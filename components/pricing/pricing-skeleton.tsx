@@ -47,8 +47,9 @@ export function PricingSkeleton() {
   return (
     <PublicPageShell fullBleed>
       <div role="status" aria-live="polite" aria-label="Loading pricing">
-        {/* PricingHero */}
-        <section className="border-b border-border/50">
+        {/* PricingHero: on the page surface with no rule under it, like the
+            real one. */}
+        <section>
           <div className={PRICING_HERO_SECTION}>
             <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 lg:gap-12 lg:items-end">
               <div className="max-w-2xl space-y-4">
