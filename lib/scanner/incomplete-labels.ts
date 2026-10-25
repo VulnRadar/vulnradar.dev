@@ -1,3 +1,4 @@
+import { CRAWL_INCOMPLETE_LABELS } from "./crawl-incomplete";
 import {
   PAGE_UNREACHABLE_INCOMPLETE,
   PAGE_UNREACHABLE_LABEL,
@@ -31,6 +32,9 @@ export const INCOMPLETE_LABELS: Record<string, string> = {
   // Thrown by osv-check.ts when OSV.dev answered none of the lookups.
   "osv-libraries": "The live vulnerable-library lookup",
   "active-probes": "Active probes",
+  // Written only by a crawl that stopped before it read every page it found
+  // (lib/scanner/crawl-incomplete.ts keeps the slugs and the words together).
+  ...CRAWL_INCOMPLETE_LABELS,
   // Written by POST /api/v3/scan/authenticated when the login held long
   // enough to start but the session was lost during the run: the pages that
   // came back are the signed-out surface, so the authenticated area the user

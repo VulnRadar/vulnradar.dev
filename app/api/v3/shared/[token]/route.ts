@@ -46,15 +46,32 @@ const PUBLIC_META_KEYS = [
  * not among them: it rode along only because the whole object was spread.
  * Rebuilt by name for the same reason PUBLIC_META_KEYS exists, so a field
  * added to the crawl record at scan time is not published by default.
+ *
+ * `pagesUnreachable` is published, as `{ url, reason }` and nothing else: the
+ * panel lists those pages as not read, and without them the counts a shared
+ * report shows would not add up and the pages the crawl never saw would
+ * simply be missing from it. Rows saved before the field existed lack it,
+ * and stay without it.
  */
 function publicCrawl(raw: unknown): Record<string, unknown> | null {
   if (!raw || typeof raw !== "object") return null;
   const crawl = raw as Record<string, unknown>;
   const pages = Array.isArray(crawl.pages) ? crawl.pages : [];
+  const unreachable = Array.isArray(crawl.pagesUnreachable)
+    ? crawl.pagesUnreachable
+    : null;
   return {
     pagesDiscovered: crawl.pagesDiscovered,
     pagesScanned: crawl.pagesScanned,
     pagesSkipped: crawl.pagesSkipped,
+    ...(unreachable
+      ? {
+          pagesUnreachable: unreachable.map((entry) => {
+            const page = (entry ?? {}) as Record<string, unknown>;
+            return { url: page.url, reason: page.reason };
+          }),
+        }
+      : {}),
     pages: pages.map((entry) => {
       const page = (entry ?? {}) as Record<string, unknown>;
       return {

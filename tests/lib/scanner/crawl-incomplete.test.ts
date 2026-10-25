@@ -4,6 +4,10 @@ import {
   CRAWL_QUOTA_LIMIT_INCOMPLETE,
   CRAWL_TIME_LIMIT_INCOMPLETE,
 } from "@/lib/scanner/crawl-incomplete";
+import {
+  INCOMPLETE_LABELS,
+  describeIncompleteAreas,
+} from "@/lib/scanner/incomplete-labels";
 
 /**
  * The slugs are what lands in result_meta.incomplete, and rows already stored
@@ -25,5 +29,22 @@ describe("crawl incomplete markers", () => {
       expect(label.length).toBeGreaterThan(10);
       expect(label).not.toContain("—");
     }
+  });
+
+  it("reaches a reader as words, not as the slug", () => {
+    // The result views map result.incomplete through INCOMPLETE_LABELS; a
+    // marker missing from it is shown as itself ("crawl-time-limit").
+    expect(INCOMPLETE_LABELS[CRAWL_TIME_LIMIT_INCOMPLETE]).toBe(
+      CRAWL_INCOMPLETE_LABELS[CRAWL_TIME_LIMIT_INCOMPLETE],
+    );
+    expect(
+      describeIncompleteAreas([
+        CRAWL_QUOTA_LIMIT_INCOMPLETE,
+        CRAWL_TIME_LIMIT_INCOMPLETE,
+      ]),
+    ).toEqual([
+      CRAWL_INCOMPLETE_LABELS[CRAWL_QUOTA_LIMIT_INCOMPLETE],
+      CRAWL_INCOMPLETE_LABELS[CRAWL_TIME_LIMIT_INCOMPLETE],
+    ]);
   });
 });

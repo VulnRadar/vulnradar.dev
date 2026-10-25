@@ -641,6 +641,111 @@ describe("GET /api/v3/shared/[token]", () => {
     });
   });
 
+  it("publishes the pages a shared crawl could not read, and nothing else about them", async () => {
+    // The crawl panel lists these as "not read". Rebuilt by name like the
+    // pages beside them, so a field added to the record later is not
+    // published by default.
+    const token = "a2b".padEnd(64, "0");
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 131,
+            url: "https://example.com",
+            scanned_at: "2026-04-02T00:00:00.000Z",
+            duration: 9000,
+            summary: {},
+            findings: [],
+            findings_count: 0,
+            response_headers: null,
+            notes: null,
+            user_id: 8,
+            authenticated: false,
+            result_meta: {
+              crawl: {
+                pagesDiscovered: 3,
+                pagesScanned: 1,
+                pagesSkipped: 1,
+                pagesUnreachable: [
+                  {
+                    url: "https://example.com/gone",
+                    reason: "Could not connect",
+                    internal: "not for the public",
+                  },
+                ],
+                pages: [
+                  {
+                    url: "https://example.com/",
+                    findings: [],
+                    findings_count: 0,
+                    summary: { total: 0 },
+                    duration: 500,
+                  },
+                ],
+              },
+            },
+            scanned_by: "Alice",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // badges
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const res = await callGet(token);
+    const json = await res.json();
+
+    expect(json.crawl.pagesUnreachable).toEqual([
+      { url: "https://example.com/gone", reason: "Could not connect" },
+    ]);
+    expect(json.crawl.pagesSkipped).toBe(1);
+  });
+
+  it("leaves pagesUnreachable out of a shared crawl saved before the field existed", async () => {
+    const token = "a2c".padEnd(64, "0");
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 132,
+            url: "https://example.com",
+            scanned_at: "2026-04-02T00:00:00.000Z",
+            duration: 9000,
+            summary: {},
+            findings: [],
+            findings_count: 0,
+            response_headers: null,
+            notes: null,
+            user_id: 8,
+            authenticated: false,
+            result_meta: {
+              crawl: {
+                pagesDiscovered: 1,
+                pagesScanned: 1,
+                pagesSkipped: 0,
+                pages: [],
+              },
+            },
+            scanned_by: "Alice",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // badges
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const res = await callGet(token);
+    const json = await res.json();
+
+    expect(json.crawl).not.toHaveProperty("pagesUnreachable");
+  });
+
   it("keeps the redirect warning on the owner's own share link", async () => {
     // scan-result-detail.tsx renders this banner, and the owner saw it on
     // their own report before choosing to share the scan.

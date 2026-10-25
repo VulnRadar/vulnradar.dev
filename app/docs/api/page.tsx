@@ -422,7 +422,8 @@ const endpoints: Endpoint[] = [
       "auth (object, optional) turns this into an authenticated crawl. It takes the same block, the same admin toggle, and the same limits as POST /scan/authenticated: the session is established once and threaded through every page fetch. Nothing under auth is stored or logged.",
       "All pages must share the entry URL's hostname (same-origin).",
       "Each scanned page counts as one daily quota unit, for session auth and Bearer auth alike. A 25-page crawl spends 25 units. Discovery itself is free: only pages that are actually scanned are charged, so a crawl that stops early because the cap was reached charges only for what it got through.",
-      "Poll GET /scan/status/{scanId}: the completed result's result.crawl field carries { pagesDiscovered, pagesScanned, pagesSkipped, pages: [...] } alongside the aggregate findings and summary.",
+      "Poll GET /scan/status/{scanId}: the completed result's result.crawl field carries { pagesDiscovered, pagesScanned, pagesSkipped, pagesUnreachable, pages: [...] } alongside the aggregate findings and summary. pagesScanned and pages cover only the pages that were actually read. pagesUnreachable lists { url, reason } for pages that were found but could not be read (the fetch failed, or the site answered with a bot challenge): they are not saved as scans of their own and carry no findings because nothing was checked. pagesSkipped counts pages that were found and never attempted. pagesScanned, the length of pagesUnreachable and pagesSkipped add up to pagesDiscovered, and rows saved before pagesUnreachable existed lack that field.",
+      "A crawl that runs short of its time budget or your daily limit stops taking new pages and still completes with the pages it has. It says so by adding crawl-time-limit or crawl-quota-limit to result.incomplete, and pages it never started are neither scanned nor charged.",
     ],
     errors: [
       {
