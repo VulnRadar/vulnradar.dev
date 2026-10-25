@@ -16,6 +16,7 @@ export default function Error({
       description="Something went wrong while loading the contact page. Your existing tickets are unaffected."
       error={error}
       reset={reset}
+      chrome="public"
     />
   );
 }

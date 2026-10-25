@@ -16,6 +16,7 @@ export default function Error({
       description="Something went wrong while loading recent public scans. Try again in a moment."
       error={error}
       reset={reset}
+      chrome="public"
     />
   );
 }

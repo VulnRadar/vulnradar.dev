@@ -16,6 +16,7 @@ export default function Error({
       description="Something went wrong before the payment form loaded. Nothing has been charged."
       error={error}
       reset={reset}
+      chrome="public"
     />
   );
 }
