@@ -136,11 +136,19 @@ describe("verificationRecordName / verificationRecordValue", () => {
   });
 });
 
+/** A resolver error shaped like node's: the c-ares code on `.code` and in the text. */
+function dnsError(code: string): Error {
+  return Object.assign(
+    new Error(`queryTxt ${code} _vulnradar-verify.example.com`),
+    { code },
+  );
+}
+
 describe("checkDnsVerification", () => {
   it("verifies when a TXT record matches the token exactly", async () => {
     mockResolveTxt.mockResolvedValueOnce([["vulnradar-verify=abc123"]]);
     const result = await checkDnsVerification("example.com", "abc123");
-    expect(result).toEqual({ verified: true });
+    expect(result).toEqual({ outcome: "verified" });
     expect(mockResolveTxt).toHaveBeenCalledWith(
       "_vulnradar-verify.example.com",
     );
@@ -151,14 +159,14 @@ describe("checkDnsVerification", () => {
     // resolveTxt returns each record as an array of its chunks.
     mockResolveTxt.mockResolvedValueOnce([["vulnradar-verify=", "abc123"]]);
     const result = await checkDnsVerification("example.com", "abc123");
-    expect(result.verified).toBe(true);
+    expect(result.outcome).toBe("verified");
   });
 
-  it("does not verify when the token doesn't match", async () => {
+  it("reports not_found when the token doesn't match", async () => {
     mockResolveTxt.mockResolvedValueOnce([["vulnradar-verify=wrong-token"]]);
     const result = await checkDnsVerification("example.com", "abc123");
-    expect(result.verified).toBe(false);
-    expect(result.error).toMatch(/doesn't match/i);
+    expect(result).toMatchObject({ outcome: "not_found" });
+    expect((result as { error: string }).error).toMatch(/doesn't match/i);
   });
 
   it("ignores unrelated TXT records at the same name and still matches the right one", async () => {
@@ -167,29 +175,74 @@ describe("checkDnsVerification", () => {
       ["vulnradar-verify=abc123"],
     ]);
     const result = await checkDnsVerification("example.com", "abc123");
-    expect(result.verified).toBe(true);
+    expect(result.outcome).toBe("verified");
   });
 
-  it("fails with a clear message when no TXT record exists (ENODATA)", async () => {
-    const err = new Error("queryTxt ENODATA _vulnradar-verify.example.com");
-    mockResolveTxt.mockRejectedValueOnce(err);
-    const result = await checkDnsVerification("example.com", "abc123");
-    expect(result.verified).toBe(false);
-    expect(result.error).toMatch(/no txt record found/i);
+  describe("an answer that the record is absent is not_found", () => {
+    // These are the only two outcomes that mean DNS answered and the token is
+    // not there. The re-verification worker downgrades a domain on exactly
+    // these, so each is pinned by its real code and by text alone.
+    it("when no TXT record exists (ENODATA)", async () => {
+      mockResolveTxt.mockRejectedValueOnce(dnsError("ENODATA"));
+      const result = await checkDnsVerification("example.com", "abc123");
+      expect(result).toMatchObject({ outcome: "not_found" });
+      expect((result as { error: string }).error).toMatch(
+        /no txt record found/i,
+      );
+    });
+
+    it("when the name doesn't exist (ENOTFOUND)", async () => {
+      mockResolveTxt.mockRejectedValueOnce(dnsError("ENOTFOUND"));
+      const result = await checkDnsVerification("example.com", "abc123");
+      expect(result).toMatchObject({ outcome: "not_found" });
+    });
+
+    it("when only the message carries the code, as with a wrapped error", async () => {
+      mockResolveTxt.mockRejectedValueOnce(
+        new Error("queryTxt ENODATA _vulnradar-verify.example.com"),
+      );
+      const result = await checkDnsVerification("example.com", "abc123");
+      expect(result.outcome).toBe("not_found");
+    });
   });
 
-  it("fails with a clear message when the domain doesn't resolve (ENOTFOUND)", async () => {
-    const err = new Error("queryTxt ENOTFOUND _vulnradar-verify.example.com");
-    mockResolveTxt.mockRejectedValueOnce(err);
-    const result = await checkDnsVerification("example.com", "abc123");
-    expect(result.verified).toBe(false);
-    expect(result.error).toMatch(/no txt record found/i);
-  });
+  describe("no answer at all is lookup_error, never a verdict", () => {
+    // Every one of these used to come back as `verified: false`, which the
+    // worker could not tell from a domain that had changed hands.
+    it.each([
+      "ESERVFAIL",
+      "ETIMEOUT",
+      "ECONNREFUSED",
+      "EREFUSED",
+      "ECONNRESET",
+    ])("for a %s from the resolver", async (code) => {
+      const cause = dnsError(code);
+      mockResolveTxt.mockRejectedValueOnce(cause);
+      const result = await checkDnsVerification("example.com", "abc123");
+      expect(result.outcome).toBe("lookup_error");
+      // The original error rides along so the caller can log its stack.
+      expect((result as { cause: unknown }).cause).toBe(cause);
+      expect((result as { error: string }).error).toContain(code);
+    });
 
-  it("fails without throwing on an unexpected resolver error", async () => {
-    mockResolveTxt.mockRejectedValueOnce(new Error("SERVFAIL"));
-    const result = await checkDnsVerification("example.com", "abc123");
-    expect(result.verified).toBe(false);
-    expect(result.error).toContain("SERVFAIL");
+    it("when the lookup times out", async () => {
+      vi.useFakeTimers();
+      try {
+        mockResolveTxt.mockReturnValueOnce(new Promise(() => {}));
+        const pending = checkDnsVerification("example.com", "abc123");
+        await vi.advanceTimersByTimeAsync(8000);
+        const result = await pending;
+        expect(result.outcome).toBe("lookup_error");
+        expect((result as { error: string }).error).toMatch(/timed out/i);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("without throwing, whatever the resolver rejects with", async () => {
+      mockResolveTxt.mockRejectedValueOnce("not even an Error");
+      const result = await checkDnsVerification("example.com", "abc123");
+      expect(result.outcome).toBe("lookup_error");
+    });
   });
 });

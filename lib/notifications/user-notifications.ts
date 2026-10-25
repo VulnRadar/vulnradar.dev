@@ -9,11 +9,14 @@ import { getSetting } from "@/lib/config/runtime-config";
  * with no concept of a single recipient.
  *
  * Producers so far: a team invite sent to an email address that already has
- * an account (app/api/v3/teams/members/route.ts), and a staff reply on a
- * support ticket (app/api/v3/support-tickets/[id]/route.ts).
+ * an account (app/api/v3/teams/members/route.ts), a staff reply on a
+ * support ticket (app/api/v3/support-tickets/[id]/route.ts), and a verified
+ * domain the re-verification worker could no longer verify
+ * (lib/domains/reverify-worker.ts).
  */
 
-export type UserNotificationType = "team_invite" | "support_reply";
+export type UserNotificationType =
+  "team_invite" | "support_reply" | "domain_reverify_failed";
 
 export interface CreateUserNotificationInput {
   userId: number;

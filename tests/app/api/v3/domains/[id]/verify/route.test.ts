@@ -162,7 +162,7 @@ describe("POST /api/v3/domains/[id]/verify", () => {
         },
       ],
     });
-    mockCheckDnsVerification.mockResolvedValue({ verified: true });
+    mockCheckDnsVerification.mockResolvedValue({ outcome: "verified" });
     const res = await POST(verifyRequest(), params("1"));
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -193,7 +193,7 @@ describe("POST /api/v3/domains/[id]/verify", () => {
       ],
     });
     mockCheckDnsVerification.mockResolvedValue({
-      verified: false,
+      outcome: "not_found",
       error: "No TXT record found.",
     });
     const res = await POST(verifyRequest(), params("1"));
@@ -214,6 +214,37 @@ describe("POST /api/v3/domains/[id]/verify", () => {
     ]);
   });
 
+  // A resolver that did not answer says nothing about the domain. Storing it
+  // as a failed check downgraded a verified domain (revoking active-probes
+  // scope) and reset its re-check window because DNS blinked.
+  it("answers 503 and writes nothing when DNS did not answer", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          user_id: 42,
+          team_id: null,
+          domain: "example.com",
+          verification_token: "tok",
+        },
+      ],
+    });
+    mockCheckDnsVerification.mockResolvedValue({
+      outcome: "lookup_error",
+      error: "DNS lookup timed out. Try again in a moment.",
+      cause: new Error("DNS lookup timed out"),
+    });
+
+    const res = await POST(verifyRequest(), params("1"));
+
+    expect(res.status).toBe(503);
+    const json = await res.json();
+    expect(json).toEqual({
+      error: "DNS lookup timed out. Try again in a moment.",
+    });
+    // Only the SELECT ran: no UPDATE of status, last_checked_at or the error.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
   it("allows a team member with write access to verify a team-assigned domain", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -229,7 +260,7 @@ describe("POST /api/v3/domains/[id]/verify", () => {
       canRead: true,
       canWrite: true,
     });
-    mockCheckDnsVerification.mockResolvedValue({ verified: true });
+    mockCheckDnsVerification.mockResolvedValue({ outcome: "verified" });
     const res = await POST(verifyRequest(), params("1"));
     expect(res.status).toBe(200);
     expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(42, 7, 3);

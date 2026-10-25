@@ -111,10 +111,30 @@ export function normalizeDomainInput(input: string): NormalizeDomainResult {
   return { ok: true, domain };
 }
 
-export interface DnsVerificationResult {
-  verified: boolean;
-  error?: string;
-}
+/**
+ * What a DNS check concluded, in three states because two of the "not
+ * verified" cases mean opposite things to a caller.
+ *
+ * - `verified`: the token is published.
+ * - `not_found`: DNS ANSWERED and the token is not there (NXDOMAIN, no TXT
+ *   records, or records that do not match). The record is gone or wrong.
+ * - `lookup_error`: DNS did NOT answer (a timeout, SERVFAIL, a refused or
+ *   reset connection). The check reached no verdict about the domain at all.
+ *
+ * They used to share `verified: false`, so a resolver outage during the
+ * re-verification worker's pass was indistinguishable from a domain that had
+ * changed hands, and the worker revoked active-probes permission for every
+ * domain it asked about while the resolver was down.
+ */
+export type DnsVerificationResult =
+  | { outcome: "verified" }
+  | { outcome: "not_found"; error: string }
+  | {
+      outcome: "lookup_error";
+      error: string;
+      /** The resolver error itself, so a caller can log it with its stack. */
+      cause: unknown;
+    };
 
 /**
  * Looks up `_vulnradar-verify.<domain>` and checks whether any TXT record
@@ -124,9 +144,9 @@ export interface DnsVerificationResult {
  * already reassembles each record's chunks into one array-of-strings per
  * record, so joining within a record, never across records, is correct).
  *
- * Every failure mode -- NXDOMAIN, no TXT records, a timeout, a transient
- * resolver error -- returns `verified: false` with a human-readable reason
- * rather than throwing, so callers can show it directly.
+ * Never throws. Every failure comes back as `not_found` or `lookup_error`
+ * (see DnsVerificationResult) with a human-readable reason, so callers can
+ * show it directly.
  */
 export async function checkDnsVerification(
   domain: string,
@@ -148,30 +168,40 @@ export async function checkDnsVerification(
     ]);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (/ENODATA|ENOTFOUND/i.test(message)) {
+    // The code is on the error itself (`err.code`) and is also the middle
+    // word of its message, so test both: a resolver wrapper that keeps only
+    // the text still classifies.
+    const code = (err as { code?: unknown } | null)?.code;
+    if (
+      /ENODATA|ENOTFOUND/i.test(
+        `${typeof code === "string" ? code : ""} ${message}`,
+      )
+    ) {
       return {
-        verified: false,
+        outcome: "not_found",
         error: `No TXT record found at ${recordName}. Add it and try again -- DNS changes can take a few minutes to propagate.`,
       };
     }
     if (/timed out/i.test(message)) {
       return {
-        verified: false,
+        outcome: "lookup_error",
         error: "DNS lookup timed out. Try again in a moment.",
+        cause: err,
       };
     }
     return {
-      verified: false,
+      outcome: "lookup_error",
       error: `Could not look up ${recordName}: ${message}`,
+      cause: err,
     };
   }
 
   const matches = records.some((chunks) => chunks.join("") === expected);
   if (!matches) {
     return {
-      verified: false,
+      outcome: "not_found",
       error: `Found a TXT record at ${recordName}, but it doesn't match your verification token. Double-check you copied the full value.`,
     };
   }
-  return { verified: true };
+  return { outcome: "verified" };
 }

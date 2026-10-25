@@ -26,24 +26,28 @@ import { getSetting } from "@/lib/config/runtime-config";
 import { checkDnsVerification } from "./verification";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 import { CONFIG_DOMAIN_REVERIFY_TICK_INTERVAL_MS } from "@/lib/config/config-values";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, APP_URL, ROUTES } from "@/lib/config/constants";
+import { logError } from "@/lib/logging/log";
+import { createUserNotification } from "@/lib/notifications/user-notifications";
 
 export interface ReverifyPassStats {
   checked: number;
   stillVerified: number;
   downgraded: number;
   /**
-   * Domains whose DNS check threw, so the pass reached no verdict about them
-   * at all. Counted rather than only logged because the loop swallows these:
-   * without a number here a pass in which every single check threw returned
-   * the same all-zero-ish stats a pass with nothing due returns, and the
-   * timer below reported both as healthy.
+   * Domains whose DNS lookup got no answer (a timeout, SERVFAIL, a refused
+   * connection), so the pass reached no verdict about them and left them
+   * exactly as they were. Counted rather than only logged because without a
+   * number here a pass in which every single lookup failed returned the same
+   * all-zero-ish stats a pass with nothing due returns, and the timer below
+   * reported both as healthy.
    */
   failed: number;
 }
 
 interface DueDomainRow {
   id: number;
+  user_id: number;
   domain: string;
   verification_token: string;
 }
@@ -53,6 +57,12 @@ interface DueDomainRow {
  * DOMAIN_REVERIFY_BATCH_SIZE), re-runs checkDnsVerification for each, and
  * updates last_checked_at (still verified) or downgrades status to
  * 'reverify_failed' with the reason recorded in last_check_error.
+ *
+ * Only an ANSWER that the record is gone downgrades a domain. A lookup that
+ * got no answer (see DnsVerificationResult) leaves the row untouched, last
+ * check time included, so the domain stays due and the next tick asks again.
+ * A resolver outage used to downgrade the whole batch.
+ *
  * Exported directly (not just via the periodic timer) so a test or an
  * admin "force a run now" caller has something to call without waiting
  * for the interval.
@@ -73,7 +83,7 @@ export async function runDomainReverifyPass(): Promise<ReverifyPassStats> {
   const batchSize = await getSetting("DOMAIN_REVERIFY_BATCH_SIZE");
 
   const due = await pool.query<DueDomainRow>(
-    `SELECT id, domain, verification_token FROM domains
+    `SELECT id, user_id, domain, verification_token FROM domains
      WHERE status = 'verified'
        AND (last_checked_at IS NULL OR last_checked_at < NOW() - ($1 * INTERVAL '1 day'))
      ORDER BY last_checked_at ASC NULLS FIRST
@@ -83,23 +93,24 @@ export async function runDomainReverifyPass(): Promise<ReverifyPassStats> {
 
   for (const row of due.rows) {
     stats.checked++;
-    let result;
-    try {
-      result = await checkDnsVerification(row.domain, row.verification_token);
-    } catch (err) {
-      stats.failed++;
-      console.error(
-        `[${APP_NAME}] domain reverify: DNS check threw for domain id ${row.id} (non-fatal, left unchanged this tick):`,
-        err instanceof Error ? err.message : err,
-      );
-      continue;
-    }
+    const result = await checkDnsVerification(
+      row.domain,
+      row.verification_token,
+    );
 
-    if (result.verified) {
+    if (result.outcome === "verified") {
       stats.stillVerified++;
       await pool.query(
         `UPDATE domains SET last_checked_at = NOW(), last_check_error = NULL WHERE id = $1`,
         [row.id],
+      );
+    } else if (result.outcome === "lookup_error") {
+      stats.failed++;
+      logError(
+        "domain-reverify",
+        "DNS lookup got no answer, domain left unchanged this tick",
+        result.cause,
+        { domainId: row.id, userId: row.user_id, domain: row.domain },
       );
     } else {
       stats.downgraded++;
@@ -109,16 +120,58 @@ export async function runDomainReverifyPass(): Promise<ReverifyPassStats> {
              last_checked_at = NOW(),
              last_check_error = $2
          WHERE id = $1`,
-        [
-          row.id,
-          result.error ??
-            "Periodic re-check found the TXT record no longer verifies this domain.",
-        ],
+        [row.id, result.error],
       );
+      await recordDowngrade(row, result.error);
     }
   }
 
   return stats;
+}
+
+/**
+ * A downgrade takes a permission away from an account with nobody having
+ * asked it to, and this worker is the only actor in it: there is no admin to
+ * write an audit row for and no request to carry an error. So it is logged at
+ * error level on purpose (the one place the decision is on record for staff),
+ * and the owner is told, because the only other sign is a badge on a page they
+ * may not open for weeks. Both are best-effort: the downgrade itself already
+ * happened and the pass must go on to the next domain.
+ */
+async function recordDowngrade(
+  row: DueDomainRow,
+  reason: string,
+): Promise<void> {
+  logError(
+    "domain-reverify",
+    "verified domain no longer resolves its verification record, downgraded to reverify_failed",
+    undefined,
+    {
+      domainId: row.id,
+      userId: row.user_id,
+      domain: row.domain,
+      reason,
+    },
+  );
+  try {
+    await createUserNotification({
+      userId: row.user_id,
+      type: "domain_reverify_failed",
+      title: "A verified domain needs re-verification",
+      message: `${row.domain} no longer has its ${APP_NAME} verification record, so active scans against it are switched off. Publish the record again and verify the domain to turn them back on.`,
+      actionLabel: "Re-verify",
+      actionUrl: `${APP_URL}${ROUTES.ATTACK_SURFACE}`,
+      relatedType: "domain",
+      relatedId: row.id,
+    });
+  } catch (err) {
+    logError(
+      "domain-reverify",
+      "could not notify the owner of the downgrade",
+      err,
+      { domainId: row.id, userId: row.user_id },
+    );
+  }
 }
 
 let activeReverifyTimer: NodeJS.Timeout | null = null;
@@ -140,13 +193,13 @@ export function schedulePeriodicDomainReverify(
       const stats = await runDomainReverifyPass();
       if (stats.downgraded > 0 || stats.failed > 0) {
         console.log(
-          `[${APP_NAME}] Domain reverify worker: ${stats.downgraded} domain(s) downgraded to reverify_failed, ${stats.failed} check(s) threw (${stats.checked} checked).`,
+          `[${APP_NAME}] Domain reverify worker: ${stats.downgraded} domain(s) downgraded to reverify_failed, ${stats.failed} lookup(s) got no DNS answer (${stats.checked} checked).`,
         );
       }
-      // runDomainReverifyPass catches every per-domain DNS failure and moves
-      // on rather than rethrowing, so a pass in which 100% of the checks
-      // threw still returned normally and used to be recorded as a healthy
-      // pass. That reset the escalator's streak on every tick, so the "worker
+      // runDomainReverifyPass counts a lookup that got no answer as `failed`
+      // and moves on rather than rethrowing, so a pass in which 100% of the
+      // lookups failed still returns normally. Recording that as a healthy
+      // pass would reset the escalator's streak on every tick, so the "worker
       // is failing" alert could never fire no matter how long the resolver
       // had been unreachable, and the whole point of this worker is that a
       // domain which changed hands loses its active-probes permission. A pass

@@ -3,7 +3,7 @@
  * already-verified domains, closing the gap where a domain that changes
  * hands keeps the original account's active-probes permission forever.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -19,6 +19,12 @@ const mockCheckDnsVerification = vi.fn();
 vi.mock("@/lib/domains/verification", () => ({
   checkDnsVerification: (...args: unknown[]) =>
     mockCheckDnsVerification(...args),
+}));
+
+const mockCreateUserNotification = vi.fn();
+vi.mock("@/lib/notifications/user-notifications", () => ({
+  createUserNotification: (...args: unknown[]) =>
+    mockCreateUserNotification(...args),
 }));
 
 const mockRecordSuccess = vi.fn();
@@ -49,13 +55,50 @@ function settings(overrides: Record<string, unknown> = {}) {
   mockGetSetting.mockImplementation(async (key: string) => defaults[key]);
 }
 
+/** A due-domain row as the worker's SELECT returns it. */
+function due(
+  id: number,
+  domain: string,
+  token = `tok-${id}`,
+  userId = 100 + id,
+) {
+  return { id, user_id: userId, domain, verification_token: token };
+}
+
+/**
+ * What checkDnsVerification returns when DNS gave no answer. The real function
+ * never throws, so this is the shape every resolver failure arrives in; an
+ * earlier version of these tests mocked a rejection instead, which is why the
+ * `failed` path looked covered while no real outage could reach it.
+ */
+function noAnswer(message = "DNS lookup timed out") {
+  const cause = new Error(message);
+  return { outcome: "lookup_error" as const, error: message, cause };
+}
+
+function updateCalls() {
+  return mockQuery.mock.calls.filter(([sql]) =>
+    String(sql).includes("UPDATE domains"),
+  );
+}
+
+let errorSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   mockQuery.mockReset();
   mockGetSetting.mockReset();
   mockCheckDnsVerification.mockReset();
+  mockCreateUserNotification.mockReset();
+  mockCreateUserNotification.mockResolvedValue(undefined);
   mockRecordSuccess.mockReset();
   mockRecordFailure.mockReset();
   settings();
+  errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "log").mockImplementation(() => {});
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("runDomainReverifyPass", () => {
@@ -89,14 +132,16 @@ describe("runDomainReverifyPass", () => {
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("status = 'verified'");
     expect(sql).toContain("last_checked_at < NOW()");
+    // The owner is needed to tell them about a downgrade.
+    expect(sql).toContain("user_id");
     expect(params).toEqual([30, 50]);
   });
 
   it("updates last_checked_at and clears last_check_error for a domain that still verifies", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, domain: "example.com", verification_token: "tok-1" }],
+      rows: [due(1, "example.com", "tok-1")],
     });
-    mockCheckDnsVerification.mockResolvedValue({ verified: true });
+    mockCheckDnsVerification.mockResolvedValue({ outcome: "verified" });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
 
     const stats = await runDomainReverifyPass();
@@ -114,56 +159,208 @@ describe("runDomainReverifyPass", () => {
     expect(updateSql).toContain("SET last_checked_at = NOW()");
     expect(updateSql).toContain("last_check_error = NULL");
     expect(updateParams).toEqual([1]);
+    expect(mockCreateUserNotification).not.toHaveBeenCalled();
   });
 
-  it("downgrades status to reverify_failed when the TXT record no longer verifies", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        { id: 2, domain: "gone.example.com", verification_token: "tok-2" },
-      ],
-    });
-    mockCheckDnsVerification.mockResolvedValue({
-      verified: false,
-      error: "No matching TXT record found.",
-    });
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
+  describe("when the TXT record is gone (DNS answered)", () => {
+    it("downgrades status to reverify_failed and stores the reason", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [due(2, "gone.example.com", "tok-2")],
+      });
+      mockCheckDnsVerification.mockResolvedValue({
+        outcome: "not_found",
+        error: "No matching TXT record found.",
+      });
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
 
-    const stats = await runDomainReverifyPass();
-    expect(stats).toEqual({
-      checked: 1,
-      stillVerified: 0,
-      downgraded: 1,
-      failed: 0,
+      const stats = await runDomainReverifyPass();
+      expect(stats).toEqual({
+        checked: 1,
+        stillVerified: 0,
+        downgraded: 1,
+        failed: 0,
+      });
+      const [updateSql, updateParams] = mockQuery.mock.calls[1];
+      expect(updateSql).toContain("status = 'reverify_failed'");
+      expect(updateParams).toEqual([2, "No matching TXT record found."]);
     });
-    const [updateSql, updateParams] = mockQuery.mock.calls[1];
-    expect(updateSql).toContain("status = 'reverify_failed'");
-    expect(updateParams).toEqual([2, "No matching TXT record found."]);
+
+    it("logs the downgrade at error level with the ids that identify it", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [due(2, "gone.example.com", "tok-2", 77)],
+      });
+      mockCheckDnsVerification.mockResolvedValue({
+        outcome: "not_found",
+        error: "No matching TXT record found.",
+      });
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      await runDomainReverifyPass();
+
+      // console.error, not log: only an error is persisted to the admin Error
+      // Logs, and this is the one place the downgrade is on record.
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const [message, ctx] = errorSpy.mock.calls[0];
+      expect(message).toBe(
+        "[domain-reverify] verified domain no longer resolves its verification record, downgraded to reverify_failed",
+      );
+      expect(ctx).toEqual({
+        domainId: 2,
+        userId: 77,
+        domain: "gone.example.com",
+        reason: "No matching TXT record found.",
+      });
+    });
+
+    it("tells the domain's owner through the bell", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [due(2, "gone.example.com", "tok-2", 77)],
+      });
+      mockCheckDnsVerification.mockResolvedValue({
+        outcome: "not_found",
+        error: "No matching TXT record found.",
+      });
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      await runDomainReverifyPass();
+
+      expect(mockCreateUserNotification).toHaveBeenCalledTimes(1);
+      const input = mockCreateUserNotification.mock.calls[0][0];
+      expect(input).toMatchObject({
+        userId: 77,
+        type: "domain_reverify_failed",
+        relatedType: "domain",
+        relatedId: 2,
+      });
+      expect(input.message).toContain("gone.example.com");
+      expect(input.actionUrl).toMatch(/\/attack-surface$/);
+    });
+
+    it("finishes the pass when the notification cannot be written", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [due(1, "a.example.com"), due(2, "b.example.com")],
+      });
+      mockCheckDnsVerification
+        .mockResolvedValueOnce({ outcome: "not_found", error: "gone" })
+        .mockResolvedValueOnce({ outcome: "verified" });
+      mockQuery.mockResolvedValue({ rows: [] });
+      mockCreateUserNotification.mockRejectedValueOnce(new Error("db down"));
+
+      const stats = await runDomainReverifyPass();
+
+      expect(stats).toEqual({
+        checked: 2,
+        stillVerified: 1,
+        downgraded: 1,
+        failed: 0,
+      });
+      // The downgrade itself is still written, and the failure is logged with
+      // the Error so it keeps a stack.
+      expect(updateCalls().length).toBe(2);
+      expect(
+        errorSpy.mock.calls.some(
+          ([message, , err]) =>
+            message ===
+              "[domain-reverify] could not notify the owner of the downgrade" &&
+            err instanceof Error,
+        ),
+      ).toBe(true);
+    });
   });
 
-  it("falls back to a generic message when the DNS check reports failure with no specific error", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        { id: 3, domain: "gone2.example.com", verification_token: "tok-3" },
-      ],
-    });
-    mockCheckDnsVerification.mockResolvedValue({ verified: false });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+  describe("when DNS did not answer (lookup_error)", () => {
+    it("leaves the domain exactly as it was: no UPDATE, no downgrade, no notification", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [due(1, "flaky.example.com")],
+      });
+      mockCheckDnsVerification.mockResolvedValue(noAnswer());
 
-    await runDomainReverifyPass();
-    const [, updateParams] = mockQuery.mock.calls[1];
-    expect(updateParams[1]).toMatch(/no longer verifies/i);
+      const stats = await runDomainReverifyPass();
+
+      expect(stats).toEqual({
+        checked: 1,
+        stillVerified: 0,
+        downgraded: 0,
+        failed: 1,
+      });
+      // Not even last_checked_at: the domain stays due, so the next tick asks
+      // again instead of waiting out another 30 days.
+      expect(updateCalls()).toHaveLength(0);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(mockCreateUserNotification).not.toHaveBeenCalled();
+    });
+
+    it("logs the resolver error itself, with the domain's ids", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [due(1, "flaky.example.com", "tok-1", 9)],
+      });
+      const result = noAnswer("queryTxt ESERVFAIL");
+      mockCheckDnsVerification.mockResolvedValue(result);
+
+      await runDomainReverifyPass();
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const [message, ctx, err] = errorSpy.mock.calls[0];
+      expect(message).toBe(
+        "[domain-reverify] DNS lookup got no answer, domain left unchanged this tick",
+      );
+      expect(ctx).toEqual({
+        domainId: 1,
+        userId: 9,
+        domain: "flaky.example.com",
+      });
+      // The original Error, so the captured row keeps its stack.
+      expect(err).toBe(result.cause);
+    });
+
+    it("keeps checking the remaining domains and still resolves the others", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [due(1, "flaky.com"), due(2, "fine.com"), due(3, "gone.com")],
+      });
+      mockCheckDnsVerification
+        .mockResolvedValueOnce(noAnswer())
+        .mockResolvedValueOnce({ outcome: "verified" })
+        .mockResolvedValueOnce({ outcome: "not_found", error: "gone" });
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      const stats = await runDomainReverifyPass();
+
+      // `failed` is how the timer tells a pass that reached no verdict apart
+      // from a pass that had nothing to do.
+      expect(stats).toEqual({
+        checked: 3,
+        stillVerified: 1,
+        downgraded: 1,
+        failed: 1,
+      });
+      expect(updateCalls().map(([, params]) => params[0])).toEqual([2, 3]);
+    });
+
+    it("downgrades nothing when the resolver is down for the whole batch", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [due(1, "a.com"), due(2, "b.com"), due(3, "c.com")],
+      });
+      mockCheckDnsVerification.mockResolvedValue(noAnswer());
+
+      const stats = await runDomainReverifyPass();
+
+      expect(stats).toEqual({
+        checked: 3,
+        stillVerified: 0,
+        downgraded: 0,
+        failed: 3,
+      });
+      expect(updateCalls()).toHaveLength(0);
+    });
   });
 
   it("processes multiple due domains independently, some verified and some not", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [
-        { id: 1, domain: "still-good.com", verification_token: "tok-1" },
-        { id: 2, domain: "lost-it.com", verification_token: "tok-2" },
-      ],
+      rows: [due(1, "still-good.com"), due(2, "lost-it.com")],
     });
     mockCheckDnsVerification
-      .mockResolvedValueOnce({ verified: true })
-      .mockResolvedValueOnce({ verified: false, error: "gone" });
+      .mockResolvedValueOnce({ outcome: "verified" })
+      .mockResolvedValueOnce({ outcome: "not_found", error: "gone" });
     mockQuery.mockResolvedValue({ rows: [] }); // both UPDATEs
 
     const stats = await runDomainReverifyPass();
@@ -172,31 +369,6 @@ describe("runDomainReverifyPass", () => {
       stillVerified: 1,
       downgraded: 1,
       failed: 0,
-    });
-  });
-
-  it("continues checking remaining domains when one DNS check throws", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        { id: 1, domain: "throws.com", verification_token: "tok-1" },
-        { id: 2, domain: "fine.com", verification_token: "tok-2" },
-      ],
-    });
-    mockCheckDnsVerification
-      .mockRejectedValueOnce(new Error("DNS resolver timeout"))
-      .mockResolvedValueOnce({ verified: true });
-    mockQuery.mockResolvedValue({ rows: [] });
-
-    const stats = await runDomainReverifyPass();
-    // The thrown domain is counted as checked and failed, but neither
-    // still-verified nor downgraded -- it's left untouched for the next tick
-    // to retry. `failed` is how the timer tells a pass that reached no verdict
-    // apart from a pass that had nothing to do.
-    expect(stats).toEqual({
-      checked: 2,
-      stillVerified: 1,
-      downgraded: 0,
-      failed: 1,
     });
   });
 
@@ -244,27 +416,26 @@ describe("schedulePeriodicDomainReverify / stopPeriodicDomainReverify", () => {
   });
 
   // The escalator is the only thing that ever pages anyone about this worker,
-  // and the loop swallows per-domain failures, so a pass that reached no
+  // and the loop moves past per-domain failures, so a pass that reached no
   // verdict at all used to be reported as healthy: the streak reset on every
-  // tick and the alert could never fire however long DNS had been broken.
-  it("records a failed pass when every domain due for a recheck threw", async () => {
+  // tick and the alert could never fire however long DNS had been broken. The
+  // real checkDnsVerification reports an outage as a lookup_error result and
+  // never rejects, so that is what these feed it.
+  it("records a failed pass when every domain due for a recheck got no DNS answer", async () => {
     vi.useFakeTimers();
     try {
       mockQuery.mockResolvedValueOnce({
-        rows: [
-          { id: 1, domain: "a.example.com", verification_token: "tok-1" },
-          { id: 2, domain: "b.example.com", verification_token: "tok-2" },
-        ],
+        rows: [due(1, "a.example.com"), due(2, "b.example.com")],
       });
-      mockCheckDnsVerification.mockRejectedValue(
-        new Error("DNS resolver timeout"),
-      );
+      mockCheckDnsVerification.mockResolvedValue(noAnswer());
 
       schedulePeriodicDomainReverify(60_000);
       await vi.advanceTimersByTimeAsync(60_000);
 
       expect(mockRecordFailure).toHaveBeenCalledTimes(1);
       expect(mockRecordSuccess).not.toHaveBeenCalled();
+      // And the outage did not strip anyone's permission on the way.
+      expect(updateCalls()).toHaveLength(0);
     } finally {
       stopPeriodicDomainReverify();
       vi.useRealTimers();
@@ -275,14 +446,35 @@ describe("schedulePeriodicDomainReverify / stopPeriodicDomainReverify", () => {
     vi.useFakeTimers();
     try {
       mockQuery.mockResolvedValueOnce({
-        rows: [
-          { id: 1, domain: "a.example.com", verification_token: "tok-1" },
-          { id: 2, domain: "b.example.com", verification_token: "tok-2" },
-        ],
+        rows: [due(1, "a.example.com"), due(2, "b.example.com")],
       });
       mockCheckDnsVerification
-        .mockRejectedValueOnce(new Error("DNS resolver timeout"))
-        .mockResolvedValueOnce({ verified: true });
+        .mockResolvedValueOnce(noAnswer())
+        .mockResolvedValueOnce({ outcome: "verified" });
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      schedulePeriodicDomainReverify(60_000);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(mockRecordSuccess).toHaveBeenCalledTimes(1);
+      expect(mockRecordFailure).not.toHaveBeenCalled();
+    } finally {
+      stopPeriodicDomainReverify();
+      vi.useRealTimers();
+    }
+  });
+
+  it("records a successful pass when every domain reached a downgrade verdict", async () => {
+    // A domain that changed hands is a verdict, not a failure of the worker.
+    vi.useFakeTimers();
+    try {
+      mockQuery.mockResolvedValueOnce({
+        rows: [due(1, "a.example.com")],
+      });
+      mockCheckDnsVerification.mockResolvedValue({
+        outcome: "not_found",
+        error: "gone",
+      });
       mockQuery.mockResolvedValue({ rows: [] });
 
       schedulePeriodicDomainReverify(60_000);
