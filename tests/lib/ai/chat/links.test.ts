@@ -42,3 +42,56 @@ describe("classifyChatLink", () => {
     expect(classifyChatLink("http://github.com/x", APP).kind).toBe("plain");
   });
 });
+
+describe("classifyChatLink: what a clickable link may still carry", () => {
+  it("drops query parameters a page would act on", () => {
+    expect(classifyChatLink("/demo?url=https://attacker.example", APP)).toEqual(
+      {
+        kind: "internal",
+        href: "/demo",
+      },
+    );
+    expect(
+      classifyChatLink("/login?redirect=https://attacker.example", APP).href,
+    ).toBe("/login");
+  });
+
+  it("keeps the parameters Vera has a reason to write", () => {
+    expect(
+      classifyChatLink("/profile?tab=developer&dtab=api-keys&x=1", APP).href,
+    ).toBe("/profile?tab=developer&dtab=api-keys");
+  });
+
+  it("never links an API path, or a backslash path the browser reads as a host", () => {
+    expect(classifyChatLink("/api/v3/history", APP).kind).toBe("plain");
+    const backslash = String.fromCharCode(92);
+    expect(classifyChatLink(`/${backslash}attacker.example/x`, APP).kind).toBe(
+      "plain",
+    );
+  });
+
+  it("strips the query from a reference link but keeps the page and anchor", () => {
+    expect(
+      classifyChatLink(
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP?leak=abc#directives",
+        APP,
+      ).href,
+    ).toBe("https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP#directives");
+  });
+
+  it("trusts GitHub only under the project's own organisation", () => {
+    expect(
+      classifyChatLink("https://github.com/VulnRadar/vulnradar.dev/issues", APP)
+        .kind,
+    ).toBe("reference");
+    expect(
+      classifyChatLink(
+        "https://github.com/login/oauth/authorize?client_id=x",
+        APP,
+      ).kind,
+    ).toBe("plain");
+    expect(classifyChatLink("https://github.com/attacker/repo", APP).kind).toBe(
+      "plain",
+    );
+  });
+});
