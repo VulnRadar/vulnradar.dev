@@ -272,13 +272,21 @@ describe("credential settings", () => {
 describe("scan timeout help text", () => {
   const help = (key: SettingKey) => SETTINGS_REGISTRY[key].help;
 
-  it("says the fetch timeout reaches every scan route, not only the demo, bulk and authenticated ones", () => {
+  it("says the fetch timeout reaches the main pipeline and covers redirects, not only the demo, bulk and authenticated routes", () => {
     const text = help("SCAN_FETCH_TIMEOUT_MS");
-    expect(text).toMatch(/every scan route/);
     expect(text).toMatch(/main single-URL pipeline/);
+    expect(text).toMatch(/redirects included/);
     expect(text).not.toMatch(
       /in the demo, bulk, and authenticated scan routes/,
     );
+  });
+
+  it("does not claim the fetch timeout governs crawl scans, which read their own setting", () => {
+    // execute-crawl-scan passes CRAWL_PAGE_FETCH_TIMEOUT_MS to its page
+    // fetches, so "every scan route" would send an admin to the wrong knob.
+    const text = help("SCAN_FETCH_TIMEOUT_MS");
+    expect(text).not.toMatch(/every scan route/);
+    expect(text).toMatch(/Crawl scans have their own page fetch timeout/);
   });
 
   it("says the async-checks ceiling is held above the branch timeout by two seconds", () => {

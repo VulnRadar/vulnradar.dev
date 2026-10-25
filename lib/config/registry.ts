@@ -2197,7 +2197,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SCAN_FETCH_TIMEOUT_MS,
     group: "Scanning",
     label: "Scan fetch timeout (ms)",
-    help: 'How long a scan waits for the target page, redirects included, in every scan route: the main single-URL pipeline as well as the demo, bulk, and authenticated ones. Raise this to scan slow or latency-heavy targets instead of getting a "Could not reach the target URL" failure.',
+    help: 'How long a scan waits for the target page, redirects included, in the main single-URL pipeline (bulk scans use it too) as well as the demo and authenticated routes. Crawl scans have their own page fetch timeout. Raise this to scan slow or latency-heavy targets instead of getting a "Could not reach the target URL" failure.',
     min: 1000,
     max: 120000,
   },
