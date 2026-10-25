@@ -60,6 +60,10 @@ import {
 } from "@/components/admin/shared";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { formatRelativeTime } from "@/components/admin/utils";
+import {
+  FilterChips,
+  type FilterChipOption,
+} from "@/components/admin/shared/filter-chips";
 import { ModalShell } from "@/components/ui/modal-shell";
 import {
   API,
@@ -161,6 +165,9 @@ export function StaffList({
   const [staffPageSize, setStaffPageSize] = useState(10);
   const [selectedAdmin, setSelectedAdmin] = useState<ActiveAdmin | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // "all" or a role id. Chips are built from the roles actually present, so a
+  // role nobody holds does not get a chip that filters to an empty table.
+  const [roleFilter, setRoleFilter] = useState<string>("all");
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
@@ -336,6 +343,29 @@ export function StaffList({
     setStaffPage(1);
   };
 
+  const handleRoleFilter = (role: string) => {
+    setRoleFilter(role);
+    setStaffPage(1);
+  };
+
+  // The server returns staff highest rank first, so first-seen order is
+  // already the order the chips should read in.
+  const roleCounts = new Map<string, number>();
+  for (const admin of activeAdmins) {
+    roleCounts.set(admin.role, (roleCounts.get(admin.role) ?? 0) + 1);
+  }
+  const roleChips: FilterChipOption[] = [
+    { id: "all", label: "All roles", count: activeAdmins.length },
+    ...[...roleCounts].map(([role, count]) => ({
+      id: role,
+      label: STAFF_ROLE_LABELS[role] || role,
+      count,
+    })),
+  ];
+  // A refresh can drop the last holder of a role; fall back to "all" rather
+  // than leave a filter selected that has no chip.
+  const activeRoleFilter = roleCounts.has(roleFilter) ? roleFilter : "all";
+
   const handleSort = (column: SortColumn) => {
     const next = nextSortDirection(column, sortColumn, sortDirection);
     setSortColumn(next.column as SortColumn | null);
@@ -343,6 +373,9 @@ export function StaffList({
   };
 
   const filteredAdmins = activeAdmins.filter((admin) => {
+    if (activeRoleFilter !== "all" && admin.role !== activeRoleFilter) {
+      return false;
+    }
     if (statusFilter === "all") return true;
     const { isActive, isRecentlyActive } = getStatusInfo(admin);
     if (statusFilter === "active") return isActive;
@@ -989,7 +1022,17 @@ export function StaffList({
                 </Button>
               </>
             }
-          />
+          >
+            {/* Two chips is "All roles" plus one role, which filters nothing. */}
+            {roleChips.length > 2 && (
+              <FilterChips
+                options={roleChips}
+                value={activeRoleFilter}
+                onChange={handleRoleFilter}
+                label="Filter staff by role"
+              />
+            )}
+          </AdminPanelHeader>
           <CardContent className="p-0">
             {adminsLoading ? (
               <SkeletonRegion label="Loading staff directory">
@@ -1022,13 +1065,16 @@ export function StaffList({
               <EmptyState
                 icon={Shield}
                 title="No staff match this filter"
-                description="Try a different status filter."
+                description="Try a different status or role filter."
                 action={
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-8 gap-1.5"
-                    onClick={() => handleStatusFilter("all")}
+                    onClick={() => {
+                      handleStatusFilter("all");
+                      handleRoleFilter("all");
+                    }}
                   >
                     Clear filter
                   </Button>

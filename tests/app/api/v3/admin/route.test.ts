@@ -370,14 +370,39 @@ describe("GET /api/v3/admin", () => {
     expect(adminsRes.status).toBe(403);
   });
 
-  it("section=active-admins includes super_admin in the role filter so the account is visible in the panel", async () => {
+  // The directory used to name four roles in its SQL, so an invited billing,
+  // security_analyst, content_manager or ops account never appeared on the page
+  // that invites them. The list is a bound parameter derived from the hierarchy.
+  it("section=active-admins binds every staff role, specialists and super_admin included", async () => {
     queueRole("admin"); // admin holds VIEW_AUDIT_LOG
     mockQuery.mockResolvedValueOnce({ rows: [] });
     await GET(
       getRequest("http://localhost/api/v3/admin?section=active-admins"),
     );
-    const sqlCalls = mockQuery.mock.calls.map((c) => c[0] as string);
-    expect(sqlCalls.some((sql) => sql.includes("'super_admin'"))).toBe(true);
+    const directoryCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("FROM users u"),
+    );
+    expect(directoryCall).toBeDefined();
+    const [sql, params] = directoryCall as [string, unknown[]];
+    expect(sql).toContain("u.role = ANY($1::text[])");
+    // Not a literal list: that is the bug.
+    expect(sql).not.toContain("'moderator'");
+    const roles = params[0] as string[];
+    expect(roles).toEqual(
+      expect.arrayContaining([
+        "super_admin",
+        "admin",
+        "moderator",
+        "support",
+        "billing",
+        "security_analyst",
+        "content_manager",
+        "ops",
+      ]),
+    );
+    expect(roles).not.toContain("user");
+    // Highest rank first, which is also the ORDER BY.
+    expect(roles[0]).toBe("super_admin");
   });
 
   it("the default stats + user-list view writes no audit row — a mutating/audited action cannot be reached via GET", async () => {

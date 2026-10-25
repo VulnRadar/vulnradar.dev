@@ -56,6 +56,7 @@ import {
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
 import { clearUserRateLimitBuckets } from "@/lib/rate-limiting/clear-user-buckets";
+import { staffRolesByRank } from "@/lib/admin/staff-roles";
 
 // Helper to send email only if user notification is enabled
 async function sendNotificationIfEnabled(
@@ -463,7 +464,13 @@ export async function GET(request: NextRequest) {
         { status: 403 },
       );
     }
-    const adminsRes = await pool.query(`
+    // The role list is bound, not written out: this used to name four roles
+    // in the SQL, so an invited billing, security_analyst, content_manager or
+    // ops account never appeared on the one page built to review staff. The
+    // array is also the sort key, so the directory reads highest rank first.
+    const staffRoles = staffRolesByRank();
+    const adminsRes = await pool.query(
+      `
       SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.created_at, u.totp_enabled,
         (SELECT MAX(s.created_at) FROM sessions s WHERE s.user_id = u.id) as last_session_created,
         (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > NOW())::int as active_sessions,
@@ -480,11 +487,13 @@ export async function GET(request: NextRequest) {
         (SELECT COUNT(*) FROM admin_audit_log al WHERE al.admin_id = u.id AND al.created_at > NOW() - INTERVAL '5 minutes')::int as recent_actions
       FROM users u
       LEFT JOIN staff_activity sa ON sa.user_id = u.id
-      WHERE u.role IN ('super_admin', 'admin', 'moderator', 'support')
+      WHERE u.role = ANY($1::text[])
       ORDER BY
-        CASE u.role WHEN 'super_admin' THEN -1 WHEN 'admin' THEN 0 WHEN 'moderator' THEN 1 WHEN 'support' THEN 2 END,
+        array_position($1::text[], u.role::text),
         last_admin_action DESC NULLS LAST
-    `);
+    `,
+      [staffRoles],
+    );
     return NextResponse.json({ admins: adminsRes.rows });
   }
 
