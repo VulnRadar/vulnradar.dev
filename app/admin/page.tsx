@@ -886,8 +886,14 @@ function AdminContent() {
         // an inlined duplicate that had drifted ahead of the exported one, so
         // a label added in the obvious place never appeared.
         if (options?.toast !== false) {
+          // A message the server wrote beats the generic label: it says what
+          // actually happened, which is not always what was asked for (a
+          // credit removal that took only what was left).
           showToast(
-            options?.toast || ACTION_LABELS[action] || "Action completed.",
+            options?.toast ||
+              data.message ||
+              ACTION_LABELS[action] ||
+              "Action completed.",
             "success",
           );
         }

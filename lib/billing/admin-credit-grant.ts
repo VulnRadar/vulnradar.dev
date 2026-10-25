@@ -77,6 +77,27 @@ export function validateGrantCreditsInput(input: {
   amount: unknown;
   reason: unknown;
 }): GrantCreditsValidationResult {
+  return validateCreditChange(input, "grant");
+}
+
+/**
+ * Validates an adjust_credits request: the same shape and ceiling as a grant,
+ * because the mistake it exists to undo is a grant, and no correction needs to
+ * be larger than the largest grant allowed. The reason is required for the same
+ * reason it is on a grant: it is the only record of why a balance moved.
+ */
+export function validateAdjustCreditsInput(input: {
+  creditType: unknown;
+  amount: unknown;
+  reason: unknown;
+}): GrantCreditsValidationResult {
+  return validateCreditChange(input, "adjustment");
+}
+
+function validateCreditChange(
+  input: { creditType: unknown; amount: unknown; reason: unknown },
+  noun: "grant" | "adjustment",
+): GrantCreditsValidationResult {
   const { creditType, amount, reason } = input;
 
   if (
@@ -102,7 +123,7 @@ export function validateGrantCreditsInput(input: {
   if (numericAmount > config.maxPerGrant) {
     return {
       ok: false,
-      error: `amount cannot exceed ${config.maxPerGrant.toLocaleString()} ${config.unit} per grant`,
+      error: `amount cannot exceed ${config.maxPerGrant.toLocaleString()} ${config.unit} per ${noun}`,
     };
   }
 
@@ -196,4 +217,90 @@ export function formatGrantAmount(
   amount: number,
 ): string {
   return `${amount.toLocaleString()} ${ADMIN_CREDIT_TYPES[creditType].unit}`;
+}
+
+/** Closed map from credit type to its column: nothing from a request is ever
+ *  spliced into the statement below. */
+const CREDIT_COLUMNS = {
+  ai: "ai_credit_balance",
+  github: "github_credit_balance",
+  browser: "browserbase_credit_seconds_balance",
+} as const satisfies Record<AdminCreditType, string>;
+
+export interface AdjustCreditsResult {
+  /** Balance before and after, in the column's own unit (seconds for browser). */
+  balanceBefore: number;
+  balanceAfter: number;
+  /** What actually came off. Less than asked when the balance was too small. */
+  removed: number;
+  /** Only for creditType "browser": the new balance in minutes. */
+  balanceMinutes?: number;
+}
+
+/**
+ * Removes credit from a balance, never taking it below zero.
+ *
+ * A wrong grant (2,000,000 tokens typed for 200,000) used to be undoable only
+ * with SQL, which leaves no audit row and can drive the balance negative. This
+ * is the same shape as reverseAiCreditPurchase: GREATEST(balance - amount, 0),
+ * in one statement. The row is locked in a sub-select first so the balance the
+ * statement returns as "before" is the very one it subtracted from; a spend
+ * landing between a separate SELECT and the UPDATE would otherwise make the
+ * logged before and after disagree with the arithmetic. Returns null when the
+ * user does not exist.
+ *
+ * The column comes from a closed map, never from the request.
+ */
+export async function applyCreditAdjustment(
+  userId: number,
+  creditType: AdminCreditType,
+  amount: number,
+): Promise<AdjustCreditsResult | null> {
+  const column = CREDIT_COLUMNS[creditType];
+  // The type forbids it and the route validates first; this is the last
+  // thing standing between a string and the statement below.
+  if (!column) throw new Error("Unknown credit type");
+  // Browser credit is stored in seconds; the form and the catalog use minutes.
+  const delta = creditType === "browser" ? amount * 60 : amount;
+  const result = await pool.query<{
+    balance_before: string | number;
+    balance_after: string | number;
+  }>(
+    `UPDATE users u
+        SET ${column} = GREATEST(u.${column} - $2, 0)
+       FROM (SELECT id, ${column} AS balance_before
+               FROM users
+              WHERE id = $1
+                FOR UPDATE) prev
+      WHERE u.id = prev.id
+      RETURNING prev.balance_before, u.${column} AS balance_after`,
+    [userId, delta],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  // BIGINT columns come back from node-postgres as strings.
+  const balanceBefore = Number(row.balance_before);
+  const balanceAfter = Number(row.balance_after);
+  return {
+    balanceBefore,
+    balanceAfter,
+    removed: balanceBefore - balanceAfter,
+    ...(creditType === "browser"
+      ? { balanceMinutes: Math.floor(balanceAfter / 60) }
+      : {}),
+  };
+}
+
+/**
+ * A raw balance in the unit an operator reads it in, for the audit detail:
+ * "4,000 tokens", or whole minutes for browser time.
+ */
+export function formatCreditBalance(
+  creditType: AdminCreditType,
+  rawBalance: number,
+): string {
+  return formatGrantAmount(
+    creditType,
+    creditType === "browser" ? Math.floor(rawBalance / 60) : rawBalance,
+  );
 }

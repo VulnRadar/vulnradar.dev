@@ -29,8 +29,11 @@ import { resolveCurrentWindow } from "@/lib/billing/ai-usage";
 import { getPaidPlans, getPlanById } from "@/lib/billing/catalog";
 import {
   validateGrantCreditsInput,
+  validateAdjustCreditsInput,
   applyCreditGrant,
+  applyCreditAdjustment,
   formatGrantAmount,
+  formatCreditBalance,
   ADMIN_CREDIT_TYPES,
 } from "@/lib/billing/admin-credit-grant";
 
@@ -54,7 +57,7 @@ import {
   twoFactorRecoveryCodeEmail,
 } from "@/lib/email/email";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
-import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
+import { isPasswordGatedAction } from "@/lib/admin/password-gate";
 import { clearUserRateLimitBuckets } from "@/lib/rate-limiting/clear-user-buckets";
 import { staffRolesByRank } from "@/lib/admin/staff-roles";
 import { fetchAuditPage, parseAuditFilters } from "@/lib/admin/audit-query";
@@ -765,9 +768,10 @@ export async function PATCH(request: NextRequest) {
   // actual action handlers were unreachable). Added make_admin and set_role
   // which were missing from the original gate.
   //
-  // PASSWORD_GATED_ACTIONS (components/admin/config.ts) is the single
-  // source for this set -- the client UI imports the same constant to
-  // decide when to show the re-auth prompt, so the two can no longer drift
+  // isPasswordGatedAction (lib/admin/password-gate.ts) is the single
+  // source for this set -- PASSWORD_GATED_ACTIONS in components/admin/config.ts
+  // plus every action that moves a credit balance. The client UI asks the
+  // same function to decide when to show the re-auth prompt, so the two cannot drift
   // the way they did before (this route used to keep its own hand-typed
   // copy, "in sync" only by a comment reminding whoever edited one to also
   // edit the other). "revoke_all_sessions" was a bug: the real action name
@@ -779,7 +783,7 @@ export async function PATCH(request: NextRequest) {
   // meant a purely additive restore demanded re-auth, which is the kind of
   // mismatch that teaches operators to type their password on reflex.
   const needsPasswordGate =
-    PASSWORD_GATED_ACTIONS.has(action) &&
+    isPasswordGatedAction(action) &&
     !(action === "toggle_ai_ban" && targetUser.ai_chat_banned === true);
   if (needsPasswordGate) {
     // Shared helper rather than a sixth hand-rolled copy of the same check.
@@ -2184,6 +2188,62 @@ export async function PATCH(request: NextRequest) {
         ...(grantResult.balanceMinutes !== undefined
           ? { balanceMinutes: grantResult.balanceMinutes }
           : {}),
+      });
+    }
+
+    // The correction for a wrong grant. A typo such as 2,000,000 tokens for
+    // 200,000 is real, non-expiring balance, and the only undo used to be SQL:
+    // no audit row, and nothing to stop it going negative. Password-gated like
+    // the grant it reverses, clamped at zero, and the reason and both balances
+    // go in the audit row.
+    case "adjust_credits": {
+      const validated = validateAdjustCreditsInput({
+        creditType,
+        amount,
+        reason,
+      });
+      if (!validated.ok) {
+        return NextResponse.json({ error: validated.error }, { status: 400 });
+      }
+      const {
+        creditType: adjustType,
+        amount: adjustAmount,
+        reason: adjustReason,
+      } = validated.value;
+      const adjustment = await applyCreditAdjustment(
+        userId,
+        adjustType,
+        adjustAmount,
+      );
+      if (!adjustment) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+      }
+      const removedLabel = formatCreditBalance(adjustType, adjustment.removed);
+      const shortfall =
+        adjustment.removed <
+        (adjustType === "browser" ? adjustAmount * 60 : adjustAmount);
+      await logAction(
+        session.userId,
+        userId,
+        "adjust_credits",
+        `Removed ${removedLabel} of ${ADMIN_CREDIT_TYPES[adjustType].label} from ${targetUser.email} (balance ${formatCreditBalance(adjustType, adjustment.balanceBefore)} to ${formatCreditBalance(adjustType, adjustment.balanceAfter)})${shortfall ? `, ${formatGrantAmount(adjustType, adjustAmount)} was asked for and the balance cannot go below zero` : ""}: ${adjustReason}`,
+        ip,
+      );
+      return NextResponse.json({
+        success: true,
+        balance: adjustment.balanceAfter,
+        ...(adjustment.balanceMinutes !== undefined
+          ? { balanceMinutes: adjustment.balanceMinutes }
+          : {}),
+        removed: adjustment.removed,
+        // Shown as the toast: what actually came off, which is less than what
+        // was asked for when the balance was too small.
+        message:
+          adjustment.removed === 0
+            ? "Nothing to remove: the balance was already 0."
+            : shortfall
+              ? `Removed ${removedLabel}, all that was left. The balance is now 0.`
+              : `Removed ${removedLabel}. The new balance is ${formatCreditBalance(adjustType, adjustment.balanceAfter)}.`,
       });
     }
 

@@ -8,8 +8,11 @@ vi.mock("@/lib/database/db", () => ({
 const {
   ADMIN_CREDIT_TYPES,
   validateGrantCreditsInput,
+  validateAdjustCreditsInput,
   applyCreditGrant,
+  applyCreditAdjustment,
   formatGrantAmount,
+  formatCreditBalance,
 } = await import("@/lib/billing/admin-credit-grant");
 
 beforeEach(() => {
@@ -222,6 +225,115 @@ describe("applyCreditGrant", () => {
     expect(typeof sql).toBe("string");
     // The literal, hand-written column name -- not `${creditType}_credit_balance`.
     expect(sql).toContain("ai_credit_balance = ai_credit_balance");
+  });
+});
+
+describe("validateAdjustCreditsInput", () => {
+  const valid = { creditType: "ai", amount: 1000, reason: "typo in the grant" };
+
+  it("accepts the same shape a grant does", () => {
+    const result = validateAdjustCreditsInput(valid);
+    assertOk(result);
+    expect(result.value).toEqual({
+      creditType: "ai",
+      amount: 1000,
+      reason: "typo in the grant",
+    });
+  });
+
+  it("requires a reason: it is the only record of why a balance moved", () => {
+    assertRejected(validateAdjustCreditsInput({ ...valid, reason: " " }));
+    assertRejected(validateAdjustCreditsInput({ ...valid, reason: undefined }));
+  });
+
+  it("rejects zero, negative and fractional amounts", () => {
+    for (const amount of [0, -1, 2.5, "abc"]) {
+      assertRejected(validateAdjustCreditsInput({ ...valid, amount }));
+    }
+  });
+
+  it("names the adjustment, not a grant, when the ceiling is exceeded", () => {
+    const result = validateAdjustCreditsInput({ ...valid, amount: 20_000_001 });
+    assertRejected(result);
+    expect(result.error).toBe(
+      "amount cannot exceed 20,000,000 tokens per adjustment",
+    );
+  });
+
+  it("leaves the grant's own message alone", () => {
+    const result = validateGrantCreditsInput({ ...valid, amount: 20_000_001 });
+    assertRejected(result);
+    expect(result.error).toContain("per grant");
+  });
+});
+
+describe("applyCreditAdjustment", () => {
+  it("clamps at zero and reports before and after from one locked statement", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ balance_before: "5000", balance_after: "0" }],
+    });
+    const result = await applyCreditAdjustment(7, "ai", 9000);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("GREATEST(u.ai_credit_balance - $2, 0)");
+    // The row is locked in the sub-select, so "before" is what was subtracted from.
+    expect(sql).toContain("FOR UPDATE");
+    expect(sql).toContain("RETURNING prev.balance_before");
+    expect(params).toEqual([7, 9000]);
+    expect(result).toEqual({
+      balanceBefore: 5000,
+      balanceAfter: 0,
+      removed: 5000,
+    });
+  });
+
+  it("uses the github column for github credit", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ balance_before: 100, balance_after: 40 }],
+    });
+    const result = await applyCreditAdjustment(7, "github", 60);
+    expect(mockQuery.mock.calls[0][0]).toContain(
+      "GREATEST(u.github_credit_balance - $2, 0)",
+    );
+    expect(result?.removed).toBe(60);
+  });
+
+  it("converts browser minutes to seconds and adds minutes to the result", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ balance_before: "7200", balance_after: "3600" }],
+    });
+    const result = await applyCreditAdjustment(7, "browser", 60);
+    expect(mockQuery.mock.calls[0][0]).toContain(
+      "GREATEST(u.browserbase_credit_seconds_balance - $2, 0)",
+    );
+    expect(mockQuery.mock.calls[0][1]).toEqual([7, 3600]);
+    expect(result).toEqual({
+      balanceBefore: 7200,
+      balanceAfter: 3600,
+      removed: 3600,
+      balanceMinutes: 60,
+    });
+  });
+
+  it("returns null for a user that does not exist", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await applyCreditAdjustment(404, "ai", 1)).toBeNull();
+  });
+
+  it("only ever splices a column from the closed map", async () => {
+    // A value the type forbids, to prove the runtime path has no way through:
+    // it is refused before any statement is built.
+    await expect(
+      applyCreditAdjustment(7, "ai; DROP TABLE users" as never, 1),
+    ).rejects.toThrow("Unknown credit type");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("formatCreditBalance", () => {
+  it("shows tokens as tokens and browser seconds as whole minutes", () => {
+    expect(formatCreditBalance("ai", 1_234_000)).toBe("1,234,000 tokens");
+    expect(formatCreditBalance("browser", 7230)).toBe("120 minutes");
   });
 });
 

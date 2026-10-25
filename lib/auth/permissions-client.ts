@@ -641,6 +641,20 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     category: "subscription",
     icon: "Coins",
   },
+  {
+    // The correction for a wrong grant: takes credit off the same three
+    // balances, never below zero, and needs a reason. Behind the same
+    // permission as granting, since a role trusted to hand out balance is the
+    // one trusted to take it back.
+    id: "adjust_credits",
+    label: "Remove Credits",
+    description: "Take AI, GitHub review or browser credits off a balance",
+    permission: STAFF_PERMISSIONS.GRANT_CREDITS,
+    category: "subscription",
+    icon: "Coins",
+    dangerous: true,
+    requiresConfirmation: true,
+  },
 
   // Scan Management
   {

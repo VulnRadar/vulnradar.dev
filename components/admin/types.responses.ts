@@ -66,6 +66,9 @@ export interface AdminBadgesResponse {
 export interface AdminActionResponse {
   success?: boolean;
   error?: string;
+  /** A sentence about what the action did, for the toast. Set where the
+   *  outcome can differ from the request, e.g. adjust_credits. */
+  message?: string;
   /**
    * Set by the sub-actions that mutate an account field (update_name,
    * update_email, update_plan, set_role). The panel collects these and

@@ -253,6 +253,22 @@ describe("specialist staff roles: billing/security_analyst/content_manager/ops",
     ).toBe(false);
   });
 
+  // Removing credit is the correction for a wrong grant. A role trusted to
+  // hand out balance is the one trusted to take it back, so both ride on
+  // GRANT_CREDITS.
+  it("adjust_credits is held by exactly the roles that hold grant_credits", () => {
+    for (const role of Object.values(STAFF_ROLES)) {
+      expect(canPerformAction(role, "adjust_credits"), role).toBe(
+        canPerformAction(role, "grant_credits"),
+      );
+    }
+    expect(canPerformAction(STAFF_ROLES.BILLING, "adjust_credits")).toBe(true);
+    expect(canPerformAction(STAFF_ROLES.SUPPORT, "adjust_credits")).toBe(false);
+    expect(canPerformAction(STAFF_ROLES.MODERATOR, "adjust_credits")).toBe(
+      false,
+    );
+  });
+
   // Reading the audit log and taking the whole of it out as a file are
   // different exposures, and the panel's Export menu and the export route both
   // check this one permission so the button is never drawn for a role the

@@ -2184,6 +2184,200 @@ describe("PATCH /api/v3/admin — grant_credits", () => {
   });
 });
 
+// A typo such as 2,000,000 tokens for 200,000 is real, non-expiring balance,
+// and the only undo used to be SQL: no audit row, and nothing to stop the
+// balance going negative.
+describe("PATCH /api/v3/admin — adjust_credits", () => {
+  function queueAdjustable() {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+  }
+
+  function adjustBody(extra: Record<string, unknown> = {}) {
+    return {
+      action: "adjust_credits",
+      userId: 5,
+      currentAdminPassword: ADMIN_PASSWORD,
+      creditType: "ai",
+      amount: 1_800_000,
+      reason: "granted 2,000,000 instead of 200,000",
+      ...extra,
+    };
+  }
+
+  it("removes credit in one clamped UPDATE and audit-logs the reason and both balances", async () => {
+    queueAdjustable();
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ balance_before: "2000000", balance_after: "200000" }],
+    });
+    const res = await PATCH(patchRequest(adjustBody()));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json).toMatchObject({
+      success: true,
+      balance: 200000,
+      removed: 1_800_000,
+    });
+    expect(json.message).toContain("1,800,000 tokens");
+    const updateCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("GREATEST(u.ai_credit_balance - $2, 0)"),
+    );
+    expect(updateCall).toBeDefined();
+    expect(String(updateCall?.[0])).toContain("FOR UPDATE");
+    expect(updateCall?.[1]).toEqual([5, 1_800_000]);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "adjust_credits",
+      expect.stringMatching(
+        /Removed 1,800,000 tokens.*balance 2,000,000 tokens to 200,000 tokens.*granted 2,000,000 instead of 200,000/,
+      ),
+      "127.0.0.1",
+    );
+  }, 20000);
+
+  it("says so when the balance was too small, instead of reporting what was asked for", async () => {
+    queueAdjustable();
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ balance_before: "500", balance_after: "0" }],
+    });
+    const res = await PATCH(patchRequest(adjustBody()));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.removed).toBe(500);
+    expect(json.balance).toBe(0);
+    expect(json.message).toBe(
+      "Removed 500 tokens, all that was left. The balance is now 0.",
+    );
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "adjust_credits",
+      expect.stringContaining("cannot go below zero"),
+      "127.0.0.1",
+    );
+  }, 20000);
+
+  it("reports a balance that was already empty", async () => {
+    queueAdjustable();
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ balance_before: "0", balance_after: "0" }],
+    });
+    const json = await (await PATCH(patchRequest(adjustBody()))).json();
+    expect(json.message).toBe("Nothing to remove: the balance was already 0.");
+  }, 20000);
+
+  it("converts browser minutes to seconds and reports minutes", async () => {
+    queueAdjustable();
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ balance_before: "7200", balance_after: "3600" }],
+    });
+    const res = await PATCH(
+      patchRequest(adjustBody({ creditType: "browser", amount: 60 })),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    const updateCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("browserbase_credit_seconds_balance"),
+    );
+    expect(updateCall?.[1]).toEqual([5, 3600]);
+    expect(json.balanceMinutes).toBe(60);
+    expect(json.message).toContain("60 minutes");
+  }, 20000);
+
+  it("needs the calling admin's password, like the grant it reverses", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    // The admin has a password, so leaving it out is a refusal rather than the
+    // OAuth-account case where the signed-in session is the re-auth signal.
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest(adjustBody({ currentAdminPassword: undefined })),
+    );
+    expect(res.status).toBe(403);
+    expect(
+      mockQuery.mock.calls.some((c) => String(c[0]).includes("GREATEST(")),
+    ).toBe(false);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("rejects the wrong password", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest(adjustBody({ currentAdminPassword: "not-the-password" })),
+    );
+    expect(res.status).toBe(403);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("refuses a role without GRANT_CREDITS", async () => {
+    queueRole("support");
+    const res = await PATCH(patchRequest(adjustBody()));
+    expect(res.status).toBe(403);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("lets the billing role, which holds GRANT_CREDITS", async () => {
+    queueRole("billing");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ balance_before: "10", balance_after: "0" }],
+    });
+    const res = await PATCH(patchRequest(adjustBody()));
+    expect(res.status).toBe(200);
+  }, 20000);
+
+  it.each([
+    ["a missing reason", { reason: undefined }],
+    ["a blank reason", { reason: "   " }],
+    ["a zero amount", { amount: 0 }],
+    ["a negative amount, which is a grant by another name", { amount: -5 }],
+    ["a non-integer amount", { amount: 1.5 }],
+    ["a bad credit type", { creditType: "crypto" }],
+    ["an amount over the ceiling", { amount: 20_000_001 }],
+  ])(
+    "rejects %s with a 400, before touching the balance",
+    async (_n, patch) => {
+      queueAdjustable();
+      const res = await PATCH(patchRequest(adjustBody(patch)));
+      expect(res.status).toBe(400);
+      expect(
+        mockQuery.mock.calls.some((c) => String(c[0]).includes("GREATEST(")),
+      ).toBe(false);
+      expect(mockLogAction).not.toHaveBeenCalled();
+    },
+    20000,
+  );
+
+  it("404s when the user disappears between the lookup and the update", async () => {
+    queueAdjustable();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(patchRequest(adjustBody()));
+    expect(res.status).toBe(404);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+});
+
 describe("PATCH /api/v3/admin, super_admin target protection", () => {
   // userId 42 (not 1) is deliberate: it isolates the new role-based guard
   // from the pre-existing, unrelated "protect the owner account (user ID

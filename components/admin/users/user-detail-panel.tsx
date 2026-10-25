@@ -87,9 +87,10 @@ import { formatRelativeTime } from "@/components/admin/utils";
 import { scanStatusPill } from "@/components/admin/scans/scan-status";
 import {
   DANGER_ZONE_ACTIONS,
-  PASSWORD_GATED_ACTIONS,
   SUPPORT_CARD_ACTIONS,
 } from "@/components/admin/config";
+import { isPasswordGatedAction } from "@/lib/admin/password-gate";
+import { FilterChips } from "@/components/admin/shared/filter-chips";
 import {
   UserAvatar,
   ActionCard,
@@ -211,19 +212,39 @@ export function UserDetailPanel({
   >("ai");
   const [creditGrantAmount, setCreditGrantAmount] = useState("");
   const [creditGrantReason, setCreditGrantReason] = useState("");
-  // Password-gated (PASSWORD_GATED_ACTIONS), so it goes through the same
-  // queue as the other gated actions; executeSupportAction clears the form.
-  function grantCredits() {
+  // Remove is the correction for a wrong grant: same form, other direction.
+  const [creditMode, setCreditMode] = useState<"grant" | "remove">("grant");
+  // Both directions are password-gated (isPasswordGatedAction), so they go
+  // through the same queue as the other gated actions; executeSupportAction
+  // clears the form.
+  function changeCredits() {
+    const unit =
+      creditGrantType === "browser"
+        ? "browser minutes"
+        : creditGrantType === "github"
+          ? "GitHub review tokens"
+          : "AI tokens";
+    const payload = {
+      creditType: creditGrantType,
+      amount: Number(creditGrantAmount),
+      reason: creditGrantReason.trim(),
+    };
+    if (creditMode === "remove") {
+      queueSupportAction(
+        "adjust_credits",
+        "Remove Credits",
+        `Take ${creditGrantAmount.trim()} ${unit} off ${u.name || u.email}'s balance. A balance never goes below 0, and your reason is recorded in the audit log.`,
+        "destructive",
+        payload,
+      );
+      return;
+    }
     queueSupportAction(
       "grant_credits",
       "Grant Credits",
-      `Add ${creditGrantAmount.trim()} ${creditGrantType === "browser" ? "browser minutes" : creditGrantType === "github" ? "GitHub review tokens" : "AI tokens"} to ${u.name || u.email}'s balance.`,
+      `Add ${creditGrantAmount.trim()} ${unit} to ${u.name || u.email}'s balance.`,
       "default",
-      {
-        creditType: creditGrantType,
-        amount: Number(creditGrantAmount),
-        reason: creditGrantReason.trim(),
-      },
+      payload,
     );
   }
   const [editingNote, setEditingNote] = useState<{
@@ -459,7 +480,7 @@ export function UserDetailPanel({
     // app/api/v3/admin/route.ts): only the ban direction needs re-auth, so
     // un-banning no longer prompts for a password it would not be asked for.
     const unbanning = action === "toggle_ai_ban" && u.ai_chat_banned === true;
-    if (PASSWORD_GATED_ACTIONS.has(action) && !unbanning) {
+    if (isPasswordGatedAction(action) && !unbanning) {
       setSupportNotify(true);
       setShowSupportPasswordDialog(true);
     }
@@ -479,7 +500,10 @@ export function UserDetailPanel({
       ...(password ? { currentAdminPassword: password } : {}),
     });
     if (result.ok) {
-      if (pendingSupportAction.action === "grant_credits") {
+      if (
+        pendingSupportAction.action === "grant_credits" ||
+        pendingSupportAction.action === "adjust_credits"
+      ) {
         setCreditGrantAmount("");
         setCreditGrantReason("");
       }
@@ -2556,8 +2580,19 @@ export function UserDetailPanel({
                           </p>
                         </div>
                       </div>
-                      <div className="flex flex-col sm:flex-row gap-2 sm:items-end pt-1 border-t border-border/40">
-                        <div className="flex flex-col gap-1 pt-3 sm:pt-0">
+                      <div className="pt-3 border-t border-border/40">
+                        <FilterChips
+                          options={[
+                            { id: "grant", label: "Grant" },
+                            { id: "remove", label: "Remove" },
+                          ]}
+                          value={creditMode}
+                          onChange={setCreditMode}
+                          label="Add credits or remove them"
+                        />
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                        <div className="flex flex-col gap-1">
                           <label
                             htmlFor={creditTypeFieldId}
                             className="text-xs font-medium text-muted-foreground"
@@ -2616,22 +2651,31 @@ export function UserDetailPanel({
                             onChange={(e) =>
                               setCreditGrantReason(e.target.value)
                             }
-                            placeholder="Why is this being granted?"
+                            placeholder={
+                              creditMode === "remove"
+                                ? "Why is this being removed?"
+                                : "Why is this being granted?"
+                            }
                             maxLength={200}
                             className="h-9 text-sm"
                           />
                         </div>
                         <Button
                           size="sm"
+                          variant={
+                            creditMode === "remove" ? "destructive" : "default"
+                          }
                           className="h-9 gap-1.5"
                           disabled={
                             !creditGrantAmount.trim() ||
                             !creditGrantReason.trim() ||
-                            isLoading("grant_credits")
+                            isLoading("grant_credits") ||
+                            isLoading("adjust_credits")
                           }
-                          onClick={grantCredits}
+                          onClick={changeCredits}
                         >
-                          {isLoading("grant_credits") ? (
+                          {isLoading("grant_credits") ||
+                          isLoading("adjust_credits") ? (
                             <Loader2
                               className="h-3.5 w-3.5 animate-spin"
                               aria-hidden="true"
@@ -2639,7 +2683,7 @@ export function UserDetailPanel({
                           ) : (
                             <Coins className="h-3.5 w-3.5" aria-hidden="true" />
                           )}
-                          Grant
+                          {creditMode === "remove" ? "Remove" : "Grant"}
                         </Button>
                       </div>
                     </div>
