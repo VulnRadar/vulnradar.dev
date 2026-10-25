@@ -33,16 +33,17 @@ export function LandingCta({ freeScansPerDay }: LandingCtaProps) {
                   all one click away.
                 </p>
               </div>
-              <Link href={ROUTES.DASHBOARD} className="shrink-0">
-                <Button
-                  size="lg"
-                  shape="pill"
-                  className="h-11 px-6 gap-2 w-full"
-                >
+              <Button
+                asChild
+                size="lg"
+                shape="pill"
+                className="h-11 px-6 gap-2 shrink-0"
+              >
+                <Link href={ROUTES.DASHBOARD}>
                   <LayoutDashboard className="h-4 w-4" />
                   Go to Dashboard
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </>
           ) : (
             <>
@@ -58,27 +59,27 @@ export function LandingCta({ freeScansPerDay }: LandingCtaProps) {
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
-                <Link href={ROUTES.SIGNUP}>
-                  <Button
-                    size="lg"
-                    shape="pill"
-                    className="h-11 px-6 gap-2 w-full"
-                  >
+                <Button
+                  asChild
+                  size="lg"
+                  shape="pill"
+                  className="h-11 px-6 gap-2 w-full"
+                >
+                  <Link href={ROUTES.SIGNUP}>
                     Create a free account
                     <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-                {featureDemoMode && (
-                  <Link href={ROUTES.DEMO}>
-                    <Button
-                      size="lg"
-                      shape="pill"
-                      variant="outline"
-                      className="h-11 px-6 w-full"
-                    >
-                      Try the demo first
-                    </Button>
                   </Link>
+                </Button>
+                {featureDemoMode && (
+                  <Button
+                    asChild
+                    size="lg"
+                    shape="pill"
+                    variant="outline"
+                    className="h-11 px-6 w-full"
+                  >
+                    <Link href={ROUTES.DEMO}>Try the demo first</Link>
+                  </Button>
                 )}
               </div>
             </>

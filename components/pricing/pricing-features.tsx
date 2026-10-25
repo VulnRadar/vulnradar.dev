@@ -2,6 +2,7 @@
 
 import { Check, Minus } from "lucide-react";
 import { PLANS } from "@/lib/billing/plans";
+import { cn } from "@/lib/ui/utils";
 import { usePlanLimits, type AllPlanLimits } from "@/lib/hooks/use-plan-limits";
 import {
   AI_USAGE_WINDOW_HOURS,
@@ -204,16 +205,37 @@ function Cell({ value, label }: { value: CellValue; label: string }) {
   );
 }
 
+// Opaque versions of the row tints (bg-muted/30 on the header, /10 on a group
+// title, /20 on hover), mixed over the card by hand. Below sm the first column
+// is sticky, and a sticky cell has to paint over whatever scrolls underneath
+// it: an alpha background lets the numbers show through the row label. Each
+// row paints one of these and its sticky cell takes it with bg-inherit, so the
+// label column is the same colour as the row it belongs to in every state.
+const HEAD_TINT =
+  "bg-[color-mix(in_srgb,hsl(var(--muted))_30%,hsl(var(--card)))]";
+const GROUP_TINT =
+  "bg-[color-mix(in_srgb,hsl(var(--muted))_10%,hsl(var(--card)))]";
+const ROW_HOVER_TINT =
+  "hover:bg-[color-mix(in_srgb,hsl(var(--muted))_20%,hsl(var(--card)))]";
+
+// Pins the label column while the values scroll. Only below sm, which is the
+// only place the table overflows (min-w-[560px] against a narrower viewport),
+// so the seam line it draws never appears on a screen that does not need it.
+// A box-shadow rather than a border: with border-collapse the border belongs
+// to the table, so it would scroll away with the cell it was meant to edge.
+const STICKY_LABEL =
+  "max-sm:sticky max-sm:left-0 max-sm:z-10 max-sm:bg-inherit max-sm:shadow-[inset_-1px_0_0_hsl(var(--border)/0.6)]";
+
 export function PricingFeatures() {
   // Resolved from the same admin-editable settings the API enforces against,
   // falling back to the shipped catalog until the fetch lands.
   const sections = buildSections(usePlanLimits());
 
   return (
-    <section id="compare" className="scroll-mt-20 border-t border-border/50">
+    <section id="compare" className="tile-alt scroll-mt-20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <div className="mb-8 max-w-xl">
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-2">
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-2 text-balance">
             Line by line
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
@@ -224,14 +246,27 @@ export function PricingFeatures() {
           </p>
         </div>
 
-        <div className="relative overflow-x-auto rounded-xl border border-border/50">
+        <div
+          // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scroll container has to take focus to be scrolled from the keyboard
+          tabIndex={0}
+          role="region"
+          aria-label="Plan limits compared"
+          className={cn(
+            "relative overflow-x-auto rounded-xl border border-border bg-card",
+            // Inset, so the ring is not clipped by the rounded overflow box.
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          )}
+        >
           <table className="w-full text-sm min-w-[560px] border-collapse">
             <caption className="sr-only">Plan limits compared</caption>
             <thead>
-              <tr className="border-b border-border/50 bg-muted/30">
+              <tr className={cn("border-b border-border/50", HEAD_TINT)}>
                 <th
                   scope="col"
-                  className="text-left px-5 py-3.5 font-medium text-muted-foreground w-[40%]"
+                  className={cn(
+                    "text-left px-3 sm:px-5 py-3.5 font-medium text-muted-foreground w-36 sm:w-[40%]",
+                    STICKY_LABEL,
+                  )}
                 >
                   Limit
                 </th>
@@ -248,23 +283,35 @@ export function PricingFeatures() {
             </thead>
             {sections.map((section) => (
               <tbody key={section.title}>
-                <tr className="border-b border-border/40 bg-muted/10">
+                <tr className={cn("border-b border-border/40", GROUP_TINT)}>
                   <th
                     scope="colgroup"
                     colSpan={PLANS.length + 1}
-                    className="px-5 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                    className="px-3 sm:px-5 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
                   >
-                    {section.title}
+                    {/* The title is the only thing in a cell as wide as the
+                        whole table, so the cell cannot be the sticky part.
+                        The span inside it can, and keeps the group name in
+                        view while the numbers scroll. */}
+                    <span className="sticky left-3 sm:left-5">
+                      {section.title}
+                    </span>
                   </th>
                 </tr>
                 {section.rows.map((row) => (
                   <tr
                     key={row.label}
-                    className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
+                    className={cn(
+                      "border-b border-border/40 last:border-0 bg-card transition-colors",
+                      ROW_HOVER_TINT,
+                    )}
                   >
                     <th
                       scope="row"
-                      className="px-5 py-3 text-muted-foreground font-normal text-left"
+                      className={cn(
+                        "px-3 sm:px-5 py-3 text-muted-foreground font-normal text-left",
+                        STICKY_LABEL,
+                      )}
                     >
                       {row.label}
                     </th>

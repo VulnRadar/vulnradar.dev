@@ -64,7 +64,9 @@ export const PRICING_FAQ: { question: string; answer: string }[] = [
 
 export function PricingFaq() {
   return (
-    <section className="border-t border-border/50">
+    // The page surface again, between the alt table above and the contrast CTA
+    // below, so neither neighbour needs a rule to mark where it starts.
+    <section>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-8">
           Before you enter a card

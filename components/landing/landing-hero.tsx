@@ -101,31 +101,40 @@ export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
 
             <div className="flex flex-wrap gap-3 mb-10">
               {isLoggedIn ? (
-                <Link href={ROUTES.DASHBOARD}>
-                  <Button size="lg" shape="pill" className="h-11 px-6 gap-2">
+                <Button
+                  asChild
+                  size="lg"
+                  shape="pill"
+                  className="h-11 px-6 gap-2"
+                >
+                  <Link href={ROUTES.DASHBOARD}>
                     <LayoutDashboard className="h-4 w-4" />
                     Go to Dashboard
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               ) : (
-                <Link href={ROUTES.SIGNUP}>
-                  <Button size="lg" shape="pill" className="h-11 px-6 gap-2">
+                <Button
+                  asChild
+                  size="lg"
+                  shape="pill"
+                  className="h-11 px-6 gap-2"
+                >
+                  <Link href={ROUTES.SIGNUP}>
                     Start scanning free
                     <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               )}
               {featureDemoMode && (
-                <Link href={ROUTES.DEMO}>
-                  <Button
-                    size="lg"
-                    shape="pill"
-                    variant="outline"
-                    className="h-11 px-6"
-                  >
-                    Try the demo
-                  </Button>
-                </Link>
+                <Button
+                  asChild
+                  size="lg"
+                  shape="pill"
+                  variant="outline"
+                  className="h-11 px-6"
+                >
+                  <Link href={ROUTES.DEMO}>Try the demo</Link>
+                </Button>
               )}
             </div>
 

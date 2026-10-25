@@ -312,7 +312,7 @@ export function PricingCards({
         </p>
         <a
           href="#compare"
-          className="rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          className="-my-1 rounded-sm py-1 text-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           Every limit, line by line
         </a>

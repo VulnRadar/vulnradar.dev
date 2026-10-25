@@ -2,7 +2,9 @@ import { APP_NAME, APP_REPO } from "@/lib/config/client-constants";
 
 export function DemoInfo() {
   return (
-    <section className="border-t border-border/50 py-16 sm:py-20">
+    // A step off the hero's surface instead of a rule under it, and a step
+    // short of the closing CTA's, so the page reads base, alt, contrast.
+    <section className="tile-alt py-16 sm:py-20">
       <div className="max-w-3xl mx-auto px-4 sm:px-6">
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-6 text-balance">
           Why we let you scan us

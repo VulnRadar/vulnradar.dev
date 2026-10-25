@@ -12,7 +12,11 @@ const CHEAPEST_PAID = PLANS.find((p) => p.priceInCents > 0);
 
 export function PricingCta({ isLoggedIn }: PricingCtaProps) {
   return (
-    <section className="border-t border-border/50 bg-muted/30">
+    // The page's one strong surface step, and the conversion point, so it is
+    // the band that should stop someone. It was a border-t over a bg-muted/30
+    // wash, which is not a step on the tile ladder and so did not re-pitch the
+    // way tile-contrast does between the themes.
+    <section className="tile-contrast">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 items-center">
           <div>
@@ -28,17 +32,26 @@ export function PricingCta({ isLoggedIn }: PricingCtaProps) {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
-            <Link href={isLoggedIn ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
-              <Button size="lg" className="h-11 px-6 gap-2 w-full">
+            <Button
+              asChild
+              size="lg"
+              shape="pill"
+              className="h-11 px-6 gap-2 w-full"
+            >
+              <Link href={isLoggedIn ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
                 {isLoggedIn ? "Go to Scanner" : "Start scanning free"}
                 <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-            <Link href={ROUTES.DOCS}>
-              <Button size="lg" variant="outline" className="h-11 px-6 w-full">
-                Read the docs
-              </Button>
-            </Link>
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              shape="pill"
+              variant="outline"
+              className="h-11 px-6 w-full"
+            >
+              <Link href={ROUTES.DOCS}>Read the docs</Link>
+            </Button>
           </div>
         </div>
       </div>

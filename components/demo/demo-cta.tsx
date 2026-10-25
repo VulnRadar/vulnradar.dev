@@ -11,7 +11,10 @@ export function DemoCTA() {
   const isLoggedIn = !!me?.userId;
 
   return (
-    <section className="border-t border-border/50 bg-muted/30">
+    // The same closing band /pricing ends on. It was a border-t over a
+    // bg-muted/30 wash with square buttons, so the one block on each page that
+    // asks for the signup looked like two different designs.
+    <section className="tile-contrast">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 items-center">
           <div>
@@ -28,30 +31,40 @@ export function DemoCTA() {
           </div>
           <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
             {isLoggedIn ? (
-              <Link href={ROUTES.DASHBOARD}>
-                <Button size="lg" className="h-11 px-6 gap-2 w-full">
+              <Button
+                asChild
+                size="lg"
+                shape="pill"
+                className="h-11 px-6 gap-2 w-full"
+              >
+                <Link href={ROUTES.DASHBOARD}>
                   <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
                   Go to Dashboard
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             ) : (
               <>
-                <Link href={ROUTES.SIGNUP}>
-                  <Button size="lg" className="h-11 px-6 gap-2 w-full">
+                <Button
+                  asChild
+                  size="lg"
+                  shape="pill"
+                  className="h-11 px-6 gap-2 w-full"
+                >
+                  <Link href={ROUTES.SIGNUP}>
                     Create a free account
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </Link>
-                {BILLING_ENABLED && (
-                  <Link href={ROUTES.PRICING}>
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      className="h-11 px-6 w-full"
-                    >
-                      See the limits
-                    </Button>
                   </Link>
+                </Button>
+                {BILLING_ENABLED && (
+                  <Button
+                    asChild
+                    size="lg"
+                    shape="pill"
+                    variant="outline"
+                    className="h-11 px-6 w-full"
+                  >
+                    <Link href={ROUTES.PRICING}>See the limits</Link>
+                  </Button>
                 )}
               </>
             )}

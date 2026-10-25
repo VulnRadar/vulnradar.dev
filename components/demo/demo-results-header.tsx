@@ -68,24 +68,31 @@ export function DemoResultsHeader({
         </p>
 
         <div className="flex flex-wrap gap-3">
-          <Button variant="outline" onClick={onScanAgain} className="gap-2">
+          {/* Both pills: this row is the demo's own call to action, and one
+              pill beside a square outline button reads as a mistake. */}
+          <Button
+            variant="outline"
+            shape="pill"
+            onClick={onScanAgain}
+            className="gap-2"
+          >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Run scan again
           </Button>
           {isLoggedIn ? (
-            <Link href={ROUTES.DASHBOARD}>
-              <Button className="gap-2">
+            <Button asChild shape="pill" className="gap-2">
+              <Link href={ROUTES.DASHBOARD}>
                 <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
                 Go to Dashboard
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           ) : (
-            <Link href={ROUTES.SIGNUP}>
-              <Button className="gap-2">
+            <Button asChild shape="pill" className="gap-2">
+              <Link href={ROUTES.SIGNUP}>
                 Scan your own site
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           )}
         </div>
       </div>

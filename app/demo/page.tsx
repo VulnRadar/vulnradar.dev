@@ -35,11 +35,9 @@ export default function DemoPage() {
           title="Demo mode is turned off"
           description="This deployment runs with the demo disabled, so there is no no-account scan to run here. Create a free account and scan from the dashboard instead."
           action={
-            <Link href={ROUTES.SIGNUP}>
-              <Button size="lg" className="h-11 px-6">
-                Create a free account
-              </Button>
-            </Link>
+            <Button asChild size="lg" shape="pill" className="h-11 px-6">
+              <Link href={ROUTES.SIGNUP}>Create a free account</Link>
+            </Button>
           }
         />
       </div>

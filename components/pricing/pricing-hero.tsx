@@ -12,7 +12,10 @@ interface PricingHeroProps {
 
 export function PricingHero({ billing, onBillingChange }: PricingHeroProps) {
   return (
-    <section className="border-b border-border/50">
+    // No rule under it: the hero and the plan rail below are one unit (the
+    // billing toggle up here prices the cards down there), so they share the
+    // page surface and the first change of surface is the comparison table.
+    <section>
       <div className={PRICING_HERO_SECTION}>
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 lg:gap-12 lg:items-end">
           <div className="max-w-2xl">
@@ -72,7 +75,7 @@ export function PricingHero({ billing, onBillingChange }: PricingHeroProps) {
               )}
             >
               Yearly
-              <span className="text-[10px] bg-primary/10 text-primary font-semibold px-1.5 py-0.5 rounded">
+              <span className="text-[10px] bg-primary/10 text-primary font-semibold px-1.5 py-0.5 rounded-md">
                 -20%
               </span>
             </button>
