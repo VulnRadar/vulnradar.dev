@@ -21,7 +21,8 @@ const {
   _shouldCapture,
   _resetErrorLogCaptureStateForTests,
 } = await import("@/lib/database/error-log-capture");
-const { runWithRequestId } = await import("@/lib/database/request-context");
+const { runWithRequestId, runWithScanId } =
+  await import("@/lib/database/request-context");
 
 const originalConsoleError = console.error;
 
@@ -306,5 +307,258 @@ describe("installErrorLogCapture: request correlation id", () => {
     console.error("outside any request");
 
     expect(mockQuery.mock.calls[1][1][2]).toBeNull();
+  });
+});
+
+/**
+ * A background scan outlives the request that started it and a scheduled one
+ * never had one, so request_id alone cannot answer "what went wrong with scan
+ * 4812". The wrapper stamps the ambient scan id the same way it stamps the
+ * request id.
+ */
+describe("installErrorLogCapture: scan correlation id", () => {
+  it("stamps the ambient scan id onto the row", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    runWithScanId(4812, () => {
+      console.error("check threw");
+    });
+
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("scan_id");
+    expect(params[3]).toBe(4812);
+  });
+
+  it("carries both ids when a scan runs inside a request", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    runWithRequestId("88888888-8888-4888-8888-888888888888", () => {
+      runWithScanId(7, () => {
+        console.error("inside both");
+      });
+    });
+
+    const params = mockQuery.mock.calls[0][1];
+    expect(params[2]).toBe("88888888-8888-4888-8888-888888888888");
+    expect(params[3]).toBe(7);
+  });
+
+  it("writes null outside any scan", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    console.error("not part of a scan");
+
+    expect(mockQuery.mock.calls[0][1][3]).toBeNull();
+  });
+});
+
+/**
+ * The flood guards used to drop rows without a word, so during an incident
+ * the panel showed about a hundred rows and looked complete. Now each window
+ * that dropped anything gets one `[error-capture]` row saying how many and
+ * what, and a drop is never silent.
+ */
+describe("installErrorLogCapture: suppression summary", () => {
+  const START = new Date("2026-10-25T12:00:00.000Z");
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: START });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const summaryCalls = () =>
+    mockQuery.mock.calls.filter(([, params]) =>
+      String(params[0]).startsWith("[error-capture]"),
+    );
+
+  it("writes nothing extra when nothing was dropped", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    console.error("one");
+    console.error("two");
+    vi.advanceTimersByTime(120_000);
+
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(summaryCalls()).toHaveLength(0);
+  });
+
+  it("reports the rows the per-minute cap swallowed once the window ends", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    for (let i = 0; i < 130; i++) console.error(`failure number ${i}`);
+    // 100 stored, nothing said yet: the window is still open.
+    expect(mockQuery).toHaveBeenCalledTimes(100);
+
+    vi.advanceTimersByTime(60_000);
+
+    expect(mockQuery).toHaveBeenCalledTimes(101);
+    const [sql, params] = mockQuery.mock.calls[100];
+    expect(sql).toContain("INSERT INTO system_error_logs");
+    expect(params[0]).toMatch(/^\[error-capture\] suppressed 30 errors/);
+    expect(params[0]).toContain("30 over the 100 per minute cap");
+    expect(params[0]).toContain(START.toISOString());
+    // The detail names what was lost, so the panel is useful without a shell.
+    expect(params[1]).toContain("failure number 100");
+    expect(params[1]).toContain("still printed to the server console");
+  });
+
+  it("counts coalesced repeats and names the message", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    for (let i = 0; i < 5; i++) console.error("retrying connection");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(60_000);
+
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const params = mockQuery.mock.calls[1][1];
+    expect(params[0]).toContain("suppressed 4 errors");
+    expect(params[0]).toContain('4 repeats of "retrying connection"');
+    expect(params[1]).toContain("4x  retrying connection");
+  });
+
+  it("writes ONE summary per window however many drops it holds", () => {
+    // A, A, B, B, A, A flips the message three times. A row per flip would be
+    // the flood the guard exists to stop.
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    for (const m of ["A", "A", "B", "B", "A", "A"]) console.error(m);
+    vi.advanceTimersByTime(60_000);
+
+    expect(summaryCalls()).toHaveLength(1);
+    expect(summaryCalls()[0][1][0]).toContain("suppressed 3 errors");
+  });
+
+  it("reports on the next error when no timer got to it, before storing it", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    console.error("burst");
+    console.error("burst");
+    // Move the clock without running timers, as a stalled event loop would.
+    vi.setSystemTime(new Date(START.getTime() + 61_000));
+    console.error("next window");
+
+    const messages = mockQuery.mock.calls.map(([, p]) => String(p[0]));
+    expect(messages[0]).toBe("burst");
+    expect(messages[1]).toMatch(/^\[error-capture\] suppressed 1 error /);
+    expect(messages[2]).toBe("next window");
+  });
+
+  it("never stamps the summary with the request or scan that happened to trigger it", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    console.error("burst");
+    console.error("burst");
+    vi.setSystemTime(new Date(START.getTime() + 61_000));
+    runWithRequestId("99999999-9999-4999-8999-999999999999", () => {
+      runWithScanId(55, () => {
+        console.error("unrelated work");
+      });
+    });
+
+    const summary = summaryCalls()[0][1];
+    expect(summary[2]).toBeNull();
+    expect(summary[3]).toBeNull();
+    // ...while the row for the call itself keeps its ids.
+    const own = mockQuery.mock.calls.find(
+      ([, p]) => p[0] === "unrelated work",
+    )![1];
+    expect(own[2]).toBe("99999999-9999-4999-8999-999999999999");
+    expect(own[3]).toBe(55);
+  });
+
+  it("is not itself held back by the cap it is reporting", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    for (let i = 0; i < 200; i++) console.error(`distinct ${i}`);
+    vi.advanceTimersByTime(60_000);
+
+    expect(summaryCalls()).toHaveLength(1);
+  });
+
+  it("starts a fresh count for the next window", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    console.error("x");
+    console.error("x");
+    vi.advanceTimersByTime(60_000);
+    console.error("y");
+    console.error("y");
+    console.error("y");
+    vi.advanceTimersByTime(60_000);
+
+    const counts = summaryCalls().map(
+      ([, p]) => String(p[0]).match(/suppressed (\d+)/)?.[1],
+    );
+    expect(counts).toEqual(["1", "2"]);
+  });
+
+  it("files a repeat that lands just past a boundary under the window it arrived in", () => {
+    // The stored copy is at +59s and the repeat at +61s: inside the coalesce
+    // window, but past the end of the first rate window. The drop belongs to
+    // the second window, so the summary is due a full window after +61s, not
+    // immediately because the first window had already ended.
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    console.error("warmup");
+    vi.setSystemTime(new Date(START.getTime() + 59_000));
+    console.error("same");
+    vi.setSystemTime(new Date(START.getTime() + 61_000));
+    console.error("same");
+
+    vi.advanceTimersByTime(59_999);
+    expect(summaryCalls()).toHaveLength(0);
+    vi.advanceTimersByTime(1);
+    expect(summaryCalls()).toHaveLength(1);
+  });
+
+  it("bounds what a summary quotes of a very long message", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    const long = "z".repeat(1500);
+    console.error(long);
+    console.error(long);
+    vi.advanceTimersByTime(60_000);
+
+    expect(String(summaryCalls()[0][1][0]).length).toBeLessThan(400);
+  });
+
+  it("leaves no timer behind once the state is reset", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    console.error("x");
+    console.error("x");
+    expect(vi.getTimerCount()).toBe(1);
+
+    _resetErrorLogCaptureStateForTests();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not turn a failed summary insert into an error for the caller", async () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+    console.error("x");
+    console.error("x");
+    mockQuery.mockRejectedValue(new Error("pool is draining"));
+
+    expect(() => vi.advanceTimersByTime(60_000)).not.toThrow();
+    await Promise.resolve();
   });
 });
