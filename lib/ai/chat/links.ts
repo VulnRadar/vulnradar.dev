@@ -64,7 +64,13 @@ function internalHref(url: URL): string | null {
   for (const [key, value] of url.searchParams)
     if (INTERNAL_PARAMS.has(key)) kept.append(key, value);
   const query = kept.toString();
-  return `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
+  // The parsed path, not the input, is what gets written out, and parsing
+  // resolves dot segments: "/.//attacker.example" comes back as the path
+  // "//attacker.example", which a browser reads as another host. Backslashes
+  // are already slashes by now for http(s) URLs.
+  let path = url.pathname;
+  while (path.startsWith("//")) path = path.slice(1);
+  return `${path}${query ? `?${query}` : ""}${url.hash}`;
 }
 
 function isReference(url: URL): boolean {
