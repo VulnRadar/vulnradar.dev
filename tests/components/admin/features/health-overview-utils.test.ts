@@ -380,6 +380,7 @@ describe("overdue schedules", () => {
     count: number;
     oldestOverdueMs: number | null;
     workersRun?: boolean;
+    scheduledScansEnabled?: boolean;
   }) =>
     rowFor(
       metrics({ overdueSchedules: { workersRun: true, ...over } }),
@@ -412,6 +413,18 @@ describe("overdue schedules", () => {
     });
     expect(r?.state).toBe("ok");
     expect(r?.value).toBe("not applicable");
+  });
+
+  it("is not a fault while an operator has the feature switched off", () => {
+    // The worker claims nothing in that state, on purpose, so the schedules
+    // pile up unrun; holding the row red for it would be the panel crying wolf.
+    const r = row({
+      count: 5,
+      oldestOverdueMs: 99 * 60 * MIN,
+      scheduledScansEnabled: false,
+    });
+    expect(r?.state).toBe("ok");
+    expect(r?.value).toBe("switched off");
   });
 
   it("renders an unknown row when the read failed", () => {

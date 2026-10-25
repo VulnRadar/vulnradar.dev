@@ -129,6 +129,8 @@ export interface HealthMetrics {
   } | null;
   overdueSchedules?: {
     workersRun: boolean;
+    /** False when the FEATURE_SCHEDULED_SCANS switch is off. Absent means on. */
+    scheduledScansEnabled?: boolean;
     count: number;
     oldestOverdueMs: number | null;
   } | null;
@@ -361,6 +363,17 @@ function overdueSchedulesRow(
       value: "not applicable",
       detail:
         "This host is serverless, so the scheduled-scans worker never runs and schedules are not executed here.",
+      state: "ok",
+      tab: "queue-status",
+    };
+  }
+  if (m.scheduledScansEnabled === false) {
+    return {
+      key: "overdue-schedules",
+      label: "Overdue schedules",
+      value: "switched off",
+      detail:
+        "Scheduled scans are switched off in Settings, so no schedule is being run and none counts as late.",
       state: "ok",
       tab: "queue-status",
     };

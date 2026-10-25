@@ -22,8 +22,12 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+// Every setting reads false except the scheduled-scans switch, which ships on.
+const mockGetSetting = vi.fn(
+  async (key: string) => key === "FEATURE_SCHEDULED_SCANS",
+);
 vi.mock("@/lib/config/runtime-config", () => ({
-  getSetting: vi.fn().mockResolvedValue(false),
+  getSetting: (key: string) => mockGetSetting(key),
 }));
 
 vi.mock("node:fs/promises", () => ({
@@ -87,6 +91,9 @@ function signInAs(role: string, userId = 7) {
 beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
+  mockGetSetting.mockImplementation(
+    async (key: string) => key === "FEATURE_SCHEDULED_SCANS",
+  );
 });
 
 describe("GET /api/v3/admin/health", () => {
@@ -352,6 +359,39 @@ describe("GET /api/v3/admin/health: background workers", () => {
     expect(json.overdueSchedules.count).toBe(3);
     expect(json.overdueSchedules.workersRun).toBe(true);
     expect(json.overdueSchedules.oldestOverdueMs).toBeGreaterThan(119 * 60_000);
+  });
+
+  it("does not count schedules as late while the scheduled-scans switch is off", async () => {
+    // The worker returns before it claims anything when the feature is off,
+    // so every active schedule goes overdue. That is the operator's setting,
+    // not an outage, and must not be queried or reported as one.
+    signInAs("admin");
+    respondByTable({
+      overdue: { rows: [{ n: 9, oldest_at: ago(48 * 60 * 60_000) }] },
+    });
+    mockGetSetting.mockImplementation(async () => false);
+
+    const json = await (await GET()).json();
+
+    expect(json.overdueSchedules).toMatchObject({
+      scheduledScansEnabled: false,
+      count: 0,
+      oldestOverdueMs: null,
+    });
+    expect(
+      mockQuery.mock.calls.some((c) =>
+        String(c[0]).includes("FROM scheduled_scans"),
+      ),
+    ).toBe(false);
+  });
+
+  it("says the switch is on when it is", async () => {
+    signInAs("admin");
+    respondByTable();
+
+    const json = await (await GET()).json();
+
+    expect(json.overdueSchedules.scheduledScansEnabled).toBe(true);
   });
 
   it("only counts schedules that are active and more than 30 minutes late", async () => {

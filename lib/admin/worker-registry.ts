@@ -69,7 +69,8 @@ export const BACKGROUND_WORKERS: readonly BackgroundWorker[] = [
  * platform the process does not live long enough for any worker to tick,
  * which lib/database/boot/workers.ts documents as an accepted limitation, so
  * a worker that never reports there is the expected state and not a fault.
- * The same environment signals the updater keys off (lib/updater/environment.ts).
+ * VERCEL is the signal lib/updater/environment.ts also keys off; the other two
+ * are the equivalents on AWS Lambda and Netlify.
  */
 export function hostRunsWorkers(
   env: Record<string, string | undefined> = process.env,

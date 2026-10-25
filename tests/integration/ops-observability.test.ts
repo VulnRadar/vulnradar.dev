@@ -18,7 +18,13 @@ import {
 } from "@/lib/database/request-context";
 import { buildErrorLogWhere } from "@/lib/admin/error-log-filter";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
-import { describeIntegration, createUser, unique } from "./_db";
+import {
+  describeIntegration,
+  createUser,
+  unique,
+  setSettings,
+  clearSettings,
+} from "./_db";
 
 /**
  * The ops-observability SQL on a real PostgreSQL: the error log's request and
@@ -242,6 +248,7 @@ describeIntegration("GET /api/v3/admin/health", () => {
 
   afterAll(async () => {
     auth.userId = 0;
+    await clearSettings();
     await pool.query("DELETE FROM scan_history WHERE user_id = $1", [ownerId]);
     await pool.query("DELETE FROM scheduled_scans WHERE user_id = $1", [
       ownerId,
@@ -287,6 +294,7 @@ describeIntegration("GET /api/v3/admin/health", () => {
   });
 
   it("counts an active schedule only once it is more than 30 minutes late", async () => {
+    await setSettings({ FEATURE_SCHEDULED_SCANS: true });
     const before = (await health()).overdueSchedules;
 
     const insert = (active: boolean, nextRun: string) =>
@@ -304,6 +312,22 @@ describeIntegration("GET /api/v3/admin/health", () => {
 
     expect(after.count - before.count).toBe(1);
     expect(after.oldestOverdueMs).toBeGreaterThanOrEqual(119 * 60_000);
+  });
+
+  it("does not report schedules as late while the feature is switched off", async () => {
+    // The overdue schedule from the test above is still in the table; the
+    // worker claims nothing while the switch is off, so it stays overdue and
+    // must not be read as an outage.
+    await setSettings({ FEATURE_SCHEDULED_SCANS: false });
+
+    const { overdueSchedules } = await health();
+
+    expect(overdueSchedules).toMatchObject({
+      scheduledScansEnabled: false,
+      count: 0,
+      oldestOverdueMs: null,
+    });
+    await setSettings({ FEATURE_SCHEDULED_SCANS: true });
   });
 
   it("returns the stored worker state next to its registered interval", async () => {

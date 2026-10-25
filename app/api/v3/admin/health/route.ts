@@ -261,6 +261,19 @@ export const GET = withErrorHandling(async () => {
           // every two minutes and soft-locks a claimed row into the future,
           // so a schedule this late was not simply waiting its turn: the
           // worker is down, failing, or scanning is paused.
+          //
+          // Unless the feature is switched off: the worker then returns
+          // before it claims anything, on purpose, so every active schedule
+          // goes overdue and would hold this row red for as long as the
+          // switch stays off. An operator's own setting is not a fault.
+          if (!(await getSetting("FEATURE_SCHEDULED_SCANS"))) {
+            return {
+              workersRun: hostRunsWorkers(),
+              scheduledScansEnabled: false,
+              count: 0,
+              oldestOverdueMs: null,
+            };
+          }
           const res = await pool.query<{
             n: string;
             oldest_at: string | null;
@@ -273,6 +286,7 @@ export const GET = withErrorHandling(async () => {
           const oldest = res.rows[0]?.oldest_at;
           return {
             workersRun: hostRunsWorkers(),
+            scheduledScansEnabled: true,
             count: Number(res.rows[0]?.n) || 0,
             oldestOverdueMs: oldest
               ? Math.max(0, Date.now() - new Date(oldest).getTime())
