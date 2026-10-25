@@ -123,11 +123,11 @@ export function Header() {
       <header
         className={`fixed top-[calc(var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] left-0 right-0 z-50 border-b border-border/50 transition-[top] duration-300 ${backdrops.header}`}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 relative flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-4">
           {/* Logo - left */}
           <Link
             href={ROUTES.DASHBOARD}
-            className={`flex items-center gap-2.5 hover:opacity-80 shrink-0 z-10 ${transitions.opacity}`}
+            className={`flex items-center gap-2.5 hover:opacity-80 shrink-0 ${transitions.opacity}`}
             aria-label={t("goToScanner")}
             onClick={(e) => {
               // If already on dashboard with a ?scan= param (viewing scan results),
@@ -153,14 +153,25 @@ export function Header() {
             </span>
           </Link>
 
-          {/* Desktop nav - absolutely centered */}
+          {/* Desktop nav. In the row's flow, between the logo and the right
+              cluster, centred in whatever space those two leave. It used to be
+              absolutely centred on the viewport, which meant it took no space
+              in the row at all: at 1024px its last links ran underneath the
+              bell, language and theme controls (the right cluster paints over
+              it), and every translated label made that worse. The inline nav
+              starts at xl (1280px), the first breakpoint where the widest
+              label set (Spanish, with the Admin link) fits in flow with room
+              to spare; below that the menu button carries the same links, as
+              it does at every narrower width.
+              tests/components/scanner/header-layout.test.ts holds the
+              measurements. */}
           {/* aria-current is the only machine-readable "you are here" signal:
               the active state was expressed purely as a colour swap, which a
               screen reader cannot see and which fails on its own for anyone
               who cannot distinguish the two greys. */}
           <nav
             aria-label="Main"
-            className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2"
+            className="hidden xl:flex min-w-0 flex-1 items-center justify-center gap-0.5"
           >
             {navLinks.map(({ href, label, tour }) => {
               const active = isNavActive(href);
@@ -171,7 +182,7 @@ export function Header() {
                   aria-current={active ? "page" : undefined}
                   {...(tour ? tourAnchor(tour) : {})}
                   className={cn(
-                    "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors",
+                    "inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1.5 rounded-md text-sm transition-colors",
                     active
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted",
@@ -186,7 +197,7 @@ export function Header() {
                 href={ROUTES.ADMIN}
                 aria-current={pathname === ROUTES.ADMIN ? "page" : undefined}
                 className={cn(
-                  "px-2 py-1.5 rounded-md text-sm transition-colors",
+                  "whitespace-nowrap px-2 py-1.5 rounded-md text-sm transition-colors",
                   pathname === ROUTES.ADMIN
                     ? "bg-destructive/10 text-destructive font-medium"
                     : "text-destructive/70 hover:text-destructive hover:bg-muted",
@@ -197,17 +208,18 @@ export function Header() {
             )}
           </nav>
 
-          {/* Right side - pushed to end */}
-          <div className="flex items-center gap-1 ml-auto z-10">
+          {/* Right side - pushed to end. shrink-0, so the nav (which has
+              min-w-0) is the item that gives up width, never these. */}
+          <div className="flex items-center gap-1 ml-auto shrink-0">
             <NotificationBell />
             <LanguageMenu />
             <ThemeToggle />
-            <div className="hidden lg:block w-px h-5 bg-border mx-1" />
+            <div className="hidden xl:block w-px h-5 bg-border mx-1" />
             <Button
               variant="ghost"
               size="sm"
               onClick={handleLogout}
-              className="hidden lg:inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground px-2.5"
+              className="hidden xl:inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground px-2.5"
             >
               <LogOut className="h-4 w-4" />
               <span>{t("logOut")}</span>
@@ -224,9 +236,9 @@ export function Header() {
               aria-expanded={mobileOpen}
               aria-haspopup="dialog"
               aria-label={t("openMenu")}
-              // 44px below lg. size="icon" is 40px, and this button only
-              // exists below lg, where it is the only route to the nav.
-              className="lg:hidden h-11 w-11 text-muted-foreground hover:text-foreground"
+              // 44px below xl. size="icon" is 40px, and this button only
+              // exists below xl, where it is the only route to the nav.
+              className="xl:hidden h-11 w-11 text-muted-foreground hover:text-foreground"
             >
               <Menu className="h-5 w-5" />
             </Button>
