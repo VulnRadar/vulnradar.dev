@@ -9,6 +9,8 @@ import {
   monthlyEquivalentCents,
 } from "@/lib/billing/catalog";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
+import { getAiUsageReport } from "@/lib/admin/ai-usage-report";
+import { logError } from "@/lib/logging/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,6 +80,10 @@ interface PlanMixEntry {
  * invoice.payment_failed webhook deliveries processed_stripe_events has
  * recorded recently (event id/type/timestamp only -- that table has no
  * customer or amount column).
+ *
+ * `aiUsage` is the site-wide AI token spend: the last 30 fixed windows and
+ * the heaviest accounts in the current one (lib/admin/ai-usage-report.ts).
+ * Null when that read failed, which leaves the revenue numbers intact.
  */
 export async function GET() {
   const admin = await requirePermission(
@@ -91,29 +97,37 @@ export async function GET() {
   }
 
   try {
+    // Two groups rather than one wide Promise.all. This used to be seven
+    // concurrent queries, four of them separate COUNTs over users, and a
+    // pool of ten connections serves every other request in the process too.
+    // The three user counts are one FILTER query now, and the second group is
+    // three queries plus the AI report, which runs its two reads in sequence,
+    // so no stage holds more than four connections.
+    const [billingEnabled, planStatusResult, userCountsResult] =
+      await Promise.all([
+        getSetting("BILLING_ENABLED"),
+        pool.query<PlanStatusCountRow>(
+          `SELECT plan, subscription_status, billing_interval, COUNT(*)::int AS count
+         FROM users
+         GROUP BY plan, subscription_status, billing_interval`,
+        ),
+        pool.query<{
+          total: number;
+          stripe_customers: number;
+          past_due: number;
+        }>(
+          `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE stripe_customer_id IS NOT NULL)::int AS stripe_customers,
+                COUNT(*) FILTER (WHERE subscription_status = 'past_due')::int AS past_due
+           FROM users`,
+        ),
+      ]);
     const [
-      billingEnabled,
-      planStatusResult,
-      totalUsersResult,
-      stripeCustomersResult,
-      pastDueCountResult,
       pastDueListResult,
       failedEventsResult,
       failedEventsCountResult,
+      aiUsage,
     ] = await Promise.all([
-      getSetting("BILLING_ENABLED"),
-      pool.query<PlanStatusCountRow>(
-        `SELECT plan, subscription_status, billing_interval, COUNT(*)::int AS count
-         FROM users
-         GROUP BY plan, subscription_status, billing_interval`,
-      ),
-      pool.query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM users`),
-      pool.query<{ count: number }>(
-        `SELECT COUNT(*)::int AS count FROM users WHERE stripe_customer_id IS NOT NULL`,
-      ),
-      pool.query<{ count: number }>(
-        `SELECT COUNT(*)::int AS count FROM users WHERE subscription_status = 'past_due'`,
-      ),
       pool.query<PastDueUserRow>(
         `SELECT id, email, name, plan, current_period_end
          FROM users
@@ -142,7 +156,18 @@ export async function GET() {
              AND processed_at > NOW() - INTERVAL '30 days'`,
         )
         .catch(() => ({ rows: [{ count: 0 }] })),
+      // A section of its own: if the usage tables cannot be read the revenue
+      // numbers above still stand, and the panel says that section failed.
+      getAiUsageReport().catch((err) => {
+        logError(
+          "admin-billing-overview",
+          "Could not build the AI usage report",
+          err,
+        );
+        return null;
+      }),
     ]);
+    const userCounts = userCountsResult.rows[0];
 
     const planMix: PlanMixEntry[] = PLANS.map((plan) => {
       let totalUsers = 0;
@@ -189,11 +214,11 @@ export async function GET() {
       generatedAt: new Date().toISOString(),
       billingEnabled: !!billingEnabled,
       totals: {
-        totalUsers: Number(totalUsersResult.rows[0]?.count) || 0,
+        totalUsers: Number(userCounts?.total) || 0,
         payingUsers,
         mrrCents,
-        stripeCustomers: Number(stripeCustomersResult.rows[0]?.count) || 0,
-        pastDueUsers: Number(pastDueCountResult.rows[0]?.count) || 0,
+        stripeCustomers: Number(userCounts?.stripe_customers) || 0,
+        pastDueUsers: Number(userCounts?.past_due) || 0,
       },
       planMix,
       failedPayments: {
@@ -212,6 +237,7 @@ export async function GET() {
         recentEventCount30d:
           Number(failedEventsCountResult.rows[0]?.count) || 0,
       },
+      aiUsage,
     });
   } catch (error) {
     console.error(

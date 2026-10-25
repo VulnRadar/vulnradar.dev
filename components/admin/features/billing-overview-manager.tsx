@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   Info,
   CreditCard,
+  Sparkles,
 } from "lucide-react";
 // The tone-aware empty state, not the admin one. The admin EmptyState has no
 // tone, so "Couldn't load billing overview" (a failed request) and "No
@@ -35,7 +36,8 @@ import { formatTimestamp } from "@/components/admin/utils";
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
 import { getPlanById } from "@/lib/billing/catalog";
-import { API } from "@/lib/config/client-constants";
+import { API, ROUTES } from "@/lib/config/client-constants";
+import type { AiUsageReport } from "@/lib/admin/ai-usage-report";
 
 const RECENT_EVENTS_SHOWN = 8;
 
@@ -78,6 +80,8 @@ interface BillingOverview {
     recentEvents: FailedPaymentEvent[];
     recentEventCount30d: number;
   };
+  /** Null when the usage tables could not be read; the revenue stands. */
+  aiUsage: AiUsageReport | null;
 }
 
 function formatCents(cents: number): string {
@@ -611,7 +615,130 @@ export function BillingOverviewManager() {
         </div>
       </div>
 
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
+        <div className="border-b border-border/40 bg-muted/30 p-4 sm:p-5">
+          <h3 className="text-sm font-semibold text-foreground">AI usage</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            {loading || !data?.aiUsage
+              ? "Tokens recorded per window across every account, and who is using the most."
+              : `Tokens recorded per ${data.aiUsage.windowHours}-hour window across every account, newest first, and the heaviest accounts in the current window. Chat, finding verification and scan summaries all count.`}
+          </p>
+        </div>
+        <div>
+          {loading ? (
+            <SkeletonRegion label="Loading AI usage">
+              <DataTableSkeleton rows={4} />
+            </SkeletonRegion>
+          ) : !data?.aiUsage ? (
+            <EmptyState
+              variant="inline"
+              size="sm"
+              tone="warning"
+              icon={AlertTriangle}
+              title="Couldn't read AI usage"
+              description="The revenue numbers above are unaffected. Use Refresh to try again, and check Error Logs if it keeps failing."
+            />
+          ) : data.aiUsage.windows.length === 0 ? (
+            <EmptyState
+              variant="inline"
+              size="sm"
+              icon={Sparkles}
+              title="No AI usage recorded yet"
+              description="Nothing has been spent in the last 30 windows."
+            />
+          ) : (
+            <AiUsageBody report={data.aiUsage} />
+          )}
+        </div>
+      </div>
+
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+    </div>
+  );
+}
+
+/** The per-window table and the leaderboard, side by side from lg up. */
+function AiUsageBody({ report }: { report: AiUsageReport }) {
+  const peak = Math.max(1, ...report.windows.map((w) => w.tokensUsed));
+  return (
+    <div className="grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:divide-x divide-border/40">
+      <TableScrollArea maxHeight="26rem">
+        <Table className="min-w-[440px]">
+          <TableHeader className="bg-muted/40">
+            <TableRow className="border-y border-border/50 hover:bg-transparent">
+              <TableHead className={TH}>Window start</TableHead>
+              <TableHead className={TH_RIGHT}>Tokens</TableHead>
+              <TableHead className={TH_RIGHT}>Accounts</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {report.windows.map((window) => (
+              <TableRow key={window.windowStart} className="border-border/40">
+                <TableCell className={cn(TD, "text-foreground")}>
+                  <span className="tabular-nums">
+                    {formatTimestamp(window.windowStart)}
+                  </span>
+                  {window.windowStart === report.currentWindowStart && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      now
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell className={cn(TD, "text-right")}>
+                  <span className="tabular-nums font-medium">
+                    {window.tokensUsed.toLocaleString()}
+                  </span>
+                  <div
+                    aria-hidden="true"
+                    className="ml-auto mt-1 h-1 rounded-full bg-primary/60"
+                    style={{
+                      width: `${Math.max(2, Math.round((window.tokensUsed / peak) * 100))}%`,
+                      maxWidth: "100%",
+                    }}
+                  />
+                </TableCell>
+                <TableCell
+                  className={cn(
+                    TD,
+                    "text-right tabular-nums text-muted-foreground",
+                  )}
+                >
+                  {window.users.toLocaleString()}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableScrollArea>
+      <div className="p-4 sm:p-5">
+        <p className="text-xs font-medium text-muted-foreground mb-2">
+          Heaviest this window
+        </p>
+        {report.topUsers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nobody has spent anything in the current window yet.
+          </p>
+        ) : (
+          <ol className="divide-y divide-border/40">
+            {report.topUsers.map((user, index) => (
+              <li key={user.id} className="flex items-center gap-3 py-2">
+                <span className="w-5 shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {index + 1}
+                </span>
+                <a
+                  href={`${ROUTES.ADMIN}?tab=users&user=${user.id}`}
+                  className="min-w-0 flex-1 truncate rounded-sm py-1 text-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {user.name || user.email}
+                </a>
+                <span className="shrink-0 text-sm font-medium tabular-nums">
+                  {user.tokensUsed.toLocaleString()}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
     </div>
   );
 }

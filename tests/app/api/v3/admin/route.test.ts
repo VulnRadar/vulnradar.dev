@@ -42,6 +42,14 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+// The usage read goes through the real quota helpers, which would take their
+// own turns at the queued pool results below. Its own suite is
+// tests/lib/admin/user-usage.test.ts; here it is only an input.
+const mockGetUserUsage = vi.fn();
+vi.mock("@/lib/admin/user-usage", () => ({
+  getUserUsage: (...args: unknown[]) => mockGetUserUsage(...args),
+}));
+
 const mockLogAction = vi.fn();
 vi.mock("@/lib/auth/authorization", async (importOriginal) => {
   const actual =
@@ -183,6 +191,21 @@ function session(userId = 2) {
 
 beforeEach(() => {
   cookieState.clear();
+  mockGetUserUsage.mockReset();
+  mockGetUserUsage.mockResolvedValue({
+    scans: { used: 3, limit: 25 },
+    ai: {
+      used: 1200,
+      limit: 50000,
+      windowEndsAt: "2026-10-01T05:00:00.000Z",
+      usingOwnKey: false,
+    },
+    githubReview: {
+      used: 0,
+      limit: 100000,
+      windowEndsAt: "2026-10-01T05:00:00.000Z",
+    },
+  });
   mockQuery.mockReset();
   mockConnect.mockReset();
   mockClientQuery.mockReset();
@@ -647,6 +670,49 @@ describe("GET /api/v3/admin", () => {
     expect(res.status).toBe(200);
     expect(json.recentScans).toHaveLength(1);
     expect(json.apiKeys).toHaveLength(1);
+  });
+
+  // Support resets limits, and used to do it blind: nothing showed whether the
+  // account sat at 3% or 100% of the cap.
+  it("section=user-detail includes what the user has spent against each allowance", async () => {
+    queueRole("support");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com" }],
+    }); // userRes
+    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(mockGetUserUsage).toHaveBeenCalledWith(9);
+    expect(json.usage.scans).toEqual({ used: 3, limit: 25 });
+    expect(json.usage.ai.limit).toBe(50000);
+  });
+
+  it("section=user-detail still serves the record when the usage read fails, and logs it", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    mockGetUserUsage.mockRejectedValue(new Error("rate_limits unreadable"));
+    queueRole("support");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com" }],
+    }); // userRes
+    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.user.id).toBe(9);
+    expect(json.usage).toBeNull();
+    expect(
+      consoleError.mock.calls.some((call) =>
+        call.some((arg) => arg instanceof Error),
+      ),
+    ).toBe(true);
+    consoleError.mockRestore();
   });
 
   // The Delete All Scans confirmation says how many public host pages the

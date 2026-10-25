@@ -80,6 +80,23 @@ export interface AdminNote {
   admin_avatar_url: string | null;
 }
 
+/** One allowance: what has been spent and the cap, `null` when uncapped. */
+export interface UsageFigure {
+  used: number;
+  limit: number | null;
+}
+
+/** What an account has spent against each allowance right now. */
+export interface UserUsage {
+  /** Scans started today (UTC) against the daily cap. */
+  scans: UsageFigure;
+  /** AI tokens in the current fixed window. A user with their own AI key is
+   *  never capped, whatever `limit` says. */
+  ai: UsageFigure & { windowEndsAt: string; usingOwnKey: boolean };
+  /** GitHub repo review tokens, on the same window as AI. */
+  githubReview: UsageFigure & { windowEndsAt: string };
+}
+
 export interface UserDetail {
   user: AdminUser & {
     session_count: number;
@@ -163,6 +180,9 @@ export interface UserDetail {
     scopes: string;
     connected_at: string;
   } | null;
+  /** Spent against each allowance, so a reset is not done blind. Null when
+   *  the figures could not be read: the rest of the record still renders. */
+  usage: UserUsage | null;
   /** Purchased balances (users.ai_credit_balance/github_credit_balance/
    *  browserbase_credit_seconds_balance) -- null when the caller's role
    *  lacks GRANT_CREDITS, the same permission the "Grant Credits" action

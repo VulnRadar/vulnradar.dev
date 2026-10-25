@@ -64,6 +64,8 @@ import {
   userOrderBy,
 } from "@/lib/admin/users-query";
 import { purgeUserScans } from "@/lib/admin/purge-user-scans";
+import { getUserUsage } from "@/lib/admin/user-usage";
+import { logError } from "@/lib/logging/log";
 import { pluralize } from "@/lib/ui/plural";
 
 // Helper to send email only if user notification is enabled
@@ -226,6 +228,7 @@ export async function GET(request: NextRequest) {
       discordRes,
       githubRepoConnectionRes,
       creditsRes,
+      usage,
     ] = await Promise.all([
       pool.query(
         `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
@@ -335,6 +338,15 @@ export async function GET(request: NextRequest) {
             [userId],
           )
         : Promise.resolve({ rows: [] as unknown[] }),
+      // Best-effort: the figures beside the reset cards are a convenience, and
+      // an unreadable count must not turn the whole account record into an
+      // error page.
+      getUserUsage(detailUserId).catch((err) => {
+        logError("admin", "Could not read a user's usage", err, {
+          userId: detailUserId,
+        });
+        return null;
+      }),
     ]);
 
     if (!userRes.rows[0])
@@ -373,6 +385,7 @@ export async function GET(request: NextRequest) {
       notes: notesRes.rows,
       discordConnection: discordRes.rows[0] || null,
       githubRepoConnection: githubRepoConnectionRes.rows[0] || null,
+      usage,
       credits: canSeeCredits
         ? {
             aiCreditBalance: Number(creditsRes.rows[0]?.ai_credit_balance ?? 0),

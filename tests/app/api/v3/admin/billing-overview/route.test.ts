@@ -30,6 +30,14 @@ vi.mock("@/lib/config/runtime-config", () => ({
   getSetting: (...args: unknown[]) => mockGetSetting(...args),
 }));
 
+// The AI usage section has its own suite (tests/lib/admin/ai-usage-report
+// .test.ts); here it is an input, so a failure in it can be shown to leave the
+// revenue numbers alone.
+const mockAiReport = vi.fn();
+vi.mock("@/lib/admin/ai-usage-report", () => ({
+  getAiUsageReport: (...args: unknown[]) => mockAiReport(...args),
+}));
+
 const { GET } = await import("@/app/api/v3/admin/billing-overview/route");
 
 function withAdmin(userId = 7, role = "admin") {
@@ -76,16 +84,17 @@ function routeQueries(rows: RouteRows) {
     if (sql.includes("SELECT id, email, name, plan, current_period_end")) {
       return Promise.resolve({ rows: rows.pastDueList ?? [] });
     }
-    if (sql.includes("subscription_status = 'past_due'")) {
-      return Promise.resolve({ rows: [{ count: rows.pastDueCount ?? 0 }] });
-    }
-    if (sql.includes("stripe_customer_id IS NOT NULL")) {
+    // The three user counts are one FILTER query now, not three round trips.
+    if (sql.includes("COUNT(*) FILTER")) {
       return Promise.resolve({
-        rows: [{ count: rows.stripeCustomers ?? 0 }],
+        rows: [
+          {
+            total: rows.totalUsers ?? 0,
+            stripe_customers: rows.stripeCustomers ?? 0,
+            past_due: rows.pastDueCount ?? 0,
+          },
+        ],
       });
-    }
-    if (sql.includes("FROM users") && !sql.includes("WHERE")) {
-      return Promise.resolve({ rows: [{ count: rows.totalUsers ?? 0 }] });
     }
     return Promise.resolve({ rows: [] });
   });
@@ -107,6 +116,15 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockGetSetting.mockReset();
+  mockAiReport.mockReset();
+  mockAiReport.mockResolvedValue({
+    windowHours: 5,
+    currentWindowStart: "2026-10-10T10:00:00.000Z",
+    windows: [
+      { windowStart: "2026-10-10T10:00:00.000Z", tokensUsed: 900, users: 2 },
+    ],
+    topUsers: [{ id: 4, email: "a@example.test", name: null, tokensUsed: 700 }],
+  });
   mockSettings();
 });
 
@@ -307,6 +325,52 @@ describe("GET /api/v3/admin/billing-overview", () => {
     expect(res.status).toBe(200);
     expect(json.failedPayments.recentEvents).toEqual([]);
     expect(json.failedPayments.recentEventCount30d).toBe(0);
+  });
+
+  it("counts users, Stripe customers and past-due accounts in one query", async () => {
+    withAdmin();
+    routeQueries({ totalUsers: 50, stripeCustomers: 7, pastDueCount: 2 });
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const userCountCalls = mockQuery.mock.calls.filter((c) =>
+      String(c[0]).includes("COUNT(*) FILTER"),
+    );
+    // Three COUNT(*) FROM users round trips became one.
+    expect(userCountCalls).toHaveLength(1);
+    const json = await res.json();
+    expect(json.totals).toMatchObject({
+      totalUsers: 50,
+      stripeCustomers: 7,
+      pastDueUsers: 2,
+    });
+  });
+
+  it("carries the AI usage report", async () => {
+    withAdmin();
+    routeQueries({});
+    const json = await (await GET()).json();
+    expect(json.aiUsage.windows).toHaveLength(1);
+    expect(json.aiUsage.topUsers[0].id).toBe(4);
+  });
+
+  it("still serves the revenue numbers when the AI usage read fails, and logs why", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    mockAiReport.mockRejectedValue(new Error("ai_usage unreadable"));
+    withAdmin();
+    routeQueries({ totalUsers: 5 });
+    const res = await GET();
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.aiUsage).toBeNull();
+    expect(json.totals.totalUsers).toBe(5);
+    expect(
+      consoleError.mock.calls.some((call) =>
+        call.some((arg) => arg instanceof Error),
+      ),
+    ).toBe(true);
+    consoleError.mockRestore();
   });
 
   it("returns a graceful 500 when a required query fails", async () => {

@@ -106,6 +106,7 @@ import {
 import { useAdminPermissions } from "@/components/admin/hooks";
 import { GiftSubscriptionModal } from "./gift-subscription-modal";
 import { AccountHistory } from "./account-history";
+import { UsageReadout } from "./usage-readout";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -2413,6 +2414,7 @@ export function UserDetailPanel({
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Usage &amp; Limits
                   </p>
+                  <UsageReadout usage={detail.usage} />
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     {hasStaffPermission(
                       callerRole,
