@@ -29,7 +29,8 @@ import {
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { useQueryParam } from "@/lib/ui/url-state";
 import { InlineAlert } from "@/components/shared/inline-alert";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useConfirm } from "@/components/shared/use-confirm";
+import { sendTeamsRequest } from "@/components/teams/team-requests";
 // The members list needs to know which row is you, so it can hide the
 // "Change role" submenu on your own membership: a team owner demoting
 // themselves would leave the team with nobody who can promote anyone back.
@@ -171,9 +172,12 @@ export default function TeamsPage() {
   // Failures used to vanish into empty catch blocks. Surface them instead.
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Confirmation state. Each destructive action names its target before it runs.
-  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
-  const [confirmBusy, setConfirmBusy] = useState(false);
+  // Each destructive action names its target before it runs. useConfirm closes
+  // the dialog when the action resolves and keeps it open with the thrown
+  // message when it rejects, so the handlers below throw instead of posting to
+  // actionError: that banner sits above the header card, out of sight from a
+  // long member list.
+  const { confirm, confirmDialog } = useConfirm();
 
   // Member scans state
   const [viewingMember, setViewingMember] = useState<Member | null>(null);
@@ -390,26 +394,14 @@ export default function TeamsPage() {
 
   async function handleDelete(teamId: number) {
     setActionError(null);
-    try {
-      const res = await fetch(API.TEAMS, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setActionError(
-          data.error || "We could not delete that team. Try again.",
-        );
-        return;
-      }
-      closeTeam();
-      await fetchTeams();
-    } catch {
-      setActionError(
-        "We could not reach the server. Check your connection and try again.",
-      );
-    }
+    await sendTeamsRequest(
+      API.TEAMS,
+      "DELETE",
+      { teamId },
+      "We could not delete that team. Try again.",
+    );
+    closeTeam();
+    await fetchTeams();
   }
 
   // Reloads the member + invite lists WITHOUT touching the invite panel's
@@ -508,25 +500,13 @@ export default function TeamsPage() {
   async function handleRemoveMember(userId: number) {
     if (!selectedTeam) return;
     setActionError(null);
-    try {
-      const res = await fetch(API.TEAMS_MEMBERS, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId: selectedTeam.id, userId }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setActionError(
-          data.error || "We could not remove that member. Try again.",
-        );
-        return;
-      }
-      await openTeam(selectedTeam);
-    } catch {
-      setActionError(
-        "We could not reach the server. Check your connection and try again.",
-      );
-    }
+    await sendTeamsRequest(
+      API.TEAMS_MEMBERS,
+      "DELETE",
+      { teamId: selectedTeam.id, userId },
+      "We could not remove that member. Try again.",
+    );
+    await openTeam(selectedTeam);
   }
 
   // The role change the "Change role" submenu in TeamMembersList fires. That
@@ -541,93 +521,65 @@ export default function TeamsPage() {
   async function handleChangeRole(userId: number, role: string) {
     if (!selectedTeam) return;
     setActionError(null);
-    try {
-      const res = await fetch(API.TEAMS_MEMBERS, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId: selectedTeam.id, userId, role }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setActionError(
-          data.error || "We could not change that role. Try again.",
-        );
-        return;
-      }
-      await openTeam(selectedTeam);
-    } catch {
-      setActionError(
-        "We could not reach the server. Check your connection and try again.",
-      );
-    }
+    await sendTeamsRequest(
+      API.TEAMS_MEMBERS,
+      "PATCH",
+      { teamId: selectedTeam.id, userId, role },
+      "We could not change that role. Try again.",
+    );
+    await openTeam(selectedTeam);
   }
 
   async function handleCancelInvite(inviteId: number) {
     if (!selectedTeam) return;
     setActionError(null);
-    try {
-      const res = await fetch(API.TEAMS_MEMBERS, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId: selectedTeam.id, inviteId }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setActionError(
-          data.error || "We could not cancel that invite. Try again.",
-        );
-        return;
-      }
-      await openTeam(selectedTeam);
-    } catch {
-      setActionError(
-        "We could not reach the server. Check your connection and try again.",
-      );
-    }
+    await sendTeamsRequest(
+      API.TEAMS_MEMBERS,
+      "DELETE",
+      { teamId: selectedTeam.id, inviteId },
+      "We could not cancel that invite. Try again.",
+    );
+    await openTeam(selectedTeam);
   }
 
   async function handleLeave() {
     if (!selectedTeam) return;
     setActionError(null);
-    try {
-      const res = await fetch(API.TEAMS_MEMBERS, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId: selectedTeam.id, userId: "self" }),
-      });
-      if (res.ok) {
-        closeTeam();
-        await fetchTeams();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setActionError(data.error || "We could not remove you from that team.");
-      }
-    } catch {
-      setActionError(
-        "We could not reach the server. Check your connection and try again.",
-      );
+    await sendTeamsRequest(
+      API.TEAMS_MEMBERS,
+      "DELETE",
+      // The server reads "self" as the caller, so an identity that has not
+      // loaded yet still leaves the right team.
+      { teamId: selectedTeam.id, userId: me?.userId ?? "self" },
+      "We could not remove you from that team.",
+    );
+    closeTeam();
+    await fetchTeams();
+  }
+
+  function runConfirmation(c: Confirmation): Promise<void> {
+    switch (c.kind) {
+      case "deleteTeam":
+        return handleDelete(c.teamId);
+      case "removeMember":
+        return handleRemoveMember(c.userId);
+      case "changeRole":
+        return handleChangeRole(c.userId, c.role);
+      case "cancelInvite":
+        return handleCancelInvite(c.inviteId);
+      case "leaveTeam":
+        return handleLeave();
     }
   }
 
-  async function runConfirmation() {
-    if (!confirmation) return;
-    setConfirmBusy(true);
-    try {
-      if (confirmation.kind === "deleteTeam") {
-        await handleDelete(confirmation.teamId);
-      } else if (confirmation.kind === "removeMember") {
-        await handleRemoveMember(confirmation.userId);
-      } else if (confirmation.kind === "changeRole") {
-        await handleChangeRole(confirmation.userId, confirmation.role);
-      } else if (confirmation.kind === "cancelInvite") {
-        await handleCancelInvite(confirmation.inviteId);
-      } else {
-        await handleLeave();
-      }
-    } finally {
-      setConfirmBusy(false);
-      setConfirmation(null);
-    }
+  function askConfirmation(c: Confirmation) {
+    confirm({
+      title: CONFIRM_COPY[c.kind].title,
+      description: confirmDescription(c),
+      confirmLabel: CONFIRM_COPY[c.kind].confirmLabel,
+      danger: true,
+      onConfirm: () => runConfirmation(c),
+    });
   }
 
   async function handleRename() {
@@ -640,24 +592,28 @@ export default function TeamsPage() {
       return;
     }
     setSavingName(true);
+    setActionError(null);
     try {
-      const res = await fetch(API.TEAMS, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teamId: selectedTeam.id,
-          name: nameInput.trim(),
-        }),
-      });
-      if (res.ok) {
-        setSelectedTeam({ ...selectedTeam, name: nameInput.trim() });
-        await fetchTeams();
-      }
-    } catch {
-      /* */
+      await sendTeamsRequest(
+        API.TEAMS,
+        "PATCH",
+        { teamId: selectedTeam.id, name: nameInput.trim() },
+        "We could not rename that team. Try again.",
+      );
+      setSelectedTeam({ ...selectedTeam, name: nameInput.trim() });
+      setEditingName(false);
+      await fetchTeams();
+    } catch (err) {
+      // The editor stays open with what was typed: a one-character name or a
+      // permission lost mid-edit is something to fix or give up on, not a
+      // rename that quietly undid itself.
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : "We could not rename that team. Try again.",
+      );
     } finally {
       setSavingName(false);
-      setEditingName(false);
     }
   }
 
@@ -810,14 +766,14 @@ export default function TeamsPage() {
               setInviteToken(null);
             }}
             onDelete={() =>
-              setConfirmation({
+              askConfirmation({
                 kind: "deleteTeam",
                 teamId: selectedTeam.id,
                 teamName: selectedTeam.name,
               })
             }
             onLeave={() =>
-              setConfirmation({
+              askConfirmation({
                 kind: "leaveTeam",
                 teamName: selectedTeam.name,
               })
@@ -854,7 +810,7 @@ export default function TeamsPage() {
             onViewScans={handleViewMemberScans}
             onChangeRole={(userId, role) => {
               const m = members.find((x) => x.user_id === userId);
-              setConfirmation({
+              askConfirmation({
                 kind: "changeRole",
                 userId,
                 role,
@@ -863,7 +819,7 @@ export default function TeamsPage() {
             }}
             onRemoveMember={(userId) => {
               const m = members.find((x) => x.user_id === userId);
-              setConfirmation({
+              askConfirmation({
                 kind: "removeMember",
                 userId,
                 label: m?.name || m?.email || "this member",
@@ -871,7 +827,7 @@ export default function TeamsPage() {
             }}
             onCancelInvite={(inviteId) => {
               const invite = invites.find((x) => x.id === inviteId);
-              setConfirmation({
+              askConfirmation({
                 kind: "cancelInvite",
                 inviteId,
                 label: invite?.email || "this address",
@@ -933,18 +889,7 @@ export default function TeamsPage() {
       {/* Destructive actions confirm against the thing they will destroy. One
           copy table per action rather than three ternaries inside the dialog,
           the shape profile-developer-tab.tsx's getConfirmCopy already uses. */}
-      {confirmation && (
-        <ConfirmDialog
-          open
-          danger
-          busy={confirmBusy}
-          title={CONFIRM_COPY[confirmation.kind].title}
-          description={confirmDescription(confirmation)}
-          confirmLabel={CONFIRM_COPY[confirmation.kind].confirmLabel}
-          onCancel={() => setConfirmation(null)}
-          onConfirm={runConfirmation}
-        />
-      )}
+      {confirmDialog}
     </AppPageShell>
   );
 }
