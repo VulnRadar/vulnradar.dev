@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { apiPost } from "@/lib/api/client";
-import { ROUTES } from "@/lib/config/client-constants";
+import { API, ROUTES } from "@/lib/config/client-constants";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 
 interface AdminHeartbeatOptions {
@@ -47,7 +47,7 @@ export function useAdminHeartbeat({
     else if (path.startsWith(ROUTES.HISTORY)) section = "history";
 
     try {
-      await apiPost("/api/v3/admin/activity", { section });
+      await apiPost(`${API.ADMIN}/activity`, { section });
     } catch {
       // Silently fail — never disrupt the UI
     }

@@ -49,3 +49,11 @@ describe("the admin page's startup requests", () => {
     expect(page).toMatch(/forbidden \? null : HEALTH_POLL_INTERVAL_MS/);
   });
 });
+
+describe("the staff heartbeat's request", () => {
+  it("goes through the API map, not a literal /api/v3 path", () => {
+    const source = read("lib/hooks/use-admin-heartbeat.ts");
+    expect(source).toContain("${API.ADMIN}/activity");
+    expect(source).not.toMatch(/["'`]\/api\/v3\//);
+  });
+});
