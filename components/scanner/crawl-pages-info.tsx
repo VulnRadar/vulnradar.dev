@@ -7,7 +7,9 @@ import { severityTone } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { plural } from "@/lib/ui/plural";
 import {
+  hasUnreadPages,
   readOtherPages,
+  unreachablePages,
   unreadPageCounts,
   unreadSummary,
   type UnreadablePage,
@@ -63,7 +65,7 @@ export function CrawlPagesInfo({
     (sum, p) => sum + p.findings_count,
     0,
   );
-  const unreachable = crawlInfo.pagesUnreachable ?? [];
+  const unreachable = unreachablePages(crawlInfo);
   const { skipped } = unreadPageCounts(crawlInfo);
   const unreadLine = unreadSummary(crawlInfo);
 
@@ -188,7 +190,7 @@ export function CrawlPagesInfo({
           {/* Pages the crawl never read. Below the results, because they are
               the caveat on them, and in the warning hue rather than the
               success one: "no findings" here means "not looked at". */}
-          {(unreachable.length > 0 || skipped > 0) && (
+          {hasUnreadPages(crawlInfo) && (
             <div className="border-t border-border bg-muted/20 px-4 py-3">
               {unreachable.length > 0 && (
                 <>

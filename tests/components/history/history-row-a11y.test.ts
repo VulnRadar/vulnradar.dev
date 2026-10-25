@@ -187,6 +187,16 @@ describe("History row (components/history/history-scan-row.tsx)", () => {
     expect(className).toContain("focus-visible:after:ring-2");
   });
 
+  it("puts the partial-scan hint on the overlay button, where a pointer can reach it", () => {
+    const withHint = elements(file).filter((el) =>
+      attr(el, "title")?.getText().includes("PARTIAL_SCAN_HINT"),
+    );
+    // The overlay is what the pointer hits anywhere in the row, so a title on
+    // an element beneath it (the status pill) never shows. The button's own
+    // title does, and doubles as its accessible description.
+    expect(withHint.map(tagOf)).toEqual(["button"]);
+  });
+
   it("keeps the tags and the actions menu as siblings of that button", () => {
     const button = elements(file).find((el) => tagOf(el) === "button")!;
     const insideButton = new Set(elements(button));

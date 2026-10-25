@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   hasUnreadPages,
   readOtherPages,
+  unreachablePages,
   unreadPageCounts,
   unreadSummary,
 } from "@/components/scanner/crawl-pages-utils";
@@ -36,6 +37,24 @@ describe("unreadPageCounts", () => {
     expect(unreadPageCounts({ pagesSkipped: -3 }).skipped).toBe(0);
     expect(unreadPageCounts({ pagesSkipped: Number.NaN }).skipped).toBe(0);
     expect(unreadPageCounts({ pagesSkipped: 2.9 }).skipped).toBe(2);
+  });
+});
+
+describe("unreachablePages", () => {
+  it("is the stored list, and [] for anything that is not a list", () => {
+    const list = [{ url: blocked.url, reason: "bot challenge" }];
+    expect(unreachablePages({ pagesUnreachable: list })).toBe(list);
+    expect(unreachablePages({})).toEqual([]);
+    // A stored value of the wrong shape must not take the result view down
+    // with a .map on a string.
+    expect(
+      unreachablePages({
+        pagesUnreachable: "oops" as unknown as {
+          url: string;
+          reason: string;
+        }[],
+      }),
+    ).toEqual([]);
   });
 });
 

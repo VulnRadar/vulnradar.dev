@@ -187,9 +187,16 @@ export function HistoryScanRow({
               ::after, anchored to the row (nothing between them is
               positioned), so the focus ring is drawn on the pseudo-element
               and spans the row the way the old row-level ring did. The
-              pointer cursor is explicit because buttons are cursor:default. */}
+              pointer cursor is explicit because buttons are cursor:default.
+
+              The partial hint is this button's title, not the pill's: the
+              overlay is what the pointer hits anywhere in the row, so a title
+              on the pill beneath it would never show. As the button's
+              description it also reaches a screen reader on the one control
+              that gets focus. */}
           <button
             type="button"
+            title={isPartial ? PARTIAL_SCAN_HINT : undefined}
             onClick={() => onView(scan)}
             className="flex w-full min-w-0 cursor-pointer items-center gap-2 text-left outline-hidden after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring"
           >
@@ -231,10 +238,7 @@ export function HistoryScanRow({
       {/* Severity pills - desktop */}
       <div className="hidden sm:flex items-center justify-center gap-1 w-40">
         {inconclusive ? (
-          <span
-            title={isPartial ? PARTIAL_SCAN_HINT : undefined}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--warning))]"
-          >
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--warning))]">
             {isUnfinished ? (
               <ShieldAlert className="h-3 w-3" />
             ) : (
@@ -354,10 +358,7 @@ export function HistoryScanRow({
           {formatRelativeTime(scan.scanned_at)}
         </span>
         {inconclusive ? (
-          <span
-            title={isPartial ? PARTIAL_SCAN_HINT : undefined}
-            className="flex items-center gap-1 font-medium text-[hsl(var(--warning))]"
-          >
+          <span className="flex items-center gap-1 font-medium text-[hsl(var(--warning))]">
             {isUnfinished ? (
               <ShieldAlert className="h-3 w-3" />
             ) : (

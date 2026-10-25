@@ -25,7 +25,9 @@ export interface CrawlReadState {
   pagesUnreachable?: UnreadablePage[];
 }
 
-function unreachableOf(info: CrawlReadState): UnreadablePage[] {
+/** The pages the crawl could not read; [] for a crawl stored before the field
+ *  existed, or one whose stored value is not a list. */
+export function unreachablePages(info: CrawlReadState): UnreadablePage[] {
   return Array.isArray(info.pagesUnreachable) ? info.pagesUnreachable : [];
 }
 
@@ -36,7 +38,7 @@ export function unreadPageCounts(info: CrawlReadState): {
 } {
   const skipped = Number(info.pagesSkipped);
   return {
-    unreachable: unreachableOf(info).length,
+    unreachable: unreachablePages(info).length,
     skipped: Number.isFinite(skipped) && skipped > 0 ? Math.floor(skipped) : 0,
   };
 }
@@ -71,6 +73,6 @@ export function readOtherPages<T extends { url: string }>(
   pages: T[],
   info: CrawlReadState,
 ): T[] {
-  const unreachable = new Set(unreachableOf(info).map((p) => p.url));
+  const unreachable = new Set(unreachablePages(info).map((p) => p.url));
   return pages.slice(1).filter((page) => !unreachable.has(page.url));
 }
