@@ -179,6 +179,17 @@ function queueAdminPassword(hash: string | null) {
   });
 }
 
+/**
+ * The user-detail request is one statement (lib/admin/user-detail.ts): the
+ * account row with the permitted lookups as json columns. `extra` is those
+ * columns.
+ */
+function queueBundle(extra: Record<string, unknown> = {}) {
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ id: 9, email: "u@example.com", ...extra }],
+  });
+}
+
 function session(userId = 2) {
   mockGetSession.mockResolvedValue({
     userId,
@@ -328,20 +339,47 @@ describe("GET /api/v3/admin", () => {
 
   it("section=user-detail returns 404 for an unknown user", async () => {
     queueRole("support");
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // userRes
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // no such user
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
     expect(res.status).toBe(404);
   });
 
+  // The request used to run eleven queries in one Promise.all against a pool
+  // of ten that serves every other request too. The lookups are json
+  // sub-selects of the one account row now.
+  it("section=user-detail reads the whole record in one statement", async () => {
+    queueRole("admin");
+    queueBundle();
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    expect(res.status).toBe(200);
+    // requireStaff's role lookup, then the one record statement. The usage
+    // read is a separate module, mocked above; it is the other connection.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const recordSql = String(mockQuery.mock.calls[1][0]);
+    for (const column of [
+      "recent_scans",
+      "schedules",
+      "api_keys",
+      "webhooks",
+      "active_sessions",
+      "badges",
+      "notes",
+      "discord_connection",
+      "github_repo_connection",
+      "credits",
+    ]) {
+      expect(recordSql, column).toContain(`AS ${column}`);
+    }
+    expect(mockQuery.mock.calls[1][1]).toEqual([9]);
+  });
+
   it("section=user-detail returns the full detail bundle", async () => {
     queueRole("support");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle();
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -549,10 +587,7 @@ describe("GET /api/v3/admin", () => {
   // keystroke.
   it("section=user-detail writes a view_user_detail audit row naming the target", async () => {
     queueRole("support");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle();
     await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -581,10 +616,7 @@ describe("GET /api/v3/admin", () => {
   // VIEW_USER_SESSIONS grant. billing holds VIEW_USERS but not that one.
   it("section=user-detail omits activeSessions for a role without VIEW_USER_SESSIONS (billing)", async () => {
     queueRole("billing");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle();
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -604,10 +636,7 @@ describe("GET /api/v3/admin", () => {
 
   it("section=user-detail omits recentScans and apiKeys for a role holding neither grant (billing)", async () => {
     queueRole("billing");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle();
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -632,13 +661,7 @@ describe("GET /api/v3/admin", () => {
   // the admin-only REVOKE_USER_API_KEYS. The two gates are independent.
   it("section=user-detail returns recentScans but not apiKeys for support", async () => {
     queueRole("support");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, url: "https://a.test" }],
-    }); // scans
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle({ recent_scans: [{ id: 1, url: "https://a.test" }] });
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -655,14 +678,10 @@ describe("GET /api/v3/admin", () => {
 
   it("section=user-detail returns both for an admin, who holds every grant", async () => {
     queueRole("admin");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, url: "https://a.test" }],
-    }); // scans
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 2, key_prefix: "vr_ab" }] }); // keys
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle({
+      recent_scans: [{ id: 1, url: "https://a.test" }],
+      api_keys: [{ id: 2, key_prefix: "vr_ab" }],
+    });
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -676,10 +695,7 @@ describe("GET /api/v3/admin", () => {
   // account sat at 3% or 100% of the cap.
   it("section=user-detail includes what the user has spent against each allowance", async () => {
     queueRole("support");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle();
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -696,10 +712,7 @@ describe("GET /api/v3/admin", () => {
       .mockImplementation(() => {});
     mockGetUserUsage.mockRejectedValue(new Error("rate_limits unreadable"));
     queueRole("support");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle();
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -720,10 +733,7 @@ describe("GET /api/v3/admin", () => {
   // rides on the same grant as the scan list and is not computed without it.
   it("section=user-detail counts public host reports only for a role that can see scans", async () => {
     queueRole("support");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com", public_host_report_count: 3 }],
-    }); // userRes
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle({ public_host_report_count: 3 });
     const withScans = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -733,10 +743,7 @@ describe("GET /api/v3/admin", () => {
 
     mockQuery.mockReset();
     queueRole("billing");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle();
     const withoutScans = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -750,22 +757,13 @@ describe("GET /api/v3/admin", () => {
   // cannot see the balance either.
   it("section=user-detail includes credits for a role with GRANT_CREDITS (billing)", async () => {
     queueRole("billing");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // badges
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // notes
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // discord
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // githubRepoConnection
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          ai_credit_balance: "1500",
-          github_credit_balance: "2500",
-          browserbase_credit_seconds_balance: "600",
-        },
-      ],
-    }); // credits
+    queueBundle({
+      credits: {
+        ai_credit_balance: "1500",
+        github_credit_balance: "2500",
+        browserbase_credit_seconds_balance: "600",
+      },
+    });
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );
@@ -780,10 +778,7 @@ describe("GET /api/v3/admin", () => {
 
   it("section=user-detail omits credits for a role without GRANT_CREDITS (support)", async () => {
     queueRole("support");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 9, email: "u@example.com" }],
-    }); // userRes
-    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueBundle();
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
     );

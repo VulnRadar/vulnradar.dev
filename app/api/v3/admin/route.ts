@@ -68,6 +68,7 @@ import {
 } from "@/lib/admin/users-query";
 import { purgeUserScans } from "@/lib/admin/purge-user-scans";
 import { getUserUsage } from "@/lib/admin/user-usage";
+import { fetchUserDetailBundle } from "@/lib/admin/user-detail";
 import { logError } from "@/lib/logging/log";
 import { pluralize } from "@/lib/ui/plural";
 
@@ -211,136 +212,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid userId" }, { status: 400 });
     }
 
-    // How many public host pages are built from this user's scans, so the
-    // Delete All Scans confirmation can say that the action reaches them.
-    // Behind the same grant as the scan list: it is a fact about their scans.
-    const publicHostReportCount = canSeeScans
-      ? `(SELECT COUNT(*) FROM host_reputation hr
-           WHERE hr.source_scan_id IN (SELECT sh.id FROM scan_history sh WHERE sh.user_id = $1))::int`
-      : "NULL::int";
-
-    const [
-      userRes,
-      scansRes,
-      keysRes,
-      webhooksRes,
-      schedulesRes,
-      sessionsRes,
-      badgesRes,
-      notesRes,
-      discordRes,
-      githubRepoConnectionRes,
-      creditsRes,
-      usage,
-    ] = await Promise.all([
-      pool.query(
-        `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
-          u.email_verified_at, u.plan, u.stripe_customer_id, u.subscription_status, u.ai_chat_banned,
-          u.google_id, u.google_email, u.google_name,
-          u.github_id, u.github_email, u.github_name, u.github_login,
-          u.discord_id, u.discord_username, u.discord_email,
-          (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
-          (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
-          (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
-          ${publicHostReportCount} as public_host_report_count,
-          -- schema: users.backup_codes is TEXT holding a JSON array, so this
-          -- flag is a string comparison rather than a structural one. It used
-          -- to test inequality against the two characters [] exactly, which
-          -- reported "has backup codes" for any serialization that emitted a
-          -- spaced empty array, the word null, or an empty string.
-          -- Trimmed and regex-matched rather than cast to jsonb: a corrupted
-          -- value would make a ::jsonb cast raise and 500 this whole admin
-          -- page, which is the case the 2FA repair scripts exist for.
-          (u.backup_codes IS NOT NULL
-            AND btrim(u.backup_codes) !~ '^\\[\\s*\\]$'
-            AND btrim(u.backup_codes) NOT IN ('', 'null')) as has_backup_codes,
-          gs.plan as gifted_plan,
-          gs.expires_at as gift_end_date
-        FROM users u
-        LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
-        WHERE u.id = $1`,
-        [userId],
-      ),
-      canSeeScans
-        ? pool.query(
-            // status and failure_kind are what keep a failed, cancelled or
-            // still-pending scan from reading as "0 findings", the same as a
-            // clean one. public_id is what the scan inspector's URL takes.
-            "SELECT id, public_id, url, status, failure_kind, findings_count, source, scanned_at FROM scan_history WHERE user_id = $1 ORDER BY scanned_at DESC LIMIT 10",
-            [userId],
-          )
-        : Promise.resolve({ rows: [] as unknown[] }),
-      canSeeApiKeys
-        ? pool.query(
-            "SELECT id, key_prefix, name, daily_limit, created_at, last_used_at, revoked_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
-            [userId],
-          )
-        : Promise.resolve({ rows: [] as unknown[] }),
-      canSeeWebhooks
-        ? pool.query(
-            // The host, not the path. Identifying which service a hook points
-            // at is what the panel is for; the path segments are the bearer
-            // token, and staff have no reason to hold one.
-            "SELECT id, name, split_part(url, '/', 3) AS url_host, type, active FROM webhooks WHERE user_id = $1",
-            [userId],
-          )
-        : Promise.resolve({ rows: [] as unknown[] }),
-      canSeeScans
-        ? pool.query(
-            "SELECT id, url, frequency, active, last_run_at, next_run_at FROM scheduled_scans WHERE user_id = $1",
-            [userId],
-          )
-        : Promise.resolve({ rows: [] as unknown[] }),
-      // Session rows carry the target's last-known IPs, so they ride on
-      // VIEW_USER_SESSIONS rather than VIEW_USERS. billing and
-      // content_manager hold the latter but not the former.
-      canSeeSessions
-        ? pool.query(
-            "SELECT id, created_at, expires_at, ip_address, user_agent FROM sessions WHERE user_id = $1 AND expires_at > NOW() ORDER BY created_at DESC",
-            [userId],
-          )
-        : Promise.resolve({ rows: [] as unknown[] }),
-      pool.query(
-        `SELECT b.id, b.name, b.display_name, b.description, b.icon, b.color, b.priority, b.is_limited, ub.awarded_at
-         FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
-         WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
-        [userId],
-      ),
-      pool.query(
-        `SELECT n.id, n.note, n.created_at, a.id as admin_id, a.email as admin_email, a.name as admin_name, a.avatar_url as admin_avatar_url
-         FROM admin_user_notes n
-         JOIN users a ON n.admin_id = a.id
-         WHERE n.user_id = $1
-         ORDER BY n.created_at DESC`,
-        [userId],
-      ),
-      // Connected socials: Discord is the only OAuth-style connection this
-      // app currently stores server-side (see discord_connections in
-      // instrumentation.ts). access_token/refresh_token are deliberately
-      // never selected -- an admin has no legitimate need to see or act
-      // with a user's live Discord credentials, only whether/when they
-      // connected.
-      pool.query(
-        `SELECT discord_id, discord_username, discord_discriminator, discord_avatar, guild_joined, connected_at
-         FROM discord_connections WHERE user_id = $1`,
-        [userId],
-      ),
-      // Separate from the users.github_id sign-in link selected above: this
-      // is the distinct repo-read-access feature (code scanning), keyed by
-      // github_user_id with its own OAuth scopes/token -- see instrumentation.ts's
-      // github_connections comment. access_token_encrypted is deliberately
-      // never selected.
-      pool.query(
-        `SELECT github_username, scopes, connected_at
-         FROM github_connections WHERE user_id = $1`,
-        [userId],
-      ),
-      canSeeCredits
-        ? pool.query(
-            "SELECT ai_credit_balance, github_credit_balance, browserbase_credit_seconds_balance FROM users WHERE id = $1",
-            [userId],
-          )
-        : Promise.resolve({ rows: [] as unknown[] }),
+    // One statement for the whole record, plus the usage read: two pool
+    // connections where this used to be eleven in a single Promise.all. The
+    // permission flags above decide which sub-selects exist in the statement
+    // at all (lib/admin/user-detail.ts), so a role without a grant never has
+    // that data read, let alone returned.
+    const [bundle, usage] = await Promise.all([
+      fetchUserDetailBundle(detailUserId, {
+        scans: canSeeScans,
+        apiKeys: canSeeApiKeys,
+        webhooks: canSeeWebhooks,
+        sessions: canSeeSessions,
+        credits: canSeeCredits,
+      }),
       // Best-effort: the figures beside the reset cards are a convenience, and
       // an unreadable count must not turn the whole account record into an
       // error page.
@@ -352,7 +236,7 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    if (!userRes.rows[0])
+    if (!bundle)
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     // audit: reads used to leave no trail at all, so a compromised or
@@ -378,28 +262,18 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      user: userRes.rows[0],
-      recentScans: scansRes.rows,
-      apiKeys: keysRes.rows,
-      webhooks: webhooksRes.rows,
-      schedules: schedulesRes.rows,
-      activeSessions: sessionsRes.rows,
-      badges: badgesRes.rows,
-      notes: notesRes.rows,
-      discordConnection: discordRes.rows[0] || null,
-      githubRepoConnection: githubRepoConnectionRes.rows[0] || null,
+      user: bundle.user,
+      recentScans: bundle.recentScans,
+      apiKeys: bundle.apiKeys,
+      webhooks: bundle.webhooks,
+      schedules: bundle.schedules,
+      activeSessions: bundle.activeSessions,
+      badges: bundle.badges,
+      notes: bundle.notes,
+      discordConnection: bundle.discordConnection,
+      githubRepoConnection: bundle.githubRepoConnection,
       usage,
-      credits: canSeeCredits
-        ? {
-            aiCreditBalance: Number(creditsRes.rows[0]?.ai_credit_balance ?? 0),
-            githubCreditBalance: Number(
-              creditsRes.rows[0]?.github_credit_balance ?? 0,
-            ),
-            browserbaseCreditSecondsBalance: Number(
-              creditsRes.rows[0]?.browserbase_credit_seconds_balance ?? 0,
-            ),
-          }
-        : null,
+      credits: bundle.credits,
     });
   }
 
