@@ -150,7 +150,7 @@ export default function TroubleshootingPage() {
               message:
                 "The target redirected to a different host, which the scanner does not follow. Scan the address it redirects to instead.",
               cause:
-                "Seen on older scans. Today a redirect from example.com to app.example.com still completes the scan: the original host's DNS, TLS and reputation checks run, and the report names the host it pointed at.",
+                "Seen on older scans. Today a redirect from example.com to app.example.com still completes the scan: the original host's DNS, TLS and reputation checks run, and the result records the host it pointed at.",
             },
             {
               message:
@@ -199,10 +199,9 @@ export default function TroubleshootingPage() {
             redirects to another host) the scan still completes. DNS, the TLS
             handshake and reputation never read the page, so they run and
             report. The result lists{" "}
-            <strong className="text-foreground">the page</strong> as not
-            checked, says why, and drops the engine confidence figure, so a
-            short report here means the page was out of reach and not that it
-            was clean.
+            <strong className="text-foreground">the page</strong> as not checked
+            and drops the engine confidence figure, so a short report here means
+            the page was out of reach and not that it was clean.
           </p>
         </DocsCallout>
         <DocsCallout variant="info" title="Retrying">
