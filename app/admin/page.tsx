@@ -53,6 +53,7 @@ import {
   type UserListFilters,
 } from "@/components/admin/users/user-filters";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import { resolveAdminGate } from "@/lib/admin/admin-gate";
 import {
   buildHealthRows,
@@ -789,7 +790,9 @@ function AdminContent() {
     fetchHealth(true);
     // Lightweight, once-per-page-load check so the "Updater" nav item can
     // show a dot without every admin having to open that tab first.
-    fetch(`${API.ADMIN}/updater/status`)
+    // ?summary=1: the cached release and no cosign or tar probes. This runs on
+    // every /admin load for one boolean that changes once per release.
+    fetch(`${API.ADMIN}/updater/status?summary=1`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setUpdateAvailable(data?.status === "behind"))
       .catch(() => {});
@@ -801,14 +804,16 @@ function AdminContent() {
   // server already refused: the deny screen has no dot to keep honest, and
   // polling a 403 every 45 seconds for as long as that tab stays open is
   // pure noise in the rate limiter and the logs.
-  useEffect(() => {
-    if (forbidden) return;
-    const timer = setInterval(
-      () => fetchHealth(false),
-      HEALTH_POLL_INTERVAL_MS,
-    );
-    return () => clearInterval(timer);
-  }, [fetchHealth, forbidden]);
+  //
+  // Visible tabs only. This was a raw setInterval, and each tick runs six
+  // aggregates plus a readdir and stat of every backup file, so an /admin tab
+  // forgotten in the background cost about eight queries and a directory scan
+  // every 45 seconds for as long as the browser stayed open. A null delay is
+  // "not polling", which is what the forbidden screen wants.
+  useVisibleInterval(
+    () => fetchHealth(false),
+    forbidden ? null : HEALTH_POLL_INTERVAL_MS,
+  );
 
   async function fetchTeamMembers(teamId: number) {
     setTeamMembersLoading(true);

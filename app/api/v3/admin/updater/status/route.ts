@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/authorization";
 import {
   APP_VERSION,
@@ -7,6 +7,7 @@ import {
 } from "@/lib/config/constants";
 import { compareVersions } from "@/lib/updater/version-compare";
 import { fetchLatestRelease } from "@/lib/updater/github-release";
+import { getCachedLatestRelease } from "@/lib/updater/release-summary";
 import { isCosignAvailable } from "@/lib/updater/cosign";
 import { commandAvailable } from "@/lib/updater/exec";
 import { isUpdaterSupported } from "@/lib/updater/environment";
@@ -24,8 +25,16 @@ export const dynamic = "force-dynamic";
  * whether cosign/tar are available on this host and whether an update job
  * is currently running, so the UI can show accurate capability info
  * before the admin clicks "Update now".
+ *
+ * `?summary=1` is the cheap form for the panel's nav dot: the release comes
+ * from an hour-long memo (lib/updater/release-summary.ts) and the cosign and
+ * tar probes are skipped, so the response has no cosignAvailable, tarAvailable
+ * or releaseNotes. Every /admin load made this request, and the full form
+ * asks GitHub live and forks two processes; the dot needs one boolean that
+ * changes once per release. The Updater tab does not pass `summary`, because
+ * an admin there has just asked for the live answer.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -34,45 +43,51 @@ export async function GET() {
     );
   }
 
+  const summary = new URL(request.url).searchParams.get("summary") === "1";
   const support = isUpdaterSupported();
 
-  const [release, cosignAvailable, tarAvailable] = await Promise.all([
-    fetchLatestRelease().catch(() => null),
-    isCosignAvailable(),
-    commandAvailable("tar", ["--version"]),
+  const [release, probes] = await Promise.all([
+    summary ? getCachedLatestRelease() : fetchLatestRelease().catch(() => null),
+    summary
+      ? Promise.resolve({})
+      : Promise.all([
+          isCosignAvailable(),
+          commandAvailable("tar", ["--version"]),
+        ]).then(([cosignAvailable, tarAvailable]) => ({
+          cosignAvailable,
+          tarAvailable,
+        })),
   ]);
+
+  const common = {
+    current: APP_VERSION,
+    engine: ENGINE_VERSION,
+    supported: support.supported,
+    unsupportedReason: support.reason ?? null,
+    activeJobId: getActiveJobId(),
+    ...probes,
+  };
 
   if (!release) {
     return NextResponse.json({
-      current: APP_VERSION,
-      engine: ENGINE_VERSION,
+      ...common,
       latest: null,
       status: "unknown" as const,
       message: "Could not check for updates right now.",
       releaseUrl: RELEASES_URL,
       releaseNotes: null,
-      supported: support.supported,
-      unsupportedReason: support.reason ?? null,
-      cosignAvailable,
-      tarAvailable,
-      activeJobId: getActiveJobId(),
     });
   }
 
   const comparison = compareVersions(APP_VERSION, release.version);
 
   return NextResponse.json({
-    current: APP_VERSION,
-    engine: ENGINE_VERSION,
+    ...common,
     latest: release.version,
     status: comparison.status,
     message: comparison.message,
     releaseUrl: release.htmlUrl,
-    releaseNotes: release.body,
-    supported: support.supported,
-    unsupportedReason: support.reason ?? null,
-    cosignAvailable,
-    tarAvailable,
-    activeJobId: getActiveJobId(),
+    // The notes can be long and the dot never reads them.
+    releaseNotes: summary ? null : release.body,
   });
 }
