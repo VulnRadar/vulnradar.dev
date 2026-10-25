@@ -73,7 +73,7 @@ export type ErrorKind =
   | "auth_failed"
   /** The scan was stopped before it finished, by its owner or by staff. */
   | "cancelled"
-  /** The scan hit the time limit for a single scan. */
+  /** The scan ran past its time limit and was stopped. */
   | "timeout"
   /** The page stopped waiting. The scan itself is still going. */
   | "still_running"
@@ -265,7 +265,7 @@ const ERROR_META: Record<
   timeout: {
     title: "The scan ran out of time",
     description:
-      "It ran past the time limit for a single scan and was stopped. A slow target is the usual cause. Try again, or run a Quick scan with fewer check families.",
+      "It ran past its time limit and was stopped. A slow target is the usual cause. Try again, or run a Quick scan with fewer check families.",
     icon: Hourglass,
     rail: "bg-[hsl(var(--severity-medium))]",
     accent: "text-[hsl(var(--severity-medium))]",
