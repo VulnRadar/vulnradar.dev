@@ -17,6 +17,11 @@ export async function GET() {
     "NOTIFICATION_DEFAULT_DISMISS_DAYS",
     "BROWSERBASE_LOGS_POLL_INTERVAL_MS",
     "SCAN_STATUS_POLL_INTERVAL_MS",
+    // The watchdog budgets, so the dashboard keeps waiting for as long as the
+    // server will let a scan run instead of giving up at a fixed 6 or 16
+    // minutes once an admin has raised either.
+    "SCAN_TIMEOUT_SECONDS",
+    "CRAWL_SCAN_TIMEOUT_SECONDS",
     // All nine feature flags, not just PDF reports. Previously that was the
     // only one that crossed to the browser, so turning any other feature off
     // left its UI fully present and the user discovered the flag only from a
@@ -40,6 +45,8 @@ export async function GET() {
         settings.NOTIFICATION_DEFAULT_DISMISS_DAYS,
       browserbaseLogsPollIntervalMs: settings.BROWSERBASE_LOGS_POLL_INTERVAL_MS,
       scanStatusPollIntervalMs: settings.SCAN_STATUS_POLL_INTERVAL_MS,
+      scanTimeoutSeconds: settings.SCAN_TIMEOUT_SECONDS,
+      crawlScanTimeoutSeconds: settings.CRAWL_SCAN_TIMEOUT_SECONDS,
       featurePdfReports: settings.FEATURE_PDF_REPORTS,
       featureDemoMode: settings.FEATURE_DEMO_MODE,
       featureTeams: settings.FEATURE_TEAMS,

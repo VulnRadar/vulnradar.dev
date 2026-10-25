@@ -18,6 +18,11 @@ export interface ClientConfig {
   notificationDefaultDismissMaxAgeSeconds: number;
   browserbaseLogsPollIntervalMs: number;
   scanStatusPollIntervalMs: number;
+  // Seconds, the server's own watchdog budgets (SCAN_TIMEOUT_SECONDS and
+  // CRAWL_SCAN_TIMEOUT_SECONDS). Both are admin-editable, so the dashboard's
+  // wait for a scan has to follow them rather than assume the defaults.
+  scanTimeoutSeconds: number;
+  crawlScanTimeoutSeconds: number;
   // All nine feature flags. Only featurePdfReports used to cross to the
   // browser, so turning any other feature off left its UI fully present and
   // the user found out from a 403 on submit.
@@ -41,6 +46,8 @@ export const DEFAULT_CLIENT_CONFIG: ClientConfig = {
   notificationDefaultDismissMaxAgeSeconds: NOTIFICATION_DEFAULT_DISMISS_MAX_AGE,
   browserbaseLogsPollIntervalMs: DEFAULT_BROWSERBASE_LOGS_POLL_INTERVAL_MS,
   scanStatusPollIntervalMs: SCANNING.STATUS_POLL_INTERVAL_MS,
+  scanTimeoutSeconds: SCANNING.TIMEOUT_SECONDS,
+  crawlScanTimeoutSeconds: SCANNING.CRAWL_TIMEOUT_SECONDS,
   featurePdfReports: FEATURES.PDF_REPORTS,
   featureDemoMode: FEATURES.DEMO_MODE,
   featureTeams: FEATURES.TEAMS,
@@ -69,6 +76,12 @@ export function parseClientConfig(data: unknown): ClientConfig {
     const n = Number(value);
     return Number.isFinite(n) ? n * scale : fallback;
   };
+  // A budget of zero or less would make the dashboard give up on a scan the
+  // instant it starts, so unlike the intervals above it must be positive.
+  const budget = (value: unknown, fallback: number): number => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
   const DAY_SECONDS = 24 * 60 * 60;
   return {
     versionCookieMaxAgeSeconds: num(
@@ -92,6 +105,14 @@ export function parseClientConfig(data: unknown): ClientConfig {
     scanStatusPollIntervalMs: num(
       d.scanStatusPollIntervalMs,
       DEFAULT_CLIENT_CONFIG.scanStatusPollIntervalMs,
+    ),
+    scanTimeoutSeconds: budget(
+      d.scanTimeoutSeconds,
+      DEFAULT_CLIENT_CONFIG.scanTimeoutSeconds,
+    ),
+    crawlScanTimeoutSeconds: budget(
+      d.crawlScanTimeoutSeconds,
+      DEFAULT_CLIENT_CONFIG.crawlScanTimeoutSeconds,
     ),
     featurePdfReports: Boolean(d.featurePdfReports),
     featureDemoMode: Boolean(d.featureDemoMode),

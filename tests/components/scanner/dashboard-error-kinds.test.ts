@@ -72,3 +72,43 @@ describe("scan failure screen: 429s are not one thing", () => {
     expect(copy).toMatch(/not your limit/i);
   });
 });
+
+describe("scan failure screen: the page that stopped waiting", () => {
+  // The client giving up is not the scan failing. The screen for it must not
+  // look like a failure, and its primary action must not start a second scan
+  // while the first is still running and has already spent one of today's.
+  const entry = (kind: string) => {
+    const at = SRC.indexOf(`  ${kind}: {`);
+    expect(at, `${kind} missing from ERROR_META`).toBeGreaterThan(-1);
+    return SRC.slice(at, SRC.indexOf("\n  },", at));
+  };
+
+  it("has its own kind, in the brand tone rather than the destructive one", () => {
+    expect(SRC).toContain('"still_running"');
+    const copy = entry("still_running");
+    expect(copy).toContain("text-primary");
+    expect(copy).not.toContain("destructive");
+  });
+
+  it("says the scan keeps running and where the result will be", () => {
+    const copy = entry("still_running");
+    expect(copy).toMatch(/keeps running/i);
+    expect(copy).toMatch(/History/);
+  });
+
+  it("offers History instead of Try again", () => {
+    const at = SRC.indexOf('kind === "still_running" ?');
+    expect(at).toBeGreaterThan(-1);
+    const branch = SRC.slice(at, at + 700);
+    expect(branch).toContain("ROUTES.HISTORY");
+    // The retry button is the other arm of the ternary, not part of this one.
+    expect(branch.indexOf("View in History")).toBeLessThan(
+      branch.indexOf("onClick={onRetry}"),
+    );
+  });
+
+  it("shows no scanner output, because there is none to show", () => {
+    expect(entry("still_running")).toContain("scannerOutput: false");
+    expect(SRC).toMatch(/meta\.scannerOutput !== false &&/);
+  });
+});

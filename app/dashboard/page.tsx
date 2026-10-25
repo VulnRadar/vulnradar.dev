@@ -37,7 +37,9 @@ import type { ScanTag } from "@/components/history";
 // exercised by a test without mounting this whole page (AUDIT-014#scanui-09).
 import {
   pollScanStatus,
+  maxWaitMs,
   PollAbortedError,
+  PollGaveUpError,
   type ScanStatusResponse,
   type ScanStatusResult,
   type ScanProgressState,
@@ -78,10 +80,6 @@ function scanParamIsTarget(value: string): boolean {
   return /[./:]/.test(value);
 }
 
-/** A little above the server's own watchdogs (300s / 900s) so the client never gives up first. */
-const SCAN_MAX_WAIT_MS = 6 * 60 * 1000;
-const CRAWL_MAX_WAIT_MS = 16 * 60 * 1000;
-
 /**
  * The shell sits OUTSIDE the Suspense boundary on purpose. DashboardContent
  * reads useSearchParams, so it suspends on first render; with the boundary
@@ -105,7 +103,11 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { me } = useAuth();
-  const { scanStatusPollIntervalMs } = useClientConfig();
+  const {
+    scanStatusPollIntervalMs,
+    scanTimeoutSeconds,
+    crawlScanTimeoutSeconds,
+  } = useClientConfig();
   const runScanRef = useRef<
     | ((
         url: string,
@@ -505,7 +507,10 @@ function DashboardContent() {
       try {
         statusData = await pollScanStatus(
           scanId,
-          isCrawl ? CRAWL_MAX_WAIT_MS : SCAN_MAX_WAIT_MS,
+          // The server's own budget plus a minute, read live: an admin can
+          // raise either, and a fixed wait made the dashboard call a scan that
+          // was still inside its budget failed.
+          maxWaitMs(isCrawl ? crawlScanTimeoutSeconds : scanTimeoutSeconds),
           setScanProgress,
           scanStatusPollIntervalMs,
           pollAbort.signal,
@@ -523,6 +528,15 @@ function DashboardContent() {
         // Aborted for any other reason (unmount, a newer run taking
         // over): nothing left on screen to report to.
         if (pollError instanceof PollAbortedError) return null;
+        // This page stopped watching, which says nothing about the scan: it is
+        // a background job and carries on. Say that, not "failed".
+        if (pollError instanceof PollGaveUpError) {
+          setError(pollError.message);
+          setErrorForcedKind("still_running");
+          setErrorUrl(url);
+          setStatus("failed");
+          return null;
+        }
         setError(
           pollError instanceof Error
             ? pollError.message
@@ -550,7 +564,7 @@ function DashboardContent() {
       }
       return statusData.result;
     },
-    [scanStatusPollIntervalMs],
+    [scanStatusPollIntervalMs, scanTimeoutSeconds, crawlScanTimeoutSeconds],
   );
 
   /** Put a finished scan on screen. Shared by runScan and the reload path. */
@@ -600,14 +614,6 @@ function DashboardContent() {
             ? finalData.scanPublicId
             : historyId,
         );
-      }
-
-      if (historyId) {
-        fetch(`${API.HISTORY}/${historyId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),
-        }).catch(() => {});
       }
 
       if (aiAvailableRef.current && historyId) {

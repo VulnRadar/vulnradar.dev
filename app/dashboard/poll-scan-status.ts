@@ -81,8 +81,8 @@ export interface ScanProgressState {
 // covers a phone handing off between cells or a hotel wifi stall.
 const MAX_CONSECUTIVE_POLL_FAILURES = 6;
 
-/** Message used for both give-up paths. The scan is a background job, so it
- *  survives the client losing track of it, and saying so is the difference
+/** Message for the connection give-up path. The scan is a background job, so
+ *  it survives the client losing track of it, and saying so is the difference
  *  between "your scan is gone" and "look in History in a minute". */
 const POLL_GAVE_UP_MESSAGE =
   "Lost the connection to this scan. It is still running, and the result will be in your history in a few minutes.";
@@ -97,6 +97,43 @@ const FAST_POLL_WINDOW_MS = 2500;
 const FAST_POLL_INTERVAL_MS = 500;
 
 export class PollAbortedError extends Error {}
+
+/**
+ * The client stopped waiting, which says nothing about the scan: it is a
+ * background job and keeps running server-side. Its own class so the dashboard
+ * can tell "we stopped watching" from "the scan failed" and say the first one
+ * calmly, instead of drawing the red failure screen over a scan that goes on
+ * to finish in History.
+ */
+export class PollGaveUpError extends Error {
+  constructor(
+    readonly reason: "timeout" | "connection",
+    message: string,
+  ) {
+    super(message);
+    this.name = "PollGaveUpError";
+  }
+}
+
+/**
+ * Slack added to the server's watchdog budget before the client stops
+ * waiting. The watchdog fires at the budget, finalizes the row, and the next
+ * poll has to see that: a minute covers the poll interval, the finalize write
+ * and a slow request, so the client never gives up a moment before the server
+ * would have reported its own timeout.
+ */
+const WAIT_GRACE_MS = 60_000;
+
+/**
+ * How long the dashboard keeps polling one scan, from the server's budget for
+ * that kind of scan (SCAN_TIMEOUT_SECONDS or CRAWL_SCAN_TIMEOUT_SECONDS).
+ * These were 6 and 16 minutes written as literals next to a comment about
+ * 300s and 900s watchdogs, so raising either budget made the dashboard declare
+ * a still-running scan failed.
+ */
+export function maxWaitMs(budgetSeconds: number): number {
+  return budgetSeconds * 1000 + WAIT_GRACE_MS;
+}
 
 /**
  * How long to wait before the next status check.
@@ -236,7 +273,7 @@ export async function pollScanStatus(
       }
       consecutiveFailures++;
       if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
-        throw new Error(POLL_GAVE_UP_MESSAGE);
+        throw new PollGaveUpError("connection", POLL_GAVE_UP_MESSAGE);
       }
     }
     const delay = nextPollDelayMs(
@@ -246,7 +283,8 @@ export async function pollScanStatus(
     );
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
-  throw new Error(
+  throw new PollGaveUpError(
+    "timeout",
     "This scan is taking longer than expected. Check your history in a few minutes, it may still finish.",
   );
 }

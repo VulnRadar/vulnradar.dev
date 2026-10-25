@@ -19,6 +19,8 @@ describe("parseClientConfig", () => {
       notificationDefaultDismissDays: 7,
       browserbaseLogsPollIntervalMs: 2000,
       scanStatusPollIntervalMs: 1500,
+      scanTimeoutSeconds: 600,
+      crawlScanTimeoutSeconds: 3600,
       featurePdfReports: true,
       featureDemoMode: false,
       featureTeams: true,
@@ -36,6 +38,8 @@ describe("parseClientConfig", () => {
     );
     expect(parsed.notificationPollIntervalMs).toBe(45000);
     expect(parsed.scanStatusPollIntervalMs).toBe(1500);
+    expect(parsed.scanTimeoutSeconds).toBe(600);
+    expect(parsed.crawlScanTimeoutSeconds).toBe(3600);
     expect(parsed.featureTeams).toBe(true);
     expect(parsed.featureWebhooks).toBe(false);
   });
@@ -68,6 +72,32 @@ describe("parseClientConfig", () => {
         DEFAULT_CLIENT_CONFIG.browserbaseLogsPollIntervalMs,
       );
     }
+  });
+
+  it("keeps the scan budgets positive, because the dashboard waits that long", () => {
+    // Zero or a negative number would make the dashboard give up on a scan the
+    // moment it starts, so unlike the intervals these do not take a bad value
+    // at face value.
+    for (const bad of [0, -5, "soon", null, undefined, NaN]) {
+      const parsed = parseClientConfig({
+        scanTimeoutSeconds: bad,
+        crawlScanTimeoutSeconds: bad,
+      });
+      expect(parsed.scanTimeoutSeconds).toBe(
+        DEFAULT_CLIENT_CONFIG.scanTimeoutSeconds,
+      );
+      expect(parsed.crawlScanTimeoutSeconds).toBe(
+        DEFAULT_CLIENT_CONFIG.crawlScanTimeoutSeconds,
+      );
+    }
+  });
+
+  it("falls back to the compiled scan budgets when the response has none", () => {
+    // An older deployment that does not send them yet: the defaults are the
+    // budgets the scanner shipped with, which is what its watchdog uses.
+    const parsed = parseClientConfig({});
+    expect(parsed.scanTimeoutSeconds).toBe(300);
+    expect(parsed.crawlScanTimeoutSeconds).toBe(900);
   });
 
   it("fails a missing feature flag closed rather than open", () => {

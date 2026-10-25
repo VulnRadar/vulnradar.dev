@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import {
   AlertCircle,
   ArrowLeft,
   Check,
   Clock,
   Copy,
+  History as HistoryIcon,
   KeyRound,
   RotateCcw,
   ServerCrash,
@@ -14,7 +16,11 @@ import {
   WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BILLING_ENABLED, SUPPORT_EMAIL } from "@/lib/config/client-constants";
+import {
+  BILLING_ENABLED,
+  ROUTES,
+  SUPPORT_EMAIL,
+} from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { EmailLink } from "@/components/shared/email-link";
 import {
@@ -61,6 +67,8 @@ export type ErrorKind =
   | "validation"
   | "server"
   | "auth_failed"
+  /** The page stopped waiting. The scan itself is still going. */
+  | "still_running"
   | "generic";
 
 function classifyError(
@@ -140,6 +148,9 @@ const ERROR_META: Record<
     tint: string;
     edge: string;
     tile: string;
+    /** False when the message is our own explanation rather than something the
+     *  scanner said, so there is no "Scanner output" to show or copy. */
+    scannerOutput?: boolean;
   }
 > = {
   blocked: {
@@ -230,6 +241,18 @@ const ERROR_META: Record<
     tint: "bg-[hsl(var(--severity-medium))]/5",
     edge: "border-[hsl(var(--severity-medium))]/30",
     tile: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]",
+  },
+  still_running: {
+    title: "This scan is still running",
+    description:
+      "This page stopped waiting for it, but the scan keeps running on the server and the result will be in your History when it finishes. Starting it again would spend another scan.",
+    icon: Clock,
+    rail: "bg-primary",
+    accent: "text-primary",
+    tint: "bg-primary/5",
+    edge: "border-primary/30",
+    tile: "bg-primary/10 text-primary",
+    scannerOutput: false,
   },
   generic: {
     title: "The scan did not finish",
@@ -347,63 +370,76 @@ export function DashboardErrorState({
           )}
 
           {/* Raw message from the scanner */}
-          <div className="overflow-hidden rounded-md border border-border">
-            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Scanner output
-              </span>
-              <button
-                type="button"
-                onClick={copyDetails}
-                aria-label="Copy error details"
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors",
-                  copied
-                    ? "text-[hsl(var(--success))]"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-                )}
-              >
-                {copied ? (
-                  <>
-                    <Check aria-hidden className="h-3 w-3" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy aria-hidden className="h-3 w-3" />
-                    Copy
-                  </>
-                )}
-              </button>
-              <CopiedAnnouncement copied={copied} noun="error details" />
+          {meta.scannerOutput !== false && (
+            <div className="overflow-hidden rounded-md border border-border">
+              <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Scanner output
+                </span>
+                <button
+                  type="button"
+                  onClick={copyDetails}
+                  aria-label="Copy error details"
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors",
+                    copied
+                      ? "text-[hsl(var(--success))]"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                  )}
+                >
+                  {copied ? (
+                    <>
+                      <Check aria-hidden className="h-3 w-3" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy aria-hidden className="h-3 w-3" />
+                      Copy
+                    </>
+                  )}
+                </button>
+                <CopiedAnnouncement copied={copied} noun="error details" />
+              </div>
+              <p className="wrap-break-word px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground">
+                {error}
+              </p>
+              {details && (
+                <details className="group border-t border-border">
+                  <summary className="flex cursor-pointer list-none select-none items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground">
+                    <span
+                      aria-hidden
+                      className="inline-block transition-transform group-open:rotate-90"
+                    >
+                      &rsaquo;
+                    </span>
+                    Stack and request details
+                  </summary>
+                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap wrap-break-word bg-muted/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                    {details}
+                  </pre>
+                </details>
+              )}
             </div>
-            <p className="wrap-break-word px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground">
-              {error}
-            </p>
-            {details && (
-              <details className="group border-t border-border">
-                <summary className="flex cursor-pointer list-none select-none items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground">
-                  <span
-                    aria-hidden
-                    className="inline-block transition-transform group-open:rotate-90"
-                  >
-                    &rsaquo;
-                  </span>
-                  Stack and request details
-                </summary>
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap wrap-break-word bg-muted/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                  {details}
-                </pre>
-              </details>
-            )}
-          </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={onRetry} className="h-9 gap-2">
-              <RotateCcw aria-hidden className="h-4 w-4" />
-              Try again
-            </Button>
+            {kind === "still_running" ? (
+              // Not "Try again": that would start a second scan, and the first
+              // is still using a slot and has already spent one of today's.
+              <Button asChild className="h-9 gap-2">
+                <Link href={ROUTES.HISTORY}>
+                  <HistoryIcon aria-hidden className="h-4 w-4" />
+                  View in History
+                </Link>
+              </Button>
+            ) : (
+              <Button onClick={onRetry} className="h-9 gap-2">
+                <RotateCcw aria-hidden className="h-4 w-4" />
+                Try again
+              </Button>
+            )}
             <Button
               onClick={onBack}
               variant="outline"

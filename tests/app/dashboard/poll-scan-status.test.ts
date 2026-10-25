@@ -19,6 +19,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   pollScanStatus,
   PollAbortedError,
+  PollGaveUpError,
+  maxWaitMs,
   nextPollDelayMs,
   type ScanProgressState,
   type ScanStatusResponse,
@@ -291,6 +293,44 @@ describe("pollScanStatus", () => {
     );
   });
 
+  it("tells the dashboard it stopped waiting, as opposed to the scan failing", async () => {
+    // The page draws a calm "still running, it will be in History" state for
+    // this and a failure screen for everything else, so the two give-up paths
+    // have to be distinguishable from an ordinary Error without reading prose.
+    globalThis.fetch = fetchSequence([
+      jsonResponse({ status: "running" }),
+    ]) as unknown as typeof fetch;
+    const timedOut = await pollScanStatus(1, 30, undefined, FAST).catch(
+      (e) => e,
+    );
+    expect(timedOut).toBeInstanceOf(PollGaveUpError);
+    expect(timedOut.reason).toBe("timeout");
+
+    globalThis.fetch = fetchSequence([
+      new Error("network"),
+    ]) as unknown as typeof fetch;
+    const lost = await pollScanStatus(1, 10_000, undefined, FAST).catch(
+      (e) => e,
+    );
+    expect(lost).toBeInstanceOf(PollGaveUpError);
+    expect(lost.reason).toBe("connection");
+  });
+
+  it("does not report a cancel as the client giving up", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    globalThis.fetch = vi.fn() as unknown as typeof fetch;
+    const err = await pollScanStatus(
+      1,
+      5000,
+      undefined,
+      FAST,
+      controller.signal,
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(PollAbortedError);
+    expect(err).not.toBeInstanceOf(PollGaveUpError);
+  });
+
   it("forwards the findings the status route has been streaming all along", async () => {
     // The server has reported these per finished check family since progress
     // tracking landed; this loop never declared the field, so the only thing
@@ -350,5 +390,20 @@ describe("nextPollDelayMs", () => {
     // and one that sets a short one is not slowed down.
     expect(nextPollDelayMs(0, false, 200)).toBe(200);
     expect(nextPollDelayMs(60_000, true, 200)).toBe(200);
+  });
+});
+
+describe("maxWaitMs", () => {
+  it("is the server's budget plus a minute, so the client never gives up first", () => {
+    // The defaults: a 300s scan watchdog and a 900s crawl watchdog.
+    expect(maxWaitMs(300)).toBe(360_000);
+    expect(maxWaitMs(900)).toBe(960_000);
+  });
+
+  it("follows a raised budget instead of a fixed 6 or 16 minutes", () => {
+    // An admin who raises the crawl budget to an hour must not have the
+    // dashboard call a still-running crawl failed at the sixteen minute mark.
+    expect(maxWaitMs(3600)).toBeGreaterThan(16 * 60 * 1000);
+    expect(maxWaitMs(3600)).toBe(3_660_000);
   });
 });
