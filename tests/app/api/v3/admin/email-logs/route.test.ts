@@ -114,7 +114,7 @@ describe("GET /api/v3/admin/email-logs", () => {
     expect(selectCall[1]).toEqual([20, 0]);
   });
 
-  it("applies a search filter via ILIKE against recipient and subject", async () => {
+  it("applies a search filter via ILIKE against recipient, subject, template and the error", async () => {
     withAdmin();
     mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -125,8 +125,11 @@ describe("GET /api/v3/admin/email-logs", () => {
     // ESCAPE '\' is required, not cosmetic: without it a literal "_" in the
     // search matches any character and a bare "%" degrades to a full scan of
     // email_logs. The bound value is escaped to match.
+    // error_message is searched because a delivery problem is found by what
+    // the relay said ("SpamAssassin"), which is in neither the subject nor the
+    // recipient; template, because it is found by which message it was.
     expect(countCall[0]).toContain(
-      "(recipient ILIKE $1 ESCAPE '\\' OR subject ILIKE $1 ESCAPE '\\')",
+      "(recipient ILIKE $1 ESCAPE '\\' OR subject ILIKE $1 ESCAPE '\\' OR template ILIKE $1 ESCAPE '\\' OR error_message ILIKE $1 ESCAPE '\\')",
     );
     expect(countCall[1]).toEqual(["%alice%"]);
 
@@ -167,7 +170,7 @@ describe("GET /api/v3/admin/email-logs", () => {
 
     const countCall = mockQuery.mock.calls[1] as [string, unknown[]];
     expect(countCall[0]).toContain(
-      "(recipient ILIKE $1 ESCAPE '\\' OR subject ILIKE $1 ESCAPE '\\') AND status = $2",
+      "error_message ILIKE $1 ESCAPE '\\') AND status = $2",
     );
     expect(countCall[1]).toEqual(["%alice%", "sent"]);
   });
@@ -201,6 +204,18 @@ describe("GET /api/v3/admin/email-logs", () => {
     expect(res.status).toBe(500);
   });
 
+  it("returns the template and the error text on each row, so a failure reads without opening it", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "0" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await GET(getRequest());
+
+    const selectCall = mockQuery.mock.calls[2] as [string, unknown[]];
+    expect(selectCall[0]).toContain("error_message");
+    expect(selectCall[0]).toContain("template");
+  });
+
   it("keeps the rendered copy off the list payload", async () => {
     withAdmin();
     mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] });
@@ -212,6 +227,83 @@ describe("GET /api/v3/admin/email-logs", () => {
     // refetches this on every keystroke. The body is fetched per row instead.
     const selectCall = mockQuery.mock.calls[2] as [string, unknown[]];
     expect(selectCall[0]).not.toContain("redacted_html");
+  });
+});
+
+describe("GET /api/v3/admin/email-logs?reasons=1", () => {
+  it("requires an admin", async () => {
+    mockGetSession.mockResolvedValue(null);
+    const res = await GET(getRequest("?reasons=1"));
+    expect(res.status).toBe(403);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("returns the last day's failures grouped by what refused them", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          smtp_code: 550,
+          smtp_command: "DATA",
+          error_code: "EMESSAGE",
+          sample: "Message failed: 550 5.7.0 Blocked by SpamAssassin",
+          count: 14,
+          templates: ["broadcast", "contactConfirmation"],
+        },
+        {
+          smtp_code: null,
+          smtp_command: null,
+          error_code: null,
+          sample: "connect ETIMEDOUT",
+          count: 2,
+          templates: null,
+        },
+      ],
+    });
+
+    const res = await GET(getRequest("?reasons=1"));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.windowHours).toBe(24);
+    expect(json.reasons).toEqual([
+      {
+        smtpCode: 550,
+        smtpCommand: "DATA",
+        errorCode: "EMESSAGE",
+        sample: "Message failed: 550 5.7.0 Blocked by SpamAssassin",
+        count: 14,
+        templates: ["broadcast", "contactConfirmation"],
+      },
+      {
+        smtpCode: null,
+        smtpCommand: null,
+        errorCode: null,
+        sample: "connect ETIMEDOUT",
+        count: 2,
+        templates: [],
+      },
+    ]);
+    const sql = String(mockQuery.mock.calls[1][0]);
+    expect(sql).toContain("status = 'failed'");
+    expect(sql).toContain("INTERVAL '24 hours'");
+  });
+
+  it("does not run the list queries for it", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await GET(getRequest("?reasons=1"));
+    // requireAdmin's role lookup, and the one summary query.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a graceful 500 when the summary query fails", async () => {
+    withAdmin();
+    mockQuery.mockRejectedValueOnce(new Error("db exploded"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await GET(getRequest("?reasons=1"));
+    expect(res.status).toBe(500);
+    spy.mockRestore();
   });
 });
 
@@ -256,6 +348,19 @@ describe("GET /api/v3/admin/email-logs?id=", () => {
 
     const selectCall = mockQuery.mock.calls[1] as [string, unknown[]];
     expect(selectCall[0]).toContain("redacted_html");
+    // The delivery detail that ties a rejection to a template and a stage.
+    for (const column of [
+      "template",
+      "from_address",
+      "smtp_host",
+      "smtp_code",
+      "smtp_command",
+      "smtp_response",
+      "error_code",
+      "message_id",
+    ]) {
+      expect(selectCall[0]).toContain(column);
+    }
     // Parameterised, not interpolated.
     expect(selectCall[0]).toContain("WHERE id = $1");
     expect(selectCall[1]).toEqual([4]);

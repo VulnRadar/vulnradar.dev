@@ -56,12 +56,36 @@ interface EmailLogEntry {
   status: EmailLogStatus;
   error_message: string | null;
   redacted_preview: string | null;
+  /** Which template produced it. NULL on rows from before it was recorded. */
+  template: string | null;
   created_at: string;
 }
 
-/** One row plus the rendered copy, fetched only when a message is opened. */
+/**
+ * One row plus the rendered copy and the delivery detail, fetched only when a
+ * message is opened. The detail is what traces a rejection to a message: the
+ * From address and relay it went out through, and what the relay answered at
+ * which command.
+ */
 interface EmailLogDetail extends EmailLogEntry {
   redacted_html: string | null;
+  from_address: string | null;
+  smtp_host: string | null;
+  smtp_code: number | null;
+  smtp_command: string | null;
+  smtp_response: string | null;
+  error_code: string | null;
+  message_id: string | null;
+}
+
+/** Failures of the last day that the relay refused for the same reason. */
+interface FailureReason {
+  smtpCode: number | null;
+  smtpCommand: string | null;
+  errorCode: string | null;
+  sample: string | null;
+  count: number;
+  templates: string[];
 }
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -113,6 +137,76 @@ function MetaField({
   );
 }
 
+/** "550 at DATA", or whatever of that this failure has. */
+function stageLabel(
+  code: number | null,
+  command: string | null,
+  errorCode?: string | null,
+): string {
+  const stage = [code, command ? `at ${command}` : null]
+    .filter((part) => part !== null)
+    .join(" ");
+  if (stage && errorCode) return `${stage} (${errorCode})`;
+  return stage || errorCode || "No SMTP reply";
+}
+
+/**
+ * The last day's failures, grouped by what refused them. A burst of one
+ * rejection ("550 at DATA ... Blocked by SpamAssassin") reads as one line with
+ * a count and the templates it hit, instead of forty rows opened one by one.
+ */
+function FailureReasons({
+  reasons,
+  hours,
+}: {
+  reasons: FailureReason[];
+  hours: number;
+}) {
+  if (reasons.length === 0) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-border/50 bg-muted/20 px-4 py-3">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">
+        Top failure reasons ({hours}h)
+      </p>
+      <ul className="mt-2 divide-y divide-border/40">
+        {reasons.map((reason, index) => (
+          <li
+            key={`${index}-${reason.smtpCode}-${reason.smtpCommand}-${reason.errorCode}`}
+            className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-1.5 text-xs first:pt-0 last:pb-0"
+          >
+            <span className="shrink-0 font-semibold tabular-nums text-destructive">
+              {reason.count}
+              <span className="sr-only"> failures</span>
+              <span aria-hidden="true">x</span>
+            </span>
+            <span className="shrink-0 font-mono text-foreground">
+              {stageLabel(
+                reason.smtpCode,
+                reason.smtpCommand,
+                reason.errorCode,
+              )}
+            </span>
+            <span
+              title={reason.sample ?? undefined}
+              className="min-w-0 flex-1 basis-56 truncate text-muted-foreground"
+            >
+              {reason.sample}
+            </span>
+            {reason.templates.length > 0 && (
+              <span
+                title={reason.templates.join(", ")}
+                className="min-w-0 max-w-full truncate font-mono text-muted-foreground/70"
+              >
+                {reason.templates.join(", ")}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /**
  * Admin > System > Email Logs (AUDIT-010). Every outbound email attempt
  * this app has made, written by lib/email/email.ts's sendEmail() itself
@@ -149,6 +243,8 @@ export function EmailLogsManager() {
   const [status, setStatus] = useState<EmailLogStatus | "">("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [reasons, setReasons] = useState<FailureReason[]>([]);
+  const [reasonHours, setReasonHours] = useState(24);
   const [viewLog, setViewLog] = useState<EmailLogEntry | null>(null);
   const [detail, setDetail] = useState<EmailLogDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -194,9 +290,27 @@ export function EmailLogsManager() {
     [],
   );
 
+  // The summary strip is a separate, cheap request so the search box never
+  // pays for it. A failed summary just leaves the strip out: the list below is
+  // the record, this is only a shortcut into it.
+  const fetchReasons = useCallback(async () => {
+    try {
+      const res = await fetch(`${API.ADMIN}/email-logs?reasons=1`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setReasons(Array.isArray(data.reasons) ? data.reasons : []);
+      if (typeof data.windowHours === "number") {
+        setReasonHours(data.windowHours);
+      }
+    } catch {
+      /* the strip is optional */
+    }
+  }, []);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchLogs(1, "", "", pageSize, true);
+    void fetchReasons();
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -242,6 +356,10 @@ export function EmailLogsManager() {
     () => (storedHtml === null ? false : hasRemoteContent(storedHtml)),
     [storedHtml],
   );
+  // The delivery fields arrive with the single-row fetch, not on the list, so
+  // until it lands they are loading rather than missing.
+  const recorded = (value: string | null | undefined) =>
+    detailLoading ? "Loading" : (value ?? "Not recorded");
   const viewMeta = viewLog
     ? (STATUS_META[viewLog.status] ?? STATUS_META.failed)
     : null;
@@ -265,6 +383,7 @@ export function EmailLogsManager() {
           type: "success",
         });
         await fetchLogs(1, search, status, pageSize);
+        void fetchReasons();
       } else {
         setToast({
           message: data.error || "Failed to clear email logs.",
@@ -297,7 +416,10 @@ export function EmailLogsManager() {
                 variant="outline"
                 size="sm"
                 className="h-9 px-3 gap-2 border-border/40"
-                onClick={() => fetchLogs(page, search, status, pageSize)}
+                onClick={() => {
+                  fetchLogs(page, search, status, pageSize);
+                  void fetchReasons();
+                }}
                 disabled={refreshing}
                 aria-label="Refresh email logs"
               >
@@ -327,7 +449,7 @@ export function EmailLogsManager() {
           <ListSearchInput
             value={search}
             onChange={setSearch}
-            placeholder="Search recipient or subject"
+            placeholder="Search recipient, subject, template or error"
             label="Search email logs"
           />
 
@@ -351,6 +473,8 @@ export function EmailLogsManager() {
               </button>
             ))}
           </div>
+
+          <FailureReasons reasons={reasons} hours={reasonHours} />
 
           {/* Why there is no retry button on these rows.
               redacted_html is redacted BEFORE it is stored: every URL becomes
@@ -444,6 +568,14 @@ export function EmailLogsManager() {
                         >
                           {log.recipient}
                         </span>
+                        {log.template && (
+                          <span
+                            title="Template"
+                            className="hidden font-mono text-muted-foreground/70 truncate sm:inline"
+                          >
+                            {log.template}
+                          </span>
+                        )}
                         {/* Below sm the absolute stamp in the gutter is
                             hidden, which left the log with no times at all on
                             a phone. The relative age fills that gap and costs
@@ -462,6 +594,18 @@ export function EmailLogsManager() {
                           {formatRelativeTime(log.created_at)}
                         </time>
                       </p>
+                      {/* Why it failed, on the row. It used to be visible only
+                          after opening the message, so finding which of twenty
+                          failures was the spam rejection meant opening them
+                          one by one. */}
+                      {log.status === "failed" && log.error_message && (
+                        <p
+                          title={log.error_message}
+                          className="text-xs text-destructive mt-0.5 truncate"
+                        >
+                          {log.error_message}
+                        </p>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground tabular-nums shrink-0 whitespace-nowrap hidden sm:block">
                       {formatTimestamp(log.created_at)}
@@ -561,6 +705,60 @@ export function EmailLogsManager() {
                     <span className="text-muted-foreground">
                       {" "}
                       ({formatRelativeTime(viewLog.created_at)})
+                    </span>
+                  </MetaField>
+                </dl>
+
+                {/* Where the message came from and where it got to. A relay
+                    rejection is a verdict on one message at one stage, and
+                    this is what ties it to a template, a From address and a
+                    Message-ID to search the relay's own logs by. */}
+                <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 rounded-lg border border-border/50 bg-muted/20 px-4 py-3">
+                  <MetaField label="Template">
+                    {viewLog.template ? (
+                      <span className="font-mono text-sm">
+                        {viewLog.template}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Not recorded
+                      </span>
+                    )}
+                  </MetaField>
+                  <MetaField label="From">
+                    <span className="font-mono text-sm">
+                      {recorded(detail?.from_address)}
+                    </span>
+                  </MetaField>
+                  <MetaField label="Relay">
+                    <span className="font-mono text-sm">
+                      {recorded(detail?.smtp_host)}
+                    </span>
+                  </MetaField>
+                  <MetaField label="SMTP stage">
+                    <span className="font-mono text-sm">
+                      {recorded(
+                        detail &&
+                          (detail.smtp_code !== null ||
+                            detail.smtp_command ||
+                            detail.error_code)
+                          ? stageLabel(
+                              detail.smtp_code,
+                              detail.smtp_command,
+                              detail.error_code,
+                            )
+                          : null,
+                      )}
+                    </span>
+                  </MetaField>
+                  <MetaField label="Relay reply">
+                    <span className="font-mono text-sm">
+                      {recorded(detail?.smtp_response)}
+                    </span>
+                  </MetaField>
+                  <MetaField label="Message-ID">
+                    <span className="font-mono text-sm break-all">
+                      {recorded(detail?.message_id)}
                     </span>
                   </MetaField>
                 </dl>

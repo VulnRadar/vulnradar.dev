@@ -3,10 +3,12 @@ import pool from "@/lib/database/db";
 import { requireAdmin, logAction } from "@/lib/auth/authorization";
 import { getClientIp } from "@/lib/api/request-utils";
 import { parsePagination } from "@/lib/api/pagination";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { logError } from "@/lib/logging/log";
 import {
-  CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
-  CONFIG_PAGINATION_MAX_PAGE_SIZE,
-} from "@/lib/config/config-values";
+  FAILURE_WINDOW_HOURS,
+  getRecentFailureReasons,
+} from "@/lib/email/failure-reasons";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,11 +22,25 @@ interface EmailLogRow {
   status: string;
   error_message: string | null;
   redacted_preview: string | null;
+  template: string | null;
   created_at: string;
 }
 
+/**
+ * The whole row, which is only fetched when an admin opens one. Everything a
+ * rejection needs to be traced back to its template and its stage lives here:
+ * which template produced the message, which From address and relay it went
+ * out through, and what the relay answered and at which command.
+ */
 interface EmailLogDetailRow extends EmailLogRow {
   redacted_html: string | null;
+  from_address: string | null;
+  smtp_host: string | null;
+  smtp_code: number | null;
+  smtp_command: string | null;
+  smtp_response: string | null;
+  error_code: string | null;
+  message_id: string | null;
 }
 
 /**
@@ -39,11 +55,13 @@ interface EmailLogDetailRow extends EmailLogRow {
  * Neither `redacted_preview` nor `redacted_html` contains a working
  * link, code, or token (see redactEmailPreview and redactEmailHtml).
  *
- * Query params: page, limit, search (matches recipient or subject,
- * case-insensitive), status (sent|failed|skipped_not_configured), or
- * `id` for the single-row detail the viewer opens.
+ * Query params: page, limit, search (matches recipient, subject, template or
+ * the error text, case-insensitive), status (sent|failed|
+ * skipped_not_configured), `id` for the single-row detail the viewer opens,
+ * or `reasons=1` for the failures of the last day grouped by what the relay
+ * said.
  */
-export async function GET(request: NextRequest) {
+export const GET = withErrorHandling(async (request: NextRequest) => {
   const admin = await requireAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -53,6 +71,23 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
+
+  // Failures grouped by the reply that caused them, so a burst of one
+  // rejection reads as one line with a count (lib/email/failure-reasons.ts).
+  if (searchParams.get("reasons") === "1") {
+    try {
+      return NextResponse.json({
+        windowHours: FAILURE_WINDOW_HOURS,
+        reasons: await getRecentFailureReasons(),
+      });
+    } catch (error) {
+      logError("admin-email-logs", "could not summarise failures", error);
+      return NextResponse.json(
+        { error: "Failed to summarise email failures." },
+        { status: 500 },
+      );
+    }
+  }
 
   // The rendered copy of a message is kilobytes of markup, so it is fetched
   // one row at a time when an admin actually opens one. Returning it on the
@@ -66,7 +101,9 @@ export async function GET(request: NextRequest) {
     }
     try {
       const detailRes = await pool.query<EmailLogDetailRow>(
-        `SELECT id, recipient, subject, status, error_message, redacted_preview, redacted_html, created_at
+        `SELECT id, recipient, subject, status, error_message, redacted_preview, redacted_html,
+                template, from_address, smtp_host, smtp_code, smtp_command, smtp_response,
+                error_code, message_id, created_at
            FROM email_logs
           WHERE id = $1`,
         [id],
@@ -77,7 +114,9 @@ export async function GET(request: NextRequest) {
       }
       return NextResponse.json({ log });
     } catch (error) {
-      console.error("[admin/email-logs] Failed to fetch email log:", error);
+      logError("admin-email-logs", "could not fetch an email log", error, {
+        logId: id,
+      });
       return NextResponse.json(
         { error: "Failed to fetch email log." },
         { status: 500 },
@@ -99,9 +138,14 @@ export async function GET(request: NextRequest) {
       // "%" degrades to a full scan of email_logs, one of the highest-volume
       // tables in the schema. Same one-liner the user and team searches use
       // (app/api/v3/admin/route.ts, app/api/v3/admin/teams/route.ts).
+      //
+      // error_message and template are searchable because a delivery problem
+      // is found by what the relay said ("SpamAssassin") or by which message
+      // it was, and neither is in the subject or the recipient.
       params.push(`%${search.replace(/[\\%_]/g, "\\$&")}%`);
+      const like = `$${params.length} ESCAPE '\\'`;
       conditions.push(
-        `(recipient ILIKE $${params.length} ESCAPE '\\' OR subject ILIKE $${params.length} ESCAPE '\\')`,
+        `(recipient ILIKE ${like} OR subject ILIKE ${like} OR template ILIKE ${like} OR error_message ILIKE ${like})`,
       );
     }
     if (status) {
@@ -121,7 +165,7 @@ export async function GET(request: NextRequest) {
         params,
       ),
       pool.query<EmailLogRow>(
-        `SELECT id, recipient, subject, status, error_message, redacted_preview, created_at
+        `SELECT id, recipient, subject, status, error_message, redacted_preview, template, created_at
        FROM email_logs
        ${whereClause}
        ORDER BY created_at DESC
@@ -139,13 +183,13 @@ export async function GET(request: NextRequest) {
       total,
     });
   } catch (error) {
-    console.error("[admin/email-logs] Failed to fetch email logs:", error);
+    logError("admin-email-logs", "could not fetch email logs", error);
     return NextResponse.json(
       { error: "Failed to fetch email logs." },
       { status: 500 },
     );
   }
-}
+});
 
 /**
  * DELETE /api/v3/admin/email-logs
@@ -156,7 +200,7 @@ export async function GET(request: NextRequest) {
  * fires -- and recorded to admin_audit_log like every other admin
  * bulk-delete in this codebase.
  */
-export async function DELETE() {
+export const DELETE = withErrorHandling(async () => {
   const admin = await requireAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -180,10 +224,10 @@ export async function DELETE() {
 
     return NextResponse.json({ success: true, deletedCount });
   } catch (error) {
-    console.error("[admin/email-logs] Failed to clear email logs:", error);
+    logError("admin-email-logs", "could not clear email logs", error);
     return NextResponse.json(
       { error: "Failed to clear email logs." },
       { status: 500 },
     );
   }
-}
+});
