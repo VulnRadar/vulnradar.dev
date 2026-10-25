@@ -827,6 +827,7 @@ describe("GET /api/v3/billing: an automatic downgrade is recorded and alerted", 
       expect.objectContaining({
         event: "billing_orphaned_subscription_downgrade",
         severity: "critical",
+        message: expect.stringContaining("went from core_supporter to free"),
         context: {
           userId: 42,
           previousPlan: "core_supporter",
@@ -850,6 +851,12 @@ describe("GET /api/v3/billing: an automatic downgrade is recorded and alerted", 
     expect(mockSendAdminAlert).toHaveBeenCalledWith(
       expect.objectContaining({ severity: "warning" }),
     );
+    // Not "went from free to free": nothing was lost, only an id was cleared.
+    const { message } = mockSendAdminAlert.mock.calls[0][0] as {
+      message: string;
+    };
+    expect(message).not.toContain("went from");
+    expect(message).toContain("stays on free");
   });
 
   it("does not alert, or downgrade, when Stripe merely could not be reached", async () => {

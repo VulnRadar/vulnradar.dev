@@ -263,11 +263,14 @@ export const GET = withErrorHandling(async () => {
           // dangling id off an account already on its fallback costs nobody
           // anything. No audit row (owner decision): admin_audit_log needs an
           // admin, and this was nobody's action.
+          const planChanged = downgrade.previousPlan !== fallbackPlan;
+          const missing = `subscription ${downgrade.staleSubscriptionId} no longer exists in Stripe (${downgrade.stripeMode} mode key)`;
           void sendAdminAlert({
             event: "billing_orphaned_subscription_downgrade",
-            severity:
-              downgrade.previousPlan !== fallbackPlan ? "critical" : "warning",
-            message: `User ${session.userId} went from ${downgrade.previousPlan} to ${fallbackPlan} because subscription ${downgrade.staleSubscriptionId} no longer exists in Stripe (${downgrade.stripeMode} mode key).`,
+            severity: planChanged ? "critical" : "warning",
+            message: planChanged
+              ? `User ${session.userId} went from ${downgrade.previousPlan} to ${fallbackPlan} because ${missing}.`
+              : `User ${session.userId} stays on ${fallbackPlan}, but ${missing}, so the dangling id was cleared.`,
             context: downgrade,
           });
           // Reflect the downgrade in this same response instead of only
