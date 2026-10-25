@@ -83,20 +83,34 @@ export function LandingNav({ badge }: LandingNavProps) {
         <div
           className={cn(
             NAV_CONTAINER,
-            "mx-auto px-4 sm:px-6 h-14 flex items-center gap-6",
+            "mx-auto px-4 sm:px-6 h-14 flex items-center gap-3 sm:gap-6",
           )}
         >
+          {/* The one item that gives way, and it gives way in a fixed order.
+              This used to be shrink-0, so at 375px with a French or German
+              label on the sign-up button the row came out wider than the
+              screen and the clipped end was the menu button, the only way to
+              reach any link on a phone. A wordmark with nothing left to sit in
+              is a better failure than losing the way in.
+
+              flex-wrap with a fixed height and overflow-hidden is what puts
+              the order in: whatever does not fit in this item's share of the
+              row wraps onto a second line that the height clips away, last
+              item first. So the badge (decoration) goes before the wordmark,
+              and the mark never goes. Shrinking the text instead (truncate)
+              kept the badge and squeezed the wordmark to a sliver at 1024px
+              in French on the docs pages that carry one. */}
           <Link
             href={ROUTES.HOME}
             className={cn(
-              "flex items-center gap-2.5 shrink-0 rounded-sm",
+              "flex h-6 min-w-0 flex-wrap items-center gap-x-2.5 overflow-hidden rounded-sm",
               focus.ring,
             )}
           >
             <ThemedLogo
               width={26}
               height={26}
-              className="h-6 w-6"
+              className="h-6 w-6 shrink-0"
               alt={`${APP_NAME} logo`}
             />
             <span className="font-mono font-semibold text-base tracking-tight">
@@ -109,7 +123,11 @@ export function LandingNav({ badge }: LandingNavProps) {
             )}
           </Link>
 
-          <div className="hidden md:flex items-center gap-6">
+          {/* lg, not md. Five links at gap-6 plus the right group came to about
+              826px in English, which does not fit a 768px iPad in portrait, and
+              the translated labels are wider again. Below lg the links live in
+              the menu panel instead. */}
+          <div className="hidden lg:flex items-center gap-6">
             {links.map((link) => (
               <Link
                 key={link.href}
@@ -129,41 +147,56 @@ export function LandingNav({ badge }: LandingNavProps) {
             ))}
           </div>
 
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex shrink-0 items-center gap-2 ml-auto">
+            {/* The language menu stays in the bar from sm up. The theme toggle
+                is 64px wide and only fits beside the inline links, so below lg
+                it moves into the menu panel with them. */}
             <div className="hidden sm:flex sm:items-center">
               <LanguageMenu />
-              <ThemeToggle />
+              <div className="hidden lg:block">
+                <ThemeToggle />
+              </div>
             </div>
 
             {isLoading ? (
               <div className="h-8 w-24 rounded bg-muted/50 animate-pulse" />
             ) : isLoggedIn ? (
-              <Link href={ROUTES.DASHBOARD}>
-                <Button size="sm" className="h-8 gap-1.5">
+              <Button asChild size="sm" className="h-8 gap-1.5">
+                <Link href={ROUTES.DASHBOARD}>
                   <LayoutDashboard className="h-3.5 w-3.5" />
                   {t("dashboard")}
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             ) : (
               <>
-                <Link href={ROUTES.LOGIN}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="hidden sm:inline-flex h-8"
-                  >
-                    {t("logIn")}
-                  </Button>
-                </Link>
-                <Link href={ROUTES.SIGNUP}>
-                  <Button size="sm" className="h-8 gap-1.5">
+                {/* asChild puts `hidden` on the anchor itself. Wrapped around
+                    a hidden button, the anchor stayed rendered below 640px with
+                    no text and still took a tab stop. */}
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className="hidden sm:inline-flex h-8"
+                >
+                  <Link href={ROUTES.LOGIN}>{t("logIn")}</Link>
+                </Button>
+                <Button
+                  asChild
+                  size="sm"
+                  className="h-8 gap-1.5 px-2.5 sm:px-3"
+                >
+                  <Link href={ROUTES.SIGNUP}>
                     {/* "Get Started" was title case on a sentence-case page and
                         named no action. This is the first button a visitor
-                        sees on a page whose whole argument is specificity. */}
-                    {t("startFree")}
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
+                        sees on a page whose whole argument is specificity.
+                        Below sm the short label stands in: "Commencer
+                        gratuitement" alone is wider than a phone's spare room
+                        once the wordmark and menu button are in the row. */}
+                    <span className="sm:hidden">{t("signUp")}</span>
+                    <span className="hidden sm:inline">{t("startFree")}</span>
+                    <ArrowRight className="hidden h-3.5 w-3.5 sm:block" />
+                  </Link>
+                </Button>
               </>
             )}
 
@@ -174,11 +207,11 @@ export function LandingNav({ badge }: LandingNavProps) {
               aria-controls="landing-nav-mobile"
               aria-label={open ? "Close menu" : "Open menu"}
               className={cn(
-                // 44px. This button only exists below md, so it is only ever
+                // 44px. This button only exists below lg, so it is only ever
                 // hit by a finger, and at 32px it was under the touch
                 // minimum while being the only way to reach the nav links on
                 // a phone.
-                "md:hidden inline-flex items-center justify-center h-11 w-11 rounded-md border border-border text-muted-foreground hover:text-foreground",
+                "lg:hidden inline-flex shrink-0 items-center justify-center h-11 w-11 rounded-md border border-border text-muted-foreground hover:text-foreground",
                 transitions.colors,
                 focus.ring,
               )}
@@ -191,7 +224,7 @@ export function LandingNav({ badge }: LandingNavProps) {
         {open && (
           <div
             id="landing-nav-mobile"
-            className="md:hidden border-t border-border/50 bg-background"
+            className="lg:hidden border-t border-border/50 bg-background"
           >
             <div
               className={cn(
@@ -219,15 +252,25 @@ export function LandingNav({ badge }: LandingNavProps) {
               ))}
               <div className="flex items-center justify-between gap-3 pt-3 mt-1 border-t border-border/50">
                 <div className="flex items-center">
-                  <LanguageMenu />
+                  {/* The bar carries the language menu from sm up, and the
+                      log in button too. Repeating either here between sm and
+                      lg put the same control on screen twice. */}
+                  <div className="sm:hidden">
+                    <LanguageMenu />
+                  </div>
                   <ThemeToggle />
                 </div>
                 {!isLoading && !isLoggedIn && (
-                  <Link href={ROUTES.LOGIN} onClick={() => setOpen(false)}>
-                    <Button variant="outline" size="sm" className="h-8">
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="h-8 sm:hidden"
+                  >
+                    <Link href={ROUTES.LOGIN} onClick={() => setOpen(false)}>
                       {t("logIn")}
-                    </Button>
-                  </Link>
+                    </Link>
+                  </Button>
                 )}
               </div>
             </div>
