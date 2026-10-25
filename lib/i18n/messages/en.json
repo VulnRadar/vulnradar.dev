@@ -159,6 +159,10 @@
     "activityErrorBody": "Your scans are unaffected. This is the summary above the scanner, not the scanner itself.",
     "daysCount": "{count, plural, one {# day} other {# days}}",
     "scansCount": "{count, plural, one {# scan} other {# scans}}",
-    "issuesCount": "{count, plural, one {# issue} other {# issues}}"
+    "issuesCount": "{count, plural, one {# issue} other {# issues}}",
+    "announceComplete": "Scan complete: {count, plural, =0 {no findings} one {# finding} other {# findings}}.",
+    "announceFailed": "Scan failed: {reason}.",
+    "announceCancelled": "Scan cancelled.",
+    "announceStillRunning": "This scan is still running. It will appear in History when it finishes."
   }
 }

@@ -159,6 +159,10 @@
     "activityErrorBody": "Vos analyses ne sont pas touchées. Il s'agit du résumé au-dessus du scanner, pas du scanner lui-même.",
     "daysCount": "{count, plural, one {# jour} other {# jours}}",
     "scansCount": "{count, plural, one {# analyse} other {# analyses}}",
-    "issuesCount": "{count, plural, one {# problème} other {# problèmes}}"
+    "issuesCount": "{count, plural, one {# problème} other {# problèmes}}",
+    "announceComplete": "Analyse terminée : {count, plural, =0 {aucun résultat} one {# résultat} other {# résultats}}.",
+    "announceFailed": "L'analyse a échoué : {reason}.",
+    "announceCancelled": "Analyse annulée.",
+    "announceStillRunning": "Cette analyse est toujours en cours. Elle apparaîtra dans l'historique à sa fin."
   }
 }

@@ -159,6 +159,10 @@
     "activityErrorBody": "Tus análisis no se ven afectados. Esto es el resumen que hay sobre el escáner, no el escáner en sí.",
     "daysCount": "{count, plural, one {# día} other {# días}}",
     "scansCount": "{count, plural, one {# análisis} other {# análisis}}",
-    "issuesCount": "{count, plural, one {# problema} other {# problemas}}"
+    "issuesCount": "{count, plural, one {# problema} other {# problemas}}",
+    "announceComplete": "Análisis completado: {count, plural, =0 {sin hallazgos} one {# hallazgo} other {# hallazgos}}.",
+    "announceFailed": "El análisis falló: {reason}.",
+    "announceCancelled": "Análisis cancelado.",
+    "announceStillRunning": "Este análisis sigue en curso. Aparecerá en el historial cuando termine."
   }
 }

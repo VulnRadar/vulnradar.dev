@@ -4,10 +4,12 @@ import Link from "next/link";
 import {
   AlertCircle,
   ArrowLeft,
+  Ban,
   Check,
   Clock,
   Copy,
   History as HistoryIcon,
+  Hourglass,
   KeyRound,
   RotateCcw,
   ServerCrash,
@@ -22,6 +24,8 @@ import {
   SUPPORT_EMAIL,
 } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
+import { focus } from "@/lib/ui/animations";
+import { useFocusOnMount } from "@/lib/hooks/use-focus-on-mount";
 import { EmailLink } from "@/components/shared/email-link";
 import {
   useCopyFeedback,
@@ -67,6 +71,10 @@ export type ErrorKind =
   | "validation"
   | "server"
   | "auth_failed"
+  /** The scan was stopped before it finished, by its owner or by staff. */
+  | "cancelled"
+  /** The scan hit the time limit for a single scan. */
+  | "timeout"
   /** The page stopped waiting. The scan itself is still going. */
   | "still_running"
   | "generic";
@@ -242,6 +250,29 @@ const ERROR_META: Record<
     edge: "border-[hsl(var(--severity-medium))]/30",
     tile: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]",
   },
+  cancelled: {
+    title: "This scan was cancelled",
+    description:
+      "It was stopped before it finished, so no result was saved. Run it again whenever you like.",
+    icon: Ban,
+    rail: "bg-muted-foreground/60",
+    accent: "text-foreground",
+    tint: "bg-muted/40",
+    edge: "border-border",
+    tile: "bg-muted text-muted-foreground",
+    scannerOutput: false,
+  },
+  timeout: {
+    title: "The scan ran out of time",
+    description:
+      "It ran past the time limit for a single scan and was stopped. A slow target is the usual cause. Try again, or run a Quick scan with fewer check families.",
+    icon: Hourglass,
+    rail: "bg-[hsl(var(--severity-medium))]",
+    accent: "text-[hsl(var(--severity-medium))]",
+    tint: "bg-[hsl(var(--severity-medium))]/5",
+    edge: "border-[hsl(var(--severity-medium))]/30",
+    tile: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]",
+  },
   still_running: {
     title: "This scan is still running",
     description:
@@ -267,6 +298,21 @@ const ERROR_META: Record<
   },
 };
 
+/**
+ * Which screen a failure gets and what it is called. The page reads this to
+ * announce the failure by name, so what a screen reader hears and what the
+ * heading says are the same words from the same table.
+ */
+export function describeFailure(
+  error: string,
+  status?: number,
+  statusCode?: string,
+  forcedKind?: ErrorKind,
+): { kind: ErrorKind; title: string } {
+  const kind = forcedKind ?? classifyError(error, status, statusCode);
+  return { kind, title: ERROR_META[kind].title };
+}
+
 export function DashboardErrorState({
   error,
   details,
@@ -278,7 +324,8 @@ export function DashboardErrorState({
   forcedKind,
 }: DashboardErrorStateProps) {
   const { copied, copy } = useCopyFeedback();
-  const kind = forcedKind ?? classifyError(error, status, statusCode);
+  const headingRef = useFocusOnMount<HTMLHeadingElement>();
+  const { kind } = describeFailure(error, status, statusCode, forcedKind);
   const meta = ERROR_META[kind];
   const Icon = meta.icon;
 
@@ -296,11 +343,6 @@ export function DashboardErrorState({
 
   return (
     <div className="pt-8">
-      {/* This state replaces ScanHero, which owns the page's only h1, so a
-          failed scan left the document with no heading at all. Same fix, and
-          the same reasoning, as ScanningIndicator's sr-only h1: the panel
-          below already says this to anyone who can see it. */}
-      <h1 className="sr-only">{meta.title}</h1>
       {/* The failure is what this screen is about, so it gets the verdict
           treatment: tone rail, tinted surface, toned edge, and a headline at
           the same weight a scan verdict gets. It used to be a neutral bg-card
@@ -332,14 +374,24 @@ export function DashboardErrorState({
               <Icon className="h-6 w-6" />
             </span>
             <div className="min-w-0 flex-1">
-              <h2
+              {/* The page's h1 and the focus target. This state replaces
+                  ScanHero, which owns the page's only h1, so a failed scan
+                  used to leave the document without one; an sr-only copy of
+                  this title filled the gap and made a screen reader say it
+                  twice. Focus lands here because the control that started
+                  the scan is gone, and a keyboard user otherwise has to Tab
+                  down from the top of the page to reach Try again. */}
+              <h1
+                ref={headingRef}
+                tabIndex={-1}
                 className={cn(
-                  "text-balance text-xl font-semibold leading-tight tracking-tight sm:text-2xl",
+                  "rounded-sm text-balance text-xl font-semibold leading-tight tracking-tight outline-hidden sm:text-2xl",
+                  focus.ring,
                   meta.accent,
                 )}
               >
                 {meta.title}
-              </h2>
+              </h1>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
                 {meta.description}
               </p>

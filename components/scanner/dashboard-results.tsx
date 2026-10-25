@@ -21,6 +21,7 @@ import { CopyableHeading } from "@/components/shared/copyable-heading";
 import { tourAnchor } from "@/lib/tour/anchors";
 import { API } from "@/lib/config/client-constants";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { useFocusOnMount } from "@/lib/hooks/use-focus-on-mount";
 
 // The trigger is an h-8 w-8 control in a header row, and without a fallback
 // the row rendered one button short until the chunk landed.
@@ -101,6 +102,18 @@ export function DashboardResults({
   // it, so the only way to make that scan public was to leave the page.
   // scan_history.is_public still defaults to true, so undefined means public.
   const [isPublic, setIsPublic] = useState(initialIsPublic !== false);
+  // The form and the scanning card are gone by the time a result appears, so
+  // focus would otherwise be left on <body> and a keyboard user would Tab down
+  // from the top of the page to reach anything here. The heading is the
+  // landing place. CopyableHeading is shared with three other surfaces that do
+  // not move focus, so it is found and made focusable from this side rather
+  // than given a prop. Only runs when this view mounts: opening a finding and
+  // coming back is IssueDetail's and ResultsList's business.
+  const headingRef = useFocusOnMount<HTMLDivElement>((root) => {
+    const heading = root.querySelector("h1");
+    if (heading) heading.tabIndex = -1;
+    return heading;
+  });
   // Overrides result.aiSummary once a "Generate AI summary" action finishes,
   // so the summary shows up in ScanSummary immediately instead of only
   // after the next fetch of this scan. Undefined until then, so
@@ -183,7 +196,7 @@ export function DashboardResults({
     <div className="flex flex-col gap-4 pt-6">
       {/* Target + actions */}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="flex min-w-0 items-center gap-2.5">
+        <div ref={headingRef} className="flex min-w-0 items-center gap-2.5">
           {/* The scanned URL is the heading for this view. A finished scan
               replaces the console, and the "Scan a host" h1 goes with it, so
               /dashboard?scan=... had no h1 at all and the document lost its

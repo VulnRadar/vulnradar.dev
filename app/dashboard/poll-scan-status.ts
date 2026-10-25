@@ -43,6 +43,13 @@ export interface ScanStatusResult {
 export interface ScanStatusResponse {
   status: "pending" | "running" | "completed" | "failed";
   error?: string;
+  /**
+   * Why a `failed` scan failed (see lib/scanner/failure-kinds.ts): cancelled,
+   * timeout, target_unreachable, internal and so on. Typed loosely on purpose:
+   * a deployment that predates the field sends nothing, and a newer one may
+   * send a kind this build does not know, and neither may break the screen.
+   */
+  failureKind?: string | null;
   result?: ScanStatusResult;
   currentCategory?: string | null;
   categoriesCompleted?: number;

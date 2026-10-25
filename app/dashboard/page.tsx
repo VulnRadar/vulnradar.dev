@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { ROUTES } from "@/lib/config/client-constants";
 import { useConfirm } from "@/components/shared/use-confirm";
 import {
@@ -21,8 +22,10 @@ import { ScanningIndicator } from "@/components/scanner/scanning-indicator";
 import { Dashboard } from "@/components/scanner/dashboard";
 import {
   DashboardErrorState,
+  describeFailure,
   type ErrorKind,
 } from "@/components/scanner/dashboard-error-state";
+import { errorKindForFailure } from "@/components/scanner/scan-failure";
 import { DashboardBulkResult } from "@/components/scanner/dashboard-bulk-result";
 import { DashboardResults } from "@/components/scanner/dashboard-results";
 import type { ScanAuthReport } from "@/lib/scanner/auth/types";
@@ -45,6 +48,7 @@ import {
   type ScanProgressState,
 } from "./poll-scan-status";
 import { buildScanRequest } from "./scan-request";
+import { announcementMessage, currentAnnouncement } from "./scan-announcement";
 import {
   scanParamIsTarget,
   scanParamPrefill,
@@ -98,6 +102,7 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { me } = useAuth();
+  const t = useTranslations("dashboard");
   const {
     scanStatusPollIntervalMs,
     scanTimeoutSeconds,
@@ -173,6 +178,15 @@ function DashboardContent() {
     null,
   );
   const [scanNotes, setScanNotes] = useState("");
+  // Findings the result had when it appeared, kept for the completion
+  // announcement. Reading result.findings at render would re-announce "Scan
+  // complete" whenever the list is later replaced (a false positive marked, an
+  // AI review applied).
+  const [completedFindings, setCompletedFindings] = useState<number | null>(
+    null,
+  );
+  // Set by Stop, which returns to the form with nothing on screen to say why.
+  const [cancelledNotice, setCancelledNotice] = useState(false);
   const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null);
   const [crawlDiscoveryUrls, setCrawlDiscoveryUrls] = useState<string[]>([]);
   const [crawlDiscovering, setCrawlDiscovering] = useState(false);
@@ -553,6 +567,9 @@ function DashboardContent() {
       }
       if (statusData.status === "failed" || !statusData.result) {
         setError(statusData.error || "The scan failed.");
+        // The status route says why it failed, which beats guessing from its
+        // sentence; undefined (an older server) falls back to the guess.
+        setErrorForcedKind(errorKindForFailure(statusData.failureKind));
         setErrorUrl(url);
         setStatus("failed");
         return null;
@@ -599,6 +616,7 @@ function DashboardContent() {
       // only show up once the user revisits this scan from History.
       setScanTags(Array.isArray(finalData.tags) ? finalData.tags : []);
       setScanNotes(DEFAULT_SCAN_NOTE);
+      setCompletedFindings(effectiveFindings.length);
       setStatus("done");
 
       if (historyId) {
@@ -701,6 +719,8 @@ function DashboardContent() {
       setScanProgress(null);
       setSelectedIssue(null);
       setScanNotes("");
+      setCompletedFindings(null);
+      setCancelledNotice(false);
       setCrawlInfo(null);
       setShowAiModal(false);
       setAiSummary(undefined);
@@ -1007,6 +1027,7 @@ function DashboardContent() {
     pollAbortRef.current?.abort();
     fetch(API.SCAN_STATUS(runningScanId), { method: "DELETE" }).catch(() => {});
     setRunningScanId(null);
+    setCancelledNotice(true);
     setStatus("idle");
   }
 
@@ -1079,6 +1100,8 @@ function DashboardContent() {
 
   function handleReset() {
     setStatus("idle");
+    setCancelledNotice(false);
+    setCompletedFindings(null);
     setResult(null);
     setScanHistoryId(null);
     setScanPublicId(null);
@@ -1121,11 +1144,41 @@ function DashboardContent() {
     handleScan(payload);
   }
 
+  // What a screen reader is told when the view changes under it. The region
+  // is mounted here, outside every status branch, so it exists before its text
+  // does: a live region inserted together with its first sentence is not
+  // reliably announced, and the scanning card's own status region goes away
+  // with the card. See scan-announcement.ts.
+  const announcement = currentAnnouncement({
+    status,
+    findings: completedFindings,
+    failure:
+      status === "failed" && error
+        ? describeFailure(
+            error,
+            errorStatus ?? undefined,
+            errorStatusCode ?? undefined,
+            errorForcedKind,
+          )
+        : null,
+    cancelled: cancelledNotice,
+  });
+  const announced = announcement ? announcementMessage(announcement) : null;
+
   // The product tour is no longer mounted here. It spans six routes, so it
   // lives in the root layout (components/shared/tour/tour-mount.tsx) and
   // survives every navigation it asks the reader to make.
   return (
     <>
+      <p
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {announced ? t(announced.key, announced.values) : ""}
+      </p>
+
       {/* Idle: the scan console, then whatever this account has already found */}
       {status === "idle" && (
         <>

@@ -159,6 +159,10 @@
     "activityErrorBody": "スキャン自体には影響ありません。これはスキャナーの上に表示される概要であり、スキャナーそのものではありません。",
     "daysCount": "{count, plural, other {# 日間}}",
     "scansCount": "{count, plural, other {# 件のスキャン}}",
-    "issuesCount": "{count, plural, other {# 件の問題}}"
+    "issuesCount": "{count, plural, other {# 件の問題}}",
+    "announceComplete": "スキャン完了: {count, plural, =0 {検出なし} other {# 件の検出}}。",
+    "announceFailed": "スキャンに失敗しました: {reason}。",
+    "announceCancelled": "スキャンを中止しました。",
+    "announceStillRunning": "このスキャンはまだ実行中です。完了すると履歴に表示されます。"
   }
 }

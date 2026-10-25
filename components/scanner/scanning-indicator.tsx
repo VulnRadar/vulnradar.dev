@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Globe2, ListChecks, X, Zap } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { tourAnchor } from "@/lib/tour/anchors";
+import { canTakeFocus } from "@/lib/hooks/use-focus-on-mount";
 import type { Category } from "@/lib/scanner/types";
 import { ALL_CATEGORIES } from "@/lib/scanner/types";
 import type { PartialFinding } from "@/lib/scanner/partial-findings";
@@ -138,6 +139,23 @@ export function ScanningIndicator({
 }: ScanningIndicatorProps) {
   const [startedAt] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState(0);
+
+  // Submitting the form unmounts the control that had focus, which drops it on
+  // <body>. Cancel is the useful place to put it back, but the page only has
+  // the scan's id (and so only offers Cancel) once the POST has answered, a
+  // moment after this card mounts. So: the heading first, then Cancel as soon
+  // as it exists. Neither move takes focus from a person who has gone
+  // somewhere else in the meantime.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const hasCancel = Boolean(onCancel);
+  useEffect(() => {
+    const active = document.activeElement;
+    if (!canTakeFocus(active, document.body) && active !== headingRef.current) {
+      return;
+    }
+    (hasCancel ? cancelRef.current : headingRef.current)?.focus();
+  }, [hasCancel]);
 
   const { families, steps, shortSteps } = useMemo(() => {
     const raw =
@@ -310,14 +328,20 @@ export function ScanningIndicator({
   const unnamedCount = foundSoFar.length - namedFindings.length;
 
   return (
-    <div className="w-full max-w-3xl" aria-busy="true">
+    // No aria-busy here. It sat on this wrapper, which is an ancestor of the
+    // status region below and was never set back to false, so assistive tech
+    // was free to hold that region's updates until the busy state cleared,
+    // which only happened when the whole card unmounted. The bar and the
+    // status already say a scan is in progress.
+    <div className="w-full max-w-3xl">
       {/* The scanning state replaces ScanHero, which owns the page's only
           h1, so while a scan runs the document had no heading at all: a
           screen reader jumping by heading found nothing, and the page
           outline went from "VulnRadar" to empty and back. Visually hidden
           rather than drawn, because the card below already says all of this
-          to anyone who can see it. */}
-      <h1 className="sr-only">
+          to anyone who can see it. tabIndex={-1} lets it hold focus until
+          Cancel exists. */}
+      <h1 ref={headingRef} tabIndex={-1} className="sr-only">
         Scanning {url ? getHostname(url) : "your target"}
       </h1>
       {/* One status region for the whole card. The per-step paragraph below
@@ -502,6 +526,7 @@ export function ScanningIndicator({
       {onCancel && (
         <div className="mt-3 flex justify-center">
           <button
+            ref={cancelRef}
             type="button"
             onClick={onCancel}
             className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"

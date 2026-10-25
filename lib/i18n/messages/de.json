@@ -159,6 +159,10 @@
     "activityErrorBody": "Deine Scans sind davon nicht betroffen. Das ist die Übersicht über dem Scanner, nicht der Scanner selbst.",
     "daysCount": "{count, plural, one {# Tag} other {# Tage}}",
     "scansCount": "{count, plural, one {# Scan} other {# Scans}}",
-    "issuesCount": "{count, plural, one {# Problem} other {# Probleme}}"
+    "issuesCount": "{count, plural, one {# Problem} other {# Probleme}}",
+    "announceComplete": "Scan abgeschlossen: {count, plural, =0 {keine Funde} one {# Fund} other {# Funde}}.",
+    "announceFailed": "Scan fehlgeschlagen: {reason}.",
+    "announceCancelled": "Scan abgebrochen.",
+    "announceStillRunning": "Dieser Scan läuft noch. Er erscheint im Verlauf, sobald er fertig ist."
   }
 }
