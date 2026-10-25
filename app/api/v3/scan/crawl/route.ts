@@ -13,11 +13,9 @@ import {
 } from "@/lib/api/api-key-scopes";
 import { executeCrawlScan } from "@/lib/scanner/execute-crawl-scan";
 import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
-import {
-  APP_NAME,
-  BEARER_PREFIX,
-  DEFAULT_SCAN_NOTE,
-} from "@/lib/config/constants";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { logError } from "@/lib/logging/log";
+import { BEARER_PREFIX, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import {
   canMakeRequest,
@@ -55,7 +53,11 @@ import type {
 } from "@/lib/scanner/auth/types";
 import { scanningPausedResponse } from "@/lib/admin/service-state";
 
-export async function POST(request: NextRequest) {
+// Wrapped so the request id middleware minted enters the Node-side context:
+// the detached crawl below inherits it, and every error row the job writes is
+// tied to the request that started it. An unexpected throw here also becomes
+// a JSON 500 rather than Next's bare one.
+export const POST = withErrorHandling(async (request: NextRequest) => {
   // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). A crawl is the
   // most expensive thing this app can be asked to start, so it is the last
   // path that should be left uncovered by the pause.
@@ -518,10 +520,11 @@ export async function POST(request: NextRequest) {
     // set into scan_history_teams and is a no-op below two teams.
     await attachNewScanTeams(scanHistoryId, teamAssignment.teamIds);
   } catch (err) {
-    console.error(
-      `[${APP_NAME}] Failed to create scan_history row for crawl:`,
-      err instanceof Error ? err.message : err,
-    );
+    logError("scan", "could not create the crawl's tracker row", err, {
+      userId: authedUserId,
+      source: isApiKeyAuth ? "api" : "web",
+      url: normalizedMainUrl,
+    });
     return NextResponse.json(
       { error: "Failed to start the crawl scan. Please try again." },
       { status: 500 },
@@ -552,10 +555,15 @@ export async function POST(request: NextRequest) {
     // A throw BEFORE executeCrawlScan arms its watchdog (e.g. getSettings
     // failing) would otherwise leave this row stuck 'pending' forever plus an
     // unhandled rejection; mark it failed if the background job escapes.
+    logError("scan", "crawl dispatch failed", err, {
+      scanId: scanHistoryId,
+      userId: authedUserId,
+      source: isApiKeyAuth ? "api" : "web",
+      url: normalizedMainUrl,
+    });
     const message =
       err instanceof Error ? err.message : "Crawl scan failed to start.";
-    console.error(`[${APP_NAME}] executeCrawlScan dispatch failed:`, message);
-    await finalizeScanFailureQuietly(scanHistoryId, message);
+    await finalizeScanFailureQuietly(scanHistoryId, message, "internal");
   });
 
   // Audit the non-secret fact that an authenticated crawl ran: origin, method,
@@ -590,4 +598,4 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ scanId: scanHistoryId, status: "running" });
-}
+});

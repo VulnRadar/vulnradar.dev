@@ -691,3 +691,98 @@ describe("crawl page-selection plan cap", () => {
     );
   });
 });
+
+describe("POST /api/v3/scan/crawl - error handling and logging", () => {
+  it("answers an unexpected throw with a JSON 500 instead of rejecting", async () => {
+    // The route used to be a bare handler, so anything it threw before
+    // reaching its own try blocks escaped to Next as an unhandled error with
+    // no request id on the row it wrote.
+    mockCheckAndRecordRequest.mockRejectedValue(new Error("db down"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await POST(postRequest({ url: "https://example.com" }));
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toMatchObject({
+        error: "An unexpected error occurred",
+      });
+      expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("runs the dispatched crawl inside the request's correlation context", async () => {
+    const { currentRequestId } = await import("@/lib/database/request-context");
+    let seen: string | null = null;
+    mockExecuteCrawlScan.mockImplementation(async () => {
+      seen = currentRequestId();
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 700 }] });
+
+    await POST(postRequest({ url: "https://example.com" }));
+
+    // The detached job inherits the id withErrorHandling entered, so the error
+    // rows it writes can be tied back to the request that started it.
+    expect(seen).toEqual(expect.any(String));
+  });
+
+  it("logs a crawl that escapes its own handling with the scan id and the Error, and marks the row failed", async () => {
+    const boom = new Error("settings unavailable");
+    mockExecuteCrawlScan.mockRejectedValue(boom);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 701 }] });
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 1 });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await POST(postRequest({ url: "https://example.com" }));
+      expect(res.status).toBe(200);
+      // The dispatch is detached; let its rejection handler run.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[scan] crawl dispatch failed",
+        {
+          scanId: 701,
+          userId: 42,
+          source: "web",
+          url: "https://example.com/",
+        },
+        boom,
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    const failure = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("status = 'failed'"),
+    );
+    expect(failure![1]).toEqual(["settings unavailable", 701, "internal"]);
+  });
+
+  it("logs a tracker row that could not be created with the user and the Error", async () => {
+    const boom = new Error("insert failed");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockRejectedValueOnce(boom);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await POST(postRequest({ url: "https://example.com" }));
+      expect(res.status).toBe(500);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[scan] could not create the crawl's tracker row",
+        { userId: 42, source: "web", url: "https://example.com/" },
+        boom,
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});
