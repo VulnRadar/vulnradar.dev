@@ -268,3 +268,44 @@ describe("credential settings", () => {
     expect(secret.sort()).toEqual([...CREDENTIALS].sort());
   });
 });
+
+describe("scan timeout help text", () => {
+  const help = (key: SettingKey) => SETTINGS_REGISTRY[key].help;
+
+  it("says the fetch timeout reaches every scan route, not only the demo, bulk and authenticated ones", () => {
+    const text = help("SCAN_FETCH_TIMEOUT_MS");
+    expect(text).toMatch(/every scan route/);
+    expect(text).toMatch(/main single-URL pipeline/);
+    expect(text).not.toMatch(
+      /in the demo, bulk, and authenticated scan routes/,
+    );
+  });
+
+  it("says the async-checks ceiling is held above the branch timeout by two seconds", () => {
+    expect(help("SCAN_ASYNC_CHECKS_TIMEOUT_MS")).toMatch(
+      /branch timeout plus 2 seconds/,
+    );
+    expect(help("SCANNER_ASYNC_BRANCH_TIMEOUT_MS")).toMatch(
+      /async-checks timeout minus 2 seconds/,
+    );
+  });
+
+  it("does not describe the outer ceiling as dropping a single check", () => {
+    // It discards the whole layer. "A check still running past this is
+    // dropped" read as if only the slow one went.
+    expect(help("SCAN_ASYNC_CHECKS_TIMEOUT_MS")).not.toMatch(
+      /A check still running past this is dropped/,
+    );
+  });
+
+  it("uses no em dash in the help text of the settings it touches", () => {
+    for (const key of [
+      "SCAN_FETCH_TIMEOUT_MS",
+      "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
+      "SCANNER_ASYNC_BRANCH_TIMEOUT_MS",
+      "ADMIN_ALERT_WEBHOOK_URL",
+    ] as const) {
+      expect(help(key), key).not.toContain("—");
+    }
+  });
+});
