@@ -272,7 +272,10 @@ export async function GET(request: NextRequest) {
       ),
       canSeeScans
         ? pool.query(
-            "SELECT id, url, findings_count, source, scanned_at FROM scan_history WHERE user_id = $1 ORDER BY scanned_at DESC LIMIT 10",
+            // status and failure_kind are what keep a failed, cancelled or
+            // still-pending scan from reading as "0 findings", the same as a
+            // clean one. public_id is what the scan inspector's URL takes.
+            "SELECT id, public_id, url, status, failure_kind, findings_count, source, scanned_at FROM scan_history WHERE user_id = $1 ORDER BY scanned_at DESC LIMIT 10",
             [userId],
           )
         : Promise.resolve({ rows: [] as unknown[] }),

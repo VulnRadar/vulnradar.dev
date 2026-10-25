@@ -89,7 +89,14 @@ export interface UserDetail {
   };
   recentScans: {
     id: number;
+    /** What the inspector URL takes; null only on a row from before the
+     *  opaque ids existed, which the numeric id still opens. */
+    public_id: string | null;
     url: string;
+    /** Without this a failed, cancelled or still-pending scan rendered as
+     *  "0 findings", exactly like a clean one. */
+    status: string;
+    failure_kind: string | null;
     findings_count: number;
     source: string;
     scanned_at: string;
@@ -163,6 +170,52 @@ export interface UserDetail {
     githubCreditBalance: number;
     browserbaseCreditSecondsBalance: number;
   } | null;
+}
+
+/** A finding as the scan inspector lists it: enough to tell what the scan
+ *  reported, not the owner's full remediation view. */
+export interface AdminScanFinding {
+  id: string;
+  title: string;
+  severity: string;
+  category: string;
+  confidence: number | null;
+  cwe: string | null;
+  /** Cut to a few hundred characters; evidence can be a response body. */
+  evidence: string | null;
+}
+
+/** GET /api/v3/admin/scans/[id], the staff view of one scan. */
+export interface AdminScanDetail {
+  id: number;
+  publicId: string | null;
+  url: string;
+  status: string;
+  /** Why a failed scan failed, from scan_history.failure_kind. */
+  failureKind: string | null;
+  /** The raw stored error. The owner sees a sanitised sentence; staff see this. */
+  errorMessage: string | null;
+  source: string;
+  scanType: string;
+  startedAt: string | null;
+  scannedAt: string | null;
+  durationMs: number;
+  /** Only for a scan that has not reached a terminal state. */
+  progress: {
+    currentCategory: string | null;
+    completed: number;
+    total: number;
+  } | null;
+  findingsCount: number;
+  summary: Record<string, number> | null;
+  authenticated: boolean;
+  isPublic: boolean | null;
+  /** checksRun, incomplete, engine confidence, crawl and the rest. */
+  resultMeta: Record<string, unknown> | null;
+  findings: AdminScanFinding[];
+  findingsTruncated: boolean;
+  /** Email and name are null for a role without VIEW_USERS (ops). */
+  user: { id: number; email: string | null; name: string | null };
 }
 
 export interface AuditEntry {

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useId, useMemo } from "react";
 import {
   Key,
@@ -83,6 +84,7 @@ import {
 } from "@/components/shared/save-confirmation-modal";
 import type { UserDetail, BadgeDef } from "@/components/admin/types";
 import { formatRelativeTime } from "@/components/admin/utils";
+import { scanStatusPill } from "@/components/admin/scans/scan-status";
 import {
   DANGER_ZONE_ACTIONS,
   PASSWORD_GATED_ACTIONS,
@@ -3122,48 +3124,70 @@ export function UserDetailPanel({
               <CardContent className="p-4 pt-0">
                 {detail.recentScans && detail.recentScans.length > 0 ? (
                   <div className="flex flex-col max-h-64 overflow-y-auto">
-                    {detail.recentScans.map((scan) => (
-                      <div
-                        key={scan.id}
-                        className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors"
-                      >
-                        <Globe
-                          className="h-3.5 w-3.5 text-muted-foreground shrink-0"
-                          aria-hidden="true"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium font-mono truncate">
-                            {scan.url}
-                          </p>
-                          {/* The findings count is the one number on a scan
+                    {detail.recentScans.map((scan) => {
+                      // A finished scan is the normal row and carries no pill
+                      // (absence is the healthy state, as in the user table).
+                      // Everything else says what it is, because a failed,
+                      // cancelled or pending scan has 0 findings exactly like
+                      // a clean one.
+                      const pill =
+                        scan.status === "completed"
+                          ? null
+                          : scanStatusPill(scan);
+                      return (
+                        <Link
+                          key={scan.id}
+                          href={ROUTES.ADMIN_SCAN(scan.public_id ?? scan.id)}
+                          aria-label={`Inspect the scan of ${scan.url}`}
+                          className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                        >
+                          <Globe
+                            className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                            aria-hidden="true"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium font-mono truncate">
+                              {scan.url}
+                            </p>
+                            {/* The findings count is the one number on a scan
                               row that says whether the scan is interesting,
                               and it used to be the same 10px grey as the word
                               "findings" beside it, so 0 and 47 read the same. */}
-                          <p className="text-xs text-muted-foreground">
-                            <span
-                              className={cn(
-                                "font-mono tabular-nums",
-                                scan.findings_count > 0 &&
-                                  "font-medium text-foreground",
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                              {pill ? (
+                                <StatusPill tone={pill.tone}>
+                                  {pill.label}
+                                </StatusPill>
+                              ) : (
+                                <span>
+                                  <span
+                                    className={cn(
+                                      "font-mono tabular-nums",
+                                      scan.findings_count > 0 &&
+                                        "font-medium text-foreground",
+                                    )}
+                                  >
+                                    {scan.findings_count}
+                                  </span>{" "}
+                                  findings
+                                </span>
                               )}
-                            >
-                              {scan.findings_count}
-                            </span>{" "}
-                            findings <span aria-hidden="true">&middot;</span>{" "}
-                            {scan.source}
-                          </p>
-                        </div>
-                        <span className="text-[11px] text-muted-foreground shrink-0">
-                          {new Date(scan.scanned_at).toLocaleDateString(
-                            "en-US",
-                            {
-                              month: "short",
-                              day: "numeric",
-                            },
-                          )}
-                        </span>
-                      </div>
-                    ))}
+                              <span aria-hidden="true">&middot;</span>
+                              <span>{scan.source}</span>
+                            </div>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground shrink-0">
+                            {new Date(scan.scanned_at).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                              },
+                            )}
+                          </span>
+                        </Link>
+                      );
+                    })}
                   </div>
                 ) : (
                   <EmptyState

@@ -471,7 +471,7 @@ describe("GET /api/v3/admin", () => {
   // gated nothing, so the scan history and the API-key list rode on VIEW_USERS
   // alone. Scan rows are the target's browsing history and key rows name live
   // credentials, so both are narrower than "may look at accounts".
-  const SCAN_DETAIL_SELECT = "SELECT id, url, findings_count";
+  const SCAN_DETAIL_SELECT = "SELECT id, public_id, url, status";
   const API_KEY_DETAIL_SELECT = "SELECT id, key_prefix, name, daily_limit";
 
   it("section=user-detail omits recentScans and apiKeys for a role holding neither grant (billing)", async () => {
