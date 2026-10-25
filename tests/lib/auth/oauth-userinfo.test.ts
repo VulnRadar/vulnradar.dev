@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   exchangeOAuthCode,
   fetchOAuthUserInfo,
@@ -22,8 +22,18 @@ process.env.DISCORD_CLIENT_SECRET = "discord-secret";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+// Every failure here is now written to console.error, which is what the admin
+// Error Logs persist. Spied for the whole file so the suite's own failure
+// cases do not print, and so the logging describe at the bottom can read it.
+let errorSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   mockFetch.mockReset();
+  errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+afterEach(() => {
+  errorSpy.mockRestore();
 });
 
 describe("exchangeOAuthCode", () => {
@@ -343,5 +353,312 @@ describe("fetchOAuthUserInfo: discord", () => {
     mockFetch.mockRejectedValueOnce(new Error("network blip"));
     const info = await fetchOAuthUserInfo("discord", "tok");
     expect(info).toBeNull();
+  });
+});
+
+/**
+ * The callback turns any null from this module into a bare redirect, so the
+ * log written here is the only place a rotated secret, a redirect_uri that no
+ * longer matches or a provider outage can be told apart. Each failure path
+ * must write exactly one console.error naming the provider, the stage, the
+ * status and the provider's error code, and none of them may write anything
+ * that came from the person signing in or from our own secrets.
+ */
+describe("failure logging", () => {
+  function jsonResponse(body: unknown, status: number) {
+    return new Response(JSON.stringify(body), { status });
+  }
+
+  /** The one logged call, as [message, context]. */
+  function onlyLog(): [string, Record<string, unknown>] {
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [message, ctx] = errorSpy.mock.calls[0];
+    return [message as string, ctx as Record<string, unknown>];
+  }
+
+  describe("token exchange", () => {
+    it("logs the status and error code of a non-2xx answer", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ error: "invalid_client" }, 401),
+      );
+
+      expect(await exchangeOAuthCode("google", "c", "https://x/cb")).toBeNull();
+
+      const [message, ctx] = onlyLog();
+      expect(message).toBe("[oauth] token endpoint returned an error status");
+      expect(ctx).toEqual({
+        provider: "google",
+        stage: "token",
+        status: 401,
+        providerError: "invalid_client",
+      });
+    });
+
+    it("logs the status alone when the error body is not JSON", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response("Bad gateway", { status: 502 }),
+      );
+
+      await exchangeOAuthCode("discord", "c", "https://x/cb");
+
+      const [, ctx] = onlyLog();
+      expect(ctx).toEqual({ provider: "discord", stage: "token", status: 502 });
+    });
+
+    it("logs GitHub's 200-with-error body, which a status check alone misses", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ error: "incorrect_client_credentials" }, 200),
+      );
+
+      await exchangeOAuthCode("github", "c", "https://x/cb");
+
+      const [message, ctx] = onlyLog();
+      expect(message).toBe("[oauth] token response carried no access token");
+      expect(ctx).toEqual({
+        provider: "github",
+        stage: "token",
+        status: 200,
+        providerError: "incorrect_client_credentials",
+      });
+    });
+
+    it("logs a 200 that has neither an error nor an access token", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({}, 200));
+
+      await exchangeOAuthCode("discord", "c", "https://x/cb");
+
+      const [, ctx] = onlyLog();
+      expect(ctx).toEqual({ provider: "discord", stage: "token", status: 200 });
+    });
+
+    it("logs a 200 whose body is not JSON", async () => {
+      mockFetch.mockResolvedValueOnce(new Response("<html>", { status: 200 }));
+
+      await exchangeOAuthCode("google", "c", "https://x/cb");
+
+      const [message, ctx] = onlyLog();
+      expect(message).toBe("[oauth] token response was not JSON");
+      expect(ctx).toEqual({ provider: "google", stage: "token", status: 200 });
+    });
+
+    it("logs a network failure with the Error, so the row keeps its stack", async () => {
+      const cause = new Error("connect ECONNREFUSED");
+      mockFetch.mockRejectedValueOnce(cause);
+
+      await exchangeOAuthCode("github", "c", "https://x/cb");
+
+      const [message, ctx, err] = errorSpy.mock.calls[0];
+      expect(message).toBe("[oauth] token request failed");
+      expect(ctx).toEqual({ provider: "github", stage: "token" });
+      expect(err).toBe(cause);
+    });
+
+    it("logs a provider with no client credentials configured, and never calls out", async () => {
+      delete process.env.DISCORD_CLIENT_SECRET;
+      try {
+        await exchangeOAuthCode("discord", "c", "https://x/cb");
+      } finally {
+        process.env.DISCORD_CLIENT_SECRET = "discord-secret";
+      }
+
+      const [message, ctx] = onlyLog();
+      expect(message).toBe("[oauth] client credentials are not configured");
+      expect(ctx).toEqual({ provider: "discord", stage: "token" });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("does not log anything when the exchange succeeds", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ access_token: "tok-123" }, 200),
+      );
+
+      await exchangeOAuthCode("google", "c", "https://x/cb");
+
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("userinfo", () => {
+    it.each(["google", "github", "discord"] as const)(
+      "logs a %s userinfo answer that is not 2xx, with its status and error code",
+      async (provider) => {
+        mockFetch.mockResolvedValueOnce(
+          jsonResponse({ error: "invalid_token" }, 401),
+        );
+
+        expect(await fetchOAuthUserInfo(provider, "tok")).toBeNull();
+
+        const [message, ctx] = onlyLog();
+        expect(message).toBe(
+          "[oauth] userinfo endpoint returned an error status",
+        );
+        expect(ctx).toEqual({
+          provider,
+          stage: "userinfo",
+          status: 401,
+          providerError: "invalid_token",
+        });
+      },
+    );
+
+    it("logs GitHub's plain {message} 401, which has no error code to report", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ message: "Bad credentials" }, 401),
+      );
+
+      await fetchOAuthUserInfo("github", "tok");
+
+      const [, ctx] = onlyLog();
+      expect(ctx).toEqual({
+        provider: "github",
+        stage: "userinfo",
+        status: 401,
+      });
+    });
+
+    it.each(["google", "discord"] as const)(
+      "logs a %s answer that carries no email",
+      async (provider) => {
+        mockFetch.mockResolvedValueOnce(jsonResponse({ id: "1" }, 200));
+
+        expect(await fetchOAuthUserInfo(provider, "tok")).toBeNull();
+
+        const [message, ctx] = onlyLog();
+        expect(message).toBe("[oauth] userinfo response has no email");
+        expect(ctx).toEqual({ provider, stage: "userinfo", status: 200 });
+      },
+    );
+
+    it.each(["google", "github", "discord"] as const)(
+      "logs a %s userinfo network failure with the Error",
+      async (provider) => {
+        const cause = new Error("socket hang up");
+        mockFetch.mockRejectedValueOnce(cause);
+
+        await fetchOAuthUserInfo(provider, "tok");
+
+        const [message, ctx, err] = errorSpy.mock.calls[0];
+        expect(message).toBe("[oauth] userinfo request failed");
+        expect(ctx).toEqual({ provider, stage: "userinfo" });
+        expect(err).toBe(cause);
+      },
+    );
+
+    it("logs GitHub's emails endpoint being refused, because the sign-in carries on unverified", async () => {
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({ id: 1, login: "ada", email: "ada@example.com" }, 200),
+        )
+        .mockResolvedValueOnce(jsonResponse({ message: "Not Found" }, 404));
+
+      const info = await fetchOAuthUserInfo("github", "tok");
+
+      // Still a result, as before: only the log is new.
+      expect(info?.emailVerified).toBe(false);
+      const [message, ctx] = onlyLog();
+      expect(message).toBe("[oauth] emails endpoint rejected the request");
+      expect(ctx).toEqual({ provider: "github", stage: "emails", status: 404 });
+    });
+
+    it("does not log when GitHub's emails endpoint answers", async () => {
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({ id: 1, login: "ada", email: "ada@example.com" }, 200),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse(
+            [{ email: "ada@example.com", primary: true, verified: true }],
+            200,
+          ),
+        );
+
+      await fetchOAuthUserInfo("github", "tok");
+
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("what is never written", () => {
+    // The authorization code, the access token and the client secret are the
+    // three values in this module that must not reach system_error_logs, which
+    // every staff role can read. Providers do echo them: error_description
+    // often quotes the code it rejected.
+    const CODE = "authz-code-DO-NOT-LOG";
+    const TOKEN = "access-token-DO-NOT-LOG";
+    const REDIRECT = "https://example.test/cb?state=STATE-DO-NOT-LOG";
+
+    function everythingLogged(): string {
+      return JSON.stringify(
+        errorSpy.mock.calls.map((call) =>
+          call.map((arg: unknown) =>
+            arg instanceof Error ? `${arg.name}: ${arg.message}` : arg,
+          ),
+        ),
+      );
+    }
+
+    it("keeps the code, the redirect URI and the secret out of a token failure that quotes them", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: "invalid_grant",
+            error_description: `The code ${CODE} is invalid for ${REDIRECT}, client google-secret`,
+            echoed_code: CODE,
+          },
+          400,
+        ),
+      );
+
+      await exchangeOAuthCode("google", CODE, REDIRECT);
+
+      const logged = everythingLogged();
+      expect(logged).toContain("invalid_grant");
+      expect(logged).not.toContain(CODE);
+      expect(logged).not.toContain("STATE-DO-NOT-LOG");
+      expect(logged).not.toContain("google-secret");
+    });
+
+    it("keeps an access token out of a userinfo failure that quotes it", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: "invalid_token",
+            error_description: `Token ${TOKEN} has expired`,
+          },
+          401,
+        ),
+      );
+
+      await fetchOAuthUserInfo("google", TOKEN);
+
+      const logged = everythingLogged();
+      expect(logged).toContain("invalid_token");
+      expect(logged).not.toContain(TOKEN);
+    });
+
+    it("drops an `error` value that is prose rather than a code", async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ error: `Code ${CODE} was already redeemed` }, 400),
+      );
+
+      await exchangeOAuthCode("github", CODE, REDIRECT);
+
+      const [, ctx] = errorSpy.mock.calls[0];
+      expect(ctx).toEqual({ provider: "github", stage: "token", status: 400 });
+      expect(everythingLogged()).not.toContain(CODE);
+    });
+
+    it("drops an `error` that is an object or an over-long string", async () => {
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ error: { code: 401 } }, 401))
+        .mockResolvedValueOnce(jsonResponse({ error: "x".repeat(200) }, 400));
+
+      await fetchOAuthUserInfo("google", TOKEN);
+      await exchangeOAuthCode("google", CODE, REDIRECT);
+
+      for (const [, ctx] of errorSpy.mock.calls) {
+        expect(ctx).not.toHaveProperty("providerError");
+      }
+    });
   });
 });

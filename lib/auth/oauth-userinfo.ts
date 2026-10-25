@@ -5,12 +5,20 @@ import {
   type OAuthProviderId,
 } from "@/lib/auth/oauth-providers";
 import { APP_NAME } from "@/lib/config/constants";
+import { logError } from "@/lib/logging/log";
 
 /**
  * Authorization-code exchange and normalized userinfo lookup for each OAuth
  * sign-up/sign-in provider. Kept in one module (rather than one per
  * provider) because the shape callers need back is identical -- an access
  * token, then a verified email -- only the wire format differs.
+ *
+ * Every failure here returns null, and the callback turns null into a bare
+ * redirect to /login?error=..., so this module is the only place the reason
+ * can be recorded. A rotated client secret, a redirect URI that no longer
+ * matches and a provider outage all reach the user as the same "did not go
+ * through" and used to leave nothing in any log. See failure() below for
+ * exactly what is, and is never, written down.
  */
 
 export interface OAuthTokenResult {
@@ -42,6 +50,71 @@ export interface OAuthUserInfo {
 // GitHub's API rejects requests with no User-Agent header.
 const USER_AGENT = `${APP_NAME}-OAuth`;
 
+type OAuthStage = "token" | "userinfo" | "emails";
+
+/**
+ * RFC 6749 error codes are short ASCII tokens (invalid_grant, invalid_client,
+ * redirect_uri_mismatch), and GitHub's are the same shape
+ * (incorrect_client_credentials, bad_verification_code). Anything else in an
+ * `error` field is not a code, and it is the field a provider might fill with
+ * prose that quotes what we sent, so it is dropped rather than logged.
+ */
+const PROVIDER_ERROR_CODE = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+function errorCodeOf(value: unknown): string | undefined {
+  return typeof value === "string" && PROVIDER_ERROR_CODE.test(value)
+    ? value
+    : undefined;
+}
+
+/** The `error` code from a failed response's JSON body, if it has one. */
+async function providerErrorCode(res: Response): Promise<string | undefined> {
+  try {
+    const body: unknown = await res.json();
+    return errorCodeOf((body as { error?: unknown } | null)?.error);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Record why a sign-in step failed. The context is deliberately only the
+ * provider, the stage, the HTTP status and the provider's own error code:
+ * enough to tell invalid_client (a bad secret) from redirect_uri_mismatch from
+ * an outage at a glance. Never the response body or error_description (which
+ * can quote the authorization code), the code, the redirect URI, an access
+ * token or anything about the person signing in.
+ */
+function failure(
+  provider: OAuthProviderId,
+  stage: OAuthStage,
+  message: string,
+  detail: { status?: number; providerError?: string } = {},
+): void {
+  logError("oauth", message, undefined, { provider, stage, ...detail });
+}
+
+async function userinfoRejected(
+  provider: OAuthProviderId,
+  res: Response,
+): Promise<void> {
+  failure(provider, "userinfo", "userinfo endpoint returned an error status", {
+    status: res.status,
+    providerError: await providerErrorCode(res),
+  });
+}
+
+/**
+ * A 200 whose body has no email. Either the OAuth app was registered without
+ * the email scope, which is a self-hosting setup mistake that breaks every
+ * sign-in, or this one account has no email to share.
+ */
+function noEmail(provider: OAuthProviderId, res: Response): void {
+  failure(provider, "userinfo", "userinfo response has no email", {
+    status: res.status,
+  });
+}
+
 export async function exchangeOAuthCode(
   provider: OAuthProviderId,
   code: string,
@@ -49,7 +122,10 @@ export async function exchangeOAuthCode(
 ): Promise<OAuthTokenResult | null> {
   const clientId = getOAuthClientId(provider);
   const clientSecret = getOAuthClientSecret(provider);
-  if (!clientId || !clientSecret) return null;
+  if (!clientId || !clientSecret) {
+    failure(provider, "token", "client credentials are not configured");
+    return null;
+  }
 
   const providerConfig = OAUTH_PROVIDERS[provider];
   const body = new URLSearchParams({
@@ -75,22 +151,40 @@ export async function exchangeOAuthCode(
       body,
     });
   } catch (err) {
-    console.error(`[oauth-userinfo] ${provider} token request failed:`, err);
+    logError("oauth", "token request failed", err, {
+      provider,
+      stage: "token",
+    });
     return null;
   }
-  if (!res.ok) return null;
+  if (!res.ok) {
+    failure(provider, "token", "token endpoint returned an error status", {
+      status: res.status,
+      providerError: await providerErrorCode(res),
+    });
+    return null;
+  }
 
   let data: Record<string, unknown>;
   try {
     data = await res.json();
   } catch {
+    failure(provider, "token", "token response was not JSON", {
+      status: res.status,
+    });
     return null;
   }
 
   // GitHub returns HTTP 200 with an `error` field in the body instead of a
   // non-2xx status when the code/secret is wrong -- res.ok alone would miss
   // that.
-  if (data.error || typeof data.access_token !== "string") return null;
+  if (data.error || typeof data.access_token !== "string") {
+    failure(provider, "token", "token response carried no access token", {
+      status: res.status,
+      providerError: errorCodeOf(data.error),
+    });
+    return null;
+  }
   return { accessToken: data.access_token };
 }
 
@@ -117,13 +211,22 @@ async function fetchGoogleUserInfo(
       headers: { Authorization: `Bearer ${accessToken}` },
     });
   } catch (err) {
-    console.error("[oauth-userinfo] google userinfo request failed:", err);
+    logError("oauth", "userinfo request failed", err, {
+      provider: "google",
+      stage: "userinfo",
+    });
     return null;
   }
-  if (!res.ok) return null;
+  if (!res.ok) {
+    await userinfoRejected("google", res);
+    return null;
+  }
 
   const data = await res.json();
-  if (typeof data.email !== "string") return null;
+  if (typeof data.email !== "string") {
+    noEmail("google", res);
+    return null;
+  }
 
   return {
     id: typeof data.sub === "string" ? data.sub : null,
@@ -148,10 +251,16 @@ async function fetchGithubUserInfo(
   try {
     userRes = await fetch("https://api.github.com/user", { headers });
   } catch (err) {
-    console.error("[oauth-userinfo] github user request failed:", err);
+    logError("oauth", "userinfo request failed", err, {
+      provider: "github",
+      stage: "userinfo",
+    });
     return null;
   }
-  if (!userRes.ok) return null;
+  if (!userRes.ok) {
+    await userinfoRejected("github", userRes);
+    return null;
+  }
   const user = await userRes.json();
 
   // GitHub's /user.email is only populated when the user made their email
@@ -179,9 +288,20 @@ async function fetchGithubUserInfo(
         emailVerified =
           emails.find((e) => e.email === email)?.verified ?? false;
       }
+    } else {
+      // Not a null return, but the same blindness: without the user:email
+      // scope this 404s, the sign-in carries on with an unverified address,
+      // and the user is turned away as "email unverified" with no trace of why.
+      failure("github", "emails", "emails endpoint rejected the request", {
+        status: emailsRes.status,
+        providerError: await providerErrorCode(emailsRes),
+      });
     }
   } catch (err) {
-    console.error("[oauth-userinfo] github emails request failed:", err);
+    logError("oauth", "emails request failed", err, {
+      provider: "github",
+      stage: "emails",
+    });
   }
 
   return {
@@ -235,13 +355,22 @@ async function fetchDiscordUserInfo(
       headers: { Authorization: `Bearer ${accessToken}` },
     });
   } catch (err) {
-    console.error("[oauth-userinfo] discord user request failed:", err);
+    logError("oauth", "userinfo request failed", err, {
+      provider: "discord",
+      stage: "userinfo",
+    });
     return null;
   }
-  if (!res.ok) return null;
+  if (!res.ok) {
+    await userinfoRejected("discord", res);
+    return null;
+  }
 
   const data = await res.json();
-  if (typeof data.email !== "string") return null;
+  if (typeof data.email !== "string") {
+    noEmail("discord", res);
+    return null;
+  }
 
   return {
     id: typeof data.id === "string" ? data.id : null,
