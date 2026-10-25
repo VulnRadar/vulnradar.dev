@@ -3006,7 +3006,14 @@ export function UserDetailPanel({
                     queueSupportAction(
                       "delete_scans",
                       "Delete All Scans",
-                      `Remove all ${pluralize(u.scan_count, "scan")} for ${u.name || u.email}`,
+                      // The host pages are public and unauthenticated, so
+                      // "all scans" that left them standing read as a
+                      // takedown that had not happened.
+                      `Remove all ${pluralize(u.scan_count, "scan")} for ${u.name || u.email}${
+                        u.public_host_report_count
+                          ? `, and take down the ${pluralize(u.public_host_report_count, "public host report")} built from them`
+                          : ""
+                      }. This cannot be undone.`,
                       "destructive",
                     )
                   }

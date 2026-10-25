@@ -82,6 +82,10 @@ export interface UserDetail {
   user: AdminUser & {
     session_count: number;
     has_backup_codes: boolean;
+    /** Public /host pages built from this user's scans, so the delete-all
+     *  confirmation can say it takes them down too. Null for a role that
+     *  cannot see the user's scans. */
+    public_host_report_count: number | null;
   };
   recentScans: {
     id: number;

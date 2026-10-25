@@ -131,10 +131,9 @@ describe("POST /api/v3/admin/blocked-data — actions", () => {
 
   it("delete_scans deletes matching rows and audit-logs the count", async () => {
     queueRole("admin");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1 }, { id: 2 }],
-      rowCount: 2,
-    });
+    // The purge is one statement that reports both counts; the route still
+    // only surfaces the scans.
+    mockQuery.mockResolvedValueOnce({ rows: [{ scans: 2, host_reports: 1 }] });
     const res = await POST(
       postRequest({ action: "delete_scans", value: "evil.com" }),
     );

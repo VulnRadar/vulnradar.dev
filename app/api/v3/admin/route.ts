@@ -57,6 +57,8 @@ import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
 import { clearUserRateLimitBuckets } from "@/lib/rate-limiting/clear-user-buckets";
 import { staffRolesByRank } from "@/lib/admin/staff-roles";
+import { purgeUserScans } from "@/lib/admin/purge-user-scans";
+import { pluralize } from "@/lib/ui/plural";
 
 // Helper to send email only if user notification is enabled
 async function sendNotificationIfEnabled(
@@ -219,6 +221,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid userId" }, { status: 400 });
     }
 
+    // How many public host pages are built from this user's scans, so the
+    // Delete All Scans confirmation can say that the action reaches them.
+    // Behind the same grant as the scan list: it is a fact about their scans.
+    const publicHostReportCount = canSeeScans
+      ? `(SELECT COUNT(*) FROM host_reputation hr
+           WHERE hr.source_scan_id IN (SELECT sh.id FROM scan_history sh WHERE sh.user_id = $1))::int`
+      : "NULL::int";
+
     const [
       userRes,
       scansRes,
@@ -241,6 +251,7 @@ export async function GET(request: NextRequest) {
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
+          ${publicHostReportCount} as public_host_report_count,
           -- schema: users.backup_codes is TEXT holding a JSON array, so this
           -- flag is a string comparison rather than a structural one. It used
           -- to test inequality against the two characters [] exactly, which
@@ -1528,20 +1539,23 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "delete_scans": {
-      // Delete all scans for user
-      const scanCount = await pool.query(
-        "SELECT COUNT(*) FROM scan_history WHERE user_id = $1",
-        [userId],
-      );
-      await pool.query("DELETE FROM scan_history WHERE user_id = $1", [userId]);
+      // Takes the public host reports with the scans. A bare DELETE here left
+      // them live on /host/<hostname>: the FK is ON DELETE SET NULL, so the
+      // findings copy was orphaned rather than removed, and this is the action
+      // an operator presses for an abuse or takedown case.
+      const purged = await purgeUserScans(userId);
       await logAction(
         session.userId,
         userId,
         "delete_scans",
-        `Deleted ${scanCount.rows[0].count} scans for ${targetUser.email}`,
+        `Deleted ${pluralize(purged.scans, "scan")} and purged ${pluralize(purged.hostReports, "public host report")} for ${targetUser.email}`,
         ip,
       );
-      return NextResponse.json({ success: true });
+      return NextResponse.json({
+        success: true,
+        deletedScans: purged.scans,
+        purgedHostReports: purged.hostReports,
+      });
     }
 
     case "clear_rate_limits": {

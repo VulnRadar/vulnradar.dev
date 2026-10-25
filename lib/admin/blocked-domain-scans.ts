@@ -1,4 +1,5 @@
 import pool from "@/lib/database/db";
+import { purgeScansWhere } from "@/lib/admin/purge-user-scans";
 
 /**
  * Finding and purging every cached scan of a blocked domain.
@@ -69,7 +70,7 @@ export async function findScansForBlockedDomain(
 }
 
 /**
- * Delete them, and say how many.
+ * Delete them, and say how many scans went.
  *
  * Same two arms and the same escaped pattern as the search above. They used
  * to differ: the search passed the raw value to its LIKE while the delete
@@ -80,10 +81,12 @@ export async function deleteScansForBlockedDomain(
   domain: string,
 ): Promise<number> {
   const host = hostnameOf("url");
-  const result = await pool.query(
-    `DELETE FROM scan_history
-      WHERE ${host} = $1 OR ${host} LIKE $2`,
-    [domain, likePattern(domain)],
-  );
-  return result.rowCount ?? 0;
+  // Through the shared purge, not a bare DELETE: the host reports these scans
+  // sourced would otherwise be orphaned and keep serving the blocked domain's
+  // findings on /host/<hostname> (see lib/admin/purge-user-scans.ts).
+  const purged = await purgeScansWhere(`${host} = $1 OR ${host} LIKE $2`, [
+    domain,
+    likePattern(domain),
+  ]);
+  return purged.scans;
 }

@@ -544,6 +544,36 @@ describe("GET /api/v3/admin", () => {
     expect(json.apiKeys).toHaveLength(1);
   });
 
+  // The Delete All Scans confirmation says how many public host pages the
+  // action takes down. That count is a fact about the user's scans, so it
+  // rides on the same grant as the scan list and is not computed without it.
+  it("section=user-detail counts public host reports only for a role that can see scans", async () => {
+    queueRole("support");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com", public_host_report_count: 3 }],
+    }); // userRes
+    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    const withScans = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    expect(withScans.status).toBe(200);
+    const userSql = String(mockQuery.mock.calls[1][0]);
+    expect(userSql).toContain("FROM host_reputation hr");
+
+    mockQuery.mockReset();
+    queueRole("billing");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com" }],
+    }); // userRes
+    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    const withoutScans = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    expect(withoutScans.status).toBe(200);
+    const sqlCalls = mockQuery.mock.calls.map((c) => String(c[0]));
+    expect(sqlCalls.some((sql) => sql.includes("host_reputation"))).toBe(false);
+  });
+
   // Credits ride on GRANT_CREDITS, the same permission the grant_credits
   // PATCH action itself requires -- a role that cannot spend these dollars
   // cannot see the balance either.
@@ -1509,6 +1539,48 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
       "127.0.0.1",
     );
   });
+
+  // The bare DELETE this replaced orphaned host_reputation (ON DELETE SET
+  // NULL) and left the user's findings live on /host/<hostname>. The purge is a
+  // single statement that deletes the reports with the scans; whether nothing
+  // survives is proven against Postgres in tests/integration.
+  it("delete_scans: purges the public host reports with the scans and audit-logs both counts", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    mockQuery.mockResolvedValueOnce({ rows: [{ scans: 12, host_reports: 3 }] });
+    const res = await PATCH(
+      patchRequest({
+        action: "delete_scans",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json).toEqual({
+      success: true,
+      deletedScans: 12,
+      purgedHostReports: 3,
+    });
+    const purgeCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("DELETE FROM host_reputation"),
+    );
+    expect(purgeCall).toBeDefined();
+    expect(String(purgeCall?.[0])).toContain("DELETE FROM scan_history");
+    expect(purgeCall?.[1]).toEqual([5]);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "delete_scans",
+      expect.stringMatching(/12 scans.*3 public host reports/),
+      "127.0.0.1",
+    );
+  }, 20000);
 
   it("reset_daily_limit: deletes only today's daily_scan counter row (not every rate_limits row) and audit-logs", async () => {
     queueRole("admin");

@@ -81,6 +81,29 @@ describeIntegration("purging the scans of a blocked domain", () => {
     ]);
   });
 
+  it("takes the public host report down with the scan that sourced it", async () => {
+    // host_reputation.source_scan_id is ON DELETE SET NULL, so a bare DELETE
+    // orphaned the report and /host/<hostname> kept serving the blocked
+    // domain's findings with nothing left that could remove them.
+    const label = unique("rep").replace(/[^a-z0-9]/g, "");
+    const domain = `${label}.example.test`;
+    const owner = await createUser();
+    const scanId = await seedScan(owner.id, `https://${domain}/`);
+    await pool.query(
+      `INSERT INTO host_reputation (host, danger_score, source_scan_id)
+       VALUES ($1, 55, $2)`,
+      [domain, scanId],
+    );
+
+    expect(await deleteScansForBlockedDomain(domain)).toBe(1);
+
+    const { rows } = await pool.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM host_reputation WHERE host = $1",
+      [domain],
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
   it("treats LIKE metacharacters as characters, not wildcards", async () => {
     const owner = await createUser();
     const label = unique("wild").replace(/[^a-z0-9]/g, "");
