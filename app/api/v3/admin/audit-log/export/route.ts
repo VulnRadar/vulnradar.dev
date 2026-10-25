@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { requireAdmin, logAction } from "@/lib/auth/authorization";
+import { requirePermission, logAction } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
 import { APP_SLUG } from "@/lib/config/constants";
 
@@ -69,16 +70,18 @@ const EXPORT_BATCH = 500;
  * AUDIT-010 admin-feature-gap: the audit log is VulnRadar's compliance
  * record of admin actions but previously had no export at all. Returns
  * the FULL admin_audit_log table (not just the current page the UI has
- * loaded) as a downloadable CSV or JSON file. Admin-gated (stricter than
- * the moderator+ read access the paginated audit view itself uses) since
- * a full-table export is a meaningfully bigger exposure than a filtered
- * page view. The export itself is recorded as an audit action.
+ * loaded) as a downloadable CSV or JSON file. Gated on EXPORT_AUDIT_LOG,
+ * which only admin and super_admin hold: stricter than VIEW_AUDIT_LOG, the
+ * grant the paginated view uses, since a full-table export is a meaningfully
+ * bigger exposure than a filtered page view. The panel's Export menu checks
+ * the same permission, so it is not drawn for a role this route refuses. The
+ * export itself is recorded as an audit action.
  */
 export async function GET(request: NextRequest) {
-  const admin = await requireAdmin();
+  const admin = await requirePermission(STAFF_PERMISSIONS.EXPORT_AUDIT_LOG);
   if (!admin) {
     return NextResponse.json(
-      { error: "Admin access required." },
+      { error: "You don't have permission to export the audit log." },
       { status: 403 },
     );
   }

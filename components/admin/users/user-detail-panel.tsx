@@ -105,6 +105,7 @@ import {
 } from "@/components/admin/shared";
 import { useAdminPermissions } from "@/components/admin/hooks";
 import { GiftSubscriptionModal } from "./gift-subscription-modal";
+import { AccountHistory } from "./account-history";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -3414,6 +3415,14 @@ export function UserDetailPanel({
                 )}
               </CardContent>
             </Card>
+          )}
+
+          {/* Account history. Behind the grant section=audit enforces, and
+              full width: its rows are sentences, which want the room. */}
+          {hasStaffPermission(callerRole, STAFF_PERMISSIONS.VIEW_AUDIT_LOG) && (
+            <div className="lg:col-span-2">
+              <AccountHistory userId={u.id} />
+            </div>
           )}
         </div>
       )}

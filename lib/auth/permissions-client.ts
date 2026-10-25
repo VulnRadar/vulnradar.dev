@@ -71,6 +71,13 @@ export const STAFF_PERMISSIONS = {
 
   // System
   VIEW_AUDIT_LOG: "view_audit_log",
+  // Taking the whole log out of the app as a file. Its own grant because the
+  // export is the entire retained history, which is a bigger exposure than
+  // reading a filtered page of it: security_analyst and moderator hold
+  // VIEW_AUDIT_LOG and are not meant to be able to do this. The export route
+  // and the panel's Export menu both check exactly this, so the button is
+  // never drawn for a role the server then refuses.
+  EXPORT_AUDIT_LOG: "export_audit_log",
   VIEW_SYSTEM_STATS: "view_system_stats",
   VIEW_ERROR_LOGS: "view_error_logs",
   MANAGE_RATE_LIMITS: "manage_rate_limits",

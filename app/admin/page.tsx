@@ -37,7 +37,16 @@ import {
 import { SkeletonRegion } from "@/components/shared/skeleton-shapes";
 import { AdminDataSkeleton } from "@/components/admin/admin-skeleton";
 import { ACTION_LABELS } from "@/components/admin/config";
-import { hasStaffPermission, isStaffRole } from "@/lib/auth/permissions-client";
+import {
+  hasStaffPermission,
+  isStaffRole,
+  STAFF_PERMISSIONS,
+} from "@/lib/auth/permissions-client";
+import {
+  EMPTY_AUDIT_FILTERS,
+  auditFilterParams,
+  type AuditFilters,
+} from "@/components/admin/audit/audit-filters";
 import { useAuth } from "@/components/providers/auth-provider";
 import { resolveAdminGate } from "@/lib/admin/admin-gate";
 import {
@@ -57,6 +66,7 @@ import type {
   AdminUser,
   UserDetail,
   AuditEntry,
+  AuditStats,
   ActiveAdmin,
   BadgeDef,
   Team,
@@ -308,6 +318,14 @@ function AdminContent() {
   const [auditPage, setAuditPage] = useState(1);
   const [auditTotalPages, setAuditTotalPages] = useState(1);
   const [auditPageSize, setAuditPageSize] = useState(10);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditStats, setAuditStats] = useState<AuditStats | null>(null);
+  // The applied filters live here because this page owns the fetch. The ref
+  // is what fetchAudit reads, so a page change or a refresh keeps them without
+  // every caller passing them along.
+  const [auditFilters, setAuditFilters] =
+    useState<AuditFilters>(EMPTY_AUDIT_FILTERS);
+  const auditFiltersRef = useRef<AuditFilters>(EMPTY_AUDIT_FILTERS);
   const [teams, setTeams] = useState<
     {
       id: number;
@@ -467,12 +485,20 @@ function AdminContent() {
   );
 
   const fetchAudit = useCallback(
-    async (p = 1, limit = auditPageSize) => {
+    async (
+      p = 1,
+      limit = auditPageSize,
+      filters: AuditFilters = auditFiltersRef.current,
+    ) => {
       setAuditPaging(true);
       try {
-        const res = await fetch(
-          `${API.ADMIN}?section=audit&page=${p}&limit=${limit}`,
-        );
+        // The filters run on the server, over the whole log. They used to be
+        // applied to the ten rows already on screen.
+        const params = auditFilterParams(filters);
+        params.set("section", "audit");
+        params.set("page", String(p));
+        params.set("limit", String(limit));
+        const res = await fetch(`${API.ADMIN}?${params}`);
         const data: AdminAuditResponse = await res.json();
         // res.ok, and an array check on what came back.
         //
@@ -484,17 +510,32 @@ function AdminContent() {
         // out users, teams, settings and everything else with it.
         if (!res.ok || !Array.isArray(data.logs)) {
           setAuditLogs([]);
+          setAuditTotal(0);
           return;
         }
         setAuditLogs(data.logs);
         setAuditPage(data.page);
         setAuditTotalPages(data.totalPages);
+        setAuditTotal(data.total);
+        setAuditStats(data.stats ?? null);
       } catch (error) {
         console.error("Failed to fetch audit logs", error);
+      } finally {
+        // In finally: the rejected-response early return above skipped it, so
+        // a failed load left the table dimmed and unclickable for good.
+        setAuditPaging(false);
       }
-      setAuditPaging(false);
     },
     [auditPageSize],
+  );
+
+  const applyAuditFilters = useCallback(
+    (next: AuditFilters) => {
+      auditFiltersRef.current = next;
+      setAuditFilters(next);
+      void fetchAudit(1, auditPageSize, next);
+    },
+    [fetchAudit, auditPageSize],
   );
 
   const fetchActiveAdmins = useCallback(async () => {
@@ -668,7 +709,19 @@ function AdminContent() {
     let foundUser = false;
     if (tab && VALID_TABS.includes(tab as (typeof VALID_TABS)[number])) {
       setActiveTab(tab as typeof activeTab);
-      if (tab === "audit") fetchAudit();
+      if (tab === "audit") {
+        // ?tab=audit&targetUserId=N is the link the user panel's Account
+        // history card ends in.
+        const targetId = Number.parseInt(params.targetUserId ?? "", 10);
+        if (Number.isSafeInteger(targetId) && targetId > 0) {
+          applyAuditFilters({
+            ...EMPTY_AUDIT_FILTERS,
+            target: { id: targetId, label: `user #${targetId}` },
+          });
+        } else {
+          fetchAudit();
+        }
+      }
       if (tab === "admins") fetchActiveAdmins();
       if (tab === "teams") fetchTeams();
     }
@@ -680,7 +733,13 @@ function AdminContent() {
       }
     }
     if (!foundUser) setSelectedUser(null);
-  }, [fetchAudit, fetchActiveAdmins, fetchTeams, fetchUserDetail]);
+  }, [
+    fetchAudit,
+    applyAuditFilters,
+    fetchActiveAdmins,
+    fetchTeams,
+    fetchUserDetail,
+  ]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the URL's query string (an external system) to seed tab/filter state, then subscribes to popstate for back/forward navigation
@@ -1437,9 +1496,18 @@ function AdminContent() {
                 auditPaging={auditPaging}
                 auditPage={auditPage}
                 auditTotalPages={auditTotalPages}
+                auditTotal={auditTotal}
+                auditStats={auditStats}
                 auditPageSize={auditPageSize}
                 setAuditPageSize={setAuditPageSize}
                 fetchAudit={fetchAudit}
+                filters={auditFilters}
+                onFiltersChange={applyAuditFilters}
+                canExport={hasStaffPermission(
+                  callerRole,
+                  STAFF_PERMISSIONS.EXPORT_AUDIT_LOG,
+                )}
+                onNotify={showToast}
               />
             )}
 

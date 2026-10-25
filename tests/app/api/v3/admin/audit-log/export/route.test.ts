@@ -127,6 +127,31 @@ describe("GET /api/v3/admin/audit-log/export", () => {
     expect(res.status).toBe(403);
   });
 
+  // The stale comment in the admin route said security_analyst could export
+  // because this route was "already permission-gated". It was gated on admin,
+  // so the Export menu was drawn for a role that got a silent 403. Both halves
+  // now check EXPORT_AUDIT_LOG, which neither of the two roles that can READ
+  // the log holds.
+  it.each(["security_analyst", "moderator"])(
+    "refuses %s, which can read the log but does not hold EXPORT_AUDIT_LOG",
+    async (role) => {
+      mockGetSession.mockResolvedValue({ userId: 3 });
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 3, role }] });
+      const res = await GET(getRequest());
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toContain("export the audit log");
+      expect(mockLogAction).not.toHaveBeenCalled();
+    },
+  );
+
+  it("lets a super_admin export", async () => {
+    withAdmin(1, "super_admin");
+    queuePages(sampleRows);
+    const res = await GET(getRequest());
+    expect(res.status).toBe(200);
+    await body(res);
+  });
+
   it("defaults to JSON, returns every row, and sets a download header", async () => {
     withAdmin();
     queuePages(sampleRows);

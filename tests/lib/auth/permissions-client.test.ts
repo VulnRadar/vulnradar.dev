@@ -253,6 +253,38 @@ describe("specialist staff roles: billing/security_analyst/content_manager/ops",
     ).toBe(false);
   });
 
+  // Reading the audit log and taking the whole of it out as a file are
+  // different exposures, and the panel's Export menu and the export route both
+  // check this one permission so the button is never drawn for a role the
+  // server then refuses.
+  it("only admin and super_admin can export the audit log, though two other roles can read it", () => {
+    for (const role of [STAFF_ROLES.ADMIN, STAFF_ROLES.SUPER_ADMIN]) {
+      expect(
+        hasStaffPermission(role, STAFF_PERMISSIONS.EXPORT_AUDIT_LOG),
+        role,
+      ).toBe(true);
+    }
+    for (const role of [
+      STAFF_ROLES.SECURITY_ANALYST,
+      STAFF_ROLES.MODERATOR,
+      STAFF_ROLES.SUPPORT,
+      STAFF_ROLES.BILLING,
+      STAFF_ROLES.CONTENT_MANAGER,
+      STAFF_ROLES.OPS,
+    ]) {
+      expect(
+        hasStaffPermission(role, STAFF_PERMISSIONS.EXPORT_AUDIT_LOG),
+        role,
+      ).toBe(false);
+    }
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.SECURITY_ANALYST,
+        STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
+      ),
+    ).toBe(true);
+  });
+
   it("content_manager can moderate content and send announcements but not view audit logs", () => {
     expect(
       hasStaffPermission(

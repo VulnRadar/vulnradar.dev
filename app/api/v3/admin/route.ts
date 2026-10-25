@@ -57,6 +57,7 @@ import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
 import { clearUserRateLimitBuckets } from "@/lib/rate-limiting/clear-user-buckets";
 import { staffRolesByRank } from "@/lib/admin/staff-roles";
+import { fetchAuditPage, parseAuditFilters } from "@/lib/admin/audit-query";
 import { purgeUserScans } from "@/lib/admin/purge-user-scans";
 import { pluralize } from "@/lib/ui/plural";
 
@@ -407,44 +408,34 @@ export async function GET(request: NextRequest) {
     // auth: gate audit-log reads to whoever holds VIEW_AUDIT_LOG
     // (AUDIT-007#audit-01). Support staff are read-only and don't have
     // this permission; the audit trail contains admin IPs and action
-    // details that exceed the support tier's need-to-know. Was a raw
-    // hierarchy-floor check (>= moderator) until the security_analyst
-    // role was added -- that role is granted VIEW_AUDIT_LOG but sits
-    // below moderator in the hierarchy, so the floor check blocked it
-    // from viewing the very log its own audit-log/export/route.ts
-    // (already permission-gated) let it export.
+    // details that exceed the support tier's need-to-know. A permission
+    // rather than a hierarchy floor, because security_analyst holds
+    // VIEW_AUDIT_LOG while sitting below moderator in the hierarchy. Export
+    // is a separate, narrower grant (EXPORT_AUDIT_LOG) checked by its own
+    // route, so being able to read the log does not imply being able to
+    // take all of it away.
     if (!hasStaffPermission(session.role, STAFF_PERMISSIONS.VIEW_AUDIT_LOG)) {
       return NextResponse.json(
         { error: ERROR_MESSAGES.FORBIDDEN },
         { status: 403 },
       );
     }
+    // Filters run in SQL (see lib/admin/audit-query.ts). They were a useMemo
+    // over the ten rows on the current page, so no question about the whole
+    // log could be answered from the panel.
+    const filter = parseAuditFilters(searchParams);
+    if (!filter.ok) {
+      return NextResponse.json({ error: filter.error }, { status: 400 });
+    }
     const auditLimit = limit;
     const auditOffset = (page - 1) * auditLimit;
-    // perf: the COUNT scans the whole of admin_audit_log no matter what the
-    // sibling LIMIT is, so it used to double the wall time of every page load
-    // by running strictly after the paged select. Same Promise.all shape as
-    // app/api/v3/ai/conversations/route.ts.
-    const [auditRes, totalRes] = await Promise.all([
-      pool.query(
-        `SELECT al.id, al.action, al.details, al.created_at, al.ip_address,
-        al.admin_id, al.target_user_id,
-        au.email as admin_email, au.name as admin_name, au.avatar_url as admin_avatar_url,
-        tu.email as target_email, tu.name as target_name, tu.avatar_url as target_avatar_url
-      FROM admin_audit_log al
-      LEFT JOIN users au ON al.admin_id = au.id
-      LEFT JOIN users tu ON al.target_user_id = tu.id
-      ORDER BY al.created_at DESC
-      LIMIT $1 OFFSET $2`,
-        [auditLimit, auditOffset],
-      ),
-      pool.query("SELECT COUNT(*)::int as count FROM admin_audit_log"),
-    ]);
+    const result = await fetchAuditPage(filter, auditLimit, auditOffset);
     return NextResponse.json({
-      logs: auditRes.rows,
-      total: totalRes.rows[0].count,
+      logs: result.rows,
+      total: result.total,
       page,
-      totalPages: Math.ceil(totalRes.rows[0].count / auditLimit),
+      totalPages: Math.ceil(result.total / auditLimit),
+      stats: result.stats,
     });
   }
 

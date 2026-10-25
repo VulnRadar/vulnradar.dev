@@ -13,6 +13,7 @@ import type {
   AdminStats,
   AdminUser,
   AuditEntry,
+  AuditStats,
   ActiveAdmin,
   Team,
   TeamDetail,
@@ -36,9 +37,12 @@ export interface AdminUsersResponse {
 
 export interface AdminAuditResponse {
   logs: AuditEntry[];
+  /** Rows the request's filters leave, across every page. */
   total: number;
   page: number;
   totalPages: number;
+  /** Counted over the whole log by the server, whatever the filters. */
+  stats: AuditStats;
 }
 
 export interface AdminStaffResponse {

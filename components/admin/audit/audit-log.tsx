@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   History,
   ChevronDown,
@@ -13,6 +13,7 @@ import {
   CalendarDays,
   Download,
   Loader2,
+  X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -59,7 +60,13 @@ import {
   AUDIT_FILTER_CATEGORIES,
 } from "@/components/admin/utils";
 import { ACTION_META } from "@/components/admin/config";
-import type { AuditEntry } from "@/components/admin/types";
+import type { AuditEntry, AuditStats } from "@/components/admin/types";
+import { FilterChips } from "@/components/admin/shared/filter-chips";
+import {
+  EMPTY_AUDIT_FILTERS,
+  hasActiveAuditFilters,
+  type AuditFilters,
+} from "@/components/admin/audit/audit-filters";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
 interface AuditLogProps {
@@ -70,6 +77,16 @@ interface AuditLogProps {
   auditPageSize: number;
   setAuditPageSize: (size: number) => void;
   fetchAudit: (page?: number, pageSize?: number) => void;
+  /** Totals over the whole log, from the server. Null until the first load. */
+  auditStats: AuditStats | null;
+  /** Rows the current filters leave, across every page. */
+  auditTotal: number;
+  /** The applied filters. The page owns them because it owns the fetch. */
+  filters: AuditFilters;
+  onFiltersChange: (next: AuditFilters) => void;
+  /** Whether this role holds EXPORT_AUDIT_LOG; the Export menu is not drawn without it. */
+  canExport: boolean;
+  onNotify: (message: string, type: "success" | "error") => void;
 }
 
 const focusRing =
@@ -118,6 +135,34 @@ function startsNewDay(logs: AuditEntry[], index: number): boolean {
   return current.toDateString() !== previous.toDateString();
 }
 
+function PersonFilterChip({
+  prefix,
+  label,
+  onClear,
+}: {
+  prefix: string;
+  label: string;
+  onClear: () => void;
+}) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 py-1 pl-3 pr-1 text-xs font-medium text-primary">
+      <span className="text-primary/70">{prefix}</span>
+      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={`Clear the ${prefix.toLowerCase()} ${label} filter`}
+        className={cn(
+          "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full hover:bg-primary/15",
+          focusRing,
+        )}
+      >
+        <X className="h-3 w-3" aria-hidden="true" />
+      </button>
+    </span>
+  );
+}
+
 export function AuditLog({
   auditLogs,
   auditPaging,
@@ -126,12 +171,50 @@ export function AuditLog({
   auditPageSize,
   setAuditPageSize,
   fetchAudit,
+  auditStats,
+  auditTotal,
+  filters,
+  onFiltersChange,
+  canExport,
+  onNotify,
 }: AuditLogProps) {
-  const [auditFilter, setAuditFilter] = useState("all");
-  const [auditSearch, setAuditSearch] = useState("");
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
-  const [timeFilter, setTimeFilter] = useState<"all" | "today" | "week">("all");
   const [tocOpen, setTocOpen] = useState(false);
+
+  // The search box types into local state and reaches the server a beat
+  // later: a request per keystroke would be a query per keystroke against the
+  // whole log. Everything else (a chip, a tile, an avatar) applies at once.
+  const [searchInput, setSearchInput] = useState(filters.q);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    },
+    [],
+  );
+  // Clearing the filters from outside (the empty state's button, a chip) has
+  // to clear the box too. Adjusted during render, which is the sanctioned way
+  // to derive state from a prop, rather than in an effect.
+  const [appliedQ, setAppliedQ] = useState(filters.q);
+  if (filters.q !== appliedQ) {
+    setAppliedQ(filters.q);
+    setSearchInput(filters.q);
+  }
+
+  const onSearchChange = (value: string) => {
+    setSearchInput(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      onFiltersChange({ ...filters, q: value });
+    }, 300);
+  };
+  // A pending search is applied with whatever else changed, so clicking a chip
+  // a moment after typing does not throw the typed text away.
+  const applyFilters = (patch: Partial<AuditFilters>) => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    onFiltersChange({ ...filters, q: searchInput, ...patch });
+  };
+  const filtersActive = hasActiveAuditFilters(filters);
   const [exportingFormat, setExportingFormat] = useState<"csv" | "json" | null>(
     null,
   );
@@ -145,14 +228,26 @@ export function AuditLog({
     setExportingFormat(format);
     try {
       const res = await fetch(`${API.ADMIN}/audit-log/export?format=${format}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        // Said out loud. This returned silently, so a click that the server
+        // refused did nothing and explained nothing.
+        const body = await res.json().catch(() => null);
+        onNotify(
+          body?.error ||
+            (res.status === 403
+              ? "Your role cannot export the audit log."
+              : "Couldn't export the audit log."),
+          "error",
+        );
+        return;
+      }
       const blob = await res.blob();
       downloadBlob(
         blob,
         `${APP_SLUG}-audit-log-${new Date().toISOString().split("T")[0]}.${format}`,
       );
     } catch {
-      // Best-effort: the export buttons simply stay available to retry.
+      onNotify("Couldn't export the audit log.", "error");
     } finally {
       setExportingFormat(null);
     }
@@ -163,95 +258,48 @@ export function AuditLog({
     { id: "audit-log-entries", label: "Log Entries" },
   ];
 
-  // Compute stats (and the today/week cutoffs the time filter reuses)
-  const stats = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const weekAgo = new Date(today);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-
-    const todayCount = auditLogs.filter(
-      (log) => new Date(log.created_at) >= today,
-    ).length;
-    const weekCount = auditLogs.filter(
-      (log) => new Date(log.created_at) >= weekAgo,
-    ).length;
-    const uniqueAdmins = new Set(auditLogs.map((log) => log.admin_email)).size;
-    const userActions = auditLogs.filter((log) => log.target_email).length;
-
-    return { today, weekAgo, todayCount, weekCount, uniqueAdmins, userActions };
-  }, [auditLogs]);
-
-  const filteredLogs = useMemo(
-    () =>
-      auditLogs.filter((log) => {
-        const matchesCategory =
-          auditFilter === "all" ||
-          AUDIT_FILTER_CATEGORIES.find(
-            (c) => c.id === auditFilter,
-          )?.actions?.includes(log.action);
-        const needle = auditSearch.toLowerCase();
-        const matchesSearch =
-          !auditSearch ||
-          log.admin_email.toLowerCase().includes(needle) ||
-          log.admin_name?.toLowerCase().includes(needle) ||
-          log.target_email?.toLowerCase().includes(needle) ||
-          log.target_name?.toLowerCase().includes(needle) ||
-          log.action.toLowerCase().includes(needle) ||
-          log.details?.toLowerCase().includes(needle) ||
-          log.ip_address?.toLowerCase().includes(needle);
-        const logDate = new Date(log.created_at);
-        const matchesTime =
-          timeFilter === "all" ||
-          (timeFilter === "today" && logDate >= stats.today) ||
-          (timeFilter === "week" && logDate >= stats.weekAgo);
-        return matchesCategory && matchesSearch && matchesTime;
-      }),
-    [
-      auditLogs,
-      auditFilter,
-      auditSearch,
-      timeFilter,
-      stats.today,
-      stats.weekAgo,
-    ],
-  );
-
   const isInitialLoad = auditPaging && !auditLogs.length;
 
   return (
     <div className="space-y-4">
       {/* Stats */}
-      {!isInitialLoad ? (
+      {/* Totals over the whole log, counted by the server. These used to be
+          computed from the ten rows on the page and labelled "Today", "This
+          Week" and "Active Admins", which they were not. The first two are
+          also the time filter, so the number on the tile is the number of rows
+          the filter leaves. */}
+      {auditStats && !isInitialLoad ? (
         <StatBar
           items={[
             {
-              label: "Today",
-              value: stats.todayCount,
+              label: "Last 24 hours",
+              value: auditStats.last24h,
               icon: Clock,
               tone: "muted",
               onClick: () =>
-                setTimeFilter(timeFilter === "today" ? "all" : "today"),
-              active: timeFilter === "today",
+                applyFilters({
+                  range: filters.range === "24h" ? "all" : "24h",
+                }),
+              active: filters.range === "24h",
             },
             {
-              label: "This Week",
-              value: stats.weekCount,
+              label: "Last 7 days",
+              value: auditStats.last7d,
               icon: CalendarDays,
               tone: "muted",
               onClick: () =>
-                setTimeFilter(timeFilter === "week" ? "all" : "week"),
-              active: timeFilter === "week",
+                applyFilters({ range: filters.range === "7d" ? "all" : "7d" }),
+              active: filters.range === "7d",
             },
             {
-              label: "Active Admins",
-              value: stats.uniqueAdmins,
+              label: "Staff active (7d)",
+              value: auditStats.activeAdmins7d,
               icon: Shield,
               tone: "primary",
             },
             {
-              label: "User Actions",
-              value: stats.userActions,
+              label: "On accounts (7d)",
+              value: auditStats.userActions7d,
               icon: User,
               tone: "purple",
             },
@@ -269,46 +317,60 @@ export function AuditLog({
           icon={History}
           title="Audit Log"
           subtitle="All admin actions across the platform"
+          status={
+            <Badge
+              variant="secondary"
+              className="text-[11px] font-medium h-5 px-2 tabular-nums"
+              aria-label={`${auditTotal} matching entries`}
+            >
+              {auditTotal.toLocaleString()}
+            </Badge>
+          }
           className="border-b-0 pb-5"
           actions={
             <>
               {/* One export control, not two. Below sm the CSV and JSON
                   buttons collapsed to two identical download icons sitting
                   next to each other, which is a coin flip rather than a
-                  choice. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 px-3 gap-2 border-border/40"
-                    disabled={exportingFormat !== null}
-                    aria-label="Export the full audit log"
-                  >
-                    {exportingFormat !== null ? (
-                      <Loader2
-                        className="h-4 w-4 animate-spin"
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <Download className="h-4 w-4" aria-hidden="true" />
-                    )}
-                    <span className="hidden sm:inline">Export</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
-                    Full log, every page
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => handleExport("csv")}>
-                    CSV, for a spreadsheet
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => handleExport("json")}>
-                    JSON, for a script
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  choice. Not drawn at all for a role without
+                  EXPORT_AUDIT_LOG: moderator and security_analyst can read
+                  the log and used to get a menu whose every item was a
+                  silent 403. */}
+              {canExport && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 px-3 gap-2 border-border/40"
+                      disabled={exportingFormat !== null}
+                      aria-label="Export the full audit log"
+                    >
+                      {exportingFormat !== null ? (
+                        <Loader2
+                          className="h-4 w-4 animate-spin"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Download className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      <span className="hidden sm:inline">Export</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+                      Full log, every page
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => handleExport("csv")}>
+                      CSV, for a spreadsheet
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => handleExport("json")}>
+                      JSON, for a script
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -329,34 +391,46 @@ export function AuditLog({
               overflow-x-auto + scrollbar-hide strip hid seven of the ten
               filters on a phone with no cue that more existed. Matches
               components/admin/features/email-logs-manager.tsx. */}
-          <div className="flex flex-wrap gap-2">
-            {AUDIT_FILTER_CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setAuditFilter(cat.id)}
-                aria-pressed={auditFilter === cat.id}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border whitespace-nowrap shrink-0",
-                  focusRing,
-                  auditFilter === cat.id
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted border-border/40",
-                )}
-              >
-                <cat.icon className="h-3 w-3" aria-hidden="true" />
-                {cat.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Search */}
-          <ListSearchInput
-            value={auditSearch}
-            onChange={setAuditSearch}
-            placeholder="Search by admin, user, or action"
-            label="Search audit log by admin, user, or action"
+          <FilterChips
+            options={AUDIT_FILTER_CATEGORIES.map((cat) => ({
+              id: cat.id,
+              label: cat.label,
+              icon: cat.icon,
+            }))}
+            value={filters.category}
+            onChange={(category) => applyFilters({ category })}
+            label="Filter the audit log by category"
           />
+
+          {/* Search. Sent to the server, which matches the whole log across
+              details, action, IP and both people's name and email. */}
+          <ListSearchInput
+            value={searchInput}
+            onChange={onSearchChange}
+            placeholder="Search details, action, IP, admin or user"
+            label="Search the whole audit log by details, action, IP, admin or user"
+          />
+
+          {/* Who the log is narrowed to. A person chip is the answer to "what
+              has staff done to this account" and "what did this admin do". */}
+          {(filters.admin || filters.target) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {filters.admin && (
+                <PersonFilterChip
+                  prefix="By"
+                  label={filters.admin.label}
+                  onClear={() => applyFilters({ admin: null })}
+                />
+              )}
+              {filters.target && (
+                <PersonFilterChip
+                  prefix="On"
+                  label={filters.target.label}
+                  onClear={() => applyFilters({ target: null })}
+                />
+              )}
+            </div>
+          )}
         </AdminPanelHeader>
       </Card>
 
@@ -371,20 +445,28 @@ export function AuditLog({
           <SkeletonRegion label="Loading audit log">
             <DataTableSkeleton rows={auditPageSize} />
           </SkeletonRegion>
-        ) : filteredLogs.length === 0 ? (
+        ) : auditLogs.length === 0 ? (
           <EmptyState
             icon={History}
             title={
-              auditSearch || auditFilter !== "all" || timeFilter !== "all"
-                ? "No matching logs found"
-                : "No audit logs yet"
+              filtersActive ? "No matching logs found" : "No audit logs yet"
             }
             description={
-              auditSearch || auditFilter !== "all" || timeFilter !== "all"
-                ? auditTotalPages > 1
-                  ? "Filters apply to this page only. Use Export for a full-log search across all pages."
-                  : "Try adjusting your filters"
+              filtersActive
+                ? "Nothing in the whole log matches these filters."
                 : "Admin actions will appear here"
+            }
+            action={
+              filtersActive ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => onFiltersChange(EMPTY_AUDIT_FILTERS)}
+                >
+                  Clear filters
+                </Button>
+              ) : undefined
             }
           />
         ) : (
@@ -417,12 +499,12 @@ export function AuditLog({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredLogs.map((log, index) => {
+                      {auditLogs.map((log, index) => {
                         const isExpanded = expandedLog === log.id;
                         const logDate = new Date(log.created_at);
                         const diff = parseChangeDiff(log.details);
                         const destructive = isDestructiveAction(log.action);
-                        const newDay = startsNewDay(filteredLogs, index);
+                        const newDay = startsNewDay(auditLogs, index);
 
                         return (
                           <React.Fragment key={log.id}>
@@ -477,7 +559,13 @@ export function AuditLog({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setAuditSearch(log.admin_email);
+                                    applyFilters({
+                                      admin: {
+                                        id: log.admin_id,
+                                        label:
+                                          log.admin_name || log.admin_email,
+                                      },
+                                    });
                                   }}
                                   title={`Filter to actions by ${log.admin_email}`}
                                   className={cn(
@@ -511,9 +599,15 @@ export function AuditLog({
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setAuditSearch(
-                                          log.target_email as string,
-                                        );
+                                        if (log.target_user_id === null) return;
+                                        applyFilters({
+                                          target: {
+                                            id: log.target_user_id,
+                                            label:
+                                              log.target_name ||
+                                              (log.target_email as string),
+                                          },
+                                        });
                                       }}
                                       title={`Filter to actions on ${log.target_email}`}
                                       className={cn(
@@ -705,12 +799,12 @@ export function AuditLog({
                   auditPaging && "opacity-40 pointer-events-none",
                 )}
               >
-                {filteredLogs.map((log, index) => {
+                {auditLogs.map((log, index) => {
                   const isExpanded = expandedLog === log.id;
                   const logDate = new Date(log.created_at);
                   const diff = parseChangeDiff(log.details);
                   const destructive = isDestructiveAction(log.action);
-                  const newDay = startsNewDay(filteredLogs, index);
+                  const newDay = startsNewDay(auditLogs, index);
 
                   return (
                     <React.Fragment key={log.id}>

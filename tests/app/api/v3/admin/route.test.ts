@@ -345,12 +345,117 @@ describe("GET /api/v3/admin", () => {
       rows: [{ id: 1, action: "disable_user" }],
     }); // auditRes
     mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] }); // totalRes
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          last_24h: 2,
+          last_7d: 9,
+          active_admins_7d: 3,
+          user_actions_7d: 5,
+        },
+      ],
+    }); // statsRes
     const res = await GET(
       getRequest("http://localhost/api/v3/admin?section=audit"),
     );
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json.logs).toHaveLength(1);
+    expect(json.total).toBe(1);
+    // Counted over the whole log, not over the page: these tiles used to be
+    // computed from the ten rows on screen.
+    expect(json.stats).toEqual({
+      last24h: 2,
+      last7d: 9,
+      activeAdmins7d: 3,
+      userActions7d: 5,
+    });
+  });
+
+  describe("section=audit filters", () => {
+    function queueEmptyAuditPage() {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+      mockQuery.mockResolvedValueOnce({ rows: [{}] });
+    }
+
+    it("filters by target in SQL, so the answer is about the whole log", async () => {
+      queueRole("security_analyst"); // holds VIEW_AUDIT_LOG
+      queueEmptyAuditPage();
+      const res = await GET(
+        getRequest(
+          "http://localhost/api/v3/admin?section=audit&targetUserId=9&limit=10",
+        ),
+      );
+      expect(res.status).toBe(200);
+      const pageCall = mockQuery.mock.calls.find((c) =>
+        String(c[0]).includes("ORDER BY al.created_at DESC, al.id DESC"),
+      );
+      expect(pageCall).toBeDefined();
+      const [sql, params] = pageCall as [string, unknown[]];
+      expect(sql).toContain("WHERE al.target_user_id = $1");
+      expect(sql).toContain("LIMIT $2 OFFSET $3");
+      expect(params).toEqual([9, 10, 0]);
+      // The count answers for the same filter, not the whole table.
+      const countCall = mockQuery.mock.calls.find((c) =>
+        String(c[0]).startsWith("SELECT COUNT(*)::int AS count"),
+      );
+      expect(String(countCall?.[0])).toContain("al.target_user_id = $1");
+      expect(countCall?.[1]).toEqual([9]);
+    });
+
+    it("escapes the search term and binds it", async () => {
+      queueRole("admin");
+      queueEmptyAuditPage();
+      await GET(
+        getRequest("http://localhost/api/v3/admin?section=audit&q=50%25_off"),
+      );
+      const pageCall = mockQuery.mock.calls.find((c) =>
+        String(c[0]).includes("ILIKE $1"),
+      );
+      expect(pageCall?.[1]?.[0]).toBe("%50\\%\\_off%");
+      expect(String(pageCall?.[0])).not.toContain("50%");
+    });
+
+    it("maps a category to its actions", async () => {
+      queueRole("admin");
+      queueEmptyAuditPage();
+      await GET(
+        getRequest(
+          "http://localhost/api/v3/admin?section=audit&category=roles",
+        ),
+      );
+      const pageCall = mockQuery.mock.calls.find((c) =>
+        String(c[0]).includes("al.action = ANY($1::text[])"),
+      );
+      expect(pageCall?.[1]?.[0]).toEqual(expect.arrayContaining(["set_role"]));
+    });
+
+    it.each([
+      "category=nope",
+      "action=not_an_action",
+      "adminId=abc",
+      "targetUserId=-1",
+      "from=yesterday",
+    ])("rejects %s with a 400 instead of ignoring it", async (query) => {
+      queueRole("admin");
+      const res = await GET(
+        getRequest(`http://localhost/api/v3/admin?section=audit&${query}`),
+      );
+      expect(res.status).toBe(400);
+      // Only requireStaff's role lookup ran; no audit query was issued.
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it("still refuses a role without VIEW_AUDIT_LOG, filters or not", async () => {
+      queueRole("support");
+      const res = await GET(
+        getRequest(
+          "http://localhost/api/v3/admin?section=audit&targetUserId=9",
+        ),
+      );
+      expect(res.status).toBe(403);
+    });
   });
 
   it("section=badges is available to support, but active-admins requires VIEW_AUDIT_LOG", async () => {

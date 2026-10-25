@@ -1,5 +1,7 @@
 // Admin panel type definitions
 
+export type { AuditStats } from "@/lib/admin/audit-query";
+
 export interface AdminStats {
   total_users: string;
   total_scans: string;
