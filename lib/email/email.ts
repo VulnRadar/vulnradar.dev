@@ -862,15 +862,22 @@ export async function sendEmail({
 /**
  * The preview line for a broadcast.
  *
- * A broadcast opens with its own heading, which is also its subject, so the
- * first sentence of the text repeats what the inbox already shows next to it.
- * This starts after that heading when there is anything after it. Taken from
- * the plain text, which has its entities decoded, so it is escaped exactly
- * once on its way into the hidden preheader.
+ * A message that opens with a heading (every campaign template does) repeats
+ * the subject there, so the first sentence of its text repeats what the inbox
+ * already shows next to it. This starts after that heading when there is
+ * anything after it. A message typed straight into the composer may open with
+ * a paragraph instead, and that paragraph is the preview, so pass the HTML as
+ * well and only a real leading heading is skipped. Taken from the plain text,
+ * which has its entities decoded, so it is escaped exactly once on its way
+ * into the hidden preheader.
  */
-export function broadcastPreheader(text: string): string {
+export function broadcastPreheader(text: string, html?: string): string {
+  const opensWithHeading = html === undefined || /^\s*<h[1-6][\s>]/i.test(html);
   const paragraphs = text.split(/\n{2,}/);
-  const body = paragraphs.length > 1 ? paragraphs.slice(1).join("\n\n") : text;
+  const body =
+    opensWithHeading && paragraphs.length > 1
+      ? paragraphs.slice(1).join("\n\n")
+      : text;
   return derivePreheader(body);
 }
 

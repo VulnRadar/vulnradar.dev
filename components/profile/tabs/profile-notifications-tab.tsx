@@ -63,8 +63,8 @@ export function ProfileNotificationsTab({
   // calls setNotifPrefs when the GET succeeded, so falling back to the
   // defaults rendered twenty switches in their default position for a failed
   // request: someone who had unsubscribed from Product updates was shown as
-  // subscribed, and could re-save that guess back over their real row. Same tri-state ProfileSecurityTab uses for
-  // backupCodesRemaining.
+  // subscribed, and could re-save that guess back over their real row. Same
+  // tri-state ProfileSecurityTab uses for backupCodesRemaining.
   const initialPrefs = preloadedNotifPrefs
     ? { ...DEFAULT_PREFERENCES, ...preloadedNotifPrefs }
     : null;

@@ -21,10 +21,11 @@
  * decoded, conditional comments skipped, a line break at each block element
  * and each list item, and the address of every link written after its label.
  *
- * Hand-rolled for the reason lib/email/email.ts's stripHtmlTags was: the
- * input is a message an admin typed, and a regex that rescans on a run of
- * unclosed brackets is a polynomial-time trap. Every loop here moves forward
- * and the one scan that could run long, for the end of a tag, is capped.
+ * Hand-rolled for the reason the tag stripper this replaced was: the input is
+ * a message an admin typed, and a regex that rescans on a run of unclosed
+ * brackets is a polynomial-time trap (CodeQL js/polynomial-redos). Every loop
+ * here moves forward and the one scan that could run long, for the end of a
+ * tag, is capped.
  */
 
 /** A tag longer than this is not a tag, so a stray "<a" cannot rescan the

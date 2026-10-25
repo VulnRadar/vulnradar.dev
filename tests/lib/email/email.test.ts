@@ -1875,6 +1875,30 @@ describe("broadcastPreheader", () => {
     ).toBe("We made scans faster.");
   });
 
+  it("keeps the first paragraph of a message that does not open with a heading", async () => {
+    const { broadcastPreheader } = await loadEmail();
+    const text = "Scans got faster this week.\n\nDetails are on the changelog.";
+    // Told the markup, it sees a paragraph first, and that paragraph is the
+    // preview. Without the markup it assumes a heading, as it always did.
+    expect(
+      broadcastPreheader(
+        text,
+        "<p>Scans got faster this week.</p><p>Details are on the changelog.</p>",
+      ),
+    ).toBe("Scans got faster this week.");
+    expect(broadcastPreheader(text)).toBe("Details are on the changelog.");
+  });
+
+  it("still skips a leading heading when the markup says there is one", async () => {
+    const { broadcastPreheader } = await loadEmail();
+    expect(
+      broadcastPreheader(
+        "Release notes\n\nWe made scans faster.",
+        '\n  <h1 style="margin:0">Release notes</h1>\n<p>We made scans faster.</p>',
+      ),
+    ).toBe("We made scans faster.");
+  });
+
   it("falls back to the whole text when there is only one paragraph", async () => {
     const { broadcastPreheader } = await loadEmail();
     expect(broadcastPreheader("Just one short announcement.")).toBe(

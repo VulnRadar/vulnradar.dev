@@ -973,6 +973,36 @@ describe("POST /api/v3/admin/features — broadcast", () => {
       }
     });
 
+    it("never points a broadcast's one-click link at a security column", async () => {
+      vi.useFakeTimers();
+      try {
+        queueRole("admin");
+        // The composer offers "Login Alerts" as an audience. Scoped to its own
+        // column, Unsubscribe on that newsletter would switch off the sign-in
+        // warnings, so the link falls back to the announcements column.
+        stubDelivery({
+          claimed: [11],
+          segmentFilter: {
+            segment: "all",
+            preference_col: "email_new_login",
+          },
+        });
+        await POST(
+          postRequest({ section: "broadcast", action: "send", id: 5 }),
+        );
+        await vi.advanceTimersByTimeAsync(200);
+
+        expect(mockSendEmail.mock.calls[0][0].unsubscribeColumn).toBe(
+          "email_product_updates",
+        );
+        // The audience itself is still the people who want login alerts.
+        const page = sqlCalls().find((s) => s.includes("FROM users u"));
+        expect(page).toContain("COALESCE(np.email_new_login, true) = true");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("treats a user with no preferences row as having made no choice, not as opted in", async () => {
       vi.useFakeTimers();
       try {

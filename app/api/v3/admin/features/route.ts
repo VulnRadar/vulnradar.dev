@@ -21,6 +21,7 @@ import { htmlToText } from "@/lib/email/html-to-text";
 import {
   BROADCAST_FALLBACK_COLUMN,
   isNotificationColumn,
+  isSecurityColumn,
   optedInCondition,
 } from "@/lib/notifications/columns";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -69,6 +70,8 @@ async function deliverBroadcast(messageId: number): Promise<void> {
   const segment = message.segment_filter?.segment || message.segment_filter;
   const prefCol = message.segment_filter?.preference_col;
   const safeCol = isNotificationColumn(prefCol) ? prefCol : null;
+  const broadcastUnsubscribeColumn =
+    safeCol && !isSecurityColumn(safeCol) ? safeCol : BROADCAST_FALLBACK_COLUMN;
 
   // The plain-text part is made once for the whole send, not once per
   // recipient: it is the same message for everyone.
@@ -165,12 +168,14 @@ async function deliverBroadcast(messageId: number): Promise<void> {
               subject: message.title,
               text: broadcastText,
               html: message.content,
-              preheader: broadcastPreheader(broadcastText),
+              preheader: broadcastPreheader(broadcastText, message.content),
               template: "broadcast",
               unsubscribeToken: recipient.unsubscribe_token ?? undefined,
               // The one-click link turns off the category this broadcast was
-              // sent under, and only that one.
-              unsubscribeColumn: safeCol ?? BROADCAST_FALLBACK_COLUMN,
+              // sent under, and only that one. Sent under a security
+              // audience (Login Alerts), that would be the sign-in warnings,
+              // so it falls back to the announcements column instead.
+              unsubscribeColumn: broadcastUnsubscribeColumn,
             });
             await pool.query(
               `UPDATE broadcast_recipients SET status = 'sent'
@@ -826,7 +831,7 @@ export async function POST(req: NextRequest) {
             subject: `[TEST] ${title}`,
             text: testText,
             html: content,
-            preheader: broadcastPreheader(testText),
+            preheader: broadcastPreheader(testText, content),
             template: "broadcastTest",
             unsubscribeToken: recipient.unsubscribe_token ?? undefined,
             unsubscribeColumn: BROADCAST_FALLBACK_COLUMN,

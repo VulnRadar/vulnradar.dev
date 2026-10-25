@@ -6,6 +6,7 @@ import {
   ALWAYS_ON_COLUMNS,
   DEFAULT_PREFERENCES,
   isNotificationColumn,
+  isSecurityColumn,
   type NotificationPrefs,
 } from "@/lib/notifications/columns";
 
@@ -93,7 +94,16 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const userId = userRes.rows[0].id;
 
   if (type !== null) {
-    if (!isNotificationColumn(type) || ALWAYS_ON_COLUMNS.has(type)) {
+    // A security column is refused as well as the always-on one. No message
+    // carries a link to one (they have no token at all), so a request naming
+    // one was built by hand, and the warnings that catch a takeover are not
+    // something a bodyless POST should be able to switch off. They stay
+    // editable on the preferences page.
+    if (
+      !isNotificationColumn(type) ||
+      ALWAYS_ON_COLUMNS.has(type) ||
+      isSecurityColumn(type)
+    ) {
       return NextResponse.json(
         { error: "That is not an email category you can unsubscribe from." },
         { status: 400 },

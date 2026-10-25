@@ -153,6 +153,24 @@ describe("POST /api/v3/account/unsubscribe (one-click, scoped to one category)",
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    "email_new_login",
+    "email_password_change",
+    "email_2fa_change",
+    "email_session_revoked",
+    "email_account_deletion",
+  ])(
+    "refuses to switch off the %s warning from a bodyless POST",
+    async (col) => {
+      // No message carries a link to one of these, so a request naming one was
+      // built by hand. They stay editable on the preferences page.
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 5 }] });
+      const res = await POST(oneClick(`type=${col}`));
+      expect(res.status).toBe(400);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("rejects an unknown token without writing anything", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await POST(oneClick("type=email_scan_complete", UNKNOWN));

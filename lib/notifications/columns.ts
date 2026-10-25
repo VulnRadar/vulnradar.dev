@@ -143,6 +143,24 @@ export function isSecurityNotification(type: NotificationType): boolean {
   return SECURITY_NOTIFICATION_TYPES.has(type);
 }
 
+const SECURITY_COLUMNS: ReadonlySet<NotificationColumn> = new Set(
+  Array.from(SECURITY_NOTIFICATION_TYPES, (type) => NOTIFICATION_COLUMNS[type]),
+);
+
+/**
+ * The same set as columns, for code that holds a column rather than a type: a
+ * one-click unsubscribe, and a broadcast sent under a category.
+ *
+ * Neither may point a mail client's button at one of these. The composer
+ * offers "Login Alerts" and "Security Alerts" as audiences, and a broadcast
+ * to that audience carries a List-Unsubscribe link like any other; scoped to
+ * its own column it would turn off the sign-in warnings for whoever pressed
+ * Unsubscribe on a newsletter.
+ */
+export function isSecurityColumn(column: NotificationColumn): boolean {
+  return SECURITY_COLUMNS.has(column);
+}
+
 /**
  * The column a broadcast with no category of its own is gated on, and the one
  * its one-click unsubscribe turns off. Product announcements are the only

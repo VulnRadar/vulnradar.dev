@@ -8,6 +8,7 @@ import {
   DEFAULT_PREFERENCES,
   NOTIFICATION_COLUMNS,
   isNotificationColumn,
+  isSecurityColumn,
   isSecurityNotification,
   optedInCondition,
   type NotificationType,
@@ -119,6 +120,21 @@ describe("isSecurityNotification", () => {
     for (const type of rest) {
       expect(isSecurityNotification(type), type).toBe(false);
     }
+  });
+});
+
+describe("isSecurityColumn", () => {
+  it("is the column of every security notification type, and no other", () => {
+    const types = Object.keys(NOTIFICATION_COLUMNS) as NotificationType[];
+    for (const type of types) {
+      expect(isSecurityColumn(NOTIFICATION_COLUMNS[type]), type).toBe(
+        isSecurityNotification(type),
+      );
+    }
+    expect(isSecurityColumn("email_new_login")).toBe(true);
+    expect(isSecurityColumn("email_security")).toBe(true);
+    expect(isSecurityColumn("email_scan_complete")).toBe(false);
+    expect(isSecurityColumn("email_product_updates")).toBe(false);
   });
 });
 
