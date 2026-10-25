@@ -47,6 +47,11 @@ import {
   auditFilterParams,
   type AuditFilters,
 } from "@/components/admin/audit/audit-filters";
+import {
+  EMPTY_USER_FILTERS,
+  userFilterParams,
+  type UserListFilters,
+} from "@/components/admin/users/user-filters";
 import { useAuth } from "@/components/providers/auth-provider";
 import { resolveAdminGate } from "@/lib/admin/admin-gate";
 import {
@@ -380,6 +385,11 @@ function AdminContent() {
     column: "name" | "joined" | null;
     direction: SortDirection;
   }>({ column: null, direction: null });
+  const [userFilters, setUserFilters] =
+    useState<UserListFilters>(EMPTY_USER_FILTERS);
+  // Read at fire time for the same reason userSortRef is: fetchData is a
+  // stable callback, and paging or searching must not drop the filters.
+  const userFiltersRef = useRef<UserListFilters>(EMPTY_USER_FILTERS);
   const teamsSearchInitRef = useRef(false);
   const fetchTeamsRef = useRef<
     ((p?: number, search?: string, limit?: number) => Promise<void>) | null
@@ -431,6 +441,9 @@ function AdminContent() {
           limit: String(limit),
         });
         if (search.trim()) params.set("search", search.trim());
+        for (const [key, value] of userFilterParams(userFiltersRef.current)) {
+          params.set(key, value);
+        }
         // Sort is applied by the server across the whole table. Passed as an
         // argument rather than read from state so the header control can
         // refetch with its new value before the state update commits.
@@ -920,6 +933,16 @@ function AdminContent() {
           limit: String(usersPageSize),
         });
         if (searchQuery.trim()) params.set("search", searchQuery.trim());
+        for (const [key, value] of userFilterParams(userFiltersRef.current)) {
+          params.set(key, value);
+        }
+        // Sort too: this request used to drop it, so searching while sorted
+        // by Joined handed back the list in the default order.
+        const activeSort = userSortRef.current;
+        if (activeSort.column && activeSort.direction) {
+          params.set("sort", activeSort.column);
+          params.set("dir", activeSort.direction);
+        }
         const res = await fetch(`${API.ADMIN}?${params}`);
         if (res.ok) {
           const data = await res.json();
@@ -962,6 +985,13 @@ function AdminContent() {
   // header control looked like a real sort, so clicking "Joined" on page 1
   // of 40 answered "oldest of these ten", not "oldest account".
   const sortedUsers = users;
+
+  const applyUserFilters = (next: UserListFilters) => {
+    userFiltersRef.current = next;
+    setUserFilters(next);
+    // Back to page 1: page 3 of the old result set is not page 3 of this one.
+    fetchData(1, searchQuery, false, usersPageSize);
+  };
 
   const toggleUserSort = (column: "name" | "joined") => {
     const next: { column: "name" | "joined" | null; direction: SortDirection } =
@@ -1473,6 +1503,8 @@ function AdminContent() {
                 searchQuery={searchQuery}
                 onSearchQueryChange={setSearchQuery}
                 searchLoading={searchLoading}
+                filters={userFilters}
+                onFiltersChange={applyUserFilters}
                 sort={userSort}
                 onToggleSort={toggleUserSort}
                 onRefresh={() =>

@@ -732,6 +732,80 @@ describe("GET /api/v3/admin", () => {
     ).toBe(false);
   });
 
+  // The list took one optional WHERE, so "which accounts are disabled", "who
+  // has no second factor" and "find user 1042" could not be answered. The
+  // filters are a whitelist; whether they select the right rows is proven
+  // against Postgres in tests/integration/users-list-filters.test.ts.
+  describe("the user list's filters", () => {
+    function queueEmptyList() {
+      mockQuery.mockResolvedValueOnce({ rows: [{ total_users: 1 }] }); // stats
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // page
+      mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] }); // count
+    }
+
+    it("applies status, plan, role and search in SQL, with limit and offset after them", async () => {
+      queueRole("admin");
+      queueEmptyList();
+      const res = await GET(
+        getRequest(
+          "http://localhost/api/v3/admin?status=no2fa&plan=free&role=staff&search=42&limit=10",
+        ),
+      );
+      expect(res.status).toBe(200);
+      const listCall = mockQuery.mock.calls.find((c) =>
+        String(c[0]).includes("gs.plan as gifted_plan"),
+      );
+      expect(listCall).toBeDefined();
+      const [sql, params] = listCall as [string, unknown[]];
+      expect(sql).toContain("u.totp_enabled IS NOT TRUE");
+      expect(sql).toContain("u.plan = $1");
+      expect(sql).toContain("u.role = ANY($2::text[])");
+      expect(sql).toContain("u.id = $4");
+      expect(sql).toContain("LIMIT $5 OFFSET $6");
+      expect(params.slice(0, 1)).toEqual(["free"]);
+      expect(params[2]).toBe("%42%");
+      expect(params[3]).toBe(42);
+      expect(params.slice(4)).toEqual([10, 0]);
+      // The count answers for the same filter.
+      const countCall = mockQuery.mock.calls.find((c) =>
+        String(c[0]).includes("SELECT COUNT(*)::int AS count FROM users u"),
+      );
+      expect(String(countCall?.[0])).toContain("u.totp_enabled IS NOT TRUE");
+      expect(countCall?.[1]).toHaveLength(4);
+    });
+
+    it.each([
+      "status=banned",
+      "plan=platinum",
+      "role=root",
+      "role=constructor",
+    ])(
+      "rejects %s with a 400 rather than returning an unfiltered list",
+      async (query) => {
+        queueRole("admin");
+        const res = await GET(
+          getRequest(`http://localhost/api/v3/admin?${query}`),
+        );
+        expect(res.status).toBe(400);
+        // Only requireStaff's role lookup ran.
+        expect(mockQuery).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it("keeps the sort whitelist: an unknown column falls back to newest first", async () => {
+      queueRole("admin");
+      queueEmptyList();
+      await GET(
+        getRequest("http://localhost/api/v3/admin?sort=password_hash&dir=asc"),
+      );
+      const listCall = mockQuery.mock.calls.find((c) =>
+        String(c[0]).includes("gs.plan as gifted_plan"),
+      );
+      expect(String(listCall?.[0])).toContain("ORDER BY u.created_at DESC");
+      expect(String(listCall?.[0])).not.toContain("password_hash");
+    });
+  });
+
   // The default branch is fetched on mount by every staff member and the
   // client reads a 403 as "no admin access at all", so a role without
   // VIEW_USERS keeps the aggregate stats and gets an empty list instead.

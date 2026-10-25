@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import {
   Users,
   Search,
@@ -29,7 +30,8 @@ import {
 import { PaginationControl } from "@/components/ui/pagination-control";
 import { cn } from "@/lib/ui/utils";
 import { pluralize } from "@/lib/ui/plural";
-import { getPlanById } from "@/lib/billing/catalog";
+import { PLANS, getPlanById } from "@/lib/billing/catalog";
+import { staffRolesByRank } from "@/lib/admin/staff-roles";
 import {
   STAFF_ROLES,
   STAFF_ROLE_LABELS,
@@ -45,7 +47,41 @@ import {
   type SortDirection,
 } from "@/components/admin/shared";
 import type { AdminStats, AdminUser } from "@/components/admin/types";
+import { FilterChips } from "@/components/admin/shared/filter-chips";
+import {
+  hasActiveUserFilters,
+  EMPTY_USER_FILTERS,
+  type UserListFilters,
+  type UserStatusFilter,
+} from "@/components/admin/users/user-filters";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
+
+const STATUS_CHIPS: readonly { id: UserStatusFilter; label: string }[] = [
+  { id: "all", label: "All users" },
+  { id: "disabled", label: "Disabled" },
+  { id: "unverified", label: "Email not verified" },
+  { id: "no2fa", label: "No 2FA" },
+];
+
+/** The same recipe as the native selects in the user detail panel. */
+const SELECT_CLASS =
+  "h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
+
+/** Highest rank first, which is the order the directory reads in. */
+const ROLE_OPTIONS = [
+  { id: "all", label: "Any role" },
+  { id: "staff", label: "Any staff role" },
+  ...staffRolesByRank().map((role) => ({
+    id: role,
+    label: STAFF_ROLE_LABELS[role] || role,
+  })),
+  { id: STAFF_ROLES.USER, label: "Regular users" },
+];
+
+const PLAN_OPTIONS = [
+  { id: "all", label: "Any plan" },
+  ...PLANS.map((plan) => ({ id: plan.id as string, label: plan.name })),
+];
 
 /**
  * Admin > People > Users: the growth strip, the directory table and its
@@ -70,6 +106,8 @@ export function UsersTab({
   searchQuery,
   onSearchQueryChange,
   searchLoading,
+  filters,
+  onFiltersChange,
   sort,
   onToggleSort,
   onRefresh,
@@ -85,6 +123,8 @@ export function UsersTab({
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
   searchLoading: boolean;
+  filters: UserListFilters;
+  onFiltersChange: (next: UserListFilters) => void;
   sort: { column: "name" | "joined" | null; direction: SortDirection };
   onToggleSort: (column: "name" | "joined") => void;
   onRefresh: () => void;
@@ -92,12 +132,15 @@ export function UsersTab({
   onPageSizeChange: (size: number) => void;
   onOpenUser: (userId: number) => void;
 }) {
+  const roleSelectId = useId();
+  const planSelectId = useId();
+  const filtersActive = hasActiveUserFilters(filters);
+
   return (
     <>
-      {/* A live count strip, not a grid of decorative cards. Filtering the
-          table by these segments (e.g. Disabled) needs a status filter the
-          admin API does not expose yet (it only takes page/limit/search), so
-          these stay informational until that lands. */}
+      {/* A live count strip, not a grid of decorative cards. Total clears the
+          filters and Disabled applies the status filter, so the numbers here
+          are also the way into the rows behind them. */}
       {stats && (
         <div className="space-y-3">
           <StatBar
@@ -107,6 +150,8 @@ export function UsersTab({
                 value: Number(stats.total_users),
                 icon: Users,
                 tone: "primary",
+                onClick: () => onFiltersChange(EMPTY_USER_FILTERS),
+                active: !filtersActive,
               },
               {
                 label: "Total Scans",
@@ -131,6 +176,12 @@ export function UsersTab({
                 value: Number(stats.disabled_users),
                 icon: UserX,
                 tone: "destructive",
+                onClick: () =>
+                  onFiltersChange({
+                    ...filters,
+                    status: filters.status === "disabled" ? "all" : "disabled",
+                  }),
+                active: filters.status === "disabled",
               },
             ]}
           />
@@ -179,7 +230,7 @@ export function UsersTab({
           // this table, rather than restating the title: search covers both
           // fields, and the sort is applied by the server across every
           // account, not just the page on screen.
-          subtitle="Search matches name and email. Sorting applies across every account, not just this page."
+          subtitle="Search matches name, email and user id. Filters and sorting apply across every account, not just this page."
           status={
             <Badge
               variant="secondary"
@@ -204,11 +255,73 @@ export function UsersTab({
             </Button>
           }
         >
+          <FilterChips
+            options={STATUS_CHIPS}
+            value={filters.status}
+            onChange={(status) => onFiltersChange({ ...filters, status })}
+            label="Filter users by status"
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor={roleSelectId}
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Role
+              </label>
+              <select
+                id={roleSelectId}
+                value={filters.role}
+                onChange={(e) =>
+                  onFiltersChange({ ...filters, role: e.target.value })
+                }
+                className={SELECT_CLASS}
+              >
+                {ROLE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor={planSelectId}
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Plan
+              </label>
+              <select
+                id={planSelectId}
+                value={filters.plan}
+                onChange={(e) =>
+                  onFiltersChange({ ...filters, plan: e.target.value })
+                }
+                className={SELECT_CLASS}
+              >
+                {PLAN_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {filtersActive && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8"
+                onClick={() => onFiltersChange(EMPTY_USER_FILTERS)}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
           <ListSearchInput
             value={searchQuery}
             onChange={onSearchQueryChange}
-            placeholder="Search by name or email"
-            label="Search users by name or email"
+            placeholder="Search by name, email or user id"
+            label="Search users by name, email or user id"
           />
         </AdminPanelHeader>
         <CardContent className="p-0">
@@ -221,7 +334,9 @@ export function UsersTab({
                 description={
                   searchQuery
                     ? `No results for "${searchQuery}". Try a different search term.`
-                    : "No users have registered yet."
+                    : filtersActive
+                      ? "No account matches these filters."
+                      : "No users have registered yet."
                 }
               />
             ) : (
@@ -463,7 +578,9 @@ export function UsersTab({
                 description={
                   searchQuery
                     ? `No results for "${searchQuery}".`
-                    : "No users have registered yet."
+                    : filtersActive
+                      ? "No account matches these filters."
+                      : "No users have registered yet."
                 }
               />
             )}

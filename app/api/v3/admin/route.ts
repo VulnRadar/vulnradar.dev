@@ -58,6 +58,11 @@ import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
 import { clearUserRateLimitBuckets } from "@/lib/rate-limiting/clear-user-buckets";
 import { staffRolesByRank } from "@/lib/admin/staff-roles";
 import { fetchAuditPage, parseAuditFilters } from "@/lib/admin/audit-query";
+import {
+  fetchUsersPage,
+  parseUserFilters,
+  userOrderBy,
+} from "@/lib/admin/users-query";
 import { purgeUserScans } from "@/lib/admin/purge-user-scans";
 import { pluralize } from "@/lib/ui/plural";
 
@@ -134,27 +139,6 @@ export async function GET(request: NextRequest) {
     maxLimit: 100,
   });
   const section = searchParams.get("section");
-  const search = searchParams.get("search")?.trim() || "";
-  // Escape LIKE metacharacters so admin search is exact-substring, not a
-  // pattern. Without this, typing "%" returns all users (full table scan).
-  const searchEscaped = search.replace(/[\\%_]/g, "\\$&");
-
-  // Server-side sort for the users list. The panel used to sort only the ten
-  // rows it had already fetched while presenting it as a real sort, so
-  // clicking "Joined" on page 1 of 40 gave the oldest of ten, not the oldest
-  // account. Whitelisted column names only: the value is interpolated into
-  // the ORDER BY, so it can never come from the query string directly.
-  const USER_SORT_COLUMNS: Record<string, string> = {
-    name: "COALESCE(NULLIF(u.name, ''), u.email)",
-    joined: "u.created_at",
-  };
-  const sortParam = searchParams.get("sort") || "";
-  const sortExpr = USER_SORT_COLUMNS[sortParam];
-  const sortDir = searchParams.get("dir") === "asc" ? "ASC" : "DESC";
-  // Tie-break on id so paging is stable when two rows share a sort value.
-  const userOrderBy = sortExpr
-    ? `${sortExpr} ${sortDir}, u.id DESC`
-    : "u.created_at DESC";
 
   // Fetch user detail
   if (section === "user-detail") {
@@ -515,9 +499,14 @@ export async function GET(request: NextRequest) {
     session.role,
     STAFF_PERMISSIONS.VIEW_USERS,
   );
-  const emptyList = Promise.resolve({ rows: [] as Record<string, unknown>[] });
-  const emptyCount = Promise.resolve({ rows: [{ count: "0" }] });
-  const [statsResult, usersResult, totalResult] = await Promise.all([
+  // Filters, search and sort are a whitelist (lib/admin/users-query.ts): a
+  // status, plan or role the panel does not offer is a 400 rather than a
+  // silently unfiltered list.
+  const userFilter = parseUserFilters(searchParams);
+  if (!userFilter.ok) {
+    return NextResponse.json({ error: userFilter.error }, { status: 400 });
+  }
+  const [statsResult, usersPage] = await Promise.all([
     pool.query(`
       SELECT
         (SELECT COUNT(*) FROM users) as total_users,
@@ -531,54 +520,24 @@ export async function GET(request: NextRequest) {
         (SELECT COUNT(*) FROM users WHERE disabled_at IS NOT NULL) as disabled_users,
         (SELECT COUNT(*) FROM scan_history WHERE share_token IS NOT NULL) as shared_scans
     `),
-    !canListUsers
-      ? emptyList
-      : search
-        ? pool.query(
-            `
-          SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at, u.plan, u.subscription_status,
-            (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
-            (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count,
-            gs.plan as gifted_plan,
-            gs.expires_at as gift_end_date
-          FROM users u
-          LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
-          WHERE u.email ILIKE $3 ESCAPE '\\' OR u.name ILIKE $3 ESCAPE '\\'
-          ORDER BY ${userOrderBy}
-          LIMIT $1 OFFSET $2
-        `,
-            [limit, offset, `%${searchEscaped}%`],
-          )
-        : pool.query(
-            `
-          SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at, u.plan, u.subscription_status,
-            (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
-            (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count,
-            gs.plan as gifted_plan,
-            gs.expires_at as gift_end_date
-          FROM users u
-          LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
-          ORDER BY ${userOrderBy}
-          LIMIT $1 OFFSET $2
-        `,
-            [limit, offset],
+    canListUsers
+      ? fetchUsersPage(userFilter, {
+          limit,
+          offset,
+          orderBy: userOrderBy(
+            searchParams.get("sort"),
+            searchParams.get("dir"),
           ),
-    !canListUsers
-      ? emptyCount
-      : search
-        ? pool.query(
-            "SELECT COUNT(*) FROM users WHERE email ILIKE $1 ESCAPE '\\' OR name ILIKE $1 ESCAPE '\\'",
-            [`%${searchEscaped}%`],
-          )
-        : pool.query("SELECT COUNT(*) FROM users"),
+        })
+      : Promise.resolve({ users: [], total: 0 }),
   ]);
 
   return NextResponse.json({
     stats: statsResult.rows[0],
-    users: usersResult.rows,
-    total: Number(totalResult.rows[0].count),
+    users: usersPage.users,
+    total: usersPage.total,
     page,
-    totalPages: Math.ceil(Number(totalResult.rows[0].count) / limit),
+    totalPages: Math.ceil(usersPage.total / limit),
     callerRole: session.role,
   });
 }
