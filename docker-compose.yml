@@ -113,6 +113,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      # The name given in EHLO. Empty falls back to the host of NEXT_PUBLIC_APP_URL.
+      SMTP_EHLO_NAME: ${SMTP_EHLO_NAME:-}
       # Contact form
       CONTACT_EMAIL: ${CONTACT_EMAIL:-}
       # Server-side half of the support address (outgoing email). The

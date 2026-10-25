@@ -54,6 +54,7 @@ const OptionalSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+  SMTP_EHLO_NAME: z.string().optional(),
 
   // Stripe
   STRIPE_SECRET_KEY: z.string().optional(),

@@ -56,6 +56,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_EHLO_NAME: ${SMTP_EHLO_NAME:-}
       CONTACT_EMAIL: ${CONTACT_EMAIL:-}
       # Turnstile: set real dev keys in .env to exercise the CAPTCHA, or
       # leave the .env.example test keys in place to always pass it.
