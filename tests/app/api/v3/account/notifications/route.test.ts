@@ -41,13 +41,16 @@ describe("GET /api/v3/account/notifications", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("returns every preference true by default when no row exists", async () => {
+  it("returns the schema defaults when no row exists: everything on except Tips & Guides", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await GET();
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json.email_security).toBe(true);
     expect(json.email_product_updates).toBe(true);
+    // Opt-in in the schema, so an account that never chose is not shown as
+    // subscribed.
+    expect(json.email_tips_guides).toBe(false);
   });
 
   it("returns the stored row when one exists", async () => {

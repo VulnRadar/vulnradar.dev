@@ -28,47 +28,21 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import type { ProfileTabProps, NotificationPrefs } from "../types";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import {
+  ALWAYS_ON_COLUMNS,
+  DEFAULT_PREFERENCES,
+} from "@/lib/notifications/columns";
 
-/**
- * Preference columns the server refuses to turn off.
- *
- * PUT /api/v3/account/notifications forces email_security to true whatever it
- * was sent, and returns 200 because the other nineteen columns wrote fine. So
- * the switch moved, the page reported "Saved", and the mail kept arriving
- * until a reload flipped it back: a control that reported success and did
- * nothing. The route's reasoning is right, and the fix belongs here, in the
- * screen that offered a choice the account does not actually have.
- *
- * Kept in step with ALWAYS_ON in that route by the one thing that makes it
- * obvious: the switch is disabled and the row says so.
- */
-const ALWAYS_ON = new Set<keyof NotificationPrefs>(["email_security"]);
-
-// Fills in any column a response that DID arrive left out, so a preference
-// added after a user's row was written still renders as a boolean. It is not
-// a stand-in for a response that never arrived: see the null tri-state below.
-const DEFAULT_PREFS: NotificationPrefs = {
-  email_security: true,
-  email_new_login: true,
-  email_password_change: true,
-  email_2fa_change: true,
-  email_session_revoked: true,
-  email_scan_complete: true,
-  email_critical_findings: true,
-  email_regression_alert: true,
-  email_schedules: true,
-  email_posture_digest: true,
-  email_api_keys: true,
-  email_api_limit_warning: true,
-  email_webhooks: true,
-  email_webhook_failure: true,
-  email_data_requests: true,
-  email_account_deletion: true,
-  email_team_invite: true,
-  email_team_changes: true,
-  email_product_updates: true,
-  email_tips_guides: true,
-};
+// Which columns the server refuses to turn off (ALWAYS_ON_COLUMNS), and what an
+// account that never chose gets (DEFAULT_PREFERENCES), come from
+// lib/notifications/columns.ts: the same declarations the routes read. They
+// were typed out here, and the copy of the defaults said every flag was on
+// while the schema starts Tips & Guides off.
+//
+// PUT /api/v3/account/notifications forces email_security to true whatever it
+// was sent, and answers 200 because the other columns wrote fine. The switch
+// for an always-on column is therefore disabled and the row says so, rather
+// than moving and reporting "Saved" for a choice the account does not have.
 
 export function ProfileNotificationsTab({
   user: _user,
@@ -86,14 +60,13 @@ export function ProfileNotificationsTab({
   preloadedDigestEmailEnabled,
 }: ProfileTabProps) {
   // null means "we do not know", not "everything is on". The parent only
-  // calls setNotifPrefs when the GET succeeded, so falling back to
-  // DEFAULT_PREFS (every flag true) rendered twenty switches in the on
-  // position for a failed request: someone who had unsubscribed from
-  // Product updates was shown as subscribed, and could re-save that guess
-  // back over their real row. Same tri-state ProfileSecurityTab uses for
+  // calls setNotifPrefs when the GET succeeded, so falling back to the
+  // defaults rendered twenty switches in their default position for a failed
+  // request: someone who had unsubscribed from Product updates was shown as
+  // subscribed, and could re-save that guess back over their real row. Same tri-state ProfileSecurityTab uses for
   // backupCodesRemaining.
   const initialPrefs = preloadedNotifPrefs
-    ? { ...DEFAULT_PREFS, ...preloadedNotifPrefs }
+    ? { ...DEFAULT_PREFERENCES, ...preloadedNotifPrefs }
     : null;
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs | null>(
     initialPrefs,
@@ -118,7 +91,7 @@ export function ProfileNotificationsTab({
   // Update state when preloaded data changes
   useEffect(() => {
     if (preloadedNotifPrefs) {
-      const prefs = { ...DEFAULT_PREFS, ...preloadedNotifPrefs };
+      const prefs = { ...DEFAULT_PREFERENCES, ...preloadedNotifPrefs };
       // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local editable state from an async-loaded parent prop, gated by that dependency changing
       setNotifPrefs(prefs);
       setOriginalPrefs(prefs);
@@ -327,11 +300,11 @@ export function ProfileNotificationsTab({
                   <p className="text-xs text-muted-foreground mt-1">{desc}</p>
                 </div>
                 <Switch
-                  checked={notifPrefs[key] || ALWAYS_ON.has(key)}
+                  checked={notifPrefs[key] || ALWAYS_ON_COLUMNS.has(key)}
                   onCheckedChange={(checked) => handleToggle(key, checked)}
-                  disabled={ALWAYS_ON.has(key)}
+                  disabled={ALWAYS_ON_COLUMNS.has(key)}
                   aria-label={
-                    ALWAYS_ON.has(key) ? `${label} (always on)` : label
+                    ALWAYS_ON_COLUMNS.has(key) ? `${label} (always on)` : label
                   }
                 />
               </div>

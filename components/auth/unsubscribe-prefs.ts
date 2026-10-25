@@ -12,29 +12,17 @@
  * Component can import.
  */
 
-export type PrefKey =
-  | "email_security"
-  | "email_new_login"
-  | "email_password_change"
-  | "email_2fa_change"
-  | "email_session_revoked"
-  | "email_scan_complete"
-  | "email_critical_findings"
-  | "email_regression_alert"
-  | "email_schedules"
-  | "email_posture_digest"
-  | "email_api_keys"
-  | "email_api_limit_warning"
-  | "email_webhooks"
-  | "email_webhook_failure"
-  | "email_data_requests"
-  | "email_account_deletion"
-  | "email_team_invite"
-  | "email_team_changes"
-  | "email_product_updates"
-  | "email_tips_guides";
+import {
+  ALWAYS_ON_COLUMNS,
+  type NotificationPrefs,
+  type PrefKey,
+} from "@/lib/notifications/columns";
 
-export type EmailPrefs = Record<PrefKey, boolean>;
+// Declared once in lib/notifications/columns.ts, which has no server imports,
+// so this page and the routes it talks to cannot disagree about what exists.
+// Re-exported under the names the page already uses.
+export type { PrefKey } from "@/lib/notifications/columns";
+export type EmailPrefs = NotificationPrefs;
 
 export type PrefRow = {
   key: PrefKey;
@@ -57,11 +45,10 @@ export type PrefGroup = {
  * unsubscribe page that is the worse of the two places for it, because that
  * page is the one a recipient reaches from the footer of an email.
  *
- * Exported so the preferences screen and the unsubscribe page cannot disagree
- * about it, and named after what the server does rather than after a policy,
- * so adding a column here means having added one there.
+ * The same set the routes read (lib/notifications/columns.ts), so the screen
+ * and the server cannot disagree about it.
  */
-export const ALWAYS_ON_PREFS = new Set<PrefKey>(["email_security"]);
+export const ALWAYS_ON_PREFS = ALWAYS_ON_COLUMNS;
 
 export const PREF_GROUPS: PrefGroup[] = [
   {

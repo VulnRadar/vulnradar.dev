@@ -3,28 +3,15 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
-import {
-  ALL_COLUMNS,
-  getNotificationPreferences,
-} from "@/lib/notifications/notifications";
+import { getNotificationPreferences } from "@/lib/notifications/notifications";
+import { ALL_COLUMNS, ALWAYS_ON_COLUMNS } from "@/lib/notifications/columns";
 
-// Derived from NOTIFICATION_COLUMNS (lib/notifications/notifications.ts),
-// the single source of truth every notification column comes from -- this
-// used to be its own manually-maintained list that had already drifted out
-// of sync with NOTIFICATION_COLUMNS once (missing email_posture_digest).
-const ALL_PREF_COLUMNS = ALL_COLUMNS;
-
-/**
- * Preferences a user is not allowed to switch off.
- *
- * app/api/v3/account/unsubscribe/route.ts has enforced this since it was
- * written; this route, the profile Notifications tab's writer, did not. So the
- * one-click unsubscribe endpoint correctly refused to disable security alerts
- * and the settings page next to it happily did, which silently suppressed the
- * brute-force warning at app/api/v3/auth/login/route.ts. Same set, same rule,
- * both writers.
- */
-const ALWAYS_ON = new Set<string>(["email_security"]);
+// The columns and the always-on rule are the shared declarations in
+// lib/notifications/columns.ts, the same ones the unsubscribe route and both
+// preference screens read. The always-on rule was enforced by the unsubscribe
+// route from the start and missed here, so the one-click endpoint refused to
+// disable security alerts and the settings page next to it happily did, which
+// silently suppressed the brute-force warning at app/api/v3/auth/login/route.ts.
 
 // GET: Fetch notification preferences
 export const GET = withErrorHandling(async () => {
@@ -46,12 +33,12 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
 
   // Validate: only accept known columns, all must be booleans
   const updates: Record<string, boolean> = {};
-  for (const col of ALL_PREF_COLUMNS) {
+  for (const col of ALL_COLUMNS) {
     if (col in data) {
       if (typeof data[col] !== "boolean") {
         return ApiResponse.badRequest(`Invalid value for ${col}`);
       }
-      updates[col] = ALWAYS_ON.has(col) ? true : data[col];
+      updates[col] = ALWAYS_ON_COLUMNS.has(col) ? true : data[col];
     }
   }
 

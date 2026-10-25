@@ -1,5 +1,7 @@
 // Profile page type definitions
 
+import type { NotificationPrefs } from "@/lib/notifications/columns";
+
 export interface UserBadge {
   id: number;
   name: string;
@@ -214,28 +216,12 @@ export interface ScheduleItem {
   team_id?: number | null;
 }
 
-export interface NotificationPrefs {
-  email_security: boolean;
-  email_new_login: boolean;
-  email_password_change: boolean;
-  email_2fa_change: boolean;
-  email_session_revoked: boolean;
-  email_scan_complete: boolean;
-  email_critical_findings: boolean;
-  email_regression_alert: boolean;
-  email_schedules: boolean;
-  email_posture_digest: boolean;
-  email_api_keys: boolean;
-  email_api_limit_warning: boolean;
-  email_webhooks: boolean;
-  email_webhook_failure: boolean;
-  email_data_requests: boolean;
-  email_account_deletion: boolean;
-  email_team_invite: boolean;
-  email_team_changes: boolean;
-  email_product_updates: boolean;
-  email_tips_guides: boolean;
-}
+/**
+ * The email preference flags, one per column. Declared once in
+ * lib/notifications/columns.ts, which has no server imports, so this screen
+ * and the routes it talks to cannot disagree about what exists.
+ */
+export type { NotificationPrefs };
 
 export type ProfileTab =
   | "general"
