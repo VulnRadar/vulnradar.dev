@@ -48,12 +48,20 @@ import {
   DEFAULT_SCAN_NOTE,
 } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
+import { logError } from "@/lib/logging/log";
+import { runWithScanId } from "@/lib/database/request-context";
 import { mergeFindingsAcrossPages } from "./crawl-merge";
 import type { Vulnerability, Category, ScanProgressHook } from "./types";
+import type { FailureKind } from "./failure-kinds";
 import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
 import { safeReadBody } from "./read-bounded-body";
-import { discoverPages } from "./crawl-discovery";
+import { discoverPages, landedPageUrl } from "./crawl-discovery";
+import { insertCrawlPageRows } from "./crawl-page-rows";
+import {
+  CRAWL_QUOTA_LIMIT_INCOMPLETE,
+  CRAWL_TIME_LIMIT_INCOMPLETE,
+} from "./crawl-incomplete";
 import { BOT_CHALLENGE_INCOMPLETE, detectBotChallenge } from "./bot-challenge";
 import { canonicalPageUrl } from "./page-url";
 import type { ScanSessionBinding, ScanAuthReport } from "./auth/types";
@@ -90,6 +98,101 @@ import { notifyScanComplete } from "@/lib/webhooks/scan-notifications";
  * than ~25 requests at the shared origin. ref: AUDIT-012#perf-03
  */
 const CRAWL_PAGE_CONCURRENCY = 3;
+
+/**
+ * How much of the crawl's watchdog budget the page loop may use before it
+ * stops taking new pages, and how much of what is left is kept for everything
+ * after the loop (merging, the enrichment passes, the page-row INSERT, the
+ * finalize). The watchdog is a hard ceiling that fails the whole crawl, so
+ * the loop has to stop short of it: a crawl that hit it used to be marked
+ * failed and lose every page it had already scanned, with the quota for each
+ * still spent.
+ */
+const CRAWL_SOFT_DEADLINE_SHARE = 0.85;
+const CRAWL_FINALIZE_MARGIN_MS = 30_000;
+/** The soft deadline never falls below this share, whatever the margin does to a tiny budget. */
+const CRAWL_SOFT_DEADLINE_FLOOR_SHARE = 0.5;
+
+/**
+ * Milliseconds after the watchdog is armed at which the page loop stops
+ * handing out new pages. Pages already in flight finish, and the crawl
+ * finalizes with the ones it has. About 85% of the budget less a finalize
+ * margin, floored at half of it so a short budget still scans something.
+ */
+export function crawlSoftDeadlineMs(budgetMs: number): number {
+  return Math.max(
+    budgetMs * CRAWL_SOFT_DEADLINE_FLOOR_SHARE,
+    budgetMs * CRAWL_SOFT_DEADLINE_SHARE - CRAWL_FINALIZE_MARGIN_MS,
+  );
+}
+
+/**
+ * How far past the async layer's per-branch timeout the outer race on a page
+ * must be. The branch timer starts only after a settings read, so an outer
+ * ceiling equal to the branch ceiling can fire first and discard branches that
+ * had already finished. The two settings are edited independently, so the
+ * order is enforced here rather than hoped for.
+ */
+const ASYNC_OUTER_HEADROOM_MS = 2_000;
+
+export function asyncOuterTimeoutMs(outerMs: number, branchMs: number): number {
+  return Math.max(outerMs, branchMs + ASYNC_OUTER_HEADROOM_MS);
+}
+
+/** Why a page was not read, as shown beside it in the crawl result. */
+const BOT_CHALLENGE_REASON = "Blocked by a bot challenge";
+const FETCH_FAILURE_REASONS = new Map([
+  ["cross_host_redirect", "Redirected to another host"],
+  ["timeout", "Did not answer in time"],
+  ["tls", "TLS certificate or handshake failed"],
+  ["unreachable", "Could not connect"],
+  ["blocked", "Address not allowed"],
+]);
+
+/**
+ * The sentence for a failed page fetch. safeFetch's errors carry a `code`,
+ * on themselves or on their `cause`; a timer that fired is also named by its
+ * abort reason. Anything else is "could not be fetched": the page is still
+ * listed as unread, just without a more specific reason.
+ */
+function describeFetchFailure(err: unknown): string {
+  if (err && typeof err === "object") {
+    const { code, cause, name } = err as {
+      code?: unknown;
+      cause?: unknown;
+      name?: unknown;
+    };
+    const causeCode =
+      cause && typeof cause === "object"
+        ? (cause as { code?: unknown }).code
+        : undefined;
+    for (const candidate of [code, causeCode]) {
+      const reason =
+        typeof candidate === "string"
+          ? FETCH_FAILURE_REASONS.get(candidate)
+          : undefined;
+      if (reason) return reason;
+    }
+    if (name === "TimeoutError") return FETCH_FAILURE_REASONS.get("timeout")!;
+  }
+  return "Could not be fetched";
+}
+
+/**
+ * A crawl that ended without running, with the reason it did not. Thrown
+ * inside the job so the catch can record the right failure kind: a quota
+ * refusal or a page list that came to nothing is not the engine breaking, and
+ * must not be counted as if it were.
+ */
+class CrawlRefusal extends Error {
+  constructor(
+    message: string,
+    readonly kind: FailureKind,
+  ) {
+    super(message);
+    this.name = "CrawlRefusal";
+  }
+}
 
 async function scanSingleUrl(
   url: string,
@@ -134,6 +237,15 @@ async function scanSingleUrl(
   incomplete: string[];
   /** Ids of the page checks that threw on this page. */
   erroredChecks?: string[];
+  /**
+   * Set when nothing ran against this page because it could not be read: the
+   * fetch failed, or the site answered with a bot challenge. The value is the
+   * reason, in words. Such a page has no findings because it was never
+   * looked at, so it gets no scan row of its own (a row would read as a clean
+   * completed scan in History) and is listed under
+   * result_meta.crawl.pagesUnreachable instead.
+   */
+  unreachable?: string;
 }> {
   const startTime = Date.now();
 
@@ -169,11 +281,15 @@ async function scanSingleUrl(
       [urlObj.hostname],
       session,
     );
-  } catch {
+  } catch (err) {
     // The page could not be fetched at all, so nothing ran against it. That
     // is a hole in the crawl, not a clean page: report every planned branch
     // as not completed so the merged result cannot claim coverage it never
     // had. ref: AUDIT-014#state-03
+    //
+    // Not logged: a target that is down or slow is an outcome the result
+    // records (STYLE.md, "Logging"), and a crawl of a flaky site would
+    // otherwise write a row to the error log per page.
     return {
       url,
       findings: [],
@@ -181,6 +297,7 @@ async function scanSingleUrl(
       duration: Date.now() - startTime,
       responseHeaders: {},
       incomplete: plannedBranches,
+      unreachable: describeFetchFailure(err),
     };
   }
 
@@ -204,6 +321,7 @@ async function scanSingleUrl(
       duration: Date.now() - startTime,
       responseHeaders: redactedHeaders,
       incomplete: [BOT_CHALLENGE_INCOMPLETE],
+      unreachable: BOT_CHALLENGE_REASON,
     };
   }
 
@@ -243,10 +361,12 @@ async function scanSingleUrl(
     bodyForChecks,
     scanners as Category[] | null,
     onProgress,
-    // The page this crawl entry actually landed on, when a same-host redirect
-    // moved it. Detectors judge the response they are reading; ids stay on
-    // the crawled URL (see checkPasses in engine.ts).
-    response.url && response.url !== url ? response.url : undefined,
+    // The page this crawl entry actually landed on, when a redirect moved it.
+    // Detectors judge the response they are reading; ids stay on the crawled
+    // URL (see checkPasses in engine.ts). landedPageUrl, not a string
+    // comparison: the same page spelled two ways is not a redirect, and a
+    // plain-http fetch that reports the pinned IP is not one either.
+    landedPageUrl(url, response.url),
   );
   const syncFindings = syncResult.findings;
 
@@ -423,9 +543,19 @@ async function isBehindBotChallenge(
   }
 }
 
-export async function executeCrawlScan(
+/**
+ * Run a crawl inside its scan's correlation context, so every error row it
+ * writes (and every check's, at any depth) carries the scan id. A crawl runs
+ * detached from the request that started it, so without this nothing ties the
+ * rows of one failing crawl together.
+ */
+export function executeCrawlScan(
   params: ExecuteCrawlScanParams,
 ): Promise<void> {
+  return runWithScanId(params.scanId, () => runCrawlScan(params));
+}
+
+async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
   const {
     scanId,
     normalizedMainUrl,
@@ -448,14 +578,20 @@ export async function executeCrawlScan(
     CRAWL_SCAN_MAX_PAGES: maxPagesCeiling,
     CRAWL_PAGE_FETCH_TIMEOUT_MS: fetchTimeoutMs,
     SCANNER_MAX_RESPONSE_BODY_BYTES: maxBodySize,
-    SCAN_ASYNC_CHECKS_TIMEOUT_MS: asyncChecksTimeoutMs,
+    SCAN_ASYNC_CHECKS_TIMEOUT_MS: configuredAsyncChecksTimeoutMs,
+    SCANNER_ASYNC_BRANCH_TIMEOUT_MS: asyncBranchTimeoutMs,
   } = await getSettings([
     "CRAWL_SCAN_TIMEOUT_SECONDS",
     "CRAWL_SCAN_MAX_PAGES",
     "CRAWL_PAGE_FETCH_TIMEOUT_MS",
     "SCANNER_MAX_RESPONSE_BODY_BYTES",
     "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
+    "SCANNER_ASYNC_BRANCH_TIMEOUT_MS",
   ] as const);
+  const asyncChecksTimeoutMs = asyncOuterTimeoutMs(
+    configuredAsyncChecksTimeoutMs,
+    asyncBranchTimeoutMs,
+  );
   // The shipped ceiling (CRAWL_SCAN_MAX_PAGES) is a hard upper bound; the real
   // per-user governor is the plan's page-selection cap. min() of the two so a
   // plan can never exceed the ceiling and the ceiling never overrides a
@@ -466,9 +602,14 @@ export async function executeCrawlScan(
       ? Math.min(maxPagesCeiling, crawlPageLimit)
       : maxPagesCeiling;
   const crawlSettings = { maxPages, fetchTimeoutMs, maxBodySize };
+  const budgetMs = crawlTimeoutSeconds * 1000;
+  // Measured from the moment the watchdog is armed, because that is the clock
+  // the hard ceiling runs on.
+  const watchdogArmedAt = Date.now();
+  const softDeadlineAt = watchdogArmedAt + crawlSoftDeadlineMs(budgetMs);
   const watchdog = startWatchdog(
     scanId,
-    crawlTimeoutSeconds * 1000,
+    budgetMs,
     `Crawl scan exceeded the ${crawlTimeoutSeconds}s time limit.`,
   );
   const {
@@ -560,8 +701,9 @@ export async function executeCrawlScan(
     }
 
     if (pages.length === 0) {
-      throw new Error(
+      throw new CrawlRefusal(
         "No scannable pages were found for this URL. It may block automated crawling or have no internal links.",
+        "not_run",
       );
     }
 
@@ -582,8 +724,9 @@ export async function executeCrawlScan(
     // POST /scan/bulk already do.
     const quotaCheck = await canMakeRequest(authedUserId);
     if (!quotaCheck.allowed) {
-      throw new Error(
+      throw new CrawlRefusal(
         "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+        "quota_refused",
       );
     }
 
@@ -593,7 +736,6 @@ export async function executeCrawlScan(
         ? pages.length
         : Math.min(pages.length, quotaCheck.remaining);
     const pagesToScan = pages.slice(0, maxPagesToScan);
-    const skippedCount = pages.length - pagesToScan.length;
 
     // Progress denominator: every page runs the same planned set of
     // categories/page-level branches (crawl pages all share the main URL's
@@ -654,6 +796,8 @@ export async function executeCrawlScan(
       Array.from({ length: pagesToScan.length }, () => null);
     let nextPageIndex = 0;
     let quotaExhausted = false;
+    // Set when the soft deadline stopped the queue with pages still in it.
+    let timeLimitHit = false;
 
     const scanPagesFromQueue = async (): Promise<void> => {
       while (!quotaExhausted) {
@@ -661,6 +805,15 @@ export async function executeCrawlScan(
         // the crawl's unit of work against someone else's server, and a
         // cancelled crawl must not start another one.
         if (isCancelled(scanId)) throw new ScanCancelledError();
+        // The soft deadline. Stopping here, before the quota charge below,
+        // means a page that never started is neither scanned nor billed; the
+        // pages in flight finish and the crawl goes on to finalize with what
+        // it has instead of running into the watchdog, which fails the whole
+        // crawl and throws every finished page away.
+        if (Date.now() >= softDeadlineAt) {
+          if (nextPageIndex < pagesToScan.length) timeLimitHit = true;
+          return;
+        }
         const index = nextPageIndex++;
         if (index >= pagesToScan.length) return;
         // Charge the daily quota before each scan, for every auth method.
@@ -705,9 +858,24 @@ export async function executeCrawlScan(
       throw failedWorker.reason;
     }
 
+    // Every page the crawl attempted, in crawl order. A page that could not be
+    // read is still in here: its `incomplete` list is what keeps the merged
+    // result from claiming coverage it did not have. Only the pages that were
+    // actually read go on to be saved and listed as scanned.
     const pageResults = pageSlots.filter(
       (r): r is Awaited<ReturnType<typeof scanSingleUrl>> => r !== null,
     );
+    const readPages = pageResults.filter((pr) => pr.unreachable === undefined);
+    const unreachablePages = pageResults.filter(
+      (pr): pr is typeof pr & { unreachable: string } =>
+        pr.unreachable !== undefined,
+    );
+    // Discovered but never attempted: the quota capped the list up front or
+    // ran out mid-crawl, or the soft deadline stopped the queue. Counted
+    // against what was attempted, not against the list as first capped, so a
+    // page the loop dropped partway is not reported as scanned.
+    const pagesSkipped = pages.length - pageResults.length;
+    const quotaLimited = pagesToScan.length < pages.length || quotaExhausted;
 
     // Host-level branch results. Each branch is individually bounded by
     // SCANNER_ASYNC_BRANCH_TIMEOUT_MS inside runAsyncChecksDetailed, so this
@@ -746,6 +914,11 @@ export async function executeCrawlScan(
         // clean result for the site the user asked about.
         ...(authenticated && session?.lost ? ["authenticated-session"] : []),
         ...(hostChallenged ? [BOT_CHALLENGE_INCOMPLETE] : []),
+        // Pages the crawl found and did not read. Neither used to say so:
+        // a crawl cut short by the quota reported the same coverage and the
+        // same engine confidence as one that read every page it discovered.
+        ...(timeLimitHit ? [CRAWL_TIME_LIMIT_INCOMPLETE] : []),
+        ...(quotaLimited ? [CRAWL_QUOTA_LIMIT_INCOMPLETE] : []),
       ]),
     ].sort();
     const erroredChecks = [
@@ -866,8 +1039,9 @@ export async function executeCrawlScan(
       total: allFindings.length,
     };
 
-    // Use first page's response headers as the main headers
-    const mainHeaders = pageResults[0]?.responseHeaders || {};
+    // The first page that was actually read supplies the main headers. An
+    // unreachable page has none to give.
+    const mainHeaders = readPages[0]?.responseHeaders || {};
     const scannedAt = new Date().toISOString();
 
     // Team assignment for the per-page rows, read back off the tracker row
@@ -885,22 +1059,18 @@ export async function executeCrawlScan(
       );
       crawlTeamId = teamRes.rows[0]?.team_id ?? null;
     } catch (err) {
-      console.error(
-        `[${APP_NAME}] Failed to read crawl team assignment:`,
-        err instanceof Error ? err.message : err,
-      );
+      logError("scan", "could not read the crawl's team assignment", err, {
+        scanId,
+        userId: authedUserId,
+      });
     }
 
-    // Save EACH page as its own history entry (like bulk scan), separate
-    // from the tracker row this whole job is reported against.
-    //
-    // One multi-row INSERT, not one per page: this used to be a sequential
-    // loop, so an Elite crawl paid up to 250 serialized round trips at the
-    // very tail of a scan the user is already waiting on. Built the same way
-    // saveAutoTags (lib/tags/auto-tags.ts) builds its parameter list. The ids
-    // come back keyed by url rather than by position, because RETURNING row
-    // order is not something Postgres promises. ref: AUDIT-012#perf-26
-    const pageHistoryIds: Record<string, number> = {};
+    // Save EACH page that was read as its own history entry (like bulk scan),
+    // separate from the tracker row this whole job is reported against. A page
+    // that could not be read gets no row: it would be saved as a completed
+    // scan with no findings and read as clean in History. It is listed in
+    // result_meta.crawl.pagesUnreachable below instead.
+    let pageHistoryIds: Record<string, number> = {};
     // The host's certificate grade, shared by every same-host page. Read here
     // rather than only for the tracker below, because each page row carries it
     // too.
@@ -910,69 +1080,70 @@ export async function executeCrawlScan(
     } catch {
       /* malformed URL: no grade */
     }
-    if (pageResults.length > 0) {
-      const COLUMNS = 14;
-      const tuples: string[] = [];
-      const params: unknown[] = [];
-      for (const pr of pageResults) {
-        const base = params.length;
-        tuples.push(
-          `(${Array.from({ length: COLUMNS }, (_, i) => `$${base + i + 1}`).join(", ")})`,
-        );
-        params.push(
-          authedUserId,
-          pr.url,
-          JSON.stringify(pr.summary),
-          JSON.stringify(pr.findings),
-          pr.summary.total,
-          pr.duration,
-          scannedAt,
-          isApiKeyAuth ? "api" : "web",
-          JSON.stringify(pr.responseHeaders),
-          DEFAULT_SCAN_NOTE,
-          isPublic,
-          authenticated,
-          crawlTeamId,
-          // Each page row's own result_meta. It was never written: every
-          // per-page row a crawl saved had summary, findings and duration and
-          // nothing else, so opening one from History showed "Duration" and
-          // "Scanned" and none of the risk score, site grade, SSL grade,
-          // confidence or checks-run a scan result shows everywhere else,
-          // because the summary renders each of those only when present.
-          // Computed from THIS page's findings, the same way the tracker's
-          // are computed from the merged set.
-          JSON.stringify({
-            dangerScore: getDangerScore(pr.findings),
-            siteGrade: getSiteGrade(pr.findings),
-            engineConfidence: getEngineConfidence(
-              pr.findings,
-              pr.incomplete.length > 0,
-            ),
-            ...(typeof pr.checksRun === "number"
-              ? { checksRun: pr.checksRun }
-              : {}),
-            ...(pr.incomplete.length > 0 ? { incomplete: pr.incomplete } : {}),
-            ...(pr.erroredChecks && pr.erroredChecks.length > 0
-              ? { erroredChecks: pr.erroredChecks }
-              : {}),
-            ...(hostSslGrade ? { sslGrade: hostSslGrade } : {}),
-          }),
-        );
-      }
+    // A cancel or the watchdog can land in the stretch since the page loop:
+    // the enrichment passes above run for seconds on a big crawl, and nothing
+    // asked again. The rows are written before finalizeScanSuccess applies its
+    // own status guard, so without this a crawl the owner cancelled ended up
+    // `failed` with up to 250 of its pages in History as completed scans.
+    // insertCrawlPageRows closes the remaining window inside the statement
+    // itself, for a row that went terminal without this process knowing.
+    if (isCancelled(scanId) || cancelSignal.aborted) {
+      throw new ScanCancelledError();
+    }
+    if (readPages.length > 0) {
       try {
-        const insertResult = await pool.query<{ id: number; url: string }>(
-          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes, is_public, authenticated, team_id, result_meta)
-           VALUES ${tuples.join(", ")} RETURNING id, url`,
-          params,
+        pageHistoryIds = await insertCrawlPageRows(
+          scanId,
+          {
+            userId: authedUserId,
+            scannedAt,
+            source: isApiKeyAuth ? "api" : "web",
+            notes: DEFAULT_SCAN_NOTE,
+            isPublic,
+            authenticated,
+            teamId: crawlTeamId,
+          },
+          readPages.map((pr) => ({
+            url: pr.url,
+            summary: pr.summary,
+            findings: pr.findings,
+            findingsCount: pr.summary.total,
+            duration: pr.duration,
+            responseHeaders: pr.responseHeaders,
+            // Each page row's own result_meta. It was never written: every
+            // per-page row a crawl saved had summary, findings and duration
+            // and nothing else, so opening one from History showed "Duration"
+            // and "Scanned" and none of the risk score, site grade, SSL
+            // grade, confidence or checks-run a scan result shows everywhere
+            // else, because the summary renders each of those only when
+            // present. Computed from THIS page's findings, the same way the
+            // tracker's are computed from the merged set.
+            resultMeta: {
+              dangerScore: getDangerScore(pr.findings),
+              siteGrade: getSiteGrade(pr.findings),
+              engineConfidence: getEngineConfidence(
+                pr.findings,
+                pr.incomplete.length > 0,
+              ),
+              ...(typeof pr.checksRun === "number"
+                ? { checksRun: pr.checksRun }
+                : {}),
+              ...(pr.incomplete.length > 0
+                ? { incomplete: pr.incomplete }
+                : {}),
+              ...(pr.erroredChecks && pr.erroredChecks.length > 0
+                ? { erroredChecks: pr.erroredChecks }
+                : {}),
+              ...(hostSslGrade ? { sslGrade: hostSslGrade } : {}),
+            },
+          })),
         );
-        for (const row of insertResult.rows) {
-          pageHistoryIds[row.url] = row.id;
-        }
       } catch (err) {
-        console.error(
-          `[${APP_NAME}] Failed to save crawl history:`,
-          err instanceof Error ? err.message : err,
-        );
+        logError("scan", "could not save the crawl's page rows", err, {
+          scanId,
+          userId: authedUserId,
+          pages: readPages.length,
+        });
       }
     }
 
@@ -1047,7 +1218,7 @@ export async function executeCrawlScan(
 
     const crawlChecksRun = Math.max(
       0,
-      ...pageResults.map((pr) => pr.checksRun ?? 0),
+      ...readPages.map((pr) => pr.checksRun ?? 0),
     );
 
     const applied = await finalizeScanSuccess(scanId, {
@@ -1092,11 +1263,20 @@ export async function executeCrawlScan(
         ...(softwareInventory?.inventory
           ? { softwareInventory: softwareInventory.inventory }
           : {}),
+        // The four counts add up to pagesDiscovered: read, could not be read,
+        // and never attempted. `pagesSkipped` is the last of those only. It
+        // was counted against the list as first capped to the quota, so a
+        // crawl the quota stopped partway (or the time limit, now) left the
+        // pages it dropped out of every figure and read as complete.
         crawl: {
           pagesDiscovered: pages.length,
-          pagesScanned: pageResults.length,
-          pagesSkipped: skippedCount,
-          pages: pageResults.map((p) => ({
+          pagesScanned: readPages.length,
+          pagesSkipped,
+          pagesUnreachable: unreachablePages.map((p) => ({
+            url: p.url,
+            reason: p.unreachable,
+          })),
+          pages: readPages.map((p) => ({
             url: p.url,
             scanHistoryId: pageHistoryIds[p.url] || null,
             findings: p.findings,
@@ -1112,6 +1292,12 @@ export async function executeCrawlScan(
     // cancellation raced this completion) -- don't notify for a result
     // nobody will see.
     //
+    // Say so when it was the watchdog, though: a crawl that finished after its
+    // budget threw a finished result away without a trace, and the owner saw
+    // a timeout with every page already scanned. Past the budget is how it is
+    // told from a cancel in the last moments, which is an outcome and not an
+    // error (STYLE.md, "Logging").
+    //
     // A crawl used to send exactly one notification, the critical/high
     // regression alert, and no scan-complete email and no webhook at all:
     // `--crawl` is what the CLI and the GitHub Action expose, so a CI-facing
@@ -1119,32 +1305,63 @@ export async function executeCrawlScan(
     // every other scan path (lib/webhooks/scan-notifications.ts), which owns
     // the regression alert too. The inline copy that used to live here is
     // gone rather than kept alongside it, so there is no second email.
-    if (applied) {
-      void notifyScanComplete({
-        userId: authedUserId,
-        scanId,
-        // The main URL, which is what this crawl's tracker row stores as
-        // scan_history.url and therefore the key the regression diff needs.
-        target: { kind: "url", value: normalizedMainUrl },
-        summary: mergedSummary,
-        findings: allFindings,
-        duration: totalDuration,
-        scannedAt,
-        // A crawl accumulates unfinished branches across every page it
-        // visited; the same list result_meta.incomplete stores.
-        incomplete,
-      });
+    if (!applied) {
+      const lateByMs = Date.now() - watchdogArmedAt - budgetMs;
+      if (lateByMs > 0) {
+        logError(
+          "scan",
+          "crawl completed after the row was terminal; result discarded",
+          undefined,
+          {
+            scanId,
+            userId: authedUserId,
+            lateByMs,
+            budgetSeconds: crawlTimeoutSeconds,
+            pagesScanned: readPages.length,
+            findings: allFindings.length,
+          },
+        );
+      }
+      return;
     }
+    void notifyScanComplete({
+      userId: authedUserId,
+      scanId,
+      // The main URL, which is what this crawl's tracker row stores as
+      // scan_history.url and therefore the key the regression diff needs.
+      target: { kind: "url", value: normalizedMainUrl },
+      summary: mergedSummary,
+      findings: allFindings,
+      duration: totalDuration,
+      scannedAt,
+      // A crawl accumulates unfinished branches across every page it
+      // visited; the same list result_meta.incomplete stores.
+      incomplete,
+    });
   } catch (error) {
-    if (error instanceof ScanCancelledError) {
-      await finalizeScanFailure(scanId, "Cancelled");
+    // The flag is the cancel's own record, so it is asked before the error is
+    // read: a fetch aborted by the cancel surfaces as an AbortError, not a
+    // ScanCancelledError, and a cancel is not a crawl that failed.
+    if (
+      error instanceof ScanCancelledError ||
+      isCancelled(scanId) ||
+      cancelSignal.aborted
+    ) {
+      await finalizeScanFailure(scanId, "Cancelled", "cancelled");
+    } else if (error instanceof CrawlRefusal) {
+      await finalizeScanFailure(scanId, error.message, error.kind);
     } else {
+      logError("scan", "crawl scan failed", error, {
+        scanId,
+        userId: authedUserId,
+        source: isApiKeyAuth ? "api" : "web",
+        url: normalizedMainUrl,
+      });
       const message =
         error instanceof Error
           ? error.message
           : "An unexpected error occurred during the crawl scan.";
-      console.error(`[${APP_NAME}] Background crawl scan failed:`, message);
-      await finalizeScanFailure(scanId, message);
+      await finalizeScanFailure(scanId, message, "internal");
     }
   } finally {
     clearTimeout(watchdog);

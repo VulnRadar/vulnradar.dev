@@ -105,21 +105,30 @@ vi.mock("@/lib/email/email", () => ({
   criticalFindingsEmail: () => ({}),
 }));
 
-const { executeCrawlScan } = await import("@/lib/scanner/execute-crawl-scan");
+const { executeCrawlScan, crawlSoftDeadlineMs, asyncOuterTimeoutMs } =
+  await import("@/lib/scanner/execute-crawl-scan");
+const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
+const { currentScanId } = await import("@/lib/database/request-context");
 
 /** Columns per tuple in the per-page multi-row child INSERT. */
 const CHILD_INSERT_COLUMNS = 14;
+/** Position of url in a child tuple. */
+const CHILD_URL = 1;
 /** Position of team_id in a child tuple; result_meta comes after it. */
 const CHILD_TEAM_ID = 12;
 const CHILD_RESULT_META = 13;
 
-/** The per-page tuples of the one multi-row child INSERT the crawl issues. */
+/**
+ * The per-page tuples of the one multi-row child INSERT the crawl issues.
+ * Parameter 1 is the tracker row the statement's status guard reads; the
+ * tuples follow it.
+ */
 function childInsertTuples(): unknown[][] {
   const call = mockQuery.mock.calls.find(([sql]) =>
     (sql as string).includes("INSERT INTO scan_history"),
   );
   if (!call) return [];
-  const params = call[1] as unknown[];
+  const params = (call[1] as unknown[]).slice(1);
   const tuples: unknown[][] = [];
   for (let i = 0; i < params.length; i += CHILD_INSERT_COLUMNS) {
     tuples.push(params.slice(i, i + CHILD_INSERT_COLUMNS));
@@ -133,10 +142,10 @@ function installDefaultQueryMock() {
       // The per-page child rows go in as ONE multi-row INSERT (perf-26), so
       // the mock answers with one returned row per tuple, keyed by the url in
       // that tuple, exactly as `RETURNING id, url` does.
-      const p = (params ?? []) as unknown[];
+      const p = ((params ?? []) as unknown[]).slice(1);
       const rows: { id: number; url: unknown }[] = [];
       for (let i = 0; i < p.length; i += CHILD_INSERT_COLUMNS) {
-        rows.push({ id: 900 + rows.length, url: p[i + 1] });
+        rows.push({ id: 900 + rows.length, url: p[i + CHILD_URL] });
       }
       return { rows, rowCount: rows.length };
     }
@@ -367,6 +376,9 @@ describe("executeCrawlScan", () => {
         (params as unknown[])[1] === 41,
     );
     expect(failed?.[1]).toContain("Cancelled");
+    // A cancel is not an engine failure, so it is recorded as one of its own
+    // kind and the error log stays quiet.
+    expect(failed![1][2]).toBe("cancelled");
     clearCancel(41);
   });
 
@@ -480,6 +492,8 @@ describe("executeCrawlScan", () => {
     );
     expect(failedCall).toBeDefined();
     expect(failedCall![1][0]).toMatch(/No scannable pages/);
+    // Nothing was attempted, which is not the engine breaking.
+    expect(failedCall![1][2]).toBe("not_run");
   });
 
   it("caps pre-selected pages to the plan's crawlPageLimit", async () => {
@@ -513,6 +527,8 @@ describe("executeCrawlScan", () => {
     );
     expect(resultMeta.crawl.pagesSkipped).toBe(1);
     expect(resultMeta.crawl.pagesScanned).toBe(1);
+    // The quota cut the crawl short, so it must not read as full coverage.
+    expect(resultMeta.incomplete).toContain("crawl-quota-limit");
   });
 });
 
@@ -637,6 +653,22 @@ describe("executeCrawlScan (authenticated)", () => {
       (completedCall![1] as unknown[])[6] as string,
     );
     expect(resultMeta.incomplete).toContain("bot-challenge");
+    // A challenge page is not a clean page: it gets no row of its own and is
+    // listed as unread, so History cannot show it as a completed clean scan.
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        (sql as string).includes("INSERT INTO scan_history"),
+      ),
+    ).toBe(false);
+    expect(resultMeta.crawl.pagesScanned).toBe(0);
+    expect(resultMeta.crawl.pages).toEqual([]);
+    expect(resultMeta.crawl.pagesUnreachable).toEqual([
+      { url: "https://example.com/", reason: "Blocked by a bot challenge" },
+      {
+        url: "https://example.com/about",
+        reason: "Blocked by a bot challenge",
+      },
+    ]);
   });
 
   it("records how many distinct checks ran, not the sum across pages", async () => {
@@ -814,6 +846,10 @@ describe("executeCrawlScan (authenticated)", () => {
     // not depend on any individual page being fetchable, so they are not
     // reported as incomplete just because a page was unreachable.
     expect(resultMeta.incomplete).toEqual(["osv-libraries"]);
+    // Nothing was read, so nothing is saved as a scan.
+    expect(childInsertTuples()).toEqual([]);
+    expect(resultMeta.crawl.pagesScanned).toBe(0);
+    expect(resultMeta.crawl.pagesUnreachable).toHaveLength(2);
   });
 });
 
@@ -882,5 +918,538 @@ describe("executeCrawlScan: notifications", () => {
       ([arg]) => (arg as { type: string }).type === "severity_alerts",
     );
     expect(alerts).toHaveLength(1);
+  });
+});
+
+// ── Partial crawls, unread pages and the cancel window ──────────────────────
+//
+// A crawl used to have exactly two outcomes: every page, or a watchdog failure
+// that threw the pages away. These cover the third, honest one (a partial
+// crawl that says so), and the places a finished-looking result was wrong:
+// pages that were never read shown as clean, page rows saved for a crawl that
+// was cancelled, and a quota stop that left the skipped count short.
+
+function pageUrls(count: number): string[] {
+  return Array.from(
+    { length: count },
+    (_unused, i) => `https://example.com/p${i}`,
+  );
+}
+
+/** result_meta of the tracker row's completing UPDATE for `scanId`. */
+function completedMeta(scanId: number) {
+  const call = mockQuery.mock.calls.find(
+    ([sql, params]) =>
+      (sql as string).includes("status = 'completed'") &&
+      (params as unknown[])[8] === scanId,
+  );
+  expect(call).toBeDefined();
+  return JSON.parse((call![1] as unknown[])[6] as string);
+}
+
+/** The failure UPDATE for `scanId`: params are [reason, scanId, kind]. */
+function failureUpdate(scanId: number) {
+  return mockQuery.mock.calls.find(
+    ([sql, params]) =>
+      (sql as string).includes("status = 'failed'") &&
+      (params as unknown[])[1] === scanId,
+  )?.[1] as [string, number, string] | undefined;
+}
+
+function wasInserted(): boolean {
+  return mockQuery.mock.calls.some(([sql]) =>
+    (sql as string).includes("INSERT INTO scan_history"),
+  );
+}
+
+describe("crawlSoftDeadlineMs", () => {
+  it("stops the page loop at about 85% of the budget, less a finalize margin", () => {
+    expect(crawlSoftDeadlineMs(900_000)).toBe(735_000);
+    expect(crawlSoftDeadlineMs(3_600_000)).toBe(3_030_000);
+  });
+
+  it("never falls below half the budget, so a short budget still scans something", () => {
+    expect(crawlSoftDeadlineMs(30_000)).toBe(15_000);
+    expect(crawlSoftDeadlineMs(60_000)).toBe(30_000);
+  });
+
+  it("always stops before the watchdog does", () => {
+    for (const budgetMs of [30_000, 120_000, 900_000, 21_600_000]) {
+      expect(crawlSoftDeadlineMs(budgetMs)).toBeLessThan(budgetMs);
+    }
+  });
+});
+
+describe("asyncOuterTimeoutMs", () => {
+  it("keeps the outer ceiling at least 2s past the branch timeout", () => {
+    // Configured below the branch timeout: the outer race would fire first
+    // and discard branches that had already finished.
+    expect(asyncOuterTimeoutMs(3_000, 12_000)).toBe(14_000);
+    expect(asyncOuterTimeoutMs(12_000, 12_000)).toBe(14_000);
+  });
+
+  it("leaves a ceiling that is already clear of the branch timeout alone", () => {
+    expect(asyncOuterTimeoutMs(15_000, 12_000)).toBe(15_000);
+  });
+});
+
+describe("executeCrawlScan: a crawl that runs out of time", () => {
+  /**
+   * Run a 9-page crawl whose first page to reach its checks moves the clock
+   * past the soft deadline (735s of the default 900s budget) but not past the
+   * watchdog, so the crawl is still alive to finalize.
+   */
+  async function runPastTheSoftDeadline(scanId: number) {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      mockRunSyncChecks.mockImplementationOnce(() => {
+        vi.setSystemTime(Date.now() + 800_000);
+        return { findings: [], checksRun: 1, checksSkipped: 0, deduped: 0 };
+      });
+      await executeCrawlScan(baseParams({ scanId, selectedUrls: pageUrls(9) }));
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it("stops taking pages at the soft deadline and completes with the pages it has", async () => {
+    await runPastTheSoftDeadline(70);
+
+    const meta = completedMeta(70);
+    expect(meta.crawl.pagesDiscovered).toBe(9);
+    // Three workers were already in flight when the deadline passed.
+    expect(meta.crawl.pagesScanned).toBeGreaterThan(0);
+    expect(meta.crawl.pagesScanned).toBeLessThanOrEqual(3);
+    expect(meta.crawl.pagesSkipped).toBe(9 - meta.crawl.pagesScanned);
+    expect(meta.incomplete).toContain("crawl-time-limit");
+    expect(meta.incomplete).not.toContain("crawl-quota-limit");
+    expect(failureUpdate(70)).toBeUndefined();
+  });
+
+  it("bills and saves only the pages that started", async () => {
+    await runPastTheSoftDeadline(71);
+
+    const { pagesScanned } = completedMeta(71).crawl;
+    expect(mockIncrementDailyCountCapped).toHaveBeenCalledTimes(pagesScanned);
+    expect(childInsertTuples()).toHaveLength(pagesScanned);
+  });
+
+  it("discounts the confidence of a crawl it cut short", async () => {
+    await runPastTheSoftDeadline(72);
+    await executeCrawlScan(baseParams({ scanId: 73 }));
+
+    expect(completedMeta(72).engineConfidence).toBeLessThan(
+      completedMeta(73).engineConfidence,
+    );
+  });
+
+  it("adds no time-limit marker when every page started before the deadline", async () => {
+    await executeCrawlScan(baseParams({ scanId: 74 }));
+    expect(completedMeta(74).incomplete).toBeUndefined();
+  });
+});
+
+describe("executeCrawlScan: pages that could not be read", () => {
+  it("lists a page it could not fetch under pagesUnreachable and saves no row for it", async () => {
+    mockSafeFetch.mockImplementation(async (url: string) => {
+      if (url.endsWith("/about")) {
+        throw Object.assign(new Error("connect failed"), {
+          code: "unreachable",
+        });
+      }
+      return new Response("<html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    });
+
+    await executeCrawlScan(baseParams({ scanId: 75 }));
+
+    const meta = completedMeta(75);
+    expect(childInsertTuples().map((t) => t[CHILD_URL])).toEqual([
+      "https://example.com/",
+    ]);
+    expect(meta.crawl.pages.map((p: { url: string }) => p.url)).toEqual([
+      "https://example.com/",
+    ]);
+    expect(meta.crawl.pagesDiscovered).toBe(2);
+    expect(meta.crawl.pagesScanned).toBe(1);
+    expect(meta.crawl.pagesSkipped).toBe(0);
+    expect(meta.crawl.pagesUnreachable).toEqual([
+      { url: "https://example.com/about", reason: "Could not connect" },
+    ]);
+    // The unread page still counts against coverage.
+    expect(meta.incomplete).toContain("osv-libraries");
+  });
+
+  it("writes an empty pagesUnreachable list when every page was read", async () => {
+    await executeCrawlScan(baseParams({ scanId: 76 }));
+    expect(completedMeta(76).crawl.pagesUnreachable).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a timeout",
+      Object.assign(new Error("x"), { code: "timeout" }),
+      "Did not answer in time",
+    ],
+    [
+      "a TLS failure",
+      Object.assign(new Error("x"), { code: "tls" }),
+      "TLS certificate or handshake failed",
+    ],
+    [
+      "an off-host redirect",
+      Object.assign(new Error("x"), { code: "cross_host_redirect" }),
+      "Redirected to another host",
+    ],
+    [
+      "a blocked address",
+      Object.assign(new Error("x"), { code: "blocked" }),
+      "Address not allowed",
+    ],
+    [
+      "a code on the cause",
+      new Error("x", { cause: { code: "unreachable" } }),
+      "Could not connect",
+    ],
+    [
+      "a fired timer",
+      new DOMException("timed out", "TimeoutError"),
+      "Did not answer in time",
+    ],
+    [
+      "an error with no code",
+      new Error("socket hang up"),
+      "Could not be fetched",
+    ],
+  ])("explains %s", async (_label, error, reason) => {
+    mockSafeFetch.mockRejectedValue(error);
+
+    await executeCrawlScan(
+      baseParams({ scanId: 77, selectedUrls: ["https://example.com/"] }),
+    );
+
+    expect(completedMeta(77).crawl.pagesUnreachable).toEqual([
+      { url: "https://example.com/", reason },
+    ]);
+  });
+
+  it("does not log an unreachable page as an error", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      mockSafeFetch.mockRejectedValue(
+        Object.assign(new Error("x"), { code: "unreachable" }),
+      );
+      await executeCrawlScan(baseParams({ scanId: 78 }));
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});
+
+describe("executeCrawlScan: the cancel window", () => {
+  it("inserts no page rows when the crawl is cancelled after the page loop", async () => {
+    const { requestCancel } = await import("@/lib/scanner/scan-jobs");
+    const defaultImpl = mockQuery.getMockImplementation()!;
+    // The team lookup is the last thing before the page-row INSERT, which is
+    // exactly the stretch where a cancel used to go unnoticed.
+    mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes("SELECT team_id FROM scan_history")) {
+        requestCancel(80);
+        return { rows: [{ team_id: null }], rowCount: 1 };
+      }
+      return defaultImpl(sql, params);
+    });
+
+    await executeCrawlScan(baseParams({ scanId: 80 }));
+
+    expect(wasInserted()).toBe(false);
+    expect(
+      mockQuery.mock.calls.some(
+        ([sql, params]) =>
+          (sql as string).includes("status = 'completed'") &&
+          (params as unknown[])[8] === 80,
+      ),
+    ).toBe(false);
+    expect(failureUpdate(80)).toEqual(["Cancelled", 80, "cancelled"]);
+  });
+
+  it("guards the page-row INSERT with the tracker's own status, inside the statement", async () => {
+    await executeCrawlScan(baseParams({ scanId: 81 }));
+
+    const call = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("INSERT INTO scan_history"),
+    );
+    // A row that went terminal without this process noticing (a stale sweep, a
+    // cancel on another instance) is only caught by the database. The real
+    // behaviour is proved in tests/integration/crawl-page-rows.test.ts.
+    expect(call![0]).toMatch(
+      /WHERE EXISTS \(\s*SELECT 1 FROM scan_history\s+WHERE id = \$1 AND status IN \('pending', 'running'\)\s*\)/,
+    );
+    expect((call![1] as unknown[])[0]).toBe(81);
+  });
+
+  it("records a cancel as cancelled and writes nothing to the error log", async () => {
+    const { requestCancel } = await import("@/lib/scanner/scan-jobs");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      mockRunSyncChecks.mockImplementationOnce(() => {
+        requestCancel(82);
+        return { findings: [], checksRun: 1, checksSkipped: 0, deduped: 0 };
+      });
+      await executeCrawlScan(
+        baseParams({ scanId: 82, selectedUrls: pageUrls(9) }),
+      );
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+    expect(failureUpdate(82)?.[2]).toBe("cancelled");
+  });
+
+  it("treats an error thrown by the cancel's own abort as a cancel, not a failure", async () => {
+    const { requestCancel } = await import("@/lib/scanner/scan-jobs");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      // What an in-flight fetch surfaces when the cancel aborts it.
+      mockCanMakeRequest.mockImplementation(async () => {
+        requestCancel(83);
+        throw new DOMException("This operation was aborted", "AbortError");
+      });
+      await executeCrawlScan(baseParams({ scanId: 83 }));
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+    expect(failureUpdate(83)).toEqual(["Cancelled", 83, "cancelled"]);
+  });
+});
+
+describe("executeCrawlScan: a crawl the quota cuts short", () => {
+  it("counts the pages a mid-crawl quota stop dropped, and says why", async () => {
+    // The third charge is refused, as when a concurrent crawl takes the last
+    // unit of the day between this crawl's up-front read and its charge.
+    let charges = 0;
+    mockIncrementDailyCountCapped.mockImplementation(async () => {
+      charges += 1;
+      return charges === 3
+        ? { recorded: false, count: 0 }
+        : { recorded: true, count: charges };
+    });
+    try {
+      await executeCrawlScan(
+        baseParams({ scanId: 84, selectedUrls: pageUrls(6) }),
+      );
+    } finally {
+      mockIncrementDailyCountCapped.mockImplementation(async () => ({
+        recorded: true,
+        count: 1,
+      }));
+    }
+
+    const meta = completedMeta(84);
+    expect(meta.crawl.pagesDiscovered).toBe(6);
+    // Two pages were read before the refusal; the page whose charge failed and
+    // the three behind it never ran. The skipped figure used to be computed
+    // from the list as first capped, which said 0 here.
+    expect(meta.crawl.pagesScanned).toBe(2);
+    expect(meta.crawl.pagesSkipped).toBe(4);
+    expect(meta.incomplete).toContain("crawl-quota-limit");
+    expect(meta.incomplete).not.toContain("crawl-time-limit");
+  });
+
+  it("marks a crawl the quota capped up front", async () => {
+    mockCanMakeRequest.mockResolvedValue({
+      allowed: true,
+      limit: 25,
+      used: 22,
+      remaining: 3,
+      resetsAt: "",
+    });
+
+    await executeCrawlScan(
+      baseParams({ scanId: 85, selectedUrls: pageUrls(6) }),
+    );
+
+    const meta = completedMeta(85);
+    expect(meta.crawl.pagesScanned).toBe(3);
+    expect(meta.crawl.pagesSkipped).toBe(3);
+    expect(meta.incomplete).toContain("crawl-quota-limit");
+  });
+
+  it("does not mark a crawl whose quota covered every page", async () => {
+    await executeCrawlScan(baseParams({ scanId: 86 }));
+    expect(completedMeta(86).incomplete).toBeUndefined();
+  });
+});
+
+describe("executeCrawlScan: failure kinds and logging", () => {
+  it("records a daily-limit refusal as quota_refused", async () => {
+    mockCanMakeRequest.mockResolvedValue({
+      allowed: false,
+      limit: 25,
+      used: 25,
+      remaining: 0,
+      resetsAt: "",
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await executeCrawlScan(baseParams({ scanId: 87 }));
+      // A refusal is an outcome the row records, not an error to investigate.
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    expect(failureUpdate(87)).toEqual([
+      expect.stringMatching(/Daily scan limit reached/),
+      87,
+      "quota_refused",
+    ]);
+  });
+
+  it("logs an unexpected failure once, with the scan id and the Error itself", async () => {
+    const boom = new Error("db down");
+    mockCanMakeRequest.mockRejectedValue(boom);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await executeCrawlScan(baseParams({ scanId: 88 }));
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      // Context before the error, and the error unwrapped, so the capture
+      // keeps a stack instead of a message-only row.
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[scan] crawl scan failed",
+        {
+          scanId: 88,
+          userId: 42,
+          source: "web",
+          url: "https://example.com/",
+        },
+        boom,
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    expect(failureUpdate(88)).toEqual(["db down", 88, "internal"]);
+  });
+
+  it("runs the whole crawl inside its scan's correlation context", async () => {
+    const seen: Array<number | null> = [];
+    mockRunSyncChecks.mockImplementation(() => {
+      seen.push(currentScanId());
+      return { findings: [], checksRun: 1, checksSkipped: 0, deduped: 0 };
+    });
+
+    await executeCrawlScan(baseParams({ scanId: 89 }));
+
+    expect(seen).toEqual([89, 89]);
+    expect(currentScanId()).toBeNull();
+  });
+});
+
+describe("executeCrawlScan: a result that arrives after the row went terminal", () => {
+  function refuseTheCompletion() {
+    const base = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes("status = 'completed'")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return base(sql, params);
+    });
+  }
+
+  const LATE_MESSAGE =
+    "[scan] crawl completed after the row was terminal; result discarded";
+
+  it("says so when the crawl ran past its budget", async () => {
+    refuseTheCompletion();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      mockRunSyncChecks.mockImplementationOnce(() => {
+        vi.setSystemTime(Date.now() + 1_000_000);
+        return { findings: [], checksRun: 1, checksSkipped: 0, deduped: 0 };
+      });
+      await executeCrawlScan(baseParams({ scanId: 90 }));
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const late = errorSpy.mock.calls.find((call) => call[0] === LATE_MESSAGE);
+    errorSpy.mockRestore();
+    expect(late).toBeDefined();
+    const ctx = late![1] as Record<string, number>;
+    expect(ctx).toMatchObject({ scanId: 90, userId: 42, budgetSeconds: 900 });
+    expect(ctx.lateByMs).toBeGreaterThan(0);
+  });
+
+  it("stays quiet when it lost to a cancel inside its budget", async () => {
+    refuseTheCompletion();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await executeCrawlScan(baseParams({ scanId: 91 }));
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("notifies nobody about a result nobody will see", async () => {
+    refuseTheCompletion();
+
+    await executeCrawlScan(baseParams({ scanId: 92 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockDeliverWebhook).not.toHaveBeenCalled();
+    expect(mockSendNotificationEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeCrawlScan: the async-checks ceiling", () => {
+  it("holds a page's async race open past the branch timeout, whatever the two settings say", async () => {
+    // Configured BELOW the 12s branch timeout: the outer race used to fire
+    // first and replace branches that had already finished with "not checked".
+    process.env.SCAN_ASYNC_CHECKS_TIMEOUT_MS = "1000";
+    invalidateSettingsCache();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      mockRunAsyncChecks.mockImplementation(
+        async (
+          _url: string,
+          _categories: unknown,
+          _onProgress: unknown,
+          _signal: unknown,
+          scope: string = "all",
+        ) =>
+          scope === "page"
+            ? new Promise(() => {})
+            : { findings: [], incomplete: [] },
+      );
+
+      const run = executeCrawlScan(
+        baseParams({ scanId: 93, selectedUrls: ["https://example.com/"] }),
+      );
+      await vi.advanceTimersByTimeAsync(13_999);
+      expect(
+        mockQuery.mock.calls.some(
+          ([sql, params]) =>
+            (sql as string).includes("status = 'completed'") &&
+            (params as unknown[])[8] === 93,
+        ),
+      ).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      await run;
+    } finally {
+      vi.useRealTimers();
+      delete process.env.SCAN_ASYNC_CHECKS_TIMEOUT_MS;
+      invalidateSettingsCache();
+    }
+
+    expect(completedMeta(93).incomplete).toEqual(["osv-libraries"]);
   });
 });
