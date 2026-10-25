@@ -31,6 +31,11 @@ import { getSettings } from "@/lib/config/runtime-config";
 import pool from "@/lib/database/db";
 import { getDailyLimit } from "@/lib/rate-limiting/daily-limits";
 import { recordAiTokens } from "@/lib/billing/ai-usage";
+import {
+  isMessageIndex,
+  isSessionId,
+  recordChatEvent,
+} from "@/lib/ai/chat/conversation";
 import { estimateTokens } from "@/lib/scanner/github-repo-scan";
 
 export const runtime = "nodejs";
@@ -318,7 +323,7 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { messages?: unknown };
+  let body: { messages?: unknown; sessionId?: unknown; messageIndex?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -537,6 +542,7 @@ export async function POST(req: Request) {
       };
       let chars = 0;
       let usageTokens: number | null = null;
+      let usage: { inputTokens?: number; outputTokens?: number } = {};
       let finishReason: string | undefined;
       let failure: unknown = null;
       const tools: string[] = [];
@@ -562,6 +568,10 @@ export async function POST(req: Request) {
                 ? (u.inputTokens ?? 0) + (u.outputTokens ?? 0)
                 : undefined);
             if (typeof total === "number" && total > 0) usageTokens = total;
+            usage = {
+              inputTokens: u?.inputTokens ?? undefined,
+              outputTokens: u?.outputTokens ?? undefined,
+            };
             break;
           }
           case "error":
@@ -585,7 +595,9 @@ export async function POST(req: Request) {
       }
 
       const clientGone = abort.signal.aborted;
+      let eventError: string | null = null;
       if (failure && !clientGone) {
+        eventError = errorDetail(failure);
         console.error(
           `[AI chat] stream ended abnormally for user ${userId} via ${host} (${modelId}) after ${chars} chars, tools [${tools.join(", ")}]: ${errorDetail(failure)}`,
         );
@@ -599,6 +611,7 @@ export async function POST(req: Request) {
       } else if (chars === 0 && !clientGone) {
         // A finished reply with no words: reasoning that never closed, a
         // length cut inside it, or a model that only ever called tools.
+        eventError = "empty reply";
         console.error(
           `[AI chat] empty reply for user ${userId} via ${host} (${modelId}), finish=${finishReason ?? "none"}, tools [${tools.join(", ")}]`,
         );
@@ -629,6 +642,27 @@ export async function POST(req: Request) {
           "[AI chat] Failed to record token usage (non-fatal):",
           err instanceof Error ? err.message : err,
         );
+      }
+      // The widget names the conversation and where this reply sits in it, so
+      // Admin > AI Chats can show, next to each reply, which model wrote it,
+      // what it looked up and how it ended. A request without them (an API
+      // caller) is simply not recorded.
+      if (isSessionId(body.sessionId) && isMessageIndex(body.messageIndex)) {
+        await recordChatEvent({
+          sessionId: body.sessionId,
+          userId,
+          messageIndex: body.messageIndex,
+          model: modelId,
+          provider: providerName,
+          usage: {
+            ...usage,
+            totalTokens: tokens,
+            estimated: usageTokens === null,
+          },
+          finishReason: clientGone ? "cancelled" : (finishReason ?? null),
+          toolCalls: tools,
+          error: eventError,
+        });
       }
       try {
         controller.close();

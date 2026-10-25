@@ -50,6 +50,12 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Replies used to come with a "View reasoning" section holding the model's private working-out, and some models wrote it straight into the answer. The server now removes all of it before a reply leaves, so you only ever see the answer, and conversations saved before this change are shown the same way. Vera still thinks before answering where the model supports it; that thinking just stays private.
 - [MessageSquare] **[IMPROVED]** **Vera Asks When It Does Not Understand**
   A message like "asdf" or "test" used to be matched against the documentation letter by letter, and the assistant would answer a question nobody asked: one reply explained a version manager that happens to be called asdf. It now says it did not catch what you need and offers a few things it can help with. It also answers general website security questions, such as which headers every site should send, which its own suggested questions were asking all along.
+- [Bug] **[FIXED]** **Large Pages No Longer Report eval() Their Text Mentions**
+  The scanner reads the first megabyte of a page. On a large page built with Next.js, the cut usually lands inside the block of page text the framework sends along with the HTML, and that half block was mistaken for the site's own code, so a page that merely mentioned eval() could be reported for running it. Our own check reference failed our own scan this way. A cut-off block of page text is now recognised for what it is, while any other cut-off script is still checked as code.
+- [MessageSquare] **[ADDED]** **Tell Vera Whether a Reply Helped**
+  Each of Vera's replies now has a thumbs up and a thumbs down. Pressing one again takes the vote back. Votes are visible only to the staff who review chats, next to the reply they are about, so an answer people keep marking unhelpful can be found and fixed. Your data export includes them.
+- [Search] **[ADDED]** **Staff Can Find Chats That Went Wrong**
+  The AI chats page in the admin panel now counts replies rated unhelpful and replies that failed over the last seven days, and either number filters the list to the conversations behind it. Opening a conversation shows, under each reply, which model wrote it, what it looked up first, roughly what it cost, how it ended and the reader's vote. A list that fails to load now says so instead of quietly showing the last page it had.
 - [Bug] **[FIXED]** **/finding Works Again**
   Typing /finding with a check id, for example /finding csp-missing, was meant to explain that check and how to fix it, but it never found any check: it searched a file whose headings were written differently from what it looked for. It now reads the check straight from the scanner's own definitions, fix steps and code examples included. /history now also reports a scan that failed or is still running as exactly that, instead of as a scan with no findings.
 - [Bug] **[FIXED]** **Vera No Longer Names Checks That Do Not Exist**
@@ -2618,6 +2624,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1001
+- **Total changes documented:** 1004
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

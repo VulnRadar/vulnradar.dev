@@ -12,10 +12,31 @@ export type ChatMessage = {
   contextCmd?: string;
   /** What Vera is looking up while the reply has no words yet. */
   activity?: string;
+  /** A reply's position in the saved transcript (persistableMessages), fixed
+   *  when it is sent, so a rating and the server's record of the reply both
+   *  name the same message. */
+  index?: number;
+  /** The reader's thumbs up (1) or down (-1) on this reply. */
+  rating?: 1 | -1;
   /** Set when the bubble holds a failure rather than a reply, so it can be
    *  rendered as one instead of passing for an answer. */
   failed?: boolean;
 };
+
+/**
+ * What is saved as the conversation: everything said, failures included
+ * (staff reading a transcript need to see them), but not the welcome line,
+ * /help output or knowledge an older build pasted in. /help is dropped as soon
+ * as the next message is sent, so keeping it would shift the position of every
+ * reply after it and a rating would land on the wrong message.
+ */
+export function persistableMessages(
+  messages: ChatMessage[],
+): { role: "user" | "assistant"; content: string }[] {
+  return messages
+    .filter((m) => m.id !== "welcome" && !m.contextCmd && m.content.trim())
+    .map((m) => ({ role: m.role, content: m.content }));
+}
 
 /**
  * The exact array of messages sent to /api/v3/ai/chat: what the reader typed

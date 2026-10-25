@@ -50,6 +50,16 @@ vi.mock("@/lib/billing/ai-usage", () => ({
   recordAiTokens: (...args: unknown[]) => mockRecordAiTokens(...args),
 }));
 
+const mockRecordChatEvent = vi.fn();
+vi.mock("@/lib/ai/chat/conversation", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/ai/chat/conversation")>();
+  return {
+    ...actual,
+    recordChatEvent: (...args: unknown[]) => mockRecordChatEvent(...args),
+  };
+});
+
 const { POST } = await import("@/app/api/v3/ai/chat/route");
 
 const originalFetch = global.fetch;
@@ -182,6 +192,7 @@ beforeEach(() => {
     AI_CHAT_MAX_INPUT_LENGTH: 4000,
   });
   mockRecordAiTokens.mockReset();
+  mockRecordChatEvent.mockReset();
 
   process.env.AI_BASE_URL = "https://api.example-llm.test/v1";
   process.env.AI_API_KEY = "test-key";
@@ -566,5 +577,54 @@ describe("POST /api/v3/ai/chat: usage", () => {
     expect(userId).toBe(42);
     expect(tokens).toBeGreaterThan(0);
     expect(charge).toBe(false);
+  });
+});
+
+describe("POST /api/v3/ai/chat: the record of each reply", () => {
+  const sessionId = "0b8f5c1e-2a3d-4e5f-8a9b-0c1d2e3f4a5b";
+
+  it("records which model answered and what it looked up", async () => {
+    fetchMock
+      .mockResolvedValueOnce(toolCallReply("get_check", { id: "hsts-missing" }))
+      .mockResolvedValueOnce(textReply("Add the header."));
+    const res = await POST(
+      postRequest({
+        messages: [{ role: "user", content: "what is hsts-missing?" }],
+        sessionId,
+        messageIndex: 1,
+      }),
+    );
+    await res.text();
+    expect(mockRecordChatEvent).toHaveBeenCalledTimes(1);
+    expect(mockRecordChatEvent.mock.calls[0][0]).toMatchObject({
+      sessionId,
+      userId: 42,
+      messageIndex: 1,
+      model: "test-model",
+      toolCalls: ["get_check"],
+      error: null,
+    });
+  });
+
+  it("records an empty reply as a failure", async () => {
+    fetchMock.mockResolvedValue(textReply("<think>never closed"));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await (
+      await POST(
+        postRequest({
+          messages: [{ role: "user", content: "hi" }],
+          sessionId,
+          messageIndex: 1,
+        }),
+      )
+    ).text();
+    expect(mockRecordChatEvent.mock.calls[0][0].error).toBe("empty reply");
+    errors.mockRestore();
+  });
+
+  it("records nothing for a caller that names no conversation", async () => {
+    fetchMock.mockResolvedValue(textReply("ok"));
+    await (await ask("hi")).text();
+    expect(mockRecordChatEvent).not.toHaveBeenCalled();
   });
 });

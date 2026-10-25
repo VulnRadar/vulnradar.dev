@@ -10,6 +10,8 @@ import {
   Search,
   RefreshCw,
   ArrowUpRight,
+  ThumbsDown,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +43,7 @@ import {
 import { formatRelativeTime } from "@/components/admin/utils";
 import { API } from "@/lib/config/client-constants";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 type Conversation = {
   id: number;
@@ -50,9 +53,16 @@ type Conversation = {
   userEmail: string | null;
   userAvatarUrl: string | null;
   messageCount: number;
+  /** Replies the reader rated unhelpful. */
+  downVotes: number;
+  /** Replies that failed or came back empty (ai_chat_events.error). */
+  errors: number;
   createdAt: string;
   lastMessageAt: string;
 };
+
+/** Server-side: these narrow the whole table, not the loaded page. */
+type QualityFilter = "all" | "unhelpful" | "errored";
 
 type IdentityFilter = "all" | "signed-in" | "guest";
 type SortColumn = "messages" | "activity";
@@ -77,33 +87,68 @@ export function AIChatsManager() {
   const [identityFilter, setIdentityFilter] = useState<IdentityFilter>("all");
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const [quality, setQuality] = useState<QualityFilter>("all");
+  const [signals, setSignals] = useState({
+    unhelpfulLast7Days: 0,
+    errorsLast7Days: 0,
+  });
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const fetchConversations = useCallback(async (p: number, limit: number) => {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `${API.AI_CONVERSATIONS}?page=${p}&limit=${limit}`,
-      );
-      if (!res.ok) return;
-      const data = (await res.json()) as {
-        conversations: Conversation[];
-        total: number;
-        page: number;
-        limit: number;
-      };
-      setConversations(data.conversations);
-      setTotal(data.total);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetchConversations = useCallback(
+    async (p: number, limit: number, q: QualityFilter) => {
+      setLoading(true);
+      try {
+        const filter =
+          q === "unhelpful"
+            ? "&rating=down"
+            : q === "errored"
+              ? "&errored=1"
+              : "";
+        const res = await fetch(
+          `${API.AI_CONVERSATIONS}?page=${p}&limit=${limit}${filter}`,
+        );
+        // A failed load used to leave the previous page on screen with no
+        // word that it was stale, which read as "no new conversations".
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          setLoadError(
+            body?.error ?? `Conversations did not load (HTTP ${res.status}).`,
+          );
+          return;
+        }
+        const data = (await res.json()) as {
+          conversations: Conversation[];
+          total: number;
+          page: number;
+          limit: number;
+          signals?: { unhelpfulLast7Days: number; errorsLast7Days: number };
+        };
+        setConversations(data.conversations);
+        setTotal(data.total);
+        if (data.signals) setSignals(data.signals);
+        setLoadError(null);
+      } catch {
+        setLoadError(
+          "Conversations did not load. Check the connection and refresh.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/page-change: fetchConversations' setState calls only fire after its async request resolves, not synchronously in this effect
-    fetchConversations(page, pageSize);
-  }, [page, pageSize, fetchConversations]);
+    fetchConversations(page, pageSize, quality);
+  }, [page, pageSize, quality, fetchConversations]);
+
+  const chooseQuality = (next: QualityFilter) => {
+    setPage(1);
+    setQuality((current) => (current === next ? "all" : next));
+  };
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -204,9 +249,30 @@ export function AIChatsManager() {
               icon: MessageCircle,
               tone: "orange",
             },
+            // Whole-table signals, and the two filters a moderator actually
+            // needs: which answers people said were wrong, and which replies
+            // failed. Both filter on the server, unlike the page-scoped ones.
+            {
+              label: "Rated unhelpful (7 days)",
+              value: signals.unhelpfulLast7Days,
+              icon: ThumbsDown,
+              tone: "severity-medium",
+              onClick: () => chooseQuality("unhelpful"),
+              active: quality === "unhelpful",
+            },
+            {
+              label: "Failed replies (7 days)",
+              value: signals.errorsLast7Days,
+              icon: AlertTriangle,
+              tone: "destructive",
+              onClick: () => chooseQuality("errored"),
+              active: quality === "errored",
+            },
           ]}
         />
       )}
+
+      {loadError && <InlineAlert tone="error">{loadError}</InlineAlert>}
 
       <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
         <AdminPanelHeader
@@ -238,7 +304,7 @@ export function AIChatsManager() {
               variant="outline"
               size="sm"
               className="h-9 px-3 gap-2 border-border/40 shrink-0"
-              onClick={() => fetchConversations(page, pageSize)}
+              onClick={() => fetchConversations(page, pageSize, quality)}
               aria-label="Refresh conversations"
             >
               <RefreshCw
@@ -258,6 +324,16 @@ export function AIChatsManager() {
             <SkeletonRegion label="Loading conversations">
               <DataTableSkeleton rows={6} />
             </SkeletonRegion>
+          ) : conversations.length === 0 && quality !== "all" ? (
+            <EmptyState
+              icon={Search}
+              title="Nothing matches this filter"
+              description={
+                quality === "unhelpful"
+                  ? "No stored conversation has a reply rated unhelpful."
+                  : "No stored conversation has a failed reply."
+              }
+            />
           ) : conversations.length === 0 ? (
             <EmptyState
               icon={MessageCircle}
@@ -369,9 +445,26 @@ export function AIChatsManager() {
                             </div>
                           </TableCell>
                           <TableCell className="px-4 py-3 text-right">
-                            <span className="text-sm font-medium tabular-nums text-foreground">
-                              {conv.messageCount}
-                            </span>
+                            <div className="flex items-center justify-end gap-2">
+                              {conv.downVotes > 0 && (
+                                <StatusPill tone="warn" icon={ThumbsDown}>
+                                  {conv.downVotes}
+                                  <span className="sr-only">
+                                    {" "}
+                                    rated unhelpful
+                                  </span>
+                                </StatusPill>
+                              )}
+                              {conv.errors > 0 && (
+                                <StatusPill tone="crit" icon={AlertTriangle}>
+                                  {conv.errors}
+                                  <span className="sr-only"> failed</span>
+                                </StatusPill>
+                              )}
+                              <span className="text-sm font-medium tabular-nums text-foreground">
+                                {conv.messageCount}
+                              </span>
+                            </div>
                           </TableCell>
                           <TableCell className="px-4 py-3 text-sm tabular-nums text-muted-foreground whitespace-nowrap">
                             {formatRelativeTime(new Date(conv.lastMessageAt))}

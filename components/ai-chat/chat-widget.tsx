@@ -21,6 +21,8 @@ import {
   Lock,
   AlertCircle,
   ArrowUpRight,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -42,6 +44,7 @@ import { CONFIG_LOGO_URL } from "@/lib/config/config-values";
 import { visibleText } from "@/lib/ai/think-parser";
 import {
   buildAiMessages,
+  persistableMessages,
   type ChatMessage,
 } from "@/components/ai-chat/chat-history";
 // message-content.tsx is the one renderer the widget and the admin
@@ -249,16 +252,69 @@ function saveHistory(sessionId: string, messages: ChatMessage[]) {
 }
 
 function persistConversation(sessionId: string, messages: ChatMessage[]) {
-  const payload = messages
-    .filter((m) => m.id !== "welcome" && m.content.trim())
-    .filter((m) => !m.contextCmd || m.contextCmd === "help")
-    .map((m) => ({ role: m.role, content: m.content }));
+  const payload = persistableMessages(messages);
   if (payload.length === 0) return;
   fetch(API.AI_CONVERSATIONS, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId, messages: payload }),
   }).catch(() => {});
+}
+
+/**
+ * Thumbs up or down under a finished reply. Pressing the active one again
+ * takes the vote back. Shown only when signed in: a rating belongs to an
+ * account, the same way the conversation it rates does.
+ */
+function ReplyFeedback({
+  rating,
+  onRate,
+}: {
+  rating?: 1 | -1;
+  onRate: (rating: 1 | -1 | 0) => void;
+}) {
+  const button =
+    "relative inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-muted after:absolute after:-inset-2 sm:after:hidden";
+  return (
+    <div
+      role="group"
+      aria-label="Was this reply helpful?"
+      className="mt-1 flex items-center gap-1"
+    >
+      <button
+        type="button"
+        aria-pressed={rating === 1}
+        aria-label="Helpful"
+        title="Helpful"
+        onClick={() => onRate(rating === 1 ? 0 : 1)}
+        className={cn(
+          button,
+          focus.ring,
+          rating === 1
+            ? "text-primary"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <ThumbsUp className="h-3 w-3" />
+      </button>
+      <button
+        type="button"
+        aria-pressed={rating === -1}
+        aria-label="Not helpful"
+        title="Not helpful"
+        onClick={() => onRate(rating === -1 ? 0 : -1)}
+        className={cn(
+          button,
+          focus.ring,
+          rating === -1
+            ? "text-foreground"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <ThumbsDown className="h-3 w-3" />
+      </button>
+    </div>
+  );
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -1054,13 +1110,18 @@ export function ChatWidget() {
   async function streamToMessage(
     aiMessages: { role: string; content: string }[],
     aiMsgId: string,
+    messageIndex: number,
   ): Promise<void> {
     const controller = new AbortController();
     streamAbortRef.current = controller;
     const res = await fetch(API.AI_CHAT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: aiMessages }),
+      body: JSON.stringify({
+        messages: aiMessages,
+        sessionId,
+        messageIndex,
+      }),
       signal: controller.signal,
     });
 
@@ -1152,6 +1213,25 @@ export function ChatWidget() {
     });
   }
 
+  async function rateReply(m: ChatMessage, rating: 1 | -1 | 0) {
+    if (m.index === undefined) return;
+    const previous = m.rating;
+    updateMessage(m.id, (x) => ({
+      ...x,
+      rating: rating === 0 ? undefined : rating,
+    }));
+    try {
+      const res = await fetch(API.AI_FEEDBACK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, messageIndex: m.index, rating }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      updateMessage(m.id, (x) => ({ ...x, rating: previous }));
+    }
+  }
+
   /** /help is the one command the widget answers itself: it is a list of what
    *  can be typed, and the model has nothing to add to it. */
   function showHelp(): void {
@@ -1220,17 +1300,24 @@ export function ChatWidget() {
       content: trimmed,
     };
     const aiMsgId = uid();
+    // Where the reply will sit in the saved transcript: right after the
+    // question, counting only what persistableMessages keeps.
+    const replyIndex = persistableMessages([...messages, userMsg]).length;
 
     setMessages((prev) => [
       ...prev.filter((m) => m.contextCmd !== "help"),
       userMsg,
-      { id: aiMsgId, role: "assistant", content: "" },
+      { id: aiMsgId, role: "assistant", content: "", index: replyIndex },
     ]);
     setIsStreaming(true);
     setStreamingMsgId(aiMsgId);
 
     try {
-      await streamToMessage(buildAiMessages([...messages, userMsg]), aiMsgId);
+      await streamToMessage(
+        buildAiMessages([...messages, userMsg]),
+        aiMsgId,
+        replyIndex,
+      );
     } catch (err) {
       if ((err as { name?: string })?.name === "AbortError") return;
       updateMessage(aiMsgId, (m) => ({
@@ -1553,6 +1640,17 @@ export function ChatWidget() {
                             />
                           );
                         })()}
+                        {isLoggedIn &&
+                          m.role === "assistant" &&
+                          m.index !== undefined &&
+                          !m.failed &&
+                          m.content.trim() !== "" &&
+                          m.id !== streamingMsgId && (
+                            <ReplyFeedback
+                              rating={m.rating}
+                              onRate={(r) => void rateReply(m, r)}
+                            />
+                          )}
                         {m.id === "welcome" && messages.length === 1 && (
                           <ConversationStarters
                             onSelect={(p) => sendMessage(p)}

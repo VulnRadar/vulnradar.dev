@@ -185,6 +185,37 @@ export async function GET(req: NextRequest) {
         err,
       );
     }
+    // How each reply came about (model, what it looked up, how it ended) and
+    // what the reader thought of it, keyed by the reply's position in
+    // `messages`, so the viewer can put both beside the reply itself.
+    const [feedbackRes, eventsRes] = await Promise.all([
+      pool.query<{
+        message_index: number;
+        rating: number;
+        comment: string | null;
+      }>(
+        `SELECT message_index, rating, comment FROM ai_message_feedback
+          WHERE conversation_id = $1 ORDER BY message_index`,
+        [row.id],
+      ),
+      pool.query<{
+        message_index: number;
+        model: string | null;
+        provider: string | null;
+        usage: unknown;
+        finish_reason: string | null;
+        tool_calls: unknown;
+        error: string | null;
+        created_at: string;
+      }>(
+        `SELECT message_index, model, provider, usage, finish_reason,
+                tool_calls, error, created_at
+           FROM ai_chat_events
+          WHERE conversation_id = $1
+          ORDER BY message_index, created_at`,
+        [row.id],
+      ),
+    ]);
     return NextResponse.json({
       id: row.id,
       sessionId: row.session_id,
@@ -195,6 +226,21 @@ export async function GET(req: NextRequest) {
       messages: row.messages,
       createdAt: row.created_at,
       lastMessageAt: row.last_message_at,
+      feedback: (feedbackRes?.rows ?? []).map((f) => ({
+        messageIndex: f.message_index,
+        rating: f.rating,
+        comment: f.comment,
+      })),
+      events: (eventsRes?.rows ?? []).map((e) => ({
+        messageIndex: e.message_index,
+        model: e.model,
+        provider: e.provider,
+        usage: e.usage,
+        finishReason: e.finish_reason,
+        toolCalls: Array.isArray(e.tool_calls) ? e.tool_calls : [],
+        error: e.error,
+        createdAt: e.created_at,
+      })),
     });
   }
 
@@ -211,14 +257,30 @@ export async function GET(req: NextRequest) {
     params.push(parseInt(userIdFilter, 10));
     conditions.push(`c.user_id = $${params.length}`);
   }
+  // The two questions a moderator brings to this list: which answers did
+  // people say were wrong, and which replies failed.
+  if (searchParams.get("rating") === "down") {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM ai_message_feedback f WHERE f.conversation_id = c.id AND f.rating = -1)`,
+    );
+  }
+  if (searchParams.get("errored") === "1") {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM ai_chat_events e WHERE e.conversation_id = c.id AND e.error IS NOT NULL)`,
+    );
+  }
 
   const where =
     conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const [listResult, countResult] = await Promise.all([
+  const [listResult, countResult, signalResult] = await Promise.all([
     pool.query(
       `SELECT c.id, c.session_id, c.user_id, c.created_at, c.last_message_at,
               jsonb_array_length(c.messages) AS message_count,
+              (SELECT COUNT(*) FROM ai_message_feedback f
+                 WHERE f.conversation_id = c.id AND f.rating = -1)::int AS down_votes,
+              (SELECT COUNT(*) FROM ai_chat_events e
+                 WHERE e.conversation_id = c.id AND e.error IS NOT NULL)::int AS errors,
               u.name AS user_name, u.email AS user_email, u.avatar_url AS user_avatar_url
        FROM ai_conversations c
        LEFT JOIN users u ON u.id = c.user_id
@@ -228,6 +290,13 @@ export async function GET(req: NextRequest) {
       [...params, limit, offset],
     ),
     pool.query(`SELECT COUNT(*) FROM ai_conversations c ${where}`, params),
+    pool.query<{ unhelpful_7d: number; errors_7d: number }>(
+      `SELECT
+         (SELECT COUNT(*) FROM ai_message_feedback
+           WHERE rating = -1 AND created_at > NOW() - INTERVAL '7 days')::int AS unhelpful_7d,
+         (SELECT COUNT(*) FROM ai_chat_events
+           WHERE error IS NOT NULL AND created_at > NOW() - INTERVAL '7 days')::int AS errors_7d`,
+    ),
   ]);
 
   return NextResponse.json({
@@ -239,10 +308,16 @@ export async function GET(req: NextRequest) {
       userEmail: r.user_email as string | null,
       userAvatarUrl: r.user_avatar_url as string | null,
       messageCount: parseInt(r.message_count as string, 10),
+      downVotes: Number(r.down_votes ?? 0),
+      errors: Number(r.errors ?? 0),
       createdAt: r.created_at as string,
       lastMessageAt: r.last_message_at as string,
     })),
     total: parseInt((countResult.rows[0] as { count: string }).count, 10),
+    signals: {
+      unhelpfulLast7Days: signalResult.rows[0]?.unhelpful_7d ?? 0,
+      errorsLast7Days: signalResult.rows[0]?.errors_7d ?? 0,
+    },
     page,
     limit,
   });

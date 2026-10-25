@@ -1,9 +1,17 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { MessageCircle, ShieldOff, User, UserX } from "lucide-react";
+import {
+  AlertTriangle,
+  MessageCircle,
+  ShieldOff,
+  ThumbsDown,
+  ThumbsUp,
+  User,
+  UserX,
+} from "lucide-react";
 import { AppPageShell } from "@/components/shared/app-page-shell";
-import { EmptyState, UserAvatar } from "@/components/admin/shared";
+import { EmptyState, StatusPill, UserAvatar } from "@/components/admin/shared";
 import { formatTimestamp } from "@/components/admin/utils";
 import { MessageContent } from "@/components/ai-chat/message-content";
 import {
@@ -19,6 +27,22 @@ interface PageProps {
 
 type ConversationMessage = { role: "user" | "assistant"; content: string };
 
+type ReplyFeedback = {
+  messageIndex: number;
+  rating: number;
+  comment: string | null;
+};
+
+type ReplyEvent = {
+  messageIndex: number;
+  model: string | null;
+  provider: string | null;
+  usage: { totalTokens?: number; estimated?: boolean } | null;
+  finishReason: string | null;
+  toolCalls: string[];
+  error: string | null;
+};
+
 type ConversationDetail = {
   id: number;
   sessionId: string;
@@ -29,7 +53,60 @@ type ConversationDetail = {
   messages: ConversationMessage[];
   createdAt: string;
   lastMessageAt: string;
+  feedback?: ReplyFeedback[];
+  events?: ReplyEvent[];
 };
+
+/**
+ * What the transcript cannot say on its own: which model wrote a reply, what
+ * it looked up first, how it ended, and whether the reader found it useful.
+ * Only replies the current widget sent carry an event; older ones show none.
+ */
+function ReplyMeta({
+  event,
+  feedback,
+}: {
+  event?: ReplyEvent;
+  feedback?: ReplyFeedback;
+}) {
+  if (!event && !feedback) return null;
+  const tokens = event?.usage?.totalTokens;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+      {feedback && (
+        <StatusPill
+          tone={feedback.rating > 0 ? "ok" : "warn"}
+          icon={feedback.rating > 0 ? ThumbsUp : ThumbsDown}
+        >
+          {feedback.rating > 0 ? "Helpful" : "Not helpful"}
+        </StatusPill>
+      )}
+      {event?.error && (
+        <StatusPill tone="crit" icon={AlertTriangle}>
+          {event.error}
+        </StatusPill>
+      )}
+      {event?.model && <span className="font-mono">{event.model}</span>}
+      {event && event.toolCalls.length > 0 && (
+        <span>Looked up: {event.toolCalls.join(", ")}</span>
+      )}
+      {typeof tokens === "number" && (
+        <span className="tabular-nums">
+          {tokens.toLocaleString("en-US")} tokens
+          {event?.usage?.estimated ? " (estimated)" : ""}
+        </span>
+      )}
+      {event?.finishReason && event.finishReason !== "stop" && !event.error && (
+        <span>Ended: {event.finishReason}</span>
+      )}
+      {feedback?.comment && (
+        <span className="basis-full text-foreground">
+          &ldquo;{feedback.comment}&rdquo;
+        </span>
+      )}
+    </div>
+  );
+}
 
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const isUser = message.role === "user";
@@ -198,7 +275,19 @@ export default function AdminConversationPage({ params }: PageProps) {
               </p>
             ) : (
               detail.messages.map((message, i) => (
-                <MessageBubble key={i} message={message} />
+                <div key={i}>
+                  <MessageBubble message={message} />
+                  {message.role === "assistant" && (
+                    <ReplyMeta
+                      event={detail.events
+                        ?.filter((e) => e.messageIndex === i)
+                        .at(-1)}
+                      feedback={detail.feedback?.find(
+                        (f) => f.messageIndex === i,
+                      )}
+                    />
+                  )}
+                </div>
               ))
             )}
           </div>

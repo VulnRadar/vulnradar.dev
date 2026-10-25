@@ -125,3 +125,80 @@ describeIntegration("ai_conversations upsert ownership", () => {
     expect((await read(id))?.user_id).toBe(owner.id);
   });
 });
+
+describeIntegration("chat events and reply feedback", () => {
+  afterEach(async () => {
+    if (created.length === 0) return;
+    await pool.query(
+      `DELETE FROM ai_conversations WHERE session_id = ANY($1::uuid[])`,
+      [created.splice(0)],
+    );
+  });
+
+  it("records an event on the reader's conversation, creating the row first", async () => {
+    const { recordChatEvent } = await import("@/lib/ai/chat/conversation");
+    const user = await createUser();
+    const id = session();
+
+    await recordChatEvent({
+      sessionId: id,
+      userId: user.id,
+      messageIndex: 1,
+      model: "test-model",
+      provider: "Custom LLM",
+      usage: { totalTokens: 120, estimated: false },
+      finishReason: "stop",
+      toolCalls: ["get_check"],
+      error: null,
+    });
+
+    const { rows } = await pool.query(
+      `SELECT e.message_index, e.tool_calls, c.user_id
+         FROM ai_chat_events e
+         JOIN ai_conversations c ON c.id = e.conversation_id
+        WHERE c.session_id = $1`,
+      [id],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].user_id).toBe(user.id);
+    expect(rows[0].tool_calls).toEqual(["get_check"]);
+  });
+
+  it("never writes an event onto another account's conversation", async () => {
+    const { conversationIdFor } = await import("@/lib/ai/chat/conversation");
+    const owner = await createUser();
+    const other = await createUser();
+    const id = session();
+
+    await upsert(id, owner.id, "mine");
+    expect(await conversationIdFor(id, other.id)).toBeNull();
+    expect(await conversationIdFor(id, owner.id)).not.toBeNull();
+  });
+
+  it("keeps one vote per reader per reply, and a second vote replaces it", async () => {
+    const owner = await createUser();
+    const id = session();
+    const { rows } = await upsert(id, owner.id, "q");
+    const conversationId = rows[0].id as number;
+    const vote = (rating: number) =>
+      pool.query(
+        `INSERT INTO ai_message_feedback
+           (conversation_id, message_index, user_id, rating, comment)
+         VALUES ($1, 1, $2, $3, NULL)
+         ON CONFLICT (conversation_id, message_index, user_id) DO UPDATE
+           SET rating = EXCLUDED.rating,
+               comment = COALESCE(EXCLUDED.comment, ai_message_feedback.comment),
+               created_at = NOW()`,
+        [conversationId, owner.id, rating],
+      );
+
+    await vote(1);
+    await vote(-1);
+
+    const after = await pool.query(
+      `SELECT rating FROM ai_message_feedback WHERE conversation_id = $1`,
+      [conversationId],
+    );
+    expect(after.rows).toEqual([{ rating: -1 }]);
+  });
+});

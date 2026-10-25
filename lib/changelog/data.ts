@@ -309,6 +309,24 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Bug,
+        label: "Large Pages No Longer Report eval() Their Text Mentions",
+        desc: "The scanner reads the first megabyte of a page. On a large page built with Next.js, the cut usually lands inside the block of page text the framework sends along with the HTML, and that half block was mistaken for the site's own code, so a page that merely mentioned eval() could be reported for running it. Our own check reference failed our own scan this way. A cut-off block of page text is now recognised for what it is, while any other cut-off script is still checked as code.",
+        category: "fixed",
+      },
+      {
+        icon: MessageSquare,
+        label: "Tell Vera Whether a Reply Helped",
+        desc: "Each of Vera's replies now has a thumbs up and a thumbs down. Pressing one again takes the vote back. Votes are visible only to the staff who review chats, next to the reply they are about, so an answer people keep marking unhelpful can be found and fixed. Your data export includes them.",
+        category: "added",
+      },
+      {
+        icon: Search,
+        label: "Staff Can Find Chats That Went Wrong",
+        desc: "The AI chats page in the admin panel now counts replies rated unhelpful and replies that failed over the last seven days, and either number filters the list to the conversations behind it. Opening a conversation shows, under each reply, which model wrote it, what it looked up first, roughly what it cost, how it ended and the reader's vote. A list that fails to load now says so instead of quietly showing the last page it had.",
+        category: "added",
+      },
+      {
+        icon: Bug,
         label: "/finding Works Again",
         desc: "Typing /finding with a check id, for example /finding csp-missing, was meant to explain that check and how to fix it, but it never found any check: it searched a file whose headings were written differently from what it looked for. It now reads the check straight from the scanner's own definitions, fix steps and code examples included. /history now also reports a scan that failed or is still running as exactly that, instead of as a scan with no findings.",
         category: "fixed",

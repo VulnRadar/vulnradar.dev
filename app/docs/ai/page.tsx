@@ -236,7 +236,13 @@ export default function AiDocsPage() {
               method: "GET",
               endpoint: "/ai/conversations",
               auth: "Staff",
-              what: "Admin list and read of stored conversations, for support and abuse review.",
+              what: "List and read stored conversations, for staff who moderate content. Reading one is recorded in the audit log.",
+            },
+            {
+              method: "POST",
+              endpoint: "/ai/feedback",
+              auth: "Session",
+              what: "Rate one of Vera's replies helpful or not (rating 1 or -1, or 0 to take it back), on a conversation you own.",
             },
             {
               method: "GET",
