@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { useIsomorphicLayoutEffect } from "@/lib/ui/use-isomorphic-layout-effect";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,9 +12,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useConfirm } from "@/components/shared/use-confirm";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { useToast } from "@/components/ui/use-toast";
-import { IssueDetail } from "@/components/scanner/issue-detail";
 import { ScanResultDetail } from "@/components/scanner/scan-result-detail";
-import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
 import {
   PaginationControl,
   usePagination,
@@ -71,6 +70,40 @@ const FINDING_QUERY_PARAM = "finding";
 import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { EmptyState } from "@/components/shared/empty-state";
+
+// Both render only once a scan (or a finding in it) is open, and the default
+// view of this page is the list. They were static imports, so IssueDetail
+// (1,300+ lines) and SubdomainDiscovery sat in the chunk of everyone who only
+// browses their history. components/scanner/dashboard-results.tsx already
+// splits IssueDetail the same way.
+//
+// `loading` is not optional. next/dynamic only gives the chunk its own
+// Suspense boundary when it is passed one; without it the chunk suspends the
+// nearest ancestor instead, which here is this route's loading.tsx, and opening
+// a finding would replay the whole route skeleton over a page that had already
+// loaded. IssueDetail takes the detail skeleton's place because it REPLACES the
+// scan detail; the subdomain panel is one collapsed row at the end of it.
+const IssueDetail = dynamic(
+  () =>
+    import("@/components/scanner/issue-detail").then((m) => ({
+      default: m.IssueDetail,
+    })),
+  { loading: () => <HistoryDetailSkeleton /> },
+);
+const SubdomainDiscovery = dynamic(
+  () =>
+    import("@/components/scanner/subdomain-discovery").then((m) => ({
+      default: m.SubdomainDiscovery,
+    })),
+  {
+    loading: () => (
+      <div
+        aria-hidden
+        className="h-[46px] w-full animate-pulse rounded-xl border border-border bg-card"
+      />
+    ),
+  },
+);
 
 export default function HistoryPage() {
   const router = useRouter();

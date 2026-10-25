@@ -154,11 +154,8 @@ export function ScanTags({
                 disabled={pending}
                 aria-label={`Dismiss auto tag ${t.tag}: not accurate for this scan`}
                 title="Tell us this tag is wrong for this scan"
-                className="relative ml-0.5 after:absolute after:-inset-2 hover:text-destructive disabled:opacity-50"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeTag(t.tag);
-                }}
+                className="relative z-10 ml-0.5 after:absolute after:-inset-2 hover:text-destructive disabled:opacity-50"
+                onClick={() => removeTag(t.tag)}
               >
                 <X className="h-2.5 w-2.5" aria-hidden />
               </button>
@@ -176,11 +173,8 @@ export function ScanTags({
                 type="button"
                 disabled={pending}
                 aria-label={`Remove tag ${t.tag}`}
-                className="relative ml-0.5 after:absolute after:-inset-2 hover:text-destructive disabled:opacity-50"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeTag(t.tag);
-                }}
+                className="relative z-10 ml-0.5 after:absolute after:-inset-2 hover:text-destructive disabled:opacity-50"
+                onClick={() => removeTag(t.tag)}
               >
                 <X className="h-2.5 w-2.5" aria-hidden />
               </button>
@@ -190,13 +184,10 @@ export function ScanTags({
       )}
 
       {readOnly ? null : adding ? (
-        // Only keeps a click in the tag editor from also reaching the row
-        // it sits in. The input inside is the control.
-        // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-        <span
-          className="inline-flex flex-col items-start gap-1"
-          onClick={(e) => e.stopPropagation()}
-        >
+        // relative z-10, like the buttons here: on the history list the row's
+        // URL button stretches an overlay over the whole row, and the input
+        // has to sit above it to be clickable at all.
+        <span className="relative z-10 inline-flex flex-col items-start gap-1">
           <span className="inline-flex items-center gap-1">
             <input
               type="text"
@@ -247,7 +238,7 @@ export function ScanTags({
             // a11y (target size): min-h-6 lifts the 18px-tall chip the
             // comment below already measured up to the 24px floor without
             // changing the type size or the dashed-chip look.
-            "inline-flex min-h-6 items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors",
+            "relative z-10 inline-flex min-h-6 items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors",
             // opacity-0 hides the button but leaves it clickable, and a
             // phone never hovers, so an invisible ~24x18px target sat
             // directly under every history row's URL and ate the tap that
@@ -257,8 +248,7 @@ export function ScanTags({
             revealOnHover &&
               "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto",
           )}
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             setAdding(true);
             setNewTag("");
             setError(null);

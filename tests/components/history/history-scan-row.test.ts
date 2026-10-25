@@ -81,6 +81,71 @@ describe("scanRowState", () => {
     );
   });
 
+  describe("a completed scan that did not look at everything", () => {
+    // result_meta.incomplete names an area that never ran. The list endpoints
+    // project it as a boolean (lib/history/list-row.ts), and it is the same
+    // refusal ScanSummary makes on the detail page: nothing found is not
+    // "clean" when part of the host was never read.
+    it("is partly checked, never clean, when nothing was found", () => {
+      expect(
+        scanRowState({
+          status: "completed",
+          findings_count: 0,
+          incomplete: true,
+        }),
+      ).toBe("partial");
+    });
+
+    it("is still clean when nothing was found and nothing was missed", () => {
+      expect(
+        scanRowState({
+          status: "completed",
+          findings_count: 0,
+          incomplete: false,
+        }),
+      ).toBe("clean");
+      // The flag is absent on the read-only surfaces that select their own
+      // columns, and absent means the scan is what it says it is.
+      expect(scanRowState({ status: "completed", findings_count: 0 })).toBe(
+        "clean",
+      );
+    });
+
+    it("keeps the severity counts when something was found", () => {
+      // The counts are the triage signal. Replacing them with a caveat would
+      // hide a critical behind the word "partial", so only the would-be
+      // "clean" is replaced.
+      expect(
+        scanRowState({
+          status: "completed",
+          findings_count: 3,
+          incomplete: true,
+        }),
+      ).toBe("findings");
+    });
+
+    it("does not let the flag outrank a scan that never finished", () => {
+      expect(
+        scanRowState({ status: "failed", findings_count: 0, incomplete: true }),
+      ).toBe("unfinished");
+      expect(
+        scanRowState({
+          status: "pending",
+          findings_count: 0,
+          incomplete: true,
+        }),
+      ).toBe("running");
+      expect(
+        scanRowState({
+          status: "failed",
+          error_message: "Cancelled",
+          findings_count: 0,
+          incomplete: true,
+        }),
+      ).toBe("cancelled");
+    });
+  });
+
   it("treats an unrecognised status as completed rather than as a non-result", () => {
     // A status this client does not know is not evidence the scan died, and
     // failing the other way would blank out every row on a schema change.

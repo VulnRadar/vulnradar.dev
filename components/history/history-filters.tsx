@@ -6,7 +6,8 @@ import { tourAnchor } from "@/lib/tour/anchors";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -21,6 +22,8 @@ import {
   SORT_LABELS,
   type HistoryQuery,
 } from "@/components/history/history-filter-utils";
+
+const ALL_TAGS_LABEL = "All tags";
 
 interface HistoryFiltersProps {
   query: HistoryQuery;
@@ -77,25 +80,35 @@ export function HistoryFilters({
           {allTags.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
+                {/* Same recipe as FilterDropdown: the name is the hidden
+                    "what" plus the visible value, never an aria-label that
+                    replaces the value. */}
                 <Button
                   variant="outline"
                   size="sm"
-                  aria-label="Filter scan history by tag"
                   className={filterTriggerClass(!!query.tag)}
                 >
                   <Filter aria-hidden className="h-4 w-4" />
-                  <span>{query.tag || "All tags"}</span>
+                  <span className="sr-only">Filter scan history by tag: </span>
+                  <span>{query.tag || ALL_TAGS_LABEL}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onChange({ tag: null })}>
-                  All tags
-                </DropdownMenuItem>
-                {allTags.map((tag) => (
-                  <DropdownMenuItem key={tag} onClick={() => onChange({ tag })}>
-                    {tag}
-                  </DropdownMenuItem>
-                ))}
+                {/* "" stands for no tag: a real tag is never empty, so it
+                    cannot collide with one. */}
+                <DropdownMenuRadioGroup
+                  value={query.tag ?? ""}
+                  onValueChange={(tag) => onChange({ tag: tag || null })}
+                >
+                  <DropdownMenuRadioItem value="">
+                    {ALL_TAGS_LABEL}
+                  </DropdownMenuRadioItem>
+                  {allTags.map((tag) => (
+                    <DropdownMenuRadioItem key={tag} value={tag}>
+                      {tag}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           )}

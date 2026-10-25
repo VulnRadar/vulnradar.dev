@@ -46,6 +46,13 @@ export interface ScanRecord {
   scanned_at: string;
   source?: string;
   tags?: ScanTag[];
+  /**
+   * The scan finished but did not look at everything: result_meta.incomplete
+   * names at least one area that never ran. The list endpoints project it as a
+   * boolean so the row never needs result_meta itself. Absent on the read-only
+   * surfaces that select their own columns, and treated as false there.
+   */
+  incomplete?: boolean;
 }
 
 /**
@@ -64,14 +71,24 @@ export interface ScanRecord {
  * gets the warning hue rather than the success hue. A missing status is
  * "completed", which is what every pre-status row and every read-only surface
  * that reuses ScanRecord is.
+ *
+ * "partial" is the same rule one step later: the scan completed and found
+ * nothing, but `incomplete` says an area never ran (a timed-out TLS branch, a
+ * bot challenge, a page that could not be fetched). That is the false all-clear
+ * ScanSummary already refuses on the detail page, so the list says "Partly
+ * checked" instead of "Clean". It only replaces "clean": a partial scan that
+ * DID find something stays "findings", because its severity counts are the
+ * triage signal and hiding them behind a caveat would cost more than the
+ * caveat buys. The detail view names the missed areas next to that list.
  */
 export type ScanRowState =
-  "clean" | "findings" | "running" | "unfinished" | "cancelled";
+  "clean" | "findings" | "running" | "unfinished" | "cancelled" | "partial";
 
 export function scanRowState(scan: {
   status?: string;
   error_message?: string | null;
   findings_count: number;
+  incomplete?: boolean;
 }): ScanRowState {
   const status = scan.status ?? "completed";
   // A scan somebody stopped is not a scan that broke, and neither is a clean
@@ -82,8 +99,21 @@ export function scanRowState(scan: {
       : "unfinished";
   }
   if (status === "pending" || status === "running") return "running";
-  return scan.findings_count === 0 ? "clean" : "findings";
+  if (scan.findings_count === 0) return scan.incomplete ? "partial" : "clean";
+  return "findings";
 }
+
+/** What a row says in place of a verdict when it has no clean result to claim. */
+export const SCAN_ROW_STATE_LABEL = {
+  running: "Running",
+  cancelled: "Cancelled",
+  unfinished: "Did not finish",
+  partial: "Partly checked",
+} as const;
+
+/** Why "Partly checked", for the hover title: the row has no room for it. */
+export const PARTIAL_SCAN_HINT =
+  "Part of this host was never checked, so nothing found does not mean nothing is there. Open the scan to see which areas.";
 
 // Canonical relative-time formatter (see lib/ui/relative-time.ts).
 export { formatRelativeTime } from "@/lib/ui/relative-time";

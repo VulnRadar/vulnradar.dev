@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/ui/utils";
@@ -134,8 +135,10 @@ export function FilterDropdown<T extends string>({
   onChange,
 }: {
   icon: LucideIcon;
-  /** Accessible name, e.g. "Filter repositories by scan status". The trigger
-   *  shows only the selected option, which does not say what it selects. */
+  /** What it filters, e.g. "Filter repositories by scan status". The trigger
+   *  shows only the selected option, which does not say what it selects, so
+   *  this is rendered visually hidden ahead of that option and the pair is the
+   *  accessible name. */
   label: string;
   value: T;
   labels: Record<T, string>;
@@ -147,22 +150,36 @@ export function FilterDropdown<T extends string>({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
+        {/* No aria-label: it REPLACED the content, so the button was named
+            "Filter scan history by severity" and the selected option, the one
+            thing a screen-reader user needs, was nowhere in the name (SC 4.1.2),
+            and a voice user saying the visible text ("click Last 7 days")
+            matched nothing (SC 2.5.3). The visually hidden prefix keeps the
+            what-it-filters half in the name and the visible value is part of
+            it: "Filter scan history by date: Last 7 days". */}
         <Button
           variant="outline"
           size="sm"
-          aria-label={label}
           className={filterTriggerClass(active)}
         >
           <Icon aria-hidden className="h-4 w-4" />
+          <span className="sr-only">{label}: </span>
           <span>{labels[value]}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {keys.map((key) => (
-          <DropdownMenuItem key={key} onClick={() => onChange(key)}>
-            {labels[key]}
-          </DropdownMenuItem>
-        ))}
+        {/* A radio group, so the open menu marks the current option too
+            instead of listing it like every other. */}
+        <DropdownMenuRadioGroup
+          value={value}
+          onValueChange={(next) => onChange(next as T)}
+        >
+          {keys.map((key) => (
+            <DropdownMenuRadioItem key={key} value={key}>
+              {labels[key]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

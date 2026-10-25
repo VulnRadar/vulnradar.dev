@@ -34,6 +34,8 @@ import {
   displayUrl,
   isRecentScan,
   scanRowState,
+  SCAN_ROW_STATE_LABEL,
+  PARTIAL_SCAN_HINT,
   type TagMutationResult,
 } from "./history-types";
 
@@ -69,11 +71,17 @@ export function HistoryScanRow({
   const isClean = state === "clean";
   const isRunning = state === "running";
   const isCancelled = state === "cancelled";
-  const isUnfinished = state === "unfinished" || isCancelled;
-  const unfinishedLabel = isCancelled ? "Cancelled" : "Did not finish";
-  // Both non-result states borrow ScanSummary's partial-verdict hue rather
-  // than inventing a third palette: an incomplete scan is a warning, not a
-  // severity.
+  const isPartial = state === "partial";
+  const isUnfinished = state === "unfinished" || isCancelled || isPartial;
+  const unfinishedLabel = isCancelled
+    ? SCAN_ROW_STATE_LABEL.cancelled
+    : isPartial
+      ? SCAN_ROW_STATE_LABEL.partial
+      : SCAN_ROW_STATE_LABEL.unfinished;
+  // Every non-result state borrows ScanSummary's partial-verdict hue rather
+  // than inventing another palette: an incomplete scan is a warning, not a
+  // severity. "Partly checked" is one of them because the scan finished with
+  // nothing found but never looked at part of the host, which is not "Clean".
   const inconclusive = isRunning || isUnfinished;
   const summary = scan.summary || {};
   const critical = summary.critical || 0;
@@ -119,21 +127,20 @@ export function HistoryScanRow({
   // rather than compositing, so the pointed-at row still reads as pointed at.
   const isLoud = state === "findings" && (critical > 0 || high > 0);
 
+  // The row is a plain container, not role="button". It used to be one, with
+  // the tag chips' remove buttons, the add-tag input and the actions menu
+  // nested inside it, and a button's children are presentational: a screen
+  // reader read each row as one long button named after all of its contents,
+  // and depending on the AT the controls inside were flattened away. Now the
+  // URL is the button, its ::after stretches over the whole row so a click
+  // anywhere still opens the scan, and everything else is a SIBLING that
+  // lifts itself above that overlay with z-10 (`isolate` keeps those z-10s
+  // inside this row instead of competing with the page's own layers).
   return (
     <div
-      role="button"
-      tabIndex={0}
       {...tourAnchor("historyRow")}
-      onClick={() => onView(scan)}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onView(scan);
-        }
-      }}
       className={cn(
-        "group relative flex cursor-pointer flex-col gap-3 border-l-2 border-transparent py-3.5 pl-4 pr-16 sm:pr-4 transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid sm:grid-cols-[auto_1fr_auto_auto_auto_auto] sm:items-center sm:gap-4",
+        "group relative isolate flex flex-col gap-3 border-l-2 border-transparent py-3.5 pl-4 pr-16 sm:pr-4 transition-colors hover:bg-muted/30 focus-within:bg-muted/30 sm:grid sm:grid-cols-[auto_1fr_auto_auto_auto_auto] sm:items-center sm:gap-4",
         isLoud && tone.panel,
       )}
       style={{
@@ -174,7 +181,18 @@ export function HistoryScanRow({
 
         {/* URL + Tags */}
         <div className="flex flex-col gap-1 min-w-0 flex-1">
-          <div className="flex items-center gap-2 min-w-0">
+          {/* The one control that opens the scan. Its name is the URL, which
+              is what a sighted user clicks and what "label in name" asks the
+              accessible name to contain. The overlay is the button's own
+              ::after, anchored to the row (nothing between them is
+              positioned), so the focus ring is drawn on the pseudo-element
+              and spans the row the way the old row-level ring did. The
+              pointer cursor is explicit because buttons are cursor:default. */}
+          <button
+            type="button"
+            onClick={() => onView(scan)}
+            className="flex w-full min-w-0 cursor-pointer items-center gap-2 text-left outline-hidden after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring"
+          >
             <span className="shrink-0 truncate font-mono text-sm font-medium text-foreground max-w-[55%]">
               {domain}
             </span>
@@ -183,12 +201,13 @@ export function HistoryScanRow({
                 · {path}
               </span>
             )}
-          </div>
+          </button>
           <span className="text-[11px] text-muted-foreground truncate font-mono sm:hidden">
             {fullDisplay}
           </span>
 
-          {/* Tags row */}
+          {/* Tags row. A sibling of the button above, not a child: its own
+              buttons and input lift themselves over the overlay. */}
           <ScanTags
             scanId={scan.id}
             tags={scan.tags ?? []}
@@ -212,13 +231,16 @@ export function HistoryScanRow({
       {/* Severity pills - desktop */}
       <div className="hidden sm:flex items-center justify-center gap-1 w-40">
         {inconclusive ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--warning))]">
+          <span
+            title={isPartial ? PARTIAL_SCAN_HINT : undefined}
+            className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--warning))]"
+          >
             {isUnfinished ? (
               <ShieldAlert className="h-3 w-3" />
             ) : (
               <Loader2 className="h-3 w-3 animate-spin" />
             )}
-            {isUnfinished ? unfinishedLabel : "Running"}
+            {isUnfinished ? unfinishedLabel : SCAN_ROW_STATE_LABEL.running}
           </span>
         ) : isClean ? (
           <span className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--success))]">
@@ -275,10 +297,12 @@ export function HistoryScanRow({
           every width and only hiding it behind hover from sm up, which is
           what components/shares/shares-row.tsx already does. On mobile it
           sits in its own absolutely-positioned corner so it does not disturb
-          the stacked layout. */}
-      <div className="absolute right-3 top-3 flex items-center justify-end sm:static sm:w-12 sm:shrink-0">
+          the stacked layout. z-10 lifts it over the URL button's overlay; it
+          is a sibling of that button, so no click on it can also open the
+          scan and nothing here needs stopPropagation. */}
+      <div className="absolute right-3 top-3 z-10 flex items-center justify-end sm:static sm:w-12 sm:shrink-0">
         <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+          <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="sm"
@@ -289,19 +313,13 @@ export function HistoryScanRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                onView(scan);
-              }}
-            >
+            <DropdownMenuItem onClick={() => onView(scan)}>
               <ChevronRight className="h-3.5 w-3.5 mr-2" />
               View details
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={rescanning}
-              onClick={(e) => {
-                e.stopPropagation();
+              onClick={() => {
                 if (rescanning) return;
                 onRescan(scan);
               }}
@@ -311,12 +329,7 @@ export function HistoryScanRow({
               />
               {rescanning ? "Rescanning..." : "Rescan"}
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(scan.url, "_blank");
-              }}
-            >
+            <DropdownMenuItem onClick={() => window.open(scan.url, "_blank")}>
               <ExternalLink className="h-3.5 w-3.5 mr-2" />
               Open URL
             </DropdownMenuItem>
@@ -341,13 +354,16 @@ export function HistoryScanRow({
           {formatRelativeTime(scan.scanned_at)}
         </span>
         {inconclusive ? (
-          <span className="flex items-center gap-1 font-medium text-[hsl(var(--warning))]">
+          <span
+            title={isPartial ? PARTIAL_SCAN_HINT : undefined}
+            className="flex items-center gap-1 font-medium text-[hsl(var(--warning))]"
+          >
             {isUnfinished ? (
               <ShieldAlert className="h-3 w-3" />
             ) : (
               <Loader2 className="h-3 w-3 animate-spin" />
             )}
-            {isUnfinished ? unfinishedLabel : "Running"}
+            {isUnfinished ? unfinishedLabel : SCAN_ROW_STATE_LABEL.running}
           </span>
         ) : isClean ? (
           <span className="flex items-center gap-1 text-[hsl(var(--success))]">
