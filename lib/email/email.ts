@@ -938,49 +938,6 @@ export function staffInviteEmail(
   };
 }
 
-export function landingContactEmail(input: { email: string; message: string }) {
-  const email = escapeHtml(input.email);
-  const replyTo = mailtoAddress(input.email);
-  const message = escapeHtml(input.message).replace(/\n/g, "<br />");
-
-  return {
-    preheader: firstLine(input.message),
-    subject: `[Landing] ${input.email}`,
-    text: `New inquiry from the ${APP_NAME} landing page.\n\nEmail: ${input.email}\n\nMessage:\n${input.message}`,
-    html: `
-      ${emailHeading("New landing page inquiry")}
-      ${emailLead(`Someone reached out through the ${APP_NAME} landing page.`)}
-      ${emailDetailPanel([
-        {
-          label: "From",
-          value: replyTo ? emailLink(`mailto:${replyTo}`, email) : email,
-        },
-      ])}
-      ${emailQuote("Message", emailProse(message))}
-      ${replyTo ? emailButton(`mailto:${replyTo}`, "Reply") : ""}
-    `,
-  };
-}
-
-export function landingContactConfirmationEmail(message: string) {
-  const escapedMessage = escapeHtml(message).replace(/\n/g, "<br />");
-
-  return {
-    preheader:
-      "We reply within 24 hours. Your message is quoted below for your records.",
-    subject: "We got your message",
-    text: `Thanks for reaching out. We'll get back to you within 24 hours.\n\nHere's what you sent, for your records:\n${message}\n\nWhile you wait, you can read the docs at ${APP_URL}/docs or start scanning by creating an account at ${APP_URL}/signup.`,
-    html: `
-      ${emailHeading("We got your message")}
-      ${emailLead("Thanks for reaching out. We'll get back to you within 24 hours. Here's what you sent, for your records:")}
-      ${emailParagraph(escapedMessage)}
-      ${emailNote(
-        `While you wait, read the ${emailLink(`${APP_URL}/docs`, "docs")} or start scanning by ${emailLink(`${APP_URL}/signup`, "creating an account")}.`,
-      )}
-    `,
-  };
-}
-
 export function profileNameChangedEmail(
   oldName: string,
   newName: string,
@@ -1604,12 +1561,6 @@ function sentenceCase(value: string): string {
 /** Ends a sentence, without doubling a full stop the value already carries. */
 function sentence(value: string): string {
   return /[.!?]$/.test(value) ? value : `${value}.`;
-}
-
-/** The opening line of a free-text message, for an inbox preview. */
-function firstLine(message: string): string {
-  const line = message.trim().split("\n")[0].trim();
-  return line.length > 110 ? `${line.slice(0, 107)}...` : line;
 }
 
 /**

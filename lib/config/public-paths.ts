@@ -225,13 +225,12 @@ export const PUBLIC_PATHS = [
   API.DEMO_SCAN,
 
   // ─── Public API Endpoints ──────────────────────────────────────
-  API.LANDING_CONTACT,
   // The /contact page was listed above but its API was not, so a logged-out
   // visitor's POST from components/contact/contact-form.tsx was 307'd to
   // /login. A 307 preserves the method, so the browser re-POSTed to the
   // /login page route, got a 405, and the form reported a generic failure.
   // The route authenticates nobody by design: it rate-limits on the client
-  // IP and gates on Turnstile, exactly like LANDING_CONTACT beside it.
+  // IP and gates on Turnstile.
   // /contact is the responsible-disclosure channel named in security.txt,
   // so a researcher's report was landing nowhere.
   API.CONTACT,

@@ -1451,9 +1451,8 @@ describe("mailtoAddress", () => {
     expect(mailtoAddress("ada@localhost")).toBeNull();
   });
 
-  it("is what the contact emails link, and an unsafe address is not linked", async () => {
-    const { contactEmail, landingContactEmail } =
-      await import("@/lib/email/email");
+  it("is what the contact email links, and an unsafe address is not linked", async () => {
+    const { contactEmail } = await import("@/lib/email/email");
     const hostile = "ada@example.com?bcc=eve@example.org";
     const contact = contactEmail({
       name: "Ada",
@@ -1462,12 +1461,23 @@ describe("mailtoAddress", () => {
       message: "Hello",
       category: "general",
     });
-    const landing = landingContactEmail({ email: hostile, message: "Hello" });
-    for (const html of [contact.html, landing.html]) {
-      expect(html).not.toContain("mailto:ada@example.com?bcc");
-      expect(html).not.toContain("mailto:ada@example.com&amp;");
-    }
-    const ok = landingContactEmail({ email: "ada@example.com", message: "Hi" });
+    expect(contact.html).not.toContain("mailto:ada@example.com?bcc");
+    expect(contact.html).not.toContain("mailto:ada@example.com&amp;");
+    const ok = contactEmail({
+      name: "Ada",
+      email: "ada@example.com",
+      subject: "Hi",
+      message: "Hello",
+      category: "general",
+    });
     expect(ok.html).toContain('href="mailto:ada@example.com"');
+  });
+});
+
+describe("the retired landing-contact templates", () => {
+  it("are no longer exported, so nothing can mail an anonymous visitor's text back out", async () => {
+    const email = (await loadEmail()) as Record<string, unknown>;
+    expect(email.landingContactEmail).toBeUndefined();
+    expect(email.landingContactConfirmationEmail).toBeUndefined();
   });
 });

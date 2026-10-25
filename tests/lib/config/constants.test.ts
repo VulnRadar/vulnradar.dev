@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   ERROR_MESSAGES,
   PASSWORD_MIN_LENGTH,
@@ -124,7 +126,6 @@ describe("PUBLIC_PATHS tracks the API map", () => {
       API.AUTH.TWO_FA.VERIFY,
       API.DEMO_SCAN,
       API.CONTACT,
-      API.LANDING_CONTACT,
       API.FINDING_TYPES,
       // The language switcher. Anyone can change the language, signed in or
       // not: the route sets the cookie rendering reads for everybody and only
@@ -135,6 +136,19 @@ describe("PUBLIC_PATHS tracks the API map", () => {
     ]) {
       expect(PUBLIC_PATHS).toContain(route);
     }
+  });
+
+  it("does not allowlist the landing-contact relay it replaced with nothing", () => {
+    // /api/v3/landing-contact took an unauthenticated email and message and
+    // mailed a confirmation back to whatever address was typed, from the
+    // product's own domain. Nothing called it. The route is deleted; this
+    // keeps it, and its public-path entry, from quietly coming back.
+    expect(PUBLIC_PATHS.some((path) => path.includes("landing-contact"))).toBe(
+      false,
+    );
+    expect(
+      existsSync(join(process.cwd(), "app/api/v3/landing-contact/route.ts")),
+    ).toBe(false);
   });
 
   it("carries no entry with a fragment or query, which a pathname match can never hit", () => {

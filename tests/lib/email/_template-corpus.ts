@@ -417,19 +417,6 @@ export async function buildTemplateCorpus(
       ...e.contactConfirmationEmail({ name: "Dana", category: "Bug Report" }),
     },
     {
-      name: "landingContact",
-      ...e.landingContactEmail({
-        email: "dana@example.dev",
-        message: "Do you support scanning behind basic auth?",
-      }),
-    },
-    {
-      name: "landingContactConfirmation",
-      ...e.landingContactConfirmationEmail(
-        "Do you support scanning behind basic auth?",
-      ),
-    },
-    {
       name: "supportTicketReceived",
       ...e.supportTicketReceivedEmail({
         ticketId: 3182,
