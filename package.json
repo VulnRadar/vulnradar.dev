@@ -51,7 +51,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.63",
     "@ai-sdk/openai": "^4.0.75",
-    "@hookform/resolvers": "5.9.1",
+    "@hookform/resolvers": "6.0.0",
     "@neondatabase/serverless": "1.2.0",
     "@radix-ui/react-accordion": "1.2.21",
     "@radix-ui/react-alert-dialog": "1.1.24",
@@ -91,7 +91,7 @@
     "date-fns": "4.4.0",
     "embla-carousel-react": "8.6.0",
     "input-otp": "1.5.0",
-    "jose": "^6.2.12",
+    "jose": "^6.2.13",
     "jsonwebtoken": "9.0.3",
     "jspdf": "4.2.1",
     "jspdf-autotable": "5.0.8",
