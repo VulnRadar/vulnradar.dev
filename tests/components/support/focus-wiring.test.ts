@@ -131,6 +131,12 @@ describe("a support message", () => {
     expect(MESSAGE).not.toMatch(/\{canTranslate && \(\s*<div/);
   });
 
+  it("gives both of its buttons a 24px target without growing the row", () => {
+    // WCAG 2.5.8: the text is 11px, so the padding is on the control and pulled
+    // back with a negative margin.
+    expect(MESSAGE.match(/-my-1 inline-flex min-h-6/g)).toHaveLength(2);
+  });
+
   it("keeps the translate button after a failure, so focus is not dropped with it", () => {
     expect(MESSAGE).toContain("const canTranslate = Boolean(bodyLocale);");
     expect(MESSAGE).toContain('"Try again"');

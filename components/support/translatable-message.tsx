@@ -113,7 +113,7 @@ export function TranslatableMessage({
               type="button"
               onClick={() => setShowingOriginal((v) => !v)}
               className={cn(
-                "inline-flex items-center gap-1 rounded-sm underline underline-offset-2 hover:text-foreground",
+                "-my-1 inline-flex min-h-6 items-center gap-1 rounded-sm underline underline-offset-2 hover:text-foreground",
                 focus.ring,
               )}
             >
@@ -130,7 +130,7 @@ export function TranslatableMessage({
               onClick={translate}
               disabled={busy}
               className={cn(
-                "inline-flex items-center gap-1 rounded-sm underline underline-offset-2 hover:text-foreground disabled:opacity-60",
+                "-my-1 inline-flex min-h-6 items-center gap-1 rounded-sm underline underline-offset-2 hover:text-foreground disabled:opacity-60",
                 focus.ring,
               )}
             >

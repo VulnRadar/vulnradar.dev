@@ -175,7 +175,12 @@ export const GET = withErrorHandling(
       id: m.id,
       isStaff: m.is_staff,
       body: m.body,
-      bodyLocale: m.body_locale,
+      // Only a language this reader does not read. TranslatableMessage offers
+      // "Translate from <language>" whenever it is given one, so sending the
+      // reader's own language put that button on every message they could
+      // already read.
+      bodyLocale:
+        m.body_locale && m.body_locale !== viewerLocale ? m.body_locale : null,
       translation:
         m.body_locale && m.body_locale !== viewerLocale
           ? (m.translations?.[viewerLocale] ?? null)

@@ -842,3 +842,46 @@ describe("withErrorHandling", () => {
     }
   });
 });
+
+describe("GET /api/v3/support-tickets/[id] languages", () => {
+  /** The thread query's rows, then the viewer's saved locale. */
+  function threadOf(viewerLocale: string, messages: Record<string, unknown>[]) {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({
+        rows: messages.map((m, i) => ({
+          id: i + 1,
+          is_staff: false,
+          body: "text",
+          created_at: "x",
+          author_name: null,
+          translations: {},
+          ...m,
+        })),
+      })
+      .mockResolvedValueOnce({ rows: [{ locale: viewerLocale }] });
+  }
+
+  it("names a language only when the reader does not read it, so a message they can read gets no Translate button", async () => {
+    asUser(7, "user");
+    threadOf("en", [
+      { body_locale: "en" },
+      { body_locale: "de", translations: { en: "hello" } },
+      { body_locale: null },
+    ]);
+    const body = await (await GET(req("GET"), params)).json();
+    expect(body.messages[0].bodyLocale).toBeNull();
+    expect(body.messages[0].translation).toBeNull();
+    expect(body.messages[1].bodyLocale).toBe("de");
+    expect(body.messages[1].translation).toBe("hello");
+    expect(body.messages[2].bodyLocale).toBeNull();
+  });
+
+  it("judges each reader by their own locale", async () => {
+    asUser(99, "support");
+    threadOf("de", [{ body_locale: "de" }, { body_locale: "en" }]);
+    const body = await (await GET(req("GET"), params)).json();
+    expect(body.messages[0].bodyLocale).toBeNull();
+    expect(body.messages[1].bodyLocale).toBe("en");
+  });
+});
