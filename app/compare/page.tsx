@@ -35,6 +35,10 @@ import {
   type DiffResult,
   getDomain,
 } from "@/components/compare";
+import {
+  resolveCompareRegion,
+  resolveCompareUrlChange,
+} from "@/components/compare/compare-view";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
 
@@ -136,19 +140,36 @@ export default function ComparePage() {
     runCompare(selectedA, selectedB);
   }, [selectedA, selectedB, runCompare]);
 
+  // Whether the URL this page last read carried both a and b. A ref, not
+  // state: it is only ever compared against the next read, and a render would
+  // change nothing.
+  const pairInUrlRef = useRef(false);
+
   useEffect(() => {
     const syncFromUrl = () => {
       // getQueryParam, not getQueryParamInt: these are opaque hex ids and
       // parseInt turned them into a different scan or into null.
       const a = getQueryParam("a");
       const b = getQueryParam("b");
+      const change = resolveCompareUrlChange({
+        a,
+        b,
+        pairWasInUrl: pairInUrlRef.current,
+      });
+      pairInUrlRef.current = a !== null && b !== null;
       setSelectedA(a);
       setSelectedB(b);
-      if (a !== null && b !== null) {
-        runCompare(a, b);
-      } else {
-        setDiffResult(null);
+      if (change.run) {
+        runCompare(change.run.a, change.run.b);
+        return;
       }
+      if (change.clearResult) {
+        setDiffResult(null);
+        // The error belongs to the comparison the URL no longer names. Left
+        // behind it sat over a host picker it had nothing to do with.
+        setCompareError(null);
+      }
+      if (change.resetHost) setSelectedHost(null);
     };
     syncFromUrl();
     // Also catch Next.js soft navigations (clicking the Compare nav link while
@@ -260,8 +281,13 @@ export default function ComparePage() {
     ? (hostGroups.find((g) => g.host === selectedHost) ?? null)
     : null;
 
+  const region = resolveCompareRegion({
+    deepLinkPending,
+    hasDiff: diffResult !== null,
+    hasGroup: selectedGroup !== null,
+  });
+
   function handleSelectHost(host: string) {
-    setSelectedHost(host);
     setDiffResult(null);
     setCompareError(null);
     const group = hostGroups.find((g) => g.host === host);
@@ -282,6 +308,11 @@ export default function ComparePage() {
       setSelectedB(null);
       setQueryParams({ a: null, b: null });
     }
+    // After the URL write, never before it. That write re-enters syncFromUrl
+    // synchronously, and when a stale ?a=&b= pair is leaving the URL (a saved
+    // comparison that failed to load) it resets the host. Setting the host
+    // first would let that reset win and swallow the reader's pick.
+    setSelectedHost(host);
   }
 
   function handleChangeHost() {
@@ -355,9 +386,9 @@ export default function ComparePage() {
 
       {compareError && <InlineAlert tone="error">{compareError}</InlineAlert>}
 
-      {deepLinkPending && <CompareDataSkeleton />}
+      {region === "skeleton" && <CompareDataSkeleton />}
 
-      {!deepLinkPending && !diffResult && !selectedHost && (
+      {region === "hosts" && (
         <div {...tourAnchor("compareHosts")} className="flex flex-col gap-6">
           <ListSearchInput
             value={searchQuery}
@@ -377,7 +408,7 @@ export default function ComparePage() {
         </div>
       )}
 
-      {!deepLinkPending && !diffResult && selectedHost && selectedGroup && (
+      {region === "scans" && selectedGroup && (
         <div {...tourAnchor("comparePicker")} className="flex flex-col gap-6">
           <Button
             variant="outline"
@@ -393,7 +424,7 @@ export default function ComparePage() {
             {/* break-all: a hostname is one unbroken token, so a long one
                   (a deep subdomain on a long registrable domain) set this
                   block's min width and pushed the page sideways on a phone. */}
-            <h2 className="font-mono text-sm font-medium break-all">
+            <h2 className="font-mono text-base font-semibold tracking-tight text-foreground break-all">
               {selectedHost}
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
@@ -428,7 +459,7 @@ export default function ComparePage() {
         </div>
       )}
 
-      {!deepLinkPending && diffResult && (
+      {region === "diff" && diffResult && (
         <div {...tourAnchor("compareDiff")} className="flex flex-col gap-6">
           <div className="flex items-center justify-between gap-2">
             <Button
