@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildTemplateCorpus } from "./_template-corpus";
+import { APP_URL } from "@/lib/config/constants";
 
 /**
  * Tests for lib/email/email.ts.
@@ -81,6 +82,7 @@ const SMTP_KEYS = [
   "SMTP_USER",
   "SMTP_PASS",
   "SMTP_FROM",
+  "SMTP_EHLO_NAME",
 ];
 
 function resetEnv() {
@@ -165,23 +167,32 @@ describe("sendEmail without SMTP configured", () => {
         html: "<p>body</p>",
       }),
     ).resolves.toBeUndefined();
-    expect(warnSpy).toHaveBeenCalledWith(
-      "SMTP not configured. Email not sent:",
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(String(warnSpy.mock.calls[0][0])).toContain(
+      "SMTP is not configured",
     );
     expect(sendMailMock).not.toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 
-  it("logs only the character length of the body, never its content", async () => {
+  it("says so in one line that names neither the recipient nor the subject", async () => {
+    // The old block printed the address and the subject, under a comment
+    // promising metadata only. A subject can carry a name or an address, and
+    // the attempt is already recorded in Email Logs.
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { sendEmail } = await loadEmail();
     await sendEmail({
-      to: "user@example.com",
-      subject: "Hi",
+      to: "private.person@example.com",
+      subject: "Reset for private.person@example.com",
       text: "0123456789",
       html: "<p/>",
+      template: "passwordReset",
     });
-    expect(warnSpy).toHaveBeenCalledWith("  Length: 10 chars");
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const line = String(warnSpy.mock.calls[0][0]);
+    expect(line).toContain("passwordReset");
+    expect(line).not.toContain("private.person");
+    expect(line).not.toContain("@");
     warnSpy.mockRestore();
   });
 
@@ -199,6 +210,24 @@ describe("sendEmail without SMTP configured", () => {
       expect(call.join(" ")).not.toContain("super-secret-token");
     }
     warnSpy.mockRestore();
+  });
+
+  it("records the template on the row that stands in for the send", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { sendEmail } = await loadEmail();
+    await sendEmail({
+      to: "u@x.com",
+      subject: "s",
+      text: "t",
+      html: "<p/>",
+      template: "scanComplete",
+    });
+    expect(emailLogInserts).toHaveLength(1);
+    const params = emailLogInserts[0];
+    expect(params[2]).toBe("skipped_not_configured");
+    expect(params[6]).toBe("scanComplete");
+    // Nothing was attempted, so there is no From, relay or reply to record.
+    expect(params.slice(7)).toEqual([null, null, null, null, null, null, null]);
   });
 
   it("throws in production instead of silently no-op'ing", async () => {
@@ -300,7 +329,7 @@ describe("sendEmail with SMTP configured", () => {
   });
 
   describe("List-Unsubscribe (RFC 8058)", () => {
-    it("sets a one-click unsubscribe header when a token is given", async () => {
+    it("sets a one-click unsubscribe header scoped to the message's own category", async () => {
       configureSmtp();
       sendMailMock.mockResolvedValueOnce({ messageId: "1" });
       const { sendEmail } = await loadEmail();
@@ -311,6 +340,7 @@ describe("sendEmail with SMTP configured", () => {
         text: "digest",
         html: "<p>digest</p>",
         unsubscribeToken: "abc123",
+        unsubscribeColumn: "email_posture_digest",
       });
 
       const mailArgs = sendMailMock.mock.calls[0][0] as Record<string, unknown>;
@@ -318,12 +348,93 @@ describe("sendEmail with SMTP configured", () => {
       // Must be the API route, not the /unsubscribe page: RFC 8058 requires
       // the https URI in the header to accept the POST, and a Next page route
       // answers 405.
-      expect(headers["List-Unsubscribe"]).toContain(
-        "/api/v3/account/unsubscribe?token=abc123&action=unsubscribe_all",
+      expect(headers["List-Unsubscribe"]).toBe(
+        `<${APP_URL}/api/v3/account/unsubscribe?token=abc123&type=email_posture_digest>`,
       );
-      expect(headers["List-Unsubscribe"]).toContain("mailto:");
       expect(headers["List-Unsubscribe-Post"]).toBe(
         "List-Unsubscribe=One-Click",
+      );
+    });
+
+    it("never points the one-click link at 'unsubscribe from everything'", async () => {
+      // It did, and the route it pointed at switched off the sign-in,
+      // password and two-factor warnings along with the newsletter.
+      configureSmtp();
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({
+        to: "user@example.com",
+        subject: "Digest",
+        text: "digest",
+        html: "<p>digest</p>",
+        unsubscribeToken: "abc123",
+        unsubscribeColumn: "email_scan_complete",
+      });
+
+      const headers = (
+        sendMailMock.mock.calls[0][0] as { headers: Record<string, string> }
+      ).headers;
+      expect(headers["List-Unsubscribe"]).not.toContain("unsubscribe_all");
+    });
+
+    it("offers no mailto: target, because nothing reads that mailbox", async () => {
+      configureSmtp();
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({
+        to: "user@example.com",
+        subject: "Digest",
+        text: "digest",
+        html: "<p>digest</p>",
+        unsubscribeToken: "abc123",
+        unsubscribeColumn: "email_scan_complete",
+      });
+
+      const headers = (
+        sendMailMock.mock.calls[0][0] as { headers: Record<string, string> }
+      ).headers;
+      expect(headers["List-Unsubscribe"]).not.toContain("mailto:");
+    });
+
+    it("sets no header when the message names no category, but still shows the footer link", async () => {
+      // A token alone is the footer's "Manage email preferences" link. The
+      // one-click header needs to know WHICH preference it turns off.
+      configureSmtp();
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({
+        to: "user@example.com",
+        subject: "An administrator updated your account",
+        text: "t",
+        html: "<p/>",
+        unsubscribeToken: "abc123",
+      });
+
+      const mailArgs = sendMailMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(mailArgs.headers).toBeUndefined();
+      expect(mailArgs.html as string).toContain("/unsubscribe?token=abc123");
+    });
+
+    it("adds the preferences link to the plain-text part too, so the two parts match", async () => {
+      configureSmtp();
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({
+        to: "user@example.com",
+        subject: "Digest",
+        text: "digest body",
+        html: "<p>digest</p>",
+        unsubscribeToken: "abc123",
+        unsubscribeColumn: "email_posture_digest",
+      });
+
+      const mailArgs = sendMailMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(mailArgs.text).toBe(
+        `digest body\n\n--\nManage email preferences: ${APP_URL}/unsubscribe?token=abc123`,
       );
     });
 
@@ -638,7 +749,11 @@ describe("email_logs (AUDIT-010)", () => {
   it("never throws or breaks sendEmail even if the DB write itself fails", async () => {
     configureSmtp();
     sendMailMock.mockResolvedValueOnce(undefined);
+    // The first query is the From-address setting lookup. It used to be the
+    // one this rejection landed on, so the INSERT was never what failed.
+    mockDbQuery.mockImplementationOnce(async () => ({ rows: [] }));
     mockDbQuery.mockRejectedValueOnce(new Error("db unavailable"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const { sendEmail } = await loadEmail();
 
     await expect(
@@ -871,18 +986,114 @@ describe("high-stakes templates", () => {
 });
 
 describe("escapeHtml (via contactEmail)", () => {
-  it("escapes a malicious name/message instead of injecting raw HTML", async () => {
+  it("escapes a category label instead of injecting raw HTML", async () => {
     const email = await loadEmail();
     const result = email.contactEmail({
-      name: "<script>steal()</script>",
-      email: "attacker@example.com",
-      subject: "hi",
-      message: "line1\nline2",
-      category: "bug",
+      submissionId: 9,
+      category: "<script>steal()</script>",
     });
     expect(result.html).not.toContain("<script>steal()</script>");
     expect(result.html).toContain("&lt;script&gt;");
-    expect(result.html).toContain("line1<br />line2");
+  });
+});
+
+/**
+ * The contact form's two messages. The staff copy used to forward the
+ * submission (the sender's subject as ours, their message quoted, their
+ * address as Reply-To) from our own sender to our own mailbox, and the
+ * confirmation greeted whatever name was typed. Both went out through the
+ * relay's spam scoring as our mail. See the notes on contactEmail.
+ */
+describe("the contact form emails", () => {
+  it("makes the staff copy a pointer: an id, a category and a link, none of the submission", async () => {
+    const { contactEmail } = await loadEmail();
+    const mail = contactEmail({
+      submissionId: 128,
+      category: "Security Issue",
+    });
+
+    expect(mail.subject).toBe("New contact submission #128 (Security Issue)");
+    expect(mail.text).toContain("#128");
+    expect(mail.text).toContain("/admin?tab=support&view=contact");
+    // The href is escaped in the document, so check both parts for the link.
+    expect(mail.html).toContain("/admin?tab=support&amp;view=contact");
+    // Nothing a sender typed has anywhere to appear: the builder is not even
+    // given it, and it offers no Reply-To to pass on. The shape of the input
+    // is the guarantee.
+    expect((mail as Record<string, unknown>).replyTo).toBeUndefined();
+  });
+
+  it("confirms to the sender with no greeting and nothing they typed", async () => {
+    const { contactConfirmationEmail } = await loadEmail();
+    // It takes a category from our own fixed list and nothing else, which is
+    // what makes a name like "Claim your payout at example.tld/x" harmless.
+    const mail = contactConfirmationEmail({ category: "Bug Report" });
+
+    expect(mail.text).not.toMatch(/^Hi\b/);
+    expect(mail.html).not.toMatch(/Hi [A-Z]/);
+    expect(mail.text).toContain("bug report request");
+  });
+});
+
+describe("names printed to an address nobody has verified", () => {
+  const SPAM_NAME = "Claim your payout at example.tld/x";
+  const VERIFY_LINK = "https://vulnradar.dev/verify-email?token=abc";
+
+  it("greets a real name in the verification email", async () => {
+    const { emailVerificationEmail } = await loadEmail();
+    const mail = await emailVerificationEmail("Ada Lovelace", VERIFY_LINK);
+    expect(mail.text).toContain("Hi Ada Lovelace,");
+    expect(mail.html).toContain("Hi Ada Lovelace,");
+  });
+
+  it.each([
+    ["a link", SPAM_NAME],
+    ["an address", "call.me@evil.test"],
+    ["a scheme", "see https://evil.test now"],
+    ["a long run of digits", "Agent 5551234567"],
+    ["a phone number", "Call 1-800-555-0199"],
+  ])(
+    "leaves a name carrying %s out of the verification email",
+    async (_label, name) => {
+      const { emailVerificationEmail } = await loadEmail();
+      const mail = await emailVerificationEmail(name, VERIFY_LINK);
+      expect(mail.text).not.toContain(name);
+      expect(mail.html).not.toContain(name);
+      expect(mail.text).not.toMatch(/^Hi /);
+      // The mail still does its job: the link and the button are there.
+      expect(mail.text).toContain(VERIFY_LINK);
+      expect(mail.html).toContain("Verify email address");
+    },
+  );
+
+  it("does not print a team name or an inviter name that carries a link", async () => {
+    const { teamInviteEmail } = await loadEmail();
+    const mail = teamInviteEmail(
+      SPAM_NAME,
+      "https://vulnradar.dev/invite/abc",
+      "Visit evil.test for prizes",
+    );
+    for (const part of [mail.subject, mail.preheader, mail.text, mail.html]) {
+      expect(part).not.toContain("example.tld");
+      expect(part).not.toContain("evil.test");
+    }
+    expect(mail.subject).toBe("You were invited to a team on VulnRadar");
+    expect(mail.text).toContain("Someone invited you to join a team");
+    // The link the invitee needs is untouched.
+    expect(mail.text).toContain("https://vulnradar.dev/invite/abc");
+  });
+
+  it("still names a plain team and a plain inviter", async () => {
+    const { teamInviteEmail } = await loadEmail();
+    const mail = teamInviteEmail(
+      "Payments Platform",
+      "https://vulnradar.dev/invite/abc",
+      "Priya",
+    );
+    expect(mail.subject).toBe("Join Payments Platform on VulnRadar");
+    expect(mail.text).toContain(
+      'Priya invited you to join the team "Payments Platform"',
+    );
   });
 });
 
@@ -1379,30 +1590,6 @@ describe("billing + account transactional templates", () => {
   });
 });
 
-describe("stripHtmlTags", () => {
-  it("keeps the text of a message and drops its markup", async () => {
-    const { stripHtmlTags } = await loadEmail();
-    expect(
-      stripHtmlTags(
-        '<p>Hello <strong>there</strong>,</p><a href="/x">read more</a>',
-      ),
-    ).toBe("Hello there,read more");
-  });
-
-  it("keeps a lone angle bracket that opens no tag", async () => {
-    const { stripHtmlTags } = await loadEmail();
-    expect(stripHtmlTags("price < 10")).toBe("price < 10");
-  });
-
-  it("stays linear on a run of opening brackets with no closing one", async () => {
-    const { stripHtmlTags } = await loadEmail();
-    const input = "<".repeat(200_000) + "x";
-    const started = performance.now();
-    expect(stripHtmlTags(input)).toBe(input);
-    expect(performance.now() - started).toBeLessThan(200);
-  });
-});
-
 describe("maskedWebhookEndpoint", () => {
   it("keeps a webhook URL recognisable without printing its secret", async () => {
     const { maskedWebhookEndpoint } = await import("@/lib/email/email");
@@ -1437,40 +1624,280 @@ describe("maskedWebhookEndpoint", () => {
   });
 });
 
-describe("mailtoAddress", () => {
-  it("accepts a bare address and refuses anything a mailto reads as headers", async () => {
-    const { mailtoAddress } = await import("@/lib/email/email");
-    expect(mailtoAddress(" ada@example.com ")).toBe("ada@example.com");
-    expect(mailtoAddress("ada@example.com?bcc=eve@example.org")).toBeNull();
-    expect(mailtoAddress("ada@example.com&cc=eve@example.org")).toBeNull();
-    expect(
-      mailtoAddress("ada@example.com%0D%0ABcc:eve@example.org"),
-    ).toBeNull();
-    expect(mailtoAddress("ada example@example.com")).toBeNull();
-    expect(mailtoAddress("a@b@example.com")).toBeNull();
-    expect(mailtoAddress("ada@localhost")).toBeNull();
+/**
+ * The EHLO name. nodemailer introduces itself with os.hostname() and swaps a
+ * hostname with no dot for the literal [127.0.0.1], which is what a Docker
+ * container id is, so every message said it came from the loopback address.
+ */
+describe("the name the transport gives in EHLO", () => {
+  it("defaults to the host of the app URL, a real domain this deployment owns", async () => {
+    configureSmtp({ SMTP_PORT: "587" });
+    await loadEmail();
+    expect(transportConfigCalls[0].name).toBe(new URL(APP_URL).hostname);
   });
 
-  it("is what the contact email links, and an unsafe address is not linked", async () => {
-    const { contactEmail } = await import("@/lib/email/email");
-    const hostile = "ada@example.com?bcc=eve@example.org";
-    const contact = contactEmail({
-      name: "Ada",
-      email: hostile,
-      subject: "Hi",
-      message: "Hello",
-      category: "general",
+  it("is SMTP_EHLO_NAME when the operator sets one, on either TLS mode", async () => {
+    process.env.SMTP_EHLO_NAME = "mail.example.org";
+    configureSmtp({ SMTP_PORT: "587" });
+    await loadEmail();
+    expect(transportConfigCalls[0].name).toBe("mail.example.org");
+
+    vi.resetModules();
+    transportConfigCalls = [];
+    configureSmtp({ SMTP_PORT: "465" });
+    await loadEmail();
+    expect(transportConfigCalls[0].name).toBe("mail.example.org");
+  });
+
+  it("ignores a blank SMTP_EHLO_NAME instead of greeting with an empty name", async () => {
+    process.env.SMTP_EHLO_NAME = "   ";
+    configureSmtp();
+    await loadEmail();
+    expect(transportConfigCalls[0].name).toBe(new URL(APP_URL).hostname);
+  });
+});
+
+describe("the logo in the header", () => {
+  it("is a PNG by default, because Gmail and Outlook will not draw the SVG favicon", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+    const { sendEmail } = await loadEmail();
+    await sendEmail({ to: "u@x.com", subject: "s", text: "t", html: "<p/>" });
+    const html = (sendMailMock.mock.calls[0][0] as { html: string }).html;
+    expect(html).toContain(`src="${APP_URL}/email-logo.png"`);
+    expect(html).not.toContain("favicon.svg");
+  });
+
+  it("ships the file it points at, at 52px", () => {
+    const png = readFileSync(join(process.cwd(), "public", "email-logo.png"));
+    // PNG signature, then the IHDR chunk: width and height are the first two
+    // big-endian 32-bit integers of its data, at byte offsets 16 and 20.
+    expect(png.subarray(1, 4).toString("ascii")).toBe("PNG");
+    expect(png.readUInt32BE(16)).toBe(52);
+    expect(png.readUInt32BE(20)).toBe(52);
+  });
+});
+
+/**
+ * What lets the next "550 5.7.0 Blocked by SpamAssassin" be traced: which
+ * template, which From and relay, which command the relay refused and what it
+ * said, and the Message-ID a relay's own logs are searched by.
+ */
+describe("email_logs delivery detail", () => {
+  // [recipient, subject, status, error, preview, html, template, from, host,
+  //  smtp_code, smtp_command, smtp_response, error_code, message_id]
+  const COLUMNS = {
+    template: 6,
+    from: 7,
+    host: 8,
+    code: 9,
+    command: 10,
+    response: 11,
+    errorCode: 12,
+    messageId: 13,
+  };
+
+  it("records the template, the From address and the relay on a sent message", async () => {
+    configureSmtp({ SMTP_FROM: "no-reply@vulnradar.dev" });
+    sendMailMock.mockResolvedValueOnce({
+      messageId: "<abc@vulnradar.dev>",
+      response: "250 2.0.0 Ok: queued as 4F2A1",
     });
-    expect(contact.html).not.toContain("mailto:ada@example.com?bcc");
-    expect(contact.html).not.toContain("mailto:ada@example.com&amp;");
-    const ok = contactEmail({
-      name: "Ada",
-      email: "ada@example.com",
-      subject: "Hi",
-      message: "Hello",
-      category: "general",
+    const { sendEmail } = await loadEmail();
+
+    await sendEmail({
+      to: "u@x.com",
+      subject: "s",
+      text: "t",
+      html: "<p/>",
+      template: "passwordReset",
     });
-    expect(ok.html).toContain('href="mailto:ada@example.com"');
+
+    const row = emailLogInserts[0];
+    expect(row[COLUMNS.template]).toBe("passwordReset");
+    expect(row[COLUMNS.from]).toBe("no-reply@vulnradar.dev");
+    expect(row[COLUMNS.host]).toBe("smtp.example.com");
+    expect(row[COLUMNS.messageId]).toBe("<abc@vulnradar.dev>");
+    expect(row[COLUMNS.response]).toBe("250 2.0.0 Ok: queued as 4F2A1");
+    expect(row[COLUMNS.code]).toBe(250);
+    expect(row[COLUMNS.command]).toBeNull();
+    expect(row[COLUMNS.errorCode]).toBeNull();
+  });
+
+  it("records what the relay refused, and at which command, on a rejection", async () => {
+    configureSmtp();
+    const rejection = Object.assign(
+      new Error("Message failed: 550 5.7.0 Blocked by SpamAssassin"),
+      {
+        code: "EMESSAGE",
+        responseCode: 550,
+        command: "DATA",
+        response: "550 5.7.0 Blocked by SpamAssassin",
+      },
+    );
+    sendMailMock.mockRejectedValueOnce(rejection);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { sendEmail } = await loadEmail();
+
+    await expect(
+      sendEmail({
+        to: "u@x.com",
+        subject: "s",
+        text: "t",
+        html: "<p/>",
+        template: "broadcast",
+      }),
+    ).rejects.toBe(rejection);
+
+    const row = emailLogInserts[0];
+    expect(row[2]).toBe("failed");
+    expect(row[3]).toBe("Message failed: 550 5.7.0 Blocked by SpamAssassin");
+    expect(row[COLUMNS.template]).toBe("broadcast");
+    expect(row[COLUMNS.code]).toBe(550);
+    expect(row[COLUMNS.command]).toBe("DATA");
+    expect(row[COLUMNS.response]).toBe("550 5.7.0 Blocked by SpamAssassin");
+    expect(row[COLUMNS.errorCode]).toBe("EMESSAGE");
+    expect(row[COLUMNS.messageId]).toBeNull();
+  });
+
+  it("keeps a plain Error working: the fields nodemailer would add are just empty", async () => {
+    configureSmtp();
+    sendMailMock.mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { sendEmail } = await loadEmail();
+
+    await expect(
+      sendEmail({ to: "u@x.com", subject: "s", text: "t", html: "<p/>" }),
+    ).rejects.toThrow("connect ECONNREFUSED");
+
+    const row = emailLogInserts[0];
+    expect(row[COLUMNS.code]).toBeNull();
+    expect(row[COLUMNS.command]).toBeNull();
+    expect(row[COLUMNS.response]).toBeNull();
+    expect(row[COLUMNS.errorCode]).toBeNull();
+  });
+
+  it("writes one server-log line per failed send, with the template and stage but never the recipient", async () => {
+    configureSmtp();
+    const rejection = Object.assign(
+      new Error(
+        "Can't send mail - all recipients were rejected: 550 <victim@example.org>: rejected",
+      ),
+      { code: "EENVELOPE", responseCode: 550, command: "RCPT TO" },
+    );
+    sendMailMock.mockRejectedValueOnce(rejection);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { sendEmail } = await loadEmail();
+
+    await expect(
+      sendEmail({
+        to: "victim@example.org",
+        subject: "s",
+        text: "t",
+        html: "<p/>",
+        template: "scanComplete",
+      }),
+    ).rejects.toBe(rejection);
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const printed = errorSpy.mock.calls[0]
+      .map((arg) =>
+        arg instanceof Error
+          ? `${arg.message}\n${arg.stack ?? ""}`
+          : JSON.stringify(arg),
+      )
+      .join(" ");
+    expect(printed).toContain("[email] send failed");
+    expect(printed).toContain("scanComplete");
+    expect(printed).toContain("RCPT TO");
+    expect(printed).toContain("EENVELOPE");
+    expect(printed).not.toContain("victim@example.org");
+    // The error handed to the caller is the real one, untouched.
+    expect(rejection.message).toContain("victim@example.org");
+  });
+
+  it("says so when the log row itself cannot be written, instead of going silent", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+    // The first query is the From-address setting lookup, which must succeed;
+    // the second is the email_logs INSERT, which is the one that fails.
+    mockDbQuery.mockImplementationOnce(async () => ({ rows: [] }));
+    mockDbQuery.mockRejectedValueOnce(new Error("db unavailable"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { sendEmail } = await loadEmail();
+
+    await expect(
+      sendEmail({
+        to: "u@x.com",
+        subject: "s",
+        text: "t",
+        html: "<p/>",
+        template: "newLogin",
+      }),
+    ).resolves.toBeUndefined();
+
+    const lines = errorSpy.mock.calls.map((call) => String(call[0]));
+    expect(
+      lines.some((l) => l.includes("could not write the email log row")),
+    ).toBe(true);
+  });
+});
+
+describe("every template names itself", () => {
+  it("returns a template identifier the log can store", async () => {
+    const email = await loadEmail();
+    const templates = await buildTemplateCorpus(email);
+    for (const t of templates) {
+      expect(typeof t.template, t.name).toBe("string");
+      expect(t.template, t.name).toMatch(/^[a-zA-Z0-9]+$/);
+      // email_logs.template is VARCHAR(64).
+      expect((t.template ?? "").length, t.name).toBeLessThanOrEqual(64);
+    }
+  });
+
+  it("is carried through sendEmail to the row, so a spread builder result needs no extra argument", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+    const email = await loadEmail();
+    const content = email.passwordResetEmail("https://vulnradar.dev/reset?t=1");
+    await email.sendEmail({ to: "u@x.com", ...content });
+    expect(emailLogInserts[0][6]).toBe("passwordReset");
+  });
+});
+
+describe("broadcastPreheader", () => {
+  it("skips the heading, which is the subject again, and starts at the first sentence after it", async () => {
+    const { broadcastPreheader } = await loadEmail();
+    expect(
+      broadcastPreheader(
+        "Release notes 3.8\n\nWe made scans faster. Details below.\n\n- One\n- Two",
+      ),
+    ).toBe("We made scans faster.");
+  });
+
+  it("falls back to the whole text when there is only one paragraph", async () => {
+    const { broadcastPreheader } = await loadEmail();
+    expect(broadcastPreheader("Just one short announcement.")).toBe(
+      "Just one short announcement.",
+    );
+  });
+
+  it("is escaped exactly once on its way into the document", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+    const { sendEmail, broadcastPreheader } = await loadEmail();
+    const text = "Heading\n\nIt's faster & safer.";
+    await sendEmail({
+      to: "u@x.com",
+      subject: "s",
+      text,
+      html: "<p/>",
+      preheader: broadcastPreheader(text),
+    });
+    const html = (sendMailMock.mock.calls[0][0] as { html: string }).html;
+    expect(html).toContain("It&#39;s faster &amp; safer.");
+    expect(html).not.toContain("&amp;#39;");
+    expect(html).not.toContain("&amp;amp;");
   });
 });
 

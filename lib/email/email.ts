@@ -4,12 +4,14 @@ import { getTranslator } from "@/lib/i18n/translate";
 import {
   APP_NAME,
   APP_URL,
+  ROUTES,
   SUPPORT_EMAIL,
   LOGO_URL,
   NOREPLY_EMAIL,
 } from "@/lib/config/constants";
 import { STAFF_INVITE_EXPIRY_DAYS } from "@/lib/config/constants";
 import {
+  CONFIG_LOGO_URL,
   CONFIG_BILLING_VERIFY_CODE_EXPIRY_MINUTES,
   CONFIG_EMAIL_2FA_CODE_EXPIRY_MINUTES,
   CONFIG_TEAM_INVITE_EXPIRY_DAYS,
@@ -39,6 +41,9 @@ import {
   type EmailDetailRow,
 } from "@/lib/email/layout";
 import { getSetting } from "@/lib/config/runtime-config";
+import { logError } from "@/lib/logging/log";
+import { safeDisplayName } from "@/lib/email/safe-name";
+import type { NotificationColumn } from "@/lib/notifications/columns";
 
 // SMTP CREDENTIALS
 //
@@ -59,6 +64,31 @@ const SMTP_PASS = process.env.SMTP_PASS || "";
 // unset SMTP_FROM falls back to the login.
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 
+/**
+ * The name this server gives in EHLO.
+ *
+ * nodemailer introduces itself with os.hostname() when it is not told a name,
+ * and replaces a hostname that has no dot in it with the literal
+ * `[127.0.0.1]`. Inside Docker the hostname is the container id, which has no
+ * dot, so every message went out from a server that said it was the loopback
+ * address. A relay's spam scoring reads that greeting (SpamAssassin has rules
+ * for a HELO that is an IP literal or not a real domain), so it was one more
+ * point against every message for no reason.
+ *
+ * SMTP_EHLO_NAME wins, because the right value is the name the sending IP's
+ * reverse DNS resolves to and only the operator knows it. Otherwise it is the
+ * host of APP_URL, which is a real domain this deployment already owns.
+ */
+function ehloName(): string | undefined {
+  const configured = process.env.SMTP_EHLO_NAME?.trim();
+  if (configured) return configured;
+  try {
+    return new URL(APP_URL).hostname || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // infra: pin SMTP to TLS. The transport used `secure: false` without
 // `requireTLS: true`, which falls back to plaintext if the server
 // strips STARTTLS. We pick the right mode per port:
@@ -68,11 +98,13 @@ const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 //     at the network layer)
 function buildSmtpTransport() {
   const port = Number(SMTP_PORT);
+  const name = ehloName();
   // Use secure: true for port 465 (implicit TLS).
   if (port === 465) {
     return nodemailer.createTransport({
       host: SMTP_HOST,
       port,
+      name,
       secure: true,
       auth: { user: SMTP_USER, pass: SMTP_PASS },
       tls: { minVersion: "TLSv1.2" },
@@ -82,6 +114,7 @@ function buildSmtpTransport() {
   return nodemailer.createTransport({
     host: SMTP_HOST,
     port,
+    name,
     secure: false,
     requireTLS: true,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
@@ -114,7 +147,20 @@ interface SendEmailOptions {
   html: string;
   replyTo?: string;
   skipLayout?: boolean;
+  /**
+   * Puts the "Manage email preferences" link in the footer. Only mail the
+   * recipient can opt out of carries one: security and billing notices do
+   * not, and the footer says so.
+   */
   unsubscribeToken?: string;
+  /**
+   * The one preference column this message belongs to. With a token, it adds
+   * the one-click List-Unsubscribe header (RFC 8058), and that header turns
+   * off this column and nothing else. Without it there is no header at all,
+   * because a one-click that means "everything" is a button that switches off
+   * the sign-in and password warnings along with the newsletter.
+   */
+  unsubscribeColumn?: NotificationColumn;
   /**
    * Inbox preview line, shown after the subject by every mail client. Leave
    * it unset and it is derived from the first sentence of `text`, which is
@@ -122,6 +168,13 @@ interface SendEmailOptions {
    * text the body starts with, which for this layout is the wordmark.
    */
   preheader?: string;
+  /**
+   * Which template produced this message, stored with the Email Logs row. A
+   * subject is free text for a broadcast and for an admin notice, so a row
+   * could not otherwise be traced back to what generated it. Every builder in
+   * this file sets one; a hand-built message names itself.
+   */
+  template?: string;
 }
 
 interface SecurityAlertDetails {
@@ -146,13 +199,15 @@ interface LayoutOptions {
  * Build the one-click unsubscribe URL for a token.
  *
  * Two different URLs are involved and they are not interchangeable. This one
- * is the API route, which accepts a bodyless POST with
- * `action=unsubscribe_all` and is therefore a valid RFC 8058 endpoint; it is
- * what goes in the List-Unsubscribe header. The in-body button below points
- * at /unsubscribe instead, which is the page a human should land on.
+ * is the API route, which accepts a bodyless POST naming one preference
+ * column in `type` and is therefore a valid RFC 8058 endpoint; it is what goes
+ * in the List-Unsubscribe header. The in-body button below points at
+ * /unsubscribe instead, which is the page a human should land on, and where
+ * "unsubscribe from everything" is an explicit button rather than a side
+ * effect of a mail client's own Unsubscribe link.
  */
-function unsubscribeApiUrl(token: string): string {
-  return `${APP_URL}/api/v3/account/unsubscribe?token=${encodeURIComponent(token)}&action=unsubscribe_all`;
+function unsubscribeApiUrl(token: string, column: NotificationColumn): string {
+  return `${APP_URL}/api/v3/account/unsubscribe?token=${encodeURIComponent(token)}&type=${column}`;
 }
 
 /**
@@ -206,6 +261,30 @@ function derivePreheader(text: string): string {
 }
 
 /**
+ * A raster mark for the shell, shipped next to the SVG favicon: 52px, which is
+ * the 26px the shell draws it at, doubled for dense screens.
+ */
+const EMAIL_LOGO_PATH = "/email-logo.png";
+
+/**
+ * The logo URL the shell puts in its header.
+ *
+ * Email clients do not resolve root-relative paths, so it has to be absolute.
+ * It also has to be something they draw. The default logo is /favicon.svg, and
+ * Gmail and Outlook on Windows both refuse an SVG `<img>`, so the header mark
+ * was missing for those readers. The default is therefore swapped for the PNG;
+ * anything an operator set themselves is theirs, and is used as written.
+ */
+function emailLogoSrc(): string {
+  const absolute = /^https?:\/\//i.test(LOGO_URL)
+    ? LOGO_URL
+    : `${APP_URL}${LOGO_URL}`;
+  return absolute === `${APP_URL}${CONFIG_LOGO_URL}`
+    ? `${APP_URL}${EMAIL_LOGO_PATH}`
+    : absolute;
+}
+
+/**
  * The shell markup now lives in lib/email/layout.ts, which the admin preview
  * (components/admin/shared/email-preview-html.ts) also calls. It used to be
  * duplicated by hand there and had drifted on the logo source, the mobile
@@ -218,17 +297,11 @@ function layout(
   content: string,
   { unsubscribeToken, preheader, title }: LayoutOptions = {},
 ): string {
-  // Email clients don't resolve root-relative asset paths, so an absolute URL
-  // is required for the logo to load at all.
-  const logoSrc = /^https?:\/\//i.test(LOGO_URL)
-    ? LOGO_URL
-    : `${APP_URL}${LOGO_URL}`;
-
   return emailLayout({
     content,
     appName: APP_NAME,
     appUrl: APP_URL,
-    logoSrc,
+    logoSrc: emailLogoSrc(),
     supportEmail: SUPPORT_EMAIL,
     unsubscribeUrl: unsubscribeToken
       ? `${APP_URL}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
@@ -411,30 +484,6 @@ export function redactEmailPreview(text: string): string {
 }
 
 /**
- * An HTML message body with its tags removed, for the plain-text part of the
- * same email.
- *
- * One pass: each tag is skipped by finding the next ">" after its "<". This
- * used to repeat a /<[^>]*>/g replace until the string stopped changing,
- * which is quadratic on a run of "<" with no ">" (CodeQL js/polynomial-redos)
- * and repeated that for as many passes as the input could force. The output
- * is text/plain, so nothing in it is ever parsed as markup again.
- */
-export function stripHtmlTags(html: string): string {
-  let out = "";
-  let i = 0;
-  while (i < html.length) {
-    const open = html.indexOf("<", i);
-    if (open === -1) break;
-    const close = html.indexOf(">", open + 1);
-    if (close === -1) break;
-    out += html.slice(i, open);
-    i = close + 1;
-  }
-  return out + html.slice(i);
-}
-
-/**
  * redactEmailPreview applied to one run of text taken from markup.
  *
  * Character references are held out of the redaction because they are not
@@ -499,6 +548,66 @@ const EMAIL_LOG_PREVIEW_MAX_CHARS = 500;
 const EMAIL_LOG_HTML_MAX_CHARS = 100_000;
 
 /**
+ * What the relay (or nodemailer, before it reached one) said about a send.
+ *
+ * Every field is NULL on a row from before they existed, and most are NULL on
+ * a success. They are what lets a rejection be traced: "550 5.7.0 Blocked by
+ * SpamAssassin" is a verdict on one message's content, delivered at DATA, and
+ * knowing which template it was and which stage refused it is the difference
+ * between fixing the template and chasing the sender's DNS.
+ */
+interface EmailLogDelivery {
+  /** The Message-ID the relay accepted the message under. Its own logs are
+   *  searched by this. */
+  messageId?: string | null;
+  /** The numeric SMTP reply: 250 on a success, 550 on this rejection. */
+  smtpCode?: number | null;
+  /** The command that was refused: "DATA", "RCPT TO", "MAIL FROM", "AUTH". */
+  smtpCommand?: string | null;
+  /** The relay's reply text, whole. */
+  smtpResponse?: string | null;
+  /** nodemailer's own code: EAUTH, EENVELOPE, EMESSAGE, ETIMEDOUT, ... */
+  errorCode?: string | null;
+}
+
+const SMTP_RESPONSE_MAX_CHARS = 2000;
+
+/** The delivery fields nodemailer puts on an error it raised for a reply. */
+function deliveryFromError(err: unknown): EmailLogDelivery {
+  if (!err || typeof err !== "object") return {};
+  const e = err as Record<string, unknown>;
+  return {
+    errorCode: typeof e.code === "string" ? e.code.slice(0, 64) : null,
+    smtpCode:
+      typeof e.responseCode === "number" && Number.isInteger(e.responseCode)
+        ? e.responseCode
+        : null,
+    smtpCommand: typeof e.command === "string" ? e.command.slice(0, 32) : null,
+    smtpResponse:
+      typeof e.response === "string"
+        ? e.response.slice(0, SMTP_RESPONSE_MAX_CHARS)
+        : null,
+  };
+}
+
+/** What a successful sendMail resolved with, which a test double may leave
+ *  undefined. */
+function deliveryFromInfo(info: unknown): EmailLogDelivery {
+  if (!info || typeof info !== "object") return {};
+  const i = info as Record<string, unknown>;
+  const response =
+    typeof i.response === "string"
+      ? i.response.slice(0, SMTP_RESPONSE_MAX_CHARS)
+      : null;
+  const code = response ? /^\d{3}/.exec(response)?.[0] : undefined;
+  return {
+    messageId: typeof i.messageId === "string" ? i.messageId : null,
+    smtpResponse: response,
+    smtpCode: code ? Number.parseInt(code, 10) : null,
+  };
+}
+
+/**
  * Best-effort write to email_logs (Admin > System > Email Logs). Never
  * throws -- a logging failure must never mask the real send outcome or
  * break a caller that only expects sendEmail() itself to fail. Lazily
@@ -507,6 +616,10 @@ const EMAIL_LOG_HTML_MAX_CHARS = 100_000;
  * hard load-time dependency on DATABASE_URL being set -- see this
  * session's earlier fix for the identical problem in
  * lib/admin/staff-invites.ts's STAFF_INVITE_EXPIRY_DAYS.
+ *
+ * "Never throws" is not "never says anything". The catch used to be empty, so
+ * a send that failed while the database was also down left no trace at all: no
+ * log row and no line in the server log. It reports to the error log now.
  */
 async function logEmailAttempt(params: {
   to: string;
@@ -516,13 +629,21 @@ async function logEmailAttempt(params: {
   html: string;
   status: "sent" | "failed" | "skipped_not_configured";
   error?: string;
+  template?: string;
+  fromAddress?: string;
+  smtpHost?: string;
+  delivery?: EmailLogDelivery;
 }): Promise<void> {
   try {
     const { default: pool } = await import("@/lib/database/db");
     const redactedHtml = redactEmailHtml(params.html);
+    const delivery = params.delivery ?? {};
     await pool.query(
-      `INSERT INTO email_logs (recipient, subject, status, error_message, redacted_preview, redacted_html)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO email_logs
+         (recipient, subject, status, error_message, redacted_preview, redacted_html,
+          template, from_address, smtp_host, smtp_code, smtp_command, smtp_response,
+          error_code, message_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         params.to,
         params.subject,
@@ -530,11 +651,65 @@ async function logEmailAttempt(params: {
         params.error ?? null,
         redactEmailPreview(params.text).slice(0, EMAIL_LOG_PREVIEW_MAX_CHARS),
         redactedHtml.length > EMAIL_LOG_HTML_MAX_CHARS ? null : redactedHtml,
+        params.template?.slice(0, 64) ?? null,
+        params.fromAddress?.slice(0, 255) ?? null,
+        params.smtpHost?.slice(0, 255) || null,
+        delivery.smtpCode ?? null,
+        delivery.smtpCommand ?? null,
+        delivery.smtpResponse ?? null,
+        delivery.errorCode ?? null,
+        delivery.messageId ?? null,
       ],
     );
-  } catch {
-    /* logging is best-effort only */
+  } catch (err) {
+    logError("email", "could not write the email log row", err, {
+      template: params.template,
+      status: params.status,
+    });
   }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * An error safe to print to the server log: the same message and stack with
+ * the recipient's address taken out.
+ *
+ * nodemailer's messages quote the address they were refused ("all recipients
+ * were rejected", "<user@x.test>: Recipient address rejected"), and the server
+ * log is not the place for it. The same address is on the Email Logs row, in
+ * the one place staff are meant to look. Only the addresses of this one
+ * message are replaced, by name, so the scan stays linear.
+ */
+function withoutAddresses(
+  err: unknown,
+  addresses: (string | undefined)[],
+): Error {
+  const known = addresses.filter((a): a is string => !!a);
+  const scrub = (text: string) =>
+    known.reduce(
+      (out, address) =>
+        out.replace(new RegExp(escapeRegExp(address), "gi"), "[address]"),
+      text,
+    );
+  const source = err instanceof Error ? err : new Error(String(err));
+  const safe = new Error(scrub(source.message));
+  safe.name = source.name;
+  if (source.stack) safe.stack = scrub(source.stack);
+  return safe;
+}
+
+/**
+ * Plain-text equivalent of the footer's "Manage email preferences" link. The
+ * HTML part has one for mail the recipient can opt out of, and a text part
+ * that lacks it is a different message.
+ */
+function textFooter(unsubscribeToken: string | undefined): string {
+  return unsubscribeToken
+    ? `\n\n--\nManage email preferences: ${APP_URL}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
+    : "";
 }
 
 export async function sendEmail({
@@ -545,7 +720,9 @@ export async function sendEmail({
   replyTo,
   skipLayout,
   unsubscribeToken,
+  unsubscribeColumn,
   preheader,
+  template,
 }: SendEmailOptions) {
   // Built before the transporter check, not after, so the not-configured
   // branch logs the same rendered document it would have sent. On a
@@ -561,25 +738,24 @@ export async function sendEmail({
 
   // Check if SMTP is configured
   if (!transporter) {
-    console.warn("SMTP not configured. Email not sent:");
-    console.warn(`  To: ${to}`);
-    console.warn(`  Subject: ${subject}`);
-    // privacy: log only metadata (length), never the email body.
-    // Email bodies can contain reset links, 2FA codes, or share
-    // tokens, and they must never appear in logs even truncated.
-    console.warn(`  Length: ${text.length} chars`);
+    // One line, and neither the address nor the subject in it. The old block
+    // printed both, under a comment promising metadata only: a subject can
+    // carry a name or an address, and the attempt is already on its Email Logs
+    // row for anyone who needs to see it. The body never appears here either;
+    // it can hold a reset link or a sign-in code.
+    console.warn(
+      `[email] SMTP is not configured, so a "${template ?? "unnamed"}" message was not sent. It is recorded in Admin > Email Logs.`,
+    );
 
     // In development, just log and return successfully
     if (process.env.NODE_ENV !== "production") {
-      console.warn(
-        "  (Skipping email send in development - SMTP not configured)",
-      );
       await logEmailAttempt({
         to,
         subject,
         text,
         html: finalHtml,
         status: "skipped_not_configured",
+        template,
       });
       return;
     }
@@ -591,6 +767,7 @@ export async function sendEmail({
       html: finalHtml,
       status: "skipped_not_configured",
       error: "SMTP not configured",
+      template,
     });
     throw new Error("Email service not configured");
   }
@@ -614,130 +791,147 @@ export async function sendEmail({
   const from = `"${APP_NAME}" <${fromAddress}>`;
 
   // Gmail and Yahoo's bulk sender rules want a one-click unsubscribe
-  // (RFC 8058) on mail of this shape, and treat its absence as a spam signal.
-  // Only mail that carries an unsubscribe token gets it: security notices
-  // (password changed, 2FA, new login) are not opt-out and deliberately have
-  // no token.
-  const headers = unsubscribeToken
-    ? {
-        "List-Unsubscribe": `<${unsubscribeApiUrl(unsubscribeToken)}>, <mailto:${SUPPORT_EMAIL}?subject=unsubscribe>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-      }
-    : undefined;
+  // (RFC 8058) on bulk and notification mail, and treat its absence as a spam
+  // signal. A message gets one only when it names the preference column it
+  // belongs to, and the link turns off that column and nothing else. Security
+  // notices (new sign-in, password changed, 2FA) never get one: they carry no
+  // token to begin with, see lib/notifications/notifications.ts. This comment
+  // used to say exactly that while the code attached the header to every
+  // message that had a token, and the link it pointed at unsubscribed the
+  // reader from every category, security warnings included.
+  //
+  // There is deliberately no mailto: target. Nothing reads that mailbox, so
+  // the "unsubscribe" it promised would have waited for a human who is not
+  // looking for it, past the two days the bulk-sender rules allow.
+  const headers =
+    unsubscribeToken && unsubscribeColumn
+      ? {
+          "List-Unsubscribe": `<${unsubscribeApiUrl(unsubscribeToken, unsubscribeColumn)}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        }
+      : undefined;
+
+  const attempt = {
+    to,
+    subject,
+    text,
+    html: finalHtml,
+    template,
+    fromAddress,
+    smtpHost: SMTP_HOST,
+  };
 
   try {
-    await transporter.sendMail({
+    const info: unknown = await transporter.sendMail({
       from,
       to,
       subject,
-      text,
+      text: skipLayout ? text : `${text}${textFooter(unsubscribeToken)}`,
       html: finalHtml,
       replyTo,
       headers,
     });
     await logEmailAttempt({
-      to,
-      subject,
-      text,
-      html: finalHtml,
+      ...attempt,
       status: "sent",
+      delivery: deliveryFromInfo(info),
     });
   } catch (err) {
+    const delivery = deliveryFromError(err);
     await logEmailAttempt({
-      to,
-      subject,
-      text,
-      html: finalHtml,
+      ...attempt,
       status: "failed",
       error: err instanceof Error ? err.message : String(err),
+      delivery,
+    });
+    // One line in the server log per failed send, on top of the Email Logs
+    // row. Without it a relay outage was visible only to someone who thought
+    // to open that panel, and a send whose row could not be written was
+    // visible nowhere.
+    logError("email", "send failed", withoutAddresses(err, [to, replyTo]), {
+      template,
+      smtpHost: SMTP_HOST || undefined,
+      smtpCode: delivery.smtpCode,
+      smtpCommand: delivery.smtpCommand,
+      errorCode: delivery.errorCode,
     });
     throw err;
   }
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  bug: "Bug Report",
-  feature: "Feature Request",
-  security: "Security Issue",
-  help: "General Help",
-  billing: "Billing Issue",
-  enterprise: "Enterprise",
-  staff_application: "Staff Application",
-  feedback: "Feedback",
-};
-
-/** Characters a mailto URL would read as structure rather than address. */
-const MAILTO_UNSAFE = `?&#%<>"'(),;:/`;
-
 /**
- * A submitted address, only if it is a bare local@domain with nothing a mailto
- * URL would read as more headers. Escaping stops markup injection, but
- * "you@example.com?bcc=someone@example.org" is valid HTML and a valid mailto,
- * and the Reply button would have pre-filled the Bcc in the staffer's own
- * compose window. Anything else renders as text with no link.
+ * The preview line for a broadcast.
+ *
+ * A broadcast opens with its own heading, which is also its subject, so the
+ * first sentence of the text repeats what the inbox already shows next to it.
+ * This starts after that heading when there is anything after it. Taken from
+ * the plain text, which has its entities decoded, so it is escaped exactly
+ * once on its way into the hidden preheader.
  */
-export function mailtoAddress(raw: string): string | null {
-  const address = raw.trim();
-  const at = address.indexOf("@");
-  if (at < 1 || at !== address.lastIndexOf("@")) return null;
-  if (!address.slice(at + 1).includes(".")) return null;
-  for (const ch of address) {
-    if (ch.charCodeAt(0) <= 32 || MAILTO_UNSAFE.includes(ch)) return null;
-  }
-  return address;
+export function broadcastPreheader(text: string): string {
+  const paragraphs = text.split(/\n{2,}/);
+  const body = paragraphs.length > 1 ? paragraphs.slice(1).join("\n\n") : text;
+  return derivePreheader(body);
 }
 
+/**
+ * The staff notification for a contact-form submission, and nothing of the
+ * submission itself.
+ *
+ * This used to be the submission forwarded: the sender's subject became ours,
+ * their message was quoted whole, and their address was set as Reply-To, all
+ * on mail sent from our own sender to our own mailbox. The contact form needs
+ * no account, so what was being forwarded was whatever a stranger or a bot
+ * typed. Spam filters scored it as our mail. A Reply-To at a free mail
+ * provider on a message from a different domain is a rule of its own
+ * (SpamAssassin's FREEMAIL_FORGED_REPLYTO), and it matched every legitimate
+ * submission before the content was even read.
+ *
+ * Every submission is already stored before any mail is attempted, so this
+ * only points at the row: an id, one of our own category labels, and a link to
+ * the admin contact inbox where the message is read and answered.
+ */
 export function contactEmail(input: {
-  name: string;
-  email: string;
-  subject: string;
-  message: string;
+  submissionId: number;
   category: string;
 }) {
-  const name = escapeHtml(input.name);
-  const email = escapeHtml(input.email);
-  const replyTo = mailtoAddress(input.email);
-  const subject = escapeHtml(input.subject);
-  const message = escapeHtml(input.message).replace(/\n/g, "<br />");
-  const category =
-    CATEGORY_LABELS[input.category] || escapeHtml(input.category);
+  const category = escapeHtml(input.category);
+  const inboxUrl = `${APP_URL}${ROUTES.ADMIN}?tab=support&view=contact`;
 
   return {
-    preheader: `${category} from ${input.name}, reply-to ${input.email}`,
-    subject: `[Contact] ${input.subject}`,
-    text: `New contact request via the ${APP_NAME} contact form.\n\nCategory: ${category}\nName: ${input.name}\nEmail: ${input.email}\nSubject: ${input.subject}\n\nMessage:\n${input.message}`,
+    template: "contact",
+    preheader: "Open the contact inbox to read it.",
+    subject: `New contact submission #${input.submissionId} (${input.category})`,
+    text: `New contact submission #${input.submissionId} (${input.category}).\n\nOpen the contact inbox to read it: ${inboxUrl}`,
     html: `
-      ${emailHeading("New contact request")}
-      ${emailLead(`${name} reached out through the ${APP_NAME} contact form.`)}
-      ${emailDetailPanel([
-        { label: "Name", value: name },
-        {
-          label: "Email",
-          value: replyTo ? emailLink(`mailto:${replyTo}`, email) : email,
-        },
-        { label: "Category", value: category },
-        { label: "Subject", value: subject },
-      ])}
-      ${emailQuote("Message", emailProse(message))}
-      ${replyTo ? emailButton(`mailto:${replyTo}`, `Reply to ${name}`) : ""}
+      ${emailHeading("New contact submission")}
+      ${emailLead(`Submission #${input.submissionId} came in through the contact form, filed under ${category}.`)}
+      ${emailButton(inboxUrl, "Open the contact inbox")}
+      ${emailNote("The sender's name, address and message are in the inbox, not in this email.")}
     `,
   };
 }
 
-export function contactConfirmationEmail(input: {
-  name: string;
-  category: string;
-}) {
-  const name = escapeHtml(input.name);
+/**
+ * The receipt sent to whoever filled in the contact form.
+ *
+ * It goes to an address nobody has verified, so it says nothing the sender
+ * typed except a category from our own fixed list. There is no greeting
+ * either: a name field that reads "Claim your payout at example.tld/x" was
+ * being delivered from our domain to a stranger's inbox as "Hi Claim your
+ * payout at example.tld/x".
+ */
+export function contactConfirmationEmail(input: { category: string }) {
   const category = escapeHtml(input.category);
 
   return {
+    template: "contactConfirmation",
     preheader: `We reply to most ${input.category.toLowerCase()} requests within 24 to 48 hours.`,
     subject: "We got your message",
-    text: `Hi ${input.name},\n\nThanks for contacting ${APP_NAME}. Your ${input.category.toLowerCase()} request is in our queue.\n\nWe usually reply within 24 to 48 hours. To add anything, just reply to this email and it lands on the same thread.\n\n- ${APP_NAME} Support`,
+    text: `Thanks for contacting ${APP_NAME}. Your ${input.category.toLowerCase()} request is in our queue.\n\nWe usually reply within 24 to 48 hours. To add anything, just reply to this email and it lands on the same thread.\n\n- ${APP_NAME} Support`,
     html: `
       ${emailHeading("We got your message")}
-      ${emailLead(`Hi ${name}, thanks for reaching out. Your ${category.toLowerCase()} request is in our queue.`)}
+      ${emailLead(`Thanks for reaching out. Your ${category.toLowerCase()} request is in our queue.`)}
       ${emailDetailPanel([
         { label: "Request type", value: category },
         {
@@ -767,16 +961,21 @@ export async function emailVerificationEmail(
   locale: Locale = DEFAULT_LOCALE,
 ) {
   const t = await getTranslator(locale);
-  const safeName = escapeHtml(name);
-  const lead = (who: string) =>
-    t("email.verify.lead", { name: who, app: APP_NAME });
+  // This goes to an address nobody has verified yet, so it prints the name
+  // only when it is plainly a name. One that carries a link, an address or a
+  // phone-number-sized run of digits is left out, and the mail simply has no
+  // greeting: the heading, the button and the expiry say everything it needs
+  // to. See lib/email/safe-name.ts for what is refused and why.
+  const who = safeDisplayName(name);
+  const lead = who ? t("email.verify.lead", { name: who, app: APP_NAME }) : "";
   return {
+    template: "emailVerification",
     preheader: t("email.verify.preheader"),
     subject: t("email.verify.subject", { app: APP_NAME }),
-    text: `${lead(name)}\n\n${t("email.verify.textIntro", { app: APP_NAME })}\n${verifyLink}\n\n${t("email.verify.expiry")}\n\n${t("email.verify.ignore")}`,
+    text: `${lead ? `${lead}\n\n` : ""}${t("email.verify.textIntro", { app: APP_NAME })}\n${verifyLink}\n\n${t("email.verify.expiry")}\n\n${t("email.verify.ignore")}`,
     html: `
       ${emailHeading(t("email.verify.heading"))}
-      ${emailLead(lead(safeName))}
+      ${lead ? emailLead(escapeHtml(lead)) : ""}
       ${emailButton(verifyLink, t("email.verify.button"))}
       ${emailNote(t("email.verify.expiry"))}
       ${emailParagraph(t("email.verify.ignore"))}
@@ -819,6 +1018,7 @@ export function signupAttemptOnExistingAccountEmail(
     ? resetLink
     : "#invalid";
   return {
+    template: "signupAttemptOnExistingAccount",
     preheader:
       "Nothing was created and nothing changed. Sign in, or reset the password.",
     subject: `Someone tried to sign up with your ${APP_NAME} email`,
@@ -840,6 +1040,7 @@ export function signupAttemptOnExistingAccountEmail(
 
 export function passwordResetEmail(resetLink: string) {
   return {
+    template: "passwordReset",
     preheader:
       "The link works for one hour. Ignore this and your current password stays.",
     subject: `Reset your ${APP_NAME} password`,
@@ -866,6 +1067,7 @@ export function passwordChangedEmail(
     : "Every active session was signed out. Sign in again with your new password.";
 
   return {
+    template: "passwordChanged",
     preheader: securityInfo,
     subject: `Your ${APP_NAME} password was changed`,
     text: `The password for your ${APP_NAME} account was just changed.\n\n${securityInfo}\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away, then email ${SUPPORT_EMAIL}.`,
@@ -891,19 +1093,29 @@ export function teamInviteEmail(
   // still matches a default install.
   expiryDays: number = CONFIG_TEAM_INVITE_EXPIRY_DAYS,
 ) {
-  const safeTeamName = escapeHtml(teamName);
-  const safeInvitedBy = escapeHtml(invitedBy);
+  // Both names are typed by the sender and the invitee's address has been
+  // verified by nobody, so a team called "Claim your payout at example.tld/x"
+  // would otherwise open the subject line of a message from our domain. A name
+  // that carries a link, an address or a long run of digits is not printed;
+  // the copy falls back to wording that needs no name.
+  const team = safeDisplayName(teamName);
+  const inviter = safeDisplayName(invitedBy);
+  const who = inviter || "Someone";
   const safeInviteLink = /^https?:\/\//i.test(inviteLink)
     ? inviteLink
     : "#invalid";
+  const window = `${expiryDays} ${expiryDays === 1 ? "day" : "days"}`;
   const expiryCopy = `The invite expires in ${expiryDays} ${expiryDays === 1 ? "day" : "days"}. If you weren't expecting it, you can ignore this email.`;
   return {
-    preheader: `Invited by ${invitedBy}. The link expires in ${expiryDays} ${expiryDays === 1 ? "day" : "days"}.`,
-    subject: `Join ${teamName} on ${APP_NAME}`,
-    text: `${invitedBy} invited you to join the team "${teamName}" on ${APP_NAME}. Accepting shares scans, history, and reports across everyone on the team.\n\nAccept the invitation:\n${inviteLink}\n\n${expiryCopy}`,
+    template: "teamInvite",
+    preheader: `${inviter ? `Invited by ${inviter}. ` : ""}The link expires in ${window}.`,
+    subject: team
+      ? `Join ${team} on ${APP_NAME}`
+      : `You were invited to a team on ${APP_NAME}`,
+    text: `${who} invited you to join ${team ? `the team "${team}"` : "a team"} on ${APP_NAME}. Accepting shares scans, history, and reports across everyone on the team.\n\nAccept the invitation:\n${inviteLink}\n\n${expiryCopy}`,
     html: `
-      ${emailHeading(`Join ${safeTeamName} on ${APP_NAME}`)}
-      ${emailLead(`${emailStrong(safeInvitedBy)} invited you to their team. Accepting shares scans, history, and reports across everyone on it.`)}
+      ${emailHeading(team ? `Join ${escapeHtml(team)} on ${APP_NAME}` : `Join a team on ${APP_NAME}`)}
+      ${emailLead(`${emailStrong(escapeHtml(who))} invited you to their team. Accepting shares scans, history, and reports across everyone on it.`)}
       ${emailButton(safeInviteLink, "Accept invitation")}
       ${emailNote(expiryCopy)}
       ${emailFallbackLink(inviteLink)}
@@ -922,6 +1134,7 @@ export function staffInviteEmail(
     ? inviteLink
     : "#invalid";
   return {
+    template: "staffInvite",
     preheader: `Invited by ${invitedBy} as ${roleLabel}. Expires in ${STAFF_INVITE_EXPIRY_DAYS} days.`,
     subject: `Join the ${APP_NAME} team as ${roleLabel}`,
     text: `${invitedBy} invited you to join the ${APP_NAME} staff as ${roleLabel}.\n\nAccept the invitation:\n${inviteLink}\n\nThe invite expires in ${STAFF_INVITE_EXPIRY_DAYS} days. If you weren't expecting it, you can ignore this email.`,
@@ -944,6 +1157,7 @@ export function profileNameChangedEmail(
   details: SecurityAlertDetails,
 ) {
   return {
+    template: "profileNameChanged",
     preheader: sentence(`${oldName} is now ${newName}`),
     subject: `Your ${APP_NAME} account name was changed`,
     text: `The name on your ${APP_NAME} account was just updated.\n\nPrevious name: ${oldName}\nNew name: ${newName}\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
@@ -970,6 +1184,7 @@ export function profileEmailChangedEmail(
   details: SecurityAlertDetails,
 ) {
   return {
+    template: "profileEmailChanged",
     preheader: sentence(`${oldEmail} is now ${newEmail}`),
     subject: `Your ${APP_NAME} account email was changed`,
     text: `The email address on your ${APP_NAME} account was just updated.\n\nPrevious email: ${oldEmail}\nNew email: ${newEmail}\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
@@ -992,6 +1207,7 @@ export function profileEmailChangedEmail(
 
 export function profilePasswordChangedEmail(details: SecurityAlertDetails) {
   return {
+    template: "profilePasswordChanged",
     preheader: `Changed from ${details.ipAddress}. Review your sessions if that wasn't you.`,
     subject: `Your ${APP_NAME} password was changed`,
     text: `The password for your ${APP_NAME} account was just updated.\n\nSigned in on a shared device recently? Review your active sessions in profile settings and sign out anything you don't recognize.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
@@ -1009,6 +1225,7 @@ export function profilePasswordChangedEmail(details: SecurityAlertDetails) {
 
 export function twoFactorEnabledEmail(details: SecurityAlertDetails) {
   return {
+    template: "twoFactorEnabled",
     preheader:
       "Sign-in now asks for an authenticator code. Keep your backup codes safe.",
     subject: `Two-factor authentication is on for your ${APP_NAME} account`,
@@ -1027,6 +1244,7 @@ export function twoFactorEnabledEmail(details: SecurityAlertDetails) {
 
 export function twoFactorDisabledEmail(details: SecurityAlertDetails) {
   return {
+    template: "twoFactorDisabled",
     preheader:
       "Sign-in no longer asks for a code. You can turn it back on at any time.",
     subject: `Two-factor authentication is off for your ${APP_NAME} account`,
@@ -1045,6 +1263,7 @@ export function twoFactorDisabledEmail(details: SecurityAlertDetails) {
 
 export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
   return {
+    template: "backupCodesRegenerated",
     preheader:
       "The old codes stopped working the moment the new set was generated.",
     subject: `Your ${APP_NAME} backup codes were regenerated`,
@@ -1071,6 +1290,7 @@ export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
 export function twoFactorRecoveryCodeEmail(code: string, issuedBy: string) {
   const safeIssuedBy = escapeHtml(issuedBy);
   return {
+    template: "twoFactorRecoveryCode",
     preheader:
       "Use it once at the two-factor prompt, then generate a fresh set of backup codes.",
     subject: `Your ${APP_NAME} two-factor recovery code`,
@@ -1101,6 +1321,7 @@ export function apiKeyCreatedEmail(
 ) {
   const safeName = escapeHtml(keyName);
   return {
+    template: "apiKeyCreated",
     // No key name or prefix here: the preheader is what a lock screen shows,
     // and a name like "prod-payments-writer" says more than it should there.
     preheader: "A new API key can now call the API on your behalf.",
@@ -1133,6 +1354,7 @@ export function apiKeyDeletedEmail(
 ) {
   const safeName = escapeHtml(keyName);
   return {
+    template: "apiKeyDeleted",
     preheader: `${keyName} can no longer authenticate. Requests using it now fail.`,
     subject: `An API key was revoked on your ${APP_NAME} account`,
     text: `The API key "${keyName}" was just revoked on your ${APP_NAME} account. It can no longer be used to authenticate API requests.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't revoke this key, someone may have access to your account. Change your password and email ${SUPPORT_EMAIL}.`,
@@ -1190,6 +1412,7 @@ export function webhookCreatedEmail(
   const safeName = escapeHtml(webhookName);
   const safeType = escapeHtml(webhookType);
   return {
+    template: "webhookCreated",
     preheader: `${webhookName} (${webhookType}) will receive scan events from now on.`,
     subject: `A webhook was created on your ${APP_NAME} account`,
     text: `A new ${webhookType} webhook "${webhookName}" was just added to your ${APP_NAME} account.\n\nEndpoint: ${maskedWebhookEndpoint(webhookUrl)}\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't create this webhook, delete it from your webhook settings.`,
@@ -1220,6 +1443,7 @@ export function webhookDeletedEmail(
 ) {
   const safeName = escapeHtml(webhookName);
   return {
+    template: "webhookDeleted",
     preheader: `${webhookName} will not receive scan events any more.`,
     subject: `A webhook was deleted from your ${APP_NAME} account`,
     text: `The webhook "${webhookName}" was just removed from your ${APP_NAME} account. It will no longer receive scan events.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't delete this webhook, review your account activity and change your password.`,
@@ -1258,6 +1482,7 @@ export function webhookDeliveryFailedEmail(
   const firstLabel = statusLabel(details.firstStatus);
   const retryLabel = statusLabel(details.retryStatus);
   return {
+    template: "webhookDeliveryFailed",
     preheader: `${firstLabel} on the first attempt, ${retryLabel} on the retry.`,
     subject: `${APP_NAME} couldn't deliver a scan to your webhook`,
     text: `A scan finished, but ${APP_NAME} couldn't deliver the result to your webhook. Both the initial attempt and the retry failed.\n\nWebhook: ${endpoint}\nFirst attempt: ${firstLabel}\nRetry: ${retryLabel}\n\nThe webhook is still active, so future scans will keep trying to deliver to it. Check that your endpoint is reachable and returns a 2xx status, then manage it at ${details.manageUrl}`,
@@ -1297,6 +1522,7 @@ export function scheduleCreatedEmail(
   const frequencyLabel =
     safeFrequency.charAt(0).toUpperCase() + safeFrequency.slice(1);
   return {
+    template: "scheduleCreated",
     preheader: `${frequencyLabel} scans of ${url}, starting from the next run.`,
     subject: `Scheduled scan created for ${hostOf(url)}`,
     text: `A new recurring scan of ${url} was just added to your ${APP_NAME} account, running ${frequency}.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't set this up, delete it from your profile.`,
@@ -1327,6 +1553,7 @@ export function scheduleDeletedEmail(
 ) {
   const safeUrl = escapeHtml(url);
   return {
+    template: "scheduleDeleted",
     preheader: `No more automatic scans of ${url}.`,
     subject: `Scheduled scan deleted for ${hostOf(url)}`,
     text: `The recurring scan of ${url} was just removed from your ${APP_NAME} account.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't remove it, review your account activity and change your password.`,
@@ -1365,6 +1592,7 @@ export function scheduleDisabledEmail(url: string, reason: string) {
   const safeUrl = escapeHtml(url);
   const safeReason = escapeHtml(reason);
   return {
+    template: "scheduleDisabled",
     preheader: `${sentenceCase(reason)}. No further runs until the target passes the check again.`,
     subject: `Scheduled scan disabled for ${hostOf(url)}`,
     text: `Your recurring scan of ${url} was turned off because the target no longer passes our safety check: ${reason}\n\nNo more automatic scans will run for this schedule. Remove it from your profile, or re-add it once the target passes the safety check again.`,
@@ -1404,6 +1632,7 @@ export function scheduledScanFailedEmail(
   const safeUrl = escapeHtml(url);
   const safeReason = escapeHtml(reason);
   return {
+    template: "scheduledScanFailed",
     preheader: `${sentenceCase(reason)} We will try again on the usual schedule.`,
     subject: `Scheduled scan could not run for ${hostOf(url)}`,
     text: `Your ${frequencyLabel.toLowerCase()} scan of ${url} could not complete: ${reason}\n\nThe schedule is still on and will try again as usual. You will not get another email about it until a run succeeds and then fails again, so this is not going to fill your inbox.\n\nIf the site is meant to be reachable, it is worth a look: a scan that cannot run is not the same as a scan that found nothing.`,
@@ -1430,6 +1659,7 @@ export function dataRequestCreatedEmail(
   const typeLabel =
     requestType === "export" ? "Data Export" : "Account Deletion";
   return {
+    template: "dataRequestCreated",
     preheader:
       "We have 30 days to complete it, and we'll email you the moment it's done.",
     subject: `We received your ${typeLabel.toLowerCase()} request`,
@@ -1457,6 +1687,7 @@ export function newLoginEmail(
   details: SecurityAlertDetails,
 ) {
   return {
+    template: "newLogin",
     preheader: `${location}, ${ipAddress}. Nothing to do if that was you.`,
     subject: `New sign-in to your ${APP_NAME} account`,
     text: `Your ${APP_NAME} account was just accessed.\n\nLocation: ${location}\nIP address: ${ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf that was you, there's nothing to do. If it wasn't, change your password and review your active sessions right away.`,
@@ -1479,6 +1710,7 @@ export function failedLoginAttemptsEmail(
   details: SecurityAlertDetails,
 ) {
   return {
+    template: "failedLoginAttempts",
     preheader: `${attempts} attempts from ${ipAddress}, all blocked. Your account is fine.`,
     subject: `Failed sign-in attempts on your ${APP_NAME} account`,
     text: `We blocked ${attempts} failed sign-in attempts on your ${APP_NAME} account in a short window. Your account is protected for now.\n\nFailed attempts: ${attempts}\nIP address: ${ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf that was you, no action is needed. If not, change your password and turn on two-factor authentication now.`,
@@ -1503,6 +1735,7 @@ export function rateLimitedEmail(
   _details: SecurityAlertDetails,
 ) {
   return {
+    template: "rateLimited",
     preheader: `Throttled from ${ipAddress}. Requests resume when the window resets.`,
     subject: `Your ${APP_NAME} API key was rate limited`,
     text: `Your ${APP_NAME} API key hit its request limit and is temporarily throttled. Requests will start going through again once the window resets.\n\nIP address: ${ipAddress}\nStatus: Rate limited\n\nThe limit is tied to your plan and resets within 24 hours. If you're hitting it often, spread requests out or upgrade for more headroom.`,
@@ -1530,6 +1763,7 @@ export function apiKeyRotationEmail(
   details: SecurityAlertDetails,
 ) {
   return {
+    template: "apiKeyRotation",
     preheader: `${keyName} has a new secret. The old one stopped working immediately.`,
     subject: `An API key was rotated on your ${APP_NAME} account`,
     text: `An API key on your ${APP_NAME} account was just rotated. The old key stops working and a new one takes its place.\n\nKey name: ${keyName}\nNew key created: ${newKeyCreatedAt}\nIP address: ${details.ipAddress}\n\nIf you didn't rotate this key, revoke it from your API settings and email ${SUPPORT_EMAIL}.`,
@@ -1595,6 +1829,7 @@ export function email2FACodeEmail(
 ) {
   const window = minutesCopy(expiryMinutes);
   return {
+    template: "email2FACode",
     preheader: `The code expires in ${window}. We will never ask you to share it.`,
     // Never the code itself: a subject is on the lock screen, in the inbox
     // list and in search, which is why derivePreheader already keeps codes
@@ -1619,6 +1854,7 @@ export function billingVerificationCodeEmail(
 ) {
   const window = minutesCopy(expiryMinutes);
   return {
+    template: "billingVerificationCode",
     preheader: `The code expires in ${window} and unlocks billing once.`,
     subject: `Your ${APP_NAME} billing access code`,
     text: `Your ${APP_NAME} billing access code is ${code}. It expires in ${window}.\n\nYou'll need a fresh code each time you open billing. Don't share it with anyone. We ask for this so payment details stay locked even if someone reaches your account, since only your email can unlock them.\n\nIf you didn't request this, secure your account.`,
@@ -1639,6 +1875,7 @@ export function billingVerificationCodeEmail(
 
 export function email2FAEnabledEmail(details: SecurityAlertDetails) {
   return {
+    template: "email2FAEnabled",
     preheader: "Each sign-in now sends a verification code to this address.",
     subject: `Email two-factor authentication is on for your ${APP_NAME} account`,
     text: `Email-based two-factor authentication was just turned on for your ${APP_NAME} account. You'll get a verification code by email each time you sign in.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
@@ -1653,6 +1890,7 @@ export function email2FAEnabledEmail(details: SecurityAlertDetails) {
 
 export function email2FADisabledEmail(details: SecurityAlertDetails) {
   return {
+    template: "email2FADisabled",
     preheader: "Sign-in no longer sends a verification code to this address.",
     subject: `Email two-factor authentication is off for your ${APP_NAME} account`,
     text: `Email-based two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer sends a verification code by email.\n\nTwo-factor authentication makes a stolen password much harder to use. You can turn it back on anytime in your security settings.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
@@ -1708,6 +1946,7 @@ export function adminNotificationEmail(input: AdminNotificationInput) {
   const accent = typeAccent[input.type ?? "info"];
 
   return {
+    template: "adminNotification",
     preheader: `From ${input.adminName} on the ${APP_NAME} team.`,
     subject: input.title,
     text: `Hi ${input.userName},\n\n${input.title}\n\n${input.message}\n\nFrom: ${input.adminName} (${APP_NAME} team)\nSent: ${timestamp}\n\nIf anything here needs clarifying, reach the team at ${SUPPORT_EMAIL}.`,
@@ -1789,6 +2028,7 @@ export function scanCompleteEmail(
       : `${countBreakdown} on ${url}, scanned in ${durationSecs}s.`;
 
   return {
+    template: "scanComplete",
     preheader: textLead,
     subject: `${hostOf(url)}: scan complete, ${summary.total} ${issueWord} found`,
     text: `${textLead}\n\nFindings:\n- Critical: ${summary.critical}\n- High: ${summary.high}\n- Medium: ${summary.medium}\n- Low: ${summary.low}\n- Info: ${summary.info}\nTotal: ${summary.total}\n\nView the full report: ${viewLink}`,
@@ -1861,6 +2101,7 @@ export function criticalFindingsEmail(
     emailPanel(label, emailFindingList(findingListItems(items)));
 
   return {
+    template: "criticalFindings",
     preheader: `${url}: ${newFindings.length} new, ${outstandingFindings.length} still open from before.`,
     subject: `${hostOf(url)}: ${newFindings.length} new critical/high finding${newFindings.length !== 1 ? "s" : ""}`,
     text: `New critical/high findings on your latest scan.\n\nURL: ${url}\n\nNew since your last scan (${newFindings.length}):\n${findingListText(newFindings)}\n${
@@ -1920,6 +2161,7 @@ export function scheduledScanCompleteEmail(
       : "";
 
   return {
+    template: "scheduledScanComplete",
     preheader: `${summary.total} ${issueWord} on ${url}, scanned in ${durationSecs}s.`,
     subject: `${hostOf(url)}: scheduled scan "${scheduleName}" complete`,
     text: `Your scheduled scan "${scheduleName}" finished in ${durationSecs}s.\n\nURL: ${url}\nFindings:\n- Critical: ${summary.critical}\n- High: ${summary.high}\n- Medium: ${summary.medium}\n- Low: ${summary.low}\n- Info: ${summary.info}\nTotal: ${summary.total}\n\nView the full report: ${viewLink}`,
@@ -2078,7 +2320,7 @@ export function postureDigestEmail(data: PostureDigestData) {
 
   const preheader = `${previousOpenCount} to ${currentOpenCount} open critical/high across ${siteLabel}.`;
 
-  return { subject, preheader, text, html };
+  return { template: "postureDigest", subject, preheader, text, html };
 }
 
 export interface AdminChangeNotification {
@@ -2112,6 +2354,7 @@ export function adminAccountChangeEmail(input: AdminChangeNotification) {
     .join("\n");
 
   return {
+    template: "adminAccountChange",
     preheader: `${input.changes.length} field${input.changes.length === 1 ? "" : "s"} changed by ${input.adminName}.`,
     subject: `An administrator updated your ${APP_NAME} account`,
     text: `Hi ${input.userName},\n\nAn administrator (${input.adminName}) changed some details on your ${APP_NAME} account on ${timestamp}.\n\nChanges:\n${changesText}\n\nIf any of this looks wrong, reach the team at ${SUPPORT_EMAIL}.`,
@@ -2164,6 +2407,7 @@ export function paymentReceiptEmail(input: {
     !!input.invoiceUrl && /^https?:\/\//i.test(input.invoiceUrl);
 
   return {
+    template: "paymentReceipt",
     preheader: `${amount} for ${input.planName} on ${input.date}.`,
     subject: `Your ${APP_NAME} payment receipt`,
     text: `Thanks, your payment went through.\n\nPlan: ${input.planName}\nAmount: ${amount}\nDate: ${input.date}\n${
@@ -2211,6 +2455,7 @@ export function paymentFailedEmail(input: {
   }
 
   return {
+    template: "paymentFailed",
     preheader: `${amount} for ${input.planName} was declined. Update the card to keep access.`,
     subject: `${APP_NAME} couldn't process your payment`,
     text: `We couldn't charge your card ${amount} for your ${input.planName} subscription.\n${
@@ -2318,6 +2563,7 @@ export function subscriptionChangedEmail(input: {
   textLines.push("", `Manage your subscription: ${manageUrl}`);
 
   return {
+    template: "subscriptionChanged",
     preheader: `Plan is now ${input.planName}. Status: ${c.statusLabel}.`,
     subject: c.subject,
     text: textLines.join("\n"),
@@ -2340,6 +2586,7 @@ export function accountDeletedEmail(name?: string | null) {
   const greetingText = name ? `Hi ${name}, your` : "Your";
 
   return {
+    template: "accountDeleted",
     preheader:
       "Scans, schedules, API keys and billing records are gone. Last email from us.",
     subject: `Your ${APP_NAME} account was deleted`,
@@ -2363,6 +2610,7 @@ export function accountDeletedEmail(name?: string | null) {
 // notice, gated on the session_alerts preference.
 export function sessionRevokedEmail(details: SecurityAlertDetails) {
   return {
+    template: "sessionRevoked",
     preheader: `Signed out from ${details.ipAddress}. Sign in again on each device.`,
     subject: `You were signed out of every ${APP_NAME} session`,
     text: `Every active session on your ${APP_NAME} account was just signed out. You'll need to sign in again on each device.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't do this, change your password and turn on two-factor authentication right away, then email ${SUPPORT_EMAIL}.`,
@@ -2380,6 +2628,7 @@ export function sessionRevokedEmail(details: SecurityAlertDetails) {
 export function teamMemberRemovedEmail(teamName: string) {
   const safeTeam = escapeHtml(teamName);
   return {
+    template: "teamMemberRemoved",
     preheader: "Your own account, scans and history are untouched.",
     subject: `You were removed from ${teamName} on ${APP_NAME}`,
     text: `You were removed from the team "${teamName}" on ${APP_NAME}. You no longer have access to that team's shared scans, history, or reports. Your own account and scans are untouched.\n\nIf you think this was a mistake, reach out to the team's owner.`,
@@ -2403,6 +2652,7 @@ export function teamRoleChangedEmail(
 ) {
   const safeTeam = escapeHtml(teamName);
   return {
+    template: "teamRoleChanged",
     preheader: `${oldRole} to ${newRole} in ${teamName}.`,
     subject: `Your role in ${teamName} changed`,
     text: `Your role in the team "${teamName}" on ${APP_NAME} was changed from ${oldRole} to ${newRole}. What you can do in the team may have changed with it.\n\nView the team: ${APP_URL}/teams`,
@@ -2437,6 +2687,7 @@ export function teamInviteResolvedEmail(
   const safeEmail = escapeHtml(inviteeEmail);
   const verb = accepted ? "accepted" : "declined";
   return {
+    template: "teamInviteResolved",
     subject: `${inviteeEmail} ${verb} your invite to ${teamName}`,
     preheader: accepted
       ? `They can now see the team's scans, history and reports.`
@@ -2474,6 +2725,7 @@ export function teamInviteResolvedEmail(
 export function teamDeletedEmail(teamName: string) {
   const safeTeam = escapeHtml(teamName);
   return {
+    template: "teamDeleted",
     subject: `The team ${teamName} was deleted`,
     preheader: "Your own account, scans and history are untouched.",
     text: `The team "${teamName}" on ${APP_NAME} was deleted by its owner.\n\nIts shared scans, history, and reports are no longer available to anyone who was on it. Your own account and your own scans are untouched.\n\nIf you think this was a mistake, talk to whoever owned the team.`,
@@ -2495,6 +2747,7 @@ export function emailVerifiedEmail(name?: string | null) {
   const greetingHtml = name ? `Hi ${escapeHtml(name)}, your` : "Your";
   const greetingText = name ? `Hi ${name}, your` : "Your";
   return {
+    template: "emailVerified",
     subject: `Your ${APP_NAME} email is verified`,
     preheader: "Paste a URL and the first scan takes about three seconds.",
     text: `${greetingText} email address is confirmed and your ${APP_NAME} account is fully active.\n\nPaste a URL on the dashboard and the first scan takes about three seconds. Nothing to install.\n\nStart scanning: ${APP_URL}/dashboard\nRead the docs: ${APP_URL}/docs`,
@@ -2531,6 +2784,7 @@ export function loginMethodChangedEmail(
     ? `Signing in with ${providerLabel} now works on this account.`
     : `Signing in with ${providerLabel} no longer works. Make sure you still have a password or another provider you can use.`;
   return {
+    template: "loginMethodChanged",
     subject: `${providerLabel} was ${verb} your ${APP_NAME} account`,
     preheader: consequence,
     text: `${providerLabel} was just ${verb} your ${APP_NAME} account.\n\n${consequence}\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away, then email ${SUPPORT_EMAIL}.`,
@@ -2553,6 +2807,7 @@ export function apiKeyBindingResetEmail(
 ) {
   const safeName = escapeHtml(keyName);
   return {
+    template: "apiKeyBindingReset",
     subject: `The IP lock on an API key was removed`,
     preheader: `${keyName} will now accept requests from any address.`,
     text: `The IP binding on your API key "${keyName}" was just cleared. The key will now accept requests from any address, and re-binds to the first one it sees.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't do this, revoke the key from your API settings and email ${SUPPORT_EMAIL}.`,
@@ -2582,6 +2837,7 @@ export function webhookSecretRotatedEmail(
   const safeName = escapeHtml(webhookName);
   const manageUrl = `${APP_URL}/profile?tab=webhooks`;
   return {
+    template: "webhookSecretRotated",
     subject: `The signing secret for a webhook was rotated`,
     preheader: `${webhookName} deliveries fail signature checks until you update the receiver.`,
     text: `The signing secret for your webhook "${webhookName}" was just rotated.\n\nAny receiver still verifying with the old secret will reject deliveries. Copy the new secret from your webhook settings and update it there.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nManage webhooks: ${manageUrl}`,
@@ -2624,6 +2880,7 @@ export function creditPurchaseReceiptEmail(
   const hasInvoice =
     !!input.invoiceUrl && /^https?:\/\//i.test(input.invoiceUrl);
   return {
+    template: "creditPurchaseReceipt",
     subject: `Your ${APP_NAME} credit receipt`,
     preheader: `${input.quantity} ${input.creditLabel} for ${amount}, already on your balance.`,
     text: `Thanks, your payment went through and the credits are already on your balance.\n\nCredits: ${input.quantity} ${input.creditLabel}\nAmount: ${amount}\nDate: ${input.date}\n${
@@ -2662,6 +2919,7 @@ export function creditRefundEmail(
     ? "Your bank opened a dispute on the charge, so we reversed it."
     : "The charge was refunded, so we reversed it.";
   return {
+    template: "creditRefund",
     subject: `${amount} was refunded and the credits were removed`,
     preheader: `${input.quantity} ${input.creditLabel} came off your balance.`,
     text: `${reason}\n\nRefunded: ${amount}\nCredits removed: ${input.quantity} ${input.creditLabel}\n\nYour balance no longer includes them. If this doesn't look right, email ${SUPPORT_EMAIL} and we'll sort it out.`,
@@ -2711,6 +2969,7 @@ export function supportTicketReceivedEmail(input: {
 }) {
   const url = `${APP_URL}/contact?ticket=${input.ticketId}`;
   return {
+    template: "supportTicketReceived",
     subject: `[Ticket #${input.ticketId}] ${input.subject}`,
     preheader: "We reply to most tickets within 24 to 48 hours.",
     text: `Your support ticket #${input.ticketId} is open and in our queue.\n\nSubject: ${input.subject}\nCategory: ${input.category}\n\nWhat you sent:\n${input.body}\n\nWe reply to most tickets within 24 to 48 hours. Track it here: ${url}`,
@@ -2740,6 +2999,7 @@ export function supportTicketStaffAlertEmail(input: {
 }) {
   const verb = input.isNew ? "New" : "Reply on";
   return {
+    template: "supportTicketStaffAlert",
     subject: `[Ticket #${input.ticketId}] ${input.subject}`,
     preheader: `${input.category} from ${input.fromEmail}`,
     text: `${verb} ${input.category} support ticket #${input.ticketId} from ${input.fromEmail}\n\nSubject: ${input.subject}\n\n${input.body}\n\nOpen the admin support inbox: ${APP_URL}/admin`,
@@ -2770,6 +3030,7 @@ export function supportTicketReplyEmail(input: {
 }) {
   const url = `${APP_URL}/contact?ticket=${input.ticketId}`;
   return {
+    template: "supportTicketReply",
     subject: `Re: [Ticket #${input.ticketId}] ${input.subject}`,
     preheader: "Reply on the ticket and it stays on the same thread.",
     text: `Our team replied to your support ticket #${input.ticketId}.\n\n${input.body}\n\nView and reply: ${url}`,
@@ -2792,6 +3053,7 @@ export function supportTicketStatusChangedEmail(input: {
   const status = input.status.toLowerCase();
   const closed = status === "resolved" || status === "closed";
   return {
+    template: "supportTicketStatusChanged",
     subject: `Ticket #${input.ticketId} is ${status}`,
     preheader: closed
       ? "Reply on it and it reopens, no need to start a new one."

@@ -77,6 +77,29 @@ describe("getNotificationPreferences", () => {
     expect(sql).toContain("email_team_changes");
   });
 
+  it("starts an account with no row on the schema defaults: everything on except Tips & Guides", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const prefs = await getNotificationPreferences(1);
+
+    // The schema says `email_tips_guides ... DEFAULT false`. Every copy of the
+    // defaults said true, so a user with no row was shown as subscribed to
+    // tips and sent them.
+    expect(prefs.email_tips_guides).toBe(false);
+    expect(prefs.email_product_updates).toBe(true);
+    expect(prefs.email_security).toBe(true);
+  });
+
+  it("hands back a copy, so a caller cannot change the defaults for everyone", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    const first = await getNotificationPreferences(1);
+    first.email_tips_guides = true;
+    const second = await getNotificationPreferences(2);
+
+    expect(second.email_tips_guides).toBe(false);
+  });
+
   it("returns the stored value for an existing preferences row", async () => {
     const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
     row.email_team_changes = false;
@@ -153,7 +176,67 @@ describe("sendNotificationEmail", () => {
         to: "user@example.com",
         subject: emailContent.subject,
         unsubscribeToken: "tok",
+        // The one-click header is scoped to this message's own category.
+        unsubscribeColumn: "email_team_changes",
       }),
+    );
+  });
+
+  it("sends a security notice with no unsubscribe token, and never reads it", async () => {
+    // A mail client's Unsubscribe button on a "new sign-in" notice used to
+    // switch off the sign-in, password and two-factor warnings together.
+    const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // FEATURE_EMAIL_NOTIFICATIONS
+      .mockResolvedValueOnce({ rows: [row] }); // getNotificationPreferences
+
+    await sendNotificationEmail({
+      userId: 1,
+      userEmail: "user@example.com",
+      type: "login_alerts",
+      emailContent,
+    });
+
+    const sent = mockSendEmail.mock.calls[0][0];
+    expect(sent.unsubscribeToken).toBeUndefined();
+    expect(sent.unsubscribeColumn).toBeUndefined();
+    const sql = mockQuery.mock.calls.map((c) => String(c[0]));
+    expect(sql.some((s) => s.includes("unsubscribe_token"))).toBe(false);
+  });
+
+  it("still honours a security preference the user switched off", async () => {
+    const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
+    row.email_new_login = false;
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [row] });
+
+    await sendNotificationEmail({
+      userId: 1,
+      userEmail: "user@example.com",
+      type: "login_alerts",
+      emailContent,
+    });
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("passes the template through, so a spread builder result is traced to its row", async () => {
+    const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [row] })
+      .mockResolvedValueOnce({ rows: [{ unsubscribe_token: "tok" }] });
+
+    await sendNotificationEmail({
+      userId: 1,
+      userEmail: "user@example.com",
+      type: "scan_complete",
+      emailContent: { ...emailContent, template: "scanComplete" },
+    });
+
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ template: "scanComplete" }),
     );
   });
 

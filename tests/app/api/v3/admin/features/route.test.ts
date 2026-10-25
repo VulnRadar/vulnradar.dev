@@ -45,9 +45,10 @@ const mockIsEmailConfigured = vi.fn();
 vi.mock("@/lib/email/email", async (importOriginal) => ({
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
   isEmailConfigured: () => mockIsEmailConfigured(),
-  // The real one: it is pure, and it builds the text part these tests read.
-  stripHtmlTags: (await importOriginal<typeof import("@/lib/email/email")>())
-    .stripHtmlTags,
+  // The real one: it is pure, and it builds the preview line these tests read.
+  broadcastPreheader: (
+    await importOriginal<typeof import("@/lib/email/email")>()
+  ).broadcastPreheader,
 }));
 
 // The rate limiter reads and writes the same mocked pool, and its queries
@@ -834,7 +835,11 @@ describe("POST /api/v3/admin/features — broadcast", () => {
     /** Dispatch on SQL text: delivery interleaves several query shapes and
      *  runs inside a background timer, so a fixed mockResolvedValueOnce
      *  sequence would pin the test to today's exact call order. */
-    function stubDelivery(opts: { claimed: number[] }) {
+    function stubDelivery(opts: {
+      claimed: number[];
+      content?: string;
+      segmentFilter?: unknown;
+    }) {
       let pageServed = false;
       mockQuery.mockImplementation((sql: string) => {
         if (sql.includes("segment_filter FROM broadcast_messages")) {
@@ -843,8 +848,8 @@ describe("POST /api/v3/admin/features — broadcast", () => {
               {
                 id: 5,
                 title: "Go live",
-                content: "<p>hi</p>",
-                segment_filter: null,
+                content: opts.content ?? "<p>hi</p>",
+                segment_filter: opts.segmentFilter ?? null,
               },
             ],
           });
@@ -911,6 +916,109 @@ describe("POST /api/v3/admin/features — broadcast", () => {
             String(c[0]).includes("'sent'"),
         );
         expect(sent?.[1]).toEqual([5, 11]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("sends the plain-text part as text: entities decoded, list items apart, links kept", async () => {
+      vi.useFakeTimers();
+      try {
+        queueRole("admin");
+        stubDelivery({
+          claimed: [11],
+          content:
+            '<h1>Release notes</h1><p>It&#39;s faster &amp; safer.</p><ul><li>One</li><li>Two</li></ul><a href="https://example.com/x">Read more</a>',
+        });
+        await POST(
+          postRequest({ section: "broadcast", action: "send", id: 5 }),
+        );
+        await vi.advanceTimersByTimeAsync(200);
+
+        const sent = mockSendEmail.mock.calls[0][0];
+        expect(sent.text).toBe(
+          "Release notes\n\nIt's faster & safer.\n\n- One\n- Two\n\nRead more (https://example.com/x)",
+        );
+        // The preview line starts after the heading, which is the subject
+        // again, and is escaped once on its way into the document, so it must
+        // arrive here with its apostrophe as a character and not an entity.
+        expect(sent.preheader).toBe("It's faster & safer.");
+        expect(sent.template).toBe("broadcast");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("one-click unsubscribes from the category the broadcast was sent under, and only that", async () => {
+      vi.useFakeTimers();
+      try {
+        queueRole("admin");
+        stubDelivery({
+          claimed: [11],
+          segmentFilter: {
+            segment: "all",
+            preference_col: "email_tips_guides",
+          },
+        });
+        await POST(
+          postRequest({ section: "broadcast", action: "send", id: 5 }),
+        );
+        await vi.advanceTimersByTimeAsync(200);
+
+        expect(mockSendEmail.mock.calls[0][0].unsubscribeColumn).toBe(
+          "email_tips_guides",
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("treats a user with no preferences row as having made no choice, not as opted in", async () => {
+      vi.useFakeTimers();
+      try {
+        queueRole("admin");
+        stubDelivery({
+          claimed: [],
+          segmentFilter: {
+            segment: "all",
+            preference_col: "email_tips_guides",
+          },
+        });
+        await POST(
+          postRequest({ section: "broadcast", action: "send", id: 5 }),
+        );
+        await vi.advanceTimersByTimeAsync(200);
+
+        // Tips & Guides is opt-in in the schema, so a missing row means NO.
+        // The filter used to read "np.user_id IS NULL OR np.col = true", which
+        // put everyone who never saved a preference into this audience.
+        const page = sqlCalls().find((s) => s.includes("FROM users u"));
+        expect(page).toContain("COALESCE(np.email_tips_guides, false) = true");
+        expect(page).not.toContain("np.user_id IS NULL");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("ignores a preference column it does not know rather than interpolating it", async () => {
+      vi.useFakeTimers();
+      try {
+        queueRole("admin");
+        stubDelivery({
+          claimed: [],
+          segmentFilter: {
+            segment: "all",
+            preference_col: "email_tips_guides; DROP TABLE users",
+          },
+        });
+        await POST(
+          postRequest({ section: "broadcast", action: "send", id: 5 }),
+        );
+        await vi.advanceTimersByTimeAsync(200);
+
+        const page = sqlCalls().find((s) => s.includes("FROM users u"));
+        expect(page).not.toContain("DROP");
+        expect(page).not.toContain("COALESCE(np.");
       } finally {
         vi.useRealTimers();
       }
@@ -1102,7 +1210,12 @@ describe("POST /api/v3/admin/features — broadcast test send", () => {
     expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
       to: "admin@example.com",
       html: "<p>Hello</p>",
+      text: "Hello",
+      template: "broadcastTest",
       unsubscribeToken: "unsub-tok",
+      // A test has no audience, so its one-click link is the fallback
+      // category rather than "everything".
+      unsubscribeColumn: "email_product_updates",
     });
   });
 

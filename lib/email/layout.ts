@@ -776,12 +776,14 @@ export function emailLayout({
   // Two different reasons a message can land, and telling the reader the
   // wrong one is worse than saying nothing. A message that carries an
   // unsubscribe token went through the preference gate and really can be
-  // turned off; one without a token is a security or billing notice that
-  // cannot, and pointing that reader at a settings page they will find no
-  // switch on is a support ticket waiting to happen.
+  // turned off from the link; one without a token is a security or billing
+  // notice, which is not offered a link at all. The sign-in and password
+  // warnings can still be changed under Profile, but a footer link that
+  // opens a page about them would be the one-click opt-out they are
+  // deliberately kept away from.
   const reasonLine = unsubscribeUrl
     ? `You're getting this because you have a ${escapeHtml(appName)} account.`
-    : `This is a service notice about your ${escapeHtml(appName)} account, so email preferences don't cover it.`;
+    : `This is a service notice about your ${escapeHtml(appName)} account, so it has no unsubscribe link.`;
 
   // The preferences affordance used to be an outlined pseudo-button above
   // three lines of grey text carrying four links. It is a link in the link

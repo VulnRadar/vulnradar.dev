@@ -12,7 +12,17 @@ import {
 } from "@/lib/auth/permissions-client";
 import { STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
 import { CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES } from "@/lib/config/config-values";
-import { sendEmail, isEmailConfigured, stripHtmlTags } from "@/lib/email/email";
+import {
+  sendEmail,
+  isEmailConfigured,
+  broadcastPreheader,
+} from "@/lib/email/email";
+import { htmlToText } from "@/lib/email/html-to-text";
+import {
+  BROADCAST_FALLBACK_COLUMN,
+  isNotificationColumn,
+  optedInCondition,
+} from "@/lib/notifications/columns";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   isSettingKey,
@@ -26,29 +36,6 @@ import {
   invalidateSettingsCache,
   getSettings,
 } from "@/lib/config/runtime-config";
-
-const VALID_PREF_COLS = new Set([
-  "email_security",
-  "email_new_login",
-  "email_password_change",
-  "email_2fa_change",
-  "email_session_revoked",
-  "email_scan_complete",
-  "email_critical_findings",
-  "email_regression_alert",
-  "email_schedules",
-  "email_posture_digest",
-  "email_api_keys",
-  "email_api_limit_warning",
-  "email_webhooks",
-  "email_webhook_failure",
-  "email_data_requests",
-  "email_account_deletion",
-  "email_team_invite",
-  "email_team_changes",
-  "email_product_updates",
-  "email_tips_guides",
-]);
 
 // Broadcast delivery. The send and resend actions used to carry two byte
 // identical copies of this loop, each of which (a) selected the entire
@@ -81,10 +68,11 @@ async function deliverBroadcast(messageId: number): Promise<void> {
 
   const segment = message.segment_filter?.segment || message.segment_filter;
   const prefCol = message.segment_filter?.preference_col;
-  const safeCol =
-    typeof prefCol === "string" && VALID_PREF_COLS.has(prefCol)
-      ? prefCol
-      : null;
+  const safeCol = isNotificationColumn(prefCol) ? prefCol : null;
+
+  // The plain-text part is made once for the whole send, not once per
+  // recipient: it is the same message for everyone.
+  const broadcastText = htmlToText(message.content);
 
   const conditions: string[] = ["u.email_verified_at IS NOT NULL"];
   const queryParams: unknown[] = [];
@@ -106,7 +94,11 @@ async function deliverBroadcast(messageId: number): Promise<void> {
     }
   }
   if (safeCol) {
-    conditions.push(`(np.user_id IS NULL OR np.${safeCol} = true)`);
+    // A user with no preferences row has not chosen, so they get the schema
+    // default for this column. "No row" used to mean "opted in" for every
+    // column, which put people who never saved a preference into an audience
+    // filtered on Tips & Guides, an opt-in category.
+    conditions.push(optedInCondition(safeCol));
   }
 
   // Keyset, not OFFSET: the page query re-runs after each batch and OFFSET
@@ -171,9 +163,14 @@ async function deliverBroadcast(messageId: number): Promise<void> {
             await sendEmail({
               to: recipient.email,
               subject: message.title,
-              text: stripHtmlTags(message.content),
+              text: broadcastText,
               html: message.content,
+              preheader: broadcastPreheader(broadcastText),
+              template: "broadcast",
               unsubscribeToken: recipient.unsubscribe_token ?? undefined,
+              // The one-click link turns off the category this broadcast was
+              // sent under, and only that one.
+              unsubscribeColumn: safeCol ?? BROADCAST_FALLBACK_COLUMN,
             });
             await pool.query(
               `UPDATE broadcast_recipients SET status = 'sent'
@@ -823,12 +820,16 @@ export async function POST(req: NextRequest) {
         }
 
         try {
+          const testText = htmlToText(content);
           await sendEmail({
             to: recipient.email,
             subject: `[TEST] ${title}`,
-            text: stripHtmlTags(content),
+            text: testText,
             html: content,
+            preheader: broadcastPreheader(testText),
+            template: "broadcastTest",
             unsubscribeToken: recipient.unsubscribe_token ?? undefined,
+            unsubscribeColumn: BROADCAST_FALLBACK_COLUMN,
           });
         } catch (err) {
           console.error("[Broadcast] test send failed:", err);

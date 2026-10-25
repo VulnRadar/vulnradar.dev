@@ -819,6 +819,15 @@ export default function ConfigPage() {
               <InlineCode>SMTP_PASS</InlineCode>,{" "}
               <InlineCode>SMTP_FROM</InlineCode>
             </li>
+            <li>
+              <InlineCode>SMTP_EHLO_NAME</InlineCode> (optional): the name the
+              server gives when it greets the relay. Left unset it is the host
+              of your app URL. Without either, Node uses the machine hostname,
+              and inside Docker that is a container id with no dot, which it
+              replaces with <InlineCode>[127.0.0.1]</InlineCode>. Spam scoring
+              reads that greeting, so set this to the name your sending IP
+              resolves to if it is not your app URL&apos;s host.
+            </li>
           </ul>
         </DocsSubSection>
 

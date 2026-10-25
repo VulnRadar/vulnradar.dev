@@ -16,8 +16,15 @@ const mockCheckRateLimit = vi.fn();
 const mockGetClientIp = vi.fn();
 vi.mock("@/lib/rate-limiting/rate-limit", () => ({
   checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
-  RATE_LIMITS: { api: { limit: "api", maxAttempts: 30, windowSeconds: 3600 } },
+  RATE_LIMITS: {
+    api: { limit: "api", maxAttempts: 30, windowSeconds: 3600 },
+    contactForm: { limit: "contactForm", maxAttempts: 5, windowSeconds: 3600 },
+  },
 }));
+// withErrorHandling (lib/api/api-utils.ts) reaches the session and the pool.
+// Neither is used by this route, so they are mocked only so the wrapper loads.
+vi.mock("@/lib/database/db", () => ({ default: { query: vi.fn() } }));
+vi.mock("@/lib/auth/auth", () => ({ getSession: vi.fn() }));
 // The route used a deprecated getClientIP re-exported from the rate-limit
 // module; it now calls the real getClientIp, so the mock moves to where the
 // function actually lives.
@@ -150,6 +157,16 @@ describe("POST /api/v3/contact (Turnstile disabled, the default test env state)"
     expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
+  it("limits on the contact form's own bucket, not the 100-an-hour one every API route shares", async () => {
+    await POST(postRequest(VALID_BODY));
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "contact:203.0.113.7",
+        limit: "contactForm",
+      }),
+    );
+  });
+
   it("requires all fields", async () => {
     const res = await POST(postRequest({ ...VALID_BODY, message: "   " }));
     const json = await res.json();
@@ -204,13 +221,35 @@ describe("POST /api/v3/contact (Turnstile disabled, the default test env state)"
     await POST(postRequest(VALID_BODY));
     await flushMicrotasks();
 
-    expect(mockContactEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ email: "alex.morgan@example.com" }),
-    );
     const confirmationCall = mockSendEmail.mock.calls.find(
       (c) => c[0].to === "alex.morgan@example.com",
     );
     expect(confirmationCall).toBeDefined();
+  });
+
+  it("gives the staff email only the submission id and a category label, never what the sender typed", async () => {
+    await POST(postRequest(VALID_BODY));
+    await flushMicrotasks();
+
+    // The id is the stored submission's, so the pointer opens the right row.
+    expect(mockContactEmail).toHaveBeenCalledWith({
+      submissionId: 7,
+      category: "Bug Report",
+    });
+  });
+
+  it("gives the confirmation a category label and no name to greet", async () => {
+    await POST(
+      postRequest({
+        ...VALID_BODY,
+        name: "Claim your payout at example.tld/x",
+      }),
+    );
+    await flushMicrotasks();
+
+    expect(mockContactConfirmationEmail).toHaveBeenCalledWith({
+      category: "Bug Report",
+    });
   });
 
   it("sends both the internal and confirmation emails and returns a success message", async () => {
@@ -224,10 +263,12 @@ describe("POST /api/v3/contact (Turnstile disabled, the default test env state)"
 
     await flushMicrotasks();
     expect(mockSendEmail).toHaveBeenCalledTimes(2);
-    const replyToCall = mockSendEmail.mock.calls.find(
-      (c) => c[0].replyTo === "alex.morgan@example.com",
-    );
-    expect(replyToCall).toBeDefined();
+    // No Reply-To on either: a sender's free-mail address as Reply-To on mail
+    // from our own domain is a spam rule of its own, and staff reply from the
+    // admin inbox instead.
+    for (const call of mockSendEmail.mock.calls) {
+      expect(call[0].replyTo).toBeUndefined();
+    }
   });
 
   it("still returns success even if the background email send fails", async () => {
@@ -242,12 +283,23 @@ describe("POST /api/v3/contact (Turnstile disabled, the default test env state)"
     // sent to the client.
   });
 
-  it("returns 500 on a malformed JSON body", async () => {
+  it("answers a malformed JSON body with a 400, not a server error", async () => {
     const res = await POST(postRawRequest("{not valid json"));
     const json = await res.json();
 
+    expect(res.status).toBe(400);
+    expect(json.error).toBe("Invalid request body.");
+    expect(mockRecordSubmission).not.toHaveBeenCalled();
+  });
+
+  it("turns an unexpected failure into a 500 through the shared wrapper", async () => {
+    mockCheckRateLimit.mockRejectedValue(new Error("rate limiter down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await POST(postRequest(VALID_BODY));
+
     expect(res.status).toBe(500);
-    expect(json.error).toBe("Something went wrong.");
+    spy.mockRestore();
   });
 
   it("stores the message before attempting to send anything", async () => {
@@ -290,8 +342,54 @@ describe("POST /api/v3/contact (Turnstile disabled, the default test env state)"
     expect(mockRecordSubmission).toHaveBeenCalledTimes(1);
     expect(mockRecordEmailOutcome).toHaveBeenCalledWith(7, {
       delivered: false,
-      error: "smtp: 535 auth failed",
+      error:
+        "staff notification: smtp: 535 auth failed; confirmation to the sender: smtp: 535 auth failed",
     });
+  });
+
+  it("says which of the two messages was refused when only one is", async () => {
+    // They used to share a Promise.all, so the first rejection won and the
+    // stored error never said whether it was the staff copy or the sender's.
+    mockSendEmail.mockImplementation(async (opts: { to: string }) => {
+      if (opts.to === "alex.morgan@example.com") {
+        throw new Error("550 5.7.0 Blocked by SpamAssassin");
+      }
+    });
+
+    await POST(postRequest(VALID_BODY));
+    await flushMicrotasks();
+
+    // The staff copy went through, so the submission counts as delivered and
+    // the failed confirmation is recorded beside it.
+    expect(mockRecordEmailOutcome).toHaveBeenCalledWith(7, {
+      delivered: true,
+      error: "confirmation to the sender: 550 5.7.0 Blocked by SpamAssassin",
+    });
+  });
+
+  it("marks the submission failed when the staff copy is the one refused", async () => {
+    mockSendEmail.mockImplementation(async (opts: { to: string }) => {
+      if (opts.to !== "alex.morgan@example.com") {
+        throw new Error("535 auth failed");
+      }
+    });
+
+    await POST(postRequest(VALID_BODY));
+    await flushMicrotasks();
+
+    expect(mockRecordEmailOutcome).toHaveBeenCalledWith(7, {
+      delivered: false,
+      error: "staff notification: 535 auth failed",
+    });
+  });
+
+  it("attempts the second message even though the first was refused", async () => {
+    mockSendEmail.mockRejectedValueOnce(new Error("staff mailbox rejected"));
+
+    await POST(postRequest(VALID_BODY));
+    await flushMicrotasks();
+
+    expect(mockSendEmail).toHaveBeenCalledTimes(2);
   });
 
   it("does not thank the sender when nothing could be stored", async () => {

@@ -21,6 +21,8 @@ import type * as EmailModule from "@/lib/email/email";
 export interface RenderedTemplate {
   /** Filename stem for the preview, and the label in a test failure. */
   name: string;
+  /** The identifier a builder gives sendEmail, stored on the Email Logs row. */
+  template?: string;
   subject: string;
   preheader?: string;
   text: string;
@@ -403,18 +405,11 @@ export async function buildTemplateCorpus(
     // Contact and support
     {
       name: "contact",
-      ...e.contactEmail({
-        name: "Dana Okafor",
-        email: "dana@example.dev",
-        subject: "Scan misses a header on a redirect chain",
-        message:
-          "Scanning https://example.dev returns clean, but the 301 hop sets\nStrict-Transport-Security and the final URL does not.",
-        category: "bug",
-      }),
+      ...e.contactEmail({ submissionId: 128, category: "Bug Report" }),
     },
     {
       name: "contactConfirmation",
-      ...e.contactConfirmationEmail({ name: "Dana", category: "Bug Report" }),
+      ...e.contactConfirmationEmail({ category: "Bug Report" }),
     },
     {
       name: "supportTicketReceived",
