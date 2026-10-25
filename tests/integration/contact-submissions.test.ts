@@ -1,6 +1,8 @@
 import { it, expect } from "vitest";
 import pool from "@/lib/database/db";
 import {
+  countContactSubmissions,
+  listContactSubmissions,
   recordContactSubmission,
   recordContactEmailOutcome,
 } from "@/lib/support/contact-submissions";
@@ -168,5 +170,61 @@ describeIntegration("contact submissions", () => {
       [invitee.email.toLowerCase()],
     );
     expect(left.rows[0].n).toBe(0);
+  });
+
+  it("lists submissions newest first, finds the ones whose email failed, and pages by id", async () => {
+    // The staff email is a pointer now, so this list is where a message is
+    // read, and `failed` is how a pointer a mail filter ate gets found.
+    const tag = unique("inbox");
+    const ids: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      ids.push(
+        await recordContactSubmission({
+          source: "contact",
+          name: tag,
+          email: `${tag}-${i}@example.test`,
+          subject: `${tag} ${i}`,
+          category: "bug",
+          message: `message ${i}`,
+          ipAddress: "203.0.113.7",
+        }),
+      );
+    }
+    await recordContactEmailOutcome(ids[1], {
+      delivered: false,
+      error: "550 5.7.0 Blocked by SpamAssassin",
+    });
+    await recordContactEmailOutcome(ids[2], { delivered: true });
+
+    const failed = await listContactSubmissions({ status: "failed" });
+    const ours = failed.submissions.filter((s) => s.name === tag);
+    expect(ours.map((s) => s.id)).toEqual([ids[1]]);
+    expect(ours[0].email_error).toContain("SpamAssassin");
+    // The IP is kept for abuse handling and never reaches a staff screen.
+    expect(ours[0]).not.toHaveProperty("ip_address");
+
+    // Page through everything ours, two at a time, by following nextBefore.
+    // Other suites share this table, so keep only our rows when comparing.
+    const seen: number[] = [];
+    let before: number | null = null;
+    for (let guard = 0; guard < 500; guard++) {
+      const page = await listContactSubmissions({
+        before,
+        limit: 2,
+      });
+      seen.push(
+        ...page.submissions.filter((s) => s.name === tag).map((s) => s.id),
+      );
+      if (page.nextBefore === null) break;
+      before = page.nextBefore;
+    }
+    expect(seen).toEqual([...ids].reverse());
+
+    const counts = await countContactSubmissions();
+    expect(counts.failed).toBeGreaterThanOrEqual(1);
+    expect(counts.sent).toBeGreaterThanOrEqual(1);
+    expect(counts.pending).toBeGreaterThanOrEqual(2);
+
+    await pool.query("DELETE FROM contact_submissions WHERE name = $1", [tag]);
   });
 });

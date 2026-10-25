@@ -9,6 +9,8 @@ import {
   MessageSquare,
   RefreshCw,
   Send,
+  UserCheck,
+  UserMinus,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,8 +19,13 @@ import { SkeletonRegion } from "@/components/shared/skeleton-shapes";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
+import { ContactSubmissionsView } from "@/components/admin/features/contact-submissions-view";
+import { useAuth } from "@/components/providers/auth-provider";
 import { cn } from "@/lib/ui/utils";
+import { focus } from "@/lib/ui/animations";
 import { formatRelativeTime } from "@/lib/ui/relative-time";
+import { useQueryParam } from "@/lib/ui/url-state";
 import { API } from "@/lib/config/client-constants";
 import { useConfirm } from "@/components/shared/use-confirm";
 import {
@@ -37,6 +44,8 @@ interface InboxTicket {
   status: TicketStatus;
   created_at: string;
   last_message_at: string;
+  assigned_to: number | null;
+  assigned_to_name: string | null;
   owner_id: number;
   owner_email: string;
   owner_name: string | null;
@@ -63,8 +72,11 @@ interface Thread {
     category: TicketCategory;
     status: TicketStatus;
     createdAt?: string;
+    ownerId?: number;
     ownerEmail?: string;
     ownerName?: string | null;
+    /** Who holds the ticket. Null: nobody, it is in the shared queue. */
+    assignedTo?: { id: number; name: string | null; mine: boolean } | null;
   };
   messages: ThreadMessage[];
 }
@@ -82,6 +94,14 @@ const FILTERS: { key: string; label: string }[] = [
   { key: "closed", label: "Closed" },
   { key: "all", label: "All" },
 ];
+
+/** How long the search box waits for a pause in typing before it asks. */
+const SEARCH_DEBOUNCE_MS = 300;
+
+const VIEWS = [
+  { key: "tickets", label: "Tickets" },
+  { key: "contact", label: "Contact form" },
+] as const;
 
 const STATUS_STYLES: Record<TicketStatus, string> = {
   open: "bg-primary/10 text-primary border-primary/20",
@@ -121,16 +141,72 @@ function StatusBadge({ status }: { status: TicketStatus }) {
   );
 }
 
+/** Tickets or the contact form's messages: both are "the support inbox". */
 export function SupportInbox() {
+  const [view, setView] = useQueryParam<"tickets" | "contact">(
+    "view",
+    "tickets",
+  );
+  // Anything else in ?view= is somebody's typo, not a third view.
+  const activeView = view === "contact" ? "contact" : "tickets";
+
+  return (
+    <div className="space-y-4">
+      <div
+        role="group"
+        aria-label="Support inbox view"
+        className="flex flex-wrap gap-1.5"
+      >
+        {VIEWS.map((v) => {
+          const selected = activeView === v.key;
+          return (
+            <button
+              key={v.key}
+              type="button"
+              aria-pressed={selected}
+              // The default view carries no query param, so the plain
+              // /admin?tab=support-tickets URL stays the ticket queue.
+              onClick={() => setView(v.key === "tickets" ? null : v.key)}
+              className={cn(
+                "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors duration-200 ease-out",
+                focus.ring,
+                selected
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+              )}
+            >
+              {v.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeView === "contact" ? <ContactSubmissionsView /> : <TicketInbox />}
+    </div>
+  );
+}
+
+function TicketInbox() {
+  const { me } = useAuth();
+  const myId = me?.userId ?? null;
   const { confirm, confirmDialog } = useConfirm();
   const [filter, setFilter] = useState("active");
+  const [mine, setMine] = useState(false);
+  const [search, setSearch] = useState("");
+  // What the list is actually filtered by. `search` follows every keystroke;
+  // this follows it after a pause, so typing is not one request per letter.
+  const [query, setQuery] = useState("");
   const [tickets, setTickets] = useState<InboxTicket[] | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [mineCount, setMineCount] = useState(0);
   const [openId, setOpenId] = useState<number | null>(null);
   const [thread, setThread] = useState<Thread | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
   const [reply, setReply] = useState("");
   const [replying, setReplying] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -139,24 +215,68 @@ export function SupportInbox() {
   // oldest message. Jump to the end whenever a thread loads or a reply lands.
   const messagesRef = useRef<HTMLDivElement>(null);
 
-  // The list row behind the open thread. The thread endpoint returns only the
-  // owner's email, not their id, so the account link comes from here.
+  // Typing fires a request per pause, and a slow answer to an older one must
+  // not land on top of a newer one. Only the latest request may write.
+  const inboxRequest = useRef(0);
+
+  // The list row behind the open thread. The thread endpoint returns the
+  // owner's id for staff, but the row is the fallback for a thread that
+  // predates it.
   const openTicket = tickets?.find((t) => t.id === openId) ?? null;
 
+  const filterParams = useCallback((): URLSearchParams => {
+    const params = new URLSearchParams();
+    if (filter !== "active") params.set("status", filter);
+    if (query) params.set("q", query);
+    if (mine) params.set("mine", "1");
+    return params;
+  }, [filter, query, mine]);
+
   const loadInbox = useCallback(async () => {
+    const request = ++inboxRequest.current;
     setError(null);
     try {
-      const qs = filter === "active" ? "" : `?status=${filter}`;
-      const res = await fetch(`${API.ADMIN_SUPPORT_TICKETS}${qs}`);
+      const qs = filterParams().toString();
+      const res = await fetch(
+        `${API.ADMIN_SUPPORT_TICKETS}${qs ? `?${qs}` : ""}`,
+      );
       if (!res.ok) throw new Error("Could not load the support inbox.");
       const data = await res.json();
+      if (request !== inboxRequest.current) return;
       setTickets(data.tickets ?? []);
+      setNextCursor(data.nextCursor ?? null);
       setCounts(data.counts ?? {});
+      setMineCount(typeof data.mine === "number" ? data.mine : 0);
     } catch (e) {
+      if (request !== inboxRequest.current) return;
       setError(e instanceof Error ? e.message : "Could not load the inbox.");
       setTickets([]);
+      setNextCursor(null);
     }
-  }, [filter]);
+  }, [filterParams]);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    const request = inboxRequest.current;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const params = filterParams();
+      params.set("before", nextCursor);
+      const res = await fetch(`${API.ADMIN_SUPPORT_TICKETS}?${params}`);
+      if (!res.ok) throw new Error("Could not load more tickets.");
+      const data = await res.json();
+      // The filters changed while this was in flight: it belongs to a list
+      // that is no longer on screen.
+      if (request !== inboxRequest.current) return;
+      setTickets((prev) => [...(prev ?? []), ...(data.tickets ?? [])]);
+      setNextCursor(data.nextCursor ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load more tickets.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [filterParams, nextCursor, loadingMore]);
 
   const openThread = useCallback(async (id: number) => {
     setOpenId(id);
@@ -178,6 +298,11 @@ export function SupportInbox() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState runs only in loadInbox' async continuation
     void loadInbox();
   }, [loadInbox]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     const el = messagesRef.current;
@@ -217,23 +342,40 @@ export function SupportInbox() {
     }
   }
 
-  async function setStatus(status: TicketStatus) {
+  async function patchTicket(
+    body: { status: TicketStatus } | { assign: "me" | "none" },
+    fallback: string,
+  ) {
     if (!thread) return;
     setError(null);
     try {
       const res = await fetch(API.SUPPORT_TICKET(thread.ticket.id), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || "Could not update the ticket.");
+        throw new Error(data?.error || fallback);
       }
       await openThread(thread.ticket.id);
       void loadInbox();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update the ticket.");
+      setError(e instanceof Error ? e.message : fallback);
+    }
+  }
+
+  function setStatus(status: TicketStatus) {
+    return patchTicket({ status }, "Could not update the ticket.");
+  }
+
+  async function assign(target: "me" | "none") {
+    if (assigning) return;
+    setAssigning(true);
+    try {
+      await patchTicket({ assign: target }, "Could not assign the ticket.");
+    } finally {
+      setAssigning(false);
     }
   }
 
@@ -262,6 +404,25 @@ export function SupportInbox() {
   // health row counts. Reading awaiting_staff alone would have this line
   // claim nothing is waiting while brand new tickets sat untouched.
   const needsReply = (counts.open ?? 0) + (counts.awaiting_staff ?? 0);
+
+  function resetSelection() {
+    setOpenId(null);
+    setThread(null);
+  }
+
+  /** Who a list row says holds the ticket, or null for the shared queue. */
+  function assigneeOf(t: InboxTicket): string | null {
+    if (t.assigned_to === null) return null;
+    if (t.assigned_to === myId) return "You";
+    return t.assigned_to_name ?? "Staff";
+  }
+
+  const assignedTo = thread?.ticket.assignedTo ?? null;
+  const emptyDescription = query
+    ? "Nothing matches that search. Subject, email address and #ticket number are searched."
+    : mine
+      ? "No ticket in this view is assigned to you."
+      : "Try another filter to see tickets in other states.";
 
   return (
     <div className="space-y-4">
@@ -294,6 +455,17 @@ export function SupportInbox() {
         </Button>
       </div>
 
+      <ListSearchInput
+        value={search}
+        onChange={(next) => {
+          setSearch(next);
+          resetSelection();
+        }}
+        placeholder="Search subject, email or #ticket number"
+        label="Search support tickets"
+        className="flex-none sm:max-w-sm"
+      />
+
       {/* Filters carry their own counts, so the size of each queue is readable
           without selecting it. The two unanswered queues stay amber while they
           are non-empty, even when another filter is selected. */}
@@ -311,8 +483,7 @@ export function SupportInbox() {
               aria-pressed={selected}
               onClick={() => {
                 setFilter(f.key);
-                setOpenId(null);
-                setThread(null);
+                resetSelection();
               }}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-200 ease-out",
@@ -333,6 +504,28 @@ export function SupportInbox() {
             </button>
           );
         })}
+        {/* Not a status, so not one of the exclusive chips above: it narrows
+            whichever of them is selected to the tickets this person took. */}
+        <button
+          type="button"
+          aria-pressed={mine}
+          onClick={() => {
+            setMine((m) => !m);
+            resetSelection();
+          }}
+          className={cn(
+            "ml-1 flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-200 ease-out",
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+            mine
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+          )}
+        >
+          Mine
+          <span className="font-mono text-[11px] tabular-nums opacity-70">
+            {mineCount}
+          </span>
+        </button>
       </div>
 
       {error && <InlineAlert tone="error">{error}</InlineAlert>}
@@ -385,67 +578,86 @@ export function SupportInbox() {
                 variant="inline"
                 size="sm"
                 icon={Inbox}
-                title="Nothing in this view"
+                title={query ? "No matching tickets" : "Nothing in this view"}
                 // The awaiting_staff wording used to be "No ticket is waiting
                 // on a staff reply", which is the sentence the header above
                 // already writes when that queue is clear.
-                description="Try another filter to see tickets in other states."
+                description={emptyDescription}
               />
             ) : (
-              tickets.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => openThread(t.id)}
-                  aria-current={openId === t.id ? "true" : undefined}
-                  className={cn(
-                    "relative flex w-full flex-col gap-1 border-b border-border/40 px-4 py-3 pl-5 text-left transition-colors duration-200 ease-out last:border-b-0",
-                    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                    openId === t.id ? "bg-primary/5" : "hover:bg-muted/30",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "absolute inset-y-0 left-0 w-0.5",
-                      STATUS_RAIL[t.status],
-                    )}
-                    aria-hidden="true"
-                  />
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span
+              <>
+                {tickets.map((t) => {
+                  const holder = assigneeOf(t);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => openThread(t.id)}
+                      aria-current={openId === t.id ? "true" : undefined}
                       className={cn(
-                        "truncate text-sm text-foreground",
-                        openId === t.id ? "font-semibold" : "font-medium",
+                        "relative flex w-full flex-col gap-1 border-b border-border/40 px-4 py-3 pl-5 text-left transition-colors duration-200 ease-out last:border-b-0",
+                        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                        openId === t.id ? "bg-primary/5" : "hover:bg-muted/30",
                       )}
                     >
-                      {t.subject}
-                    </span>
-                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
-                      {formatRelativeTime(t.last_message_at)}
-                    </span>
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {t.owner_name ? `${t.owner_name} · ` : ""}
-                    {t.owner_email}
-                  </span>
-                  {/* The list query already selects the newest message body.
+                      <span
+                        className={cn(
+                          "absolute inset-y-0 left-0 w-0.5",
+                          STATUS_RAIL[t.status],
+                        )}
+                        aria-hidden="true"
+                      />
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span
+                          className={cn(
+                            "truncate text-sm text-foreground",
+                            openId === t.id ? "font-semibold" : "font-medium",
+                          )}
+                        >
+                          {t.subject}
+                        </span>
+                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                          {formatRelativeTime(t.last_message_at)}
+                        </span>
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {t.owner_name ? `${t.owner_name} · ` : ""}
+                        {t.owner_email}
+                      </span>
+                      {/* The list query already selects the newest message body.
                       It was fetched and thrown away, so triaging the queue
                       meant opening every thread to find out what it said. */}
-                  {t.last_message && (
-                    <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground/80">
-                      {t.last_message}
-                    </span>
-                  )}
-                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    {!filterPinsStatus && <StatusBadge status={t.status} />}
-                    <span className="text-[11px] text-muted-foreground">
-                      {TICKET_CATEGORY_LABELS[t.category]} &middot;{" "}
-                      {t.message_count}{" "}
-                      {t.message_count === 1 ? "message" : "messages"}
-                    </span>
-                  </span>
-                </button>
-              ))
+                      {t.last_message && (
+                        <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground/80">
+                          {t.last_message}
+                        </span>
+                      )}
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {!filterPinsStatus && <StatusBadge status={t.status} />}
+                        <span className="text-[11px] text-muted-foreground">
+                          {TICKET_CATEGORY_LABELS[t.category]} &middot;{" "}
+                          {t.message_count}{" "}
+                          {t.message_count === 1 ? "message" : "messages"}
+                          {holder ? ` · ${holder}` : ""}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+                {nextCursor && (
+                  <div className="border-t border-border/40 p-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 w-full"
+                      onClick={loadMore}
+                      disabled={loadingMore}
+                    >
+                      {loadingMore ? "Loading..." : "Load older tickets"}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -494,10 +706,7 @@ export function SupportInbox() {
                   variant="ghost"
                   size="sm"
                   className="-ml-2 mb-1 h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground lg:hidden"
-                  onClick={() => {
-                    setOpenId(null);
-                    setThread(null);
-                  }}
+                  onClick={resetSelection}
                 >
                   <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
                   Back to inbox
@@ -521,14 +730,14 @@ export function SupportInbox() {
                         the parts we wrote and kept only a fragment of the
                         address. */}
                     <p className="mt-0.5 wrap-anywhere text-xs text-muted-foreground">
-                      {openTicket ? (
+                      {(thread.ticket.ownerId ?? openTicket?.owner_id) ? (
                         <a
-                          href={`/admin?tab=users&user=${openTicket.owner_id}`}
+                          href={`/admin?tab=users&user=${thread.ticket.ownerId ?? openTicket?.owner_id}`}
                           className="text-primary hover:underline"
                         >
                           {thread.ticket.ownerName ??
                             thread.ticket.ownerEmail ??
-                            openTicket.owner_email}
+                            openTicket?.owner_email}
                         </a>
                       ) : (
                         thread.ticket.ownerEmail
@@ -538,6 +747,44 @@ export function SupportInbox() {
                         ? ` · opened ${formatRelativeTime(thread.ticket.createdAt)}`
                         : ""}
                     </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span>
+                        {assignedTo
+                          ? assignedTo.mine
+                            ? "Assigned to you"
+                            : `Assigned to ${assignedTo.name ?? "another staff member"}`
+                          : "Unassigned"}
+                      </span>
+                      {assignedTo?.mine ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => assign("none")}
+                          disabled={assigning}
+                        >
+                          <UserMinus
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
+                          Unassign
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1.5 px-2 text-xs"
+                          onClick={() => assign("me")}
+                          disabled={assigning}
+                        >
+                          <UserCheck
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
+                          Assign to me
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   <div className="flex shrink-0 gap-1.5">
                     {thread.ticket.status !== "resolved" && (

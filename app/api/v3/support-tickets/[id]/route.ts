@@ -203,6 +203,7 @@ export const GET = withErrorHandling(
         // to staff. Who is working a customer's ticket is an internal fact.
         ...(access.isStaff
           ? {
+              ownerId: ticket.user_id,
               ownerEmail: ticket.owner_email,
               ownerName: ticket.owner_name,
               assignedTo: ticket.assigned_to

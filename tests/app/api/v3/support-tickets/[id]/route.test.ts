@@ -150,6 +150,7 @@ describe("GET /api/v3/support-tickets/[id]", () => {
     expect(res.status).toBe(200);
     expect(body.viewerIsStaff).toBe(false);
     expect(body.ticket.ownerEmail).toBeUndefined();
+    expect(body.ticket.ownerId).toBeUndefined();
     // Staff replies show as "Support" (no name) to the owner.
     expect(body.messages[0].authorName).toBeNull();
   });
@@ -181,6 +182,9 @@ describe("GET /api/v3/support-tickets/[id]", () => {
     expect(res.status).toBe(200);
     expect(body.viewerIsStaff).toBe(true);
     expect(body.ticket.ownerEmail).toBe("owner@example.com");
+    // The account link in the inbox keys off this, so it survives the ticket
+    // dropping out of the list (resolved while the Active filter is on).
+    expect(body.ticket.ownerId).toBe(7);
     expect(body.messages[0].authorName).toBe("Agent Smith");
   });
 });

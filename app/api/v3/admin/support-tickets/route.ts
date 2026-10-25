@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import pool from "@/lib/database/db";
 import { requirePermission } from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
+import { withErrorHandling } from "@/lib/api/api-utils";
 import {
-  TICKET_STATUSES,
-  type TicketStatus,
-} from "@/lib/support/ticket-constants";
+  decodeTicketCursor,
+  isAdminTicketView,
+  listAdminTickets,
+  ticketQueueCounts,
+} from "@/lib/support/admin-ticket-list";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,10 +18,18 @@ export const dynamic = "force-dynamic";
  * Staff inbox: every user's support ticket, newest activity first. Gated on
  * MANAGE_SUPPORT_TICKETS (support role and up). Reading/replying to an
  * individual ticket goes through /api/v3/support-tickets/[id], which admits
- * staff too. Optional ?status=<one of TICKET_STATUSES> filter; by default it
- * hides resolved/closed so the queue shows what still needs attention.
+ * staff too.
+ *
+ * Query:
+ *   status  one of TICKET_STATUSES, or "all". Default: everything still open,
+ *           so the queue shows what needs attention.
+ *   q       subject or owner email (a literal substring), or "#<id>".
+ *   mine    "1" for only the tickets assigned to the caller.
+ *   before  the `nextCursor` of the previous page. Pages are 50 tickets,
+ *           newest activity first, so the list is complete however long it is
+ *           instead of stopping at the first 200.
  */
-export async function GET(request: NextRequest) {
+export const GET = withErrorHandling(async (request: NextRequest) => {
   const staff = await requirePermission(
     STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
   );
@@ -30,53 +40,36 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  try {
-    const statusParam = request.nextUrl.searchParams.get("status");
-    let whereClause = `WHERE t.status IN ('open', 'awaiting_staff', 'awaiting_user')`;
-    const values: unknown[] = [];
-    if (statusParam === "all") {
-      whereClause = "";
-    } else if (
-      statusParam &&
-      TICKET_STATUSES.includes(statusParam as TicketStatus)
-    ) {
-      whereClause = `WHERE t.status = $1`;
-      values.push(statusParam);
-    }
+  const params = request.nextUrl.searchParams;
+  const statusParam = params.get("status");
+  // An unknown status falls back to the default queue rather than 400ing, as
+  // it always has: the chips are the only caller and they only send known ones.
+  const view =
+    statusParam && isAdminTicketView(statusParam) ? statusParam : "active";
 
-    // perf: the GROUP BY count reads every support_tickets row and does not
-    // depend on the listing, so it used to add a second full pass in series
-    // with the page query on every inbox load. Independent queries, one wait.
-    const [result, counts] = await Promise.all([
-      pool.query(
-        `SELECT t.id, t.subject, t.category, t.status, t.created_at, t.last_message_at,
-              u.id AS owner_id, u.email AS owner_email, u.name AS owner_name,
-              (SELECT COUNT(*)::int FROM support_ticket_messages m WHERE m.ticket_id = t.id) AS message_count,
-              (SELECT m2.body FROM support_ticket_messages m2 WHERE m2.ticket_id = t.id ORDER BY m2.created_at DESC LIMIT 1) AS last_message
-       FROM support_tickets t
-       JOIN users u ON u.id = t.user_id
-       ${whereClause}
-       ORDER BY t.last_message_at DESC
-       LIMIT 200`,
-        values,
-      ),
-      pool.query<{ status: TicketStatus; n: number }>(
-        `SELECT status, COUNT(*)::int AS n FROM support_tickets GROUP BY status`,
-      ),
-    ]);
-
-    return NextResponse.json({
-      tickets: result.rows,
-      counts: Object.fromEntries(counts.rows.map((r) => [r.status, r.n])),
-    });
-  } catch (error) {
-    console.error(
-      "[admin/support-tickets] Failed to list tickets:",
-      error instanceof Error ? error.message : error,
-    );
-    return NextResponse.json(
-      { error: "Failed to load support tickets." },
-      { status: 500 },
-    );
+  const beforeParam = params.get("before");
+  const cursor = beforeParam ? decodeTicketCursor(beforeParam) : null;
+  if (beforeParam && !cursor) {
+    return NextResponse.json({ error: "Invalid cursor." }, { status: 400 });
   }
-}
+
+  // perf: the GROUP BY count reads every support_tickets row and does not
+  // depend on the listing, so it used to add a second full pass in series
+  // with the page query on every inbox load. Independent queries, one wait.
+  // A page past the first needs no counts, and skips the second query.
+  const [page, queue] = await Promise.all([
+    listAdminTickets({
+      view,
+      q: params.get("q"),
+      assignedTo: params.get("mine") === "1" ? staff.userId : null,
+      cursor,
+    }),
+    cursor ? null : ticketQueueCounts(staff.userId),
+  ]);
+
+  return NextResponse.json({
+    tickets: page.tickets,
+    nextCursor: page.nextCursor,
+    ...(queue ? { counts: queue.counts, mine: queue.mine } : {}),
+  });
+});
