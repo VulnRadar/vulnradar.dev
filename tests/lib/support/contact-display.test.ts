@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   CONTACT_PENDING_STALE_MS,
   contactEmailState,
+  isPlainMailAddress,
 } from "@/lib/support/contact-display";
 
 /**
@@ -67,5 +68,55 @@ describe("contactEmailState", () => {
         at(week),
       ).tone,
     ).toBe("crit");
+  });
+});
+
+/**
+ * The contact form accepts anything shaped like local@domain.tld, which lets a
+ * sender put mailto: syntax into the address. The Reply link opens a draft in a
+ * staff member's own mail client, so only an address that cannot add fields to
+ * that draft gets a link.
+ */
+describe("isPlainMailAddress", () => {
+  it("accepts ordinary addresses, including plus tags and dotted names", () => {
+    for (const ok of [
+      "alex@example.com",
+      "alex.smith+support@mail.example.co.uk",
+      "o'brien@example.com",
+    ]) {
+      expect(isPlainMailAddress(ok)).toBe(true);
+    }
+  });
+
+  it("refuses an address that would add a Cc, a body or a subject to the draft", () => {
+    for (const bad of [
+      "a@b.co?cc=evil@x.example",
+      "a@b.co?subject=hello&body=send%20money",
+      "a@b.co&bcc=evil@x.example",
+      "a@b.co#fragment",
+    ]) {
+      expect(isPlainMailAddress(bad)).toBe(false);
+    }
+  });
+
+  it("refuses characters a mail client reads as structure", () => {
+    for (const bad of [
+      "a%0Ab@c.co",
+      "a,b@c.co",
+      "a;b@c.co",
+      "<a>@c.co",
+      'a"b@c.co',
+      "a b@c.co",
+      "a" + String.fromCharCode(92) + "b@c.co",
+    ]) {
+      expect(isPlainMailAddress(bad)).toBe(false);
+    }
+  });
+
+  it("refuses anything that is not one address", () => {
+    for (const bad of ["", "no-at-sign", "a@b@c.co", "@c.co", "a@"]) {
+      expect(isPlainMailAddress(bad)).toBe(false);
+    }
+    expect(isPlainMailAddress("a@" + "b".repeat(260) + ".co")).toBe(false);
   });
 });

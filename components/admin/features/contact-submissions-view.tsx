@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, MailQuestion, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +16,7 @@ import { formatRelativeTime } from "@/lib/ui/relative-time";
 import { API } from "@/lib/config/client-constants";
 import {
   contactEmailState,
+  isPlainMailAddress,
   type ContactEmailTone,
 } from "@/lib/support/contact-display";
 import type {
@@ -70,17 +71,25 @@ export function ContactSubmissionsView() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Switching filters while a slower answer to the last one is still in flight
+  // must not put that answer's rows under the new filter's chip. Only the
+  // latest load may write.
+  const latest = useRef(0);
+
   const load = useCallback(async () => {
+    const request = ++latest.current;
     setError(null);
     try {
       const qs = filter === "all" ? "" : `?status=${filter}`;
       const res = await fetch(`${API.ADMIN_CONTACT_SUBMISSIONS}${qs}`);
       if (!res.ok) throw new Error("Could not load contact messages.");
       const data = await res.json();
+      if (request !== latest.current) return;
       setRows(data.submissions ?? []);
       setNextBefore(data.nextBefore ?? null);
       if (data.counts) setCounts(data.counts);
     } catch (e) {
+      if (request !== latest.current) return;
       setError(
         e instanceof Error ? e.message : "Could not load contact messages.",
       );
@@ -104,6 +113,7 @@ export function ContactSubmissionsView() {
 
   async function loadMore() {
     if (nextBefore === null || loadingMore) return;
+    const request = latest.current;
     setLoadingMore(true);
     setError(null);
     try {
@@ -112,6 +122,9 @@ export function ContactSubmissionsView() {
       const res = await fetch(`${API.ADMIN_CONTACT_SUBMISSIONS}?${params}`);
       if (!res.ok) throw new Error("Could not load more messages.");
       const data = await res.json();
+      // The filter changed while this was in flight: it belongs to a list that
+      // is no longer on screen.
+      if (request !== latest.current) return;
       setRows((prev) => [...(prev ?? []), ...(data.submissions ?? [])]);
       setNextBefore(data.nextBefore ?? null);
     } catch (e) {
@@ -298,25 +311,37 @@ export function ContactSubmissionsView() {
                         {row.message}
                       </p>
                       {row.email_error && (
-                        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
-                          <p className="text-[11px] font-medium text-destructive">
-                            Why the staff email failed
-                          </p>
+                        <InlineAlert
+                          tone="error"
+                          title="Why the staff email failed"
+                        >
                           <p className="mt-0.5 wrap-anywhere font-mono text-[11px] leading-relaxed text-foreground">
                             {row.email_error}
                           </p>
-                        </div>
+                        </InlineAlert>
                       )}
-                      <EmailLink
-                        address={row.email}
-                        subject={`Re: ${row.subject || "your message"}`}
-                        className={cn(
-                          "-my-1 inline-flex h-8 items-center rounded-sm text-sm text-primary hover:underline",
-                          focus.ring,
-                        )}
-                      >
-                        Reply by email
-                      </EmailLink>
+                      {/* The form accepts any local@domain.tld, which includes
+                          mailto syntax (a?cc=...&body=...). Such an address is
+                          shown as text and gets no link, so a stranger cannot
+                          fill in the draft a staff member replies from. */}
+                      {isPlainMailAddress(row.email) ? (
+                        <EmailLink
+                          address={row.email}
+                          subject={`Re: ${row.subject || "your message"}`}
+                          className={cn(
+                            "-my-1 inline-flex h-8 items-center rounded-sm text-sm text-primary hover:underline",
+                            focus.ring,
+                          )}
+                        >
+                          Reply by email
+                        </EmailLink>
+                      ) : (
+                        <p className="wrap-anywhere text-xs text-muted-foreground">
+                          No reply link, because this address has characters
+                          that would change the draft:{" "}
+                          <span className="font-mono">{row.email}</span>
+                        </p>
+                      )}
                     </div>
                   )}
                 </li>

@@ -37,3 +37,19 @@ export function contactEmailState(
     ? { tone: "warn", label: "Send never finished" }
     : { tone: "info", label: "Sending" };
 }
+
+/**
+ * Whether an address can go into a `mailto:` link exactly as it is.
+ *
+ * The contact form takes anything shaped like `local@domain.tld`, and that
+ * shape allows `?`, `&`, `#`, `%` and `,`. A submitted address such as
+ * `a@b.co?cc=someone@else.example&body=...` would make the Reply link open a
+ * draft with a Cc and a body the sender chose, in a staff member's own mail
+ * client. An address with any of those characters is shown as text instead.
+ */
+export function isPlainMailAddress(address: string): boolean {
+  return (
+    address.length <= 254 &&
+    /^[^\s@?&#%,;<>"\\]+@[^\s@?&#%,;<>"\\]+$/.test(address)
+  );
+}

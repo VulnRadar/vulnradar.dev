@@ -3,8 +3,8 @@
  *
  * Source-text assertions, as with the other component suites: this config runs
  * plain node with no DOM. They pin the contract other work relies on (the
- * staff email for a contact message links to /admin?tab=support&view=contact)
- * and the rules a refactor would quietly undo.
+ * contact inbox is /admin?tab=support-tickets&view=contact) and the rules a
+ * refactor would quietly undo.
  */
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
@@ -15,12 +15,24 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 
 const INBOX = read("components/admin/features/support-inbox.tsx");
 const CONTACT = read("components/admin/features/contact-submissions-view.tsx");
+const ADMIN_PAGE = read("app/admin/page.tsx");
+const ADMIN_NAV = read("components/admin/nav.ts");
 
 describe("the support inbox views", () => {
   it("reads ?view= and shows the contact form's messages for view=contact", () => {
     expect(INBOX).toMatch(/useQueryParam<[^>]*>\(\s*"view",\s*"tickets"/);
     expect(INBOX).toContain('view === "contact" ? "contact" : "tickets"');
     expect(INBOX).toContain("<ContactSubmissionsView />");
+  });
+
+  it("lives under the support-tickets tab, the id a link to ?view=contact has to name", () => {
+    // The admin page falls back to Overview for a tab id it does not know, so a
+    // link built with any other id (there is no "support" tab) opens the wrong
+    // page and the view parameter is never read.
+    expect(ADMIN_NAV).toContain('"support-tickets"');
+    expect(ADMIN_PAGE).toContain(
+      'activeTab === "support-tickets" && <SupportInbox />',
+    );
   });
 
   it("keeps the default view out of the URL", () => {
@@ -91,6 +103,20 @@ describe("the contact form view", () => {
 
   it("pages with the id of the last message it showed", () => {
     expect(CONTACT).toContain("nextBefore");
+  });
+
+  it("discards an answer to a request that a newer filter has replaced", () => {
+    expect(CONTACT).toContain("request !== latest.current");
+  });
+
+  it("links a reply only for an address that cannot add fields to the draft", () => {
+    expect(CONTACT).toContain("isPlainMailAddress(row.email)");
+  });
+
+  it("reports the failed send through the shared alert, not a hand-rolled box", () => {
+    expect(CONTACT).toContain('title="Why the staff email failed"');
+    expect(CONTACT).toContain("import { InlineAlert }");
+    expect(CONTACT).not.toMatch(/rounded-md border border-destructive/);
   });
 });
 
