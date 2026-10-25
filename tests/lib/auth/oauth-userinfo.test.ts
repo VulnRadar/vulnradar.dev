@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   exchangeOAuthCode,
   fetchOAuthUserInfo,
@@ -25,7 +33,7 @@ vi.stubGlobal("fetch", mockFetch);
 // Every failure here is now written to console.error, which is what the admin
 // Error Logs persist. Spied for the whole file so the suite's own failure
 // cases do not print, and so the logging describe at the bottom can read it.
-let errorSpy: ReturnType<typeof vi.spyOn>;
+let errorSpy: MockInstance<typeof console.error>;
 
 beforeEach(() => {
   mockFetch.mockReset();

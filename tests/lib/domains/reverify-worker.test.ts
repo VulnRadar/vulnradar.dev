@@ -3,7 +3,15 @@
  * already-verified domains, closing the gap where a domain that changes
  * hands keeps the original account's active-probes permission forever.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type MockInstance,
+} from "vitest";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -82,7 +90,7 @@ function updateCalls() {
   );
 }
 
-let errorSpy: ReturnType<typeof vi.spyOn>;
+let errorSpy: MockInstance<typeof console.error>;
 
 beforeEach(() => {
   mockQuery.mockReset();

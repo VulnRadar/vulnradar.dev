@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type MockInstance,
+} from "vitest";
 import { createHmac } from "node:crypto";
 
 /**
@@ -137,7 +145,7 @@ function locatorLookups() {
   return queries.filter((q) => q.sql.includes("ak.key_locator = $1"));
 }
 
-let errorSpy: ReturnType<typeof vi.spyOn>;
+let errorSpy: MockInstance<typeof console.error>;
 const savedEnv = {
   current: process.env.API_KEY_ENCRYPTION_KEY,
   previous: process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY,

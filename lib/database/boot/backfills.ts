@@ -249,7 +249,7 @@ export async function backfillSubDailyScheduleSlots(
         },
         now,
       );
-      if (row.next_run_at.getTime() <= correct.getTime()) continue;
+      if (new Date(row.next_run_at).getTime() <= correct.getTime()) continue;
 
       // Re-checked in the WHERE so a run that finished and rescheduled the row
       // between the SELECT and here is not overwritten with an older answer.
