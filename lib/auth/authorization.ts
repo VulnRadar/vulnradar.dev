@@ -9,6 +9,7 @@ import {
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { hasStaffPermission, type StaffPermission } from "./permissions-client";
+import type { AuditAction } from "@/lib/admin/audit-actions";
 
 type AuthError = NextResponse | undefined;
 
@@ -266,11 +267,16 @@ async function resolveActingAdmin(
  * R3/D1: Audit-log helper — replaces the ~5 local `logAction` copies
  * scattered across admin route files. Callers should use this for any
  * state-changing admin action so the admin_audit_log stays consistent.
+ *
+ * `action` is an AuditAction, not a string: a name that is not registered in
+ * lib/admin/audit-actions.ts does not compile, so it cannot reach the table
+ * without a label and a filter category. A name built at runtime goes through
+ * isAuditAction first.
  */
 export async function logAuditAction(
   adminId: number,
   targetUserId: number | null,
-  action: string,
+  action: AuditAction,
   details?: string,
   ip?: string,
 ): Promise<void> {

@@ -11,12 +11,19 @@
 import { describe, it, expect } from "vitest";
 import {
   ACTION_LABELS,
+  ACTION_META,
   DANGER_ZONE_ACTIONS,
   PASSWORD_GATED_ACTIONS,
   SUPPORT_CARD_ACTIONS,
 } from "@/components/admin/config";
+import {
+  AUDIT_FILTER_CATEGORIES,
+  getActionSentence,
+} from "@/components/admin/utils";
+import { AUDIT_ACTIONS, KNOWN_AUDIT_ACTIONS } from "@/lib/admin/audit-actions";
 import { ADMIN_ACTIONS, canPerformAction } from "@/lib/auth/permissions-client";
 import { STAFF_ROLES } from "@/lib/config/client-constants";
+import type { AuditEntry } from "@/components/admin/types";
 
 const REGISTERED_IDS = new Set(ADMIN_ACTIONS.map((a) => a.id));
 
@@ -89,6 +96,81 @@ describe("specialist roles reach the cards holding their grants", () => {
 
   it("billing cannot reach anything in the danger zone", () => {
     expect(seesCard(STAFF_ROLES.BILLING, DANGER_ZONE_ACTIONS)).toBe(false);
+  });
+});
+
+/**
+ * ACTION_META and AUDIT_FILTER_CATEGORIES are derived from
+ * lib/admin/audit-actions.ts. They used to be two hand-kept lists, and 25
+ * logged actions had no label while 31 were in no filter, so a filtered audit
+ * log silently hid them. These pin the derivation, not the data.
+ */
+describe("audit log display tables", () => {
+  it("gives every known action a label, a verb and a colour", () => {
+    for (const name of Object.keys(KNOWN_AUDIT_ACTIONS)) {
+      expect(ACTION_META[name]?.label, name).toBeTruthy();
+      expect(ACTION_META[name]?.verb, name).toBeTruthy();
+      expect(ACTION_META[name]?.cls, name).toMatch(/\bbg-/);
+    }
+  });
+
+  it("puts every action in exactly one filter, so no filter hides one", () => {
+    const filters = AUDIT_FILTER_CATEGORIES.filter((c) => c.id !== "all");
+    for (const name of Object.keys(KNOWN_AUDIT_ACTIONS)) {
+      const holders = filters.filter((c) => c.actions?.includes(name));
+      expect(
+        holders.map((c) => c.id),
+        name,
+      ).toHaveLength(1);
+    }
+  });
+
+  it("keeps All first and gives it no action list", () => {
+    expect(AUDIT_FILTER_CATEGORIES[0].id).toBe("all");
+    expect(AUDIT_FILTER_CATEGORIES[0].actions).toBeUndefined();
+  });
+
+  it("has Staff and Logs & data filters for the rows a review looks for", () => {
+    const byId = new Map(AUDIT_FILTER_CATEGORIES.map((c) => [c.id, c]));
+    expect(byId.get("staff")?.actions).toEqual(
+      expect.arrayContaining([
+        "staff_invite_sent",
+        "staff_oidc_login",
+        "impersonate",
+      ]),
+    );
+    expect(byId.get("logs_data")?.actions).toEqual(
+      expect.arrayContaining([
+        "error_logs_cleared",
+        "email_logs_cleared",
+        "audit_log_exported",
+      ]),
+    );
+  });
+
+  it("reads delete_account, the name the delete handler logs, as a sentence", () => {
+    // It used to fall back to `performed "delete account"`: only the two
+    // synonyms nothing writes any more had a label.
+    expect("delete_account" in AUDIT_ACTIONS).toBe(true);
+    const row = {
+      action: "delete_account",
+      admin_name: "Ada",
+      admin_email: "ada@example.test",
+      target_name: null,
+      target_email: null,
+    } as unknown as AuditEntry;
+    expect(getActionSentence(row)).toBe("Ada permanently deleted an account");
+  });
+
+  it("marks deletes and revokes destructive, which the log weights by", () => {
+    for (const name of [
+      "delete_account",
+      "error_logs_cleared",
+      "revoke_public_share",
+    ]) {
+      expect(ACTION_META[name].cls, name).toContain("destructive");
+    }
+    expect(ACTION_META.view_scan.cls).not.toContain("destructive");
   });
 });
 

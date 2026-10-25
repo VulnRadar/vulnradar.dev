@@ -11,115 +11,55 @@ import {
   Mail,
   Gift,
   ShieldAlert,
+  UserCog,
+  Database,
+  type LucideIcon,
 } from "lucide-react";
 import { ACTION_META } from "./config";
 import type { AuditEntry } from "./types";
 import { formatDate, formatDateTime } from "@/lib/ui/format-date";
+import {
+  AUDIT_CATEGORIES,
+  auditActionsIn,
+  type AuditCategoryId,
+} from "@/lib/admin/audit-actions";
+
+export interface AuditFilterCategory {
+  id: "all" | AuditCategoryId;
+  label: string;
+  icon: LucideIcon;
+  /** Absent only on "All", which matches every row. */
+  actions?: readonly string[];
+}
+
+const CATEGORY_ICONS: Record<AuditCategoryId, LucideIcon> = {
+  roles: Shield,
+  security: Key,
+  staff: UserCog,
+  status: Users,
+  badges: Award,
+  subscriptions: Gift,
+  notifications: Bell,
+  broadcasts: Mail,
+  system: Settings,
+  data: ShieldAlert,
+  logs_data: Database,
+};
 
 /**
- * Audit log filter categories with comprehensive action mappings
+ * The audit log's filter chips. Each category's action list is read off the
+ * registry in lib/admin/audit-actions.ts, so an action cannot be logged
+ * without landing in exactly one of them. This was a hand-kept list that had
+ * fallen 31 actions behind, and choosing any chip hid every one of those.
  */
-export const AUDIT_FILTER_CATEGORIES = [
+export const AUDIT_FILTER_CATEGORIES: readonly AuditFilterCategory[] = [
   { id: "all", label: "All", icon: Activity },
-  {
-    id: "roles",
-    label: "Roles",
-    icon: Shield,
-    actions: ["set_role", "make_admin", "remove_admin"],
-  },
-  {
-    id: "security",
-    label: "Security",
-    icon: Key,
-    actions: [
-      "reset_password",
-      "revoke_sessions",
-      "revoke_api_keys",
-      "revoke_api_key",
-      "reset_2fa",
-      "issue_2fa_recovery_code",
-      "force_logout_all",
-      "impersonate",
-      "verify_email",
-      "unverify_email",
-      "view_user_detail",
-    ],
-  },
-  {
-    id: "status",
-    label: "Status",
-    icon: Users,
-    actions: [
-      "disable_user",
-      "enable_user",
-      "delete_account",
-      "set_scan_limit",
-      "clear_rate_limits",
-    ],
-  },
-  {
-    id: "badges",
-    label: "Badges",
-    icon: Award,
-    actions: ["award_badge", "revoke_badge", "create_badge", "delete_badge"],
-  },
-  {
-    id: "subscriptions",
-    label: "Subscriptions",
-    icon: Gift,
-    actions: ["gift_subscription", "revoke_gift"],
-  },
-  {
-    id: "notifications",
-    label: "Notifications",
-    icon: Bell,
-    actions: [
-      "send_notification",
-      "notification_created",
-      "notification_updated",
-      "notification_deleted",
-    ],
-  },
-  {
-    id: "broadcasts",
-    label: "Broadcasts",
-    icon: Mail,
-    actions: [
-      "broadcast_created",
-      "broadcast_sent",
-      "broadcast_deleted",
-      "broadcast_resent",
-    ],
-  },
-  {
-    id: "system",
-    label: "System",
-    icon: Settings,
-    actions: [
-      "system_setting_changed",
-      "access_rule_created",
-      "access_rule_deleted",
-      "access_rule_updated",
-      "security_alert_resolved",
-      "promote_ai_tag",
-      "database_cleanup_run",
-    ],
-  },
-  {
-    id: "data",
-    label: "Data",
-    icon: ShieldAlert,
-    actions: [
-      "delete_scans",
-      "export_data",
-      "delete_webhooks",
-      "delete_schedules",
-      "clear_avatar",
-      "add_note",
-      "edit_note",
-      "delete_note",
-    ],
-  },
+  ...AUDIT_CATEGORIES.map((category) => ({
+    id: category.id,
+    label: category.label,
+    icon: CATEGORY_ICONS[category.id],
+    actions: auditActionsIn(category.id),
+  })),
 ];
 
 /**

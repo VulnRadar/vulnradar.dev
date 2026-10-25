@@ -322,7 +322,7 @@ describe("logAuditAction (and its logAction alias)", () => {
     await logAuditAction(
       1,
       2,
-      "grant_admin",
+      "make_admin",
       "Granted admin to john.doe@example.com",
     );
     const insert = queries.find((q) =>
@@ -331,18 +331,24 @@ describe("logAuditAction (and its logAction alias)", () => {
     expect(insert?.params).toEqual([
       1,
       2,
-      "grant_admin",
+      "make_admin",
       "Granted admin to j******e@example.com",
       null,
     ]);
   });
 
   it("passes through the ip address and a null target when provided", async () => {
-    await logAuditAction(1, null, "login", undefined, "203.0.113.5");
+    await logAuditAction(1, null, "staff_oidc_login", undefined, "203.0.113.5");
     const insert = queries.find((q) =>
       q.sql.includes("INSERT INTO admin_audit_log"),
     );
-    expect(insert?.params).toEqual([1, null, "login", null, "203.0.113.5"]);
+    expect(insert?.params).toEqual([
+      1,
+      null,
+      "staff_oidc_login",
+      null,
+      "203.0.113.5",
+    ]);
   });
 
   // An impersonation session belongs to the staff member driving it: its
@@ -352,14 +358,14 @@ describe("logAuditAction (and its logAction alias)", () => {
   // on behalf of, and the staff member appeared nowhere.
   it("files an action taken through an impersonation session against the staff member", async () => {
     mockSession = { userId: 42, impersonatedBy: 7 };
-    await logAuditAction(42, 42, "delete_scan", "Deleted scan #9", "10.0.0.1");
+    await logAuditAction(42, 42, "delete_scans", "Deleted scan #9", "10.0.0.1");
     const insert = queries.find((q) =>
       q.sql.includes("INSERT INTO admin_audit_log"),
     );
     expect(insert?.params).toEqual([
       7,
       42,
-      "delete_scan",
+      "delete_scans",
       "Deleted scan #9 [while impersonating user #42]",
       "10.0.0.1",
     ]);
@@ -398,14 +404,14 @@ describe("logAuditAction (and its logAction alias)", () => {
 
   it("records an ordinary staff action unchanged", async () => {
     mockSession = { userId: 3 };
-    await logAuditAction(3, 42, "disable", "Disabled the account");
+    await logAuditAction(3, 42, "disable_user", "Disabled the account");
     const insert = queries.find((q) =>
       q.sql.includes("INSERT INTO admin_audit_log"),
     );
     expect(insert?.params).toEqual([
       3,
       42,
-      "disable",
+      "disable_user",
       "Disabled the account",
       null,
     ]);

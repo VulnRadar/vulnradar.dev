@@ -1,5 +1,7 @@
 // Admin panel configuration - tabs, action metadata, filters
 
+import { KNOWN_AUDIT_ACTIONS, type AuditTone } from "@/lib/admin/audit-actions";
+
 // The five-entry ADMIN_TABS table that used to live here is gone. It was not
 // the live tab table and never had an importer: the panel builds its tabs at
 // runtime from NAV_GROUPS in app/admin/page.tsx (flattened into
@@ -8,7 +10,11 @@
 // named "Admin panel configuration" is how a tab gets added in the wrong
 // place. Add a tab in NAV_GROUPS.
 
-// Action metadata for audit log display
+// Action metadata for audit log display, derived from the registry in
+// lib/admin/audit-actions.ts. This used to be a hand-kept 41-entry table that
+// had fallen 25 actions behind what the routes actually log (staff invites,
+// log clears, audit exports, account deletion among them), so those rows
+// rendered as `performed "error logs cleared"`. Add an action there, not here.
 export interface ActionMeta {
   label: string;
   verb: string;
@@ -16,281 +22,33 @@ export interface ActionMeta {
   cls: string;
 }
 
-export const ACTION_META: Record<string, ActionMeta> = {
-  // Role changes
-  set_role: {
-    label: "Changed Role",
-    verb: "changed the role of",
-    icon: "shield",
-    cls: "bg-primary/10 text-primary border-primary/20",
-  },
-  make_admin: {
-    label: "Promoted to Admin",
-    verb: "promoted to admin",
-    icon: "crown",
-    cls: "bg-primary/10 text-primary border-primary/20",
-  },
-  remove_admin: {
-    label: "Removed Admin Role",
-    verb: "removed admin role from",
-    icon: "shield-off",
-    cls: "bg-muted text-muted-foreground border-border",
-  },
-  // Security actions
-  reset_password: {
-    label: "Reset Password",
-    verb: "sent a password reset to",
-    icon: "key",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  revoke_sessions: {
-    label: "Revoked Sessions",
-    verb: "revoked all sessions for",
-    icon: "log-out",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  revoke_api_keys: {
-    label: "Revoked API Keys",
-    verb: "revoked API keys for",
-    icon: "key",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  revoke_api_key: {
-    label: "Revoked API Key",
-    verb: "revoked an API key for",
-    icon: "key",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  reset_2fa: {
-    label: "Reset 2FA",
-    verb: "reset two-factor authentication for",
-    icon: "smartphone",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  issue_2fa_recovery_code: {
-    label: "2FA Recovery Code Issued",
-    verb: "emailed a one-time two-factor recovery code to",
-    icon: "smartphone",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  force_logout_all: {
-    label: "Force Logout",
-    verb: "force logged out",
-    icon: "log-out",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  // Account status
-  disable_user: {
-    label: "Disabled",
-    verb: "disabled the account of",
-    icon: "ban",
-    cls: "bg-destructive/10 text-destructive border-destructive/20",
-  },
-  disable: {
-    label: "Disabled",
-    verb: "disabled the account of",
-    icon: "ban",
-    cls: "bg-destructive/10 text-destructive border-destructive/20",
-  },
-  enable_user: {
-    label: "Enabled",
-    verb: "re-enabled the account of",
-    icon: "check-circle",
-    cls: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
-  },
-  enable: {
-    label: "Enabled",
-    verb: "re-enabled the account of",
-    icon: "check-circle",
-    cls: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
-  },
-  delete_user: {
-    label: "Deleted",
-    verb: "permanently deleted",
-    icon: "trash-2",
-    cls: "bg-destructive/10 text-destructive border-destructive/20",
-  },
-  delete: {
-    label: "Deleted",
-    verb: "permanently deleted",
-    icon: "trash-2",
-    cls: "bg-destructive/10 text-destructive border-destructive/20",
-  },
-  // Profile updates
-  update_name: {
-    label: "Name Changed",
-    verb: "updated the name of",
-    icon: "user",
-    cls: "bg-muted text-foreground border-border",
-  },
-  update_email: {
-    label: "Email Changed",
-    verb: "updated the email of",
-    icon: "mail",
-    cls: "bg-muted text-foreground border-border",
-  },
-  update_plan: {
-    label: "Plan Changed",
-    verb: "changed the subscription plan for",
-    icon: "credit-card",
-    cls: "bg-primary/10 text-primary border-primary/20",
-  },
-  clear_avatar: {
-    label: "Avatar Cleared",
-    verb: "cleared the avatar of",
-    icon: "image-off",
-    cls: "bg-muted text-muted-foreground border-border",
-  },
-  // Gift subscriptions
-  gift_subscription: {
-    label: "Gifted Plan",
-    verb: "gifted a subscription to",
-    icon: "gift",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  revoke_gift: {
-    label: "Revoked Gift",
-    verb: "revoked gifted subscription from",
-    icon: "gift-off",
-    cls: "bg-destructive/10 text-destructive border-destructive/20",
-  },
-  grant_credits: {
-    label: "Granted Credits",
-    verb: "granted credits to",
-    icon: "coins",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  // Data management
-  delete_scans: {
-    label: "Scans Deleted",
-    verb: "deleted all scans for",
-    icon: "trash-2",
-    cls: "bg-destructive/10 text-destructive border-destructive/20",
-  },
-  delete_webhooks: {
-    label: "Webhooks Deleted",
-    verb: "deleted webhooks for",
-    icon: "webhook-off",
-    cls: "bg-destructive/10 text-destructive border-destructive/20",
-  },
-  delete_schedules: {
-    label: "Schedules Deleted",
-    verb: "deleted schedules for",
-    icon: "calendar-off",
-    cls: "bg-destructive/10 text-destructive border-destructive/20",
-  },
-  export_data: {
-    label: "Data Exported",
-    verb: "exported data for",
-    icon: "download",
-    cls: "bg-muted text-foreground border-border",
-  },
-  clear_rate_limits: {
-    label: "Rate Limits Cleared",
-    verb: "cleared rate limits for",
-    icon: "gauge",
-    cls: "bg-muted text-foreground border-border",
-  },
-  // Badges
-  award_badge: {
-    label: "Badge Awarded",
-    verb: "awarded a badge to",
-    icon: "award",
-    cls: "bg-primary/10 text-primary border-primary/20",
-  },
-  revoke_badge: {
-    label: "Badge Revoked",
-    verb: "revoked a badge from",
-    icon: "award-off",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  create_badge: {
-    label: "Badge Created",
-    verb: "created a new badge",
-    icon: "plus-circle",
-    cls: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
-  },
-  delete_badge: {
-    label: "Badge Deleted",
-    verb: "deleted a badge",
-    icon: "trash-2",
-    cls: "bg-destructive/10 text-destructive border-destructive/20",
-  },
-  // Admin
-  impersonate: {
-    label: "Impersonation",
-    verb: "started impersonating",
-    icon: "eye",
-    cls: "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/20",
-  },
-  // Read, not a mutation. Admin GETs used to leave no trail at all, so
-  // there was nothing to reconstruct after a compromised or insider staff
-  // account paged through accounts; opening one user's full record (PII,
-  // sessions, billing identifiers) now writes a row.
-  view_user_detail: {
-    label: "Viewed Account",
-    verb: "viewed the account record of",
-    icon: "eye",
-    cls: "bg-muted text-muted-foreground border-border",
-  },
-  set_scan_limit: {
-    label: "Scan Limit Set",
-    verb: "set scan limit for",
-    icon: "gauge",
-    cls: "bg-muted text-foreground border-border",
-  },
-  // Site-wide, not about one account: both leave target_user_id null, so
-  // getActionSentence renders the verb on its own.
-  promote_ai_tag: {
-    label: "Auto-Tag Rule Promoted",
-    verb: "promoted an AI tag to an auto-tag rule",
-    icon: "tag",
-    cls: "bg-primary/10 text-primary border-primary/20",
-  },
-  database_cleanup_run: {
-    label: "Cleanup Run",
-    verb: "ran the database cleanup",
-    icon: "trash-2",
-    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
-  },
-  add_note: {
-    label: "Note Added",
-    verb: "added a note about",
-    icon: "sticky-note",
-    cls: "bg-muted text-foreground border-border",
-  },
-  send_notification: {
-    label: "Notification Sent",
-    verb: "sent a notification to",
-    icon: "bell",
-    cls: "bg-primary/10 text-primary border-primary/20",
-  },
-  // Usage/limit resets
-  reset_daily_limit: {
-    label: "Daily Limit Reset",
-    verb: "reset the daily scan count for",
-    icon: "gauge",
-    cls: "bg-muted text-foreground border-border",
-  },
-  reset_ai_usage: {
-    label: "AI Usage Reset",
-    verb: "reset the AI usage window for",
-    icon: "sparkles",
-    cls: "bg-muted text-foreground border-border",
-  },
-  reset_github_review_usage: {
-    label: "GitHub Review Usage Reset",
-    verb: "reset the GitHub review usage window for",
-    icon: "gauge",
-    cls: "bg-muted text-foreground border-border",
-  },
-  reset_free_github_trial: {
-    label: "Free GitHub Trial Reset",
-    verb: "reset the free GitHub review trial for",
-    icon: "gauge",
-    cls: "bg-muted text-foreground border-border",
-  },
+/**
+ * The registry names a tone; the classes live here because lib/ is outside
+ * Tailwind's content globs and a class string written there would be purged.
+ */
+const TONE_CLASSES: Record<AuditTone, string> = {
+  primary: "bg-primary/10 text-primary border-primary/20",
+  neutral: "bg-muted text-foreground border-border",
+  muted: "bg-muted text-muted-foreground border-border",
+  success:
+    "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
+  warning:
+    "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
+  destructive: "bg-destructive/10 text-destructive border-destructive/20",
+  high: "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/20",
 };
+
+export const ACTION_META: Record<string, ActionMeta> = Object.fromEntries(
+  Object.entries(KNOWN_AUDIT_ACTIONS).map(([action, def]) => [
+    action,
+    {
+      label: def.label,
+      verb: def.verb,
+      icon: def.icon,
+      cls: TONE_CLASSES[def.tone],
+    },
+  ]),
+);
 
 // Success-toast text for every admin PATCH action, keyed by its `action`
 // value. THIS IS THE LIVE COPY: app/admin/page.tsx imports it and does
