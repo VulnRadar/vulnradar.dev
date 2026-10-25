@@ -78,7 +78,22 @@ function isRequestRejection(raw: unknown): boolean {
   if (!APICallError.isInstance(err)) return false;
   const status = err.statusCode ?? 0;
   if ([400, 404, 422, 501].includes(status)) return true;
-  return /\b(tools?|function|tool_choice|reasoning)\b/i.test(
+  return namesTools(err);
+}
+
+/**
+ * The refusal is about tools specifically. Only this is remembered for the
+ * whole process: a bare 400 can be caused by one reader's message (a context
+ * length, a content filter), and remembering that would let one person's
+ * request switch tools off for every other reader for half an hour.
+ */
+function isToolRefusal(raw: unknown): boolean {
+  const err = unwrap(raw);
+  return APICallError.isInstance(err) && namesTools(err);
+}
+
+function namesTools(err: APICallError): boolean {
+  return /\b(tools?|functions?|function_call(?:ing)?|tool_choice)\b/i.test(
     `${err.message} ${err.responseBody ?? ""}`,
   );
 }
@@ -97,11 +112,36 @@ function userFacingError(raw: unknown): string {
   return "The AI provider is temporarily unavailable. Please try again.";
 }
 
+/**
+ * What a provider error says, fit for the error log: the status, the
+ * provider's own error type or code, and a short, redacted message. Never the
+ * raw body. Providers echo parts of the request back in validation errors,
+ * which here means a reader's own words, and the log is read by staff.
+ */
 function errorDetail(raw: unknown): string {
   const err = unwrap(raw);
-  if (APICallError.isInstance(err))
-    return `HTTP ${err.statusCode ?? "?"} ${String(err.responseBody ?? err.message).slice(0, 300)}`;
-  return err instanceof Error ? err.message.slice(0, 300) : String(err);
+  if (APICallError.isInstance(err)) {
+    let kind = "";
+    let message = err.message;
+    try {
+      const body = JSON.parse(String(err.responseBody ?? "")) as {
+        error?: { type?: string; code?: string | number; message?: string };
+      };
+      kind = [body.error?.type, body.error?.code].filter(Boolean).join("/");
+      if (body.error?.message) message = body.error.message;
+    } catch {
+      // Not JSON: the SDK's own message is all there is.
+    }
+    return `HTTP ${err.statusCode ?? "?"}${kind ? ` ${kind}` : ""}: ${redact(message)}`;
+  }
+  return redact(err instanceof Error ? err.message : String(err));
+}
+
+function redact(text: string): string {
+  return text
+    .replace(/(["'`])[^"'`]{24,}\1/g, "$1[quoted]$1")
+    .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "[redacted]")
+    .slice(0, 200);
 }
 
 // Reasoning written inline by older replies, still in a browser's saved
@@ -263,6 +303,9 @@ export async function POST(req: Request) {
   } = await getSettings([
     "AI_CHAT_MAX_TOKENS",
     "AI_CHAT_MAX_INPUT_LENGTH",
+  ] as const);
+  const { AI_CHAT_TOOLS: toolsSetting } = await getSettings([
+    "AI_CHAT_TOOLS",
   ] as const);
 
   if (!baseUrl) {
@@ -442,15 +485,26 @@ export async function POST(req: Request) {
     return { result, inputChars };
   }
 
-  let useTools = !toolsRecentlyRefused(capabilityKey);
+  // "off" for a model the operator knows cannot use tools; "on" to keep
+  // offering them even after a refusal (the refusal is still survived for that
+  // one message); "auto" learns from refusals.
+  let useTools =
+    toolsSetting === "off"
+      ? false
+      : toolsSetting === "on" || !toolsRecentlyRefused(capabilityKey);
   let current = attempt(useTools);
   let primed = await prime(current.result.fullStream);
 
   if (primed.error && useTools && isRequestRejection(primed.error)) {
     console.error(
-      `[AI chat] ${host} (${modelId}) refused a request with tools; answering without them for ${TOOLS_REFUSED_FOR_MS / 60_000} minutes: ${errorDetail(primed.error)}`,
+      toolsSetting === "on"
+        ? `[AI chat] ${host} (${modelId}) refused a request with tools; answered this message without them. AI_CHAT_TOOLS is "on", so the next one will offer them again: ${errorDetail(primed.error)}`
+        : isToolRefusal(primed.error)
+          ? `[AI chat] ${host} (${modelId}) refused tools; answering without them for ${TOOLS_REFUSED_FOR_MS / 60_000} minutes: ${errorDetail(primed.error)}`
+          : `[AI chat] ${host} (${modelId}) refused a request; retried this message without tools or reasoning fields: ${errorDetail(primed.error)}`,
     );
-    toolsRefusedAt.set(capabilityKey, Date.now());
+    if (toolsSetting !== "on" && isToolRefusal(primed.error))
+      toolsRefusedAt.set(capabilityKey, Date.now());
     useTools = false;
     current = attempt(false);
     primed = await prime(current.result.fullStream);

@@ -64,6 +64,12 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Some AI models write their working-out into the answer itself. When one of those translated a support ticket, that working-out could end up in the translated message the other person read. It is now removed first, and a translation that fails is logged for staff instead of disappearing without a trace.
 - [ServerCrash] **[IMPROVED]** **AI Verification Stops at a Wrong Key Instead of Logging Every Finding**
   When the AI provider refused the deployment's key or did not recognise the configured model, verifying a scan still sent every finding and logged one error for each, which buried the cause under dozens of identical rows. It now stops at the first refusal and logs one line that says to check the AI key and model. An endpoint that rejects the reasoning setting is likewise noted once, not on every call.
+- [Activity] **[IMPROVED]** **Failed Scans Now Say Why They Failed**
+  A scan that did not finish used to be recorded the same way whatever the reason: a scan you cancelled, one refused because a daily limit ran out, one that never got its turn in a bulk batch, and one that crashed inside the scanner all counted as the same kind of failure, which is how the admin health page could turn red when nothing was wrong. Each failed scan now records which of these it was, and scans that failed before this change are sorted into the right kind automatically on the next start.
+- [Search] **[IMPROVED]** **Every Admin Audit Entry Can Be Read and Filtered**
+  About a third of the actions written to the admin audit log had no readable label and no filter, so they showed up as raw internal names that could not be searched for. Every action now has a label and a category, including new Staff and Logs and data filters for staff invites, log clears, exports and backups, and a test fails if a new action is ever logged without one.
+- [Shield] **[SECURITY]** **The Contact Form Has Its Own Rate Limit**
+  The contact form shared one limit of 100 requests an hour with the whole API, so it could be used to send a lot of mail before anything stopped it. It now has its own much tighter limit, and creating support tickets and changing their status have limits of their own too. Each can be adjusted under Admin, Settings, Rate Limits.
 - [UserCheck] **[IMPROVED]** **Password Managers Now Recognise the Sign-In Field**
   The email box on the sign-in and sign-up pages was labelled in a way that password managers did not recognise as the username field they should pair with your saved password, so some password managers would not offer to fill it in automatically. It is labelled correctly now, and it was our own scanner that caught the problem on our own site.
 - [Palette] **[IMPROVED]** **A Calmer, More Consistent Interface**
@@ -2612,6 +2618,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 998
+- **Total changes documented:** 1001
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

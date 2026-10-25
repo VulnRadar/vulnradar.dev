@@ -2747,7 +2747,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_AI_CHAT_TOOLS,
     group: "AI",
     label: "Chat tool use",
-    help: "Whether the support chat lets the model look things up itself (the user's own scans, the check catalogue, their account) or pastes matching knowledge into the prompt instead. auto follows what the model catalog says the configured model supports. Set on or off when the catalog is wrong about your model: a model that cannot call tools answers worse with them turned on, not better.",
+    help: "Whether the support chat lets the model look things up itself (the user's own scans, the check catalogue, their account) or pastes matching knowledge into the prompt instead. auto offers tools and, when the endpoint refuses a request carrying them, answers without them for the next 30 minutes. off never offers them, for a model you know cannot use them. on keeps offering them after a refusal.",
     options: ["auto", "on", "off"],
   },
   AI_VERIFY_MAX_TOKENS: {

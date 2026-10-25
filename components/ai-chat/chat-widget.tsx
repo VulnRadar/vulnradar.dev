@@ -855,7 +855,7 @@ export function ChatWidget() {
 
   // Fetch provider info eagerly on mount so it's ready before the widget opens
   useEffect(() => {
-    fetch("/api/v3/ai/info")
+    fetch(API.AI_INFO)
       .then((r) => r.json())
       .then((d) => setProvider(d as ProviderInfo))
       .catch(() => {});
@@ -1057,7 +1057,7 @@ export function ChatWidget() {
   ): Promise<void> {
     const controller = new AbortController();
     streamAbortRef.current = controller;
-    const res = await fetch("/api/v3/ai/chat", {
+    const res = await fetch(API.AI_CHAT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages: aiMessages }),

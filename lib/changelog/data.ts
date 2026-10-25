@@ -351,6 +351,24 @@ const CHANGELOG: Release[] = [
         category: "improved",
       },
       {
+        icon: Activity,
+        label: "Failed Scans Now Say Why They Failed",
+        desc: "A scan that did not finish used to be recorded the same way whatever the reason: a scan you cancelled, one refused because a daily limit ran out, one that never got its turn in a bulk batch, and one that crashed inside the scanner all counted as the same kind of failure, which is how the admin health page could turn red when nothing was wrong. Each failed scan now records which of these it was, and scans that failed before this change are sorted into the right kind automatically on the next start.",
+        category: "improved",
+      },
+      {
+        icon: Search,
+        label: "Every Admin Audit Entry Can Be Read and Filtered",
+        desc: "About a third of the actions written to the admin audit log had no readable label and no filter, so they showed up as raw internal names that could not be searched for. Every action now has a label and a category, including new Staff and Logs and data filters for staff invites, log clears, exports and backups, and a test fails if a new action is ever logged without one.",
+        category: "improved",
+      },
+      {
+        icon: Shield,
+        label: "The Contact Form Has Its Own Rate Limit",
+        desc: "The contact form shared one limit of 100 requests an hour with the whole API, so it could be used to send a lot of mail before anything stopped it. It now has its own much tighter limit, and creating support tickets and changing their status have limits of their own too. Each can be adjusted under Admin, Settings, Rate Limits.",
+        category: "security",
+      },
+      {
         icon: UserCheck,
         label: "Password Managers Now Recognise the Sign-In Field",
         desc: "The email box on the sign-in and sign-up pages was labelled in a way that password managers did not recognise as the username field they should pair with your saved password, so some password managers would not offer to fill it in automatically. It is labelled correctly now, and it was our own scanner that caught the problem on our own site.",

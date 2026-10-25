@@ -424,6 +424,39 @@ describe("POST /api/v3/ai/chat: tools", () => {
     expect(contentOf(toolMsg!)).toContain("Strict Transport Security");
   });
 
+  it("retries a bare 400 without tools but does not switch tools off for everyone", async () => {
+    process.env.AI_MODEL = "bare-400-model";
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: { message: "context length exceeded" } }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(textReply("Answered."));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(answerText(await events(await ask("hi")))).toBe("Answered.");
+
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(textReply("ok"));
+    await (await ask("next reader's question")).text();
+    expect(upstreamBody(0).tools).toBeDefined();
+    errors.mockRestore();
+  });
+
+  it("never offers tools when the operator turned them off", async () => {
+    mockGetSettings.mockResolvedValue({
+      AI_CHAT_MAX_TOKENS: 2048,
+      AI_CHAT_MAX_INPUT_LENGTH: 4000,
+      AI_CHAT_TOOLS: "off",
+    });
+    fetchMock.mockResolvedValue(textReply("ok"));
+    const res = await ask("hi");
+    expect(res.headers.get("X-AI-Tools")).toBe("off");
+    await res.text();
+    expect(upstreamBody().tools).toBeUndefined();
+  });
+
   it("answers without tools when the endpoint refuses them, and remembers", async () => {
     process.env.AI_MODEL = "no-tools-model";
     fetchMock

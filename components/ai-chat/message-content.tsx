@@ -5,6 +5,17 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/ui/utils";
 import { visibleText } from "@/lib/ai/think-parser";
+import { classifyChatLink } from "@/lib/ai/chat/links";
+import { APP_URL } from "@/lib/config/client-constants";
+
+function appOrigin(): string {
+  if (typeof window !== "undefined") return window.location.origin;
+  try {
+    return new URL(APP_URL).origin;
+  } catch {
+    return "";
+  }
+}
 
 /**
  * The exact react-markdown component overrides the live chat widget
@@ -91,16 +102,37 @@ export const messageMarkdownComponents: Components = {
   // model routinely emits a bare documentation URL as one unbroken token.
   // Without a break rule that token sets the bubble's min width and the whole
   // chat panel scrolls sideways.
-  a: ({ node: _node, children, ...props }) => (
-    <a
-      className="wrap-break-word text-primary underline underline-offset-2 hover:text-primary/80"
-      target="_blank"
-      rel="noopener noreferrer"
-      {...props}
-    >
-      {children}
-    </a>
-  ),
+  //
+  // Only links that stay in the app or go to a known reference are clickable
+  // (lib/ai/chat/links.ts says why); any other address is shown, unlinked.
+  a: ({ node: _node, href, children }) => {
+    const link = classifyChatLink(href, appOrigin());
+    if (link.kind === "plain") {
+      const text = typeof children === "string" ? children : null;
+      return (
+        <span className="wrap-break-word">
+          {children}
+          {link.href && text !== link.href && (
+            <span className="font-mono text-[0.85em] text-muted-foreground">
+              {" "}
+              ({link.href})
+            </span>
+          )}
+        </span>
+      );
+    }
+    return (
+      <a
+        className="wrap-break-word text-primary underline underline-offset-2 hover:text-primary/80"
+        href={link.href}
+        {...(link.kind === "reference"
+          ? { target: "_blank", rel: "noopener noreferrer nofollow" }
+          : {})}
+      >
+        {children}
+      </a>
+    );
+  },
   blockquote: ({ node: _node, ...props }) => (
     <blockquote
       className="border-l-2 border-primary/30 pl-3 my-1.5 text-muted-foreground/80"

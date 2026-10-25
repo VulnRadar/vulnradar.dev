@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
-import { requireStaff } from "@/lib/auth/authorization";
+import { logAuditAction, requirePermission } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { parsePagination } from "@/lib/api/pagination";
@@ -122,11 +123,20 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ id: row.id, sessionId: row.session_id });
 }
 
-// GET: admin-only list or single conversation
+// GET: list or read conversations, for the staff who moderate content.
+//
+// This was gated on being staff at all, so support, billing and ops accounts
+// could read every user's chats through the API although the admin panel
+// only shows the tab to holders of MODERATE_CONTENT. The route now asks for
+// the same grant the panel does, and reading a transcript is audited the way
+// opening an account record is: it is someone else's conversation.
 export async function GET(req: NextRequest) {
-  const staff = await requireStaff();
+  const staff = await requirePermission(STAFF_PERMISSIONS.MODERATE_CONTENT);
   if (!staff) {
-    return NextResponse.json({ error: "Staff only." }, { status: 403 });
+    return NextResponse.json(
+      { error: "You do not have permission to read AI conversations." },
+      { status: 403 },
+    );
   }
 
   const { searchParams } = new URL(req.url);
@@ -159,6 +169,22 @@ export async function GET(req: NextRequest) {
       user_email: string | null;
       user_avatar_url: string | null;
     };
+    try {
+      await logAuditAction(
+        staff.id,
+        row.user_id,
+        "view_ai_conversation",
+        `Viewed AI conversation #${row.id}`,
+        await getClientIp(),
+      );
+    } catch (err) {
+      // Best effort, as with view_user_detail: a failed audit insert must
+      // not hide the transcript from the moderator who asked for it.
+      console.error(
+        `[ai/conversations] audit row for conversation #${row.id} failed:`,
+        err,
+      );
+    }
     return NextResponse.json({
       id: row.id,
       sessionId: row.session_id,
