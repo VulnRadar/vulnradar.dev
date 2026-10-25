@@ -28,6 +28,7 @@ import {
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
 import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
+import { withErrorHandling } from "@/lib/api/api-utils";
 
 /**
  * Drop support-ticket shares between a departing member and the teammates they
@@ -73,8 +74,24 @@ async function dropOrphanedTicketShares(
   }
 }
 
+/**
+ * A user id out of a JSON body: a whole number, or the digits of one. Anything
+ * else is null, so the caller can answer 400 instead of handing Postgres a
+ * string it rejects with 22P02 (a 500 that names no one). The upper bound is
+ * the INTEGER column's own, for the same reason.
+ */
+function parseUserId(value: unknown): number | null {
+  const n =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d{1,10}$/.test(value)
+        ? Number(value)
+        : NaN;
+  return Number.isInteger(n) && n > 0 && n <= 2147483647 ? n : null;
+}
+
 // Get team members
-export async function GET(request: Request) {
+export const GET = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -118,10 +135,10 @@ export async function GET(request: Request) {
     invites: invites.rows,
     currentRole: memberCheck.rows[0].role,
   });
-}
+});
 
 // Invite a member
-export async function POST(request: Request) {
+export const POST = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -386,10 +403,10 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ message: "Invite sent." });
-}
+});
 
 // Remove a member
-export async function DELETE(request: Request) {
+export const DELETE = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -430,6 +447,19 @@ export async function DELETE(request: Request) {
       { status: 400 },
     );
 
+  // "self" is what the Leave button sent from the day it shipped, and the
+  // docs tell API callers to pass their own id: both mean the caller. Mapping
+  // it before anything compares or queries is the fix. The comparison used to
+  // be `userId === session.userId`, so "self" never matched and fell through
+  // to the manage_members check (a 403 for a member or viewer) and from there
+  // into a query that cast "self" to an integer (a 500 for an admin).
+  const targetUserId = userId === "self" ? session.userId : parseUserId(userId);
+  if (targetUserId === null)
+    return NextResponse.json(
+      { error: 'userId must be a whole number, or "self" to leave.' },
+      { status: 400 },
+    );
+
   // Can't remove yourself unless you're the owner leaving
   const myRole = await pool.query(
     "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
@@ -438,7 +468,7 @@ export async function DELETE(request: Request) {
   if (myRole.rows.length === 0)
     return NextResponse.json({ error: "Not a member." }, { status: 403 });
 
-  if (userId === session.userId) {
+  if (targetUserId === session.userId) {
     // Leaving the team (owners can't leave)
     if (myRole.rows[0].role === TEAM_ROLES.OWNER) {
       return NextResponse.json(
@@ -450,9 +480,9 @@ export async function DELETE(request: Request) {
     }
     await pool.query(
       "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
-      [teamId, userId],
+      [teamId, targetUserId],
     );
-    await dropOrphanedTicketShares(teamId, Number(userId));
+    await dropOrphanedTicketShares(teamId, targetUserId);
     return NextResponse.json({ success: true });
   }
 
@@ -467,7 +497,7 @@ export async function DELETE(request: Request) {
   // Can't remove owner
   const targetRole = await pool.query(
     "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
-    [teamId, userId],
+    [teamId, targetUserId],
   );
   if (
     targetRole.rows.length > 0 &&
@@ -505,25 +535,24 @@ export async function DELETE(request: Request) {
       teamId,
     ]),
     pool.query<{ email: string }>("SELECT email FROM users WHERE id = $1", [
-      userId,
+      targetUserId,
     ]),
   ]);
 
   await pool.query(
     "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
-    [teamId, userId],
+    [teamId, targetUserId],
   );
-  await dropOrphanedTicketShares(teamId, Number(userId));
+  await dropOrphanedTicketShares(teamId, targetUserId);
 
   // Notify the removed member. Gated on the team_changes preference and
   // best-effort: a mail failure must never fail the removal itself.
   const teamName = teamRow.rows[0]?.name;
   const removedEmail = removedUser.rows[0]?.email;
   if (teamName && removedEmail) {
-    const removedUserId = Number(userId);
     setImmediate(() => {
       sendNotificationEmail({
-        userId: removedUserId,
+        userId: targetUserId,
         userEmail: removedEmail,
         type: "team_changes",
         emailContent: teamMemberRemovedEmail(teamName),
@@ -534,10 +563,10 @@ export async function DELETE(request: Request) {
   }
 
   return NextResponse.json({ success: true });
-}
+});
 
 // Change a member's role
-export async function PATCH(request: Request) {
+export const PATCH = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -665,4 +694,4 @@ export async function PATCH(request: Request) {
   }
 
   return NextResponse.json({ success: true, role });
-}
+});

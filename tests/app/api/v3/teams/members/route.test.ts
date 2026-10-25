@@ -62,6 +62,14 @@ const mockTeamInviteEmail = vi.fn((..._args: unknown[]) => ({
 vi.mock("@/lib/email/email", () => ({
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
   teamInviteEmail: (...args: unknown[]) => mockTeamInviteEmail(...args),
+  teamMemberRemovedEmail: () => ({ subject: "s", text: "t", html: "<p>h</p>" }),
+  teamRoleChangedEmail: () => ({ subject: "s", text: "t", html: "<p>h</p>" }),
+}));
+
+const mockSendNotificationEmail = vi.fn();
+vi.mock("@/lib/notifications/notifications", () => ({
+  sendNotificationEmail: (...args: unknown[]) =>
+    mockSendNotificationEmail(...args),
 }));
 
 const mockCreateUserNotification = vi.fn();
@@ -85,10 +93,12 @@ vi.mock("@/lib/billing/plan-limits", async (importOriginal) => {
   };
 });
 
-const { POST } = await import("@/app/api/v3/teams/members/route");
+const { GET, POST, DELETE } = await import("@/app/api/v3/teams/members/route");
 
 beforeEach(() => {
   mockQuery.mockReset();
+  mockSendNotificationEmail.mockReset();
+  mockSendNotificationEmail.mockResolvedValue(undefined);
   mockGetSession.mockReset();
   mockCheckRateLimit.mockReset();
   mockLogAction.mockReset();
@@ -354,5 +364,262 @@ describe("POST /api/v3/teams/members", () => {
 
     expect(res.status).toBe(429);
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+function deleteRequest(body: unknown): NextRequest {
+  return new NextRequest("http://localhost/api/v3/teams/members", {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Answers the DELETE route's queries by what they ask, not by position: the
+ * leave path and the remove path issue different numbers of them, and
+ * dropOrphanedTicketShares adds one more. `roles` maps a user id to that
+ * user's role on the team; an id that is absent is not a member.
+ */
+function routeMemberQueries(roles: Record<number, string>) {
+  mockQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+    if (sql.startsWith("SELECT role FROM team_members")) {
+      const role = roles[params[1] as number];
+      return { rows: role ? [{ role }] : [] };
+    }
+    if (sql.includes("SELECT name FROM teams")) {
+      return { rows: [{ name: "Acme" }] };
+    }
+    if (sql.includes("SELECT email FROM users")) {
+      return { rows: [{ email: "gone@example.com" }] };
+    }
+    return { rows: [] };
+  });
+}
+
+/** The membership DELETE the route issued, or undefined when it never did. */
+function membershipDelete() {
+  return mockQuery.mock.calls.find(([sql]) =>
+    String(sql).startsWith("DELETE FROM team_members"),
+  );
+}
+
+describe("DELETE /api/v3/teams/members", () => {
+  it("requires authentication", async () => {
+    mockGetSession.mockResolvedValue(null);
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: "self" }));
+    expect(res.status).toBe(401);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  describe("leaving", () => {
+    // The Leave button sends "self". It used to be compared with ===
+    // against the numeric session id, so it never matched: a member or
+    // viewer fell through to the manage_members check and got a 403, and an
+    // admin or manager passed that check and hit a query that cast "self"
+    // to an integer, which Postgres rejected with a 500.
+    it.each(["viewer", "member", "operator", "manager", "admin"])(
+      'lets a %s leave by sending "self"',
+      async (role) => {
+        routeMemberQueries({ 1: role });
+
+        const res = await DELETE(deleteRequest({ teamId: 5, userId: "self" }));
+
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ success: true });
+        // The caller's own id, never the literal.
+        expect(membershipDelete()?.[1]).toEqual([5, 1]);
+        expect(
+          mockQuery.mock.calls.some(([, params]) =>
+            (params as unknown[] | undefined)?.includes("self"),
+          ),
+        ).toBe(false);
+      },
+    );
+
+    it('treats the caller\'s own numeric id the same as "self"', async () => {
+      routeMemberQueries({ 1: "member" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, userId: 1 }));
+
+      expect(res.status).toBe(200);
+      expect(membershipDelete()?.[1]).toEqual([5, 1]);
+    });
+
+    it("accepts the caller's own id as a numeric string", async () => {
+      routeMemberQueries({ 1: "viewer" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, userId: "1" }));
+
+      expect(res.status).toBe(200);
+      expect(membershipDelete()?.[1]).toEqual([5, 1]);
+    });
+
+    it("cleans up the support-ticket shares of the member who left", async () => {
+      routeMemberQueries({ 1: "member" });
+
+      await DELETE(deleteRequest({ teamId: 5, userId: "self" }));
+
+      const shares = mockQuery.mock.calls.find(([sql]) =>
+        String(sql).includes("DELETE FROM support_ticket_shares"),
+      );
+      expect(shares?.[1]).toEqual([5, 1]);
+    });
+
+    it("refuses an owner, whichever way they name themselves", async () => {
+      routeMemberQueries({ 1: "owner" });
+
+      for (const userId of ["self", 1]) {
+        const res = await DELETE(deleteRequest({ teamId: 5, userId }));
+        const json = await res.json();
+
+        expect(res.status).toBe(400);
+        expect(json.error).toContain("Owners cannot leave");
+      }
+      expect(membershipDelete()).toBeUndefined();
+    });
+
+    it("refuses someone who is not on the team", async () => {
+      routeMemberQueries({});
+
+      const res = await DELETE(deleteRequest({ teamId: 5, userId: "self" }));
+
+      expect(res.status).toBe(403);
+      expect(membershipDelete()).toBeUndefined();
+    });
+  });
+
+  describe("a userId that is not an id", () => {
+    // Each of these used to reach Postgres as a bind parameter, where an
+    // integer column rejects it with 22P02 and the caller sees a bare 500.
+    it.each([
+      ["a word", "abc"],
+      ["a fraction", 1.5],
+      ["a boolean", true],
+      ["an array", [1]],
+      ["an object", { id: 1 }],
+      ["scientific notation", "1e3"],
+      ["a negative number", -4],
+      ["a negative string", "-4"],
+      ["trailing text", "7; DROP TABLE users"],
+      ["more than an INTEGER holds", 99999999999],
+    ])("answers 400 for %s", async (_label, userId) => {
+      routeMemberQueries({ 1: "admin" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, userId }));
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(typeof json.error).toBe("string");
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it("still asks for both ids when one is missing", async () => {
+      const res = await DELETE(deleteRequest({ teamId: 5 }));
+      expect(res.status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("removing someone else", () => {
+    it("lets an admin remove a member", async () => {
+      routeMemberQueries({ 1: "admin", 2: "member" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+
+      expect(res.status).toBe(200);
+      expect(membershipDelete()?.[1]).toEqual([5, 2]);
+    });
+
+    it("accepts the target as a numeric string", async () => {
+      routeMemberQueries({ 1: "admin", 2: "member" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, userId: "2" }));
+
+      expect(res.status).toBe(200);
+      expect(membershipDelete()?.[1]).toEqual([5, 2]);
+    });
+
+    it("refuses a caller without manage_members", async () => {
+      routeMemberQueries({ 1: "member", 2: "viewer" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+
+      expect(res.status).toBe(403);
+      expect(membershipDelete()).toBeUndefined();
+    });
+
+    it("never removes the owner", async () => {
+      routeMemberQueries({ 1: "admin", 2: "owner" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error).toContain("owner");
+      expect(membershipDelete()).toBeUndefined();
+    });
+
+    it("keeps the role ceiling: a manager cannot remove an admin", async () => {
+      routeMemberQueries({ 1: "manager", 2: "admin" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+
+      expect(res.status).toBe(403);
+      expect(membershipDelete()).toBeUndefined();
+    });
+  });
+
+  describe("cancelling an invite", () => {
+    it("lets a caller with manage_members cancel", async () => {
+      routeMemberQueries({ 1: "manager" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, inviteId: 9 }));
+
+      expect(res.status).toBe(200);
+      expect(
+        mockQuery.mock.calls.find(([sql]) =>
+          String(sql).startsWith("DELETE FROM team_invites"),
+        )?.[1],
+      ).toEqual([9, 5]);
+    });
+
+    it("refuses a viewer", async () => {
+      routeMemberQueries({ 1: "viewer" });
+
+      const res = await DELETE(deleteRequest({ teamId: 5, inviteId: 9 }));
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  it("answers a database failure with a JSON 500 instead of throwing", async () => {
+    // DELETE had no try/catch, so the 22P02 above surfaced as a thrown error
+    // out of the route handler.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockRejectedValue(new Error("connection terminated"));
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: "self" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(typeof json.error).toBe("string");
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe("the other members handlers", () => {
+  it("answer a database failure with a JSON 500 as well", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockRejectedValue(new Error("connection terminated"));
+
+    const res = await GET(
+      new NextRequest("http://localhost/api/v3/teams/members?teamId=5"),
+    );
+
+    expect(res.status).toBe(500);
+    expect(typeof (await res.json()).error).toBe("string");
+    spy.mockRestore();
   });
 });
