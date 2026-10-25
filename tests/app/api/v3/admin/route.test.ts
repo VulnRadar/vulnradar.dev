@@ -287,9 +287,8 @@ describe("GET /api/v3/admin", () => {
     expect(res.status).toBe(403);
   });
 
-  it("returns the default stats + user list view for a support-tier caller", async () => {
+  it("returns the user list view for a support-tier caller", async () => {
     queueRole("support");
-    mockQuery.mockResolvedValueOnce({ rows: [{ total_users: 5 }] }); // stats
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // users
     mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] }); // total
     const res = await GET(getRequest());
@@ -297,6 +296,77 @@ describe("GET /api/v3/admin", () => {
     expect(res.status).toBe(200);
     expect(json.callerRole).toBe("support");
     expect(json.users).toHaveLength(1);
+  });
+
+  // The counters rode on every list request, so each pause in the search box,
+  // each page change and each sort toggle recomputed ten COUNT subqueries
+  // (three over scan_history) and discarded the answer.
+  describe("the stats are their own request", () => {
+    it("section=stats returns the counters and nothing else", async () => {
+      queueRole("support");
+      mockQuery.mockResolvedValueOnce({ rows: [{ total_users: 5 }] });
+      const res = await GET(
+        getRequest("http://localhost/api/v3/admin?section=stats"),
+      );
+      const json = await res.json();
+      expect(res.status).toBe(200);
+      expect(json).toEqual({ stats: { total_users: 5 } });
+      // The role lookup and the one counter statement: no list, no count.
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+      expect(String(mockQuery.mock.calls[1][0])).toContain("total_users");
+    });
+
+    it("section=stats is readable by a role without VIEW_USERS (ops), which the panel's first request depends on", async () => {
+      queueRole("ops");
+      mockQuery.mockResolvedValueOnce({ rows: [{ total_users: 5 }] });
+      const res = await GET(
+        getRequest("http://localhost/api/v3/admin?section=stats"),
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("section=stats still refuses someone who is not staff", async () => {
+      queueRole("user");
+      const res = await GET(
+        getRequest("http://localhost/api/v3/admin?section=stats"),
+      );
+      expect(res.status).toBe(403);
+      // The role lookup and the 2FA-lockout check; never the counters.
+      expect(
+        mockQuery.mock.calls.some((c) => String(c[0]).includes("total_users")),
+      ).toBe(false);
+    });
+
+    it("section=stats writes no audit row", async () => {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({ rows: [{ total_users: 1 }] });
+      await GET(getRequest("http://localhost/api/v3/admin?section=stats"));
+      expect(mockLogAction).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["a page change", "page=2&limit=10"],
+      ["a search", "search=ada"],
+      ["a sort", "sort=joined&dir=asc"],
+      ["a filter", "status=disabled"],
+    ])("%s runs no counter query", async (_name, query) => {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // users
+      mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] }); // count
+      const res = await GET(
+        getRequest(`http://localhost/api/v3/admin?${query}`),
+      );
+      const json = await res.json();
+      expect(res.status).toBe(200);
+      expect(json).not.toHaveProperty("stats");
+      const sqlCalls = mockQuery.mock.calls.map((c) => String(c[0]));
+      expect(sqlCalls.some((sql) => sql.includes("AS total_users"))).toBe(
+        false,
+      );
+      expect(sqlCalls.some((sql) => sql.includes("total_users"))).toBe(false);
+      // Role lookup, the page and its count: three, not thirteen.
+      expect(mockQuery).toHaveBeenCalledTimes(3);
+    });
   });
 
   // This asserted a 400 for `?page=abc`, which was this route's own behaviour
@@ -571,9 +641,8 @@ describe("GET /api/v3/admin", () => {
     expect(roles[0]).toBe("super_admin");
   });
 
-  it("the default stats + user-list view writes no audit row — a mutating/audited action cannot be reached via GET", async () => {
+  it("the default user-list view writes no audit row — a mutating/audited action cannot be reached via GET", async () => {
     queueRole("admin");
-    mockQuery.mockResolvedValueOnce({ rows: [{ total_users: 1 }] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [{ count: "0" }] });
     await GET(getRequest());
@@ -799,7 +868,6 @@ describe("GET /api/v3/admin", () => {
   // against Postgres in tests/integration/users-list-filters.test.ts.
   describe("the user list's filters", () => {
     function queueEmptyList() {
-      mockQuery.mockResolvedValueOnce({ rows: [{ total_users: 1 }] }); // stats
       mockQuery.mockResolvedValueOnce({ rows: [] }); // page
       mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] }); // count
     }
@@ -870,15 +938,16 @@ describe("GET /api/v3/admin", () => {
   // The default branch is fetched on mount by every staff member and the
   // client reads a 403 as "no admin access at all", so a role without
   // VIEW_USERS keeps the aggregate stats and gets an empty list instead.
-  it("the default view returns stats but no user rows for a role without VIEW_USERS (ops)", async () => {
+  it("the default view returns no user rows, and no error, for a role without VIEW_USERS (ops)", async () => {
     queueRole("ops");
-    mockQuery.mockResolvedValueOnce({ rows: [{ total_users: 1 }] });
     const res = await GET(getRequest());
     const json = await res.json();
     expect(res.status).toBe(200);
-    expect(json.stats).toEqual({ total_users: 1 });
     expect(json.users).toEqual([]);
     expect(json.total).toBe(0);
+    expect(json.callerRole).toBe("ops");
+    // Only the role lookup ran: no list query for a role that may not list.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });
 

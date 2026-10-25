@@ -21,8 +21,12 @@ import type {
   BadgeDef,
 } from "./types";
 
-export interface AdminUsersResponse {
+/** GET /api/v3/admin?section=stats: the aggregate counters, on their own. */
+export interface AdminStatsResponse {
   stats: AdminStats;
+}
+
+export interface AdminUsersResponse {
   /**
    * Empty for a staff role without VIEW_USERS (ops). The route still returns
    * the aggregate stats to that caller rather than a 403, because the panel

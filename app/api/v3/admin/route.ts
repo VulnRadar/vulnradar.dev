@@ -376,28 +376,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ admins: adminsRes.rows });
   }
 
-  // Default: stats + user list.
+  // The aggregate counters. A request of their own: they used to ride on every
+  // list request, so each pause in the search box, each page change and each
+  // sort toggle recomputed ten COUNT subqueries (three of them over
+  // scan_history) that the caller then threw away. The panel fetches this once
+  // on mount and again after a mutation, and nothing else.
   //
-  // auth: the user list rides on VIEW_USERS, the stats do not. This branch is
-  // fetched once on mount by every staff member who opens the panel, and the
-  // client treats a 403 here as "you have no admin access at all", so a role
-  // without VIEW_USERS (ops) gets the aggregate counters and an empty list
-  // rather than a rejection that would lock it out of the tabs it does hold.
-  // Before this, ops/billing/content_manager received every account's email,
-  // plan and subscription status from a request they make automatically.
-  const canListUsers = hasStaffPermission(
-    session.role,
-    STAFF_PERMISSIONS.VIEW_USERS,
-  );
-  // Filters, search and sort are a whitelist (lib/admin/users-query.ts): a
-  // status, plan or role the panel does not offer is a 400 rather than a
-  // silently unfiltered list.
-  const userFilter = parseUserFilters(searchParams);
-  if (!userFilter.ok) {
-    return NextResponse.json({ error: userFilter.error }, { status: 400 });
-  }
-  const [statsResult, usersPage] = await Promise.all([
-    pool.query(`
+  // auth: the counters do not ride on VIEW_USERS, and the client treats a 403
+  // from the panel's first request as "you have no admin access at all", so a
+  // role without VIEW_USERS (ops) must be able to read this. They are
+  // aggregates and name no account.
+  if (section === "stats") {
+    const statsResult = await pool.query(`
       SELECT
         (SELECT COUNT(*) FROM users) as total_users,
         (SELECT COUNT(*) FROM scan_history) as total_scans,
@@ -409,21 +399,39 @@ export async function GET(request: NextRequest) {
         (SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '7 days') as new_users_7d,
         (SELECT COUNT(*) FROM users WHERE disabled_at IS NOT NULL) as disabled_users,
         (SELECT COUNT(*) FROM scan_history WHERE share_token IS NOT NULL) as shared_scans
-    `),
-    canListUsers
-      ? fetchUsersPage(userFilter, {
-          limit,
-          offset,
-          orderBy: userOrderBy(
-            searchParams.get("sort"),
-            searchParams.get("dir"),
-          ),
-        })
-      : Promise.resolve({ users: [], total: 0 }),
-  ]);
+    `);
+    return NextResponse.json({ stats: statsResult.rows[0] });
+  }
+
+  // Default (and section=users): the user list, and nothing else.
+  //
+  // auth: the list rides on VIEW_USERS. This branch is fetched once on mount by
+  // every staff member who opens the panel, and the client treats a 403 here
+  // as "you have no admin access at all", so a role without VIEW_USERS (ops)
+  // gets an empty list rather than a rejection that would lock it out of the
+  // tabs it does hold. Before this, ops/billing/content_manager received every
+  // account's email, plan and subscription status from a request they make
+  // automatically.
+  const canListUsers = hasStaffPermission(
+    session.role,
+    STAFF_PERMISSIONS.VIEW_USERS,
+  );
+  // Filters, search and sort are a whitelist (lib/admin/users-query.ts): a
+  // status, plan or role the panel does not offer is a 400 rather than a
+  // silently unfiltered list.
+  const userFilter = parseUserFilters(searchParams);
+  if (!userFilter.ok) {
+    return NextResponse.json({ error: userFilter.error }, { status: 400 });
+  }
+  const usersPage = canListUsers
+    ? await fetchUsersPage(userFilter, {
+        limit,
+        offset,
+        orderBy: userOrderBy(searchParams.get("sort"), searchParams.get("dir")),
+      })
+    : { users: [], total: 0 };
 
   return NextResponse.json({
-    stats: statsResult.rows[0],
     users: usersPage.users,
     total: usersPage.total,
     page,

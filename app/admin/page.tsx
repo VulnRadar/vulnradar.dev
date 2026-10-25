@@ -83,6 +83,7 @@ import { Toast as AdminToast } from "@/components/admin/shared";
 // into a compile error instead of a runtime undefined.
 import type {
   AdminUsersResponse,
+  AdminStatsResponse,
   AdminAuditResponse,
   AdminStaffResponse,
   AdminTeamsResponse,
@@ -482,7 +483,6 @@ function AdminContent() {
           return;
         }
         setLoadFailedStatus(null);
-        setStats(data.stats);
         setUsers(data.users);
         setPage(data.page);
         setTotalPages(data.totalPages);
@@ -496,6 +496,20 @@ function AdminContent() {
     },
     [],
   );
+
+  // The aggregate counters, apart from the list. Fetched on mount and after a
+  // mutation, and not on paging, searching or sorting: those used to recompute
+  // ten COUNT subqueries per request and discard the answer.
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await fetch(`${API.ADMIN}?section=stats`);
+      if (!res.ok) return;
+      const data: AdminStatsResponse = await res.json();
+      setStats(data.stats);
+    } catch (error) {
+      console.error("Failed to fetch admin stats", error);
+    }
+  }, []);
 
   const fetchAudit = useCallback(
     async (
@@ -770,6 +784,7 @@ function AdminContent() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchData(1, "", true, 10);
+    fetchStats();
     fetchAllBadges();
     fetchHealth(true);
     // Lightweight, once-per-page-load check so the "Updater" nav item can
@@ -778,7 +793,7 @@ function AdminContent() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setUpdateAvailable(data?.status === "behind"))
       .catch(() => {});
-  }, [fetchData, fetchAllBadges, fetchHealth]);
+  }, [fetchData, fetchStats, fetchAllBadges, fetchHealth]);
 
   // Same cadence as queue-status-manager's own poll. Cheap: seven bounded
   // aggregates in one request, and it is what keeps the nav dot honest while
@@ -899,7 +914,10 @@ function AdminContent() {
         }
         // Skip refetch for badge award/revoke - onBadgesChanged handles optimistic UI update
         if (action !== "award_badge" && action !== "revoke_badge") {
-          await fetchData(page, searchQuery, false, usersPageSize);
+          await Promise.all([
+            fetchData(page, searchQuery, false, usersPageSize),
+            fetchStats(),
+          ]);
           if (selectedUser && selectedUser.user.id === userId) {
             if (action === "delete") {
               setSelectedUser(null);
@@ -1107,6 +1125,7 @@ function AdminContent() {
             onClick={() => {
               setLoadFailedStatus(null);
               fetchData(page, searchQuery, true, usersPageSize);
+              fetchStats();
             }}
           >
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1513,9 +1532,10 @@ function AdminContent() {
                 onFiltersChange={applyUserFilters}
                 sort={userSort}
                 onToggleSort={toggleUserSort}
-                onRefresh={() =>
-                  fetchData(page, searchQuery, false, usersPageSize)
-                }
+                onRefresh={() => {
+                  fetchData(page, searchQuery, false, usersPageSize);
+                  fetchStats();
+                }}
                 onPageChange={(p) =>
                   fetchData(p, searchQuery, false, usersPageSize)
                 }
