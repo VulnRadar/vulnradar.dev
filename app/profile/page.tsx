@@ -20,14 +20,6 @@ const ImageCropDialog = dynamic(
     })),
   { ssr: false },
 );
-import { ProfileGeneralTab } from "@/components/profile/tabs/profile-general-tab";
-import { ProfileSecurityTab } from "@/components/profile/tabs/profile-security-tab";
-import { ProfileSocialTab } from "@/components/profile/tabs/profile-social-tab";
-import { ProfileBillingTab } from "@/components/profile/tabs/profile-billing-tab";
-import { ProfileDeveloperTab } from "@/components/profile/tabs/profile-developer-tab";
-import { ProfileNotificationsTab } from "@/components/profile/tabs/profile-notifications-tab";
-import { ProfilePrivacyTab } from "@/components/profile/tabs/profile-privacy-tab";
-import { ProfileAiSettingsTab } from "@/components/profile/tabs/profile-ai-settings-tab";
 import type {
   ProfileUser,
   ApiKey,
@@ -65,6 +57,81 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { pluralize } from "@/lib/ui/plural";
 
 // Types imported from @/components/profile/types
+
+// Every tab is code-split. All eight were static imports (~9,500 lines once the
+// Developer tab's three sections are counted, plus the QR-code library behind
+// Security and the react-icons set behind Billing), so one visit to /profile
+// downloaded and parsed all of it to render the General tab. Only one tab
+// renders at a time behind its `activeProfileTabSafe === ...` guard, and the
+// rest are fetched on demand, the way app/admin/page.tsx does its panels.
+// ssr:false because the page is a client component that renders a skeleton
+// until the account has loaded: there is never a tab to server-render.
+//
+// The fallback is the same ProfileDataSkeleton the page already shows while the
+// account loads, so the panel does not change shape between "waiting for the
+// account" and "waiting for the tab's code".
+//
+// The chunk loaders are kept apart from the components so a tab can also be
+// requested ahead of being rendered (prefetchTab below).
+const tabChunks = {
+  general: () => import("@/components/profile/tabs/profile-general-tab"),
+  security: () => import("@/components/profile/tabs/profile-security-tab"),
+  social: () => import("@/components/profile/tabs/profile-social-tab"),
+  billing: () => import("@/components/profile/tabs/profile-billing-tab"),
+  developer: () => import("@/components/profile/tabs/profile-developer-tab"),
+  notifications: () =>
+    import("@/components/profile/tabs/profile-notifications-tab"),
+  privacy: () => import("@/components/profile/tabs/profile-privacy-tab"),
+  ai: () => import("@/components/profile/tabs/profile-ai-settings-tab"),
+} satisfies Record<ProfileTab, () => Promise<unknown>>;
+
+const tabLoading = () => <ProfileDataSkeleton />;
+
+const ProfileGeneralTab = dynamic(
+  () => tabChunks.general().then((m) => ({ default: m.ProfileGeneralTab })),
+  { ssr: false, loading: tabLoading },
+);
+const ProfileSecurityTab = dynamic(
+  () => tabChunks.security().then((m) => ({ default: m.ProfileSecurityTab })),
+  { ssr: false, loading: tabLoading },
+);
+const ProfileSocialTab = dynamic(
+  () => tabChunks.social().then((m) => ({ default: m.ProfileSocialTab })),
+  { ssr: false, loading: tabLoading },
+);
+const ProfileBillingTab = dynamic(
+  () => tabChunks.billing().then((m) => ({ default: m.ProfileBillingTab })),
+  { ssr: false, loading: tabLoading },
+);
+const ProfileDeveloperTab = dynamic(
+  () => tabChunks.developer().then((m) => ({ default: m.ProfileDeveloperTab })),
+  { ssr: false, loading: tabLoading },
+);
+const ProfileNotificationsTab = dynamic(
+  () =>
+    tabChunks
+      .notifications()
+      .then((m) => ({ default: m.ProfileNotificationsTab })),
+  { ssr: false, loading: tabLoading },
+);
+const ProfilePrivacyTab = dynamic(
+  () => tabChunks.privacy().then((m) => ({ default: m.ProfilePrivacyTab })),
+  { ssr: false, loading: tabLoading },
+);
+const ProfileAiSettingsTab = dynamic(
+  () => tabChunks.ai().then((m) => ({ default: m.ProfileAiSettingsTab })),
+  { ssr: false, loading: tabLoading },
+);
+
+// Starts a tab's download without rendering it. Run for the tab in the URL as
+// the page mounts, so its code arrives while the account is still loading
+// instead of after it, and for a sidebar entry on hover or focus, so the click
+// finds the chunk already there. A failure is dropped on purpose: dynamic()
+// asks for the chunk again when the tab actually renders, and that is the
+// attempt whose failure matters.
+const prefetchTab = (id: ProfileTab) => {
+  tabChunks[id]().catch(() => {});
+};
 
 export default function ProfilePage() {
   return <ProfileContent />;
@@ -115,6 +182,16 @@ function ProfileContent() {
     if (!window.location.search.includes("tab=")) {
       setActiveProfileTabRaw(activeProfileTabSafe);
     }
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Reads the URL rather than activeProfileTabSafe: on this first commit the
+  // state still holds the server-matching fallback ("general"), and the real
+  // ?tab= is only applied by a layout effect that runs after this closure was
+  // made. A deep link to ?tab=security would otherwise prefetch the wrong tab.
+  useEffect(() => {
+    const fromUrl = getQueryParam("tab");
+    prefetchTab(isValidProfileTab(fromUrl) ? fromUrl : "general");
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -934,6 +1011,7 @@ function ProfileContent() {
                   key={tab.id}
                   type="button"
                   onClick={() => handleProfileTabChange(tab.id)}
+                  onFocus={() => prefetchTab(tab.id)}
                   aria-current={
                     activeProfileTabSafe === tab.id ? "page" : undefined
                   }
@@ -968,6 +1046,8 @@ function ProfileContent() {
                   <a
                     key={tab.id}
                     href={`/profile?tab=${tab.id}`}
+                    onMouseEnter={() => prefetchTab(tab.id)}
+                    onFocus={() => prefetchTab(tab.id)}
                     onClick={(e) => {
                       if (!e.ctrlKey && !e.metaKey) {
                         e.preventDefault();
