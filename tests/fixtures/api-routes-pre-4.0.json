@@ -1,0 +1,852 @@
+[
+  {
+    "file": "app/api/security-txt/route.ts",
+    "template": "/api/security-txt",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/account/ai-config/route.ts",
+    "template": "/api/v3/account/ai-config",
+    "methods": ["GET", "PUT", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/account/delete/route.ts",
+    "template": "/api/v3/account/delete",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/account/discord/route.ts",
+    "template": "/api/v3/account/discord",
+    "methods": ["GET", "PATCH", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/account/github/connect/route.ts",
+    "template": "/api/v3/account/github/connect",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/account/github/repos/route.ts",
+    "template": "/api/v3/account/github/repos",
+    "methods": ["GET", "PUT"]
+  },
+  {
+    "file": "app/api/v3/account/github/route.ts",
+    "template": "/api/v3/account/github",
+    "methods": ["GET", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/account/language/route.ts",
+    "template": "/api/v3/account/language",
+    "methods": ["GET", "PUT"]
+  },
+  {
+    "file": "app/api/v3/account/notifications/route.ts",
+    "template": "/api/v3/account/notifications",
+    "methods": ["GET", "PUT"]
+  },
+  {
+    "file": "app/api/v3/account/oauth/[provider]/route.ts",
+    "template": "/api/v3/account/oauth/:provider",
+    "methods": ["GET", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/account/posture-digest/route.ts",
+    "template": "/api/v3/account/posture-digest",
+    "methods": ["GET", "PUT"]
+  },
+  {
+    "file": "app/api/v3/account/privacy/route.ts",
+    "template": "/api/v3/account/privacy",
+    "methods": ["GET", "PUT"]
+  },
+  {
+    "file": "app/api/v3/account/share-privacy/route.ts",
+    "template": "/api/v3/account/share-privacy",
+    "methods": ["GET", "PUT"]
+  },
+  {
+    "file": "app/api/v3/account/unsubscribe/route.ts",
+    "template": "/api/v3/account/unsubscribe",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/admin/activity/route.ts",
+    "template": "/api/v3/admin/activity",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/admin/audit-log/export/route.ts",
+    "template": "/api/v3/admin/audit-log/export",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/admin/backup/route.ts",
+    "template": "/api/v3/admin/backup",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/admin/billing-overview/route.ts",
+    "template": "/api/v3/admin/billing-overview",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/admin/blocked-data/route.ts",
+    "template": "/api/v3/admin/blocked-data",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/admin/cleanup/route.ts",
+    "template": "/api/v3/admin/cleanup",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/admin/contact-submissions/route.ts",
+    "template": "/api/v3/admin/contact-submissions",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/admin/content/route.ts",
+    "template": "/api/v3/admin/content",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/admin/email-logs/route.ts",
+    "template": "/api/v3/admin/email-logs",
+    "methods": ["GET", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/admin/engine-feedback/ai-tag-candidates/route.ts",
+    "template": "/api/v3/admin/engine-feedback/ai-tag-candidates",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/admin/engine-feedback/checks/route.ts",
+    "template": "/api/v3/admin/engine-feedback/checks",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/admin/engine-feedback/checks/verdicts/route.ts",
+    "template": "/api/v3/admin/engine-feedback/checks/verdicts",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/admin/engine-feedback/promoted-tags/route.ts",
+    "template": "/api/v3/admin/engine-feedback/promoted-tags",
+    "methods": ["GET", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/admin/engine-feedback/tags/route.ts",
+    "template": "/api/v3/admin/engine-feedback/tags",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/admin/error-logs/route.ts",
+    "template": "/api/v3/admin/error-logs",
+    "methods": ["GET", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/admin/features/route.ts",
+    "template": "/api/v3/admin/features",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/admin/health/route.ts",
+    "template": "/api/v3/admin/health",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/admin/notifications/[id]/route.ts",
+    "template": "/api/v3/admin/notifications/:id",
+    "methods": ["PUT", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/admin/notifications/route.ts",
+    "template": "/api/v3/admin/notifications",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/admin/queue-status/cancel/route.ts",
+    "template": "/api/v3/admin/queue-status/cancel",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/admin/queue-status/route.ts",
+    "template": "/api/v3/admin/queue-status",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/admin/route.ts",
+    "template": "/api/v3/admin",
+    "methods": ["GET", "PATCH"]
+  },
+  {
+    "file": "app/api/v3/admin/scans/[id]/route.ts",
+    "template": "/api/v3/admin/scans/:id",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/admin/staff-invites/route.ts",
+    "template": "/api/v3/admin/staff-invites",
+    "methods": ["GET", "POST", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/admin/support-tickets/route.ts",
+    "template": "/api/v3/admin/support-tickets",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/admin/teams/[id]/route.ts",
+    "template": "/api/v3/admin/teams/:id",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/admin/teams/route.ts",
+    "template": "/api/v3/admin/teams",
+    "methods": ["GET", "PATCH", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/admin/updater/apply/route.ts",
+    "template": "/api/v3/admin/updater/apply",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/admin/updater/status/route.ts",
+    "template": "/api/v3/admin/updater/status",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/ai/chat/route.ts",
+    "template": "/api/v3/ai/chat",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/ai/conversations/route.ts",
+    "template": "/api/v3/ai/conversations",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/ai/feedback/route.ts",
+    "template": "/api/v3/ai/feedback",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/ai/info/route.ts",
+    "template": "/api/v3/ai/info",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/assets/route.ts",
+    "template": "/api/v3/assets",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/2fa/backup-codes/route.ts",
+    "template": "/api/v3/auth/2fa/backup-codes",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/auth/2fa/disable/route.ts",
+    "template": "/api/v3/auth/2fa/disable",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/2fa/email-send/route.ts",
+    "template": "/api/v3/auth/2fa/email-send",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/2fa/email-setup/route.ts",
+    "template": "/api/v3/auth/2fa/email-setup",
+    "methods": ["POST", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/auth/2fa/setup/route.ts",
+    "template": "/api/v3/auth/2fa/setup",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/auth/2fa/verify/route.ts",
+    "template": "/api/v3/auth/2fa/verify",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/accept-tos/route.ts",
+    "template": "/api/v3/auth/accept-tos",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/discord/callback/route.ts",
+    "template": "/api/v3/auth/discord/callback",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/discord/route.ts",
+    "template": "/api/v3/auth/discord",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/forgot-password/route.ts",
+    "template": "/api/v3/auth/forgot-password",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/impersonation-stop/route.ts",
+    "template": "/api/v3/auth/impersonation-stop",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/login/route.ts",
+    "template": "/api/v3/auth/login",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/logout/route.ts",
+    "template": "/api/v3/auth/logout",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/me/route.ts",
+    "template": "/api/v3/auth/me",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/oauth/[provider]/callback/route.ts",
+    "template": "/api/v3/auth/oauth/:provider/callback",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/oauth/[provider]/route.ts",
+    "template": "/api/v3/auth/oauth/:provider",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/oauth/info/route.ts",
+    "template": "/api/v3/auth/oauth/info",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/onboarding/route.ts",
+    "template": "/api/v3/auth/onboarding",
+    "methods": ["POST", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/auth/resend-verification/route.ts",
+    "template": "/api/v3/auth/resend-verification",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/reset-password/route.ts",
+    "template": "/api/v3/auth/reset-password",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/sessions/[id]/route.ts",
+    "template": "/api/v3/auth/sessions/:id",
+    "methods": ["DELETE"]
+  },
+  {
+    "file": "app/api/v3/auth/sessions/ipv4/route.ts",
+    "template": "/api/v3/auth/sessions/ipv4",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/sessions/route.ts",
+    "template": "/api/v3/auth/sessions",
+    "methods": ["GET", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/auth/signup/route.ts",
+    "template": "/api/v3/auth/signup",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/auth/staff-invite/[token]/route.ts",
+    "template": "/api/v3/auth/staff-invite/:token",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/auth/staff-oidc/callback/route.ts",
+    "template": "/api/v3/auth/staff-oidc/callback",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/staff-oidc/info/route.ts",
+    "template": "/api/v3/auth/staff-oidc/info",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/staff-oidc/route.ts",
+    "template": "/api/v3/auth/staff-oidc",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/trusted-devices/[id]/route.ts",
+    "template": "/api/v3/auth/trusted-devices/:id",
+    "methods": ["DELETE"]
+  },
+  {
+    "file": "app/api/v3/auth/trusted-devices/route.ts",
+    "template": "/api/v3/auth/trusted-devices",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/auth/update/route.ts",
+    "template": "/api/v3/auth/update",
+    "methods": ["PATCH"]
+  },
+  {
+    "file": "app/api/v3/auth/verify-email/route.ts",
+    "template": "/api/v3/auth/verify-email",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/avatar/[userId]/route.ts",
+    "template": "/api/v3/avatar/:userId",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/badge/[token]/route.ts",
+    "template": "/api/v3/badge/:token",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/badge/scans/route.ts",
+    "template": "/api/v3/badge/scans",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/badge/site/route.ts",
+    "template": "/api/v3/badge/site",
+    "methods": ["POST", "PATCH", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/billing/plan-limits/route.ts",
+    "template": "/api/v3/billing/plan-limits",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/billing/route.ts",
+    "template": "/api/v3/billing",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/billing/subscription/cancel/route.ts",
+    "template": "/api/v3/billing/subscription/cancel",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/billing/subscription/reactivate/route.ts",
+    "template": "/api/v3/billing/subscription/reactivate",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/billing/verify/route.ts",
+    "template": "/api/v3/billing/verify",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/billing/verify/send/route.ts",
+    "template": "/api/v3/billing/verify/send",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/browser/sessions/logs/route.ts",
+    "template": "/api/v3/browser/sessions/logs",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/browser/sessions/route.ts",
+    "template": "/api/v3/browser/sessions",
+    "methods": ["GET", "POST", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/checkout/verify-subscription/route.ts",
+    "template": "/api/v3/checkout/verify-subscription",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/compare/route.ts",
+    "template": "/api/v3/compare",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/config/client/route.ts",
+    "template": "/api/v3/config/client",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/contact/route.ts",
+    "template": "/api/v3/contact",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/dashboard/route.ts",
+    "template": "/api/v3/dashboard",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/data-request/route.ts",
+    "template": "/api/v3/data-request",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/demo-scan/route.ts",
+    "template": "/api/v3/demo-scan",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/domains/[id]/block/route.ts",
+    "template": "/api/v3/domains/:id/block",
+    "methods": ["GET", "POST", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/domains/[id]/route.ts",
+    "template": "/api/v3/domains/:id",
+    "methods": ["PATCH"]
+  },
+  {
+    "file": "app/api/v3/domains/[id]/scans/route.ts",
+    "template": "/api/v3/domains/:id/scans",
+    "methods": ["GET", "PATCH"]
+  },
+  {
+    "file": "app/api/v3/domains/[id]/verify/route.ts",
+    "template": "/api/v3/domains/:id/verify",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/domains/route.ts",
+    "template": "/api/v3/domains",
+    "methods": ["GET", "POST", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/finding-types/route.ts",
+    "template": "/api/v3/finding-types",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/health/route.ts",
+    "template": "/api/v3/health",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/history/[id]/delete/route.ts",
+    "template": "/api/v3/history/:id/delete",
+    "methods": ["DELETE"]
+  },
+  {
+    "file": "app/api/v3/history/[id]/dns/route.ts",
+    "template": "/api/v3/history/:id/dns",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/history/[id]/ports/route.ts",
+    "template": "/api/v3/history/:id/ports",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/history/[id]/report/route.ts",
+    "template": "/api/v3/history/:id/report",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/history/[id]/route.ts",
+    "template": "/api/v3/history/:id",
+    "methods": ["GET", "PATCH", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/history/[id]/screenshot/route.ts",
+    "template": "/api/v3/history/:id/screenshot",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/history/[id]/share/publicly-listed/route.ts",
+    "template": "/api/v3/history/:id/share/publicly-listed",
+    "methods": ["PUT"]
+  },
+  {
+    "file": "app/api/v3/history/[id]/share/route.ts",
+    "template": "/api/v3/history/:id/share",
+    "methods": ["POST", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/history/[id]/summary/route.ts",
+    "template": "/api/v3/history/:id/summary",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/history/route.ts",
+    "template": "/api/v3/history",
+    "methods": ["GET", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/host/[hostname]/route.ts",
+    "template": "/api/v3/host/:hostname",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/host/[hostname]/trend/route.ts",
+    "template": "/api/v3/host/:hostname/trend",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/keys/[id]/reset-binding/route.ts",
+    "template": "/api/v3/keys/:id/reset-binding",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/keys/[id]/revoke/route.ts",
+    "template": "/api/v3/keys/:id/revoke",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/keys/[id]/rotate/route.ts",
+    "template": "/api/v3/keys/:id/rotate",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/keys/route.ts",
+    "template": "/api/v3/keys",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/notifications/active/route.ts",
+    "template": "/api/v3/notifications/active",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/notifications/route.ts",
+    "template": "/api/v3/notifications",
+    "methods": ["GET", "PATCH"]
+  },
+  {
+    "file": "app/api/v3/openapi.json/route.ts",
+    "template": "/api/v3/openapi.json",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/public-scans/route.ts",
+    "template": "/api/v3/public-scans",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/scan/authenticated/route.ts",
+    "template": "/api/v3/scan/authenticated",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/bulk/route.ts",
+    "template": "/api/v3/scan/bulk",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/crawl/discover/route.ts",
+    "template": "/api/v3/scan/crawl/discover",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/crawl/route.ts",
+    "template": "/api/v3/scan/crawl",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/discover/progress/[requestId]/route.ts",
+    "template": "/api/v3/scan/discover/progress/:requestId",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/scan/discover/route.ts",
+    "template": "/api/v3/scan/discover",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/feedback/route.ts",
+    "template": "/api/v3/scan/feedback",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/scan/github-issue/route.ts",
+    "template": "/api/v3/scan/github-issue",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/github/history/route.ts",
+    "template": "/api/v3/scan/github/history",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/scan/github/route.ts",
+    "template": "/api/v3/scan/github",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/import-spec/route.ts",
+    "template": "/api/v3/scan/import-spec",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/remediation/bulk/route.ts",
+    "template": "/api/v3/scan/remediation/bulk",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/remediation/route.ts",
+    "template": "/api/v3/scan/remediation",
+    "methods": ["GET", "POST", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/scan/reputation/route.ts",
+    "template": "/api/v3/scan/reputation",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/scan/route.ts",
+    "template": "/api/v3/scan",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/screenshot/[id]/route.ts",
+    "template": "/api/v3/scan/screenshot/:id",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/scan/status/[id]/route.ts",
+    "template": "/api/v3/scan/status/:id",
+    "methods": ["GET", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/scan/tags/route.ts",
+    "template": "/api/v3/scan/tags",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/scan/verify-batch/route.ts",
+    "template": "/api/v3/scan/verify-batch",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/scan/verify/route.ts",
+    "template": "/api/v3/scan/verify",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/schedules/route.ts",
+    "template": "/api/v3/schedules",
+    "methods": ["GET", "POST", "PATCH", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/shared/[token]/route.ts",
+    "template": "/api/v3/shared/:token",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/shared/[token]/screenshot/route.ts",
+    "template": "/api/v3/shared/:token/screenshot",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/shares/route.ts",
+    "template": "/api/v3/shares",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/stripe/setup-products/route.ts",
+    "template": "/api/v3/stripe/setup-products",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/stripe/setup-webhook/route.ts",
+    "template": "/api/v3/stripe/setup-webhook",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/support-tickets/[id]/route.ts",
+    "template": "/api/v3/support-tickets/:id",
+    "methods": ["GET", "POST", "PATCH"]
+  },
+  {
+    "file": "app/api/v3/support-tickets/[id]/shares/route.ts",
+    "template": "/api/v3/support-tickets/:id/shares",
+    "methods": ["GET", "POST", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/support-tickets/[id]/translate/route.ts",
+    "template": "/api/v3/support-tickets/:id/translate",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/support-tickets/route.ts",
+    "template": "/api/v3/support-tickets",
+    "methods": ["GET", "POST"]
+  },
+  {
+    "file": "app/api/v3/teams/accept-invite/route.ts",
+    "template": "/api/v3/teams/accept-invite",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/teams/avatar/[teamId]/route.ts",
+    "template": "/api/v3/teams/avatar/:teamId",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/teams/invitations/route.ts",
+    "template": "/api/v3/teams/invitations",
+    "methods": ["GET", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/teams/member-scans/route.ts",
+    "template": "/api/v3/teams/member-scans",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/teams/members/route.ts",
+    "template": "/api/v3/teams/members",
+    "methods": ["GET", "POST", "PATCH", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/teams/route.ts",
+    "template": "/api/v3/teams",
+    "methods": ["GET", "POST", "PATCH", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/teams/teammates/route.ts",
+    "template": "/api/v3/teams/teammates",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/webhooks/[id]/deliveries/route.ts",
+    "template": "/api/v3/webhooks/:id/deliveries",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/v3/webhooks/[id]/rotate-secret/route.ts",
+    "template": "/api/v3/webhooks/:id/rotate-secret",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/webhooks/[id]/route.ts",
+    "template": "/api/v3/webhooks/:id",
+    "methods": ["PATCH"]
+  },
+  {
+    "file": "app/api/v3/webhooks/route.ts",
+    "template": "/api/v3/webhooks",
+    "methods": ["GET", "POST", "PATCH", "DELETE"]
+  },
+  {
+    "file": "app/api/v3/webhooks/stripe/route.ts",
+    "template": "/api/v3/webhooks/stripe",
+    "methods": ["POST"]
+  },
+  {
+    "file": "app/api/v3/whoami-ip/route.ts",
+    "template": "/api/v3/whoami-ip",
+    "methods": ["GET"]
+  },
+  {
+    "file": "app/api/version/route.ts",
+    "template": "/api/version",
+    "methods": ["GET"]
+  }
+]
