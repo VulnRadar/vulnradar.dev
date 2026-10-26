@@ -3,7 +3,7 @@
  * has promoted and removing one. The pool is faked, so these prove what the
  * code does with the rows and which statements it sends; that the DELETE
  * really removes exactly one row and the LEFT JOIN survives a deleted
- * promoter is tests/integration/ai-tag-candidates.test.ts.
+ * promoter is tests/integration/promoted-auto-tag-rules.test.ts.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 

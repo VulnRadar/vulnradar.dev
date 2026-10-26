@@ -221,6 +221,7 @@ export function EngineFeedbackManager() {
   const [minCandidateScans, setMinCandidateScans] = useState<number | null>(
     null,
   );
+  const [maxCandidates, setMaxCandidates] = useState<number | null>(null);
   const [thresholdPercent, setThresholdPercent] = useState<number | null>(null);
   const [minSampleSize, setMinSampleSize] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -279,6 +280,7 @@ export function EngineFeedbackManager() {
         const data = await aiCandidatesRes.json();
         setAiCandidates(data.candidates || []);
         setMinCandidateScans(data.minCandidateScans ?? null);
+        setMaxCandidates(data.maxCandidates ?? null);
       }
       if (promotedRes.ok) {
         const data = await promotedRes.json();
@@ -1241,7 +1243,11 @@ export function EngineFeedbackManager() {
                   Only shown once a tag has appeared on {minCandidateScans}+
                   distinct scans.
                 </>
-              )}{" "}
+              )}
+              {maxCandidates !== null &&
+                aiCandidates.length >= maxCandidates && (
+                  <> The {maxCandidates} busiest are listed.</>
+                )}{" "}
               Promoting one saves it as a free, deterministic rule, so that
               concept needs no more AI calls. Rules in effect are listed below
               and can be removed.

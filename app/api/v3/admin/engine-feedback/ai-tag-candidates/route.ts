@@ -12,6 +12,7 @@ import {
 } from "@/lib/tags/auto-tags";
 import {
   loadAiTagCandidates,
+  MAX_CANDIDATES,
   MIN_CANDIDATE_SCANS,
   RULE_SEVERITIES,
 } from "@/lib/tags/ai-tag-candidates";
@@ -60,6 +61,7 @@ export const GET = withErrorHandling(async () => {
     return NextResponse.json({
       candidates,
       minCandidateScans: MIN_CANDIDATE_SCANS,
+      maxCandidates: MAX_CANDIDATES,
     });
   } catch (error) {
     logError("admin", "failed to load AI tag candidates", error, {

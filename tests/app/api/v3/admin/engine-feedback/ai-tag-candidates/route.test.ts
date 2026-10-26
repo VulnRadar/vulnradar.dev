@@ -136,6 +136,8 @@ describe("GET /api/v3/admin/engine-feedback/ai-tag-candidates", () => {
 
     expect(res.status).toBe(200);
     expect(json.minCandidateScans).toBeGreaterThanOrEqual(1);
+    // The panel needs the cap to say when the list was cut short.
+    expect(json.maxCandidates).toBe(25);
     expect(json.candidates).toHaveLength(1);
     const candidate = json.candidates[0];
     expect(candidate.tag).toBe("DNS Email Hygiene Gaps");
