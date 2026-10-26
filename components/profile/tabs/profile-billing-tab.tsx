@@ -12,7 +12,6 @@ import {
   CreditCard,
   Users,
   Gift,
-  Calendar,
   TrendingUp,
   Loader2,
   XCircle,
@@ -44,6 +43,7 @@ import {
 } from "../modals/billing-verification-modal";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 /** Whole minutes, one decimal only when there's a fractional remainder worth
  *  showing (e.g. "1.5 min" for 90s, but "3 min" for 180s, not "3.0 min"). */
@@ -440,21 +440,15 @@ export function ProfileBillingTab({
                       )}
 
                       {billingInfo.subscription.cancelAtPeriodEnd && (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-[hsl(var(--warning))]/10 border border-[hsl(var(--warning))]/25 mt-2">
-                          <Calendar
-                            className="h-4 w-4 text-[hsl(var(--warning))] shrink-0"
-                            aria-hidden="true"
-                          />
-                          <p className="text-sm text-[hsl(var(--warning))]">
-                            Your subscription will end on{" "}
-                            {billingInfo.subscription.currentPeriodEnd
-                              ? formatDate(
-                                  billingInfo.subscription.currentPeriodEnd,
-                                )
-                              : "the end of your billing period"}
-                            . You&apos;ll keep access until then.
-                          </p>
-                        </div>
+                        <InlineAlert tone="warning" className="mt-2">
+                          Your subscription will end on{" "}
+                          {billingInfo.subscription.currentPeriodEnd
+                            ? formatDate(
+                                billingInfo.subscription.currentPeriodEnd,
+                              )
+                            : "the end of your billing period"}
+                          . You&apos;ll keep access until then.
+                        </InlineAlert>
                       )}
                     </div>
                   )}
@@ -1009,26 +1003,17 @@ export function ProfileBillingTab({
                       className="h-2"
                     />
                     {billingInfo.usage.remaining === 0 && (
-                      <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                        <AlertTriangle className="h-4 w-4 text-destructive" />
-                        <p className="text-sm text-destructive">
-                          Daily scan limit reached. Upgrade your plan or wait
-                          until midnight UTC for the limit to reset.
-                        </p>
-                      </div>
+                      <InlineAlert tone="error">
+                        Daily scan limit reached. Upgrade your plan or wait
+                        until midnight UTC for the limit to reset.
+                      </InlineAlert>
                     )}
                     {billingInfo.usage.remaining > 0 &&
                       billingInfo.usage.remaining <= 10 && (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-[hsl(var(--warning))]/10 border border-[hsl(var(--warning))]/25">
-                          <AlertTriangle
-                            className="h-4 w-4 text-[hsl(var(--warning))]"
-                            aria-hidden="true"
-                          />
-                          <p className="text-sm text-[hsl(var(--warning))]">
-                            Running low on scans. Consider upgrading for more
-                            capacity.
-                          </p>
-                        </div>
+                        <InlineAlert tone="warning">
+                          Running low on scans. Consider upgrading for more
+                          capacity.
+                        </InlineAlert>
                       )}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <RefreshCw className="h-3.5 w-3.5" />
@@ -1134,15 +1119,12 @@ export function ProfileBillingTab({
                           </p>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                          <AlertTriangle className="h-4 w-4 text-destructive" />
-                          <p className="text-sm text-destructive">
-                            AI verification limit reached for this window.
-                            Upgrade your plan, buy AI tokens below, wait for it
-                            to reset, or connect your own AI provider key in
-                            Profile &gt; AI settings.
-                          </p>
-                        </div>
+                        <InlineAlert tone="error">
+                          AI verification limit reached for this window. Upgrade
+                          your plan, buy AI tokens below, wait for it to reset,
+                          or connect your own AI provider key in Profile &gt; AI
+                          settings.
+                        </InlineAlert>
                       ))}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <RefreshCw className="h-3.5 w-3.5" />
@@ -1304,15 +1286,12 @@ export function ProfileBillingTab({
                           </p>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                          <AlertTriangle className="h-4 w-4 text-destructive" />
-                          <p className="text-sm text-destructive">
-                            AI review limit reached for this window. Upgrade
-                            your plan, buy GitHub review tokens below, wait for
-                            it to reset, or connect your own AI provider key in
-                            Profile &gt; AI settings.
-                          </p>
-                        </div>
+                        <InlineAlert tone="error">
+                          AI review limit reached for this window. Upgrade your
+                          plan, buy GitHub review tokens below, wait for it to
+                          reset, or connect your own AI provider key in Profile
+                          &gt; AI settings.
+                        </InlineAlert>
                       ))}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <RefreshCw className="h-3.5 w-3.5" />
@@ -1478,14 +1457,11 @@ export function ProfileBillingTab({
                           </p>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                          <AlertTriangle className="h-4 w-4 text-destructive" />
-                          <p className="text-sm text-destructive">
-                            Live-browser minute limit reached for this month.
-                            Upgrade your plan, buy more minutes below, or wait
-                            for it to reset.
-                          </p>
-                        </div>
+                        <InlineAlert tone="error">
+                          Live-browser minute limit reached for this month.
+                          Upgrade your plan, buy more minutes below, or wait for
+                          it to reset.
+                        </InlineAlert>
                       ))}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <RefreshCw className="h-3.5 w-3.5" />
