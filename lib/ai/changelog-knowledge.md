@@ -76,6 +76,62 @@ The largest release since 3.0, and a pass over the whole product rather than one
   About a third of the actions written to the admin audit log had no readable label and no filter, so they showed up as raw internal names that could not be searched for. Every action now has a label and a category, including new Staff and Logs and data filters for staff invites, log clears, exports and backups, and a test fails if a new action is ever logged without one.
 - [Shield] **[SECURITY]** **The Contact Form Has Its Own Rate Limit**
   The contact form shared one limit of 100 requests an hour with the whole API, so it could be used to send a lot of mail before anything stopped it. It now has its own much tighter limit, and creating support tickets and changing their status have limits of their own too. Each can be adjusted under Admin, Settings, Rate Limits.
+- [Activity] **[FIXED]** **Scans That Stop Now Say Why**
+  A scan you cancelled, one turned away by a daily limit, one a bulk batch never reached and one the scanner itself broke on are now recorded as different things, and the message you see follows the real reason. A database fault is no longer reported as your site timing out. The scan status API returns the reason as failureKind, and the admin Overview counts only real scanner failures, so a busy day of cancels no longer turns it red.
+- [Globe] **[FIXED]** **A Site That Is Down No Longer Fails the Whole Scan**
+  When a site refuses the connection, times out, serves a certificate the scanner rejects or redirects to another host, the scan now finishes the checks that do not need the page (DNS, TLS, reputation) and lists the page as not checked, instead of failing before any of them ran. A scheduled scan of a site that went down still emails you the first time, the same as before.
+- [RefreshCw] **[FIXED]** **Redirecting Sites Stop Re-Alerting on Every Scan**
+  A scan now keeps the address you asked for, so a site that redirects (HTTP to HTTPS, or the bare domain to www) is matched with its previous scan. Critical and high findings that have not changed no longer send a new alert email and webhook every time. Scans of plain-HTTP sites also no longer record the server's IP address as the scanned URL.
+- [Bug] **[FIXED]** **Plain-HTTP Sites That Redirect Scan Properly**
+  Scanning an http:// site that redirected to a page on itself, such as /login, failed with a 'redirect to a different host' error even though nothing left the site. The redirect is now followed on the same host.
+- [Timer] **[FIXED]** **The Page Fetch Timeout Setting Works**
+  The scan fetch timeout setting could only make a page fetch shorter, because a built-in 15 second limit always cut it off first. The setting now governs the fetch, up to two minutes, so slow sites can be scanned.
+- [Gauge] **[IMPROVED]** **The Scanner Queue Shows Real Failures and Can Cancel a Scan**
+  The admin Scanner Queue's Failed count now counts only scanner failures, with cancelled, refused and never-run scans counted on their own and failures grouped by reason. Each row links to its user and scan, failures show how long they really ran, and an admin can list the scans in progress and cancel one after confirming.
+- [Layers] **[FIXED]** **Crawls Keep Their Results**
+  A crawl that reaches its time limit now stops taking new pages, finishes with the pages it already scanned and is marked as partial, instead of failing and throwing them all away, and you are not charged for pages it never started. A crawl stopped by your daily limit counts what it skipped, and a cancelled crawl no longer leaves its page results behind in History.
+- [Eye] **[FIXED]** **Pages Nobody Read Are No Longer Shown as Clean**
+  A crawled page that could not be fetched, or answered with a bot challenge, was saved as a clean scan in History. It is now listed as a page that was not read, with the reason, including when it was the only page the crawl tried. A scan that finished without reading part of the site shows as Partly checked instead of Clean, and History's Clean filter no longer includes scans that are running, failed or were cancelled.
+- [Database] **[FIXED]** **Your Last Real Result Stays Put**
+  The dashboard, Assets and the badge builder now use each site's latest completed scan. A rescan that is still running, failed or was cancelled no longer wipes a site's findings or makes it look safe.
+- [List] **[IMPROVED]** **An Easier History List With a Screen Reader**
+  Each History row is now one button for the scan, with its tags and actions menu beside it rather than inside it. Severity counts say their severity aloud, and the filter menus announce the active choice.
+- [ShieldCheck] **[SECURITY]** **Safer List Errors and a Limit on Badge Requests**
+  Failure reasons in the History and dashboard lists are worded for people, the same as the scan status page, instead of the stored error text. The public badge image is now rate limited per address.
+- [CalendarClock] **[FIXED]** **Hourly Schedules Run on Every Slot**
+  Hourly and every-6-hours scheduled scans could skip most of their runs each day depending on the hour they were created. They now run on every slot, and schedules that were parked too far ahead are pulled back to their next slot when the app starts.
+- [Globe] **[FIXED]** **A DNS Outage No Longer Revokes Verified Domains**
+  A DNS timeout during the periodic domain re-check used to mark verified domains as needing verification again and switch off active scanning for them. A lookup that gets no answer now leaves the domain alone and is retried later. When a domain really loses its verification record, its owner now gets a notification.
+- [KeyRound] **[FIXED]** **Rotating the Encryption Key Keeps API Keys Working**
+  Following the documented encryption key rotation made every existing API key stop working. Keys are now found under the previous key and moved to the new one the first time they are used. Keep the previous key set until every key in use has been used once.
+- [Key] **[IMPROVED]** **Sign-In Failures Are Logged**
+  When signing in with Google, GitHub or Discord fails at the provider, the error log now records which provider, which step, the HTTP status and the provider's error code, so a wrong client secret or redirect address is visible to admins. Codes, tokens and response bodies are never logged.
+- [Search] **[ADDED]** **Trace an Error to Its Request or Scan**
+  Every row in Admin, Error Logs now shows the request and the scan it belongs to, and clicking either shows only that request's or scan's rows. Uncaught server errors record the method, path and route. During a burst of errors the panel now says how many were left out and which message repeated, instead of quietly looking complete.
+- [Activity] **[ADDED]** **Background Worker Health on the Overview**
+  The admin Overview now shows whether the cleanup, stale-scan, scheduled-scan, digest, domain re-check and backup workers are running. A worker goes red after three failures in a row and amber if it stops ticking, and a separate row counts scheduled scans more than 30 minutes overdue.
+- [ScanSearch] **[ADDED]** **Admin Scan Inspector**
+  Staff with scan access can open any scan from a user's recent scans and see its status, why it failed, the stored error, timings, result details and findings. Failed, cancelled and queued scans no longer show as 0 findings in that list, and every look is recorded in the audit log.
+- [BarChart3] **[ADDED]** **Usage Meters, AI Spend and Credit Corrections for Admins**
+  A user's admin panel now shows scans today, AI tokens and GitHub review tokens against their limits. The billing overview gains an AI usage section with the heaviest accounts. A wrong credit grant can be corrected with a Remove option that never goes below zero, needs a reason and your password, and records the balance before and after.
+- [Users] **[IMPROVED]** **Admin Directory, Filters and a Faster Panel**
+  The Staff tab now lists every staff role, including billing, security analyst, content manager and ops accounts that were missing. The user list filters by status, plan and role and finds an account by id. Audit log search and filters now cover the whole log rather than the rows on screen, each account has an Account history card, and opening a user is far lighter on the database.
+- [Shield] **[SECURITY]** **Admin Deletions and Exports Tightened**
+  Deleting a user's scans from the admin panel, or purging a blocked domain, now also removes the public host pages built from those scans, which used to stay online. Audit log export is limited to the roles that can use it. Password emails sent from the admin panel no longer carry an unsubscribe link.
+- [Mail] **[SECURITY]** **The Contact Form No Longer Relays Strangers' Text**
+  The staff email for a contact submission is now a short pointer to the admin contact inbox, with no message text and no reply-to address, and the confirmation no longer greets whatever name was typed. An old, unused landing-page contact endpoint, which could mail any text to any address, is removed. Both are the kind of thing spam filters score against the sending domain.
+- [MailOpen] **[IMPROVED]** **Rejected Emails Can Be Traced**
+  Email Logs now records each email's template, From address, mail relay, the relay's reply code and the step it refused, plus the message id on success. You can search by error or template, failed rows show their error, and a strip groups the last day's most common failure reasons. The server also introduces itself to the relay by your app's domain instead of a loopback address.
+- [Bell] **[FIXED]** **One-Click Unsubscribe Only Turns Off Its Own Category**
+  The Unsubscribe button Gmail and Yahoo show used to switch off every email category except security alerts, sign-in and password warnings included. It now turns off only the category of the message you clicked it on, and security notices no longer carry it. Tips and guides is now correctly off for accounts that never chose.
+- [Mail] **[IMPROVED]** **Better Broadcast Emails, and Accounts Keep Their Language**
+  The plain-text version of a broadcast now reads like the HTML one, with every link's address, and the header logo is an image Gmail and Outlook can show. New accounts, including ones created by signing in with Google, GitHub or Discord and by staff invites, now keep the language they signed up in.
+- [Monitor] **[FIXED]** **Long Scans No Longer Look Failed on the Dashboard**
+  The dashboard now waits as long as the server's scan and crawl limits allow instead of a fixed few minutes. If it does stop waiting, it says the scan is still running and points you to History, instead of showing a failure for a scan that goes on to finish.
+- [Lock] **[SECURITY]** **A Link Can No Longer Start a Scan for You**
+  Opening a dashboard link with a site address in it now fills in the scan form and waits for you to press Scan. A scan only starts on its own after you chose Scan this site again or Scan on a discovered subdomain, so another site cannot spend your daily scans.
+- [Eye] **[IMPROVED]** **Screen Readers Hear Scan Results, and Findings Keep Your Place**
+  The dashboard announces when a scan completes, with its number of findings, or fails, in all six languages, and moves keyboard focus to the new view. A finding has its own heading and takes focus when you open it, and going back returns you to the row you came from.
 - [UserCheck] **[IMPROVED]** **Password Managers Now Recognise the Sign-In Field**
   The email box on the sign-in and sign-up pages was labelled in a way that password managers did not recognise as the username field they should pair with your saved password, so some password managers would not offer to fill it in automatically. It is labelled correctly now, and it was our own scanner that caught the problem on our own site.
 - [Palette] **[IMPROVED]** **A Calmer, More Consistent Interface**
@@ -2624,6 +2680,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1004
+- **Total changes documented:** 1032
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
