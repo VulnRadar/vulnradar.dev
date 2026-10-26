@@ -176,6 +176,13 @@ export function useDialogFocusRestore(
  * the panel's own subtree sees the element that really had focus: React
  * commits siblings in order, and a child's `autoFocus` is applied when that
  * child commits, after this component's effect.
+ *
+ * The first reading wins. StrictMode (next dev) mounts, unmounts and re-runs
+ * every layout effect once, and by the second run the panel's `autoFocus`
+ * input already has focus: reading again would record an element inside the
+ * dialog, which is gone by the time the dialog closes, and the opener would be
+ * lost in dev only. The close handler empties the ref, so each opening still
+ * records afresh.
  */
 export function DialogFocusOrigin({
   originRef,
@@ -183,6 +190,7 @@ export function DialogFocusOrigin({
   originRef: React.RefObject<HTMLElement | null>;
 }) {
   React.useLayoutEffect(() => {
+    if (originRef.current) return;
     originRef.current = rememberableElement(document.activeElement, document);
   }, [originRef]);
   return null;

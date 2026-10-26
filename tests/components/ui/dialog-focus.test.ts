@@ -319,6 +319,42 @@ describe("useDialogFocusRestore + DialogFocusOrigin", () => {
     expect(hook.originRef.current).toBeNull();
   });
 
+  it("keeps the first reading when the layout effect runs again (StrictMode in dev)", () => {
+    const doc = makeDoc();
+    vi.stubGlobal("document", doc);
+    const opener = makeEl(doc);
+    doc.activeElement = opener as unknown as Element;
+    const hook = useDialogFocusRestore();
+    DialogFocusOrigin({ originRef: hook.originRef });
+    // The panel's autoFocus input has focus by the time React re-runs the
+    // effect, and it is inside the dialog, so it is gone once the dialog closes.
+    const input = makeEl(doc);
+    doc.activeElement = input as unknown as Element;
+    DialogFocusOrigin({ originRef: hook.originRef });
+    expect(hook.originRef.current).toBe(opener);
+
+    input.isConnected = false;
+    doc.activeElement = doc.body;
+    hook.onCloseAutoFocus(makeEvent() as unknown as Event);
+    expect(doc.activeElement).toBe(opener);
+  });
+
+  it("records afresh for the next opening once a close has emptied the ref", () => {
+    const doc = makeDoc();
+    vi.stubGlobal("document", doc);
+    const first = makeEl(doc);
+    const second = makeEl(doc);
+    const hook = useDialogFocusRestore();
+    doc.activeElement = first as unknown as Element;
+    DialogFocusOrigin({ originRef: hook.originRef });
+    doc.activeElement = doc.body;
+    hook.onCloseAutoFocus(makeEvent() as unknown as Event);
+
+    doc.activeElement = second as unknown as Element;
+    DialogFocusOrigin({ originRef: hook.originRef });
+    expect(hook.originRef.current).toBe(second);
+  });
+
   it("records nothing when <body> had focus", () => {
     const doc = makeDoc();
     vi.stubGlobal("document", doc);
