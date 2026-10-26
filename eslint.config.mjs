@@ -90,6 +90,10 @@ export default [
       // to do with the product.
       "marketing/**",
       ".idea/**",
+      // Agent worktrees (.claude/worktrees/*) are whole checkouts of this
+      // repository. Gitignored, so CI never has them, but locally `eslint .`
+      // linted every one of them as well as the real tree.
+      ".claude/**",
       "tsconfig.tsbuildinfo",
     ],
   },

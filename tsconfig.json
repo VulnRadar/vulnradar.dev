@@ -34,6 +34,7 @@
     "node_modules",
     "scripts/create-fresh-db/schemas/**",
     "extension/**",
-    "cli/**"
+    "cli/**",
+    ".claude"
   ]
 }
