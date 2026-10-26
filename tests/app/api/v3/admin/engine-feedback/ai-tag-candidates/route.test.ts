@@ -96,8 +96,8 @@ describe("GET /api/v3/admin/engine-feedback/ai-tag-candidates", () => {
     await GET();
 
     const [sql, params] = mockQuery.mock.calls[1];
-    expect(sql).toContain("WHERE source = 'ai'");
-    expect(sql).toContain("HAVING COUNT(DISTINCT scan_id) >= $1");
+    expect(sql).toContain("st.source = 'ai'");
+    expect(sql).toContain("HAVING COUNT(DISTINCT st.scan_id) >= $1");
     expect(params[0]).toBeGreaterThanOrEqual(1);
   });
 
@@ -109,11 +109,13 @@ describe("GET /api/v3/admin/engine-feedback/ai-tag-candidates", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
+          tag: "DNS Email Hygiene Gaps",
           scan_id: 101,
           url: "https://a.example.com",
           scanned_at: "2026-01-01",
         },
         {
+          tag: "DNS Email Hygiene Gaps",
           scan_id: 102,
           url: "https://b.example.com",
           scanned_at: "2026-01-02",
@@ -122,20 +124,18 @@ describe("GET /api/v3/admin/engine-feedback/ai-tag-candidates", () => {
     }); // examples query
     mockQuery.mockResolvedValueOnce({
       rows: [
-        {
-          findings: [
-            { cwe: "CWE-350", category: "dns", severity: "high" },
-            { cwe: "CWE-350", category: "dns", severity: "medium" },
-            { cwe: undefined, category: "email", severity: "low" },
-          ],
-        },
+        { tag: "DNS Email Hygiene Gaps", facet: "cwe", val: "CWE-350" },
+        { tag: "DNS Email Hygiene Gaps", facet: "category", val: "dns" },
+        { tag: "DNS Email Hygiene Gaps", facet: "category", val: "email" },
+        { tag: "DNS Email Hygiene Gaps", facet: "severity", val: "high" },
       ],
-    }); // findings query
+    }); // finding-counts query
 
     const res = await GET();
     const json = await res.json();
 
     expect(res.status).toBe(200);
+    expect(json.minCandidateScans).toBeGreaterThanOrEqual(1);
     expect(json.candidates).toHaveLength(1);
     const candidate = json.candidates[0];
     expect(candidate.tag).toBe("DNS Email Hygiene Gaps");
@@ -145,13 +145,29 @@ describe("GET /api/v3/admin/engine-feedback/ai-tag-candidates", () => {
       { scanId: 101, url: "https://a.example.com", scannedAt: "2026-01-01" },
       { scanId: 102, url: "https://b.example.com", scannedAt: "2026-01-02" },
     ]);
-    // CWE-350 is the most frequent cwe (2 of 3 findings); dns is the most
-    // frequent category (2 of 3); high is the most frequent severity tied
-    // with... actually high(1)/medium(1)/low(1) are equal, so whichever
-    // this simple frequency scan picks first is fine -- just assert the
-    // dominant cwe/category made it in.
-    expect(candidate.suggested.cwes).toContain("CWE-350");
-    expect(candidate.suggested.categories).toContain("dns");
+    expect(candidate.suggested).toEqual({
+      cwes: ["CWE-350"],
+      categories: ["dns", "email"],
+      minSeverity: "high",
+    });
+  });
+
+  it("runs the same three queries for a long candidate list as for a short one", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({
+      rows: Array.from({ length: 25 }, (_, i) => ({
+        tag: `Tag ${i}`,
+        scan_count: 40 - i,
+        user_count: 2,
+      })),
+    });
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    const res = await GET();
+
+    expect(res.status).toBe(200);
+    // One for the session's role check, then candidates, examples, counts.
+    expect(mockQuery).toHaveBeenCalledTimes(4);
   });
 
   it("returns a graceful 500 when the aggregation query fails", async () => {
