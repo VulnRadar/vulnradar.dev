@@ -58,6 +58,38 @@ import oxlint from "eslint-plugin-oxlint";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// An Authorization header is parsed in exactly one place, lib/api/bearer.ts.
+// Seventeen call sites each used their own `startsWith(BEARER_PREFIX)` and two
+// had a bare "Bearer " literal, so a fix to the scheme (it is case-insensitive,
+// RFC 9110) had to land in nineteen places and middleware could disagree with
+// any of them about who was authenticated.
+//
+// A flat-config rule is replaced, never merged, so these selectors are spread
+// into every `no-restricted-syntax` block below and the blocks that share a
+// file keep the union. "warn" until middleware.ts, the last site, is converted
+// by the middleware hardening work; that change flips these to "error".
+const bearerSelectors = [
+  {
+    selector: "ImportSpecifier[imported.name='BEARER_PREFIX']",
+    message:
+      "Do not import BEARER_PREFIX. Read the header with parseBearer() from @/lib/api/bearer: it is case-insensitive and the only parser there is.",
+  },
+  {
+    selector:
+      "CallExpression[callee.property.name='startsWith'][arguments.0.value=/^bearer/i]",
+    message:
+      "Do not test for the Bearer scheme by hand. Use parseBearer() from @/lib/api/bearer: the scheme is case-insensitive and there is only one parser.",
+  },
+];
+
+const bearerSourceFiles = [
+  "app/**/*.{ts,tsx}",
+  "components/**/*.{ts,tsx}",
+  "hooks/**/*.{ts,tsx}",
+  "lib/**/*.{ts,tsx}",
+  "middleware.ts",
+];
+
 export default [
   {
     ignores: [
@@ -171,6 +203,16 @@ export default [
     },
   },
   {
+    // Everywhere the next block does not reach: app/api, app/docs, middleware.
+    // The next block repeats these selectors for the files it does cover,
+    // because it sets the same rule and would otherwise win outright.
+    files: bearerSourceFiles,
+    ignores: ["lib/api/bearer.ts"],
+    rules: {
+      "no-restricted-syntax": ["warn", ...bearerSelectors],
+    },
+  },
+  {
     // lib/config/client-constants.ts declares API_VERSION as "the" switch for
     // the versioned API path and builds every entry of the API route map from
     // it. 62 fetch call sites across 28 files spell `/api/v3/...` out instead,
@@ -189,10 +231,11 @@ export default [
     // href is not the defect this is about, and flagging those would bury
     // the real ones.
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "lib/**/*.ts"],
-    ignores: ["app/docs/**", "app/api/**"],
+    ignores: ["app/docs/**", "app/api/**", "lib/api/bearer.ts"],
     rules: {
       "no-restricted-syntax": [
         "warn",
+        ...bearerSelectors,
         {
           selector:
             "CallExpression[callee.name='fetch'] > Literal[value=/^\\u002fapi\\u002fv[0-9]/]",
@@ -204,6 +247,30 @@ export default [
             "CallExpression[callee.name='fetch'] TemplateElement[value.raw=/^\\u002fapi\\u002fv[0-9]/]",
           message:
             "Hardcoded /api/v<n> path. Use the API map from @/lib/config/constants (or client-constants), which builds every route from API_VERSION.",
+        },
+      ],
+    },
+  },
+  {
+    // NextResponse.rewrite is a security rule, not a style one. When the
+    // destination has a different origin from the request, Next does not
+    // rewrite, it proxies the request to that host with its cookies,
+    // Authorization header and body. A destination built from the Host
+    // header, APP_URL or string concatenation would turn a URL alias into a
+    // credential-forwarding proxy, so the one call lives in lib/api/rewrite.ts
+    // and builds its destination from the request's own URL. No call exists
+    // today; this keeps it that way. An error from the start, unlike the
+    // Bearer ban above, because nothing has to be migrated first.
+    files: ["**/*.{ts,tsx,mts}"],
+    ignores: ["lib/api/rewrite.ts"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "NextResponse",
+          property: "rewrite",
+          message:
+            "Do not call NextResponse.rewrite directly. Rewrites go through lib/api/rewrite.ts, which owns the target checks and the trusted marker header.",
         },
       ],
     },
