@@ -540,6 +540,68 @@ describe("processSchedule", () => {
     expect(mockScheduledScanFailedEmail).not.toHaveBeenCalled();
   });
 
+  it("treats a run whose page could not be fetched as a failure", async () => {
+    // A scan of a site that is down now completes (DNS, TLS and reputation
+    // still run) with the page marked unreachable. For a schedule that is the
+    // outage its owner is watching for, so it alerts like a failed run did.
+    const schedule = makeSchedule({ id: 24, frequency: "daily" });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history"))
+        return { rows: [{ id: 559 }], rowCount: 1 };
+      if (sql.includes("SELECT summary, duration, status")) {
+        return {
+          rows: [
+            {
+              summary: JSON.stringify({ total: 2 }),
+              duration: 900,
+              status: "completed",
+              error_message: null,
+              failure_kind: null,
+              page_unreachable: {
+                code: "unreachable",
+                message: "The site did not answer.",
+              },
+            },
+          ],
+        };
+      }
+      if (sql.includes("consecutive_failures = consecutive_failures + 1")) {
+        return { rows: [{ consecutive_failures: 1 }], rowCount: 1 };
+      }
+      if (sql.includes("SELECT email FROM users")) {
+        return { rows: [{ email: "owner@example.com" }] };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await processSchedule(schedule, new Date("2026-08-12T10:00:00.000Z"));
+
+    expect(mockScheduledScanFailedEmail).toHaveBeenCalledTimes(1);
+    expect(
+      (mockScheduledScanFailedEmail.mock.calls[0] as unknown as string[])[2],
+    ).toBe("The site did not answer.");
+    // Not "completed", and the streak is not reset by it.
+    expect(mockScheduledScanCompleteEmail).not.toHaveBeenCalled();
+    expect(
+      mockPoolQuery.mock.calls.some((call) =>
+        String(call[0]).includes("SET consecutive_failures = 0"),
+      ),
+    ).toBe(false);
+  });
+
+  it("tags the run as a scheduled scan", async () => {
+    const schedule = makeSchedule({ id: 25 });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history"))
+        return { rows: [{ id: 560 }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+    await processSchedule(schedule, new Date("2026-08-12T10:00:00.000Z"));
+    expect(mockExecuteScan).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "scheduled" }),
+    );
+  });
+
   it("clears the failure streak after a run that works", async () => {
     const schedule = makeSchedule({ id: 23, frequency: "daily" });
     mockPoolQuery.mockImplementation(async (sql: string) => {

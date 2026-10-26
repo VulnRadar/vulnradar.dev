@@ -454,6 +454,7 @@ export async function processSchedule(
       authedUserId: schedule.user_id,
       categoriesTotal,
       silenceRoutineEmail: true,
+      source: "scheduled",
     });
 
     // "Scheduled Scans Completed" (email_schedules) is its own preference,
@@ -472,11 +473,32 @@ export async function processSchedule(
         duration: number;
         status: string;
         error_message: string | null;
+        failure_kind: string | null;
+        page_unreachable: { message?: string } | null;
       }>(
-        `SELECT summary, duration, status, error_message FROM scan_history WHERE id = $1`,
+        `SELECT summary, duration, status, error_message, failure_kind,
+                result_meta -> 'pageUnreachable' AS page_unreachable
+           FROM scan_history WHERE id = $1`,
         [scanHistoryId],
       );
       const row = rowRes.rows[0];
+
+      // A site that is down no longer fails its scan: the scan completes with
+      // the checks that never read the page (DNS, TLS, reputation) and marks
+      // the page unreachable. For a schedule, though, "the site did not
+      // answer" is the very thing its owner set it up to hear about, so that
+      // run counts as a failure here, for the streak and the email, exactly
+      // as the failed status used to.
+      const pageDown =
+        row?.status === "completed" && row.page_unreachable != null;
+      const failed = row?.status === "failed" || pageDown;
+      const reason = pageDown
+        ? (row.page_unreachable?.message ??
+          publicScanErrorMessage(null, "target_unreachable"))
+        : publicScanErrorMessage(
+            row?.error_message ?? null,
+            row?.failure_kind ?? null,
+          );
 
       // A run that FAILED used to fall through this whole block and reschedule
       // in silence: executeScan does not throw for an ordinary failure, it
@@ -489,7 +511,7 @@ export async function processSchedule(
       // succeeds again. consecutive_failures is what makes that possible: an
       // hourly schedule against a dead host sends one email, not twenty-four a
       // day. The reason is the sanitised one, never the stored error text.
-      if (row?.status === "failed") {
+      if (failed) {
         const failRes = await pool.query<{ consecutive_failures: number }>(
           `UPDATE scheduled_scans
               SET consecutive_failures = consecutive_failures + 1
@@ -512,14 +534,14 @@ export async function processSchedule(
               emailContent: scheduledScanFailedEmail(
                 FREQUENCIES[frequency].label,
                 schedule.url,
-                publicScanErrorMessage(row.error_message),
+                reason,
               ),
             });
           }
         }
       }
 
-      if (row?.status === "completed") {
+      if (row?.status === "completed" && !pageDown) {
         const userRes = await pool.query<{ email: string }>(
           `SELECT email FROM users WHERE id = $1`,
           [schedule.user_id],
