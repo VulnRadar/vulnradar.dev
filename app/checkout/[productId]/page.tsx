@@ -11,6 +11,7 @@ import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status"
 import { isStaffRole } from "@/lib/auth/permissions-client";
 import Link from "next/link";
 import {
+  API,
   ROUTES,
   BILLING_ENABLED,
   APP_NAME,
@@ -67,7 +68,7 @@ export default function CheckoutPage({
 
     async function checkAuth() {
       try {
-        const meRes = await fetch("/api/v3/auth/me");
+        const meRes = await fetch(API.AUTH.ME);
         if (!meRes.ok) {
           router.push(`${ROUTES.LOGIN}?redirect=/checkout/${productId}`);
           return;

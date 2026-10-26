@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2 } from "lucide-react";
+import { API } from "@/lib/config/client-constants";
 import {
   UnsubscribePrefsSkeleton,
   UnsubscribeSkeleton,
@@ -52,7 +53,7 @@ function UnsubscribeContent() {
       setLoading(false);
       return;
     }
-    fetch(`/api/v3/account/unsubscribe?token=${encodeURIComponent(token)}`)
+    fetch(`${API.ACCOUNT_UNSUBSCRIBE}?token=${encodeURIComponent(token)}`)
       .then(async (res) => {
         if (!res.ok) {
           setInvalid(true);
@@ -73,7 +74,7 @@ function UnsubscribeContent() {
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await fetch(
-          `/api/v3/account/unsubscribe?token=${encodeURIComponent(token)}`,
+          `${API.ACCOUNT_UNSUBSCRIBE}?token=${encodeURIComponent(token)}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -123,7 +124,7 @@ function UnsubscribeContent() {
     setSaving(true);
     try {
       const res = await fetch(
-        `/api/v3/account/unsubscribe?token=${encodeURIComponent(token)}&action=unsubscribe_all`,
+        `${API.ACCOUNT_UNSUBSCRIBE}?token=${encodeURIComponent(token)}&action=unsubscribe_all`,
         { method: "POST" },
       );
       if (res.ok) {

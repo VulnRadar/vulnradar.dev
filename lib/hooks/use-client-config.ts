@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  API,
   VERSION_COOKIE_MAX_AGE,
   NOTIFICATION_POLL_INTERVAL_MS as DEFAULT_NOTIFICATION_POLL_INTERVAL_MS,
   NOTIFICATION_DEFAULT_DISMISS_MAX_AGE,
@@ -62,7 +63,7 @@ export const DEFAULT_CLIENT_CONFIG: ClientConfig = {
 };
 
 /**
- * Map one GET /api/v3/config/client response body onto a ClientConfig.
+ * Map one GET API.CONFIG_CLIENT response body onto a ClientConfig.
  *
  * Split out of the hook so it can be tested without a DOM: this is where the
  * numeric coercions live, and a missing or malformed field used to become
@@ -151,7 +152,7 @@ let sharedConfig: ClientConfig | null = null;
 let sharedRequest: Promise<ClientConfig | null> | null = null;
 
 function loadClientConfig(): Promise<ClientConfig | null> {
-  sharedRequest ??= fetch("/api/v3/config/client")
+  sharedRequest ??= fetch(API.CONFIG_CLIENT)
     .then((res) => (res.ok ? res.json() : null))
     .then((data) => {
       if (!data) return null;
@@ -171,7 +172,7 @@ function loadClientConfig(): Promise<ClientConfig | null> {
  * A handful of admin-editable settings (poll intervals, dismiss windows, the
  * feature flags) only matter inside client components, which can't call the
  * server-only getSetting()/getSettings() resolver directly. This hook fetches
- * the live values once from GET /api/v3/config/client and falls back to the
+ * the live values once from GET API.CONFIG_CLIENT and falls back to the
  * compiled defaults until it resolves (or if it fails), so an admin edit
  * reaches the browser without every poller needing its own fetch/cache logic.
  *

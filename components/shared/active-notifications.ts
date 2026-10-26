@@ -1,10 +1,11 @@
 "use client";
 
 import { apiGet } from "@/lib/api/client";
+import { API } from "@/lib/config/client-constants";
 
 /**
- * One fetch of /api/v3/notifications/active, shared by the two components that
- * need it.
+ * One fetch of the active-notifications endpoint (API.NOTIFICATIONS_ACTIVE),
+ * shared by the two components that need it.
  *
  * Both the notification bell (components/shared/notification-center.tsx) and
  * the site-notification banner (components/shared/site-notifications.tsx) are
@@ -14,8 +15,10 @@ import { apiGet } from "@/lib/api/client";
  * notifications on every page view in the app, including anonymous visitors on
  * the marketing pages.
  *
- * The audience params are part of the cache key because the server filters on
- * them: a signed-out and a signed-in caller get genuinely different payloads.
+ * The audience params are part of the cache key because a signed-out and a
+ * signed-in caller get genuinely different payloads. The server does not read
+ * them: it takes the audience from the session cookie, so they only keep the
+ * two answers from sharing one cache entry in the browser.
  */
 
 /** Only the shape this module needs; callers narrow to their own type. */
@@ -58,7 +61,7 @@ export function fetchActiveNotifications<T extends ActiveNotificationLike>(
 
   const promise = apiGet<
     ActiveNotificationLike[] | { notifications?: unknown }
-  >(`/api/v3/notifications/active?${key}`)
+  >(`${API.NOTIFICATIONS_ACTIVE}?${key}`)
     .then((data) => {
       // The route returns the array directly. The object form is tolerated
       // because the banner wrapper used to accept it and a self-hoster on an

@@ -3,11 +3,12 @@ import {
   fetchActiveNotifications,
   clearActiveNotificationsCache,
 } from "@/components/shared/active-notifications";
+import { API } from "@/lib/config/client-constants";
 
 /**
  * The notification bell and the site-notification banner are both mounted in
- * the root layout and both want /api/v3/notifications/active with the same two
- * audience params, so every page view issued two identical requests. These
+ * the root layout and both want the active-notifications endpoint with the same
+ * two audience params, so every page view issued two identical requests. These
  * assert the collapse holds, and, just as importantly, that it does not
  * over-collapse: a different audience is a different payload, and the bell's
  * poll timer must still be able to force a real refresh.
@@ -50,7 +51,13 @@ describe("fetchActiveNotifications", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("sends the audience params the server filters on", async () => {
+  it("asks the active-notifications endpoint", async () => {
+    await fetchActiveNotifications(true, false);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url.startsWith(`${API.NOTIFICATIONS_ACTIVE}?`)).toBe(true);
+  });
+
+  it("puts the audience on the URL, which is what keeps the two answers apart", async () => {
     await fetchActiveNotifications(true, true);
     const url = String(fetchMock.mock.calls[0][0]);
     expect(url).toContain("authenticated=true");

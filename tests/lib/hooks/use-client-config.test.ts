@@ -5,8 +5,9 @@ import {
 } from "@/lib/hooks/use-client-config";
 
 /**
- * The hook itself needs a DOM to exercise; the part that can actually be
- * wrong without one is the mapping from the GET /api/v3/config/client body
+ * The hook's state needs a DOM to exercise (its request is covered by
+ * use-client-config-request.test.ts); the part that can actually be
+ * wrong without one is the mapping from the GET API.CONFIG_CLIENT body
  * onto the config object. Every poller in the app reads its interval from
  * here, so a field that silently becomes NaN turns a 30-second poll into a
  * tight loop in every open tab.

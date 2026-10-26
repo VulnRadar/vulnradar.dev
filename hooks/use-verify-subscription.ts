@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { PLANS } from "@/lib/billing/plans";
+import { API } from "@/lib/config/client-constants";
 
 interface VerifySubscriptionOptions {
   sessionId?: string | null;
@@ -47,8 +48,8 @@ export function useVerifySubscription(
     ];
 
     const url = sessionId
-      ? `/api/v3/checkout/verify-subscription?session_id=${encodeURIComponent(sessionId)}`
-      : "/api/v3/checkout/verify-subscription";
+      ? `${API.CHECKOUT_VERIFY_SUBSCRIPTION}?session_id=${encodeURIComponent(sessionId)}`
+      : API.CHECKOUT_VERIFY_SUBSCRIPTION;
 
     for (let i = 0; i < pollIntervals.length; i++) {
       if (cancelledRef.current) return;

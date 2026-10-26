@@ -106,6 +106,7 @@ import {
   CONFIG_FEATURE_PDF_REPORTS,
   CONFIG_FEATURE_EMAIL_NOTIFICATIONS,
 } from "./config-values";
+import { FROZEN } from "../api/frozen-paths";
 
 // STAFF / ADMIN ROLES
 
@@ -199,9 +200,13 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
   user: "bg-muted text-muted-foreground border-border",
 };
 
-// API VERSION - Change CONFIG_API_VERSION in config-values.ts to switch all
-// API calls between versions; every entry of the API map below is built from
-// it.
+// API VERSION
+//
+// The path segment the route files under app/api live in today. It is not a
+// switch: the handlers are directories on disk, not a lookup keyed by this
+// string, so changing CONFIG_API_VERSION points the entries below at paths
+// nothing answers. The permalink entries (OPENAPI, VERSION, ACCOUNT_UNSUBSCRIBE)
+// are spelled out or taken from FROZEN on purpose and never follow it.
 
 export const API_VERSION = CONFIG_API_VERSION;
 
@@ -242,6 +247,9 @@ export const API = {
       VERIFY: `/api/${API_VERSION}/auth/2fa/verify`,
       DISABLE: `/api/${API_VERSION}/auth/2fa/disable`,
       EMAIL_SETUP: `/api/${API_VERSION}/auth/2fa/email-setup`,
+      /** Mail a fresh sign-in code to an account whose second factor is
+       *  email (the "Send a new code" button on the 2FA step of login). */
+      EMAIL_SEND: `/api/${API_VERSION}/auth/2fa/email-send`,
       BACKUP_CODES: `/api/${API_VERSION}/auth/2fa/backup-codes`,
     },
     SESSIONS: `/api/${API_VERSION}/auth/sessions`,
@@ -317,6 +325,9 @@ export const API = {
    *  decline (accept stays TEAMS_ACCEPT_INVITE by inviteId). */
   TEAMS_INVITATIONS: `/api/${API_VERSION}/teams/invitations`,
   NOTIFICATIONS: `/api/${API_VERSION}/notifications`,
+  /** The banners, modals, toasts and bell entries live for the caller. The
+   *  server reads the audience from the session, not from the query. */
+  NOTIFICATIONS_ACTIVE: `/api/${API_VERSION}/notifications/active`,
   CONTACT: `/api/${API_VERSION}/contact`,
   /** In-app support tickets: GET the caller's own tickets, POST to open one. */
   SUPPORT_TICKETS: `/api/${API_VERSION}/support-tickets`,
@@ -350,6 +361,9 @@ export const API = {
    *  badge token for one of the caller's own scans' URL. */
   BADGE_SITE: `/api/${API_VERSION}/badge/site`,
   DATA_REQUEST: `/api/${API_VERSION}/data-request`,
+  /** The link in every email we send. It is printed into mail that is already
+   *  in inboxes, so it is FROZEN, never built from API_VERSION. */
+  ACCOUNT_UNSUBSCRIBE: FROZEN.UNSUBSCRIBE,
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
   ACCOUNT_PRIVACY: `/api/${API_VERSION}/account/privacy`,
   ACCOUNT_LANGUAGE: `/api/${API_VERSION}/account/language`,
@@ -400,11 +414,21 @@ export const API = {
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   COMPARE: `/api/${API_VERSION}/compare`,
   BILLING: `/api/${API_VERSION}/billing`,
+  /** Mail the one-time code that unlocks the billing details (POST). */
+  BILLING_VERIFY_SEND: `/api/${API_VERSION}/billing/verify/send`,
+  /** Exchange that code for the billing details (POST { code }). */
+  BILLING_VERIFY: `/api/${API_VERSION}/billing/verify`,
+  /** What the checkout success page polls until Stripe's webhook has moved the
+   *  account onto the plan it just paid for (GET, optional ?session_id=). */
+  CHECKOUT_VERIFY_SUBSCRIPTION: `/api/${API_VERSION}/checkout/verify-subscription`,
   SUBSCRIPTION_CANCEL: `/api/${API_VERSION}/billing/subscription/cancel`,
   SUBSCRIPTION_REACTIVATE: `/api/${API_VERSION}/billing/subscription/reactivate`,
   BROWSER_SESSIONS: `/api/${API_VERSION}/browser/sessions`,
   BROWSER_SESSION_LOGS: `/api/${API_VERSION}/browser/sessions/logs`,
   VERSION: "/api/version",
+  /** The admin-editable settings a browser may see (poll intervals, dismiss
+   *  windows, feature flags), read once per page load (GET). */
+  CONFIG_CLIENT: `/api/${API_VERSION}/config/client`,
   /** Public OpenAPI 3.1 description of the v3 API (for API clients + the docs
    *  explorer). */
   OPENAPI: "/api/v3/openapi.json",

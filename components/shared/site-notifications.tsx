@@ -299,10 +299,10 @@ export function SiteModal({
      that a pointer user now has the same way out a keyboard user always had,
      instead of being sealed in front of it (SC 2.1.2).
 
-     `title` is not optional in practice: POST /api/v3/admin/notifications
-     rejects a notification with an empty title or message, so the old branch
-     that moved the accessible name onto the message paragraph could not fire
-     and is gone. */
+     `title` is not optional in practice: the admin route that creates a
+     notification rejects an empty title or message, so the old branch that
+     moved the accessible name onto the message paragraph could not fire and
+     is gone. */
   const hasActions = !!(notification.action_url || notification.action_url_2);
 
   return (
@@ -689,12 +689,11 @@ export function SiteNotificationsWrapper() {
     const fetchNotifications = async () => {
       try {
         // Audience targeting ("Logged In Only" / "Guests Only" / "Staff
-        // Only") is enforced server-side based on these two params. Without
-        // them the API defaults both to false, which silently breaks every
-        // non-"all" audience: "authenticated" never matches, "unauthenticated"
-        // matches everyone (including logged-in users), and "staff"/"admin"
-        // never match. They are the shared fetcher's cache key for the same
-        // reason.
+        // Only") is decided by the server from the session cookie. It ignores
+        // these two params, because trusting them let any caller ask for
+        // staff-only notices. They are the shared fetcher's cache key: a
+        // sign-in or sign-out must refetch rather than reuse the other
+        // audience's answer.
         //
         // This wrapper and the notification bell are both mounted in the root
         // layout and both want this one payload, so they went out as two

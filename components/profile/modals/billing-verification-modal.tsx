@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, ShieldAlert, Mail } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { API } from "@/lib/config/client-constants";
 
 interface SensitiveBillingData {
   // Subscription info
@@ -161,7 +162,7 @@ export function BillingVerificationModal({
     if (sending) return;
     setSending(true);
     try {
-      const res = await fetch("/api/v3/billing/verify/send", {
+      const res = await fetch(API.BILLING_VERIFY_SEND, {
         method: "POST",
       });
       if (res.ok) {
@@ -188,7 +189,7 @@ export function BillingVerificationModal({
   const handleResendCode = async () => {
     setResending(true);
     try {
-      const response = await fetch("/api/v3/billing/verify/send", {
+      const response = await fetch(API.BILLING_VERIFY_SEND, {
         method: "POST",
       });
       if (!response.ok) {
@@ -226,7 +227,7 @@ export function BillingVerificationModal({
 
     setLoading(true);
     try {
-      const response = await fetch("/api/v3/billing/verify", {
+      const response = await fetch(API.BILLING_VERIFY, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),

@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import {
+  API,
   STAFF_ROLES,
   STAFF_ROLE_HIERARCHY,
   STAFF_ROLE_LABELS,
@@ -9,6 +12,7 @@ import {
   SOCIAL_PROFILE_URLS,
   type SocialPlatformId,
 } from "@/lib/config/client-constants";
+import { FROZEN } from "@/lib/api/frozen-paths";
 import {
   CONFIG_DISCORD_INVITE_URL,
   CONFIG_SOCIAL_BLUESKY_URL,
@@ -285,5 +289,79 @@ describe("HOSTING_PROVIDER (footer hosting credit)", () => {
     vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER_NAME", "   ");
     const fresh = await reimport();
     expect(fresh.HOSTING_PROVIDER).toBeNull();
+  });
+});
+
+/**
+ * The seven routes the web app used to request by a hand-written path. Each
+ * now has an entry in the API map, and each entry has to be the path the call
+ * site used, name a route that is on disk, and be a route that answers the
+ * method the caller sends. The path is spelled out here once, on purpose: this
+ * is the table that has to change when a route moves, and a test that derived
+ * it from the map would pass whatever the map said.
+ */
+describe("API entries for routes that were spelled out at the call site", () => {
+  const ENTRIES: Array<
+    [name: string, url: string, path: string, methods: string[]]
+  > = [
+    [
+      "AUTH.TWO_FA.EMAIL_SEND",
+      API.AUTH.TWO_FA.EMAIL_SEND,
+      "/api/v3/auth/2fa/email-send",
+      ["POST"],
+    ],
+    [
+      "BILLING_VERIFY_SEND",
+      API.BILLING_VERIFY_SEND,
+      "/api/v3/billing/verify/send",
+      ["POST"],
+    ],
+    ["BILLING_VERIFY", API.BILLING_VERIFY, "/api/v3/billing/verify", ["POST"]],
+    [
+      "NOTIFICATIONS_ACTIVE",
+      API.NOTIFICATIONS_ACTIVE,
+      "/api/v3/notifications/active",
+      ["GET"],
+    ],
+    [
+      "CHECKOUT_VERIFY_SUBSCRIPTION",
+      API.CHECKOUT_VERIFY_SUBSCRIPTION,
+      "/api/v3/checkout/verify-subscription",
+      ["GET"],
+    ],
+    ["CONFIG_CLIENT", API.CONFIG_CLIENT, "/api/v3/config/client", ["GET"]],
+    [
+      "ACCOUNT_UNSUBSCRIBE",
+      API.ACCOUNT_UNSUBSCRIBE,
+      "/api/v3/account/unsubscribe",
+      ["GET", "POST"],
+    ],
+  ];
+
+  it.each(ENTRIES)(
+    "API.%s is the path the call site used",
+    (_n, url, expected) => {
+      expect(url).toBe(expected);
+    },
+  );
+
+  it.each(ENTRIES)(
+    "API.%s names a route file that exports the methods callers send",
+    (_n, url, _expected, methods) => {
+      const file = path.resolve(__dirname, "../../..", `app${url}/route.ts`);
+      expect(fs.existsSync(file), file).toBe(true);
+      const source = fs.readFileSync(file, "utf8");
+      for (const method of methods) {
+        expect(source).toMatch(
+          new RegExp(
+            String.raw`export\s+(?:async\s+function|const)\s+${method}\b`,
+          ),
+        );
+      }
+    },
+  );
+
+  it("takes the unsubscribe link from FROZEN, because it is printed into mail", () => {
+    expect(API.ACCOUNT_UNSUBSCRIBE).toBe(FROZEN.UNSUBSCRIBE);
   });
 });
