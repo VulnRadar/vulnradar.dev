@@ -820,7 +820,7 @@ describe("safeFetch (the caller's deadline governs)", () => {
     fetchMock.mockImplementation(
       (_url: unknown, init?: RequestInit) =>
         new Promise((_resolve, reject) => {
-          (init?.signal as AbortSignal).addEventListener(
+          (init!.signal as AbortSignal).addEventListener(
             "abort",
             () =>
               reject(

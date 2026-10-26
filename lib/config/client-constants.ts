@@ -316,7 +316,6 @@ export const API = {
   TEAMS_INVITATIONS: `/api/${API_VERSION}/teams/invitations`,
   NOTIFICATIONS: `/api/${API_VERSION}/notifications`,
   CONTACT: `/api/${API_VERSION}/contact`,
-  LANDING_CONTACT: `/api/${API_VERSION}/landing-contact`,
   /** In-app support tickets: GET the caller's own tickets, POST to open one. */
   SUPPORT_TICKETS: `/api/${API_VERSION}/support-tickets`,
   /** One ticket + its thread: GET (owner or staff), POST a reply, PATCH status. */

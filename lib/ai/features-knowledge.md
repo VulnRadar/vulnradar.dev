@@ -446,3 +446,10 @@ Access: signed in (or a share token)
 Heading on the page: Conversation
 
 Rendered with the same markdown and reasoning-block pipeline as the live chat widget.
+
+### Scan inspector
+Route: /admin/scans/[id]
+Access: signed in (or a share token)
+Page title: Scan inspector
+
+The stored row, including the raw error the owner is never shown. Each read is recorded in the audit log.

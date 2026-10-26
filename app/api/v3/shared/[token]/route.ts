@@ -177,11 +177,12 @@ export const GET = withErrorHandling(
     for (const key of PUBLIC_META_KEYS) {
       if (meta[key] !== undefined) publicMeta[key] = meta[key];
     }
-    // `redirect` holds { requestedUrl, finalUrl } verbatim, and scan-jobs.ts
-    // rewrites scan_history.url to the redirect target, so requestedUrl is
-    // the only surviving copy of what was actually submitted: scan
+    // `redirect` holds { requestedUrl, finalUrl } verbatim: scan
     // https://app.example.com/invite?token=SECRET, let it bounce to /login,
-    // and the token lives here. The owner's own share link keeps it, because
+    // and the token is in requestedUrl. (scan_history.url keeps the requested
+    // URL too since the redirect target stopped overwriting it; a foreign scan
+    // here only ever matches the badge's own URL, so that column tells the
+    // reader nothing the badge did not.) The owner's own share link keeps it, because
     // components/scanner/scan-result-detail.tsx renders that warning and the
     // owner saw it on their own report before choosing to share. A foreign
     // scan pulled in by a global-scope badge does not: its owner never

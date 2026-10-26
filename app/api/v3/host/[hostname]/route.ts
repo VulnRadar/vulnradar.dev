@@ -193,11 +193,10 @@ export async function GET(
      *
      * This endpoint is anonymous, and `...meta` handed every key
      * result_meta happens to carry to whoever asked. One of them is
-     * `redirect`, which holds { requestedUrl, finalUrl } verbatim, and
-     * scan-jobs.ts rewrites scan_history.url to the redirect target, so
-     * requestedUrl is the only surviving copy of what the user actually
-     * submitted. Scan https://app.example.com/invite?token=SECRET, let it
-     * bounce to /login, and the token came back from a public URL. Also
+     * `redirect`, which holds { requestedUrl, finalUrl } verbatim, so what the
+     * user actually submitted, query string and all, rides along. Scan
+     * https://app.example.com/invite?token=SECRET, let it bounce to /login,
+     * and the token came back from a public URL. Also
      * spread out were crawl.pages[].scanHistoryId and the authenticated-scan
      * report.
      *

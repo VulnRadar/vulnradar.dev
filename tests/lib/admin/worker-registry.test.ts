@@ -21,7 +21,7 @@ function sourceFiles(dir: string): string[] {
     if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) out.push(...sourceFiles(full));
-    else if (/\.ts$/.test(entry.name)) out.push(full);
+    else if (entry.name.endsWith(".ts")) out.push(full);
   }
   return out;
 }

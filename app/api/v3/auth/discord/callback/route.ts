@@ -144,19 +144,18 @@ export async function GET(request: Request) {
     });
 
     if (!tokenResponse.ok) {
-      // auth: include the Discord error code in the log so the
-      // operator can tell invalid_client (config mismatch) from
-      // invalid_grant (expired code) at a glance.
+      // auth: the Discord error code tells the operator invalid_client
+      // (config mismatch) from invalid_grant (expired code) at a glance. Only
+      // the code: an OAuth response body is never logged.
       const body = await tokenResponse.text();
       let code = "";
       try {
-        code = JSON.parse(body).error ?? "";
+        code = String(JSON.parse(body).error ?? "").slice(0, 60);
       } catch {
         /* not JSON */
       }
       console.error(
-        `[Discord] Token exchange failed (${code || tokenResponse.status}):`,
-        body,
+        `[Discord] Token exchange failed: HTTP ${tokenResponse.status}${code ? ` ${code}` : ""}`,
       );
       return NextResponse.redirect(
         `${baseUrl}/login?error=discord_token_failed`,
@@ -171,7 +170,7 @@ export async function GET(request: Request) {
     });
 
     if (!userResponse.ok) {
-      console.error("[Discord] User fetch failed:", await userResponse.text());
+      console.error(`[Discord] User fetch failed: HTTP ${userResponse.status}`);
       return NextResponse.redirect(
         `${baseUrl}/login?error=discord_user_failed`,
       );

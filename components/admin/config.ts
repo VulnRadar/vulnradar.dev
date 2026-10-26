@@ -84,6 +84,7 @@ export const ACTION_LABELS: Record<string, string> = {
   gift_subscription: "Subscription gifted successfully.",
   revoke_gift: "Gifted subscription revoked.",
   grant_credits: "Credits granted.",
+  adjust_credits: "Credit balance adjusted.",
   toggle_ai_ban: "AI chat access updated.",
   verify_email: "Email verified.",
   unverify_email: "Email unverified.",
@@ -159,6 +160,8 @@ export const PASSWORD_GATED_ACTIONS = new Set([
   // browser minutes a call, so a hijacked staff session should not be able
   // to repeat it without the password.
   "grant_credits",
+  // The other direction: removing balance can zero a customer's paid credits.
+  "adjust_credits",
   // Not a PATCH /api/v3/admin action: it names the POST to
   // /api/v3/admin/staff-invites, which grants the same privilege set_role
   // does (admin is selectable) and used to take one unconfirmed click.

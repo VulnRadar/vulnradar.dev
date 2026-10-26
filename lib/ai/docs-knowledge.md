@@ -2949,8 +2949,23 @@ A scan that failed, timed out, was refused, or came back with nothing. What each
 saved yet. On the next boot, any scan left in progress past a grace
 period is marked failed with
 Scan interrupted by a server restart. Please run it again.
-Running it again is the fix, and it is not a sign of a problem with
-the target.
+A scan that goes quiet while the server stays up is closed the same
+way by a sweep that runs every few minutes, and says
+
+The scan stopped responding and was closed. Please run it again.
+
+instead, because no restart happened. Running it again is the fix
+for both, and neither is a sign of a problem with the target.
+
+> **INFO: A page that cannot be fetched**
+> If the page itself will not load (the connection is refused, the
+request times out, the certificate is rejected, or the site
+redirects to another host) the scan still completes. DNS, the TLS
+handshake and reputation never read the page, so they run and
+report. The result lists
+the page as not checked
+and drops the engine confidence figure, so a short report here means
+the page was out of reach and not that it was clean.
 
 > **INFO: Retrying**
 > The scanning screen&rsquo;s Try again keeps every
@@ -2982,15 +2997,15 @@ individual URLs instead.
 
 ### Notes
 - Every scan is a row with one of four statuses. Two are in progress and two are final, and a scan that has reached a final status never moves again: if a scan is marked failed by the timeout watchdog and the work later finishes anyway, it stays failed.
-- If the server restarts mid-scan, the scan cannot resume: nothing was saved yet. On the next boot, any scan left in progress past a grace period is marked failed with Scan interrupted by a server restart. Please run it again. Running it again is the fix, and it is not a sign of a problem with the target.
-- Failure reasons are deliberately normalised before you see them: the raw error can contain internal detail, so it is classified into one of a small set of messages. Here is what each one means in practice.
+- If the server restarts mid-scan, the scan cannot resume: nothing was saved yet. On the next boot, any scan left in progress past a grace period is marked failed with Scan interrupted by a server restart. Please run it again. A scan that goes quiet while the server stays up is closed the same way by a sweep that runs every few minutes, and says The scan stopped responding and was closed. Please run it again. instead, because no restart happened. Running it again is the fix for both, and neither is a sign of a problem with the target.
+- Failure reasons are deliberately normalised before you see them: the raw error can contain internal detail, so it is classified into one of a small set of messages. Each failed scan also records a kind (you cancelled it, a limit refused it, the target was the problem, the scanner broke), and the message follows the kind, so a database fault is never reported as your site timing out. Scans recorded before the kind existed may show an older wording for the same cause.
+- If the page itself will not load (the connection is refused, the request times out, the certificate is rejected, or the site redirects to another host) the scan still completes. DNS, the TLS handshake and reputation never read the page, so they run and report. The result lists the page as not checked and drops the engine confidence figure, so a short report here means the page was out of reach and not that it was clean.
 - The scanning screen&rsquo;s Try again keeps every option you chose (mode, check families, screenshot, port scan) and re-runs the same scan. Rescanning from your history is a plain rescan of the URL with default options, so if you need the same configuration, start it from the scan form instead.
 - A watchdog gives every scan a hard ceiling, so a target that stalls cannot hold a slot open indefinitely. When it fires, in-flight requests are aborted and the scan is marked failed. The ceilings below are shipped defaults; on a self-hosted instance they are admin settings.
-- Separately, each individual request has its own much shorter timeout: seconds for a page fetch and seconds for a crawled page. A request hitting that limit does not fail the scan: the affected group of checks is reported as incomplete and the rest of the scan continues.
+- Separately, each individual request has its own much shorter timeout: seconds for a page fetch and seconds for a crawled page. A request hitting that limit does not fail the scan: the affected group of checks is reported as incomplete and the rest of the scan continues. That includes the page fetch itself, which is then reported as not checked while the checks that never read a page run.
 - The checks run in parallel, so a typical scan finishes in seconds. Hitting a five-minute ceiling almost always means individual requests to the target are each taking many seconds, which is worth knowing about the site in its own right. Try a Quick scan first to confirm the host responds at all.
 - Some URLs are rejected before a scan starts. These come back immediately rather than after a wait, and they cost no daily quota.
 - will not scan anything that resolves inside a private network. That covers literal private and loopback addresses, localhost and anything under .local, .internal or .lan, cloud metadata ranges, and any public hostname whose DNS answer points at a private address. The check is re-run on every redirect hop, so a public URL cannot redirect the scanner onto an internal one.
-- This is not configurable, and it is the correct behaviour for a hosted scanner: without it, anyone could use the service to probe our own infrastructure. To scan an internal application, run a self-hosted instance inside that network.
 
 ---
 
@@ -3020,4 +3035,4 @@ individual URLs instead.
 | `/docs/sharing` | ✓ | 8 | 4 | 0 | 2 | 0 | 0 | 27 | 0 |
 | `/docs/teams` | - | 8 | 1 | 0 | 1 | 0 | 0 | 15 | 0 |
 | `/docs/triage` | - | 3 | 3 | 0 | 2 | 0 | 0 | 20 | 0 |
-| `/docs/troubleshooting` | ✓ | 9 | 5 | 0 | 0 | 0 | 0 | 24 | 0 |
+| `/docs/troubleshooting` | ✓ | 9 | 6 | 0 | 0 | 0 | 0 | 25 | 0 |

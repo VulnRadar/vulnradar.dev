@@ -103,7 +103,7 @@ const endpoints: Endpoint[] = [
     notes: [
       "status is one of pending, running, completed, failed.",
       'When status is "completed", the response also includes result: { url, scannedAt, duration, findings, summary, responseHeaders, scanHistoryId, ...checksRun/other result metadata }.',
-      'When status is "failed", the response also includes error: a human-readable failure reason (including "Cancelled" if you cancelled it yourself).',
+      'When status is "failed", the response also includes error: a human-readable failure reason (including "Cancelled" if you cancelled it yourself), and failureKind when the reason was recorded: cancelled, admin_cancelled, quota_refused, not_run, interrupted, stale, timeout, internal, or a target_ value (target_unreachable, target_timeout, target_tls, target_redirect_offhost, target_blocked). Branch on failureKind rather than parsing error.',
       "A scan that exceeds its time budget (300s for a single scan, 900s crawl, 1800s bulk) is force-failed by a server-side watchdog rather than left at running forever.",
       "Owner-only: returns 404 for a scan id that does not exist or belongs to another user.",
     ],
@@ -1449,6 +1449,11 @@ format=json       -> application/json            vulnradar-example.com.json`,
       },
       { code: 404, description: "Domain not found" },
       { code: 429, description: "Rate limit exceeded" },
+      {
+        code: 503,
+        description:
+          "DNS did not answer, so the domain's status was left unchanged. Retry in a moment.",
+      },
     ],
   },
   {

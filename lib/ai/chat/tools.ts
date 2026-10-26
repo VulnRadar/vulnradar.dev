@@ -134,11 +134,20 @@ function severityCounts(summary: unknown): Record<string, number> {
 function scanState(
   status: string | null | undefined,
   error: string | null | undefined,
+  kind?: string | null,
 ) {
   const s = status ?? "completed";
   if (s !== "failed") return { status: s };
-  if (error?.trim() === "Cancelled") return { status: "cancelled" };
-  return { status: s, failureReason: publicScanErrorMessage(error ?? null) };
+  if (
+    kind === "cancelled" ||
+    kind === "admin_cancelled" ||
+    error?.trim() === "Cancelled"
+  )
+    return { status: "cancelled" };
+  return {
+    status: s,
+    failureReason: publicScanErrorMessage(error ?? null, kind),
+  };
 }
 
 const scanLink = (publicId: string) =>
@@ -155,12 +164,13 @@ export async function listMyScans(
     url: string;
     status: string | null;
     error_message: string | null;
+    failure_kind: string | null;
     summary: unknown;
     findings_count: number;
     scanned_at: string | Date;
   }>(
-    `SELECT public_id, url, status, error_message, summary, findings_count,
-            scanned_at
+    `SELECT public_id, url, status, error_message, failure_kind, summary,
+            findings_count, scanned_at
        FROM scan_history
       WHERE user_id = $1
         AND ($2::text IS NULL OR url ILIKE '%' || $2 || '%')
@@ -173,7 +183,7 @@ export async function listMyScans(
     scans: res.rows.map((r) => ({
       scanId: r.public_id,
       url: r.url,
-      ...scanState(r.status, r.error_message),
+      ...scanState(r.status, r.error_message, r.failure_kind),
       scannedAt: new Date(r.scanned_at).toISOString(),
       // A pending or failed row has an empty summary, which would read as a
       // clean result.
@@ -214,7 +224,7 @@ export async function getScan(
     found: true as const,
     scanId: publicId,
     url: row.url,
-    ...scanState(row.status, row.error_message),
+    ...scanState(row.status, row.error_message, row.failure_kind),
     scannedAt: new Date(row.scanned_at).toISOString(),
     durationMs: row.duration ?? null,
     bySeverity: severityCounts(row.summary),

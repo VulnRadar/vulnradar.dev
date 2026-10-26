@@ -33,6 +33,7 @@ const LINK_MARKER = /https?:|ftp:|www\.|:\/\//i;
 const HOSTNAME_SHAPE = /\b[a-z0-9-]{2,}\.[a-z]{2,}\b/i;
 
 /** Control characters, which have no business in a name or a subject line. */
+// oxlint-disable-next-line no-control-regex -- finding them is the point
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
 
 export function isSafeDisplayName(name: string | null | undefined): boolean {

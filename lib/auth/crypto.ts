@@ -39,7 +39,10 @@ function getEncryptionKey(): Buffer {
  *
  * Operator procedure: set PREVIOUS_API_KEY_ENCRYPTION_KEY to the old value,
  * set API_KEY_ENCRYPTION_KEY to the new one, restart. Remove the previous
- * key once everything has been rewritten under the new one.
+ * key once everything has been rewritten under the new one. API keys migrate
+ * on their first use after the rotation (lib/api/api-keys.ts), so an
+ * integration that has not called since still depends on the previous key:
+ * removing it then fails that key with a 401 and no matching row to log.
  */
 function getPreviousEncryptionKey(): Buffer | null {
   const hex = process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;

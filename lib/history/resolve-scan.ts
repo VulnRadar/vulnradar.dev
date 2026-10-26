@@ -16,6 +16,7 @@ export interface ScanHistoryRow {
   public_id?: string | null;
   status?: string | null;
   error_message?: string | null;
+  failure_kind?: string | null;
   user_id: number;
   team_id: number | null;
   url: string;

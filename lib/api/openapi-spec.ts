@@ -4,6 +4,7 @@ import {
   AUTH_SESSION_COOKIE_NAME,
 } from "@/lib/config/constants";
 import { CONFIG_SUBDOMAIN_CACHE_TTL_HOURS } from "@/lib/config/config-values";
+import { FAILURE_KINDS } from "@/lib/scanner/failure-kinds";
 
 /**
  * A machine-readable OpenAPI 3.1 description of the core public v3 API: the
@@ -1074,6 +1075,10 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             },
             "404": { $ref: "#/components/responses/NotFound" },
             "429": { $ref: "#/components/responses/RateLimited" },
+            "503": {
+              description:
+                "DNS did not answer, so nothing was changed. Retry in a moment.",
+            },
           },
         },
       },
@@ -1802,6 +1807,12 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             error: {
               type: "string",
               description: "Present only when status is failed.",
+            },
+            failureKind: {
+              type: "string",
+              enum: [...FAILURE_KINDS],
+              description:
+                "Why a failed scan failed, when it was recorded: a cancel, a refused quota, a target that could not be reached and a scanner fault are different values, so a client does not have to read error to tell them apart. Absent for scans that failed before this was recorded.",
             },
             result: {
               type: "object",
