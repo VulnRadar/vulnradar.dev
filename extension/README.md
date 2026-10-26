@@ -8,7 +8,20 @@ One-click vulnerability scanning for any website you visit, powered by [VulnRada
 - **Expand any finding** for the evidence, why it matters, and the steps to fix it
 - **Export a scan** as PDF, SARIF, Markdown, or JSON, straight from the popup
 - **Scan history per site**, with a trend against the previous scan and one-click rescan
-- All requests go to `https://vulnradar.dev/api/v3/*` using your VulnRadar **API key** (Bearer auth)
+- All requests go to `https://vulnradar.dev/api/v3/*` (or the instance you build for, see [Self-hosted builds](#self-hosted-builds)) using your VulnRadar **API key** (Bearer auth)
+
+**Requirements:** Chrome 120 or newer (and Chromium browsers at that version: Edge, Brave, Arc, Opera), Firefox 140 or newer, or Firefox for Android 142 or newer. The toolbar popup opens with Ctrl+Shift+U (Command+Shift+U on Chrome for macOS).
+
+## What leaves the browser
+
+Two things are sent without you clicking anything, and both are described here because the extension runs on every web page you open:
+
+- **Site Alerts** (on by default): for each public page you open, at most once every 45 seconds per site, the hostname and the page's address **without its query string or fragment**. It reads existing scans only; nothing is scanned or stored. No request is made in a private window, or for `localhost`, an IP address, or a name ending in `.localhost`, `.local`, `.internal`, `.lan`, `.test` or `.home.arpa`, or with no dot at all.
+- **Auto-scan** (off by default): the page address without its fragment. An automatic scan skips private windows, the same private addresses, and any address with a token, code, key, secret, signature, OTP, reset or session in its query string, and it never runs active probing or the port sweep, whatever Options says. It runs at most once per site per cooldown (6 hours unless you change it) and at most once per throttle interval across all sites.
+
+A scan you start yourself (the popup, the right-click menu, the card's "Scan this site") sends the address you scan.
+
+The lookup used to carry the full address. Pages whose public scans were stored with a query string therefore no longer match exactly and fall back to the host-level result, until the 4.0.0 server matches on origin and path.
 
 ## Install (development build)
 
@@ -41,10 +54,9 @@ npm run build
 4. Select the `extension/dist-chrome/` folder (NOT `dist-build/`)
 5. Pin the **VulnRadar** icon: puzzle-piece menu → pin
 6. Click the icon → the **Options** page opens in a new tab
-7. Paste your API key from `https://vulnradar.dev/profile` (Profile → API Keys → Generate New Key, copy the `vr_live_…` value)
-8. Click **Test connection**: should turn green with your email and plan
-9. Save
-10. Visit any website → click the toolbar icon → **Scan this page** → result panel
+7. Paste your API key from `https://vulnradar.dev/profile?tab=developer&dtab=api-keys` (Profile → Developer → API Keys → Create key, copy the `vr_live_…` value)
+8. Click **Test & Save**: it checks the key against `/api/v3/auth/me` and stores it in one step, and the banner turns green with your email and plan
+9. Visit any website → click the toolbar icon → **Scan this page** → result panel
 
 ### Firefox
 
@@ -53,6 +65,16 @@ npm run build
 3. Select `extension/dist-firefox/manifest.json` (NOT `dist-build/`)
 4. Pin the **VulnRadar** icon to the toolbar
 5. Same flow as Chrome from step 6 onward
+
+### Self-hosted builds
+
+Build against your own instance by setting `VULNRADAR_API_HOST` to its origin (scheme, host and optional port, no path):
+
+```bash
+VULNRADAR_API_HOST=https://vulnradar.example.com npm run build
+```
+
+One value drives every place that has to agree: the API calls, the deep links, `host_permissions`, `homepage_url`, and the `connect-src` of the extension pages' content security policy. A build that changed only the constant would have every request blocked by the browser. The store listings are built without it and talk to `https://vulnradar.dev`.
 
 > **Firefox note:** Temporary add-ons are removed when Firefox restarts. For permanent install, submit the zipped build to [addons.mozilla.org](https://addons.mozilla.org/developers/addon/submit/) (after Mozilla review).
 
@@ -87,8 +109,8 @@ can be read down the column without opening every card.
 The order here is the order in `SECTIONS` in `src/options/options.ts`, which
 drives both the nav and the page. Keep the two in step.
 
-1. **Authentication**: paste API key, "Test & Save", link to Profile › API Keys, "Sign out"
-2. **Auto-Scan**: off / on-tab-focus / on-page-load / on-URL-change, a global pause, throttle seconds, whitelist/blacklist fragments
+1. **Authentication**: paste API key (hidden unless you press Show), "Test & Save", link to Profile › Developer › API Keys, "Sign out"
+2. **Auto-Scan**: off / on-tab-focus / on-page-load / on-URL-change, a global pause, the throttle between any two scans, a same-site cooldown, whitelist/blacklist fragments
 3. **Scan Families**: 18 checkboxes, each with what that family checks
 4. **Port Sweep**: one toggle for the curated port + service sweep. Replaced the old per-service probe list, which the API had stopped reading
 5. **Site Alerts**: the on-page card - show-for-scanned / show-for-new toggles, corner picker, muted URL patterns, active snoozes
@@ -105,18 +127,19 @@ manifests request exactly the same set. It previously listed `activeTab` and
 `downloads`, which are in both and are used: a permissions table is the one
 piece of documentation a reader is entitled to check against the manifest, and
 for a security tool it is worse to overstate what is requested than to
-understate it.
+understate it. `tests/extension/manifest.test.ts` fails when this table and the
+manifests disagree.
 
-| Permission                       | Why                                                                                    |
-| -------------------------------- | -------------------------------------------------------------------------------------- |
-| `storage`                        | API key, preferences and the scan-history cache, in `browser.storage.local`            |
-| `alarms`                         | Scheduled scans (one-time / daily / weekly)                                            |
-| `notifications`                  | "Scan complete" toasts, when the severity threshold is met                             |
-| `tabs`                           | Read the current tab's URL so the popup knows what it is offering to scan              |
-| `contextMenus`                   | The "Scan this page with VulnRadar" right-click entry                                  |
-| `downloads`                      | Save an exported report; the payload is handed over as a `data:` URL, never a blob URL |
-| `<all_urls>` (`content_scripts`) | `content.js` runs at `document_idle` on pages you visit, in the top frame only         |
-| `__API_HOST__/*` (host)          | API calls, to `https://vulnradar.dev` by default or to whatever instance you configure |
+| Permission                           | Why                                                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `storage`                            | API key, preferences, mute lists and the scan caches, in `browser.storage.local`                        |
+| `alarms`                             | Keep-alive only: a short repeating alarm stops the browser suspending the background mid-scan           |
+| `notifications`                      | A notification when a scan finishes and meets your severity threshold                                   |
+| `tabs`                               | Read a tab's address: for the popup's Scan button, Site Alerts and auto-scan                            |
+| `contextMenus`                       | The "Scan this link with VulnRadar" right-click entry                                                   |
+| `downloads`                          | Save an exported report; the payload is handed over as a `data:` URL, never a blob URL                  |
+| `http://*/*`, `https://*/*` (script) | `content.js` runs at `document_idle` on web pages you visit, in the top frame only, never on `file:///` |
+| `__API_HOST__/*` (host)              | API calls, to `https://vulnradar.dev` by default or to whatever instance you build for                  |
 
 Not requested, and worth stating because extensions of this kind usually ask
 for them: no `scripting`, no `activeTab`, no `webRequest`, no `cookies`, no
@@ -146,6 +169,7 @@ extension/
 │   └── firefox.json          ← MV3 + gecko.strict_min_version: "140.0"
 ├── scripts/
 │   ├── build.mjs             ← vite pages + IIFE background/content + manifest inject
+│   ├── manifest.mjs          ← template → shipped manifest (version, API host, CSP), unit-tested
 │   ├── gen-tokens.mjs        ← src/lib/tokens.json → src/tokens.css
 │   ├── generate-icons.mjs    ← sharp: SVG → 16/32/48/128 PNGs
 │   ├── package.mjs           ← zip dist-{chrome,firefox} for store upload
@@ -168,7 +192,10 @@ extension/
     ├── lib/                  ← api, auth, storage, types, constants,
     │                           categories, format, theme, tokens, badge,
     │                           messaging, plans, reputation, scan,
-    │                           scan-lifecycle, scan-target, url-patterns
+    │                           scan-lifecycle, scan-target, url-patterns,
+    │                           lookup-url (what may leave the browser),
+    │                           message-guard (who may send the background what),
+    │                           offered-scan, trusted-event
     │                           (plus tokens.json, the gen-tokens.mjs source)
     ├── background/           ← service-worker.ts (messages, alarms, auto-scan)
     ├── content/              ← detector.ts, reputation-card.ts (shadow-DOM card)
@@ -221,9 +248,13 @@ scan-target classification asserted against `lib/scanner/scan-target-classify.ts
 so the two copies cannot drift, scan-lifecycle deadlines, and the severity
 token ramp against `app/globals.css`.
 
-Only modules that import nothing from `webextension-polyfill` can be tested in
-either place: that package has no Node-side stub, so anything reaching
-`browser.*` needs a real extension host.
+`webextension-polyfill` has no Node-side stub, and `extension/node_modules` is
+not installed in the root test job, so a suite that imports a module reaching
+`browser.*` replaces the package with the in-memory fake in
+`extension/tests/_polyfill-fake.ts` through a `vi.mock` factory. A mock with a
+factory does not need the real package to resolve. `lit-html` is the one thing
+that cannot be faked this way, so the card's rules are tested as pure helpers
+(`lib/trusted-event.ts`) plus a source check, not by rendering it.
 
 ### TypeScript version
 

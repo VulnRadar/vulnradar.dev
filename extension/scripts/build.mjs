@@ -21,6 +21,7 @@ import { existsSync } from "node:fs";
 import { build } from "vite";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeApiHost, resolveManifest } from "./manifest.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -28,9 +29,9 @@ const PKG = JSON.parse(await readFile(resolve(ROOT, "package.json"), "utf8"));
 const VERSION = PKG.version;
 
 // The instance this build talks to. A self-hoster sets VULNRADAR_API_HOST and
-// gets a build whose constants, deep links and host_permissions all agree;
-// unset, it is the hosted instance exactly as before.
-const API_HOST = process.env.VULNRADAR_API_HOST || "https://vulnradar.dev";
+// gets a build whose constants, deep links, host_permissions and CSP all
+// agree; unset, it is the hosted instance exactly as before.
+const API_HOST = normalizeApiHost(process.env.VULNRADAR_API_HOST);
 const API_HOST_DEFINE = { __API_HOST__: JSON.stringify(API_HOST) };
 
 const targetArg = process.argv[2];
@@ -136,15 +137,16 @@ for (const target of targets) {
     await copyFile(resolve(ROOT, name), join(dist, name));
   }
 
-  // Inject manifest with resolved version
+  // Inject manifest with resolved version and API host. resolveManifest fails
+  // the build on a placeholder it did not fill or a description over the
+  // stores' limit, so neither can reach a zip.
   const manifestTpl = JSON.parse(
     await readFile(resolve(ROOT, "manifest", `${target}.json`), "utf8"),
   );
-  const finalManifest = JSON.parse(
-    JSON.stringify(manifestTpl)
-      .replace(/__VERSION__/g, VERSION)
-      .replace(/__API_HOST__/g, API_HOST),
-  );
+  const finalManifest = resolveManifest(manifestTpl, {
+    version: VERSION,
+    apiHost: API_HOST,
+  });
   await writeFile(
     join(dist, "manifest.json"),
     JSON.stringify(finalManifest, null, 2) + "\n",

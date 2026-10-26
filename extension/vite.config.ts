@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
+import { normalizeApiHost } from "./scripts/manifest.mjs";
 
 const root = resolve(__dirname, "src");
 
@@ -27,7 +28,7 @@ const root = resolve(__dirname, "src");
 // value into host_permissions so the browser actually allows the requests.
 export const API_HOST_DEFINE = {
   __API_HOST__: JSON.stringify(
-    process.env.VULNRADAR_API_HOST || "https://vulnradar.dev",
+    normalizeApiHost(process.env.VULNRADAR_API_HOST),
   ),
 };
 

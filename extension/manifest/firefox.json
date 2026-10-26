@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "VulnRadar Website Scanner",
   "version": "__VERSION__",
-  "description": "One-click vulnerability scanning for any website you visit. Powered by VulnRadar.",
+  "description": "Scan the page you're on for missing security headers, weak TLS, unsafe cookies and exposed files. Needs a VulnRadar API key.",
+  "homepage_url": "__API_HOST__/docs/extension",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -52,12 +53,15 @@
   "host_permissions": ["__API_HOST__/*"],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*"],
       "js": ["content.js"],
       "run_at": "document_idle",
       "all_frames": false
     }
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src __API_HOST__"
+  },
   "options_ui": {
     "page": "options.html",
     "open_in_tab": true
