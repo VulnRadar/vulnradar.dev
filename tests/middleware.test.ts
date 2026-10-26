@@ -8,11 +8,12 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ROUTES } from "@/lib/config/client-constants";
 
-const { middleware } = await import("@/middleware");
+const { middleware, config } = await import("@/middleware");
 
 // app/layout.tsx read as text, not imported: it pulls in the whole provider
 // tree and through it @/lib/database/db, which throws "DATABASE_URL
@@ -821,5 +822,119 @@ describe("middleware: plain-HTTP redirect", () => {
       }),
     );
     expect(res.status).not.toBe(301);
+  });
+});
+
+/**
+ * The matcher decides whether middleware runs at all, and the tests above call
+ * middleware() directly, so none of them could notice it being skipped. It
+ * used to exclude every path ending in an image suffix, API paths included:
+ * PATCH /api/v3/support-tickets/12.png skipped the CSRF check, the body cap,
+ * the auth gate and maintenance mode, and the handler still served it because
+ * Number.parseInt("12.png") is 12. These cases evaluate the real exported
+ * matcher with Next's own matcher implementation, then check what middleware
+ * does with the paths it now receives.
+ */
+describe("middleware: matcher", () => {
+  const imageSuffixes = ["svg", "png", "jpg", "jpeg", "gif", "webp"];
+  const runsFor = (path: string) =>
+    unstable_doesMiddlewareMatch({
+      config,
+      url: `https://vulnradar.dev${path}`,
+    });
+
+  it.each(imageSuffixes)("runs for an API path ending in .%s", (suffix) => {
+    expect(runsFor(`/api/v3/support-tickets/12.${suffix}`)).toBe(true);
+    expect(runsFor(`/api/v3/history/abc.${suffix}`)).toBe(true);
+  });
+
+  it("runs for the API prefixes the next layout will add", () => {
+    expect(runsFor("/api/v4/scan/12.png")).toBe(true);
+    expect(runsFor("/api/internal/support-tickets/12.png")).toBe(true);
+  });
+
+  it("still runs for pages and plain API paths", () => {
+    expect(runsFor("/")).toBe(true);
+    expect(runsFor("/pricing")).toBe(true);
+    expect(runsFor("/api/v3/support-tickets/12")).toBe(true);
+    expect(runsFor("/api/v3/health")).toBe(true);
+  });
+
+  it("still skips static assets and framework files", () => {
+    expect(runsFor("/_next/static/chunks/main.js")).toBe(false);
+    expect(runsFor("/_next/image")).toBe(false);
+    expect(runsFor("/favicon.ico")).toBe(false);
+    expect(runsFor("/logo.png")).toBe(false);
+    expect(runsFor("/images/hero.webp")).toBe(false);
+    expect(runsFor("/icons/shield.svg")).toBe(false);
+  });
+
+  it.each(imageSuffixes)(
+    "enforces CSRF on a PATCH to an API path ending in .%s",
+    (suffix) => {
+      const res = middleware(
+        makeRequest(`/api/v3/support-tickets/12.${suffix}`, {
+          method: "PATCH",
+          cookie: "vulnradar_session=abc123",
+        }),
+      );
+      expect(res.status).toBe(403);
+    },
+  );
+
+  it("lets the same image-suffix PATCH through once the Origin matches the app", () => {
+    const res = middleware(
+      makeRequest("/api/v3/support-tickets/12.png", {
+        method: "PATCH",
+        cookie: "vulnradar_session=abc123",
+        headers: { origin: "https://vulnradar.dev" },
+      }),
+    );
+    expect(res.status).not.toBe(403);
+  });
+
+  it.each(["png", "svg", "webp"])(
+    "rejects an oversized body on an API path ending in .%s with 413",
+    (suffix) => {
+      const res = middleware(
+        makeRequest(`/api/v3/support-tickets/12.${suffix}`, {
+          method: "PATCH",
+          cookie: "vulnradar_session=abc123",
+          headers: {
+            origin: "https://vulnradar.dev",
+            "content-length": String(1 * 1024 * 1024 + 1),
+          },
+        }),
+      );
+      expect(res.status).toBe(413);
+    },
+  );
+
+  it.each(["png", "svg", "webp"])(
+    "gates a cookie-less request to an API path ending in .%s exactly as it gates the suffix-less path",
+    (suffix) => {
+      const plain = middleware(makeRequest("/api/v3/support-tickets/12"));
+      const suffixed = middleware(
+        makeRequest(`/api/v3/support-tickets/12.${suffix}`),
+      );
+      expect(suffixed.status).toBe(plain.status);
+      const plainTarget = new URL(plain.headers.get("location") ?? "");
+      const suffixedTarget = new URL(suffixed.headers.get("location") ?? "");
+      expect(suffixedTarget.pathname).toBe(plainTarget.pathname);
+      expect(suffixedTarget.searchParams.get("redirect")).toBe(
+        `/api/v3/support-tickets/12.${suffix}`,
+      );
+    },
+  );
+
+  it("answers an image-suffix API path with the maintenance JSON in break-glass mode", () => {
+    vi.stubEnv("MAINTENANCE_MODE", "true");
+    const res = middleware(
+      makeRequest("/api/v3/support-tickets/12.png", {
+        cookie: "vulnradar_session=abc123",
+      }),
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Content-Type")).toContain("application/json");
   });
 });

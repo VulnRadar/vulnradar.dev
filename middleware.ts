@@ -898,5 +898,11 @@ export const config = {
      * - public files (e.g. robots.txt)
      */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // The pattern above skips any path ending in an image suffix, which let
+    // PATCH /api/v3/support-tickets/12.png past CSRF, the body cap, the auth
+    // gate and maintenance mode while a handler that parsed the id with
+    // parseInt still served it as ticket 12. No API URL legitimately ends in
+    // one, so every /api/ path runs middleware regardless of its last segment.
+    "/api/:path*",
   ],
 };
