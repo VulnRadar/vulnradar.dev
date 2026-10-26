@@ -122,6 +122,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The staff email for a contact submission is now a short pointer to the admin contact inbox, with no message text and no reply-to address, and the confirmation no longer greets whatever name was typed. An old, unused landing-page contact endpoint, which could mail any text to any address, is removed. Both are the kind of thing spam filters score against the sending domain.
 - [MailOpen] **[IMPROVED]** **Rejected Emails Can Be Traced**
   Email Logs now records each email's template, From address, mail relay, the relay's reply code and the step it refused, plus the message id on success. You can search by error or template, failed rows show their error, and a strip groups the last day's most common failure reasons. The server also introduces itself to the relay by your app's domain instead of a loopback address.
+- [Zap] **[FIXED]** **Broadcast Text Is Built Quickly From Broken HTML**
+  Turning an announcement's HTML into its plain-text version could take seconds on markup with thousands of broken tags. A tag left open that long now ends the text, the same way an unclosed comment does, so the conversion stays fast whatever it is given.
 - [Bell] **[FIXED]** **One-Click Unsubscribe Only Turns Off Its Own Category**
   The Unsubscribe button Gmail and Yahoo show used to switch off every email category except security alerts, sign-in and password warnings included. It now turns off only the category of the message you clicked it on, and security notices no longer carry it. Tips and guides is now correctly off for accounts that never chose.
 - [Mail] **[IMPROVED]** **Better Broadcast Emails, and Accounts Keep Their Language**
@@ -132,6 +134,50 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Opening a dashboard link with a site address in it now fills in the scan form and waits for you to press Scan. A scan only starts on its own after you chose Scan this site again or Scan on a discovered subdomain, so another site cannot spend your daily scans.
 - [Eye] **[IMPROVED]** **Screen Readers Hear Scan Results, and Findings Keep Your Place**
   The dashboard announces when a scan completes, with its number of findings, or fails, in all six languages, and moves keyboard focus to the new view. A finding has its own heading and takes focus when you open it, and going back returns you to the row you came from.
+- [Users] **[FIXED]** **Leaving a Team Works**
+  The Leave team button failed for everyone but the owner: members and viewers were told they lacked permission and admins got a server error. Leaving now works as the docs describe. Team actions that the server refuses keep their confirmation open with the reason, renaming keeps your text when it fails, and the rename field fits on a phone.
+- [ShieldCheck] **[SECURITY]** **The Alert Webhook Address Is Treated as a Secret**
+  The admin alert webhook address is no longer shown after saving or written to the audit log, so staff below admin cannot read it. If you saved one before this release, rotate it.
+- [Bell] **[FIXED]** **Admin-Only Notices Reach Admins Only**
+  A site notice aimed at admins was also shown to support, billing, ops and every other staff role. It now reaches admin and super admin accounts only.
+- [Shield] **[SECURITY]** **Host Report Previews Show Only Real Hostnames**
+  The social preview image for a host report with no public scan printed whatever text was in the link. It now shows the hostname, or a generic title when the link is not one.
+- [Settings] **[IMPROVED]** **Timeout Settings Say What They Affect**
+  The admin help for the page fetch timeout and the two async-check timeouts now says which scans each one governs and how they relate.
+- [BarChart3] **[FIXED]** **Billing Changes and Unmatched Payments Are Recorded**
+  When Stripe no longer recognises a stored subscription and the billing page moves the account to its fallback plan, that is now logged with the user, the plan lost and the subscription, and staff get an alert. A Stripe payment or subscription that matches no account now raises a critical alert instead of a plain log line, or nothing.
+- [ServerCrash] **[IMPROVED]** **Browser Session Problems Are Logged**
+  A refused browser session release, a usage record that failed to save after a screenshot or sign-in scan, and database errors in the browser session endpoints now reach the admin error log with the session and user, instead of disappearing.
+- [Shield] **[SECURITY]** **Support Tickets Cannot Flood the Inbox**
+  Opening a ticket is limited per account, closing one no longer frees its slot at once, flipping a ticket between resolved and reopened is limited too, and staff get at most one reopen email per ticket per hour.
+- [Search] **[ADDED]** **Search, Paging and Assignment in the Support Inbox**
+  Staff can search tickets by subject, owner email or number, page through every ticket instead of stopping at 200, take a ticket with Assign to me, and filter to their own. Status changes and assignments appear in the audit log. Contact form messages can be read in the inbox too, with whether the staff email about each one was delivered.
+- [Eye] **[FIXED]** **Support Tickets Keep Keyboard Focus**
+  Opening a ticket, going back, starting a new one or sending a reply no longer drops keyboard and screen reader users to the top of the page. The reply box stays put while the thread reloads, a sent reply is announced, and messages written in another language are read in that language.
+- [Filter] **[ADDED]** **Promoted Auto-Tag Rules Can Be Removed**
+  Engine feedback now lists every auto-tag rule saved from an AI tag, with what it matches and who promoted it, and an admin can remove one after confirming. New scans stop getting the tag and the removal is audited. The AI tag candidates list loads with a fixed handful of queries however many tags exist, and its errors are traceable.
+- [Menu] **[FIXED]** **The Navigation No Longer Hides Behind the Header Buttons**
+  On tablets and small laptops the top navigation ran underneath the notification, language and theme buttons, which hid its last links in every language. The links now sit inline from 1280 pixels wide and in the menu below that. The public top bar also fits a 768 pixel tablet and a 375 pixel phone in French or German.
+- [Layout] **[FIXED]** **A Failed Page Keeps the Header and a Way Back**
+  When a page fails to load you now keep the header, footer and page heading, with a Back to scanner button next to Try again, instead of a bare error screen.
+- [Bell] **[IMPROVED]** **Easier Notifications and Language Menu**
+  Notification actions are bigger tap targets, each notification has one dismiss button, and focus moves to the next one when you dismiss. The language menu tells screen readers which language is selected, says when saving fails, and keeps keyboard focus after you choose.
+- [Zap] **[IMPROVED]** **Less Code on Every Page**
+  The command palette, the terms dialog, the Discord and GitHub prompts and the backup code reminder now load only when they are needed, so the landing and docs pages download less. The settings page downloads each tab when you open it, and the Repos page looks up only the repositories you picked instead of listing your whole GitHub account first.
+- [Eye] **[FIXED]** **Focus Comes Back After a Dialog Closes**
+  Cancelling, escaping or confirming a dialog now returns keyboard focus to the button that opened it, or to the page heading if that button is gone, and dropdown selects keep focus on their trigger. A failed save shows its reason inside the dialog instead of behind it.
+- [Smartphone] **[FIXED]** **The Cookie Notice No Longer Hides Dialog Buttons**
+  Tall dialogs, such as the crawl page picker, keep their footer buttons visible above the cookie notice on small screens.
+- [Target] **[FIXED]** **One Tab Stop per Button**
+  Buttons that link somewhere on the landing page, top bar, pricing, demo and footer were a button inside a link, so keyboard users tabbed through each one twice. Each is now a single link with a visible focus ring.
+- [Table2] **[FIXED]** **The Pricing Table Keeps Its Labels on Phones**
+  Scrolling the plan comparison table sideways on a phone now keeps the limit names pinned on the left, and the table can be scrolled from the keyboard. Pricing and the demo also match the landing page's sections and buttons.
+- [FileText] **[FIXED]** **Docs and Legal Pages Work Better on Phones**
+  The docs contents drawer opens below the header so its close button can be tapped, and the side rails stay below an announcement banner. The legal pages show the English-version notice only to readers in another language, under the title. Links on check pages and the legal index have proper tap targets, and check pages list their fix steps as a plain numbered list.
+- [List] **[IMPROVED]** **The Changelog Loads on Request**
+  The changelog no longer loads older releases as you scroll, so the footer is reachable straight away. A Load more releases button reads further back.
+- [Columns3] **[FIXED]** **Compare Recovers From a Deleted Scan**
+  Reopening a saved comparison whose scan you have since deleted left a blank Compare page with only an error. You now land on the host picker, and Compare in the navigation resets the page.
 - [UserCheck] **[IMPROVED]** **Password Managers Now Recognise the Sign-In Field**
   The email box on the sign-in and sign-up pages was labelled in a way that password managers did not recognise as the username field they should pair with your saved password, so some password managers would not offer to fill it in automatically. It is labelled correctly now, and it was our own scanner that caught the problem on our own site.
 - [Palette] **[IMPROVED]** **A Calmer, More Consistent Interface**
@@ -2680,6 +2726,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1032
+- **Total changes documented:** 1055
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
