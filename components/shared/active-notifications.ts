@@ -63,9 +63,9 @@ export function fetchActiveNotifications<T extends ActiveNotificationLike>(
     ActiveNotificationLike[] | { notifications?: unknown }
   >(`${API.NOTIFICATIONS_ACTIVE}?${key}`)
     .then((data) => {
-      // The route returns the array directly. The object form is tolerated
-      // because the banner wrapper used to accept it and a self-hoster on an
-      // older build may still be serving it.
+      // The route answers { notifications: [...] }. The bare array is
+      // tolerated because a self-hoster on an older build may still be
+      // serving it.
       const list = Array.isArray(data)
         ? data
         : ((data as { notifications?: ActiveNotificationLike[] })

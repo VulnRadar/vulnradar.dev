@@ -24,10 +24,12 @@ import ts from "typescript";
  *
  * Two lists below. HOMES are the files whose job is to name paths, plus
  * strings that are not ours; they do not shrink. DEBT is every other file that
- * predates this test. It is keyed by file, a trailing slash means a directory,
- * and the last test fails when an entry no longer matches, so fixing a file
- * means deleting its line and the list can only shrink. Nothing is added to it
- * to make a new literal pass: use the API map.
+ * predates this test. It is keyed by file, so a literal added to a file that
+ * is not listed fails even when its neighbours are listed. The one exception
+ * is app/docs/ (a trailing slash means a directory), which the docs sweep
+ * empties in one go. The last test fails when an entry no longer matches, so
+ * fixing a file means deleting its line and the list can only shrink. Nothing
+ * is added to it to make a new literal pass: use the API map.
  */
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -103,8 +105,22 @@ const HOMES: Record<string, string> = {
 
 /** Literals that predate this test. Delete a line when its file is clean. */
 const DEBT: Record<string, string> = {
-  "app/api/":
-    "OAuth and webhook callback URLs; they move onto FROZEN and the route move rewrites the rest",
+  "app/api/v3/account/github/connect/route.ts":
+    "OAuth redirect URI; moves onto FROZEN.OAUTH_CALLBACK",
+  "app/api/v3/auth/discord/callback/route.ts":
+    "OAuth redirect URI; moves onto FROZEN.DISCORD_CALLBACK",
+  "app/api/v3/auth/discord/route.ts":
+    "OAuth redirect URI; moves onto FROZEN.DISCORD_CALLBACK",
+  "app/api/v3/auth/oauth/[provider]/callback/route.ts":
+    "OAuth redirect URIs; move onto FROZEN.OAUTH_CALLBACK",
+  "app/api/v3/auth/oauth/[provider]/route.ts":
+    "OAuth redirect URI and an error sentence naming a route",
+  "app/api/v3/auth/staff-oidc/callback/route.ts":
+    "OAuth redirect URI; moves onto FROZEN.STAFF_OIDC_CALLBACK",
+  "app/api/v3/auth/staff-oidc/route.ts":
+    "OAuth redirect URI; moves onto FROZEN.STAFF_OIDC_CALLBACK",
+  "app/api/v3/stripe/setup-webhook/route.ts":
+    "the registered webhook URL; moves onto FROZEN.STRIPE_WEBHOOK",
   "app/docs/":
     "documentation samples; the docs sweep moves them onto apiPath()",
   "app/host/[hostname]/page.tsx": "type import of the route module's path",
@@ -114,8 +130,12 @@ const DEBT: Record<string, string> = {
     "type import of the route module's path",
   "components/admin/features/engine-feedback-manager.tsx":
     "an empty-state sentence naming a route",
-  "components/landing/": "the marketing request sample",
-  "extension/src/": "the extension's base URL; ext-v4-migration moves it",
+  "components/landing/landing-api-example.tsx": "the marketing request sample",
+  "components/landing/landing-features.tsx": "marketing copy naming a route",
+  "extension/src/lib/api.ts":
+    "the extension's request paths; ext-v4-migration moves them",
+  "extension/src/onboarding/welcome.ts":
+    "onboarding copy naming a route; ext-v4-migration moves it",
   "cli/lib.mjs": "the CLI's default base URL; cli-v4-native moves it",
   "lib/ai/system-prompt.ts": "the assistant's summary of the public API",
   "lib/api/openapi-spec.ts": "the document's servers entry",
@@ -123,9 +143,14 @@ const DEBT: Record<string, string> = {
   "lib/config/registry.ts": "setting help text that names routes",
   "lib/database/schema/01-core.mjs": "SQL comments that name route files",
   "lib/email/email.ts": "the unsubscribe link printed into mail",
-  "lib/uploads/": "stored avatar paths",
+  "lib/uploads/avatar-migration.ts": "stored avatar paths",
+  "lib/uploads/avatar-storage.ts": "stored avatar paths",
+  "lib/uploads/team-avatar-storage.ts": "stored team avatar paths",
   "middleware.ts": "the path rules; mw-hardening moves them onto the registry",
-  "scripts/": "maintenance scripts and generators that name route files",
+  "scripts/_lib/_lib.app-enums.mjs": "report text naming route files",
+  "scripts/_lib/_lib.check-cross-column.mjs": "report text naming route files",
+  "scripts/_lib/_lib.encrypted-columns.mjs": "report text naming route files",
+  "scripts/maintenance/migrate-avatars-to-files.mjs": "stored avatar paths",
 };
 
 function matchesEntry(file: string, entry: string): boolean {

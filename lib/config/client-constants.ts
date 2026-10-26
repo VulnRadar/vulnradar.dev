@@ -205,8 +205,8 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
 // The path segment the route files under app/api live in today. It is not a
 // switch: the handlers are directories on disk, not a lookup keyed by this
 // string, so changing CONFIG_API_VERSION points the entries below at paths
-// nothing answers. The permalink entries (OPENAPI, VERSION, ACCOUNT_UNSUBSCRIBE)
-// are spelled out or taken from FROZEN on purpose and never follow it.
+// nothing answers. OPENAPI, VERSION and ACCOUNT_UNSUBSCRIBE are spelled out or
+// taken from FROZEN on purpose and never follow it.
 
 export const API_VERSION = CONFIG_API_VERSION;
 
