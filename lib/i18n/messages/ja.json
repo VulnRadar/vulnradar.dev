@@ -98,6 +98,7 @@
     "builtWith": "使用技術",
     "support": "{app} を支援する",
     "copyright": "© {year} {app}. 許可されたセキュリティテストのみに使用してください。",
+    "hostedBy": "ホスティング: <link>{provider}</link>",
     "scanner": "スキャナー",
     "history": "履歴",
     "compare": "比較",

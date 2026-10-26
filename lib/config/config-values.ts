@@ -266,6 +266,14 @@ export const CONFIG_SOCIAL_REDDIT_URL = "";
 // client-constants.ts). Still an absolute https URL like the rest.
 export const CONFIG_SOCIAL_RSS_URL = "";
 
+// The company whose servers this deployment runs on, credited in the footer
+// as "Hosted by WSLATL". Like the email addresses below, this describes
+// vulnradar.dev rather than the software: a self-hosted deployment sets its
+// own provider through NEXT_PUBLIC_HOSTING_PROVIDER_NAME / _URL, or blanks the
+// name here to drop the credit. A URL that is not absolute https drops it too.
+export const CONFIG_HOSTING_PROVIDER_NAME = "WSLATL";
+export const CONFIG_HOSTING_PROVIDER_URL = "https://wslatl.com";
+
 // Emails - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_SUPPORT_EMAIL = "support@vulnradar.dev";
 export const CONFIG_LEGAL_EMAIL = "legal@vulnradar.dev";

@@ -232,3 +232,58 @@ describe("SOCIAL_LINKS / SOCIAL_PROFILE_URLS (social account registry)", () => {
     ).toHaveLength(1);
   });
 });
+
+/**
+ * The footer's "Hosted by" credit. A claim about one deployment rather than
+ * about the software, so it must be removable and must never render a link
+ * that is not an absolute https URL.
+ */
+describe("HOSTING_PROVIDER (footer hosting credit)", () => {
+  async function reimport() {
+    vi.resetModules();
+    return import("@/lib/config/client-constants");
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("ships vulnradar.dev's own host", async () => {
+    const fresh = await reimport();
+    expect(fresh.HOSTING_PROVIDER).toEqual({
+      name: "WSLATL",
+      url: "https://wslatl.com",
+    });
+  });
+
+  it("lets a deployment name its own host", async () => {
+    vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER_NAME", "  Example Host ");
+    vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER_URL", "https://host.example.test");
+    const fresh = await reimport();
+    expect(fresh.HOSTING_PROVIDER).toEqual({
+      name: "Example Host",
+      url: "https://host.example.test",
+    });
+  });
+
+  it("drops the credit when the URL is not absolute https", async () => {
+    for (const bad of [
+      "wslatl.com",
+      "http://wslatl.com",
+      "javascript:alert(1)",
+      "//wslatl.com",
+    ]) {
+      vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER_URL", bad);
+      const fresh = await reimport();
+      expect(fresh.HOSTING_PROVIDER, bad).toBeNull();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("drops the credit when the name is only whitespace", async () => {
+    vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER_NAME", "   ");
+    const fresh = await reimport();
+    expect(fresh.HOSTING_PROVIDER).toBeNull();
+  });
+});

@@ -37,6 +37,18 @@ describe("the footer", () => {
     expect(src).not.toContain("grid-cols-1 md:grid-cols-5");
     expect(src).toContain('<div className="col-span-2">');
   });
+
+  it("credits the host from config, as a followed link in the server HTML", () => {
+    // From HOSTING_PROVIDER, so a self-hosted deployment that changes or
+    // blanks the config does not keep vulnradar.dev's host in its footer.
+    expect(src).toContain("const host = HOSTING_PROVIDER;");
+    expect(src).toContain("{host && (");
+    expect(src).toContain("href={host.url}");
+    expect(src).not.toMatch(/wslatl/i);
+    // The point of the credit is the link, so nothing may demote it.
+    expect(src).not.toMatch(/nofollow|ugc/);
+    expect(src).not.toMatch(/^["']use client["']/m);
+  });
 });
 
 describe("the landing check table", () => {

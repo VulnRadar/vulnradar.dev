@@ -47,6 +47,8 @@ import {
   CONFIG_SOCIAL_LINKEDIN_URL,
   CONFIG_SOCIAL_REDDIT_URL,
   CONFIG_SOCIAL_RSS_URL,
+  CONFIG_HOSTING_PROVIDER_NAME,
+  CONFIG_HOSTING_PROVIDER_URL,
   CONFIG_VERSION_COOKIE_NAME,
   CONFIG_VERSION_COOKIE_MAX_AGE_DAYS,
   CONFIG_TOTP_VALIDITY_SECONDS,
@@ -782,6 +784,22 @@ export const SOCIAL_PROFILE_URLS: string[] = [
     SOCIAL_LINKS.filter((link) => link.identity).map((link) => link.url),
   ),
 ];
+
+/**
+ * Who hosts this deployment, for the footer's "Hosted by" credit, or null
+ * when the name is blank or the URL is not absolute https. The URL is checked
+ * for the same reason SOCIAL_LINKS checks its own: it reaches an href and is
+ * set by whoever deploys this.
+ */
+export const HOSTING_PROVIDER: { name: string; url: string } | null = (() => {
+  const name = (
+    process.env.NEXT_PUBLIC_HOSTING_PROVIDER_NAME ||
+    CONFIG_HOSTING_PROVIDER_NAME
+  ).trim();
+  const url =
+    process.env.NEXT_PUBLIC_HOSTING_PROVIDER_URL || CONFIG_HOSTING_PROVIDER_URL;
+  return name && url.startsWith("https://") ? { name, url } : null;
+})();
 
 // TURNSTILE / CAPTCHA
 //

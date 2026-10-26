@@ -98,6 +98,7 @@
     "builtWith": "Gebaut mit",
     "support": "{app} unterstützen",
     "copyright": "© {year} {app}. Nur für autorisierte Sicherheitstests.",
+    "hostedBy": "Gehostet von <link>{provider}</link>",
     "scanner": "Scanner",
     "history": "Verlauf",
     "compare": "Vergleichen",
