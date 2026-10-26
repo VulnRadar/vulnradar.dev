@@ -29,11 +29,11 @@ name: CI
 
 on:
   push:
-    # v4/** is the branch naming the 4.0.0 build uses (v4/<cluster-id>, one
-    # per cluster). The Integration job is the only thing that runs real SQL
-    # and the agents building those clusters have no database, so a push to
-    # one of those branches has to run it; the integrator cherry-picks a
-    # cluster onto main only after its Integration job is green.
+    # v4/** is the branch naming the 4.0.0 work uses (v4/<topic>, one per
+    # piece of work). The Integration job is the only thing that runs real
+    # SQL, and those branches are built on machines with no Postgres, so a
+    # push to one of them has to run it: each piece is merged to main only
+    # after its Integration job is green.
     branches: [main, "v4/**"]
   pull_request:
     branches: [main]

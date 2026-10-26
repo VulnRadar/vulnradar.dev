@@ -4,12 +4,12 @@ import { readWorkflow } from "./_workflow-steps";
 /**
  * ci.yml runs on pushes to the 4.0.0 build branches.
  *
- * The Integration job is the only thing that executes real SQL, and the agents
- * building the clusters of the 4.0.0 release have no database to run it
- * against. Each cluster is pushed to `v4/<cluster-id>` and its Integration job
- * has to be green before it is cherry-picked onto main. A push trigger limited
- * to main would leave those branches with no CI at all until a pull request was
- * opened, which is after the work is finished.
+ * The Integration job is the only thing that executes real SQL, and the
+ * machines the 4.0.0 work is built on have no database to run it against. Each
+ * piece of that work is pushed to `v4/<topic>` and its Integration job has to
+ * be green before it is merged to main. A push trigger limited to main would
+ * leave those branches with no CI at all until a pull request was opened, which
+ * is after the work is finished.
  */
 
 const ci = readWorkflow("ci.yml");
@@ -55,7 +55,7 @@ describe("ci.yml triggers", () => {
 
   it("does not skip any job on a branch other than main", () => {
     // A job-level `if: github.ref == 'refs/heads/main'` would put the
-    // Integration job back to never running on a cluster branch.
+    // Integration job back to never running on a v4/** branch.
     expect(ci).not.toMatch(/^\s+if:.*github\.(ref|ref_name)\b/m);
   });
 });

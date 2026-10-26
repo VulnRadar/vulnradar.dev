@@ -74,7 +74,8 @@ const PRE_MIGRATION_DIRNAME = "pre-migration";
  * this script's output into the admin panel's job log, and the server's disk
  * layout is not something that should reach a browser (backup-db.mjs makes the
  * same choice for the same reason). `$BACKUP_DIR/...` pastes straight into a
- * shell where that variable is set, which it is wherever the migration ran.
+ * shell where that variable is set, as it is under docker compose; where it
+ * only lives in .env.local the operator substitutes the value.
  * Exported for tests.
  *
  * @param {{ env?: Record<string, string | undefined>, root?: string }} [options]
@@ -200,11 +201,11 @@ async function pruneOldMigrationBackups(dir) {
  * Backs up `connectionString`'s database to
  * <BACKUP_DIR or ./backups>/pre-migration/v{major}/{schemaVersion}/vulnradar-backup-{timestamp}.sql.gz
  * (plus `.enc` and a `.json` sidecar when an encryption key is available).
- * Returns the written file's path, or null if pg_dump isn't on PATH --
- * this warns rather than throwing, so a self-hosted install without
- * postgresql-client installed can still migrate, just without this
- * safety net (the Docker image ships pg_dump, so this is the common
- * case only for a bare, non-Docker Node install).
+ * Returns the written file's path. A host without pg_dump on PATH gets the
+ * built-in JavaScript dumper instead (the Docker image ships pg_dump, so the
+ * fallback is for a bare Node install). Throws when the dump cannot be
+ * written; runPreMigrationBackup is the caller that turns that into a
+ * message the operator can act on.
  */
 export async function backupDatabase(connectionString, schemaVersion) {
   // Whether pg_dump exists decides HOW the dump is produced, not WHETHER one
