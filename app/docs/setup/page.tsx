@@ -6,6 +6,7 @@ import {
   APP_URL,
   APP_VERSION,
   ENGINE_VERSION,
+  KNOWN_SCHEMA_VERSIONS,
   MIN_SCHEMA_VERSION,
   APP_REPO,
   APP_SLUG,
@@ -30,12 +31,19 @@ const tocItems: TocItem[] = [
   { id: "config", label: "App Configuration" },
   { id: "running", label: "Running the App" },
   { id: "verification", label: "Verification" },
+  { id: "health", label: "Health check", level: 2 },
   { id: "troubleshooting", label: "Troubleshooting" },
   { id: "deployment", label: "Deployment" },
   { id: "docker", label: "Docker Deployment" },
   { id: "migration", label: "Schema Migration" },
   { id: "version", label: "Version Check" },
 ];
+
+/** The schema version one step below the one this build requires, for the
+ *  migration example. Read from the same list the boot gate uses, so it moves
+ *  when a schema version is added. */
+const PREVIOUS_SCHEMA_VERSION =
+  KNOWN_SCHEMA_VERSIONS[KNOWN_SCHEMA_VERSIONS.indexOf(MIN_SCHEMA_VERSION) - 1];
 
 export default function SetupPage() {
   return (
@@ -96,7 +104,7 @@ export default function SetupPage() {
           {[
             {
               title: "Node.js 22 LTS",
-              desc: "JavaScript runtime. package.json pins engines.node to >=22.0.0 <23.0.0 and .npmrc makes that range a hard install failure, the Dockerfile builds on node:22.23.3-alpine, and CI runs on Node 22 only. See the Node Version Policy on the Developers page.",
+              desc: "JavaScript runtime. package.json pins engines.node to >=22.0.0 <23.0.0 and .npmrc makes that range a hard install failure, the Dockerfile builds on node:22.23.4-alpine, and CI runs on Node 22 only. See the Node Version Policy on the Developers page.",
               link: "https://nodejs.org",
               cmd: "node --version",
             },
@@ -240,10 +248,12 @@ CREATE DATABASE vulnradar OWNER vulnradar_user;
             Schema auto-creates on boot
           </h3>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            <InlineCode>instrumentation.ts</InlineCode> runs{" "}
-            <InlineCode>CREATE TABLE IF NOT EXISTS</InlineCode> for every table
-            on first server boot. No manual migration is required for a fresh
-            database. For databases upgraded from an older schema, see{" "}
+            On first server boot <InlineCode>instrumentation.ts</InlineCode>{" "}
+            calls <InlineCode>apply-boot-schema</InlineCode>, which runs the
+            idempotent <InlineCode>CREATE ... IF NOT EXISTS</InlineCode>{" "}
+            statements in <InlineCode>lib/database/schema/</InlineCode> for
+            every table. No manual migration is required for a fresh database.
+            For databases upgraded from an older schema, see{" "}
             <a
               href="#migration"
               className="text-primary underline-offset-2 hover:underline"
@@ -423,8 +433,11 @@ npm start`}
               <InlineCode>super_admin</InlineCode>, so there is nothing to run.
               The command below promotes a <em>later</em> account to{" "}
               <InlineCode>admin</InlineCode>, which is one level lower. Running
-              it against the first account demotes it, and nothing in the
-              product can restore <InlineCode>super_admin</InlineCode>.
+              it against the first account demotes it, and no screen in the
+              product can restore <InlineCode>super_admin</InlineCode>. A
+              restart can: when no account holds the role, the next boot
+              promotes the lowest-id account, which is the first one ever
+              registered while it still exists.
             </p>
             <CodeBlock
               code={`docker compose exec postgres psql -U vulnradar -d vulnradar -c \\
@@ -459,6 +472,38 @@ npm start`}
             />
           </div>
         </Card>
+
+        <div id="health" className="scroll-mt-24">
+          <Card className="p-6 border-border/40">
+            <h3 className="text-base font-semibold mb-4">Health check</h3>
+            <CodeBlock
+              code="curl -i http://localhost:3000/api/v3/health"
+              language="bash"
+            />
+            <p className="max-w-[68ch] text-sm text-muted-foreground mt-3">
+              <InlineCode>200</InlineCode> with{" "}
+              <InlineCode>&quot;status&quot;: &quot;ok&quot;</InlineCode> means
+              the database answered, the schema is at least v
+              {MIN_SCHEMA_VERSION} and every required table exists.{" "}
+              <InlineCode>503</InlineCode> is either{" "}
+              <InlineCode>degraded</InlineCode> (the database answered but the
+              schema is behind: run <InlineCode>npm run db:migrate</InlineCode>)
+              or <InlineCode>unhealthy</InlineCode> (it did not answer). It
+              needs no login, ignores maintenance mode and the HTTPS redirect,
+              and is what the Docker HEALTHCHECK and a load balancer should
+              call. <InlineCode>/api/version</InlineCode> is not a substitute:
+              it only asks GitHub for the latest release and answers 200
+              whatever the database is doing. Every field is described under{" "}
+              <Link
+                href="/docs/self-hosting#health"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                Self-Hosting, Health check
+              </Link>
+              .
+            </p>
+          </Card>
+        </div>
       </DocsSection>
 
       <DocsSection id="troubleshooting" title="Troubleshooting">
@@ -655,13 +700,19 @@ APP_PORT=3000
 
           <Card className="p-6 border-border/40">
             <h3 className="text-base font-semibold mb-4">Step 4: Start</h3>
-            <CodeBlock code="docker compose up -d" language="bash" />
+            <CodeBlock
+              code={`# Prebuilt image (the first option in Step 2)
+docker compose up -d
+
+# Built from a checkout (the second option in Step 2)
+docker compose up -d --build`}
+              language="bash"
+            />
             <p className="text-xs text-muted-foreground mt-2">
-              Built from source? Use{" "}
-              <InlineCode>docker compose up -d --build</InlineCode>. The compose
-              file names the published image too, and without{" "}
-              <InlineCode>--build</InlineCode> compose pulls that image instead
-              of building your checkout.
+              The compose file names the published image as well as a build
+              context. Without <InlineCode>--build</InlineCode>, compose pulls
+              that image instead of building your checkout, and your edits to{" "}
+              <InlineCode>config-values.ts</InlineCode> are not in it.
             </p>
             <CodeBlock
               code="docker compose ps"
@@ -734,11 +785,19 @@ APP_PORT=3000
 
       <DocsSection id="migration" title="Schema Migration">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
-          When upgrading between schema versions (e.g. v1 → v2), use the
-          interactive migration tool. The migrator reads{" "}
-          <InlineCode>vulnradar_schema_meta</InlineCode> to detect the current
-          schema, picks the target version, builds a DDL plan, and applies it in
-          a single transaction.
+          When a database is behind the schema this build requires, use the
+          interactive migration tool. This build requires v{MIN_SCHEMA_VERSION}
+          {PREVIOUS_SCHEMA_VERSION
+            ? `, so a database still on v${PREVIOUS_SCHEMA_VERSION} is migrated up with the ${PREVIOUS_SCHEMA_VERSION}-to-${MIN_SCHEMA_VERSION} step`
+            : ""}
+          . The migrator reads <InlineCode>vulnradar_schema_meta</InlineCode> to
+          detect the current schema (and fingerprints the tables when there is
+          no row), picks the target version, builds a DDL plan, and applies it
+          in a single transaction. Before it runs any DDL it writes a backup of
+          its own, to <InlineCode>&lt;BACKUP_DIR&gt;/pre-migration</InlineCode>{" "}
+          and pruned after{" "}
+          <InlineCode>MIGRATION_BACKUP_RETENTION_DAYS</InlineCode> (default 90
+          days).
         </p>
 
         <Card className="p-6 border-border/40">

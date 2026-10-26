@@ -6,6 +6,7 @@ import { ADMIN_NAV_GROUPS, ALL_ADMIN_NAV_ITEMS } from "@/components/admin/nav";
 import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
+import { ADMIN_TAB_DESCRIPTIONS } from "./admin-tab-descriptions";
 import {
   DocsHero,
   DocsSection,
@@ -20,8 +21,10 @@ const tocItems: TocItem[] = [
   { id: "roles", label: "Staff roles" },
   { id: "tabs", label: "What each tab does" },
   { id: "settings", label: "The settings registry" },
+  { id: "incident-switches", label: "Incident switches" },
   { id: "audit", label: "Audit log" },
   { id: "impersonation", label: "Impersonation" },
+  { id: "staff-sso", label: "Staff SSO" },
   { id: "access-rules", label: "Access rules and blocked data" },
   { id: "backups", label: "Backups and restore" },
   { id: "broadcasts", label: "Broadcast email" },
@@ -63,7 +66,11 @@ export default function AdministrationPage() {
           The very first account created on a fresh instance becomes the super
           admin. That role cannot be granted through the panel afterwards, which
           is what stops an escalation path existing at all: there is exactly one
-          way to become super admin, and it is being first.
+          way to become super admin, and it is being first. The one safety net
+          is on boot: if no account holds the role at all, the server promotes
+          the lowest-id account that still exists. That is how a first account
+          demoted by mistake comes back, and it means a restart, not a screen,
+          is what restores the role.
         </p>
         <p className="text-sm leading-relaxed text-muted-foreground">
           Everyone else is invited. An admin sends a staff invite for a specific
@@ -168,21 +175,28 @@ export default function AdministrationPage() {
           unresolved security alerts, tickets waiting on staff, and pending
           staff invites.
         </p>
-        {/* Rendered from components/admin/nav.ts. This table used to be a
-            hand-written copy and it documented the grouping from BEFORE that
-            file's regrouping: "User Management", "Communications", "Content"
-            and a seven-item "System" bucket are all gone, so every group name
-            an operator was told to look under was wrong. */}
+        {/* Group and tab are rendered from components/admin/nav.ts. This
+            table used to be a hand-written copy and it documented the
+            grouping from BEFORE that file's regrouping: "User Management",
+            "Communications", "Content" and a seven-item "System" bucket are
+            all gone, so every group name an operator was told to look under
+            was wrong. The third column is docs-only text in
+            admin-tab-descriptions.ts, typed to cover every tab key, so a new
+            tab cannot appear here with an empty cell. */}
         <DocsTable
-          caption="The admin panel's groups and what lives in each"
+          caption="Every admin tab, its group, and what it is for"
           columns={[
+            { key: "tab", header: "Tab" },
             { key: "group", header: "Group" },
-            { key: "tabs", header: "Tabs", className: "w-full" },
+            { key: "purpose", header: "What it is for", className: "w-3/5" },
           ]}
-          data={ADMIN_NAV_GROUPS.map((group) => ({
-            group: group.label,
-            tabs: group.items.map((item) => item.label).join(", "),
-          }))}
+          data={ADMIN_NAV_GROUPS.flatMap((group) =>
+            group.items.map((item) => ({
+              tab: item.label,
+              group: group.label,
+              purpose: ADMIN_TAB_DESCRIPTIONS[item.key],
+            })),
+          )}
         />
         <p className="text-sm leading-relaxed text-muted-foreground">
           Two are worth knowing about before you need them.{" "}
@@ -226,11 +240,14 @@ export default function AdministrationPage() {
         <DocsSubSection title="Runtime settings and build settings">
           <p className="text-sm leading-relaxed text-muted-foreground">
             Most settings take effect within the cache window. A minority are
-            marked as build-tier, meaning the running application reads the
-            value compiled into the build: saving one records your intent but
-            does not change behaviour until the next build. The panel labels
-            these, and it is the single most common source of &ldquo;I changed
-            it and nothing happened&rdquo;.
+            build-tier, meaning the running application uses the value compiled
+            into the build and never reads the saved row. The panel shows those
+            read-only, names the constant (and the environment variable, where
+            there is one) to change, and the admin API refuses to save them.
+            Changing one means editing{" "}
+            <InlineCode>lib/config/config-values.ts</InlineCode> and rebuilding.{" "}
+            <InlineCode>APP_URL</InlineCode> is the one exception: it is saved,
+            and used live when the app builds an OAuth redirect URI.
           </p>
           <p className="text-sm leading-relaxed text-muted-foreground">
             Resetting a setting deletes its row rather than writing the current
@@ -254,6 +271,86 @@ export default function AdministrationPage() {
             that does nothing is worse than no field at all.
           </p>
         </DocsCallout>
+      </DocsSection>
+
+      <DocsSection id="incident-switches" title="Incident switches">
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Four switches under Settings, Operations answer one question: is the
+          service open right now. They are enforced where a request arrives, not
+          by greying out a button, and each flip is written to the audit log as
+          a settings change. Each has a companion message that is shown, or
+          returned with the refusal, in place of the built-in wording. A refused
+          request is a 503 with a <InlineCode>Retry-After</InlineCode> of five
+          minutes, not a 403, so a client knows to come back.
+        </p>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          In the order you would reach for them, least disruptive first:
+        </p>
+        <DocsTable
+          caption="The four incident switches, what each refuses and who it spares"
+          columns={[
+            { key: "switch", header: "Switch" },
+            { key: "refuses", header: "What it refuses", className: "w-2/5" },
+            { key: "spares", header: "Who it spares", className: "w-2/5" },
+          ]}
+          data={[
+            {
+              switch: "Pause scanning",
+              refuses:
+                "Every new scan: single, crawl, bulk, authenticated, GitHub repository, the signed-out demo, subdomain and crawl discovery, the live port sweep and the scheduled-scan worker. Scans already running finish.",
+              spares:
+                "Nobody. It is checked before the caller is identified, so staff are refused as well.",
+            },
+            {
+              switch: "Pause new signups",
+              refuses:
+                "New account creation, including a first-time OAuth sign-in that would create one silently.",
+              spares:
+                "Existing users, who sign in as usual, and staff invitations, which are an operator action.",
+            },
+            {
+              switch: "Pause new logins",
+              refuses:
+                "Non-staff accounts starting a session: password sign-in, the second-factor step and the Google, GitHub and Discord callbacks. Sessions that already exist keep working.",
+              spares:
+                "Staff accounts, so you can always get back in. The check runs after credentials are verified, so the pause does not reveal which emails are staff.",
+            },
+            {
+              switch: "Maintenance mode",
+              refuses:
+                "Shows a maintenance page instead of the app, and turns on the other three.",
+              spares:
+                "Staff, who keep the whole app, and the login page, which stays reachable for everyone.",
+            },
+          ]}
+        />
+        <DocsCallout variant="warning" title="Staff are exempt only from some">
+          <p>
+            The login pause and the maintenance page spare staff. The scanning
+            and signup pauses do not, and maintenance turns both on, so during
+            maintenance a staff member can use the panel and the rest of the app
+            but a scan is still refused for them. Pausing logins does not sign
+            anyone out. Revoke sessions from the user panel if that is what you
+            mean.
+          </p>
+        </DocsCallout>
+        <DocsSubSection title="When the database is down">
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            The panel is unreachable then, so no switch can be flipped. Set{" "}
+            <InlineCode>MAINTENANCE_MODE=true</InlineCode> in the environment
+            and restart. The middleware answers 503 on every path except{" "}
+            <InlineCode>/api/v3/health</InlineCode> (so an orchestrator does not
+            restart the container in a loop for as long as it lasts),{" "}
+            <InlineCode>security.txt</InlineCode>,{" "}
+            <InlineCode>/login</InlineCode>, <InlineCode>/admin</InlineCode>,
+            the auth and admin APIs, and the static files those pages are built
+            from. That is a way back in for staff, and nothing more: this form
+            cannot tell staff from anyone else, so every other page stays a 503
+            for them too. Only the exact value <InlineCode>true</InlineCode>{" "}
+            counts, so the two ways of turning it on agree. Remove the variable
+            and restart to end it.
+          </p>
+        </DocsSubSection>
       </DocsSection>
 
       <DocsSection id="audit" title="Audit log">
@@ -302,6 +399,74 @@ export default function AdministrationPage() {
           inside. If your original session expired while you were impersonating,
           stopping ends the impersonated session anyway and asks you to log in
           again, so you cannot get stranded inside someone else&rsquo;s account.
+        </p>
+      </DocsSection>
+
+      <DocsSection id="staff-sso" title="Staff SSO">
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Staff can sign in through your own OpenID Connect provider instead of,
+          or as well as, a password. Any provider that serves a standard{" "}
+          <InlineCode>/.well-known/openid-configuration</InlineCode> document
+          works: Okta, Microsoft Entra, Keycloak and the like. Nothing is
+          vendor-specific, and the sign-in link on the login page appears only
+          once SSO is configured.
+        </p>
+        <DocsTable
+          caption="Setting up staff SSO"
+          columns={[
+            { key: "step", header: "Step" },
+            { key: "detail", header: "Detail", className: "w-3/4" },
+          ]}
+          data={[
+            {
+              step: "Register the app",
+              detail:
+                "With your provider, add this redirect URI: your app URL followed by /api/v3/auth/staff-oidc/callback. It is fixed; releases do not move it. The app URL is resolved the way the Configuration page describes for OAuth redirect URIs, so behind a proxy set NEXT_PUBLIC_APP_URL.",
+            },
+            {
+              step: "Enter three settings",
+              detail:
+                "In Settings, Advanced: the issuer URL, the client ID and the client secret (STAFF_OIDC_ISSUER_URL, STAFF_OIDC_CLIENT_ID, STAFF_OIDC_CLIENT_SECRET). All three are needed, and any empty one leaves SSO off. The secret is write-only, so it is not shown again once saved. The app asks for the openid, email and profile scopes.",
+            },
+            {
+              step: "Sign in",
+              detail:
+                "The login page offers the SSO link. A successful sign-in lands on /admin.",
+            },
+          ]}
+        />
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          What a sign-in can do is deliberately narrow. It signs into an account
+          that already exists with the email the provider returned, only if that
+          account already holds a staff role of support or above, only if the
+          provider says the email is verified, and not if the account is
+          disabled. It never creates an account and never changes a role, so a
+          misconfigured or compromised provider can at worst authenticate as an
+          account you already provisioned. An unknown email and an account that
+          is not staff get the same generic refusal, so the sign-in cannot be
+          used to find out which addresses are staff.
+        </p>
+        <DocsCallout
+          variant="warning"
+          title="SSO skips the two-factor prompt, and ENFORCE_STAFF_2FA still applies"
+        >
+          <p>
+            Signing in this way does not ask for this app&rsquo;s second factor:
+            your provider&rsquo;s own MFA is the control. But{" "}
+            <InlineCode>ENFORCE_STAFF_2FA</InlineCode> looks at whether the
+            account has two-factor enabled here, not at how it signed in. With
+            it on, a staff member who only ever uses SSO and never enrolled a
+            second factor lands on /admin and is refused until they turn it on
+            under Profile, Security. They can reach that page, so it is a detour
+            rather than a lockout, but plan for it before you switch SSO and the
+            enforcement on together.
+          </p>
+        </DocsCallout>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Each SSO sign-in writes an audit row, shown as{" "}
+          <strong className="text-foreground">Staff SSO Sign-in</strong>(
+          <InlineCode>staff_oidc_login</InlineCode>), recording who signed in,
+          the address they came from and the hostname of your provider.
         </p>
       </DocsSection>
 
@@ -414,10 +579,27 @@ export default function AdministrationPage() {
           </p>
         </DocsSubSection>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Scheduled backups are off by default and run daily when enabled. Note
-          that a database dump does not include anything stored outside the
-          database, so back up your uploads directory and environment file
-          separately.
+          Scheduled backups are off by default and run daily when enabled. A
+          dump holds everything the app stores, uploaded avatars and scan
+          screenshots included, because those live in the database. It does not
+          hold your environment file or any edits you made to{" "}
+          <InlineCode>lib/config/config-values.ts</InlineCode>, so keep those
+          somewhere safe as well. The same goes for the encryption key: an
+          encrypted backup is useless without the key that wrote it.
+        </p>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Migrations take their own dump before they change the schema, into a{" "}
+          <InlineCode>pre-migration</InlineCode> folder under the backup
+          directory, and prune those on a separate clock (
+          <InlineCode>MIGRATION_BACKUP_RETENTION_DAYS</InlineCode>, 90 days by
+          default). Rotating the encryption key is its own procedure; see{" "}
+          <Link
+            href="/docs/self-hosting#key-rotation"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Self-Hosting, Rotating the encryption key
+          </Link>
+          .
         </p>
       </DocsSection>
 

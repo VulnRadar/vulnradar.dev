@@ -106,9 +106,12 @@ export const DOCS_NAV: NavSection[] = [
         href: "/docs/config",
         label: "Configuration",
         // Was "Every CONFIG_* value and every environment variable", which the
-        // page does not deliver: it names 76 of the 308 CONFIG_* constants and
-        // 61 of the 267 runtime settings keys. Promising completeness makes a
-        // reader stop looking after not finding their value.
+        // page does not deliver. The Settings tables are generated from
+        // SETTINGS_REGISTRY, so they do list every key the admin panel can
+        // edit; what the page does not list is the CONFIG_* constants outside
+        // the registry, or every environment variable. Layer 1 names only the
+        // values an operator is likely to change. Promising completeness makes
+        // a reader stop looking after not finding their value.
         summary: "How configuration resolves, and the values you will change",
       },
     ],

@@ -58,6 +58,8 @@ const tocItems: TocItem[] = [
   { id: "billing", label: "Billing", level: 2 },
   { id: "admin-settings", label: "Admin Settings Page" },
   { id: "layer-2", label: "Runtime Secrets" },
+  { id: "oauth-redirect-uris", label: "OAuth redirect URIs", level: 2 },
+  { id: "operations-env", label: "Operations and debug flags", level: 2 },
   { id: "ai-models", label: "AI Providers & Models" },
   { id: "checklist", label: "Self-Hosting Checklist" },
   { id: "validation", label: "Validation" },
@@ -305,9 +307,25 @@ export default function ConfigPage() {
             </li>
             <li>
               <InlineCode>CONFIG_CLEANUP_INTERVAL_MS</InlineCode> (default:{" "}
-              <InlineCode>86400000</InlineCode> = 24h)
+              <InlineCode>86400000</InlineCode> = 24h): at most once per
+              interval, a request that reads the session also sweeps expired
+              sessions in the background. The cheap one of the two cleanups.
+            </li>
+            <li>
+              <InlineCode>CONFIG_DB_CLEANUP_INTERVAL_MS</InlineCode> (default:{" "}
+              <InlineCode>300000</InlineCode> = 5 minutes): how often the
+              periodic database cleanup pass runs, which deletes expired tokens,
+              old sessions, stale caches and rows past their retention window.
+              Retention windows are settings you can change in the admin panel;
+              this interval is not.
             </li>
           </ul>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Both intervals are read once, when the process starts, so they are
+            compiled constants: edit them in{" "}
+            <InlineCode>config-values.ts</InlineCode> and rebuild. Neither has
+            an admin-panel field or an environment override.
+          </p>
         </DocsSubSection>
 
         <DocsSubSection id="rate-limits" title="Rate limits">
@@ -764,12 +782,23 @@ export default function ConfigPage() {
             </li>
             <li>
               <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode>: exactly 64 hex
-              chars (32 bytes). Used to encrypt stored API keys with
-              AES-256-GCM.
+              chars (32 bytes). Used to encrypt stored API keys, two-factor
+              seeds, Discord and GitHub tokens, users&rsquo; AI provider keys
+              and webhook signing secrets with AES-256-GCM, and backups too
+              while <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode> is unset.
+              Replacing it is a rotation, described under Key rotation below.
             </li>
             <li>
               <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode>: public URL of the
-              deployment
+              deployment. It is also the address OAuth redirect URIs are built
+              from, see{" "}
+              <a
+                href="#oauth-redirect-uris"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                OAuth redirect URIs
+              </a>
+              .
             </li>
           </ul>
         </DocsSubSection>
@@ -782,6 +811,33 @@ export default function ConfigPage() {
               <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode> if unset.
             </li>
           </ul>
+        </DocsSubSection>
+
+        <DocsSubSection title="Key rotation (optional)">
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            <li>
+              <InlineCode>PREVIOUS_API_KEY_ENCRYPTION_KEY</InlineCode>: the old
+              value of <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode>, set only
+              during a rotation, in the same 64-hex-character shape. Reads try
+              the current key and fall back to this one; writes always use the
+              current key. Anything else logs an error and is ignored. Leave it
+              unset otherwise.
+            </li>
+          </ul>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Only API keys move to the new key on their own, the first time each
+            is used. Everything else stays under the old key until something
+            rewrites it, so the old key has to stay set for a long time. The
+            order of steps, what to check, and the repair command to avoid are
+            in{" "}
+            <a
+              href="/docs/self-hosting#key-rotation"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Self-Hosting, Rotating the encryption key
+            </a>
+            .
+          </p>
         </DocsSubSection>
 
         <DocsSubSection title="Database">
@@ -856,8 +912,12 @@ export default function ConfigPage() {
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>DISCORD_CLIENT_ID</InlineCode>,{" "}
-              <InlineCode>DISCORD_CLIENT_SECRET</InlineCode>: required for{" "}
-              <InlineCode>/api/v3/auth/discord</InlineCode>
+              <InlineCode>DISCORD_CLIENT_SECRET</InlineCode>: required for both
+              Discord flows. Signing in or up with Discord goes through{" "}
+              <InlineCode>/api/v3/auth/oauth/discord</InlineCode>, and Profile,
+              Connections, Discord goes through{" "}
+              <InlineCode>/api/v3/auth/discord</InlineCode>. One Discord
+              application serves both, with both redirect URIs registered.
             </li>
             <li>
               <InlineCode>DISCORD_BOT_TOKEN</InlineCode>,{" "}
@@ -886,6 +946,92 @@ export default function ConfigPage() {
             <InlineCode>/api/v3/auth/oauth/[provider]</InlineCode>; each button
             appears only when its client id and secret are present.
           </p>
+        </DocsSubSection>
+
+        <DocsSubSection id="oauth-redirect-uris" title="OAuth redirect URIs">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Google, GitHub and Discord compare the{" "}
+            <InlineCode>redirect_uri</InlineCode> this app sends with the list
+            you registered, as an exact string. A missing or different one fails
+            on the provider&rsquo;s page with a redirect mismatch, not with an
+            error from this app. Register these, each prefixed with your app
+            URL:
+          </p>
+          <DocsTable
+            caption="The redirect URI each sign-in flow needs registered"
+            columns={[
+              { key: "flow", header: "Flow" },
+              {
+                key: "uri",
+                header: "Register this URI",
+                className: "font-mono",
+              },
+              { key: "note", header: "Notes", className: "w-1/3" },
+            ]}
+            data={[
+              {
+                flow: "Google sign-in and sign-up",
+                uri: "/api/v3/auth/oauth/google/callback",
+                note: "Needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
+              },
+              {
+                flow: "GitHub: sign-in, sign-up, linking, repository connect",
+                uri: "/api/v3/auth/oauth/github/callback",
+                note: "One URI for all four. A GitHub OAuth app accepts only one callback, so the repository scanner's connect flow returns through the sign-in callback and is told apart by its signed state.",
+              },
+              {
+                flow: "Discord sign-in and sign-up",
+                uri: "/api/v3/auth/oauth/discord/callback",
+                note: "Creates an account on first use.",
+              },
+              {
+                flow: "Discord, Profile, Connections",
+                uri: "/api/v3/auth/discord/callback",
+                note: "Attaches Discord to an account that already exists. Register this one in the same Discord application as the line above; leaving either out breaks just that flow.",
+              },
+              {
+                flow: "Staff SSO (OIDC)",
+                uri: "/api/v3/auth/staff-oidc/callback",
+                note: "Registered with your own identity provider, not the three above. See Administration, Staff SSO.",
+              },
+            ]}
+          />
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            These paths do not move. They are registered in consoles outside
+            this codebase, so a release that changes how the API is laid out
+            leaves them where they are.
+          </p>
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            <strong className="text-foreground">
+              What &ldquo;your app URL&rdquo; is.
+            </strong>{" "}
+            For every flow above the app builds the address in this order: the{" "}
+            <InlineCode>APP_URL</InlineCode> row in Admin, Settings if one is
+            saved, then <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode>, then the
+            origin of the request it is answering. The shipped{" "}
+            <InlineCode>CONFIG_APP_URL</InlineCode> is not consulted, on
+            purpose: redirecting a misconfigured deployment to a domain it does
+            not own is worse than trusting the request. The result has to match
+            what you registered exactly, scheme, host and port, with no trailing
+            slash.
+          </p>
+          <DocsCallout
+            variant="warning"
+            title="Behind a proxy, set NEXT_PUBLIC_APP_URL"
+          >
+            <p>
+              With nothing saved and the variable unset, the address falls back
+              to the request&rsquo;s own origin, which behind a reverse proxy
+              can be an internal address, or the right host over plain HTTP
+              because that is how the proxy talks to the app. The provider then
+              sees a redirect URI you never registered. Set{" "}
+              <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> to the public address
+              and the problem goes away. A value saved for{" "}
+              <InlineCode>APP_URL</InlineCode> in the admin panel overrides it,
+              so check there too if the address you registered is not the one
+              the provider reports.
+            </p>
+          </DocsCallout>
         </DocsSubSection>
 
         <DocsSubSection title="IPv4 session capture (optional)">
@@ -947,9 +1093,19 @@ export default function ConfigPage() {
         <DocsSubSection title="Threat reputation & CVE intelligence">
           <p className="text-sm text-muted-foreground">
             The reputation check and the software-inventory CVE correlation are
-            all optional. Each source is skipped when its key is unset, and
-            never reports a clean result it could not actually verify (a missing
-            key or error reads as unavailable, not clean).
+            all optional. Web Risk is skipped when its key is unset, URLhaus is
+            still asked and answers an error without one, and no source ever
+            reports a clean result it could not actually verify (a missing key
+            or error reads as unavailable, not clean). The fixed hosts the
+            server calls are listed, with what is sent and what happens when
+            each is blocked, under{" "}
+            <a
+              href="/docs/self-hosting#network-egress"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Self-Hosting, Network egress
+            </a>
+            .
           </p>
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
@@ -1067,8 +1223,70 @@ export default function ConfigPage() {
             videos, etc.) and you want to confirm whether CSP is the blocker.{" "}
             <strong className="text-foreground">
               Never set this in production.
-            </strong>
+            </strong>{" "}
+            With <InlineCode>NODE_ENV=production</InlineCode> the server refuses
+            to start with it set.
           </p>
+        </DocsSubSection>
+
+        <DocsSubSection id="operations-env" title="Operations and debug flags">
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Environment variables with no admin-panel field, because they have
+            to work when the panel cannot, or because they are about how the
+            process is deployed rather than how it behaves.
+          </p>
+          <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
+            <li>
+              <InlineCode>MAINTENANCE_MODE</InlineCode>: exactly{" "}
+              <InlineCode>true</InlineCode>, nothing else (
+              <InlineCode>1</InlineCode> is ignored, so the two ways of turning
+              it on agree). The break-glass form of the Maintenance mode switch
+              in Admin, Settings, Operations, for when the database is down and
+              the panel is unreachable. Every path answers 503 except the health
+              endpoint, <InlineCode>security.txt</InlineCode>,{" "}
+              <InlineCode>/login</InlineCode>, <InlineCode>/admin</InlineCode>,
+              the auth and admin APIs and the static files those pages need. It
+              cannot tell staff from anyone else, so unlike the panel switch it
+              503s every other page for staff too. See{" "}
+              <a
+                href="/docs/administration#incident-switches"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                Administration, Incident switches
+              </a>
+              .
+            </li>
+            <li>
+              <InlineCode>ALLOW_INSECURE_HTTP</InlineCode>: exactly{" "}
+              <InlineCode>1</InlineCode>, for a deployment that terminates no
+              TLS at all. It stops the redirect of plain-HTTP requests to HTTPS,
+              the HSTS header and the CSP{" "}
+              <InlineCode>upgrade-insecure-requests</InlineCode> directive, and
+              it lets the session cookie travel without the Secure flag, so
+              traffic and sessions are unencrypted. Allowed in production,
+              because such a deployment cannot be served otherwise; set it only
+              on a network you trust. The health endpoint is never redirected
+              either way.
+            </li>
+            <li>
+              <InlineCode>AVATAR_STORAGE_DIR</InlineCode>: where older
+              self-hosted builds kept uploaded avatars as files (default{" "}
+              <InlineCode>./data/avatars</InlineCode>). Avatars are stored in
+              the database now, so nothing writes there and a database backup
+              already holds them. Only the boot backfill reads the directory, to
+              import leftover files into the database. Leave it unset unless
+              yours are somewhere else.
+            </li>
+            <li>
+              <InlineCode>SECURITY_ALLOW_NON_BROWSER_API</InlineCode>: exactly{" "}
+              <InlineCode>1</InlineCode>, development only. It skips the CSRF
+              Origin check on mutating API requests so curl or Postman can call
+              the cookie-authenticated routes without an Origin header. The
+              middleware honours it only outside production; with{" "}
+              <InlineCode>NODE_ENV=production</InlineCode> it is ignored and the
+              check stays on. It does not touch authentication.
+            </li>
+          </ul>
         </DocsSubSection>
 
         <DocsSubSection title="Contact / support overrides">
@@ -1102,9 +1320,10 @@ export default function ConfigPage() {
             All optional. Read by the built-in backup/restore scripts (
             <InlineCode>npm run db:backup</InlineCode> /{" "}
             <InlineCode>npm run db:restore</InlineCode>) and the{" "}
-            <InlineCode>/admin</InlineCode> Backup button. These require the{" "}
-            <InlineCode>postgresql-client</InlineCode> package (
-            <InlineCode>pg_dump</InlineCode>) on PATH. See{" "}
+            <InlineCode>/admin</InlineCode> Backup button. They use{" "}
+            <InlineCode>pg_dump</InlineCode> when the{" "}
+            <InlineCode>postgresql-client</InlineCode> package is on PATH and a
+            built-in dumper when it is not. See{" "}
             <a
               href="/docs/self-hosting#backups"
               className="text-primary hover:underline"
@@ -1127,11 +1346,21 @@ export default function ConfigPage() {
               everything.
             </li>
             <li>
+              <InlineCode>MIGRATION_BACKUP_RETENTION_DAYS</InlineCode>: the same
+              rule for the dumps <InlineCode>npm run db:migrate</InlineCode>{" "}
+              takes by itself before it changes the schema, which are kept apart
+              from the scheduled backups and pruned on their own clock. Default{" "}
+              <InlineCode>90</InlineCode>; <InlineCode>0</InlineCode> keeps
+              everything.
+            </li>
+            <li>
               <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode>: 64-hex-char
               AES-256 key. Falls back to{" "}
               <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode> when unset, so
               backups are encrypted by default; a separate key is recommended
-              for defense in depth. Restore uses the same resolution.
+              for defense in depth, and it stops a key rotation from deciding
+              whether older backups can be restored. Restore uses the same
+              resolution.
             </li>
             <li>
               <InlineCode>BACKUP_OFFSITE_UPLOAD_URL</InlineCode>: presigned PUT
@@ -1281,14 +1510,20 @@ export default function ConfigPage() {
             in a fresh install.
           </li>
           <li>
-            Sign up the first user via <InlineCode>/signup</InlineCode>, then
-            promote via SQL:
-            <br />
-            <InlineCode>
-              docker compose exec postgres psql -U vulnradar -d vulnradar -c
-              "UPDATE users SET role = &apos;admin&apos; WHERE email =
-              &apos;you@example.com&apos;"
-            </InlineCode>
+            Sign up the first user via <InlineCode>/signup</InlineCode>. That
+            account is given <InlineCode>super_admin</InlineCode> on its own, so
+            there is nothing to promote, and setting its role to{" "}
+            <InlineCode>admin</InlineCode> by SQL would demote it. Further staff
+            are invited from the admin panel. A restart gives{" "}
+            <InlineCode>super_admin</InlineCode> back to the lowest-id account
+            if nobody holds it, as{" "}
+            <a
+              href="/docs/self-hosting#admin"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Self-Hosting, First Admin User
+            </a>{" "}
+            explains.
           </li>
           <li>
             (Optional) Configure SMTP, Stripe, Discord, Turnstile in{" "}

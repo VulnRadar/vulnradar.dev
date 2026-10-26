@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { ADMIN_TAB_DESCRIPTIONS } from "@/app/docs/administration/admin-tab-descriptions";
+import { VALID_TABS } from "@/components/admin/nav";
 
 /**
  * Drift guards for the operator-facing docs pages.
@@ -280,4 +283,332 @@ describe("contributor docs quote the real toolchain", () => {
     );
     expect(discordBullet.slice(0, 600)).toContain(`${minutes}-minute TTL`);
   });
+});
+
+/**
+ * The Node patch the setup page states.
+ *
+ * It said the Dockerfile builds on node:22.23.3-alpine after the Dockerfile had
+ * moved to 22.23.4, because a dependency bump changed the one and nothing
+ * pointed at the other. The Dockerfile is the source of truth for "what the
+ * image runs", so the page is checked against its FROM lines rather than
+ * against a number typed into this test.
+ */
+describe("the Node pin the setup page states", () => {
+  const pins = new Set(
+    [
+      ...read("Dockerfile").matchAll(/^FROM node:(\d+\.\d+\.\d+)-alpine\b/gm),
+    ].map((m) => m[1]),
+  );
+  const setup = read("app/docs/setup/page.tsx");
+
+  it("finds the Dockerfile's base image, and every stage agrees on it", () => {
+    expect(
+      [...pins],
+      "the Dockerfile's stages are on different Node patches, so the setup " +
+        "page cannot name one",
+    ).toHaveLength(1);
+  });
+
+  it("names the patch the Dockerfile builds on", () => {
+    for (const pin of pins) {
+      expect(setup).toContain(`node:${pin}-alpine`);
+    }
+  });
+
+  it("names no other patch of the image", () => {
+    const named = [...setup.matchAll(/node:(\d+\.\d+\.\d+)-alpine/g)].map(
+      (m) => m[1],
+    );
+    expect(named.filter((version) => !pins.has(version))).toEqual([]);
+  });
+});
+
+/**
+ * Links into the four operator pages from anywhere under app/docs.
+ *
+ * The README, the .env.example, the config page and the self-hosting page all
+ * point at anchors on each other (#network-egress, #key-rotation, #health,
+ * #oauth-redirect-uris). An anchor that does not exist scrolls nowhere and says
+ * nothing, so a rename on one page strands every link to it.
+ */
+describe("links into the operator pages land on a real anchor", () => {
+  const TARGETS: Record<string, string> = {
+    "/docs/self-hosting": "app/docs/self-hosting/page.tsx",
+    "/docs/setup": "app/docs/setup/page.tsx",
+    "/docs/config": "app/docs/config/page.tsx",
+    "/docs/administration": "app/docs/administration/page.tsx",
+  };
+
+  function pageFiles(dir: string): string[] {
+    return readdirSync(dir).flatMap((name) => {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) return pageFiles(p);
+      return name === "page.tsx" ? [p.split("\\").join("/")] : [];
+    });
+  }
+
+  const hasAnchor = (source: string, anchor: string) =>
+    new RegExp(`\\bid(?:=|:\\s*)"${anchor}"`).test(source);
+
+  it("resolves every /docs/<page>#anchor link to an id on that page", () => {
+    const broken: string[] = [];
+    for (const file of pageFiles("app/docs")) {
+      const source = read(file);
+      for (const m of source.matchAll(
+        /(\/docs\/(?:self-hosting|setup|config|administration))#([a-z0-9-]+)/g,
+      )) {
+        const target = read(TARGETS[m[1]]);
+        if (!hasAnchor(target, m[2])) broken.push(`${file} -> ${m[1]}#${m[2]}`);
+      }
+    }
+    expect(broken).toEqual([]);
+  });
+
+  it("resolves every in-page #anchor link to an id on the same page", () => {
+    const broken: string[] = [];
+    for (const [, file] of Object.entries(TARGETS)) {
+      const source = read(file);
+      for (const m of source.matchAll(/href="#([a-z0-9-]+)"/g)) {
+        if (!hasAnchor(source, m[1])) broken.push(`${file} -> #${m[1]}`);
+      }
+    }
+    expect(broken).toEqual([]);
+  });
+
+  it("keeps the anchors the README and .env.example are told about", () => {
+    const selfHosting = read(TARGETS["/docs/self-hosting"]);
+    for (const anchor of [
+      "network-egress",
+      "key-rotation",
+      "health",
+      "in-app-updater",
+      "stripe",
+    ]) {
+      expect(hasAnchor(selfHosting, anchor), `#${anchor}`).toBe(true);
+    }
+  });
+});
+
+/**
+ * Network egress.
+ *
+ * The self-hosting page lists the hosts the server calls so an operator behind
+ * a firewall knows what to open. A host added to the code and not to the page
+ * is a rule they learn about from a feature that quietly stopped working, so
+ * every host that code under these directories fetches has to be named there.
+ * Only calls that are visible as a literal are found (fetch, the passive
+ * subdomain fetcher, and *_URL or *Url constants): that is a floor, not a
+ * proof, which is why the page's own rows were read off the code by hand.
+ */
+describe("the self-hosting page names every host the server fetches", () => {
+  const EGRESS_DIRS = [
+    "lib/scanner",
+    "lib/browserbase",
+    "lib/github",
+    "lib/updater",
+    "lib/discord",
+    "lib/auth",
+    "app/api",
+  ];
+  /** Page-check detectors hold sample strings for what the scanner looks for in
+   *  a target, not calls this server makes. */
+  const SKIP = ["page-checks", "node_modules"];
+  const EXTRA_FILES = ["lib/config/constants.ts"];
+
+  function sources(dir: string): string[] {
+    return readdirSync(dir).flatMap((name) => {
+      const p = join(dir, name);
+      if (SKIP.includes(name)) return [];
+      if (statSync(p).isDirectory()) return sources(p);
+      return /\.(ts|mjs)$/.test(name) ? [p.split("\\").join("/")] : [];
+    });
+  }
+
+  /** Matches the patterns below but is not a call this server makes: a URL
+   *  stored in users.avatar_url for the visitor's browser to load. */
+  const NOT_SERVER_CALLS = new Set(["cdn.discordapp.com"]);
+
+  const hostsCalled = new Map<string, string>();
+  for (const file of [...EGRESS_DIRS.flatMap(sources), ...EXTRA_FILES]) {
+    const text = read(file);
+    const patterns = [
+      /\b(?:fetch|fetchPassiveSource)\(\s*[`"']https?:\/\/([a-z0-9.-]+)/g,
+      /\b[A-Za-z][A-Za-z0-9_]*(?:_URL|_ENDPOINT|_BASE|Url)\s*=\s*[`"']https?:\/\/([a-z0-9.-]+)/g,
+    ];
+    for (const re of patterns) {
+      for (const m of text.matchAll(re)) {
+        // A trailing dot is a host built from the scan target at run time
+        // (mta-sts.<domain>), which no list can name.
+        if (m[1].endsWith(".") || NOT_SERVER_CALLS.has(m[1])) continue;
+        if (!hostsCalled.has(m[1])) hostsCalled.set(m[1], file);
+      }
+    }
+  }
+
+  const page = read("app/docs/self-hosting/page.tsx");
+
+  it("finds the calls it is meant to check", () => {
+    expect(hostsCalled.size).toBeGreaterThan(15);
+    expect(hostsCalled.has("api.osv.dev")).toBe(true);
+    expect(hostsCalled.has("www.gravatar.com")).toBe(true);
+  });
+
+  it("lists each one in the Network egress section", () => {
+    const missing = [...hostsCalled.entries()]
+      .filter(([host]) => !page.includes(host))
+      .map(([host, file]) => `${host} (${file})`);
+    expect(
+      missing,
+      "these hosts are fetched by the server but are not named in " +
+        "app/docs/self-hosting/page.tsx, so an operator filtering egress " +
+        "does not know to allow them",
+    ).toEqual([]);
+  });
+});
+
+/**
+ * The health endpoint's statuses, as documented.
+ */
+describe("the health check the operator pages describe", () => {
+  const route = read("app/api/v3/health/route.ts");
+  const selfHosting = read("app/docs/self-hosting/page.tsx");
+
+  it("documents every status the route can return", () => {
+    for (const status of ["ok", "degraded", "unhealthy"]) {
+      expect(route, `route returns ${status}`).toContain(`"${status}"`);
+      expect(selfHosting, `page documents ${status}`).toContain(
+        `status: "${status}"`,
+      );
+    }
+  });
+
+  it("documents the fields the response carries", () => {
+    for (const field of [
+      "uptime_s",
+      "latency_ms",
+      "schema_version",
+      "schema_required",
+      "schema_ok",
+      "missing_tables",
+    ]) {
+      expect(route, `route has ${field}`).toContain(field);
+      expect(selfHosting, `page shows ${field}`).toContain(field);
+    }
+  });
+});
+
+/**
+ * Redirect URIs.
+ *
+ * These are registered in consoles the app does not control, so the table on
+ * /docs/config is a promise that a route answers at exactly that path. Each is
+ * checked against the file that serves it, with the dynamic [provider] segment
+ * substituted for the three sign-in providers.
+ */
+describe("the OAuth redirect URIs the config page lists are served", () => {
+  const config = read("app/docs/config/page.tsx");
+  const uris = [
+    ...new Set(
+      [...config.matchAll(/"(\/api\/v3\/auth\/[a-z/-]+\/callback)"/g)].map(
+        (m) => m[1],
+      ),
+    ),
+  ];
+
+  it("lists the five flows", () => {
+    expect(uris.sort()).toEqual([
+      "/api/v3/auth/discord/callback",
+      "/api/v3/auth/oauth/discord/callback",
+      "/api/v3/auth/oauth/github/callback",
+      "/api/v3/auth/oauth/google/callback",
+      "/api/v3/auth/staff-oidc/callback",
+    ]);
+  });
+
+  it.each(uris)("has a route for %s", (uri) => {
+    const direct = `app${uri}/route.ts`;
+    const viaProvider = `app${uri.replace(
+      /\/oauth\/(google|github|discord)\//,
+      "/oauth/[provider]/",
+    )}/route.ts`;
+    expect(
+      existsSync(direct) || existsSync(viaProvider),
+      `${uri} is documented as a registered redirect URI but neither ` +
+        `${direct} nor ${viaProvider} exists`,
+    ).toBe(true);
+  });
+
+  it("tells the reader the callback paths do not move", () => {
+    expect(config).toContain("These paths do not move");
+  });
+});
+
+/**
+ * The first account is already super_admin.
+ *
+ * The config page's checklist told the reader to run
+ * UPDATE users SET role = 'admin' for "the first user", which demotes it, and
+ * the self-hosting page spends a warning saying exactly that. Any page that
+ * shows the statement has to be addressing a later account.
+ */
+describe("no operator page promotes the first account with SQL", () => {
+  for (const path of [
+    "app/docs/self-hosting/page.tsx",
+    "app/docs/setup/page.tsx",
+    "app/docs/config/page.tsx",
+    "app/docs/administration/page.tsx",
+  ]) {
+    it(`${path} only shows the admin UPDATE for a later account`, () => {
+      const source = read(path);
+      for (const m of source.matchAll(
+        /UPDATE users\s+SET role = (?:'|&apos;)admin/g,
+      )) {
+        const at = m.index ?? 0;
+        const around = source.slice(Math.max(0, at - 800), at + 800);
+        expect(
+          around,
+          `${path} shows the admin UPDATE with nothing nearby saying it is ` +
+            `for a later account`,
+        ).toMatch(/later/i);
+      }
+    });
+  }
+});
+
+describe("the admin tab descriptions", () => {
+  it("cover every admin tab, and only those", () => {
+    expect(Object.keys(ADMIN_TAB_DESCRIPTIONS).sort()).toEqual(
+      [...VALID_TABS].sort(),
+    );
+  });
+
+  it("are a sentence each, not an empty cell or a paragraph", () => {
+    for (const [tab, text] of Object.entries(ADMIN_TAB_DESCRIPTIONS)) {
+      expect(text.trim().length, tab).toBeGreaterThan(40);
+      expect(text.length, tab).toBeLessThan(400);
+    }
+  });
+});
+
+/**
+ * House copy rules, for the pages and files this cluster rewrote: no em dash,
+ * en dash or middle dot in user-facing text.
+ */
+describe("operator copy avoids dash punctuation", () => {
+  const banned = new RegExp(`[${String.fromCharCode(0x2014, 0x2013, 0xb7)}]`);
+  for (const path of [
+    "app/docs/self-hosting/page.tsx",
+    "app/docs/setup/page.tsx",
+    "app/docs/config/page.tsx",
+    "app/docs/config/layout.tsx",
+    "app/docs/administration/page.tsx",
+    "app/docs/administration/admin-tab-descriptions.ts",
+    ".env.example",
+    "lib/updater/environment.ts",
+  ]) {
+    it(`${path} has none`, () => {
+      expect(read(path)).not.toMatch(banned);
+    });
+  }
 });

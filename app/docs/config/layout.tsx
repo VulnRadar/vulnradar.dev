@@ -6,10 +6,17 @@ import {
   TechArticleStructuredData,
 } from "@/components/seo/structured-data";
 
+// One string for the meta description and the JSON-LD article, so the two
+// cannot drift. It says what the page holds: the Settings tables are generated
+// from the registry and list every admin setting, but the environment
+// variables and CONFIG_* constants are the ones an operator is likely to
+// change, not every one that exists.
+const DESCRIPTION =
+  "How configuration resolves, every admin setting with its tier and default, and the environment variables for secrets, OAuth, SMTP and backups.";
+
 export const metadata: Metadata = pageMetadata({
-  title: "Configuration Reference: Every Env Var",
-  description:
-    "Every configuration value: environment variables, feature flags, billing toggles, scan timeouts, retention windows, and SEO settings.",
+  title: "Configuration Reference: Settings and Env Vars",
+  description: DESCRIPTION,
   path: "/docs/config",
   keywords: ["scanner configuration", "environment variables reference"],
 });
@@ -31,10 +38,8 @@ export default async function Layout({
         nonce={nonce}
       />
       <TechArticleStructuredData
-        title={"Configuration Reference"}
-        description={
-          "Every configuration value: environment variables, feature flags, billing toggles, scan timeouts, retention windows, and SEO settings."
-        }
+        title="Configuration Reference"
+        description={DESCRIPTION}
         path="/docs/config"
         nonce={nonce}
       />
