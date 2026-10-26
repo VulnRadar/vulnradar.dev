@@ -127,7 +127,7 @@ RUN npm prune --omit=dev --ignore-scripts
 # signature verification actually happen by default in the published
 # image, instead of only for someone who happened to install cosign
 # themselves.
-FROM gcr.io/projectsigstore/cosign:v3.1.3 AS cosign
+FROM gcr.io/projectsigstore/cosign:v3.1.4 AS cosign
 
 # ── Production stage ───────────────────────────────────────────
 FROM node:22.23.4-alpine AS runner
