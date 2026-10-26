@@ -2,7 +2,7 @@ import { API, SEVERITY_LABELS } from "@/lib/config/client-constants";
 import { plural } from "@/lib/ui/plural";
 
 /**
- * Pure helpers behind the "Promoted rules" section of engine-feedback-manager.
+ * Pure helpers behind the Promoted rules panel (promoted-rules-panel.tsx).
  * They live in a plain .ts sibling because this project has no DOM test setup,
  * and the two things worth testing there (how a rule reads, and what removing
  * one sends) do not need a DOM.

@@ -1,11 +1,10 @@
 /**
  * Unit tests for components/admin/features/engine-feedback-utils.ts, consumed
- * by the "Promoted rules" section of engine-feedback-manager.tsx. The manager
- * is a fetch/render component and this project has no DOM-rendering test setup,
- * so what is worth testing lives in a plain .ts sibling (the same split as
- * queue-status-utils.ts).
+ * by promoted-rules-panel.tsx. The panel is a render component and this
+ * project has no DOM-rendering test setup, so what is worth testing lives in a
+ * plain .ts sibling (the same split as queue-status-utils.ts).
  *
- * The last block reads the manager's source: that the Remove control goes
+ * The last block reads the panel's source: that the Remove control goes
  * through useConfirm is a property of how the file is wired, which a unit test
  * of the helpers cannot see.
  */
@@ -150,24 +149,32 @@ describe("removePromotedRule", () => {
   });
 });
 
-describe("the Promoted rules section", () => {
-  const source = readFileSync(
-    path.resolve(
-      __dirname,
-      "..",
-      "..",
-      "..",
-      "..",
-      "components",
-      "admin",
-      "features",
-      "engine-feedback-manager.tsx",
-    ),
-    "utf8",
-  );
+describe("the Promoted rules panel", () => {
+  const read = (file: string) =>
+    readFileSync(
+      path.resolve(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "components",
+        "admin",
+        "features",
+        file,
+      ),
+      "utf8",
+    );
+  const source = read("promoted-rules-panel.tsx");
+
+  it("is rendered by the engine feedback manager", () => {
+    expect(read("engine-feedback-manager.tsx")).toContain(
+      "<PromotedRulesPanel",
+    );
+  });
 
   it("only ever removes a rule as a confirm request's onConfirm", () => {
-    // removeRule is the manager's one path to the DELETE. Every use of it
+    // removeRule is the panel's one path to the DELETE. Every use of it
     // other than its own definition must be the confirm's onConfirm, never an
     // onClick that fires it straight from the click.
     const uses = [...source.matchAll(/\bremoveRule\b/g)].filter(

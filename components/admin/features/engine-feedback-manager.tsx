@@ -30,8 +30,6 @@ import {
   EyeOff,
   FileJson,
   FileSpreadsheet,
-  ListChecks,
-  Trash2,
 } from "lucide-react";
 import {
   SkeletonRegion,
@@ -55,13 +53,8 @@ import { downloadBlob, escapeCsv } from "@/lib/ui/download";
 import { cn } from "@/lib/ui/utils";
 import { formatDay } from "@/components/admin/utils";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
-import { useConfirm } from "@/components/shared/use-confirm";
-import {
-  describeRuleMatch,
-  describeRuleThreshold,
-  removePromotedRule,
-  type PromotedRuleEntry,
-} from "@/components/admin/features/engine-feedback-utils";
+import { PromotedRulesPanel } from "@/components/admin/features/promoted-rules-panel";
+import type { PromotedRuleEntry } from "@/components/admin/features/engine-feedback-utils";
 
 interface AiTagCandidateExample {
   scanId: number;
@@ -235,7 +228,6 @@ export function EngineFeedbackManager() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [promoteTarget, setPromoteTarget] =
     useState<AiTagCandidateEntry | null>(null);
-  const { confirm, confirmDialog } = useConfirm();
 
   const [checkSearch, setCheckSearch] = useState("");
   const [checkFlaggedOnly, setCheckFlaggedOnly] = useState(false);
@@ -400,35 +392,13 @@ export function EngineFeedbackManager() {
     [fetchData],
   );
 
-  /**
-   * Throws on failure rather than toasting: it runs as a confirm dialog's
-   * onConfirm, and the dialog stays open showing whatever a rejected
-   * onConfirm throws. The refresh is not awaited, so the dialog closes when
-   * the rule is gone and not when the four lists on this page have re-read.
-   */
-  const removeRule = useCallback(
-    async (rule: PromotedRuleEntry) => {
-      await removePromotedRule(rule.id);
+  const onRuleRemoved = useCallback(
+    (rule: PromotedRuleEntry) => {
       setToast({ message: `"${rule.tag}" rule removed.`, type: "success" });
       void fetchData();
     },
     [fetchData],
   );
-
-  const askToRemoveRule = (rule: PromotedRuleEntry) =>
-    confirm({
-      title: `Remove the "${rule.tag}" rule?`,
-      description: (
-        <>
-          New scans stop getting this tag. Scans that already have it keep it.
-          If enough AI-tagged scans still back it, the tag goes back to AI Tag
-          Candidates, where it can be promoted again with different fields.
-        </>
-      ),
-      confirmLabel: "Remove rule",
-      danger: true,
-      onConfirm: () => removeRule(rule),
-    });
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
@@ -1421,124 +1391,11 @@ export function EngineFeedbackManager() {
         </div>
       </div>
 
-      {/* Promoted rules */}
-      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
-        <AdminPanelHeader
-          icon={ListChecks}
-          title="Promoted rules"
-          subtitle="Rules saved from an AI tag. Each one tags every new scan whose findings match, for every user. Removing a rule stops that; scans that already have the tag keep it."
-        />
-        <div>
-          {loading ? (
-            <SkeletonRegion label="Loading promoted rules">
-              <DataTableSkeleton rows={2} />
-            </SkeletonRegion>
-          ) : promotedRules.length === 0 ? (
-            <EmptyState
-              icon={ListChecks}
-              title="No promoted rules"
-              description="Nothing has been promoted from an AI tag yet, so only the built-in rules tag scans."
-            />
-          ) : (
-            <>
-              <div className="hidden md:block">
-                <TableScrollArea maxHeight="40vh">
-                  <Table className="min-w-[640px]">
-                    <TableHeader className="sticky top-0 z-20 bg-muted">
-                      <TableRow className="border-y border-border/50 hover:bg-transparent">
-                        <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Tag
-                        </TableHead>
-                        <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Matches
-                        </TableHead>
-                        <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Threshold
-                        </TableHead>
-                        <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Promoted
-                        </TableHead>
-                        <TableHead className="px-5 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Action
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {promotedRules.map((rule) => (
-                        <TableRow key={rule.id} className="border-border/40">
-                          <TableCell className="px-5 py-3 text-sm font-medium wrap-break-word">
-                            {rule.tag}
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-xs text-muted-foreground wrap-break-word">
-                            {describeRuleMatch(rule)}
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-xs text-muted-foreground">
-                            {describeRuleThreshold(rule)}
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-xs text-muted-foreground">
-                            <span className="block text-foreground">
-                              {rule.createdBy ?? "Account deleted"}
-                            </span>
-                            {formatDay(rule.createdAt)}
-                          </TableCell>
-                          <TableCell className="px-5 py-3 text-right">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                              aria-label={`Remove the ${rule.tag} rule`}
-                              onClick={() => askToRemoveRule(rule)}
-                            >
-                              <Trash2
-                                className="h-3.5 w-3.5"
-                                aria-hidden="true"
-                              />
-                              Remove
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableScrollArea>
-              </div>
-
-              {/* Mobile cards */}
-              <div className="md:hidden divide-y divide-border/40">
-                {promotedRules.map((rule) => (
-                  <div key={rule.id} className="px-4 py-3.5">
-                    <p className="text-sm font-medium wrap-break-word">
-                      {rule.tag}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground wrap-break-word">
-                      {describeRuleMatch(rule)}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {describeRuleThreshold(rule)}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {rule.createdBy ?? "Account deleted"},{" "}
-                      {formatDay(rule.createdAt)}
-                    </p>
-                    <div className="mt-3 flex justify-end">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        aria-label={`Remove the ${rule.tag} rule`}
-                        onClick={() => askToRemoveRule(rule)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      <PromotedRulesPanel
+        rules={promotedRules}
+        loading={loading}
+        onRemoved={onRuleRemoved}
+      />
 
       {promoteTarget && (
         <PromoteTagModal
@@ -1549,7 +1406,6 @@ export function EngineFeedbackManager() {
       )}
 
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
-      {confirmDialog}
     </div>
   );
 }
