@@ -23,6 +23,14 @@ const ACCEPTED: ReadonlyArray<readonly [string, string]> = [
   ["a double space", `Bearer  ${BEARER_TEST_KEY}`],
 ];
 
+// Whitespace inside the credentials is not rejected by the parser. Middleware
+// calls any header that starts with "Bearer " an API-key call, so the handler
+// must treat it as one too and let validateApiKey refuse it, not fall back to
+// the session cookie on a request middleware waived its CSRF check for.
+const PASSED_THROUGH: ReadonlyArray<readonly [string, string, string]> = [
+  ["whitespace inside the credentials", "Bearer one two", "one two"],
+];
+
 // "Bearer " is sent as-is, but a Headers object drops the trailing space, so
 // what the handler sees is the bare scheme. Both spellings are refused, which
 // is the point.
@@ -74,6 +82,16 @@ export function describeBearerScheme(
       expect(subject.validateApiKey).toHaveBeenCalledWith(BEARER_TEST_KEY);
       expect(res.status).toBe(401);
     });
+
+    it.each(PASSED_THROUGH)(
+      "hands %s to validateApiKey as sent",
+      async (_name, header, token) => {
+        const res = await subject.call(header);
+        expect(subject.validateApiKey).toHaveBeenCalledTimes(1);
+        expect(subject.validateApiKey).toHaveBeenCalledWith(token);
+        expect(res.status).toBe(401);
+      },
+    );
 
     it.each(REJECTED)("rejects %s", async (_name, header) => {
       const res = await subject.call(header);

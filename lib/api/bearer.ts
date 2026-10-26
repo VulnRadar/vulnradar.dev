@@ -8,12 +8,16 @@
  * scheme was treated as sending no key at all.
  *
  * Returns the credentials, or null when the header is missing, uses another
- * scheme (`Basic`, `Bearerx`) or carries nothing after the scheme. The token
- * is not trimmed or validated beyond that: whether it is a real key is
- * `validateApiKey`'s question. A token with whitespace inside it is not a
- * single credential, so it is refused here rather than hashed as one.
+ * scheme (`Basic`, `Bearerx`) or carries nothing after the scheme. The
+ * credentials come back exactly as sent: whether they are a real key is
+ * `validateApiKey`'s question, and that includes a token with whitespace in
+ * it. Middleware still calls any header that starts with "Bearer " an API-key
+ * call and waives its CSRF Origin check for one without an Origin, so a
+ * handler that answered null for `Bearer one two` would fall back to the
+ * session cookie on a request middleware let through as a key call. Handing
+ * it to validateApiKey, which finds no such key, keeps the old answer: 401.
  */
-const BEARER_HEADER = /^bearer +(\S+)$/i;
+const BEARER_HEADER = /^bearer +([^ ].*)$/i;
 
 export function parseBearer(header: string | null | undefined): string | null {
   if (typeof header !== "string") return null;

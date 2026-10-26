@@ -32,12 +32,28 @@ describe("parseBearer: rejected", () => {
     ["the scheme and one space", "Bearer "],
     ["the scheme and many spaces", "Bearer     "],
     ["a tab instead of a space", `Bearer\t${KEY}`],
-    ["whitespace inside the credentials", "Bearer one two"],
-    ["trailing whitespace", `Bearer ${KEY} `],
     ["leading whitespace", ` Bearer ${KEY}`],
     ["a newline smuggled after the key", `Bearer ${KEY}\nX-Evil: 1`],
     ["the key with no scheme", KEY],
   ])("returns null for %s", (_label, header) => {
     expect(parseBearer(header)).toBeNull();
+  });
+});
+
+// middleware.ts still decides "this is an API-key call" with a case-sensitive
+// startsWith("Bearer ") and, for such a call without an Origin, waives its CSRF
+// check. A handler that answered null for one of these would fall back to the
+// session cookie on a request middleware let through as a key call, so every
+// header middleware calls Bearer must be Bearer here too. What is in the token
+// is validateApiKey's business: it finds no such key and the answer stays 401.
+describe("parseBearer: agrees with middleware on what is a Bearer header", () => {
+  it.each([
+    ["whitespace inside the credentials", "Bearer one two", "one two"],
+    ["a tab inside the credentials", "Bearer one\ttwo", "one\ttwo"],
+    ["a tab right after the spaces", "Bearer \tkey", "\tkey"],
+    ["trailing whitespace on the credentials", `Bearer ${KEY} `, `${KEY} `],
+  ])("hands over %s as sent", (_label, header, token) => {
+    expect(header.startsWith("Bearer ")).toBe(true);
+    expect(parseBearer(header)).toBe(token);
   });
 });
