@@ -1,9 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -12,6 +18,19 @@ import {
   buildScanBody,
   retryAfterSeconds,
   reportRequestUrl,
+  gateCounts,
+  hasSummary,
+  incompleteOutcome,
+  describeNotChecked,
+  describeProgress,
+  classifyRateLimit,
+  createRetryPlan,
+  cancelScan,
+  insecureApiBase,
+  BLOCKING_INCOMPLETE,
+  INCOMPLETE_LABELS,
+  SLOT_BACKOFF_SECONDS,
+  SLOT_WAIT_CAP_SECONDS,
   REPORT_FORMATS,
   DEFAULTS,
   EXIT,
@@ -837,12 +856,16 @@ test("parseArgs: an unknown --report format names the ones that exist", () => {
 });
 
 test("parseArgs: a report flag without --report is refused, not ignored", () => {
-  for (const flag of ["--apply-triage", "--include-suppressed"]) {
-    const o = parseArgs(["scan", "https://x.com", flag]);
-    assert.match(o.error, /needs --report/, flag);
-  }
+  const triage = parseArgs(["scan", "https://x.com", "--apply-triage"]);
+  assert.match(triage.error, /needs --report/);
   const withOut = parseArgs(["scan", "https://x.com", "--out", "f.json"]);
   assert.match(withOut.error, /needs --report/);
+});
+
+test("parseArgs: --include-suppressed stands alone, because it decides what the gate counts", () => {
+  const o = parseArgs(["scan", "https://x.com", "--include-suppressed"]);
+  assert.equal(o.error, undefined);
+  assert.equal(o.includeSuppressed, true);
 });
 
 test("parseArgs: pdf and --json both require --out", () => {
@@ -888,12 +911,11 @@ test("reportRequestUrl: sends only the triage flags that were asked for", () => 
   assert.match(triaged, /includeSuppressed=true/);
 });
 
-test("every REPORT_FORMATS entry has an extension, and pdf is the binary one", () => {
-  for (const [name, meta] of Object.entries(REPORT_FORMATS)) {
-    assert.ok(meta.ext, name);
-  }
-  assert.equal(REPORT_FORMATS.pdf.binary, true);
-  assert.equal(REPORT_FORMATS.sarif.binary, undefined);
+test("pdf is the only binary report format", () => {
+  const binary = Object.entries(REPORT_FORMATS)
+    .filter(([, meta]) => meta.binary)
+    .map(([name]) => name);
+  assert.deepEqual(binary, ["pdf"]);
 });
 
 test("cli: --report without --out prints the report to stdout", async () => {
@@ -918,7 +940,9 @@ test("cli: --report without --out prints the report to stdout", async () => {
     },
   );
   assert.equal(code, EXIT.OK);
-  assert.match(stdout, /"runs"/);
+  // The report and nothing else, with a trailing newline: progress lines went
+  // into the same stream and made `> results.sarif` invalid.
+  assert.equal(stdout, '{"runs":[]}\n');
   const report = requests.find((r) => r.url.startsWith("/history/"));
   assert.equal(
     report.url,
@@ -991,3 +1015,1140 @@ test("cli: a report the API refuses is an error, not a silent pass", async () =>
   assert.match(stderr, /HTTP 403/);
   assert.match(stderr, /PDF reports are disabled/);
 });
+
+// ── Shared fixtures for the gate-correctness tests below ────────────────
+
+const CLEAN = { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
+const SCAN_ARGS = [
+  "scan",
+  "https://target.example",
+  "--api-key",
+  "k",
+  "--poll-interval",
+  "0",
+];
+
+/** A completed status body whose result carries `extra` beside its summary. */
+const completedWith = (extra, summary = CLEAN) => ({
+  status: "completed",
+  result: { summary, ...extra },
+});
+
+/** Routes for a scan that starts and then reports `statusBody`, in the order runCli matches them. */
+const routesFor = (statusBody, extra = {}) => ({
+  "/scan/status/": { body: statusBody },
+  "/scan": { body: { scanId: "s1" } },
+  ...extra,
+});
+
+const finding = (severity, suppressed = false) => ({
+  id: `${severity}-${suppressed ? "fp" : "open"}`,
+  severity,
+  ...(suppressed ? { suppressed: true } : {}),
+});
+
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
+// ── Incomplete scans: a pass that never looked at the page is not a pass ─
+
+test("incompleteOutcome: only a bot challenge or an unreachable page blocks by default", () => {
+  assert.deepEqual(BLOCKING_INCOMPLETE, ["bot-challenge", "page-unreachable"]);
+  assert.equal(
+    incompleteOutcome({ incomplete: ["bot-challenge"] }).blocking,
+    true,
+  );
+  assert.equal(
+    incompleteOutcome({ incomplete: ["dns", "page-unreachable"] }).blocking,
+    true,
+  );
+  const benign = incompleteOutcome({ incomplete: ["dns", "crawl-time-limit"] });
+  assert.equal(benign.blocking, false);
+  assert.equal(benign.areas.length, 2);
+  assert.equal(incompleteOutcome({}).blocking, false);
+  assert.equal(incompleteOutcome({ incomplete: "dns" }).areas.length, 0);
+});
+
+test("incompleteOutcome: --fail-on-incomplete widens it, --allow-incomplete opts out", () => {
+  assert.equal(
+    incompleteOutcome({ incomplete: ["dns"] }, { failOnIncomplete: true })
+      .blocking,
+    true,
+  );
+  assert.equal(
+    incompleteOutcome(
+      { incomplete: ["bot-challenge"] },
+      { allowIncomplete: true },
+    ).blocking,
+    false,
+  );
+});
+
+test("incompleteOutcome: an unknown slug is shown as itself, a known one in words", () => {
+  const { areas } = incompleteOutcome({
+    incomplete: ["dns", "brand-new-area", "dns"],
+  });
+  assert.deepEqual(areas, [
+    { slug: "dns", label: INCOMPLETE_LABELS.dns },
+    { slug: "brand-new-area", label: "brand-new-area" },
+  ]);
+});
+
+test("describeNotChecked: lists the areas, the page message and the redirect host", () => {
+  assert.deepEqual(describeNotChecked(incompleteOutcome({})), []);
+  const lines = describeNotChecked(
+    incompleteOutcome({
+      incomplete: ["page-unreachable"],
+      pageUnreachable: {
+        code: "cross_host_redirect",
+        message: "The site redirects elsewhere.",
+        redirectHost: "app.example.com",
+      },
+    }),
+  );
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /^Not checked: The page itself/);
+  assert.equal(lines[1], "Page unreachable: The site redirects elsewhere.");
+  assert.match(lines[2], /app\.example\.com$/);
+});
+
+test("cli: a scan that could not fetch the page exits EXIT.INCOMPLETE and says what was skipped", async () => {
+  const { code, stderr } = await runCli(SCAN_ARGS, {
+    routes: routesFor(
+      completedWith({
+        incomplete: ["page-unreachable", "dns"],
+        pageUnreachable: {
+          code: "cross_host_redirect",
+          message: "The site redirects to another host.",
+          redirectHost: "app.example.com",
+        },
+      }),
+    ),
+  });
+  assert.equal(code, EXIT.INCOMPLETE);
+  assert.equal(EXIT.INCOMPLETE, 3);
+  assert.match(stderr, /Not checked: The page itself/);
+  assert.match(stderr, /DNS records/);
+  assert.match(
+    stderr,
+    /Page unreachable: The site redirects to another host\./,
+  );
+  assert.match(stderr, /app\.example\.com/);
+  assert.match(stderr, /--allow-incomplete/);
+});
+
+test("cli: a bot challenge exits EXIT.INCOMPLETE, not 0 with zero findings", async () => {
+  const { code, stderr } = await runCli(SCAN_ARGS, {
+    routes: routesFor(completedWith({ incomplete: ["bot-challenge"] })),
+  });
+  assert.equal(code, EXIT.INCOMPLETE);
+  assert.match(stderr, /bot challenge/);
+});
+
+test("cli: --allow-incomplete passes the scan but still says what was not checked", async () => {
+  const { code, stderr } = await runCli([...SCAN_ARGS, "--allow-incomplete"], {
+    routes: routesFor(completedWith({ incomplete: ["bot-challenge"] })),
+  });
+  assert.equal(code, EXIT.OK);
+  assert.match(stderr, /Not checked: The page, its headers and its files/);
+});
+
+test("cli: an area that is not a blocking one is reported and passes, until --fail-on-incomplete", async () => {
+  const routes = routesFor(completedWith({ incomplete: ["dns"] }));
+  const plain = await runCli(SCAN_ARGS, { routes });
+  assert.equal(plain.code, EXIT.OK);
+  assert.match(plain.stderr, /Not checked: DNS records/);
+
+  const strict = await runCli([...SCAN_ARGS, "--fail-on-incomplete"], {
+    routes,
+  });
+  assert.equal(strict.code, EXIT.INCOMPLETE);
+});
+
+test("cli: a failed gate wins over an incomplete scan", async () => {
+  const { code, stderr } = await runCli(SCAN_ARGS, {
+    routes: routesFor(
+      completedWith(
+        { incomplete: ["bot-challenge"] },
+        { ...CLEAN, critical: 1, total: 1 },
+      ),
+    ),
+  });
+  assert.equal(code, EXIT.GATE_FAILED);
+  assert.match(stderr, /1 critical finding\(s\) exceed the max of 0/);
+  assert.match(stderr, /Not checked:/);
+});
+
+test("cli: --json keeps stdout one document when the scan was incomplete", async () => {
+  const { code, stdout, stderr } = await runCli([...SCAN_ARGS, "--json"], {
+    routes: routesFor(completedWith({ incomplete: ["page-unreachable"] })),
+  });
+  assert.equal(code, EXIT.INCOMPLETE);
+  assert.deepEqual(JSON.parse(stdout).incomplete, ["page-unreachable"]);
+  assert.match(stderr, /Not checked:/);
+});
+
+test("parseArgs: --allow-incomplete and --fail-on-incomplete contradict each other", () => {
+  assert.match(
+    parseArgs(["scan", "u", "--allow-incomplete", "--fail-on-incomplete"])
+      .error,
+    /cannot be used together/,
+  );
+  const o = parseArgs(["scan", "u", "--fail-on-incomplete"]);
+  assert.equal(o.failOnIncomplete, true);
+  assert.equal(o.allowIncomplete, false);
+});
+
+// ── Suppressed findings: the gate and the report must agree ─────────────
+
+test("gateCounts: findings marked a false positive are not counted, unless asked", () => {
+  const result = {
+    summary: { critical: 2, high: 1, total: 3 },
+    findings: [
+      finding("critical"),
+      finding("critical", true),
+      finding("high", true),
+      finding("low"),
+      { severity: "info" },
+      null,
+    ],
+  };
+  assert.deepEqual(gateCounts(result), {
+    critical: 1,
+    high: 0,
+    medium: 0,
+    low: 1,
+    total: 3,
+    suppressed: 2,
+  });
+  assert.deepEqual(gateCounts(result, { includeSuppressed: true }), {
+    critical: 2,
+    high: 1,
+    medium: 0,
+    low: 1,
+    total: 5,
+    suppressed: 0,
+  });
+});
+
+test("gateCounts: with no findings array it falls back to the summary", () => {
+  assert.deepEqual(gateCounts({ summary: { critical: 2, medium: 4 } }), {
+    critical: 2,
+    high: 0,
+    medium: 4,
+    low: 0,
+    total: 0,
+    suppressed: 0,
+  });
+});
+
+test("hasSummary: only an object counts", () => {
+  assert.equal(hasSummary({ summary: {} }), true);
+  for (const bad of [
+    null,
+    undefined,
+    {},
+    { summary: null },
+    { summary: [] },
+    { summary: "1" },
+    "x",
+  ]) {
+    assert.equal(hasSummary(bad), false, JSON.stringify(bad));
+  }
+});
+
+test("cli: a finding the owner marked a false positive does not fail the gate", async () => {
+  const body = completedWith(
+    { findings: [finding("critical", true), finding("low")] },
+    { ...CLEAN, critical: 1, low: 1, total: 2 },
+  );
+  const { code, stdout } = await runCli(SCAN_ARGS, {
+    routes: routesFor(body),
+  });
+  assert.equal(code, EXIT.OK);
+  assert.match(stdout, /critical=0 high=0 medium=0 low=1 total=1/);
+  assert.match(stdout, /1 suppressed by false-positive verdicts/);
+});
+
+test("cli: --include-suppressed counts them again", async () => {
+  const body = completedWith(
+    { findings: [finding("critical", true)] },
+    { ...CLEAN, critical: 1, total: 1 },
+  );
+  const { code, stderr } = await runCli(
+    [...SCAN_ARGS, "--include-suppressed"],
+    { routes: routesFor(body) },
+  );
+  assert.equal(code, EXIT.GATE_FAILED);
+  assert.match(stderr, /1 critical finding\(s\) exceed the max of 0/);
+});
+
+test("cli: a completed result with no summary object is an error, not zero findings", async () => {
+  const { code, stdout, stderr } = await runCli([...SCAN_ARGS, "--json"], {
+    routes: routesFor({ status: "completed", result: { findings: [] } }),
+  });
+  assert.equal(code, EXIT.ERROR);
+  assert.match(stderr, /no summary object/);
+  const doc = JSON.parse(stdout);
+  assert.equal(doc.ok, false);
+  assert.equal(doc.scanId, "s1");
+});
+
+test("cli: a completed status with no result is reported as that, not as a timeout", async () => {
+  const { code, stderr } = await runCli(SCAN_ARGS, {
+    routes: routesFor({ status: "completed" }),
+  });
+  assert.equal(code, EXIT.ERROR);
+  assert.match(stderr, /no summary object/);
+  assert.doesNotMatch(stderr, /Timed out/);
+});
+
+// ── Output hygiene ──────────────────────────────────────────────────────
+
+test("cli: --report json to stdout is a document that parses", async () => {
+  const { code, stdout, stderr } = await runCli(
+    [...SCAN_ARGS, "--report", "json"],
+    {
+      routes: routesFor(completedWith({}), {
+        "/history/": { body: '{"scan":{"id":1}}' },
+      }),
+    },
+  );
+  assert.equal(code, EXIT.OK);
+  assert.deepEqual(JSON.parse(stdout), { scan: { id: 1 } });
+  assert.match(stderr, /Started scan s1/);
+  assert.match(stderr, /Scan complete:/);
+});
+
+test("cli: a report that already ends in a newline does not get a second one", async () => {
+  const { stdout } = await runCli([...SCAN_ARGS, "--report", "md"], {
+    routes: routesFor(completedWith({}), {
+      "/history/": { body: "# Scan report\n" },
+    }),
+  });
+  assert.equal(stdout, "# Scan report\n");
+});
+
+// ── The report step never overrides the gate ────────────────────────────
+
+const FAILING_GATE = completedWith({}, { ...CLEAN, critical: 2, total: 2 });
+
+test("cli: a report the API refuses does not turn a failed gate into exit 2", async () => {
+  for (const status of [403, 429, 500]) {
+    const { code, stderr } = await runCli(
+      [
+        ...SCAN_ARGS,
+        "--report",
+        "sarif",
+        "--out",
+        path.join(tmpdir(), "x.sarif"),
+      ],
+      {
+        routes: routesFor(FAILING_GATE, {
+          "/history/": { status, body: { error: "nope" } },
+        }),
+      },
+    );
+    assert.equal(code, EXIT.GATE_FAILED, `report HTTP ${status}`);
+    assert.match(
+      stderr,
+      new RegExp(`Could not download the sarif report \\(HTTP ${status}\\)`),
+    );
+    assert.match(stderr, /2 critical finding\(s\)/);
+  }
+});
+
+test("cli: a report body that is cut off is recorded, and the gate still decides", async () => {
+  const truncated = (req, res) => {
+    if (req.url.startsWith("/history/")) {
+      res.writeHead(200, { "Content-Length": "500" });
+      res.write("# partial");
+      setTimeout(() => res.destroy(), 20);
+      return;
+    }
+    res.writeHead(200, JSON_HEADERS);
+    res.end(
+      req.url.startsWith("/scan/status/")
+        ? JSON.stringify(FAILING_GATE)
+        : JSON.stringify({ scanId: "s1" }),
+    );
+  };
+  const { code, stderr } = await runCliWithHandler(
+    [...SCAN_ARGS, "--report", "md"],
+    truncated,
+  );
+  assert.equal(code, EXIT.GATE_FAILED);
+  assert.match(stderr, /Could not download the md report/);
+});
+
+test("cli: --json plus a failed report is still one document on stdout", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vulnradar-cli-"));
+  try {
+    const { code, stdout, stderr } = await runCli(
+      [
+        ...SCAN_ARGS,
+        "--json",
+        "--report",
+        "md",
+        "--out",
+        path.join(dir, "r.md"),
+      ],
+      {
+        routes: routesFor(completedWith({}), {
+          "/history/": { status: 500, body: { error: "boom" } },
+        }),
+      },
+    );
+    assert.equal(code, EXIT.ERROR);
+    const doc = JSON.parse(stdout);
+    assert.equal(doc.ok, undefined, "the raw result, not a failure document");
+    assert.deepEqual(doc.summary, CLEAN);
+    assert.match(stderr, /Could not download the md report \(HTTP 500\)/);
+    assert.equal(existsSync(path.join(dir, "r.md")), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("cli: a report that cannot be written fails the run, but not a failed gate", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vulnradar-cli-"));
+  try {
+    // The path is a directory: its folder exists, so the run starts, and the
+    // write fails only once there is a report to put there.
+    const routes = (body) =>
+      routesFor(body, { "/history/": { body: "# report" } });
+    const clean = await runCli([...SCAN_ARGS, "--report", "md", "--out", dir], {
+      routes: routes(completedWith({})),
+    });
+    assert.equal(clean.code, EXIT.ERROR);
+    assert.match(clean.stderr, /Could not write/);
+
+    const failing = await runCli(
+      [...SCAN_ARGS, "--report", "md", "--out", dir],
+      { routes: routes(FAILING_GATE) },
+    );
+    assert.equal(failing.code, EXIT.GATE_FAILED);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("cli: an incomplete scan outranks a report failure", async () => {
+  const { code } = await runCli(
+    [
+      ...SCAN_ARGS,
+      "--report",
+      "sarif",
+      "--out",
+      path.join(tmpdir(), "y.sarif"),
+    ],
+    {
+      routes: routesFor(completedWith({ incomplete: ["bot-challenge"] }), {
+        "/history/": { status: 500, body: {} },
+      }),
+    },
+  );
+  assert.equal(code, EXIT.INCOMPLETE);
+});
+
+test("cli: an unexpected error in --json mode is still a failure document", async () => {
+  // The create response is cut off mid-body, so reading it throws outside any
+  // try block and lands in the last-resort handler.
+  const { code, stdout, stderr } = await runCliWithHandler(
+    ["scan", "https://target.example", "--api-key", "k", "--json"],
+    (req, res) => {
+      res.writeHead(200, { ...JSON_HEADERS, "Content-Length": "200" });
+      res.write('{"scanId":');
+      setTimeout(() => res.destroy(), 20);
+    },
+  );
+  assert.equal(code, EXIT.ERROR);
+  assert.match(stderr, /Unexpected error/);
+  const doc = JSON.parse(stdout);
+  assert.equal(doc.ok, false);
+  assert.match(doc.error, /Unexpected error/);
+});
+
+// ── failureKind and the --json failure document ─────────────────────────
+
+test("cli: a failed scan names its kind in the message and the --json document", async () => {
+  const body = {
+    status: "failed",
+    error: "Could not reach the target.",
+    failureKind: "target_unreachable",
+  };
+  const human = await runCli(SCAN_ARGS, { routes: routesFor(body) });
+  assert.equal(human.code, EXIT.ERROR);
+  assert.match(
+    human.stderr,
+    /Scan failed: Could not reach the target\. \[target_unreachable\]/,
+  );
+
+  const machine = await runCli([...SCAN_ARGS, "--json"], {
+    routes: routesFor(body),
+  });
+  const doc = JSON.parse(machine.stdout);
+  assert.equal(doc.ok, false);
+  assert.equal(doc.failureKind, "target_unreachable");
+  assert.equal(doc.scanId, "s1");
+});
+
+test("cli: a failed scan from a server that sends no kind prints none", async () => {
+  const { stderr, stdout } = await runCli([...SCAN_ARGS, "--json"], {
+    routes: routesFor({ status: "failed", error: "DNS lookup failed" }),
+  });
+  assert.match(stderr, /Scan failed: DNS lookup failed\n/);
+  assert.equal("failureKind" in JSON.parse(stdout), false);
+});
+
+test("cli: the API's statusCode on a refused start reaches the --json document", async () => {
+  const { code, stdout } = await runCli(
+    ["scan", "https://t.example", "--api-key", "k", "--json"],
+    {
+      routes: {
+        "/scan": {
+          status: 403,
+          body: {
+            error: "Verify this domain first.",
+            statusCode: "DOMAIN_NOT_VERIFIED",
+          },
+        },
+      },
+    },
+  );
+  assert.equal(code, EXIT.ERROR);
+  const doc = JSON.parse(stdout);
+  assert.equal(doc.status, 403);
+  assert.equal(doc.statusCode, "DOMAIN_NOT_VERIFIED");
+});
+
+// ── 429: wait for a slot, never for a spent quota ───────────────────────
+
+test("classifyRateLimit: tells a busy slot, a spent quota and a short limit apart", () => {
+  const headers = (map) => ({ get: (k) => map[k.toLowerCase()] ?? null });
+  assert.equal(
+    classifyRateLimit(headers({}), { statusCode: "CONCURRENT_SCAN_LIMIT" }),
+    "concurrent",
+  );
+  assert.equal(
+    classifyRateLimit(headers({ "x-ratelimit-policy": "daily" }), {}),
+    "daily",
+  );
+  assert.equal(
+    classifyRateLimit(headers({}), { resets_at: "2026-01-02T00:00:00Z" }),
+    "daily",
+  );
+  assert.equal(classifyRateLimit(headers({}), { error: "slow down" }), "other");
+  assert.equal(classifyRateLimit(headers({}), null), "other");
+});
+
+test("createRetryPlan: waiting for a slot steps 5, 10, 20 and stops inside its cap", () => {
+  assert.deepEqual(SLOT_BACKOFF_SECONDS, [5, 10, 20]);
+  const waits = [];
+  let waited = 0;
+  for (let n = 0; ; n++) {
+    const plan = createRetryPlan({
+      kind: "concurrent",
+      retryAfter: null,
+      concurrentRetries: n,
+      otherRetries: 0,
+      slotWaitedSeconds: waited,
+      secondsLeft: 1,
+    });
+    if (!plan.retry) {
+      assert.match(plan.note, /no free scan slot/);
+      break;
+    }
+    assert.equal(plan.extendsBudget, true);
+    waits.push(plan.wait);
+    waited += plan.wait;
+  }
+  assert.deepEqual(waits.slice(0, 4), [5, 10, 20, 20]);
+  assert.ok(waited <= SLOT_WAIT_CAP_SECONDS, `${waited}s waited`);
+});
+
+test("createRetryPlan: a Retry-After is honoured for a slot, floored at a second, and capped", () => {
+  const base = {
+    kind: "concurrent",
+    concurrentRetries: 0,
+    otherRetries: 0,
+    slotWaitedSeconds: 0,
+    secondsLeft: 1,
+  };
+  assert.equal(createRetryPlan({ ...base, retryAfter: 15 }).wait, 15);
+  assert.equal(createRetryPlan({ ...base, retryAfter: 0 }).wait, 1);
+  assert.equal(createRetryPlan({ ...base, retryAfter: 600 }).retry, false);
+});
+
+test("createRetryPlan: a spent daily quota is never retried, whatever Retry-After says", () => {
+  const plan = createRetryPlan({
+    kind: "daily",
+    retryAfter: 0,
+    concurrentRetries: 0,
+    otherRetries: 0,
+    slotWaitedSeconds: 0,
+    secondsLeft: 1000,
+  });
+  assert.equal(plan.retry, false);
+  assert.match(plan.note, /daily scan quota/);
+});
+
+test("createRetryPlan: any other 429 needs a Retry-After that fits, at most three times", () => {
+  const base = {
+    kind: "other",
+    concurrentRetries: 0,
+    otherRetries: 0,
+    slotWaitedSeconds: 0,
+    secondsLeft: 100,
+  };
+  assert.equal(createRetryPlan({ ...base, retryAfter: 10 }).retry, true);
+  assert.equal(createRetryPlan({ ...base, retryAfter: null }).retry, false);
+  assert.equal(createRetryPlan({ ...base, retryAfter: 100 }).retry, false);
+  assert.equal(
+    createRetryPlan({ ...base, retryAfter: 1, otherRetries: 3 }).retry,
+    false,
+  );
+});
+
+test("cli: a busy slot is waited out even without a Retry-After, and the wait is not spent from --timeout", async () => {
+  // --timeout 3 is shorter than the first backoff step (5s). If the wait came
+  // out of that budget the scan would be reported as a timeout before it
+  // started.
+  const started = Date.now();
+  const { code, requests } = await runCli([...SCAN_ARGS, "--timeout", "3"], {
+    routes: routesFor(completedWith({}), {
+      "/scan": [
+        {
+          status: 429,
+          body: {
+            error: "You already have 1 scan running.",
+            statusCode: "CONCURRENT_SCAN_LIMIT",
+          },
+        },
+        { body: { scanId: "s2" } },
+      ],
+    }),
+  });
+  assert.equal(code, EXIT.OK);
+  assert.equal(requests.filter((r) => r.method === "POST").length, 2);
+  assert.ok(
+    Date.now() - started >= 4500,
+    "it waited for the first backoff step",
+  );
+});
+
+test("cli: a busy slot honours the Retry-After the server sends", async () => {
+  const { code, stdout } = await runCli(SCAN_ARGS, {
+    routes: routesFor(completedWith({}), {
+      "/scan": [
+        {
+          status: 429,
+          body: { error: "busy", statusCode: "CONCURRENT_SCAN_LIMIT" },
+          headers: { "Retry-After": "1" },
+        },
+        { body: { scanId: "s2" } },
+      ],
+    }),
+  });
+  assert.equal(code, EXIT.OK);
+  assert.match(
+    stdout,
+    /Another scan is already running on this account; retrying in 1s/,
+  );
+});
+
+test("cli: a spent daily quota is reported and not retried", async () => {
+  const { code, stderr, requests } = await runCli(SCAN_ARGS, {
+    routes: {
+      "/scan": {
+        status: 429,
+        body: {
+          error: "Rate limit exceeded.",
+          resets_at: "2026-01-02T00:00:00Z",
+        },
+        headers: { "X-RateLimit-Policy": "daily", "Retry-After": "0" },
+      },
+    },
+  });
+  assert.equal(code, EXIT.ERROR);
+  assert.equal(requests.length, 1, "no second attempt");
+  assert.match(stderr, /Failed to start scan \(HTTP 429\)/);
+  assert.match(stderr, /daily scan quota is spent/);
+});
+
+test("cli: a 429 with no Retry-After and no busy-slot code is not retried", async () => {
+  const { code, requests } = await runCli(SCAN_ARGS, {
+    routes: { "/scan": { status: 429, body: { error: "slow down" } } },
+  });
+  assert.equal(code, EXIT.ERROR);
+  assert.equal(requests.length, 1);
+});
+
+// ── Arguments ───────────────────────────────────────────────────────────
+
+test("parseArgs: --max-critical and --max-high reject a negative, --max-medium keeps -1", () => {
+  for (const flag of ["--max-critical", "--max-high"]) {
+    assert.match(
+      parseArgs(["scan", "u", flag, "-1"]).error,
+      new RegExp(`${flag} must be at least 0, got -1`),
+    );
+    assert.equal(parseArgs(["scan", "u", flag, "0"]).error, undefined);
+  }
+  const medium = parseArgs(["scan", "u", "--max-medium", "-1"]);
+  assert.equal(medium.error, undefined);
+  assert.equal(medium.maxMedium, -1);
+});
+
+test("insecureApiBase: plain http is only fine to this machine", () => {
+  assert.equal(insecureApiBase("https://vulnradar.dev/api/v3"), null);
+  for (const loopback of [
+    "http://localhost:3000/api/v3",
+    "http://127.0.0.1:3000/api/v3",
+    "http://127.1.2.3/api/v3",
+    "http://[::1]:3000/api/v3",
+    "http://app.localhost/api/v3",
+  ]) {
+    assert.equal(insecureApiBase(loopback), null, loopback);
+  }
+  assert.equal(
+    insecureApiBase("http://scan.internal:8080/api/v3"),
+    "scan.internal:8080",
+  );
+  assert.equal(insecureApiBase("not a url"), null);
+});
+
+test("parseArgs: a plain http API base is refused unless it is loopback or --allow-insecure", () => {
+  const refused = parseArgs([
+    "scan",
+    "u",
+    "--api-base",
+    "http://scan.internal/api/v3",
+  ]);
+  assert.match(refused.error, /plain http:\/\/ to scan\.internal/);
+  assert.match(refused.error, /--allow-insecure/);
+
+  assert.equal(
+    parseArgs([
+      "scan",
+      "u",
+      "--api-base",
+      "http://scan.internal/api/v3",
+      "--allow-insecure",
+    ]).error,
+    undefined,
+  );
+  assert.equal(
+    parseArgs(["scan", "u", "--api-base", "http://localhost:3000/api/v3"])
+      .error,
+    undefined,
+  );
+  // Help and version send nothing, so a bad base must not block them.
+  assert.equal(
+    parseArgs(["--help", "--api-base", "http://scan.internal/api/v3"]).error,
+    undefined,
+  );
+});
+
+test("cli: a plain http API base to another host exits before sending the key anywhere", async () => {
+  const result = await new Promise((resolve, reject) => {
+    execFile(
+      process.execPath,
+      [
+        CLI,
+        "scan",
+        "https://x.example",
+        "--api-key",
+        "k",
+        "--api-base",
+        "http://scan.internal/api/v3",
+      ],
+      (err, stdout, stderr) => {
+        if (err && typeof err.code !== "number") return reject(err);
+        resolve({ code: err ? err.code : 0, stderr });
+      },
+    );
+  });
+  assert.equal(result.code, EXIT.ERROR);
+  assert.match(result.stderr, /plain http:\/\//);
+});
+
+test("cli: a negative threshold is refused before any request is made", async () => {
+  const { code, stderr, requests } = await runCli(
+    [...SCAN_ARGS, "--max-high", "-1"],
+    { routes: routesFor(completedWith({})) },
+  );
+  assert.equal(code, EXIT.ERROR);
+  assert.match(stderr, /--max-high must be at least 0/);
+  assert.equal(requests.length, 0);
+});
+
+test("cli: --out creates its folder before the scan, and writes the report into it", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vulnradar-cli-"));
+  const out = path.join(dir, "nested", "missing", "report.md");
+  try {
+    const { code } = await runCli(
+      [...SCAN_ARGS, "--report", "md", "--out", out],
+      {
+        routes: routesFor(completedWith({}), {
+          "/history/": { body: "# Scan report" },
+        }),
+      },
+    );
+    assert.equal(code, EXIT.OK);
+    assert.equal(readFileSync(out, "utf8"), "# Scan report");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("cli: an --out folder that cannot be created is refused before the scan is started", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vulnradar-cli-"));
+  try {
+    const blocker = path.join(dir, "blocker");
+    writeFileSync(blocker, "a file where a folder is needed");
+    const { code, stderr, requests } = await runCli(
+      [
+        ...SCAN_ARGS,
+        "--report",
+        "md",
+        "--out",
+        path.join(blocker, "sub", "r.md"),
+      ],
+      { routes: routesFor(completedWith({})) },
+    );
+    assert.equal(code, EXIT.ERROR);
+    assert.match(stderr, /Could not create the folder/);
+    assert.equal(requests.length, 0, "no scan was started and charged");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── Polling ─────────────────────────────────────────────────────────────
+
+test("describeProgress: names the category and the count, and nothing when there is none", () => {
+  assert.equal(
+    describeProgress({
+      currentCategory: "headers",
+      categoriesCompleted: 1,
+      categoriesTotal: 5,
+    }),
+    "Scanning: headers (1/5)",
+  );
+  assert.equal(describeProgress({ currentCategory: "ssl" }), "Scanning: ssl");
+  assert.equal(describeProgress({ status: "running" }), null);
+});
+
+/** A poll sequence: the nth status request gets entry n, the last one repeating. */
+function pollingHandler(sequence, hits = { polls: 0 }) {
+  return (req, res) => {
+    if (req.url.startsWith("/scan/status/")) {
+      const entry = sequence[Math.min(hits.polls, sequence.length - 1)];
+      hits.polls += 1;
+      res.writeHead(entry.status ?? 200, JSON_HEADERS);
+      res.end(
+        typeof entry.body === "string"
+          ? entry.body
+          : JSON.stringify(entry.body),
+      );
+      return;
+    }
+    res.writeHead(200, JSON_HEADERS);
+    res.end(JSON.stringify({ scanId: "s1" }));
+  };
+}
+
+test("cli: a progress line appears when the category moves, not on every poll", async () => {
+  const running = (category, done) => ({
+    body: {
+      status: "running",
+      currentCategory: category,
+      categoriesCompleted: done,
+      categoriesTotal: 5,
+    },
+  });
+  const { code, stdout } = await runCliWithHandler(
+    SCAN_ARGS,
+    pollingHandler([
+      running("headers", 1),
+      running("headers", 1),
+      running("ssl", 2),
+      { body: completedWith({}) },
+    ]),
+  );
+  assert.equal(code, EXIT.OK);
+  assert.equal(stdout.match(/Scanning: headers \(1\/5\)/g)?.length, 1);
+  assert.equal(stdout.match(/Scanning: ssl \(2\/5\)/g)?.length, 1);
+});
+
+test("cli: progress goes to stderr under --json, so stdout stays one document", async () => {
+  const { stdout, stderr } = await runCliWithHandler(
+    [...SCAN_ARGS, "--json"],
+    pollingHandler([
+      {
+        body: {
+          status: "running",
+          currentCategory: "dns",
+          categoriesCompleted: 0,
+          categoriesTotal: 3,
+        },
+      },
+      { body: completedWith({}) },
+    ]),
+  );
+  assert.match(stderr, /Scanning: dns \(0\/3\)/);
+  assert.deepEqual(JSON.parse(stdout).summary, CLEAN);
+});
+
+test("cli: one last poll after the deadline finds a scan that finished meanwhile, and sleeping never overshoots it", async () => {
+  const hits = { polls: 0 };
+  const started = Date.now();
+  const { code } = await runCliWithHandler(
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--timeout",
+      "1",
+      "--poll-interval",
+      "5",
+    ],
+    pollingHandler(
+      [{ body: { status: "running" } }, { body: completedWith({}) }],
+      hits,
+    ),
+  );
+  assert.equal(code, EXIT.OK);
+  assert.equal(hits.polls, 2);
+  // The 5s interval was clamped to the 1s that was left.
+  assert.ok(Date.now() - started < 4500, "slept past the deadline");
+});
+
+test("cli: a timeout says the scan is still running, unless --cancel-on-timeout stopped it", async () => {
+  const deletes = [];
+  const handler = (req, res) => {
+    if (req.method === "DELETE") {
+      deletes.push(req.url);
+      res.writeHead(200, JSON_HEADERS);
+      res.end('{"status":"failed","cancelled":true}');
+      return;
+    }
+    pollingHandler([{ body: { status: "running" } }])(req, res);
+  };
+  const args = [
+    "scan",
+    "https://target.example",
+    "--api-key",
+    "k",
+    "--timeout",
+    "1",
+    "--poll-interval",
+    "1",
+  ];
+
+  const left = await runCliWithHandler(args, handler);
+  assert.equal(left.code, EXIT.ERROR);
+  assert.match(left.stderr, /Timed out after 1s waiting for scan s1/);
+  assert.match(left.stderr, /still running on the server/);
+  assert.deepEqual(deletes, []);
+
+  const cancelled = await runCliWithHandler(
+    [...args, "--cancel-on-timeout"],
+    handler,
+  );
+  assert.equal(cancelled.code, EXIT.ERROR);
+  assert.match(cancelled.stderr, /Cancelled scan s1/);
+  assert.deepEqual(deletes, ["/scan/status/s1"]);
+});
+
+test("cli: the API's 'Scan not found' 404 ends the wait at once", async () => {
+  const hits = { polls: 0 };
+  const { code, stderr } = await runCliWithHandler(
+    SCAN_ARGS,
+    pollingHandler([{ status: 404, body: { error: "Scan not found" } }], hits),
+  );
+  assert.equal(code, EXIT.ERROR);
+  assert.equal(hits.polls, 1, "not retried");
+  assert.match(stderr, /Scan s1 not found \(deleted while polling\?\)/);
+});
+
+test("cli: a bare 404 from a gateway is still retried", async () => {
+  const hits = { polls: 0 };
+  const { code } = await runCliWithHandler(
+    SCAN_ARGS,
+    pollingHandler(
+      [
+        { status: 404, body: "<html>not found</html>" },
+        { body: completedWith({}) },
+      ],
+      hits,
+    ),
+  );
+  assert.equal(code, EXIT.OK);
+  assert.equal(hits.polls, 2);
+});
+
+test("cli: a poll answered with a page that is not JSON is described, with a snippet", async () => {
+  const { code, stderr } = await runCliWithHandler(
+    SCAN_ARGS,
+    pollingHandler([{ body: "<html>captive portal</html>" }]),
+  );
+  assert.equal(code, EXIT.ERROR);
+  assert.match(stderr, /Lost contact with the API while polling scan s1/);
+  assert.match(stderr, /not JSON: <html>captive portal<\/html>/);
+});
+
+// ── Cancelling on a signal ──────────────────────────────────────────────
+
+test("cancelScan: a DELETE that works, a scan already finished, a refusal and an unreachable server", async () => {
+  const statuses = [200, 409, 404, 500];
+  const seen = [];
+  const server = createServer((req, res) => {
+    seen.push([req.method, req.url, req.headers.authorization]);
+    res.writeHead(statuses[seen.length - 1], JSON_HEADERS);
+    res.end("{}");
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const headers = { Authorization: "Bearer k" };
+  try {
+    const ok = await cancelScan(base, "7", headers);
+    assert.deepEqual([ok.settled, ok.message], [true, "Cancelled scan 7."]);
+    assert.equal((await cancelScan(base, "7", headers)).settled, true);
+    assert.equal((await cancelScan(base, "7", headers)).settled, true);
+    const refused = await cancelScan(base, "7", headers);
+    assert.equal(refused.settled, false);
+    assert.match(refused.message, /HTTP 500/);
+    assert.deepEqual(seen[0], ["DELETE", "/scan/status/7", "Bearer k"]);
+  } finally {
+    server.close();
+  }
+  const gone = await cancelScan(base, "7", headers, 500);
+  assert.equal(gone.settled, false);
+  assert.match(gone.message, /Could not cancel scan 7/);
+});
+
+test("cancelScan: a server that never answers is given up on after the timeout", async () => {
+  const server = createServer(() => {
+    /* accept, never respond */
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const started = Date.now();
+    const out = await cancelScan(
+      `http://127.0.0.1:${server.address().port}`,
+      "7",
+      {},
+      150,
+    );
+    assert.equal(out.settled, false);
+    assert.match(out.message, /timed out/);
+    assert.ok(Date.now() - started < 3000);
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+  }
+});
+
+/**
+ * Start the CLI against a handler and hand back the live child, for the tests
+ * that need to signal it mid-run.
+ */
+function spawnCli(args, handler) {
+  return new Promise((resolve) => {
+    const server = createServer(handler);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      const childEnv = { ...process.env };
+      delete childEnv.VULNRADAR_TOKEN;
+      delete childEnv.VULNRADAR_API_BASE;
+      const child = spawn(
+        process.execPath,
+        [CLI, ...args, "--api-base", `http://127.0.0.1:${port}`],
+        { env: childEnv },
+      );
+      const out = { stdout: "", stderr: "" };
+      child.stdout.on("data", (d) => (out.stdout += d));
+      child.stderr.on("data", (d) => (out.stderr += d));
+      const done = new Promise((r) =>
+        child.on("close", (code) => {
+          server.closeAllConnections?.();
+          server.close();
+          r({ code, ...out });
+        }),
+      );
+      resolve({ child, done, out });
+    });
+  });
+}
+
+async function waitFor(predicate, ms = 10_000) {
+  const until = Date.now() + ms;
+  while (!predicate()) {
+    if (Date.now() > until) throw new Error("timed out waiting for the CLI");
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
+// Windows has no POSIX signals to deliver to a child: kill() ends it without
+// running any handler, so there is nothing to observe there.
+for (const [signal, code] of [
+  ["SIGTERM", EXIT.SIGTERM],
+  ["SIGINT", EXIT.SIGINT],
+]) {
+  test(
+    `cli: ${signal} cancels the scan it started and exits ${code}`,
+    { skip: process.platform === "win32" },
+    async () => {
+      const deletes = [];
+      const { child, done, out } = await spawnCli(
+        [...SCAN_ARGS, "--poll-interval", "1"],
+        (req, res) => {
+          if (req.method === "DELETE") {
+            deletes.push(req.url);
+            res.writeHead(200, JSON_HEADERS);
+            res.end('{"status":"failed","cancelled":true}');
+            return;
+          }
+          pollingHandler([{ body: { status: "running" } }])(req, res);
+        },
+      );
+      await waitFor(() => out.stdout.includes("Started scan s1"));
+      child.kill(signal);
+      const result = await done;
+      assert.equal(result.code, code);
+      assert.deepEqual(deletes, ["/scan/status/s1"]);
+      assert.match(
+        result.stderr,
+        new RegExp(`Received ${signal}, cancelling scan s1`),
+      );
+      assert.match(result.stderr, /Cancelled scan s1/);
+    },
+  );
+}
+
+test(
+  "cli: --json prints a failure document when it is interrupted",
+  { skip: process.platform === "win32" },
+  async () => {
+    const { child, done, out } = await spawnCli(
+      [...SCAN_ARGS, "--poll-interval", "1", "--json"],
+      (req, res) => {
+        if (req.method === "DELETE") {
+          res.writeHead(409, JSON_HEADERS);
+          res.end("{}");
+          return;
+        }
+        pollingHandler([{ body: { status: "running" } }])(req, res);
+      },
+    );
+    await waitFor(() => out.stderr.includes("Started scan s1"));
+    child.kill("SIGTERM");
+    const result = await done;
+    assert.equal(result.code, EXIT.SIGTERM);
+    const doc = JSON.parse(result.stdout);
+    assert.equal(doc.ok, false);
+    assert.equal(doc.signal, "SIGTERM");
+    assert.equal(doc.scanId, "s1");
+  },
+);

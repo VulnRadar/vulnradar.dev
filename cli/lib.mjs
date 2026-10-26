@@ -5,18 +5,16 @@
 /**
  * Exit codes.
  *
- * The CLI's entire reason to exist in CI is its exit code, and it had two:
- * 0 for a clean gate and 1 for everything else. "Everything else" covered a
- * real threshold breach, an expired API key, a network timeout, a 5xx from the
- * API, a malformed response, and a typo in a flag - so a pipeline that treats
- * a non-zero exit as "block the merge, we found a vulnerability" could not
- * tell that apart from "VulnRadar was briefly unreachable". The only way to
- * distinguish them was to parse stdout for an `ok:false` key that nothing
- * documented and that --json mode alone produced.
+ * The CLI's entire reason to exist in CI is its exit code, so each outcome a
+ * pipeline might want to treat differently gets its own: a real finding, a
+ * tool that could not run, and a scan that ran but never looked at the target.
+ * A script that tests for "non-zero" is unaffected by how many there are, and
+ * one that wants the gate result, or wants to retry only on a tool failure,
+ * can ask for exactly that.
  *
- * Splitting them is a behaviour change, and a deliberate one for a major
- * release: a script testing for non-zero is unaffected, and a script that
- * wants "the gate failed, specifically" can now ask for it.
+ * 130 and 143 are the shell convention for "killed by SIGINT" and "killed by
+ * SIGTERM" (128 plus the signal number), used when an interrupted run has
+ * cancelled the scan it started.
  */
 export const EXIT = {
   /** Every finding count is at or under its threshold. */
@@ -25,28 +23,91 @@ export const EXIT = {
   GATE_FAILED: 1,
   /** The tool could not produce a result: auth, network, API, bad arguments. */
   ERROR: 2,
+  /**
+   * The scan ran, but the target was not checked: the site showed the scanner
+   * a bot challenge, or the page could not be fetched. Zero findings from such
+   * a scan means nothing, so a gate that passed it would be a false negative.
+   */
+  INCOMPLETE: 3,
+  /** Interrupted by SIGINT (Ctrl-C). */
+  SIGINT: 130,
+  /** Interrupted by SIGTERM (a CI runner cancelling the job). */
+  SIGTERM: 143,
 };
 
 /**
- * What `--report <format>` accepts, mapped to the extension a saved file gets.
+ * What `--report <format>` accepts.
  *
  * The same list the server has in app/api/v3/history/[id]/report/route.ts,
- * which has served SARIF, Markdown, CSV, the compliance crosswalk, PDF and
- * JSON since v3: the CLI was the one client that could not ask for any of
- * them, so a pipeline that wanted the SARIF it uploads to GitHub Code
- * Scanning had to curl the API itself with a second copy of the token.
- *
+ * which serves SARIF, Markdown, CSV, the compliance crosswalk, PDF and JSON.
  * `binary` marks the format that is not text and so cannot go to stdout.
  */
 export const REPORT_FORMATS = {
-  json: { ext: "json" },
-  sarif: { ext: "sarif" },
-  md: { ext: "md" },
-  markdown: { ext: "md" },
-  compliance: { ext: "md" },
-  csv: { ext: "csv" },
-  pdf: { ext: "pdf", binary: true },
+  json: {},
+  sarif: {},
+  md: {},
+  markdown: {},
+  compliance: {},
+  csv: {},
+  pdf: { binary: true },
 };
+
+/**
+ * The areas `result.incomplete` can list, in the words the dashboard uses.
+ *
+ * The CLI ships alone (no dependencies, nothing imported from the app), so the
+ * map is a copy of lib/scanner/incomplete-labels.ts. tests/repo/
+ * scan-gate-parity.test.ts holds its slugs equal to the app's, so a new area
+ * cannot start appearing here as a raw slug. An unknown slug is still printed
+ * as itself rather than dropped: a shorter list would read as a more complete
+ * scan than it was.
+ */
+export const INCOMPLETE_LABELS = {
+  dns: "DNS records",
+  tls: "TLS and certificate checks",
+  "live-fetch": "Live page fetch",
+  reputation: "Domain reputation lookups",
+  "osv-libraries": "The live vulnerable-library lookup",
+  "active-probes": "Active probes",
+  "crawl-time-limit": "Some crawled pages (the crawl ran out of time)",
+  "crawl-quota-limit": "Some crawled pages (your daily scan limit ran out)",
+  "authenticated-session": "The signed-in view of this page",
+  "page-checks": "Some page checks",
+  "bot-challenge":
+    "The page, its headers and its files: the site showed the scanner a bot challenge instead",
+  "page-unreachable":
+    "The page itself: the scanner could not fetch it, so only the checks that never read a page ran",
+};
+
+/**
+ * The two areas whose absence means the target was never looked at. Every
+ * other area is a part of a scan that did run, so it is reported but does not
+ * fail the build unless `--fail-on-incomplete` asks for that.
+ */
+export const BLOCKING_INCOMPLETE = ["bot-challenge", "page-unreachable"];
+
+/** The `statusCode` the API puts on a 429 for "you already have a scan running". */
+export const CONCURRENT_SCAN_LIMIT = "CONCURRENT_SCAN_LIMIT";
+
+/**
+ * How long to wait for a scan slot when the 429 carries no Retry-After, which
+ * is the usual case: the server does not know when the running scan will end.
+ * The last step repeats until the cap below is spent.
+ */
+export const SLOT_BACKOFF_SECONDS = [5, 10, 20];
+
+/**
+ * The most time, in total, that waiting for a scan slot may take. It has its
+ * own budget so a pipeline queued behind another run does not spend the
+ * `--timeout` it set for the scan itself.
+ */
+export const SLOT_WAIT_CAP_SECONDS = 120;
+
+/** How many times a 429 that is neither a spent quota nor a busy slot is retried. */
+export const MAX_RETRY_AFTER_RETRIES = 3;
+
+/** How long a cancel request may take. A CI runner gives a cancelled job seconds. */
+export const CANCEL_TIMEOUT_MS = 3000;
 
 export const DEFAULTS = {
   apiBase: "https://vulnradar.dev/api/v3",
@@ -77,8 +138,16 @@ export const DEFAULTS = {
   out: null,
   /** Mark accepted-risk and won't-fix findings suppressed in the report. */
   applyTriage: false,
-  /** Keep findings the owner marked a false positive in the report. */
+  /** Count findings the owner marked a false positive, in the gate and the report. */
   includeSuppressed: false,
+  /** Do not exit 3 for a scan that was blocked or could not reach the page. */
+  allowIncomplete: false,
+  /** Exit 3 for any area that was not checked, not only the two blocking ones. */
+  failOnIncomplete: false,
+  /** Cancel the scan on the server when --timeout runs out. */
+  cancelOnTimeout: false,
+  /** Allow a plain http:// API base to a host that is not this machine. */
+  allowInsecure: false,
 };
 
 /**
@@ -94,11 +163,42 @@ export function reportRequestUrl(apiBase, scanId, opts) {
   return `${apiBase}/history/${scanId}/report?${params}`;
 }
 
+/** Whether a URL hostname is this machine, where plain http is not a leak. */
+function isLoopbackHost(hostname) {
+  const host = hostname.toLowerCase();
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "[::1]" ||
+    /^127(\.\d{1,3}){3}$/.test(host)
+  );
+}
+
+/**
+ * The host of an API base that would send the Bearer key over plain http to
+ * somewhere other than this machine, or null when the base is fine.
+ *
+ * The key is a long-lived credential, so a base typed or exported with
+ * `http://` (an easy slip for a self-hosted instance behind a proxy) must not
+ * quietly carry it across a network. A base that is not a URL at all is left
+ * for fetch to reject: it cannot send anything.
+ */
+export function insecureApiBase(apiBase) {
+  let url;
+  try {
+    url = new URL(apiBase);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:") return null;
+  return isLoopbackHost(url.hostname) ? null : url.host;
+}
+
 /**
  * Parse `vulnradar scan <url> [flags]` argv (already sliced past `node script`).
  * Returns { command, url, apiKey, apiBase, crawl, maxCritical, maxHigh,
- * maxMedium, timeout, pollInterval, json, help, error }. `error` is set for a
- * malformed flag; the caller prints usage and exits.
+ * maxMedium, timeout, pollInterval, json, help, error, ... }. `error` is set
+ * for a malformed flag; the caller prints usage and exits.
  */
 export function parseArgs(argv) {
   const out = {
@@ -163,6 +263,11 @@ export function parseArgs(argv) {
   // before one deep scan finished), so a fast poll costs nothing but
   // requests, and the test suite uses 0 to keep runs quick. Only negative is
   // meaningless.
+  //
+  // --max-critical and --max-high are at least 0 for the same reason: a
+  // negative max means "every run fails", and -1 only means "disabled" for
+  // --max-medium, so extrapolating it gave permanently red builds that had no
+  // finding behind them.
   const takeAtLeast = (name, raw, min) => {
     const n = takeNumber(name, raw);
     if (n === null) return null;
@@ -251,6 +356,18 @@ export function parseArgs(argv) {
       case "--include-suppressed":
         out.includeSuppressed = true;
         break;
+      case "--allow-incomplete":
+        out.allowIncomplete = true;
+        break;
+      case "--fail-on-incomplete":
+        out.failOnIncomplete = true;
+        break;
+      case "--cancel-on-timeout":
+        out.cancelOnTimeout = true;
+        break;
+      case "--allow-insecure":
+        out.allowInsecure = true;
+        break;
       case "--crawl":
         out.crawl = true;
         break;
@@ -264,10 +381,10 @@ export function parseArgs(argv) {
         out.apiBase = takeValue(arg, argv[++i]) ?? out.apiBase;
         break;
       case "--max-critical":
-        out.maxCritical = takeNumber(arg, argv[++i]) ?? out.maxCritical;
+        out.maxCritical = takeAtLeast(arg, argv[++i], 0) ?? out.maxCritical;
         break;
       case "--max-high":
-        out.maxHigh = takeNumber(arg, argv[++i]) ?? out.maxHigh;
+        out.maxHigh = takeAtLeast(arg, argv[++i], 0) ?? out.maxHigh;
         break;
       case "--max-medium":
         out.maxMedium = takeNumber(arg, argv[++i]) ?? out.maxMedium;
@@ -300,18 +417,32 @@ export function parseArgs(argv) {
   // arrive in either order, so `--timeout 60 --crawl` must still mean 60.
   if (out.crawl && !timeoutExplicit) out.timeout = DEFAULTS.crawlTimeout;
 
+  if (out.allowIncomplete && out.failOnIncomplete) {
+    out.error ??=
+      "--allow-incomplete and --fail-on-incomplete cannot be used together.";
+  }
+
+  // Asking for help or the version sends nothing, so an API base in the
+  // environment must not turn `vulnradar --help` into an error.
+  if (!out.help && !out.version && !out.allowInsecure) {
+    const host = insecureApiBase(out.apiBase);
+    if (host) {
+      out.error ??= `--api-base uses plain http:// to ${host}, which would send your API key unencrypted. Use https://, or pass --allow-insecure if you accept that.`;
+    }
+  }
+
   // The report flags check each other here rather than at the call site, so a
   // combination that cannot work is refused before a scan is started and
   // charged against the account's daily limit. A flag that silently does
   // nothing is worse than a flag that says why it cannot.
+  // --include-suppressed is not one of them: it decides what the gate counts,
+  // with or without a report.
   if (!out.report) {
     const orphan = out.out
       ? "--out"
       : out.applyTriage
         ? "--apply-triage"
-        : out.includeSuppressed
-          ? "--include-suppressed"
-          : null;
+        : null;
     if (orphan) out.error ??= `${orphan} needs --report <format>.`;
   } else if (REPORT_FORMATS[out.report].binary && !out.out) {
     out.error ??= `--report ${out.report} writes binary, so it needs --out <path>.`;
@@ -352,6 +483,267 @@ export function retryAfterSeconds(header, now = Date.now()) {
 }
 
 /**
+ * Which 429 this is, because the three want opposite treatment.
+ *
+ * "concurrent": the account already has a scan running. It clears when that
+ * scan ends, so waiting is the right response.
+ * "daily": the API key's 24 hour quota is spent. The wait is hours, so
+ * retrying inside a CI job only burns the job's time.
+ * "other": a short rate limit, retried after its Retry-After if there is one.
+ *
+ * `headers` is anything with a `get(name)`, which a fetch Response has.
+ */
+export function classifyRateLimit(headers, body) {
+  if (body && body.statusCode === CONCURRENT_SCAN_LIMIT) return "concurrent";
+  const policy = String(headers?.get?.("x-ratelimit-policy") ?? "");
+  if (policy.toLowerCase() === "daily") return "daily";
+  if (body && typeof body.resets_at === "string") return "daily";
+  return "other";
+}
+
+/**
+ * Whether, and for how long, to wait before starting the scan again after a 429.
+ *
+ * `retryAfter` is seconds from the header or null. `concurrentRetries` and
+ * `otherRetries` count the waits already taken, `slotWaitedSeconds` the total
+ * spent waiting for a slot, `secondsLeft` what is left of the scan's own
+ * timeout. Returns `{ retry: true, wait, extendsBudget }` or
+ * `{ retry: false, note }`, where `note` is a sentence to add to the error.
+ *
+ * Waiting for a slot honours Retry-After when the server sends one and
+ * otherwise steps through SLOT_BACKOFF_SECONDS, inside SLOT_WAIT_CAP_SECONDS.
+ * The server does not send one for this 429 today, so without the backoff the
+ * retry never fired for the case a CI user actually hits: two pipelines
+ * starting together, or a re-run of a job whose scan is still holding the
+ * slot. The wait is at least a second so a Retry-After of 0 cannot spin.
+ */
+export function createRetryPlan({
+  kind,
+  retryAfter,
+  concurrentRetries,
+  otherRetries,
+  slotWaitedSeconds,
+  secondsLeft,
+}) {
+  if (kind === "daily") {
+    return {
+      retry: false,
+      note: " Your daily scan quota is spent, which a retry cannot fix, so the CLI does not retry it.",
+    };
+  }
+  if (kind === "concurrent") {
+    const step =
+      SLOT_BACKOFF_SECONDS[
+        Math.min(concurrentRetries, SLOT_BACKOFF_SECONDS.length - 1)
+      ];
+    const wait = Math.max(1, retryAfter ?? step);
+    if (slotWaitedSeconds + wait > SLOT_WAIT_CAP_SECONDS) {
+      return {
+        retry: false,
+        note: ` Still no free scan slot after waiting ${slotWaitedSeconds}s. Wait for the running scan to finish or cancel it, then run again.`,
+      };
+    }
+    return { retry: true, wait, extendsBudget: true };
+  }
+  if (
+    retryAfter === null ||
+    otherRetries >= MAX_RETRY_AFTER_RETRIES ||
+    retryAfter >= secondsLeft
+  ) {
+    return { retry: false, note: "" };
+  }
+  return { retry: true, wait: retryAfter, extendsBudget: false };
+}
+
+/**
+ * Cancel a scan on the server, best effort, and say what happened in words.
+ *
+ * It is called from a signal handler and from a timeout, where the caller has
+ * seconds at most (GitHub Actions leaves about 7 between SIGINT and SIGTERM,
+ * GitLab about 5 before SIGKILL), so it is bounded by `timeoutMs` and never
+ * throws. A 404 or a 409 means the scan is already finished or gone, which is
+ * the state the caller wanted, so they are not failures.
+ */
+export async function cancelScan(
+  apiBase,
+  scanId,
+  headers,
+  timeoutMs = CANCEL_TIMEOUT_MS,
+) {
+  try {
+    const res = await fetch(`${apiBase}/scan/status/${scanId}`, {
+      method: "DELETE",
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.ok) {
+      return { settled: true, message: `Cancelled scan ${scanId}.` };
+    }
+    if (res.status === 404 || res.status === 409) {
+      return {
+        settled: true,
+        message: `Scan ${scanId} had already finished, so there was nothing to cancel.`,
+      };
+    }
+    return {
+      settled: false,
+      message: `Could not cancel scan ${scanId} (HTTP ${res.status}).`,
+    };
+  } catch (err) {
+    const why =
+      err?.name === "TimeoutError" || err?.name === "AbortError"
+        ? "the request timed out"
+        : err?.message || String(err);
+    return {
+      settled: false,
+      message: `Could not cancel scan ${scanId}: ${why}.`,
+    };
+  }
+}
+
+/**
+ * Whether a completed scan's `result` carries a `summary` object.
+ *
+ * A gate that read a missing summary as zeros would pass a response it did not
+ * understand. The v3 API always sends the field, so this only fires when the
+ * CLI is pointed at something shaped differently, which is exactly when a
+ * security gate should refuse rather than guess.
+ */
+export function hasSummary(result) {
+  return (
+    result !== null &&
+    typeof result === "object" &&
+    result.summary !== null &&
+    typeof result.summary === "object" &&
+    !Array.isArray(result.summary)
+  );
+}
+
+/**
+ * The severity counts the gate judges.
+ *
+ * Counted from `result.findings`, leaving out the ones the owner marked a false
+ * positive (`suppressed: true`) unless `includeSuppressed`. `result.summary`
+ * counts them, so gating on it made the next run fail on a finding the
+ * dashboard and every report from the same scan had hidden, with nothing
+ * visible to fix. `summary` is only the fallback for a result with no findings
+ * array. `suppressed` is how many findings were left out, so the caller can
+ * say so.
+ */
+export function gateCounts(result, { includeSuppressed = false } = {}) {
+  const findings = result?.findings;
+  if (Array.isArray(findings)) {
+    const all = findings.filter((f) => f && typeof f === "object");
+    const kept = includeSuppressed
+      ? all
+      : all.filter((f) => f.suppressed !== true);
+    const count = (severity) =>
+      kept.filter((f) => f.severity === severity).length;
+    return {
+      critical: count("critical"),
+      high: count("high"),
+      medium: count("medium"),
+      low: count("low"),
+      total: kept.length,
+      suppressed: all.length - kept.length,
+    };
+  }
+  const summary = result?.summary ?? {};
+  const n = (value) => Number(value) || 0;
+  return {
+    critical: n(summary.critical),
+    high: n(summary.high),
+    medium: n(summary.medium),
+    low: n(summary.low),
+    total: n(summary.total),
+    suppressed: 0,
+  };
+}
+
+/**
+ * What a scan did not check, and whether that should fail the run.
+ *
+ * `areas` is everything `result.incomplete` lists, with its plain-language
+ * label. `blocking` is true when the run should exit EXIT.INCOMPLETE: the scan
+ * was blocked or could not fetch the page (or, with `failOnIncomplete`, any
+ * area was skipped), and `allowIncomplete` has not opted out.
+ */
+export function incompleteOutcome(
+  result,
+  { allowIncomplete = false, failOnIncomplete = false } = {},
+) {
+  const listed = Array.isArray(result?.incomplete) ? result.incomplete : [];
+  const slugs = [
+    ...new Set(listed.filter((s) => typeof s === "string" && s !== "")),
+  ];
+  const areas = slugs.map((slug) => ({
+    slug,
+    label: INCOMPLETE_LABELS[slug] ?? slug,
+  }));
+  const blockingAreas = failOnIncomplete
+    ? areas
+    : areas.filter((a) => BLOCKING_INCOMPLETE.includes(a.slug));
+
+  const raw = result?.pageUnreachable;
+  const pageUnreachable =
+    raw && typeof raw === "object"
+      ? {
+          message: typeof raw.message === "string" ? raw.message : "",
+          redirectHost:
+            typeof raw.redirectHost === "string" ? raw.redirectHost : "",
+        }
+      : null;
+
+  return {
+    areas,
+    pageUnreachable,
+    blockingAreas,
+    blocking: !allowIncomplete && blockingAreas.length > 0,
+  };
+}
+
+/**
+ * The lines that tell a reader what was not checked. Empty when nothing was
+ * skipped. Printed whether or not the run fails on it: a passing gate that
+ * skipped DNS should say so.
+ */
+export function describeNotChecked(outcome) {
+  if (outcome.areas.length === 0) return [];
+  const lines = [
+    `Not checked: ${outcome.areas.map((a) => a.label).join("; ")}`,
+  ];
+  const unreachable = outcome.pageUnreachable;
+  if (unreachable?.message)
+    lines.push(`Page unreachable: ${unreachable.message}`);
+  if (unreachable?.redirectHost) {
+    lines.push(`It redirects to another host: ${unreachable.redirectHost}`);
+  }
+  return lines;
+}
+
+/**
+ * One line for a status poll that moved, or null when it carries no progress.
+ * The caller prints it only when it differs from the last one, so a slow
+ * category does not repeat itself every five seconds.
+ */
+export function describeProgress(body) {
+  const category =
+    typeof body?.currentCategory === "string" ? body.currentCategory : "";
+  if (!category) return null;
+  const done = Number.isFinite(body.categoriesCompleted)
+    ? body.categoriesCompleted
+    : null;
+  const total =
+    Number.isFinite(body.categoriesTotal) && body.categoriesTotal > 0
+      ? body.categoriesTotal
+      : null;
+  if (done === null) return `Scanning: ${category}`;
+  return total === null
+    ? `Scanning: ${category} (${done} done)`
+    : `Scanning: ${category} (${done}/${total})`;
+}
+
+/**
  * Decide whether the scan's severity counts breach the configured thresholds.
  * Mirrors the GitHub Action / GitLab template: critical and high always gate,
  * medium only when maxMedium >= 0. Returns { failed, reasons }.
@@ -386,16 +778,28 @@ Usage:
   vulnradar scan <url> [options]
 
 Options:
-  --api-key <key>        API token (or set VULNRADAR_TOKEN).
+  --api-key <key>        API token (or set VULNRADAR_TOKEN). Create one under
+                         Profile > Developer > API Keys.
   --api-base <url>       API base URL, for a self-hosted instance
                          (or set VULNRADAR_API_BASE; default ${DEFAULTS.apiBase}).
+  --allow-insecure       Allow a plain http:// --api-base to a host that is not
+                         this machine. The key is sent unencrypted.
   --crawl                Crawl and scan a whole site instead of one URL.
                          The page cap comes from your plan, not the CLI.
-  --max-critical <n>     Fail if criticals exceed this (default ${DEFAULTS.maxCritical}).
-  --max-high <n>         Fail if highs exceed this (default ${DEFAULTS.maxHigh}).
+  --max-critical <n>     Fail if criticals exceed this, 0 or more (default ${DEFAULTS.maxCritical}).
+  --max-high <n>         Fail if highs exceed this, 0 or more (default ${DEFAULTS.maxHigh}).
   --max-medium <n>       Fail if mediums exceed this; -1 disables (default ${DEFAULTS.maxMedium}).
+  --include-suppressed   Count findings you marked a false positive, in the
+                         thresholds and in a --report. Off by default, matching
+                         the dashboard.
+  --allow-incomplete     Do not exit 3 when the scan was blocked by a bot
+                         challenge or could not fetch the page. What was not
+                         checked is still printed.
+  --fail-on-incomplete   Exit 3 when any area was not checked, not only those two.
   --timeout <seconds>    Give up waiting for the scan (default ${DEFAULTS.timeout},
                          or ${DEFAULTS.crawlTimeout} with --crawl, matching the server's budget).
+  --cancel-on-timeout    Cancel the scan on the server when the timeout runs
+                         out. Default: leave it running.
   --poll-interval <s>    Seconds between status polls (default ${DEFAULTS.pollInterval}).
   --scanners <list>      Comma-separated categories to run, e.g. headers,ssl,content
                          (default: the server's standard set).
@@ -410,17 +814,21 @@ Options:
   --apply-triage         In the report, mark accepted-risk and won't-fix
                          findings as suppressed (GitHub reads SARIF
                          suppressions as "dismissed").
-  --include-suppressed   In the report, keep findings marked a false positive.
-                         Off by default, matching the dashboard.
-  --json                 Print the raw completed result as JSON.
+  --json                 Print the raw completed result as JSON. A failure
+                         prints {"ok":false,"error":...} instead.
   -v, --version          Print the CLI version.
   -h, --help             Show this help.
 
 Exit codes:
-  0  every finding count is at or under its threshold
-  1  the scan ran and a threshold was exceeded
-  2  the scan could not run: auth, network, API, or bad arguments
+  0    every finding count is at or under its threshold
+  1    the scan ran and a threshold was exceeded
+  2    the scan could not run: auth, network, API, or bad arguments
+  3    the scan ran but did not check the target: a bot challenge, or the
+       page could not be fetched
+  130  interrupted by SIGINT, 143 by SIGTERM; a scan already started is cancelled
 
 A --report is downloaded before the thresholds are judged, so a run that exits
-1 still leaves the file for the step that uploads it.
+1 still leaves the file for the step that uploads it. A report that cannot be
+fetched or written fails the run with 2 but never hides a failed gate: that
+still exits 1.
 `;

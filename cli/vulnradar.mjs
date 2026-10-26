@@ -5,13 +5,22 @@
 // of the project. It used to advertise Node 18, which went end of life in
 // April 2025 and is exercised by nothing here.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import {
   parseArgs,
   evaluateGate,
+  gateCounts,
+  hasSummary,
+  incompleteOutcome,
+  describeNotChecked,
+  describeProgress,
   buildScanBody,
+  classifyRateLimit,
+  createRetryPlan,
   retryAfterSeconds,
   reportRequestUrl,
+  cancelScan,
   USAGE,
   EXIT,
 } from "./lib.mjs";
@@ -23,22 +32,46 @@ const VERSION = JSON.parse(
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Write to stdout and wait for it to flush, so process.exit cannot cut a report short. */
+const writeStdout = (text) =>
+  new Promise((resolve) => process.stdout.write(text, () => resolve()));
+
 /**
- * Progress and summary lines, which are for a human to read.
- *
- * With --json these go to stderr, so stdout carries the JSON document and
- * nothing else. They used to go to stdout unconditionally, wrapping the JSON
- * in a "Started scan ..." line above and a "Scan complete: ..." line below,
- * which made `vulnradar scan <url> --json | jq .` fail on the CLI's only
- * machine-readable output mode. The tell was in this repo already:
- * cli/vulnradar.test.mjs could not JSON.parse stdout and had to cut the
- * document out by index.
+ * Whether --json was passed, which decides if a failure also writes a JSON
+ * document to stdout. Module state because the last-resort handler at the
+ * bottom has no access to the parsed options.
  */
 let jsonMode = false;
-const say = (msg) => (jsonMode ? console.error(msg) : console.log(msg));
+
+/**
+ * Whether stdout is carrying data: the JSON result, or a report with no --out.
+ *
+ * Progress and summary lines are for a human to read, so when stdout carries
+ * data they go to stderr instead. They used to go to stdout unconditionally,
+ * wrapping the JSON in a "Started scan ..." line above and a "Scan complete:
+ * ..." line below, which made `vulnradar scan <url> --json | jq .` fail on the
+ * CLI's only machine-readable output mode, and put two junk lines at the top
+ * of `--report sarif > results.sarif`.
+ */
+let stdoutCarriesData = false;
+const say = (msg) =>
+  stdoutCarriesData ? console.error(msg) : console.log(msg);
+
+/** The result document is on stdout, so a failure must not write a second one. */
+let resultPrinted = false;
+
+/** The scan this run started, once there is one, for the failure document. */
+let activeScanId = null;
 
 /** How long any single request may take, independent of the overall budget. */
 const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * How long the one status poll after the deadline may take. Shorter than a
+ * normal request so that a server that has stopped answering costs the run
+ * seconds past its timeout, not half a minute.
+ */
+const FINAL_POLL_TIMEOUT_MS = 10_000;
 
 /**
  * How many polls in a row may fail before the run gives up.
@@ -49,9 +82,6 @@ const REQUEST_TIMEOUT_MS = 30_000;
  * the user's history anyway.
  */
 const MAX_CONSECUTIVE_POLL_FAILURES = 5;
-
-/** How many times starting a scan is retried after a 429. */
-const MAX_CREATE_RETRIES = 3;
 
 /** The overall budget ran out mid-request. */
 class DeadlineError extends Error {}
@@ -70,15 +100,32 @@ function describeFetchError(err) {
   return err?.message || String(err);
 }
 
-/** At most a couple of lines of a response body, for an error message. */
-async function readBodyForError(res) {
+/** A couple of lines of a body, flattened, for an error message. */
+function snippetOf(text) {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > 200 ? `${flat.slice(0, 200)}...` : flat;
+}
+
+/**
+ * A failed response, read once: a snippet for the message, and the parsed
+ * body when it was JSON so the caller can look at its `statusCode`.
+ */
+async function readErrorBody(res) {
+  let text;
   try {
-    const text = await res.text();
-    const flat = text.replace(/\s+/g, " ").trim();
-    return flat.length > 200 ? `${flat.slice(0, 200)}...` : flat;
+    text = await res.text();
   } catch {
-    return "(no body)";
+    return { snippet: "(no body)", json: null, statusCode: undefined };
   }
+  let json = null;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = null;
+  }
+  const statusCode =
+    json && typeof json.statusCode === "string" ? json.statusCode : undefined;
+  return { snippet: snippetOf(text), json, statusCode };
 }
 
 /**
@@ -89,18 +136,38 @@ async function readBodyForError(res) {
  * no URL and nothing to suggest the server had returned HTML. That is the
  * most likely real-world failure of all, so it gets a real message.
  */
-async function readJson(opts, res, target) {
+async function readJson(res, target) {
   const text = await res.text();
   try {
     return JSON.parse(text);
   } catch {
-    const flat = text.replace(/\s+/g, " ").trim().slice(0, 200);
     fail(
-      opts,
-      `${target} returned HTTP ${res.status} with a body that is not JSON: ${flat || "(empty)"}`,
+      `${target} returned HTTP ${res.status} with a body that is not JSON: ${snippetOf(text) || "(empty)"}`,
       { status: res.status },
     );
   }
+}
+
+/**
+ * A status poll's body, which has to be a JSON object. Anything else is a
+ * transient failure with the same words `readJson` uses, so a proxy's HTML
+ * error page is described rather than reported as a parser message.
+ */
+function parsePollBody(text, status) {
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new TransientError(
+      `HTTP ${status} with a body that is not JSON: ${snippetOf(text) || "(empty)"}`,
+    );
+  }
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    throw new TransientError(
+      `HTTP ${status} with a body that is not a JSON object: ${snippetOf(text)}`,
+    );
+  }
+  return body;
 }
 
 /**
@@ -112,20 +179,69 @@ async function readJson(opts, res, target) {
  * jq exits 0 on empty input, so without `set -o pipefail` the shell reported
  * the pipeline as passing. The exit code, which is the CLI's entire reason to
  * exist in CI, was being thrown away exactly when it mattered.
+ *
+ * The document is { ok: false, error, scanId?, status?, statusCode?,
+ * failureKind? }: `status` is the HTTP status, `statusCode` the API's own
+ * string code, `failureKind` why a scan that started then failed. A success
+ * writes the raw result, which has no `ok` key, so the exit code is the
+ * success signal. Once the result is on stdout nothing more is written there:
+ * two documents are not one document.
  */
-function fail(opts, message, extra = {}) {
-  if (opts?.json) {
+function fail(message, extra = {}) {
+  if (jsonMode && !resultPrinted) {
     process.stdout.write(
-      `${JSON.stringify({ ok: false, error: message, ...extra })}\n`,
+      `${JSON.stringify({
+        ok: false,
+        error: message,
+        ...(activeScanId === null ? {} : { scanId: activeScanId }),
+        ...extra,
+      })}\n`,
     );
   }
   console.error(message);
   process.exit(EXIT.ERROR);
 }
 
+/**
+ * Cancel the scan this run started if the run is killed.
+ *
+ * A pipeline that is cancelled, or times out at the runner, used to leave its
+ * scan running and holding the account's only concurrency slot, so the re-run
+ * was refused with a 429 for as long as the abandoned scan took to finish.
+ * The handlers are `once`, so a second Ctrl-C while the cancel is in flight
+ * gets the default action and ends the process at once.
+ */
+function cancelOnSignal(scanId, apiBase, headers) {
+  let handling = false;
+  for (const [signal, code] of [
+    ["SIGINT", EXIT.SIGINT],
+    ["SIGTERM", EXIT.SIGTERM],
+  ]) {
+    process.once(signal, async () => {
+      if (handling) return;
+      handling = true;
+      console.error(`Received ${signal}, cancelling scan ${scanId}.`);
+      const outcome = await cancelScan(apiBase, scanId, headers);
+      console.error(outcome.message);
+      if (jsonMode && !resultPrinted) {
+        process.stdout.write(
+          `${JSON.stringify({
+            ok: false,
+            error: `Interrupted by ${signal}. ${outcome.message}`,
+            scanId,
+            signal,
+          })}\n`,
+        );
+      }
+      process.exit(code);
+    });
+  }
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   jsonMode = opts.json === true;
+  stdoutCarriesData = jsonMode || (Boolean(opts.report) && !opts.out);
 
   // Errors first. `vulnradar --typo` sets opts.error AND leaves command
   // undefined, and checking the help branch first printed bare usage with
@@ -136,10 +252,11 @@ async function main() {
   // `vulnradar scan $URL --json | jq -e .ok` got empty stdin - and jq exits 0
   // on empty input, so without `set -o pipefail` the shell reported the failed
   // pipeline as a pass. That is the exact bug fail() exists to close, left open
-  // on the paths that never called it.
+  // on the paths that never called it. (Do not gate on `.ok` for success: a
+  // success document has no such key. The exit code is the signal.)
   if (opts.error) {
     console.error(USAGE);
-    fail(opts, `Error: ${opts.error}`);
+    fail(`Error: ${opts.error}`);
   }
   if (opts.help) {
     // Asking for help and getting it is success, and it belongs on stdout.
@@ -152,20 +269,32 @@ async function main() {
   }
   if (!opts.command) {
     console.error(USAGE);
-    fail(opts, "Error: a command is required.");
+    fail("Error: a command is required.");
   }
   if (opts.command !== "scan") {
-    fail(opts, `Unknown command: ${opts.command}. Did you mean "scan"?`);
+    fail(`Unknown command: ${opts.command}. Did you mean "scan"?`);
   }
   if (!opts.url) {
     console.error(USAGE);
-    fail(opts, "Error: a URL to scan is required.");
+    fail("Error: a URL to scan is required.");
   }
   if (!opts.apiKey) {
     fail(
-      opts,
-      "Error: no API key. Pass --api-key or set VULNRADAR_TOKEN. Get one at Settings > API Keys.",
+      "Error: no API key. Pass --api-key or set VULNRADAR_TOKEN. Create one under Profile > Developer > API Keys.",
     );
+  }
+
+  // Before the first request, so a path that cannot be written is found out
+  // before a scan is started and charged. Only the folder is created, never
+  // the file: nothing is written until there is a report to put in it.
+  if (opts.out) {
+    try {
+      mkdirSync(dirname(opts.out), { recursive: true });
+    } catch (err) {
+      fail(
+        `Could not create the folder for ${opts.out}: ${err?.message || err}`,
+      );
+    }
   }
 
   const headers = {
@@ -177,7 +306,7 @@ async function main() {
   };
   const endpoint = `${opts.apiBase}/scan${opts.crawl ? "/crawl" : ""}`;
 
-  const deadline = Date.now() + opts.timeout * 1000;
+  let deadline = Date.now() + opts.timeout * 1000;
 
   /**
    * Fetch, bounded by the deadline the caller asked for.
@@ -198,12 +327,19 @@ async function main() {
   };
 
   // 1. Start the scan (returns a scanId; findings arrive via status polling).
-  // A 429 is retried after its Retry-After, up to MAX_CREATE_RETRIES times
-  // and never past the deadline. Two pipelines starting at the same moment
-  // used to fail the second one outright, although waiting a few seconds is
-  // all the server asked for.
+  //
+  // A 429 is one of three things (see classifyRateLimit). A busy slot is
+  // waited out with a capped backoff, and that wait is added to the deadline
+  // because it is not time spent on the scan the --timeout is about. A short
+  // rate limit is retried after its Retry-After if it fits in what is left. A
+  // spent daily quota is never retried: its wait is hours.
   let createRes;
-  for (let attempt = 0; ; attempt++) {
+  let createError = null;
+  let createNote = "";
+  let concurrentRetries = 0;
+  let otherRetries = 0;
+  let slotWaitedSeconds = 0;
+  for (;;) {
     try {
       createRes = await fetchBounded(endpoint, {
         method: "POST",
@@ -211,49 +347,113 @@ async function main() {
         body: JSON.stringify(buildScanBody(opts)),
       });
     } catch (err) {
-      fail(opts, `Could not reach ${endpoint}: ${describeFetchError(err)}`);
+      fail(`Could not reach ${endpoint}: ${describeFetchError(err)}`);
     }
-    if (createRes.status !== 429 || attempt >= MAX_CREATE_RETRIES) break;
-    const wait = retryAfterSeconds(createRes.headers.get("retry-after"));
-    if (wait === null || Date.now() + wait * 1000 >= deadline) break;
-    say(`Rate limited; retrying in ${wait}s.`);
-    await sleep(wait * 1000);
+    if (createRes.ok) break;
+    createError = await readErrorBody(createRes);
+    if (createRes.status !== 429) break;
+
+    const kind = classifyRateLimit(createRes.headers, createError.json);
+    const plan = createRetryPlan({
+      kind,
+      retryAfter: retryAfterSeconds(createRes.headers.get("retry-after")),
+      concurrentRetries,
+      otherRetries,
+      slotWaitedSeconds,
+      secondsLeft: (deadline - Date.now()) / 1000,
+    });
+    if (!plan.retry) {
+      createNote = plan.note;
+      break;
+    }
+    if (plan.extendsBudget) {
+      concurrentRetries += 1;
+      slotWaitedSeconds += plan.wait;
+      deadline += plan.wait * 1000;
+      say(
+        `Another scan is already running on this account; retrying in ${plan.wait}s.`,
+      );
+    } else {
+      otherRetries += 1;
+      say(`Rate limited; retrying in ${plan.wait}s.`);
+    }
+    await sleep(plan.wait * 1000);
   }
   if (!createRes.ok) {
     fail(
-      opts,
-      `Failed to start scan (HTTP ${createRes.status}): ${await readBodyForError(createRes)}`,
-      { status: createRes.status },
+      `Failed to start scan (HTTP ${createRes.status}): ${createError.snippet}${createNote}`,
+      {
+        status: createRes.status,
+        ...(createError.statusCode
+          ? { statusCode: createError.statusCode }
+          : {}),
+      },
     );
   }
-  const created = await readJson(opts, createRes, endpoint);
-  const scanId = created.scanId;
-  if (!scanId) fail(opts, "No scanId in the response.");
+  const created = await readJson(createRes, endpoint);
+  const scanId = created?.scanId;
+  if (!scanId) fail("No scanId in the response.");
+  activeScanId = scanId;
   say(`Started scan ${scanId} for ${opts.url}`);
+  cancelOnSignal(scanId, opts.apiBase, headers);
 
   // 2. Poll until it completes.
   const statusUrl = `${opts.apiBase}/scan/status/${scanId}`;
   let result = null;
+  let completed = false;
   let consecutiveFailures = 0;
-  while (Date.now() < deadline) {
+  let lastProgress = "";
+  // One status poll is made after the deadline passes, so a scan that
+  // finished while the last sleep was running is not reported as a timeout.
+  let polledPastDeadline = false;
+  for (;;) {
+    const pastDeadline = Date.now() >= deadline;
+    if (pastDeadline) {
+      if (polledPastDeadline) break;
+      polledPastDeadline = true;
+    }
     let body;
     try {
-      const statusRes = await fetchBounded(statusUrl, { headers });
+      const statusRes = pastDeadline
+        ? await fetch(statusUrl, {
+            headers,
+            signal: AbortSignal.timeout(FINAL_POLL_TIMEOUT_MS),
+          })
+        : await fetchBounded(statusUrl, { headers });
+      const text = await statusRes.text();
       if (!statusRes.ok) {
         // 401 and 403 will not fix themselves: the key is wrong or the scan
         // is not this caller's. Anything else is worth another try.
         if (statusRes.status === 401 || statusRes.status === 403) {
           fail(
-            opts,
             `Not authorized to read scan ${scanId} (HTTP ${statusRes.status}).`,
-            { scanId, status: statusRes.status },
+            { status: statusRes.status },
           );
+        }
+        // The API's own "Scan not found" means the scan is gone (deleted
+        // while polling), not that the network blinked. A bare or HTML 404 is
+        // as likely to be a gateway, so that one is still retried.
+        if (statusRes.status === 404) {
+          let parsed = null;
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            parsed = null;
+          }
+          if (parsed?.error === "Scan not found") {
+            fail(`Scan ${scanId} not found (deleted while polling?).`, {
+              status: 404,
+            });
+          }
         }
         throw new TransientError(`HTTP ${statusRes.status}`);
       }
-      body = await statusRes.json();
+      body = parsePollBody(text, statusRes.status);
     } catch (err) {
-      if (err instanceof DeadlineError) break;
+      // The budget ran out between the check above and the request. The next
+      // pass makes the final poll.
+      if (err instanceof DeadlineError) continue;
+      if (pastDeadline) break;
       // A default scan polls roughly sixty times and a crawl closer to two
       // hundred, so one blip from a proxy or a load balancer used to fail a
       // build for a scan that was succeeding: the run went red while the
@@ -261,41 +461,92 @@ async function main() {
       consecutiveFailures += 1;
       if (consecutiveFailures > MAX_CONSECUTIVE_POLL_FAILURES) {
         fail(
-          opts,
           `Lost contact with the API while polling scan ${scanId}: ${describeFetchError(err)}`,
-          { scanId },
         );
       }
       say(
         `Status poll failed (${describeFetchError(err)}); retrying (${consecutiveFailures}/${MAX_CONSECUTIVE_POLL_FAILURES}).`,
       );
-      await sleep(opts.pollInterval * 1000);
+      await sleep(
+        Math.max(0, Math.min(opts.pollInterval * 1000, deadline - Date.now())),
+      );
       continue;
     }
     consecutiveFailures = 0;
     if (body.status === "completed") {
-      result = body.result;
+      result = body.result ?? null;
+      completed = true;
       break;
     }
     if (body.status === "failed") {
-      fail(opts, `Scan failed: ${body.error || "unknown error"}`, { scanId });
+      // Why it failed, when the API says (a bad certificate on the target and
+      // a server restart are both "failed", and a pipeline reacts to them
+      // differently). Appended last so the "Scan failed: " prefix people grep
+      // for is unchanged, and an old server that sends no kind prints none.
+      const kind =
+        typeof body.failureKind === "string" && body.failureKind
+          ? body.failureKind
+          : null;
+      fail(
+        `Scan failed: ${body.error || "unknown error"}${kind ? ` [${kind}]` : ""}`,
+        kind ? { failureKind: kind } : {},
+      );
     }
-    await sleep(opts.pollInterval * 1000);
+    if (pastDeadline) break;
+    // Said when it moves, not on every poll: a slow category must not repeat
+    // itself, but a crawl that is silent for fifteen minutes looks hung.
+    const progress = describeProgress(body);
+    if (progress && progress !== lastProgress) {
+      lastProgress = progress;
+      say(progress);
+    }
+    // Never past the deadline: the sleep that ends exactly on it is followed
+    // by the final poll, not by a wait for the next interval.
+    await sleep(
+      Math.max(0, Math.min(opts.pollInterval * 1000, deadline - Date.now())),
+    );
   }
-  if (!result) {
-    fail(opts, `Timed out after ${opts.timeout}s waiting for scan ${scanId}.`, {
-      scanId,
-    });
+  if (!completed) {
+    let outcome;
+    if (opts.cancelOnTimeout) {
+      outcome = await cancelScan(opts.apiBase, scanId, headers);
+    }
+    fail(
+      `Timed out after ${opts.timeout}s waiting for scan ${scanId}. ${
+        outcome
+          ? outcome.message
+          : "It is still running on the server; pass --cancel-on-timeout to cancel it when the timeout runs out."
+      }`,
+    );
+  }
+  // Fail closed. A missing summary read as zeros would pass a response the
+  // CLI did not understand, and a gate that cannot judge must not pass.
+  if (!hasSummary(result)) {
+    fail(
+      `Scan ${scanId} completed but its result has no summary object, so the thresholds cannot be judged.`,
+    );
   }
 
-  // 3. Report and gate.
+  // 3. Report what was found and what was not looked at.
+  const counts = gateCounts(result, {
+    includeSuppressed: opts.includeSuppressed,
+  });
+  const incomplete = incompleteOutcome(result, opts);
   if (opts.json) {
-    console.log(JSON.stringify(result, null, 2));
+    await writeStdout(`${JSON.stringify(result, null, 2)}\n`);
+    resultPrinted = true;
   }
-  const s = result.summary || {};
   say(
-    `Scan complete: critical=${s.critical || 0} high=${s.high || 0} medium=${s.medium || 0} low=${s.low || 0} total=${s.total || 0}`,
+    `Scan complete: critical=${counts.critical} high=${counts.high} medium=${counts.medium} low=${counts.low} total=${counts.total}`,
   );
+  if (counts.suppressed > 0) {
+    say(
+      `${counts.suppressed} suppressed by false-positive verdicts, not counted (--include-suppressed counts them).`,
+    );
+  }
+  // Always, to stderr, and whether or not the run fails on it: a passing gate
+  // that never saw the page, or skipped DNS, has to say so.
+  for (const line of describeNotChecked(incomplete)) console.error(line);
 
   // 4. Download the report, if one was asked for.
   //
@@ -303,48 +554,59 @@ async function main() {
   // critical is exactly the pipeline that wants the SARIF it was going to
   // upload, and exiting first would leave the upload step with no file.
   //
+  // A failure here is recorded and reported, never fatal on its own: the gate
+  // is judged below and a failed gate still exits 1. It used to exit 2 from
+  // here, which a pipeline that tolerates 2 as "VulnRadar hiccuped" (the
+  // GitLab template suggests exactly that) would merge past a build with
+  // criticals, and in --json mode it wrote a second document after the result.
+  //
   // It also gets its own request timeout rather than what is left of
   // --timeout, which says how long to wait for the SCAN: a scan that finishes
   // one second inside the budget would otherwise have no time left to fetch
   // anything, and the run would report a failure for work that succeeded.
+  let reportFailed = false;
   if (opts.report) {
+    const reportError = (message) => {
+      reportFailed = true;
+      console.error(message);
+    };
     const target = reportRequestUrl(opts.apiBase, scanId, opts);
-    let res;
+    let bytes = null;
     try {
-      res = await fetch(target, {
+      const res = await fetch(target, {
         headers,
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
-    } catch (err) {
-      fail(
-        opts,
-        `Could not download the ${opts.report} report: ${describeFetchError(err)}`,
-        { scanId },
-      );
-    }
-    if (!res.ok) {
-      fail(
-        opts,
-        `Could not download the ${opts.report} report (HTTP ${res.status}): ${await readBodyForError(res)}`,
-        { scanId, status: res.status },
-      );
-    }
-    const bytes = Buffer.from(await res.arrayBuffer());
-    if (opts.out) {
-      try {
-        writeFileSync(opts.out, bytes);
-      } catch (err) {
-        fail(opts, `Could not write ${opts.out}: ${err?.message || err}`, {
-          scanId,
-        });
+      if (!res.ok) {
+        const { snippet } = await readErrorBody(res);
+        reportError(
+          `Could not download the ${opts.report} report (HTTP ${res.status}): ${snippet}`,
+        );
+      } else {
+        bytes = Buffer.from(await res.arrayBuffer());
       }
-      say(`Wrote the ${opts.report} report to ${opts.out}.`);
-    } else {
-      process.stdout.write(bytes.toString("utf8"));
+    } catch (err) {
+      reportError(
+        `Could not download the ${opts.report} report: ${describeFetchError(err)}`,
+      );
+    }
+    if (bytes) {
+      if (opts.out) {
+        try {
+          writeFileSync(opts.out, bytes);
+          say(`Wrote the ${opts.report} report to ${opts.out}.`);
+        } catch (err) {
+          reportError(`Could not write ${opts.out}: ${err?.message || err}`);
+        }
+      } else {
+        const text = bytes.toString("utf8");
+        await writeStdout(text.endsWith("\n") ? text : `${text}\n`);
+      }
     }
   }
 
-  const { failed, reasons } = evaluateGate(s, {
+  // 5. Judge. A failed gate wins over everything: it is a real result.
+  const { failed, reasons } = evaluateGate(counts, {
     maxCritical: opts.maxCritical,
     maxHigh: opts.maxHigh,
     maxMedium: opts.maxMedium,
@@ -356,10 +618,19 @@ async function main() {
     // worked, and the whole reason a pipeline can act on it.
     process.exit(EXIT.GATE_FAILED);
   }
-  process.exit(EXIT.OK);
+  if (incomplete.blocking) {
+    console.error(
+      `Exiting ${EXIT.INCOMPLETE}: the scan did not check ${incomplete.blockingAreas
+        .map((a) => a.label)
+        .join(
+          "; ",
+        )}. A pass here would mean nothing was looked at. Pass --allow-incomplete to accept a partial scan.`,
+    );
+    process.exit(EXIT.INCOMPLETE);
+  }
+  process.exit(reportFailed ? EXIT.ERROR : EXIT.OK);
 }
 
 main().catch((err) => {
-  console.error(`Unexpected error: ${err?.message || err}`);
-  process.exit(EXIT.ERROR);
+  fail(`Unexpected error: ${err?.message || err}`);
 });
