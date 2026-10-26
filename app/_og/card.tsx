@@ -209,12 +209,13 @@ export function OgCard({
                 }}
               />
               <div style={{ fontSize: 28, fontWeight: 600, marginRight: 8 }}>
-                {/* A string, not the number. Satori counts a numeric child of
-                    two or more digits as several child nodes and throws on a
-                    div without display: flex, after the response has started,
-                    so every host or shared report with ten or more findings
-                    of one severity failed its social card with "failed to
-                    pipe response". */}
+                {/* A string, not the number. Satori rejects a number child
+                    here as "more than one child node" on a div without
+                    display: flex, and throws after the response has started,
+                    so every host or shared report card failed with "failed to
+                    pipe response" (a 502 through Cloudflare), whatever the
+                    counts were. tests/app/_og/card-render.test.tsx renders
+                    both cards for real. */}
                 {String(s.count)}
               </div>
               <div style={{ fontSize: 24, color: INK.muted }}>{s.label}</div>

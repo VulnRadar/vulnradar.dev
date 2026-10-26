@@ -9,12 +9,11 @@
  * showing the host and its severity counts long after the page itself stops
  * answering.
  *
- * The two generators are read as text rather than imported, the same trick and
- * for the same reason as tests/middleware.test.ts's read of app/layout.tsx:
- * they are `.tsx`, tsconfig sets `jsx: "preserve"`, and this config has no JSX
- * transform, so importing one is a parse error rather than a test. What is
- * asserted is still the thing that regresses: passing `size` instead of the
- * options object is how the default header comes back.
+ * The two generators are read as text here, which predates vitest.config.ts
+ * compiling JSX. tests/app/_og/card-render.test.tsx now renders both for real
+ * and checks the header on the actual response; this file still pins the
+ * source shape that regresses: passing `size` instead of the options object
+ * is how the default header comes back.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";

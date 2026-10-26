@@ -311,7 +311,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Timer] **[ENGINE]** **Private Server-Timing Is No Longer Reported as Exposed**
   Sending Server-Timing without Timing-Allow-Origin keeps those metrics away from other sites, which is the safe default, and the scanner reported exactly that as exposing them. It now reports only Timing-Allow-Origin: *, which does hand the metrics to every site.
 - [Image] **[FIXED]** **Link Previews for Reports Load Again**
-  The preview image shown when a host report or a shared scan link is posted in Slack, Discord or X failed to load whenever the report had ten or more findings of one severity, which is most real reports. It renders again.
+  The preview image shown when a host report or a shared scan link is posted in Slack, Discord or X failed to load for every report that had findings to count. It renders again, and a test now renders both cards so it cannot quietly break again.
 - [Wifi] **[FIXED]** **A Scan Survives Your Connection Dropping**
   A scan runs on our servers and never needed your page open, but the dashboard stopped following it after about twelve seconds without a connection, and a reload left it empty while the scan finished out of sight. It now waits for your connection to come back and carries on from where the scan has got to, and reloading or coming back to the dashboard picks a running scan back up, or shows its result if it finished while you were away.
 - [CalendarClock] **[ADDED]** **Scan Again or Schedule It From Any Result**

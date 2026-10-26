@@ -1093,7 +1093,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Image,
         label: "Link Previews for Reports Load Again",
-        desc: "The preview image shown when a host report or a shared scan link is posted in Slack, Discord or X failed to load whenever the report had ten or more findings of one severity, which is most real reports. It renders again.",
+        desc: "The preview image shown when a host report or a shared scan link is posted in Slack, Discord or X failed to load for every report that had findings to count. It renders again, and a test now renders both cards so it cannot quietly break again.",
         category: "fixed",
       },
       {

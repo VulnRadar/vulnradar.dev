@@ -545,4 +545,13 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./"),
     },
   },
+  // Compile JSX for the tests. tsconfig.json says "jsx": "preserve", which is
+  // right for Next (it compiles JSX itself) and left every .tsx module
+  // unimportable here: Vite read the setting and handed raw JSX to the parser.
+  // With this, a test can import a server-side component and render it
+  // without a DOM, e.g. the social cards in app/_og through next/og. Anything
+  // that needs a DOM still has to opt into one.
+  oxc: {
+    jsx: { runtime: "automatic", importSource: "react" },
+  },
 });
