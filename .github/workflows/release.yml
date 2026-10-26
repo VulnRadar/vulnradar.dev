@@ -491,18 +491,23 @@ jobs:
         # packed, and only when that exact version is not on the registry yet,
         # so a re-run, or the second of the two triggers, is a no-op. Only a
         # 404 counts as "not published": a network error or a 5xx must stop
-        # the job instead of being read as permission to publish.
+        # the job instead of being read as permission to publish. The output
+        # of `npm view` and its diagnostics are kept apart, so a warning npm
+        # prints next to a version that IS published cannot make that version
+        # look absent and send the job into a publish that the registry
+        # would refuse.
         if: ${{ !contains(steps.vars.outputs.tag, '-') }}
         run: |
           set -euo pipefail
           cd "${RUNNER_TEMP}/cli-src/cli"
-          VIEW=$(npm view "vulnradar@${CLI_VERSION}" version 2>&1) && STATUS=0 || STATUS=$?
+          VIEW_ERR=$(mktemp)
+          VIEW=$(npm view "vulnradar@${CLI_VERSION}" version 2>"${VIEW_ERR}") && STATUS=0 || STATUS=$?
           if [ "${STATUS}" -eq 0 ] && [ "${VIEW}" = "${CLI_VERSION}" ]; then
             echo "vulnradar@${CLI_VERSION} is already on npm; nothing to publish."
             exit 0
           fi
-          if [ "${STATUS}" -ne 0 ] && ! printf '%s' "${VIEW}" | grep -q "E404"; then
-            echo "::error::Could not tell whether vulnradar@${CLI_VERSION} is on npm: ${VIEW}"
+          if [ "${STATUS}" -ne 0 ] && ! grep -q "E404" "${VIEW_ERR}"; then
+            echo "::error::Could not tell whether vulnradar@${CLI_VERSION} is on npm: $(tr '\n' ' ' < "${VIEW_ERR}")"
             exit 1
           fi
           npm publish --provenance --access public

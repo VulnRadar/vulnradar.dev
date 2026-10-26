@@ -6,14 +6,13 @@ import { readWorkflow, workflowSteps, stepNamed } from "./_workflow-steps";
 /**
  * The CLI is published to npm from release.yml with trusted publishing.
  *
- * The first version of this step would have failed on its first run. The
- * workflow grants `id-token: write` and stores no npm token, which is exactly
- * what trusted publishing wants, but the npm that ships with the pinned Node 22
- * is 10.x and the OIDC exchange only exists from npm 11.5.1. An old npm does
- * not say "too old": it looks for a token, finds none and reports ENEEDAUTH,
- * which reads as a missing secret. So the step that installs a new enough npm
- * and checks its version has to come first, and these tests pin that order
- * rather than trusting it to survive an edit.
+ * The workflow grants `id-token: write` and stores no npm token, which is
+ * exactly what trusted publishing wants, but the npm that ships with the
+ * pinned Node 22 is 10.x and the OIDC exchange only exists from npm 11.5.1. An
+ * old npm does not say "too old": it looks for a token, finds none and reports
+ * ENEEDAUTH, which reads as a missing secret. So the step that installs a new
+ * enough npm and checks its version has to come first, and these tests pin
+ * that order rather than trusting it to survive an edit.
  *
  * The other half of the setup (registering the Trusted Publisher for the
  * package `vulnradar` on npmjs.com) is an owner action outside the repository.
@@ -88,6 +87,13 @@ describe("release.yml npm publishing", () => {
       publish.code.indexOf("npm publish"),
     );
     expect(publish.code).toMatch(/already on npm[\s\S]*exit 0/);
+  });
+
+  it("keeps npm view's warnings out of the version it compares", () => {
+    // `2>&1` would fold a warning line into the captured version, and a
+    // version that is on the registry would then look absent.
+    expect(publish.code).not.toMatch(/npm view[^\n]*2>&1/);
+    expect(publish.code).toMatch(/npm view[^\n]*2>"\$\{VIEW_ERR\}"/);
   });
 
   it("leaves release candidates off npm's latest tag", () => {
