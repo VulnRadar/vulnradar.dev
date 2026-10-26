@@ -55,7 +55,7 @@ export function isUpdaterSupported(): { supported: boolean; reason?: string } {
     return {
       supported: false,
       reason:
-        "This build updates by pulling a new image: anything written into the running container is discarded the moment you do, so an in-place update here would be undone without a word. Update with `docker compose pull && docker compose up -d` instead.",
+        "This build updates by being replaced, not edited: anything written into the running container is discarded when the container is recreated, so an in-place update here would be undone without a word. To update, change the image tag in docker-compose.yml to the new release and run `docker compose pull && docker compose up -d`. If you built the image from a checkout, follow the Updates steps in the self-hosting guide instead: git pull, `docker compose build app`, the migration, then `docker compose up -d`.",
     };
   }
 

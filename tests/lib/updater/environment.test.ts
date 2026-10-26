@@ -52,6 +52,36 @@ describe("isUpdaterSupported", () => {
     expect(result.reason).toMatch(/docker compose pull/);
   });
 
+  // The compose file pins the image to a version tag, so `docker compose pull`
+  // on its own fetches the same image again and the refusal was telling
+  // operators to run a command that does nothing. The copy has to say the tag
+  // moves first, and give an operator who built the image from a checkout the
+  // other route, which is the Updates section of the self-hosting guide.
+  it("tells an image install to move the image tag before pulling", () => {
+    process.env.VULNRADAR_UPDATER_DISABLED = "true";
+    const reason = isUpdaterSupported().reason ?? "";
+    const tagAt = reason.search(/image tag/i);
+    const pullAt = reason.indexOf(
+      "docker compose pull && docker compose up -d",
+    );
+    expect(tagAt).toBeGreaterThan(-1);
+    expect(pullAt).toBeGreaterThan(tagAt);
+  });
+
+  it("points a source build at the Updates steps", () => {
+    process.env.VULNRADAR_UPDATER_DISABLED = "true";
+    const reason = isUpdaterSupported().reason ?? "";
+    expect(reason).toMatch(/built (the )?image from a checkout/i);
+    expect(reason).toMatch(/Updates/);
+    expect(reason).toMatch(/docker compose build/);
+  });
+
+  it("keeps the refusal copy free of dash punctuation", () => {
+    process.env.VULNRADAR_UPDATER_DISABLED = "true";
+    const banned = new RegExp(`[${String.fromCharCode(0x2014, 0x2013, 0xb7)}]`);
+    expect(isUpdaterSupported().reason).not.toMatch(banned);
+  });
+
   it("refuses when the app directory cannot be written to", () => {
     mkdtempSyncMock.mockImplementation(() => {
       const err = new Error(
