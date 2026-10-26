@@ -12,6 +12,7 @@ import { FaGithub } from "react-icons/fa";
 import {
   APP_VERSION,
   APP_NAME,
+  APP_REPO,
   APP_URL,
   ROUTES,
   BILLING_ENABLED,
@@ -333,9 +334,13 @@ export function Footer() {
               Wraps because the registry can hold ten platforms. */}
           <div className="flex flex-wrap items-center justify-center gap-y-1 -mx-2.5 sm:justify-end">
             <a
-              // Our own short link, like every social icon beside it: an
-              // address that survives the repo being renamed or moved.
-              href="/github"
+              // The repository's own URL, not the /github short link the
+              // social icons use. Search engines confused this project with
+              // another repository named VulnRadar, and a redirect on every
+              // page is a weaker statement than a direct link that says which
+              // repository this site's source lives in. APP_REPO is config,
+              // so a rename is still one edit.
+              href={`https://github.com/${APP_REPO}`}
               target="_blank"
               rel="noopener noreferrer"
               className={iconLinkClass}

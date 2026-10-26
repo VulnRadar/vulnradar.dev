@@ -1,6 +1,7 @@
 import { EXACT_CHECK_CATEGORY_COUNT } from "@/lib/config/check-stats.generated";
 import {
   APP_NAME,
+  APP_REPO,
   APP_URL,
   APP_DESCRIPTION,
   APP_VERSION,
@@ -65,6 +66,8 @@ function JsonLd({
 
 const ORGANIZATION_ID = `${APP_URL}/#organization`;
 const WEBSITE_ID = `${APP_URL}/#website`;
+const SOFTWARE_ID = `${APP_URL}/#software`;
+const SOURCE_ID = `${APP_URL}/#source`;
 const HOME_URL = `${APP_URL}/`;
 /** Written by scripts/assets/build-icons.mjs from public/favicon.svg. */
 const ORGANIZATION_LOGO = { url: `${APP_URL}/icon-512.png`, size: 512 };
@@ -87,6 +90,11 @@ export function OrganizationStructuredData({ nonce }: { nonce?: string }) {
   const sameAs = [
     ...new Set(
       [
+        // The GitHub organisation and the repository. Another project on
+        // GitHub is also called VulnRadar, and search engines picked it as
+        // ours; both URLs here, plus SourceCodeStructuredData on the home
+        // page, state which one is.
+        `https://github.com/${APP_REPO.split("/")[0]}`,
         SEO_GITHUB_URL,
         ...SOCIAL_PROFILE_URLS,
         CHROME_WEB_STORE_URL,
@@ -177,6 +185,7 @@ export function SoftwareStructuredData({
       data={{
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
+        "@id": SOFTWARE_ID,
         name: APP_NAME,
         applicationCategory: "SecurityApplication",
         applicationSubCategory: SEO_TAGLINE,
@@ -208,6 +217,35 @@ export function SoftwareStructuredData({
           priceCurrency: "USD",
           availability: "https://schema.org/InStock",
         })),
+      }}
+    />
+  );
+}
+
+/**
+ * SoftwareSourceCode, on the home page: the statement that this product's
+ * source is that repository. Search engines matched "VulnRadar on GitHub" to
+ * an unrelated project with the same name; a link alone says the two are
+ * related, codeRepository plus targetProduct says what the relation is.
+ */
+export function SourceCodeStructuredData({ nonce }: { nonce?: string }) {
+  return (
+    <JsonLd
+      nonce={nonce}
+      data={{
+        "@context": "https://schema.org",
+        "@type": "SoftwareSourceCode",
+        "@id": SOURCE_ID,
+        name: APP_NAME,
+        description: APP_DESCRIPTION,
+        codeRepository: SEO_GITHUB_URL,
+        url: SEO_GITHUB_URL,
+        license: SEO_LICENSE,
+        programmingLanguage: "TypeScript",
+        runtimePlatform: "Node.js",
+        author: { "@id": ORGANIZATION_ID },
+        publisher: { "@id": ORGANIZATION_ID },
+        targetProduct: { "@id": SOFTWARE_ID },
       }}
     />
   );

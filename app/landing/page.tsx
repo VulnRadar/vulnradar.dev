@@ -16,6 +16,7 @@ import { LandingSocialPrompt } from "@/components/landing/landing-social-prompt"
 import { pageMetadata } from "@/lib/seo/metadata";
 import {
   SoftwareStructuredData,
+  SourceCodeStructuredData,
   WebSiteStructuredData,
 } from "@/components/seo/structured-data";
 import {
@@ -125,6 +126,7 @@ export default async function LandingPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <WebSiteStructuredData nonce={nonce} />
       <SoftwareStructuredData nonce={nonce} />
+      <SourceCodeStructuredData nonce={nonce} />
       <LandingNav />
       <main id="main-content" tabIndex={-1} className="flex-1 min-w-0">
         <LandingHero checkCount={checkCount} categoryCount={categoryCount} />

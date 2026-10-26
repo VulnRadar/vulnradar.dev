@@ -87,8 +87,11 @@ describe("social short links", () => {
   it("is what the rendered links actually use", () => {
     const socialLinks = read("components/shared/social-links.tsx");
     expect(socialLinks).toContain("href={path ?? url}");
+    // The footer's repository icon is the exception: it links the
+    // repository directly so crawlers see which repository this site is
+    // (another project shares the name). /github still redirects for people.
     const footer = read("components/scanner/footer.tsx");
-    expect(footer).toContain('href="/github"');
+    expect(footer).toContain("href={`https://github.com/${APP_REPO}`}");
   });
 
   it("stops shipping a raw address for Cloudflare to rewrite", () => {
