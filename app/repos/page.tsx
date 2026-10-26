@@ -9,7 +9,6 @@ import { worthFiltering } from "@/components/shared/list-filter-bar";
 import {
   AlertTriangle,
   Check,
-  Loader2,
   Pencil,
   Search,
   ShieldAlert,
@@ -42,10 +41,37 @@ interface GithubStatus {
   connected: boolean;
   githubUsername?: string;
   selectedRepos?: string[];
+  /** The selected repos' details, from ?include=selected-repos. */
+  repos?: GithubRepo[];
+  /** Set instead of `repos` when GitHub could not be asked. Not an empty set. */
+  workingSetError?: string;
 }
 
 const STATUS_UNKNOWN_MESSAGE =
   "Your GitHub connection status could not be loaded, so this page cannot tell whether you have connected an account.";
+
+type SummaryMap = Record<string, RepoScanSummary>;
+
+const WORKING_SET_UNKNOWN_MESSAGE =
+  "Your repositories could not be loaded. That is a problem on our side, not an empty working set.";
+
+/**
+ * Null when the history could not be read, which is not the same as having
+ * none: see summariesFailed. Never throws, so a caller may start it early and
+ * collect it later without an unhandled rejection if nothing ever does.
+ */
+async function fetchSummaries(): Promise<SummaryMap | null> {
+  try {
+    const res = await fetch(API.SCAN_GITHUB_HISTORY);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const map: SummaryMap = {};
+    for (const s of data.summaries as RepoScanSummary[]) map[s.repo] = s;
+    return map;
+  } catch {
+    return null;
+  }
+}
 
 export default function ReposPage() {
   const [loading, setLoading] = useState(true);
@@ -64,7 +90,6 @@ export default function ReposPage() {
    */
   const [status, setStatus] = useState<GithubStatus | null>(null);
   const [repos, setRepos] = useState<GithubRepo[] | null>(null);
-  const [reposLoading, setReposLoading] = useState(false);
   const [repoQuery, setRepoQuery] = useState<RepoQuery>(REPO_QUERY_DEFAULTS);
   const [scanningRepo, setScanningRepo] = useState<string | null>(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
@@ -75,9 +100,7 @@ export default function ReposPage() {
   // POST /api/v3/scan/github fetch instead of just hiding the UI while it
   // keeps running in the background -- repo scans can take up to a minute.
   const scanAbortRef = useRef<AbortController | null>(null);
-  const [summaries, setSummaries] = useState<Record<string, RepoScanSummary>>(
-    {},
-  );
+  const [summaries, setSummaries] = useState<SummaryMap>({});
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const [activeRepoName, setActiveRepoName] = useQueryParam<string>("repo", "");
@@ -100,71 +123,39 @@ export default function ReposPage() {
     }
   }, [error]);
 
-  const loadSummaries = useCallback(async () => {
-    try {
-      const res = await fetch(API.SCAN_GITHUB_HISTORY);
-      if (!res.ok) {
-        setSummariesFailed(true);
-        return;
-      }
-      const data = await res.json();
-      const map: Record<string, RepoScanSummary> = {};
-      for (const s of data.summaries as RepoScanSummary[]) map[s.repo] = s;
-      setSummaries(map);
-      setSummariesFailed(false);
-    } catch {
-      // The repo list still works without "last scanned" info, but a repo
-      // whose last scan simply failed to load used to render exactly like
-      // one that has never been scanned. On a security tool that is the
-      // wrong way round to be wrong, so say which it is.
+  const applySummaries = useCallback((map: SummaryMap | null) => {
+    // The repo list still works without "last scanned" info, but a repo
+    // whose last scan simply failed to load used to render exactly like
+    // one that has never been scanned. On a security tool that is the
+    // wrong way round to be wrong, so say which it is.
+    if (map === null) {
       setSummariesFailed(true);
-    }
-  }, []);
-
-  const loadWorkingSet = useCallback(async (names: string[]) => {
-    if (names.length === 0) {
-      setRepos([]);
       return;
     }
-    setReposLoading(true);
-    try {
-      const res = await fetch(API.ACCOUNT_GITHUB_REPOS);
-      const data = await res.json();
-      if (!res.ok) {
-        // Deliberately no setRepos([]): an empty array is the same value as
-        // "you have not selected anything", so the render stacked the "No
-        // repos selected yet" empty state directly under the banner saying
-        // this was NOT an empty working set. Left null, the failure replaces
-        // that empty state instead of sitting above it.
-        setLoadError(
-          data.error ||
-            "Your repositories could not be loaded. That is a problem on our side, not an empty working set.",
-        );
-        return;
-      }
-      const nameSet = new Set(names);
-      setLoadError(null);
-      setRepos(
-        (data.repos as GithubRepo[]).filter((r) => nameSet.has(r.fullName)),
-      );
-    } catch {
-      setLoadError(
-        "Could not reach the server, so your repositories were not loaded.",
-      );
-    } finally {
-      // `finally`, not a bare call after the try: the non-ok branch above
-      // returns straight past that, which left the list spinner up forever
-      // and made the error state below it unreachable.
-      setReposLoading(false);
-    }
+    setSummaries(map);
+    setSummariesFailed(false);
   }, []);
+
+  const loadSummaries = useCallback(
+    async () => applySummaries(await fetchSummaries()),
+    [applySummaries],
+  );
 
   // No setLoading(true) at the top: `loading` starts true, and setting it
   // synchronously from the mount effect below is a cascading render. The
   // retry button flips it itself, from an event handler, where it belongs.
   const init = useCallback(async () => {
+    // Started before the status answer is back, not after it. The history
+    // does not depend on the status, and waiting for one to start the other
+    // was a second round trip in front of every visit. A visitor who has not
+    // connected GitHub costs one cheap query for it, and its result is simply
+    // not used.
+    const summariesRequest = fetchSummaries();
     try {
-      const res = await fetch(API.ACCOUNT_GITHUB);
+      // The selected repos come back with the status, looked up on the server,
+      // instead of from a listing of every repo the account can see that the
+      // page then filtered down to the names it already had.
+      const res = await fetch(`${API.ACCOUNT_GITHUB}?include=selected-repos`);
       const data = (await res.json().catch(() => null)) as
         (GithubStatus & { error?: string }) | null;
       // A 5xx that answers with a JSON error body parses fine, so the catch
@@ -177,10 +168,17 @@ export default function ReposPage() {
       } else {
         setStatus(data);
         if (data.connected && data.selectedRepos?.length) {
-          await Promise.all([
-            loadWorkingSet(data.selectedRepos),
-            loadSummaries(),
-          ]);
+          if (data.repos && !data.workingSetError) {
+            setRepos(data.repos);
+          } else {
+            // Deliberately no setRepos([]): an empty array is the same value
+            // as "you have not selected anything", so the render stacked the
+            // "No repos selected yet" empty state directly under the banner
+            // saying this was NOT an empty working set. Left null, the
+            // failure replaces that empty state instead of sitting above it.
+            setLoadError(data.workingSetError || WORKING_SET_UNKNOWN_MESSAGE);
+          }
+          applySummaries(await summariesRequest);
         }
       }
     } catch {
@@ -188,7 +186,7 @@ export default function ReposPage() {
       setLoadError(STATUS_UNKNOWN_MESSAGE);
     }
     setLoading(false);
-  }, [loadWorkingSet, loadSummaries]);
+  }, [applySummaries]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- init() is a useCallback the rule cannot see into; its first statement is an awaited fetch, so nothing calls setState synchronously here. It is a useCallback rather than a function declared inside this effect so the load-failure banner's Try again button can re-run the identical load.
@@ -532,11 +530,7 @@ export default function ReposPage() {
         />
       ) : (
         <>
-          {reposLoading ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-            </div>
-          ) : !repos || repos.length === 0 ? (
+          {!repos || repos.length === 0 ? (
             <div className="flex flex-col gap-4 rounded-xl border border-border/50 bg-card/50 px-6 py-8 sm:flex-row sm:items-center sm:gap-6">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-muted/60">
                 <GithubIcon className="h-5 w-5 text-muted-foreground" />

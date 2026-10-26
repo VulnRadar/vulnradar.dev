@@ -96,6 +96,62 @@ describe("GET /api/v3/account/github/repos", () => {
     const res = await GET();
     expect(res.status).toBe(500);
   });
+
+  it("gives every GitHub page ten seconds", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ access_token_encrypted: encryptApiKey("gho_realtoken") }],
+    });
+    // A full first page, so the listing goes on to ask for a second one.
+    const page = (n: number) =>
+      Array.from({ length: 100 }, (_, i) => ({
+        full_name: `octocat/repo-${n}-${i}`,
+        private: false,
+        default_branch: "main",
+        updated_at: "2026-01-01T00:00:00Z",
+        description: null,
+      }));
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(page(1)), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
+
+    const res = await GET();
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(timeout).toHaveBeenCalledTimes(2);
+    expect(timeout).toHaveBeenCalledWith(10_000);
+    for (const [, options] of mockFetch.mock.calls) {
+      expect(options.signal).toBeInstanceOf(AbortSignal);
+    }
+    timeout.mockRestore();
+  });
+
+  it("answers 504 with a message the picker can show when GitHub times out", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ access_token_encrypted: encryptApiKey("gho_realtoken") }],
+    });
+    mockFetch.mockRejectedValueOnce(
+      new DOMException("The operation timed out.", "TimeoutError"),
+    );
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(res.status).toBe(504);
+    expect(json.error).toMatch(/did not answer in time/i);
+    // Logged once, with the error itself so the stack survives.
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(consoleError.mock.calls[0].some((a) => a instanceof Error)).toBe(
+      true,
+    );
+    consoleError.mockRestore();
+  });
 });
 
 describe("PUT /api/v3/account/github/repos", () => {

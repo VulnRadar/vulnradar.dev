@@ -21,6 +21,28 @@ function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, ...API_VERSION_HEADERS };
 }
 
+/**
+ * How long any one GitHub request may take, body included. None of these calls
+ * had a limit, so GitHub accepting the connection and then not answering held
+ * the caller for as long as undici's own header and body timeouts allowed,
+ * which is minutes, with a user waiting on a page or a scan behind it. The
+ * signal runs until the body has been read, so a response that starts and then
+ * stalls is cut off too.
+ */
+export const GITHUB_FETCH_TIMEOUT_MS = 10_000;
+
+function githubFetch(url: string, init: RequestInit): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS),
+  });
+}
+
+/** AbortSignal.timeout() rejects with a DOMException named TimeoutError. */
+export function isGithubTimeout(err: unknown): boolean {
+  return err instanceof Error && err.name === "TimeoutError";
+}
+
 export interface GithubRepoSummary {
   fullName: string;
   private: boolean;
@@ -49,7 +71,9 @@ export async function listUserRepos(
     url.searchParams.set("direction", "desc");
     url.searchParams.set("page", String(page));
 
-    const res = await fetch(url.toString(), { headers: authHeaders(token) });
+    const res = await githubFetch(url.toString(), {
+      headers: authHeaders(token),
+    });
     if (!res.ok) {
       throw new Error(`GitHub repo list HTTP ${res.status}`);
     }
@@ -77,6 +101,157 @@ export async function listUserRepos(
   return repos;
 }
 
+// Letters, digits, dot, underscore and hyphen are every character GitHub
+// allows in an owner or repo name. Anything else is not a repo, and "." or ".."
+// would be normalised out of the request path by URL parsing and turn a
+// lookup into a request for some other api.github.com endpoint.
+const REPO_NAME_PART_RE = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * 403 is also how GitHub answers a request it is rate limiting, which must not
+ * be read as "this repo is not available to you".
+ */
+function isRateLimited(res: Response): boolean {
+  return (
+    res.status === 429 ||
+    res.headers.get("x-ratelimit-remaining") === "0" ||
+    res.headers.has("retry-after")
+  );
+}
+
+/**
+ * One repo by its "owner/name", or null when it is not there for this token any
+ * more: deleted, renamed or transferred away, taken down, or behind an org's
+ * SSO or access policy. That is the same set listUserRepos leaves out of its
+ * answer, so a selected repo that has gone away drops off the working set
+ * instead of failing it. Anything else that goes wrong throws.
+ */
+async function getRepoSummary(
+  token: string,
+  fullName: string,
+): Promise<GithubRepoSummary | null> {
+  const [owner, repo, ...extra] = fullName.split("/");
+  if (
+    !owner ||
+    !repo ||
+    extra.length > 0 ||
+    !REPO_NAME_PART_RE.test(owner) ||
+    !REPO_NAME_PART_RE.test(repo) ||
+    /^\.+$/.test(owner) ||
+    /^\.+$/.test(repo)
+  ) {
+    return null;
+  }
+
+  const res = await githubFetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}`, {
+    headers: authHeaders(token),
+  });
+  if (res.status === 404 || res.status === 410 || res.status === 451) {
+    return null;
+  }
+  if (res.status === 403 && !isRateLimited(res)) return null;
+  if (!res.ok) {
+    throw new Error(`GitHub repo lookup HTTP ${res.status}`);
+  }
+  const data = (await res.json()) as {
+    full_name: string;
+    private: boolean;
+    default_branch: string;
+    updated_at: string;
+    description: string | null;
+  };
+  // A renamed or transferred repo is answered with a redirect to its new name.
+  // The saved selection still names the old one, so the new name would show up
+  // as a repo nobody picked and the scan history, which is keyed by the old
+  // name, would not line up with it. listUserRepos never matched these either.
+  if (data.full_name.toLowerCase() !== fullName.toLowerCase()) return null;
+
+  return {
+    fullName: data.full_name,
+    private: data.private,
+    defaultBranch: data.default_branch,
+    updatedAt: data.updated_at,
+    description: data.description,
+  };
+}
+
+// A selection can run to 300 repos. Eight at a time keeps that to a few dozen
+// short rounds without opening three hundred sockets at once.
+const REPO_LOOKUP_CONCURRENCY = 8;
+
+/**
+ * Looks up just the named repos, in the order given, skipping any that are no
+ * longer available. This is what the /repos page renders its working set from:
+ * it already knows the names (github_connections.selected_repos), so asking for
+ * the account's whole repo list (up to three serial pages of a hundred) only to
+ * throw most of it away was the slow part of every visit. A repo that fails for
+ * any reason other than being gone fails the whole call, because a quietly
+ * shorter list would read as "you removed these".
+ */
+export async function getReposByFullName(
+  token: string,
+  fullNames: string[],
+): Promise<GithubRepoSummary[]> {
+  const found: (GithubRepoSummary | null)[] = fullNames.map(() => null);
+  let cursor = 0;
+  let failed = false;
+
+  const worker = async () => {
+    while (!failed && cursor < fullNames.length) {
+      const index = cursor++;
+      try {
+        found[index] = await getRepoSummary(token, fullNames[index]);
+      } catch (err) {
+        // Stops the other workers taking new names; their requests already in
+        // flight finish or time out on their own.
+        failed = true;
+        throw err;
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(REPO_LOOKUP_CONCURRENCY, fullNames.length) },
+      worker,
+    ),
+  );
+  return found.filter((repo): repo is GithubRepoSummary => repo !== null);
+}
+
+// One lookup per repo against listUserRepos's one to three requests: past this
+// many names the listing is the cheaper way to resolve them. It matters for
+// more than speed. These calls spend the account's GitHub rate limit (5,000 an
+// hour), the same budget a scan draws on, and a selection can run to 300.
+const LOOKUP_LIMIT = 30;
+
+/**
+ * The details of a saved selection, in the order it was saved, with any repo
+ * that is no longer available left out. A short selection is looked up name by
+ * name, which is what keeps the /repos page from listing the whole account to
+ * show a handful of repos; a long one falls back to the listing, because
+ * hundreds of single lookups on every visit would cost more than the listing
+ * it replaced, in time and in rate limit.
+ */
+export async function getSelectedRepos(
+  token: string,
+  fullNames: string[],
+): Promise<GithubRepoSummary[]> {
+  if (fullNames.length <= LOOKUP_LIMIT) {
+    return getReposByFullName(token, fullNames);
+  }
+  const listed = new Map(
+    (await listUserRepos(token)).map((repo) => [
+      repo.fullName.toLowerCase(),
+      repo,
+    ]),
+  );
+  return fullNames.flatMap((name) => {
+    const repo = listed.get(name.toLowerCase());
+    return repo ? [repo] : [];
+  });
+}
+
 export interface GithubRepoInfo {
   defaultBranch: string;
   /** Whether the repo is private -- threaded into the AI review prompt so
@@ -94,7 +269,7 @@ export async function getRepoInfo(
   owner: string,
   repo: string,
 ): Promise<GithubRepoInfo> {
-  const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}`, {
+  const res = await githubFetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}`, {
     headers: authHeaders(token),
   });
   if (!res.ok) {
@@ -128,15 +303,18 @@ export async function createRepoIssue(
   repo: string,
   issue: { title: string; body: string; labels?: string[] },
 ): Promise<CreatedIssue> {
-  const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}/issues`, {
-    method: "POST",
-    headers: { ...authHeaders(token), "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: issue.title,
-      body: issue.body,
-      ...(issue.labels?.length ? { labels: issue.labels } : {}),
-    }),
-  });
+  const res = await githubFetch(
+    `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues`,
+    {
+      method: "POST",
+      headers: { ...authHeaders(token), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: issue.title,
+        body: issue.body,
+        ...(issue.labels?.length ? { labels: issue.labels } : {}),
+      }),
+    },
+  );
   if (!res.ok) {
     // 403 (no write scope / issues disabled), 404 (no access), 410 (issues off).
     throw new Error(`GitHub issue creation HTTP ${res.status}`);
@@ -176,7 +354,7 @@ export async function listRepoTree(
   repo: string,
   ref: string,
 ): Promise<GithubTreeResult> {
-  const res = await fetch(
+  const res = await githubFetch(
     `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
     { headers: authHeaders(token) },
   );
@@ -221,7 +399,7 @@ export async function getBlobContent(
   repo: string,
   sha: string,
 ): Promise<string | null> {
-  const res = await fetch(
+  const res = await githubFetch(
     `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/blobs/${sha}`,
     { headers: authHeaders(token) },
   );
