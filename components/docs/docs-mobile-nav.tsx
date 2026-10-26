@@ -132,7 +132,16 @@ export function DocsMobileNav({
       role="dialog"
       aria-modal="true"
       aria-label="Documentation navigation"
-      className="lg:hidden fixed inset-0 z-40 bg-background/95 backdrop-blur-xs"
+      // Hangs off the bottom of the public nav instead of covering the whole
+      // viewport. The nav is sticky at z-50 and the drawer is z-40, so with
+      // inset-0 the nav painted over the drawer's top 56px, which is exactly
+      // where the close chip sits: the X was invisible, a tap on it opened the
+      // nav's own menu, and focus moved to it on open landed on a control
+      // behind a blurred bar (SC 2.4.11). 3.5rem is the nav's h-14; the two
+      // variables are the same banner heights the nav adds to its own `top`
+      // (site-notifications.tsx and admin/impersonation-banner.tsx), so the
+      // drawer follows it down when either banner is up.
+      className="lg:hidden fixed inset-x-0 bottom-0 top-[calc(3.5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-40 bg-background/95 backdrop-blur-xs transition-[top] duration-300"
     >
       {/* The close button used to be absolutely positioned inside the
           scrolling element itself, so on a drawer holding 20 nav links plus

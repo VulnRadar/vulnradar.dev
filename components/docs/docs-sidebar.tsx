@@ -24,7 +24,12 @@ export function DocsSidebar() {
     <aside className="hidden lg:block w-64 shrink-0 border-r border-border/50">
       <nav
         aria-label="Documentation"
-        className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 px-6"
+        // The public nav above sticks at the banner offsets (site notice and
+        // staff impersonation), so the rail has to stick below that too: at a
+        // flat 4rem the nav slid down over the rail's heading and first links
+        // whenever a banner was up, and the height ran the same distance past
+        // the bottom of the viewport.
+        className="sticky top-[calc(4rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] h-[calc(100vh-4rem-var(--vr-banner-h,0px)-var(--vr-imp-banner-h,0px))] overflow-y-auto py-8 px-6 transition-[top] duration-300"
       >
         <div className="mb-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-foreground">

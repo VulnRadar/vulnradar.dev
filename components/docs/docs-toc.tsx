@@ -14,7 +14,9 @@ export function DocsToc({ items, activeSection }: DocsTocProps) {
 
   return (
     <aside className="hidden xl:block w-56 shrink-0">
-      <div className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 px-4">
+      {/* Same offsets as the sidebar (docs-sidebar.tsx): the nav above moves
+          down by the banner heights, so this has to as well. */}
+      <div className="sticky top-[calc(4rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] h-[calc(100vh-4rem-var(--vr-banner-h,0px)-var(--vr-imp-banner-h,0px))] overflow-y-auto py-8 px-4 transition-[top] duration-300">
         <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           On this page
         </h2>
