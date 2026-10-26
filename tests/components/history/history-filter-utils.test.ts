@@ -114,6 +114,22 @@ describe("filterHistory", () => {
     ).toEqual(["a"]);
   });
 
+  it("never files an unfinished or partly checked scan under clean", () => {
+    // Their summaries are empty, which is exactly what "nothing found" looks
+    // like, so they all matched before.
+    const rows = [
+      scan({ id: "done" }),
+      scan({ id: "info-only", findings_count: 3, summary: { info: 3 } }),
+      scan({ id: "running", status: "running" }),
+      scan({ id: "failed", status: "failed", error_message: "x" }),
+      scan({ id: "cancelled", status: "failed", error_message: "Cancelled" }),
+      scan({ id: "partial", incomplete: true }),
+    ];
+    expect(
+      filterHistory(rows, query({ severity: "clean" }), NOW).map((s) => s.id),
+    ).toEqual(["done", "info-only"]);
+  });
+
   it("applies the date window", () => {
     const rows = [
       scan({ id: "recent", scanned_at: daysAgo(2) }),

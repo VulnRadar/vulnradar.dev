@@ -15,6 +15,7 @@ import {
   type CrawlPageData,
 } from "./crawl-pages-info";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { hasUnreadPages } from "@/components/scanner/crawl-pages-utils";
 
 /**
  * Every panel in the "More about this host" block collapses to one row: a
@@ -344,9 +345,16 @@ export function ScanResultDetail({
 
         {/* Stays directly above the findings list: it selects whose findings you
             are reading. */}
-        {crawlInfo && crawlInfo.pages.length > 1 && (
-          <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={onSelectIssue} />
-        )}
+        {/* Also when only the root page was read: the crawl stopped saving
+            rows for pages it could not fetch, so a crawl whose other pages
+            all failed has one page and a "not read" list worth showing. */}
+        {crawlInfo &&
+          (crawlInfo.pages.length > 1 || hasUnreadPages(crawlInfo)) && (
+            <CrawlPagesInfo
+              crawlInfo={crawlInfo}
+              onSelectIssue={onSelectIssue}
+            />
+          )}
 
         {result.findings.length > 0 ? (
           <ResultsList

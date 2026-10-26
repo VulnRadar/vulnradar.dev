@@ -63,6 +63,7 @@ import {
   createScanParamTracker,
   type ScanParamTracker,
 } from "@/components/history/scan-param-sync";
+import { hasUnreadPages } from "@/components/scanner/crawl-pages-utils";
 
 /** Same key results-list.tsx / issue-detail.tsx read and write. */
 const FINDING_QUERY_PARAM = "finding";
@@ -278,7 +279,12 @@ export default function HistoryPage() {
         setScanDetail(mapHistoryDetailResponse(data));
         // Internal numeric id for the feedback route (keyed on the numeric PK).
         setScanNumericId(typeof data.id === "number" ? data.id : null);
-        if (data.crawl && data.crawl.pages?.length > 0) {
+        // Also a crawl that read no page at all, when it can say which
+        // pages it could not read and why.
+        if (
+          data.crawl &&
+          (data.crawl.pages?.length > 0 || hasUnreadPages(data.crawl))
+        ) {
           setCrawlInfo(data.crawl);
         }
         setScanOwnerId(data.userId || null);

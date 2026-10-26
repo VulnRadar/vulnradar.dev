@@ -40,6 +40,7 @@ import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 import { CopyableHeading } from "@/components/shared/copyable-heading";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { hasUnreadPages } from "@/components/scanner/crawl-pages-utils";
 
 export default function SharedScanPage() {
   const params = useParams();
@@ -106,7 +107,10 @@ export default function SharedScanPage() {
         setScanId(data.scanId ?? null);
         setTags(data.tags || []);
         setSubdomainCache(data.subdomainCache ?? null);
-        if (data.crawl && data.crawl.pages?.length > 0) {
+        if (
+          data.crawl &&
+          (data.crawl.pages?.length > 0 || hasUnreadPages(data.crawl))
+        ) {
           setCrawlInfo(data.crawl);
         }
       } catch {

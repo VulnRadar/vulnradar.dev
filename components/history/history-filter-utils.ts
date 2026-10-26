@@ -1,4 +1,7 @@
-import type { ScanRecord } from "@/components/history/history-types";
+import {
+  scanRowState,
+  type ScanRecord,
+} from "@/components/history/history-types";
 
 /**
  * Filtering and ordering for the history list.
@@ -172,6 +175,11 @@ function matchesSeverity(
   if (severity === "high") return c.critical > 0 || c.high > 0;
   // "Clean" means nothing actionable came back. Info findings are
   // observations, not problems, so a scan with only those still counts.
+  // A scan that is running, failed, was cancelled or only partly checked has
+  // nothing in its summary either, and used to land under Clean for it.
+  const state = scanRowState(scan);
+  if (state !== "clean" && state !== "findings") return false;
+  if (scan.incomplete) return false;
   return c.critical === 0 && c.high === 0 && c.medium === 0 && c.low === 0;
 }
 

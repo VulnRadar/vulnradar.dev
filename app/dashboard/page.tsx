@@ -72,6 +72,7 @@ import {
   PREMIUM_FEATURES,
 } from "@/components/modals/premium-upgrade-modal";
 import { useAuth } from "@/components/providers/auth-provider";
+import { hasUnreadPages } from "@/components/scanner/crawl-pages-utils";
 
 /** Gap between retries of a bulk URL that was refused for concurrency, and the
  *  ceiling on how long one URL is allowed to wait for a slot before it is
@@ -598,6 +599,9 @@ function DashboardContent() {
         setCrawlInfo(finalData.crawl);
       } else {
         effectiveFindings = finalData.findings || [];
+        // A crawl that read no page still has a "not read" list to show.
+        if (finalData.crawl && hasUnreadPages(finalData.crawl))
+          setCrawlInfo(finalData.crawl);
         setResult({ ...finalData, findings: effectiveFindings });
       }
       setAuthReport(finalData.authReport ?? null);
