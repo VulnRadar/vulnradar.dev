@@ -89,10 +89,25 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+/**
+ * Reads /auth/me. Only a 401 means "nobody is signed in" and becomes null.
+ * Every other non-2xx (a 429, a 502, the maintenance 503, an HTML error page)
+ * is a failed read, not an answer about the session, so it throws and SWR
+ * keeps the last good `me`. Parsing those bodies as a user instead handed the
+ * effect below an object with no userId, which it reads as signed out: it
+ * dropped vr_auth_cache and the data-vr-auth attributes, so a rate limit or a
+ * deploy blip showed a signed-in person the logged-out shell. A session that
+ * really ended still answers 401 on the next read that reaches the server.
+ */
+export async function authFetcher(url: string): Promise<MeResponse | null> {
+  const res = await fetch(url);
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error(`auth/me answered ${res.status}`);
+  return res.json();
+}
 
 /**
- * How long SWR treats an /api/v3/auth/me response as fresh, so the ten-odd
+ * How long SWR treats an /auth/me response as fresh, so the ten-odd
  * components reading useAuth() across one page load share a single request.
  * Named because three separate places (refreshAuthCache below,
  * clearAuthCache below it, and the login flow's comment) describe it in
@@ -101,13 +116,25 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
  */
 const AUTH_CACHE_DEDUPE_MS = 5 * 60 * 1000;
 
+/**
+ * errorRetryCount bounds the retries a failed read gets. SWR's default retries
+ * forever with backoff, which against a 429 or a maintenance 503 is a loop of
+ * requests from every open tab for as long as the problem lasts.
+ */
+export const AUTH_SWR_OPTIONS = {
+  revalidateOnFocus: false,
+  revalidateOnReconnect: false,
+  dedupingInterval: AUTH_CACHE_DEDUPE_MS,
+  keepPreviousData: true,
+  errorRetryCount: 3,
+} as const;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: me, isLoading } = useSWR<MeResponse>(API.AUTH.ME, fetcher, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    dedupingInterval: AUTH_CACHE_DEDUPE_MS,
-    keepPreviousData: true,
-  });
+  const { data: me, isLoading } = useSWR<MeResponse | null>(
+    API.AUTH.ME,
+    authFetcher,
+    AUTH_SWR_OPTIONS,
+  );
 
   // Compute permissions based on role
   const userRole = me?.role || null;
@@ -172,7 +199,7 @@ export function useAuth() {
  * Mirror of clearAuthCache below, for the opposite direction: call right
  * after a successful login so components reading useAuth() (the AI chat
  * widget, nav, etc.) see the signed-in state immediately instead of
- * whatever /api/v3/auth/me returned before login, cached for up to
+ * whatever /auth/me returned before login, cached for up to
  * AUTH_CACHE_DEDUPE_MS since AuthProvider lives in the root layout and
  * survives the client-side navigation a login redirect performs.
  */
