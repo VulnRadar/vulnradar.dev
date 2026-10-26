@@ -140,6 +140,23 @@ describe("loadAll otherwise", () => {
     expect(fake.storage.local.clear).not.toHaveBeenCalled();
   });
 
+  it("stamps a profile nothing has stamped, so a later bump can find it", async () => {
+    seedUserState();
+    seedDerivedCaches();
+    expect("schemaVersion" in storageData).toBe(false);
+    await loadAll();
+    expect(storageData.schemaVersion).toBe(STORAGE_SCHEMA_VERSION);
+    // Stamping is a one-key write: nothing the user owns is touched, and the
+    // caches stay (the version already matches this release's shape).
+    expect(setCalls).toEqual([["schemaVersion"]]);
+    expect(storageData.historyCache).toEqual([{ id: "x" }]);
+    expect(storageData.auth).toBeTruthy();
+
+    setCalls.length = 0;
+    await loadAll();
+    expect(setCalls).toEqual([]);
+  });
+
   it("leaves a current-version store alone", async () => {
     seedUserState();
     seedDerivedCaches();

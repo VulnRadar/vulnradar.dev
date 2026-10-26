@@ -250,8 +250,9 @@ export function normalizeSettings(raw: Partial<Settings> | null): Settings {
  * Loads the full stored snapshot. When an older schema version is explicitly
  * present (a real upgrade) the derived caches are removed and the version is
  * stamped, and everything the user owns is kept. Missing schemaVersion means
- * fresh install: merge with DEFAULT to preserve any keys already written (e.g.
- * auth written by pasteKey() before anything stamps the version).
+ * a profile nothing has stamped yet: merge with DEFAULT to preserve any keys
+ * already written (e.g. auth written by pasteKey()), and stamp the current
+ * version so the next bump has something to compare against.
  */
 export async function loadAll(): Promise<StorageShape> {
   const raw = (await browser.storage.local.get(null)) as Partial<
@@ -266,6 +267,21 @@ export async function loadAll(): Promise<StorageShape> {
       schemaVersion: STORAGE_SCHEMA_VERSION,
     });
     for (const key of DERIVED_CACHE_KEYS) delete raw[key];
+    raw.schemaVersion = STORAGE_SCHEMA_VERSION;
+  } else if (typeof raw.schemaVersion !== "number") {
+    // Nothing stamped this profile. Before 0.2.3 the version was written only
+    // when Options saved a setting (the whole-snapshot save that has since
+    // gone), so a fresh install, or anyone who never changed one, had none, and
+    // a later bump would have read "missing" as "fresh" and left their caches
+    // in the old shape. Everything stored so far was written by a release that
+    // shares the current shape, so the current version is the right stamp.
+    try {
+      await browser.storage.local.set({
+        schemaVersion: STORAGE_SCHEMA_VERSION,
+      });
+    } catch {
+      /* storage unavailable: the next load tries again */
+    }
     raw.schemaVersion = STORAGE_SCHEMA_VERSION;
   }
   const merged = { ...DEFAULT, ...raw } as StorageShape;
