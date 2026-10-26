@@ -5,7 +5,7 @@ import { resolveScanRow } from "@/lib/history/resolve-scan";
 import { getDecryptedGithubToken } from "@/lib/github/github-connections";
 import { createRepoIssue } from "@/lib/github/github-api";
 import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
-import type { Vulnerability, Severity } from "@/lib/scanner/types";
+import type { Vulnerability } from "@/lib/scanner/types";
 // One list, not a fourth private copy. See its definition for the nine-table
 // history that made this worth consolidating.
 import { SEVERITY_ORDER } from "@/lib/config/client-constants";

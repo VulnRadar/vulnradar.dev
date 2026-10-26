@@ -138,10 +138,7 @@ export default function PricingPage() {
   >(null);
 
   useEffect(() => {
-    if (!needsInterval) {
-      setCurrentInterval(null);
-      return;
-    }
+    if (!needsInterval) return;
     let cancelled = false;
     fetch(API.BILLING)
       .then((res) => (res.ok ? res.json() : null))
@@ -164,6 +161,9 @@ export default function PricingPage() {
       });
     return () => {
       cancelled = true;
+      // The interval belonged to the account that needed it. Clearing it on
+      // the way out is what leaves it unknown once needsInterval turns false.
+      setCurrentInterval(null);
     };
   }, [needsInterval]);
 

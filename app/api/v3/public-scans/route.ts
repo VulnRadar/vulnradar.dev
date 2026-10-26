@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
-import {
-  CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
-  CONFIG_PAGINATION_MAX_PAGE_SIZE,
-} from "@/lib/config/config-values";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { publicRole } from "@/lib/auth/permissions-client";
 import type { Vulnerability } from "@/lib/scanner/types";

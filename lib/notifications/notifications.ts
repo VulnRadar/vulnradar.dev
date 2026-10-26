@@ -6,7 +6,6 @@ import {
   DEFAULT_PREFERENCES,
   NOTIFICATION_COLUMNS,
   isSecurityNotification,
-  type NotificationColumn,
   type NotificationPrefs,
   type NotificationType,
 } from "@/lib/notifications/columns";

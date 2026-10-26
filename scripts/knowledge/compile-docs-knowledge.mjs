@@ -160,14 +160,6 @@ function clampCallout(text) {
     : `${cut.trimEnd()}...`;
 }
 
-function extractStringProp(source, prop) {
-  const re = new RegExp(`${prop}=\\"([^\\"]+)\\"`, "g");
-  const out = [];
-  let m;
-  while ((m = re.exec(source)) !== null) out.push(m[1]);
-  return out;
-}
-
 function extractArrayOfObjects(source, varName) {
   const startRe = new RegExp(
     `(?:const|let|var)\\s+${varName}(?::\\s*[A-Za-z_<>\\[\\], ]+)?\\s*=\\s*\\[`,

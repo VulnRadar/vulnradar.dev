@@ -63,7 +63,10 @@ describe("the site names its own repository", () => {
       join(process.cwd(), "components/scanner/footer.tsx"),
       "utf8",
     );
-    expect(footer).toContain("href={`https://github.com/${APP_REPO}`}");
+    // The footer's source text, so the placeholder is meant literally. The `$`
+    // is split off so this stays a plain string instead of reading as a
+    // template literal that forgot its backticks.
+    expect(footer).toContain("href={`https://github.com/$" + "{APP_REPO}`}");
     expect(footer).not.toContain('href="/github"');
   });
 });

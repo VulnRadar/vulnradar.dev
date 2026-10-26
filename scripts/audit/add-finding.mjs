@@ -16,7 +16,6 @@
  * Must be unique within the audit. The audit's findings.json is
  * rewritten atomically with the new finding appended.
  */
-import path from "node:path";
 import { appendFinding } from "../../lib/audit/index.mjs";
 
 const [

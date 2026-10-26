@@ -576,7 +576,7 @@ export async function checkDMARC(
   }
 
   // Check for missing aggregate (rua) and forensic (ruf) report endpoints
-  if (dmarc && !dmarc.includes("rua=")) {
+  if (!dmarc.includes("rua=")) {
     findings.push(
       makeVuln(
         url,
@@ -600,27 +600,25 @@ export async function checkDMARC(
       ),
     );
   }
-  if (dmarc) {
-    const pctMatch = dmarc.match(/\bpct=(\d+)/);
-    if (pctMatch) {
-      const pctValue = parseInt(pctMatch[1], 10);
-      if (pctValue < 100) {
-        findings.push(
-          makeVuln(
-            url,
-            A.dmarcPctBelow100,
-            `DMARC pct=${pctValue} — only ${pctValue}% of non-compliant mail is subject to the DMARC policy.`,
-            `pct=${pctValue} — only ${pctValue}% of non-compliant mail is subject to DMARC policy`,
-            "Spoofed messages that fail DMARC have a chance of being delivered, bypassing DMARC protection.",
-            "pct= is a gradual rollout mechanism. Set it to 100 once all legitimate mail passes authentication.",
-            [
-              "Review DMARC aggregate reports (rua=) to ensure all legitimate mail passes authentication.",
-              "Increment pct= toward 100 as you fix any failing legitimate mail sources.",
-              "Set pct=100 once confident no legitimate mail is failing.",
-            ],
-          ),
-        );
-      }
+  const pctMatch = dmarc.match(/\bpct=(\d+)/);
+  if (pctMatch) {
+    const pctValue = parseInt(pctMatch[1], 10);
+    if (pctValue < 100) {
+      findings.push(
+        makeVuln(
+          url,
+          A.dmarcPctBelow100,
+          `DMARC pct=${pctValue} — only ${pctValue}% of non-compliant mail is subject to the DMARC policy.`,
+          `pct=${pctValue} — only ${pctValue}% of non-compliant mail is subject to DMARC policy`,
+          "Spoofed messages that fail DMARC have a chance of being delivered, bypassing DMARC protection.",
+          "pct= is a gradual rollout mechanism. Set it to 100 once all legitimate mail passes authentication.",
+          [
+            "Review DMARC aggregate reports (rua=) to ensure all legitimate mail passes authentication.",
+            "Increment pct= toward 100 as you fix any failing legitimate mail sources.",
+            "Set pct=100 once confident no legitimate mail is failing.",
+          ],
+        ),
+      );
     }
   }
 

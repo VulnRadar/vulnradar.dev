@@ -155,8 +155,13 @@ export function ResultsList({
   // of their query from the URL. Filtering still reads the param, so this
   // only affects when the URL catches up, not what the list shows.
   const [searchInput, setSearchInput] = useState(searchQuery);
+  // Mirrors searchInput for the param-sync effect below, which has to run when
+  // the URL changes and not on every keystroke. Written in an effect that is
+  // declared before that one, so it is current by the time that one reads it.
   const searchInputRef = useRef(searchInput);
-  searchInputRef.current = searchInput;
+  useEffect(() => {
+    searchInputRef.current = searchInput;
+  }, [searchInput]);
 
   const activeSeverities = useMemo(() => {
     const wanted = sevParam

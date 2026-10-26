@@ -47,7 +47,6 @@ import {
   log,
   info,
   success,
-  warn,
   error,
   banner,
   section,

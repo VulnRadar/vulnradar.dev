@@ -1,5 +1,4 @@
 import pool from "@/lib/database/db";
-import { getClientIp } from "@/lib/api/request-utils";
 import { RATE_LIMIT_DEFAULTS } from "@/lib/config/constants";
 import type { SettingKey } from "@/lib/config/registry";
 import { getSettings } from "@/lib/config/runtime-config";

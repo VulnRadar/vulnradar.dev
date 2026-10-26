@@ -118,7 +118,7 @@ export default function AssetsPage() {
       setListError(null);
       setQueryParam("scope", next === "all" ? "all" : null, { replace: true });
     },
-    [scope],
+    [scope, setScope],
   );
 
   useEffect(() => {

@@ -438,7 +438,9 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
         clearAuthCache();
         setSuccess("All sessions signed out. Redirecting to sign in.");
         setShowLogoutModal(false);
-        setTimeout(() => (window.location.href = "/login"), 2000);
+        // A full document load on purpose, not router.push: this tab's
+        // in-memory state belonged to a session that was just revoked.
+        setTimeout(() => (window.location.href = ROUTES.LOGIN), 2000);
       } else {
         setLogoutError("We could not sign out your other sessions. Try again.");
       }

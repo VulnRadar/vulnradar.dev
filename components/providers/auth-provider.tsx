@@ -139,7 +139,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (cache === null) localStorage.removeItem("vr_auth_cache");
       else localStorage.setItem("vr_auth_cache", cache);
-    } catch {}
+    } catch {
+      // storage blocked or full: the cache only speeds up the first paint,
+      // the /me result above is still what the app trusts
+    }
 
     // The same two attributes the pre-hydration script in app/layout.tsx
     // stamps, now corrected against the real /auth/me answer rather than the
@@ -192,7 +195,10 @@ export function clearAuthCache() {
       if (k?.startsWith("vulnradar_")) toRemove.push(k);
     }
     toRemove.forEach((k) => localStorage.removeItem(k));
-  } catch {}
+  } catch {
+    // storage blocked: this page could not have written anything there to
+    // wipe, and the SWR cache above is already cleared
+  }
   document.documentElement.removeAttribute("data-vr-auth");
   document.documentElement.removeAttribute("data-vr-staff");
 }

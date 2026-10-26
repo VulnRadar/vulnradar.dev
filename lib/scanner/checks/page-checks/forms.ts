@@ -232,7 +232,7 @@ export const formChecks: PageCheck[] = [
           // reporting it as a leaked password would be wrong.
           !/^\s*(?:\{\{|\{%|\$\{|<%|<\?|\[\[|%\(|#\{)/.test(i.value) &&
           // A masked stand-in the page draws so the field looks populated.
-          !/^[*•.•●]+$/.test(i.value.trim()),
+          !/^[*•.●]+$/.test(i.value.trim()),
       );
       if (bad.length === 0) return null;
       return {

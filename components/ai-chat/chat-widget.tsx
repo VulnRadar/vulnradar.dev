@@ -149,7 +149,10 @@ function savePanelSize(w: number, h: number) {
       PANEL_SIZE_KEY,
       JSON.stringify({ width: w, height: h }),
     );
-  } catch {}
+  } catch {
+    // quota exceeded or private mode: the panel just opens at its default
+    // size next time
+  }
 }
 
 function makeWelcome(): ChatMessage {
@@ -770,7 +773,9 @@ export function ChatWidget() {
       try {
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(PANEL_SIZE_KEY);
-      } catch {}
+      } catch {
+        // storage blocked: this page could not have saved a conversation there
+      }
       const freshId = newSessionId();
       setSessionId(freshId);
       setMessages([makeWelcome()]);

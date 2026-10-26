@@ -241,7 +241,7 @@ describe("contributor docs quote the real toolchain", () => {
         (m) => m[1],
       ),
     );
-    const claimed = architecture.match(/auto-merge ([a-z + ]+?) only/)?.[1];
+    const claimed = architecture.match(/auto-merge ([a-z+ ]+?) only/)?.[1];
     expect(claimed, "the CI diagram's dependabot line").toBeTruthy();
     const claimedSet = new Set(
       (claimed as string).split("+").map((p) => p.trim()),

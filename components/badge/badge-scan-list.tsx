@@ -3,10 +3,7 @@
 import { Search, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
-import {
-  ListSearchInput,
-  worthFiltering,
-} from "@/components/shared/list-filter-bar";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 import { UrlDisplay } from "@/components/shared/url-display";
 import { cn } from "@/lib/ui/utils";
 import { plural } from "@/lib/ui/plural";

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { AlertTriangle, Clock, Download, Trash2, Loader2 } from "lucide-react";
-import { API, APP_SLUG } from "@/lib/config/client-constants";
+import { API, APP_SLUG, ROUTES } from "@/lib/config/client-constants";
 import { downloadBlob } from "@/lib/ui/download";
 import { formatDate } from "@/lib/ui/format-date";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -225,8 +225,10 @@ export function ProfilePrivacyTab({
       const data = await res.json();
       if (res.ok) {
         setSuccess("Account deletion initiated. Redirecting to login...");
+        // A full document load on purpose, not router.push: the account is
+        // gone, so every client cache that still belongs to it has to go too.
         setTimeout(() => {
-          window.location.href = "/login";
+          window.location.href = ROUTES.LOGIN;
         }, 1500);
       } else {
         setDeleteError(data.error || "Failed to delete account.");

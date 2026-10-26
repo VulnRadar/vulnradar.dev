@@ -409,8 +409,8 @@ function certContains(cert: InspectablePeerCert, hex: string): boolean {
 /** The leaf plus every intermediate, stopping before a self-signed root. */
 function chainWithoutRoot(leaf: InspectablePeerCert): InspectablePeerCert[] {
   const out: InspectablePeerCert[] = [];
-  let node: InspectablePeerCert | undefined = leaf;
-  for (let depth = 0; node && depth < 8; depth++) {
+  let node: InspectablePeerCert = leaf;
+  for (let depth = 0; depth < 8; depth++) {
     const next: InspectablePeerCert | undefined = node.issuerCertificate;
     // Node terminates a peer-sent chain with a self-referential node; a root
     // is trusted by identity, so its own SHA-1 self-signature is not a defect.

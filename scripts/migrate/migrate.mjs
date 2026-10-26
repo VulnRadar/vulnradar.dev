@@ -47,7 +47,7 @@ import {
   createPool,
   connect,
 } from "../_lib/_lib.db.mjs";
-import { formatDbHost, chooseDatabase } from "../_lib/_lib.target.mjs";
+import { chooseDatabase } from "../_lib/_lib.target.mjs";
 import { getActualSchema } from "../_lib/_lib.schema.mjs";
 import { getProjectMeta } from "../_lib/_lib.meta.mjs";
 import {

@@ -401,7 +401,7 @@ function AdminContent() {
     (message: string, type: "success" | "error") => {
       setToast({ message, type });
     },
-    [],
+    [setToast],
   );
 
   // Sync user/tab selection with URL query params
@@ -901,7 +901,7 @@ function AdminContent() {
       ok: boolean;
       error?: string;
       change?: { field: string; oldValue: string; newValue: string };
-    } = { ok: false };
+    };
     try {
       const res = await fetch(API.ADMIN, {
         method: "PATCH",

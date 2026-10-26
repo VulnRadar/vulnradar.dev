@@ -1,6 +1,5 @@
 "use client";
 
-import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { parseUrl } from "@/lib/ui/parse-url";
 
 /**

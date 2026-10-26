@@ -552,7 +552,7 @@ export function ProfileAiSettingsTab({
 
               {/* Save */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                {config && !config.useVulnradarAi && (
+                {!config.useVulnradarAi && (
                   <button
                     type="button"
                     onClick={() => {

@@ -435,7 +435,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     const startTime = Date.now();
     let responseBody = "";
-    let headers = new Headers();
+    let headers: Headers;
     let finalScanUrl = url;
     let botChallenge: string | null = null;
     try {

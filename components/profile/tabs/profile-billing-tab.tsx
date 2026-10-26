@@ -281,9 +281,7 @@ export function ProfileBillingTab({
    * Falls back to the raw id only for a plan the catalog does not know, which
    * is better than the blank line this headline used to be.
    */
-  const planLabel = billingInfo
-    ? (getPlanById(billingInfo.plan)?.name ?? billingInfo.plan)
-    : "";
+  const planLabel = getPlanById(billingInfo.plan)?.name ?? billingInfo.plan;
 
   return (
     <div className="flex flex-col gap-8">
@@ -305,634 +303,601 @@ export function ProfileBillingTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-4">
-            {billingInfo ? (
-              <>
-                <div className="flex items-center justify-between gap-3 p-4 rounded-lg bg-secondary/50 border border-border">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={cn(
-                        "flex items-center justify-center h-10 w-10 rounded-lg shrink-0",
-                        billingInfo.plan === "free"
-                          ? "bg-muted"
-                          : "bg-primary/10 border border-primary/20",
-                      )}
-                    >
-                      {billingInfo.plan === "free" ? (
-                        <Users className="h-5 w-5 text-muted-foreground" />
-                      ) : (
-                        <Zap className="h-5 w-5 text-primary" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      {/* Same reasoning as the line under it: a plan name is
+            <div className="flex items-center justify-between gap-3 p-4 rounded-lg bg-secondary/50 border border-border">
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className={cn(
+                    "flex items-center justify-center h-10 w-10 rounded-lg shrink-0",
+                    billingInfo.plan === "free"
+                      ? "bg-muted"
+                      : "bg-primary/10 border border-primary/20",
+                  )}
+                >
+                  {billingInfo.plan === "free" ? (
+                    <Users className="h-5 w-5 text-muted-foreground" />
+                  ) : (
+                    <Zap className="h-5 w-5 text-primary" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  {/* Same reasoning as the line under it: a plan name is
                           one of our own words, not something the account
                           typed, so the row is sized to print it. With the
                           40px icon and the status badge taking their width
                           first, a 320px phone left about 130px here and
                           "Professional" clipped. */}
-                      {/* planLabel is derived from `plan` through the catalog,
+                  {/* planLabel is derived from `plan` through the catalog,
                           never read from a `planName` field: GET
                           /api/v3/billing has never returned one (only the
                           email-code-gated /billing/verify does), so this
                           headline was an empty paragraph for every account,
                           paid or not. */}
-                      <p className="font-semibold text-foreground">
-                        {planLabel}
-                      </p>
-                      {/* A number and our own unit. "25 scans/day" should
+                  <p className="font-semibold text-foreground">{planLabel}</p>
+                  {/* A number and our own unit. "25 scans/day" should
                           wrap, never clip to "25 scans/d...". */}
-                      <p className="text-sm text-muted-foreground">
-                        {billingInfo.limits[
-                          billingInfo.plan as keyof typeof billingInfo.limits
-                        ] || billingInfo.limits.free}{" "}
-                        scans/day
-                      </p>
-                    </div>
-                  </div>
-                  {billingInfo.subscription?.status && (
-                    <Badge
-                      className={cn(
-                        "shrink-0",
-                        billingInfo.subscription.cancelAtPeriodEnd
-                          ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25"
-                          : billingInfo.subscription.status === "active"
-                            ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25"
-                            : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {billingInfo.subscription.cancelAtPeriodEnd
-                        ? "Canceling"
-                        : billingInfo.subscription.status
-                            .charAt(0)
-                            .toUpperCase() +
-                          billingInfo.subscription.status.slice(1)}
-                    </Badge>
+                  <p className="text-sm text-muted-foreground">
+                    {billingInfo.limits[
+                      billingInfo.plan as keyof typeof billingInfo.limits
+                    ] || billingInfo.limits.free}{" "}
+                    scans/day
+                  </p>
+                </div>
+              </div>
+              {billingInfo.subscription?.status && (
+                <Badge
+                  className={cn(
+                    "shrink-0",
+                    billingInfo.subscription.cancelAtPeriodEnd
+                      ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25"
+                      : billingInfo.subscription.status === "active"
+                        ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25"
+                        : "bg-muted text-muted-foreground",
                   )}
+                >
+                  {billingInfo.subscription.cancelAtPeriodEnd
+                    ? "Canceling"
+                    : billingInfo.subscription.status.charAt(0).toUpperCase() +
+                      billingInfo.subscription.status.slice(1)}
+                </Badge>
+              )}
+            </div>
+
+            {/* Subscription details for paid Stripe plans */}
+            {billingInfo.subscription && !billingInfo.giftedSubscription && (
+              <div className="flex flex-col gap-3 p-4 rounded-lg border border-border">
+                {/* Price and billing interval */}
+                {billingInfo.subscription.priceAmount && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Billing Amount
+                    </span>
+                    <span className="text-sm font-medium text-foreground">
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency:
+                          billingInfo.subscription.priceCurrency || "usd",
+                      }).format(billingInfo.subscription.priceAmount)}
+                      /
+                      {billingInfo.subscription.priceIntervalCount === 1
+                        ? billingInfo.subscription.priceInterval
+                        : `${billingInfo.subscription.priceIntervalCount} ${billingInfo.subscription.priceInterval}s`}
+                    </span>
+                  </div>
+                )}
+
+                {/* Next billing date */}
+                {billingInfo.subscription.nextBillingDate &&
+                  !billingInfo.subscription.cancelAtPeriodEnd && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        Next Billing Date
+                      </span>
+                      <span className="text-sm font-medium text-foreground">
+                        {formatDate(billingInfo.subscription.nextBillingDate)}
+                      </span>
+                    </div>
+                  )}
+
+                {/* Last payment info */}
+                {billingInfo.subscription.lastPaymentDate && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Last Payment
+                    </span>
+                    <span className="text-sm font-medium text-foreground">
+                      {billingInfo.subscription.lastPaymentAmount &&
+                        new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency:
+                            billingInfo.subscription.priceCurrency || "usd",
+                        }).format(
+                          billingInfo.subscription.lastPaymentAmount,
+                        )}{" "}
+                      on {formatDate(billingInfo.subscription.lastPaymentDate)}
+                      {billingInfo.subscription.lastPaymentStatus ===
+                        "paid" && (
+                        <Badge className="ml-2 bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25 text-xs">
+                          Paid
+                        </Badge>
+                      )}
+                    </span>
+                  </div>
+                )}
+
+                {billingInfo.subscription.cancelAtPeriodEnd && (
+                  <InlineAlert tone="warning" className="mt-2">
+                    Your subscription will end on{" "}
+                    {billingInfo.subscription.currentPeriodEnd
+                      ? formatDate(billingInfo.subscription.currentPeriodEnd)
+                      : "the end of your billing period"}
+                    . You&apos;ll keep access until then.
+                  </InlineAlert>
+                )}
+              </div>
+            )}
+
+            {/* Reveal Sensitive Billing Information */}
+            {billingInfo.subscription && !billingInfo.giftedSubscription && (
+              <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-background/50 mt-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Lock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium text-foreground">
+                      Sensitive Billing Details
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (sensitiveInfoVisible) {
+                        setSensitiveInfoVisible(false);
+                        setSensitiveData(null);
+                      } else {
+                        setShowVerificationModal(true);
+                      }
+                    }}
+                    className="text-xs gap-1"
+                  >
+                    {sensitiveInfoVisible ? (
+                      <>
+                        <EyeOff className="h-4 w-4" />
+                        Hide
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="h-4 w-4" />
+                        Reveal
+                      </>
+                    )}
+                  </Button>
                 </div>
 
-                {/* Subscription details for paid Stripe plans */}
-                {billingInfo.subscription &&
-                  !billingInfo.giftedSubscription && (
-                    <div className="flex flex-col gap-3 p-4 rounded-lg border border-border">
-                      {/* Price and billing interval */}
-                      {billingInfo.subscription.priceAmount && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
-                            Billing Amount
-                          </span>
-                          <span className="text-sm font-medium text-foreground">
-                            {new Intl.NumberFormat("en-US", {
-                              style: "currency",
-                              currency:
-                                billingInfo.subscription.priceCurrency || "usd",
-                            }).format(billingInfo.subscription.priceAmount)}
-                            /
-                            {billingInfo.subscription.priceIntervalCount === 1
-                              ? billingInfo.subscription.priceInterval
-                              : `${billingInfo.subscription.priceIntervalCount} ${billingInfo.subscription.priceInterval}s`}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Next billing date */}
-                      {billingInfo.subscription.nextBillingDate &&
-                        !billingInfo.subscription.cancelAtPeriodEnd && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">
-                              Next Billing Date
+                {sensitiveInfoVisible && sensitiveData ? (
+                  <div className="space-y-4 pt-3 border-t border-border">
+                    {/* Payment Method Section */}
+                    {sensitiveData.paymentMethod && (
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Payment Method
+                        </h3>
+                        <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Card</span>
+                            <span className="font-mono text-foreground flex items-center gap-2">
+                              <CreditCard className="h-4 w-4" />
+                              <span className="capitalize">
+                                {sensitiveData.paymentMethod.cardBrand}
+                              </span>{" "}
+                              •••• {sensitiveData.paymentMethod.cardLast4}
                             </span>
-                            <span className="text-sm font-medium text-foreground">
-                              {formatDate(
-                                billingInfo.subscription.nextBillingDate,
+                          </div>
+                          {sensitiveData.paymentMethod.cardExpMonth &&
+                            sensitiveData.paymentMethod.cardExpYear && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">
+                                  Expires
+                                </span>
+                                <span className="font-mono text-foreground">
+                                  {sensitiveData.paymentMethod.cardExpMonth
+                                    .toString()
+                                    .padStart(2, "0")}
+                                  /
+                                  {sensitiveData.paymentMethod.cardExpYear
+                                    .toString()
+                                    .slice(-2)}
+                                </span>
+                              </div>
+                            )}
+                          {sensitiveData.paymentMethod.billingEmail && (
+                            <div className="flex items-center justify-between gap-2 text-sm">
+                              <span className="text-muted-foreground shrink-0">
+                                Billing Email
+                              </span>
+                              <span className="text-foreground text-xs font-mono truncate min-w-0">
+                                {sensitiveData.paymentMethod.billingEmail}
+                              </span>
+                            </div>
+                          )}
+                          {sensitiveData.paymentMethod.cardSupports3dSecure && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">
+                                Security
+                              </span>
+                              <span className="text-foreground inline-flex items-center gap-1">
+                                <Check
+                                  className="h-3.5 w-3.5 text-[hsl(var(--success))]"
+                                  aria-hidden="true"
+                                />
+                                3D Secure
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subscription Details Section */}
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Subscription Info
+                      </h3>
+                      <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                        {sensitiveData.created && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">
+                              Created
+                            </span>
+                            <span className="text-foreground">
+                              {formatDate(sensitiveData.created)}
+                            </span>
+                          </div>
+                        )}
+                        {sensitiveData.currentPeriodEnd && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">
+                              Billing Period Ends
+                            </span>
+                            <span className="text-foreground">
+                              {formatDate(sensitiveData.currentPeriodEnd)}
+                            </span>
+                          </div>
+                        )}
+                        {sensitiveData.hasTrialPeriod && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Trial</span>
+                            <span className="text-foreground inline-flex items-center gap-1">
+                              {sensitiveData.isOnTrial ? (
+                                <>
+                                  <Check
+                                    className="h-3.5 w-3.5 text-[hsl(var(--success))]"
+                                    aria-hidden="true"
+                                  />
+                                  Active
+                                </>
+                              ) : (
+                                "Ended"
                               )}
                             </span>
                           </div>
                         )}
-
-                      {/* Last payment info */}
-                      {billingInfo.subscription.lastPaymentDate && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
-                            Last Payment
-                          </span>
-                          <span className="text-sm font-medium text-foreground">
-                            {billingInfo.subscription.lastPaymentAmount &&
-                              new Intl.NumberFormat("en-US", {
-                                style: "currency",
-                                currency:
-                                  billingInfo.subscription.priceCurrency ||
-                                  "usd",
-                              }).format(
-                                billingInfo.subscription.lastPaymentAmount,
-                              )}{" "}
-                            on{" "}
-                            {formatDate(
-                              billingInfo.subscription.lastPaymentDate,
-                            )}
-                            {billingInfo.subscription.lastPaymentStatus ===
-                              "paid" && (
-                              <Badge className="ml-2 bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25 text-xs">
-                                Paid
-                              </Badge>
-                            )}
-                          </span>
-                        </div>
-                      )}
-
-                      {billingInfo.subscription.cancelAtPeriodEnd && (
-                        <InlineAlert tone="warning" className="mt-2">
-                          Your subscription will end on{" "}
-                          {billingInfo.subscription.currentPeriodEnd
-                            ? formatDate(
-                                billingInfo.subscription.currentPeriodEnd,
-                              )
-                            : "the end of your billing period"}
-                          . You&apos;ll keep access until then.
-                        </InlineAlert>
-                      )}
-                    </div>
-                  )}
-
-                {/* Reveal Sensitive Billing Information */}
-                {billingInfo.subscription &&
-                  !billingInfo.giftedSubscription && (
-                    <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-background/50 mt-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Lock className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium text-foreground">
-                            Sensitive Billing Details
-                          </span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            if (sensitiveInfoVisible) {
-                              setSensitiveInfoVisible(false);
-                              setSensitiveData(null);
-                            } else {
-                              setShowVerificationModal(true);
-                            }
-                          }}
-                          className="text-xs gap-1"
-                        >
-                          {sensitiveInfoVisible ? (
-                            <>
-                              <EyeOff className="h-4 w-4" />
-                              Hide
-                            </>
-                          ) : (
-                            <>
-                              <Eye className="h-4 w-4" />
-                              Reveal
-                            </>
-                          )}
-                        </Button>
+                        {sensitiveData.billingInterval && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">
+                              Renews
+                            </span>
+                            <span className="text-foreground capitalize">
+                              {sensitiveData.billingIntervalCount &&
+                              sensitiveData.billingIntervalCount > 1
+                                ? `Every ${sensitiveData.billingIntervalCount} ${sensitiveData.billingInterval}s`
+                                : sensitiveData.billingInterval}
+                            </span>
+                          </div>
+                        )}
                       </div>
+                    </div>
 
-                      {sensitiveInfoVisible && sensitiveData ? (
-                        <div className="space-y-4 pt-3 border-t border-border">
-                          {/* Payment Method Section */}
-                          {sensitiveData.paymentMethod && (
-                            <div className="space-y-2">
-                              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                Payment Method
-                              </h3>
-                              <div className="bg-muted/30 rounded-lg p-3 space-y-2">
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">
-                                    Card
-                                  </span>
-                                  <span className="font-mono text-foreground flex items-center gap-2">
-                                    <CreditCard className="h-4 w-4" />
-                                    <span className="capitalize">
-                                      {sensitiveData.paymentMethod.cardBrand}
-                                    </span>{" "}
-                                    •••• {sensitiveData.paymentMethod.cardLast4}
-                                  </span>
-                                </div>
-                                {sensitiveData.paymentMethod.cardExpMonth &&
-                                  sensitiveData.paymentMethod.cardExpYear && (
-                                    <div className="flex items-center justify-between text-sm">
-                                      <span className="text-muted-foreground">
-                                        Expires
-                                      </span>
-                                      <span className="font-mono text-foreground">
-                                        {sensitiveData.paymentMethod.cardExpMonth
-                                          .toString()
-                                          .padStart(2, "0")}
-                                        /
-                                        {sensitiveData.paymentMethod.cardExpYear
-                                          .toString()
-                                          .slice(-2)}
-                                      </span>
-                                    </div>
-                                  )}
-                                {sensitiveData.paymentMethod.billingEmail && (
-                                  <div className="flex items-center justify-between gap-2 text-sm">
-                                    <span className="text-muted-foreground shrink-0">
-                                      Billing Email
-                                    </span>
-                                    <span className="text-foreground text-xs font-mono truncate min-w-0">
-                                      {sensitiveData.paymentMethod.billingEmail}
-                                    </span>
-                                  </div>
-                                )}
-                                {sensitiveData.paymentMethod
-                                  .cardSupports3dSecure && (
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">
-                                      Security
-                                    </span>
-                                    <span className="text-foreground inline-flex items-center gap-1">
-                                      <Check
-                                        className="h-3.5 w-3.5 text-[hsl(var(--success))]"
-                                        aria-hidden="true"
-                                      />
-                                      3D Secure
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
+                    {/* Latest Invoice Section */}
+                    {sensitiveData.invoice && (
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Latest Invoice
+                        </h3>
+                        <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                          {sensitiveData.invoice.number && (
+                            <div className="flex items-center justify-between gap-2 text-sm">
+                              <span className="text-muted-foreground shrink-0">
+                                Invoice #
+                              </span>
+                              <span className="font-mono text-foreground truncate min-w-0">
+                                {sensitiveData.invoice.number}
+                              </span>
                             </div>
                           )}
-
-                          {/* Subscription Details Section */}
-                          <div className="space-y-2">
-                            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                              Subscription Info
-                            </h3>
-                            <div className="bg-muted/30 rounded-lg p-3 space-y-2">
-                              {sensitiveData.created && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">
-                                    Created
-                                  </span>
-                                  <span className="text-foreground">
-                                    {formatDate(sensitiveData.created)}
-                                  </span>
-                                </div>
-                              )}
-                              {sensitiveData.currentPeriodEnd && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">
-                                    Billing Period Ends
-                                  </span>
-                                  <span className="text-foreground">
-                                    {formatDate(sensitiveData.currentPeriodEnd)}
-                                  </span>
-                                </div>
-                              )}
-                              {sensitiveData.hasTrialPeriod && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">
-                                    Trial
-                                  </span>
-                                  <span className="text-foreground inline-flex items-center gap-1">
-                                    {sensitiveData.isOnTrial ? (
-                                      <>
-                                        <Check
-                                          className="h-3.5 w-3.5 text-[hsl(var(--success))]"
-                                          aria-hidden="true"
-                                        />
-                                        Active
-                                      </>
-                                    ) : (
-                                      "Ended"
-                                    )}
-                                  </span>
-                                </div>
-                              )}
-                              {sensitiveData.billingInterval && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">
-                                    Renews
-                                  </span>
-                                  <span className="text-foreground capitalize">
-                                    {sensitiveData.billingIntervalCount &&
-                                    sensitiveData.billingIntervalCount > 1
-                                      ? `Every ${sensitiveData.billingIntervalCount} ${sensitiveData.billingInterval}s`
-                                      : sensitiveData.billingInterval}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Latest Invoice Section */}
-                          {sensitiveData.invoice && (
-                            <div className="space-y-2">
-                              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                Latest Invoice
-                              </h3>
-                              <div className="bg-muted/30 rounded-lg p-3 space-y-2">
-                                {sensitiveData.invoice.number && (
-                                  <div className="flex items-center justify-between gap-2 text-sm">
-                                    <span className="text-muted-foreground shrink-0">
-                                      Invoice #
-                                    </span>
-                                    <span className="font-mono text-foreground truncate min-w-0">
-                                      {sensitiveData.invoice.number}
-                                    </span>
-                                  </div>
-                                )}
-                                {sensitiveData.invoice.created && (
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">
-                                      Date
-                                    </span>
-                                    <span className="text-foreground">
-                                      {formatDate(
-                                        sensitiveData.invoice.created,
-                                      )}
-                                    </span>
-                                  </div>
-                                )}
-                                {sensitiveData.invoice.total !== null && (
-                                  <div className="flex items-center justify-between text-sm font-medium">
-                                    <span className="text-muted-foreground">
-                                      Total
-                                    </span>
-                                    <span className="text-foreground">
-                                      ${sensitiveData.invoice.total.toFixed(2)}
-                                    </span>
-                                  </div>
-                                )}
-                                {sensitiveData.invoice.status && (
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">
-                                      Status
-                                    </span>
-                                    <Badge
-                                      className={cn(
-                                        sensitiveData.invoice.status === "paid"
-                                          ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25"
-                                          : "bg-muted text-muted-foreground",
-                                      )}
-                                    >
-                                      {sensitiveData.invoice.status
-                                        .charAt(0)
-                                        .toUpperCase() +
-                                        sensitiveData.invoice.status.slice(1)}
-                                    </Badge>
-                                  </div>
-                                )}
-                                <div className="flex gap-2 pt-2">
-                                  {sensitiveData.invoice.hostedUrl && (
-                                    <a
-                                      href={sensitiveData.invoice.hostedUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-primary hover:underline"
-                                    >
-                                      View Invoice
-                                    </a>
-                                  )}
-                                  {sensitiveData.invoice.pdfUrl && (
-                                    <a
-                                      href={sensitiveData.invoice.pdfUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-primary hover:underline"
-                                    >
-                                      Download PDF
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
+                          {sensitiveData.invoice.created && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">
+                                Date
+                              </span>
+                              <span className="text-foreground">
+                                {formatDate(sensitiveData.invoice.created)}
+                              </span>
                             </div>
                           )}
-
-                          {/* Subscription IDs Section */}
-                          <div className="space-y-2">
-                            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                              Reference IDs & Metadata
-                            </h3>
-                            <div className="bg-muted/30 rounded-lg p-3 space-y-2">
-                              <div className="flex items-center justify-between gap-2 text-sm">
-                                <span className="text-muted-foreground shrink-0">
-                                  Customer ID
-                                </span>
-                                <span className="font-mono text-xs text-foreground truncate min-w-0">
-                                  {sensitiveData.stripeCustomerId}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between gap-2 text-sm">
-                                <span className="text-muted-foreground shrink-0">
-                                  Subscription ID
-                                </span>
-                                <span className="font-mono text-xs text-foreground truncate min-w-0">
-                                  {sensitiveData.stripeSubscriptionId}
-                                </span>
-                              </div>
-                              {sensitiveData.stripePaymentMethodId && (
-                                <div className="flex items-center justify-between gap-2 text-sm">
-                                  <span className="text-muted-foreground shrink-0">
-                                    Payment Method ID
-                                  </span>
-                                  <span className="font-mono text-xs text-foreground truncate min-w-0">
-                                    {sensitiveData.stripePaymentMethodId}
-                                  </span>
-                                </div>
-                              )}
-                              {sensitiveData.productId && (
-                                <div className="flex items-center justify-between gap-2 text-sm">
-                                  <span className="text-muted-foreground shrink-0">
-                                    Product ID
-                                  </span>
-                                  <span className="font-mono text-xs text-foreground truncate min-w-0">
-                                    {sensitiveData.productId}
-                                  </span>
-                                </div>
-                              )}
-                              {sensitiveData.liveMode !== undefined && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">
-                                    Mode
-                                  </span>
-                                  <Badge
-                                    className={
-                                      sensitiveData.liveMode
-                                        ? "bg-destructive/10 text-destructive border-destructive/20"
-                                        : "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25"
-                                    }
-                                  >
-                                    {sensitiveData.liveMode ? "Live" : "Test"}
-                                  </Badge>
-                                </div>
-                              )}
-                              {sensitiveData.created && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">
-                                    Created
-                                  </span>
-                                  <span className="text-foreground">
-                                    {formatDate(sensitiveData.created)}
-                                  </span>
-                                </div>
-                              )}
+                          {sensitiveData.invoice.total !== null && (
+                            <div className="flex items-center justify-between text-sm font-medium">
+                              <span className="text-muted-foreground">
+                                Total
+                              </span>
+                              <span className="text-foreground">
+                                ${sensitiveData.invoice.total.toFixed(2)}
+                              </span>
                             </div>
+                          )}
+                          {sensitiveData.invoice.status && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">
+                                Status
+                              </span>
+                              <Badge
+                                className={cn(
+                                  sensitiveData.invoice.status === "paid"
+                                    ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25"
+                                    : "bg-muted text-muted-foreground",
+                                )}
+                              >
+                                {sensitiveData.invoice.status
+                                  .charAt(0)
+                                  .toUpperCase() +
+                                  sensitiveData.invoice.status.slice(1)}
+                              </Badge>
+                            </div>
+                          )}
+                          <div className="flex gap-2 pt-2">
+                            {sensitiveData.invoice.hostedUrl && (
+                              <a
+                                href={sensitiveData.invoice.hostedUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline"
+                              >
+                                View Invoice
+                              </a>
+                            )}
+                            {sensitiveData.invoice.pdfUrl && (
+                              <a
+                                href={sensitiveData.invoice.pdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline"
+                              >
+                                Download PDF
+                              </a>
+                            )}
                           </div>
-
-                          <p className="text-xs text-muted-foreground pt-2 italic">
-                            This information is securely fetched each time you
-                            verify. Click &quot;Hide&quot; to clear it.
-                          </p>
                         </div>
-                      ) : sensitiveInfoVisible ? (
-                        <p className="text-sm text-muted-foreground pt-2">
-                          No billing information available
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground pt-2">
-                          Click &quot;Reveal&quot; and verify your email to view
-                          payment details, invoices, and billing address
-                        </p>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    )}
 
-                {/* Gifted subscription details */}
-                {billingInfo.giftedSubscription && (
-                  <div className="flex flex-col gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Status
-                      </span>
-                      <Badge className="bg-primary/10 text-primary border-primary/20">
-                        Gifted
-                      </Badge>
+                    {/* Subscription IDs Section */}
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Reference IDs & Metadata
+                      </h3>
+                      <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2 text-sm">
+                          <span className="text-muted-foreground shrink-0">
+                            Customer ID
+                          </span>
+                          <span className="font-mono text-xs text-foreground truncate min-w-0">
+                            {sensitiveData.stripeCustomerId}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 text-sm">
+                          <span className="text-muted-foreground shrink-0">
+                            Subscription ID
+                          </span>
+                          <span className="font-mono text-xs text-foreground truncate min-w-0">
+                            {sensitiveData.stripeSubscriptionId}
+                          </span>
+                        </div>
+                        {sensitiveData.stripePaymentMethodId && (
+                          <div className="flex items-center justify-between gap-2 text-sm">
+                            <span className="text-muted-foreground shrink-0">
+                              Payment Method ID
+                            </span>
+                            <span className="font-mono text-xs text-foreground truncate min-w-0">
+                              {sensitiveData.stripePaymentMethodId}
+                            </span>
+                          </div>
+                        )}
+                        {sensitiveData.productId && (
+                          <div className="flex items-center justify-between gap-2 text-sm">
+                            <span className="text-muted-foreground shrink-0">
+                              Product ID
+                            </span>
+                            <span className="font-mono text-xs text-foreground truncate min-w-0">
+                              {sensitiveData.productId}
+                            </span>
+                          </div>
+                        )}
+                        {sensitiveData.liveMode !== undefined && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Mode</span>
+                            <Badge
+                              className={
+                                sensitiveData.liveMode
+                                  ? "bg-destructive/10 text-destructive border-destructive/20"
+                                  : "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25"
+                              }
+                            >
+                              {sensitiveData.liveMode ? "Live" : "Test"}
+                            </Badge>
+                          </div>
+                        )}
+                        {sensitiveData.created && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">
+                              Created
+                            </span>
+                            <span className="text-foreground">
+                              {formatDate(sensitiveData.created)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Gift Period
-                      </span>
-                      <span className="text-sm font-medium text-foreground">
-                        {formatDate(billingInfo.giftedSubscription.startedAt)} -{" "}
-                        {formatDate(billingInfo.giftedSubscription.expiresAt)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/20 mt-2">
-                      <Gift className="h-4 w-4 text-primary shrink-0" />
-                      <p className="text-sm text-primary">
-                        You have a gifted{" "}
-                        {getPlanById(billingInfo.giftedSubscription.plan)
-                          ?.name || billingInfo.giftedSubscription.plan}{" "}
-                        subscription until{" "}
-                        {formatDate(billingInfo.giftedSubscription.expiresAt)}.
-                      </p>
-                    </div>
+
+                    <p className="text-xs text-muted-foreground pt-2 italic">
+                      This information is securely fetched each time you verify.
+                      Click &quot;Hide&quot; to clear it.
+                    </p>
                   </div>
+                ) : sensitiveInfoVisible ? (
+                  <p className="text-sm text-muted-foreground pt-2">
+                    No billing information available
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground pt-2">
+                    Click &quot;Reveal&quot; and verify your email to view
+                    payment details, invoices, and billing address
+                  </p>
                 )}
+              </div>
+            )}
 
-                {/* Actions for paid plans. Requires a real Stripe
+            {/* Gifted subscription details */}
+            {billingInfo.giftedSubscription && (
+              <div className="flex flex-col gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Status</span>
+                  <Badge className="bg-primary/10 text-primary border-primary/20">
+                    Gifted
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    Gift Period
+                  </span>
+                  <span className="text-sm font-medium text-foreground">
+                    {formatDate(billingInfo.giftedSubscription.startedAt)} -{" "}
+                    {formatDate(billingInfo.giftedSubscription.expiresAt)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/20 mt-2">
+                  <Gift className="h-4 w-4 text-primary shrink-0" />
+                  <p className="text-sm text-primary">
+                    You have a gifted{" "}
+                    {getPlanById(billingInfo.giftedSubscription.plan)?.name ||
+                      billingInfo.giftedSubscription.plan}{" "}
+                    subscription until{" "}
+                    {formatDate(billingInfo.giftedSubscription.expiresAt)}.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Actions for paid plans. Requires a real Stripe
                     subscription -- a staff-granted plan (see
                     lib/billing/staff-plan.ts) has billingInfo.plan set to a
                     real value with no Stripe subscription behind it, so
                     there is nothing here to cancel/reactivate. */}
-                {billingInfo.plan !== "free" &&
-                  billingInfo.subscription &&
-                  !billingInfo.giftedSubscription && (
-                    <div className="flex flex-col gap-2 pt-2">
-                      <Button
-                        variant="outline"
-                        onClick={handleOpenBillingPortal}
-                        disabled={openingPortal}
-                        className="w-full gap-2"
-                      >
-                        {openingPortal ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Opening...
-                          </>
-                        ) : (
-                          <>
-                            <ExternalLink className="h-4 w-4" />
-                            Manage billing & view invoices
-                          </>
-                        )}
-                      </Button>
-                      {billingInfo.subscription?.cancelAtPeriodEnd ? (
-                        <Button
-                          variant="outline"
-                          onClick={handleReactivateSubscription}
-                          disabled={reactivatingSubscription}
-                          className="w-full gap-2"
-                        >
-                          {reactivatingSubscription ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Reactivating...
-                            </>
-                          ) : (
-                            <>
-                              <RefreshCw className="h-4 w-4" />
-                              Reactivate Subscription
-                            </>
-                          )}
-                        </Button>
+            {billingInfo.plan !== "free" &&
+              billingInfo.subscription &&
+              !billingInfo.giftedSubscription && (
+                <div className="flex flex-col gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleOpenBillingPortal}
+                    disabled={openingPortal}
+                    className="w-full gap-2"
+                  >
+                    {openingPortal ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Opening...
+                      </>
+                    ) : (
+                      <>
+                        <ExternalLink className="h-4 w-4" />
+                        Manage billing & view invoices
+                      </>
+                    )}
+                  </Button>
+                  {billingInfo.subscription?.cancelAtPeriodEnd ? (
+                    <Button
+                      variant="outline"
+                      onClick={handleReactivateSubscription}
+                      disabled={reactivatingSubscription}
+                      className="w-full gap-2"
+                    >
+                      {reactivatingSubscription ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Reactivating...
+                        </>
                       ) : (
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowCancelDialog(true)}
-                          className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                        >
-                          Cancel subscription
-                        </Button>
+                        <>
+                          <RefreshCw className="h-4 w-4" />
+                          Reactivate Subscription
+                        </>
                       )}
-                    </div>
-                  )}
-
-                {/* Plan Comparison, priced straight from the plan catalog so
-                    this can never drift from what checkout actually charges. */}
-                {billingInfo.plan === "free" && (
-                  <div className="flex flex-col gap-3 pt-4 border-t border-border">
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Available plans
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {getPaidPlans().map((paidPlan, i) => (
-                        <div
-                          key={paidPlan.id}
-                          className={cn(
-                            "relative p-3 rounded-lg border transition-colors",
-                            i === 1
-                              ? "border-primary/30 bg-primary/5"
-                              : "border-border bg-card hover:bg-secondary/30",
-                          )}
-                        >
-                          {i === 1 && (
-                            <Badge className="absolute -top-2 right-2 text-[10px] bg-primary text-primary-foreground">
-                              Popular
-                            </Badge>
-                          )}
-                          <p className="font-medium text-foreground text-sm">
-                            {paidPlan.name}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {paidPlan.limits.dailyScans} scans/day
-                          </p>
-                          <p className="text-sm font-semibold text-primary mt-1">
-                            ${(paidPlan.priceInCents / 100).toFixed(0)}/mo
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                    <Button asChild className="w-full mt-2 gap-2">
-                      <a href={ROUTES.PRICING}>
-                        <TrendingUp className="h-4 w-4" aria-hidden="true" />
-                        View all plans
-                      </a>
                     </Button>
-                  </div>
-                )}
-              </>
-            ) : /* Unreachable: a null billingInfo returns the error panel
-                   above. This branch, and the three usage meters that follow,
-                   each used to render a skeleton here, so a failed billing
-                   load spun forever instead of saying it had failed. */
-            null}
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowCancelDialog(true)}
+                      className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      Cancel subscription
+                    </Button>
+                  )}
+                </div>
+              )}
+
+            {/* Plan Comparison, priced straight from the plan catalog so
+                    this can never drift from what checkout actually charges. */}
+            {billingInfo.plan === "free" && (
+              <div className="flex flex-col gap-3 pt-4 border-t border-border">
+                <p className="text-sm font-medium text-muted-foreground">
+                  Available plans
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {getPaidPlans().map((paidPlan, i) => (
+                    <div
+                      key={paidPlan.id}
+                      className={cn(
+                        "relative p-3 rounded-lg border transition-colors",
+                        i === 1
+                          ? "border-primary/30 bg-primary/5"
+                          : "border-border bg-card hover:bg-secondary/30",
+                      )}
+                    >
+                      {i === 1 && (
+                        <Badge className="absolute -top-2 right-2 text-[10px] bg-primary text-primary-foreground">
+                          Popular
+                        </Badge>
+                      )}
+                      <p className="font-medium text-foreground text-sm">
+                        {paidPlan.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {paidPlan.limits.dailyScans} scans/day
+                      </p>
+                      <p className="text-sm font-semibold text-primary mt-1">
+                        ${(paidPlan.priceInCents / 100).toFixed(0)}/mo
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <Button asChild className="w-full mt-2 gap-2">
+                  <a href={ROUTES.PRICING}>
+                    <TrendingUp className="h-4 w-4" aria-hidden="true" />
+                    View all plans
+                  </a>
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>
@@ -951,88 +916,81 @@ export function ProfileBillingTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-4">
-            {billingInfo ? (
+            {billingInfo.usage.unlimited ? (
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
+                <Zap
+                  className="h-5 w-5 text-[hsl(var(--success))]"
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="font-medium text-foreground">
+                    Unlimited Access
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    You have unlimited scans
+                    {billingInfo.plan !== "free" &&
+                      ` with your ${getPlanById(billingInfo.plan)?.name || billingInfo.plan} plan`}
+                    .
+                  </p>
+                </div>
+              </div>
+            ) : (
               <>
-                {billingInfo.usage.unlimited ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
-                    <Zap
-                      className="h-5 w-5 text-[hsl(var(--success))]"
-                      aria-hidden="true"
-                    />
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Unlimited Access
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        You have unlimited scans
-                        {billingInfo.plan !== "free" &&
-                          ` with your ${getPlanById(billingInfo.plan)?.name || billingInfo.plan} plan`}
-                        .
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-2xl font-bold text-foreground">
-                          {billingInfo.usage.used}{" "}
-                          <span className="text-muted-foreground text-base font-normal">
-                            / {billingInfo.usage.limit}
-                          </span>
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          scans used today
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-semibold text-foreground">
-                          {billingInfo.usage.remaining}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          remaining
-                        </p>
-                      </div>
-                    </div>
-                    <Progress
-                      value={Math.min(
-                        100,
-                        (billingInfo.usage.used / billingInfo.usage.limit) *
-                          100,
-                      )}
-                      className="h-2"
-                    />
-                    {billingInfo.usage.remaining === 0 && (
-                      <InlineAlert tone="error">
-                        Daily scan limit reached. Upgrade your plan or wait
-                        until midnight UTC for the limit to reset.
-                      </InlineAlert>
-                    )}
-                    {billingInfo.usage.remaining > 0 &&
-                      billingInfo.usage.remaining <= 10 && (
-                        <InlineAlert tone="warning">
-                          Running low on scans. Consider upgrading for more
-                          capacity.
-                        </InlineAlert>
-                      )}
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      <span>
-                        Resets at{" "}
-                        {new Date(
-                          billingInfo.usage.resetsAt,
-                        ).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          timeZoneName: "short",
-                        })}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {billingInfo.usage.used}{" "}
+                      <span className="text-muted-foreground text-base font-normal">
+                        / {billingInfo.usage.limit}
                       </span>
-                    </div>
-                  </>
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      scans used today
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-semibold text-foreground">
+                      {billingInfo.usage.remaining}
+                    </p>
+                    <p className="text-sm text-muted-foreground">remaining</p>
+                  </div>
+                </div>
+                <Progress
+                  value={Math.min(
+                    100,
+                    (billingInfo.usage.used / billingInfo.usage.limit) * 100,
+                  )}
+                  className="h-2"
+                />
+                {billingInfo.usage.remaining === 0 && (
+                  <InlineAlert tone="error">
+                    Daily scan limit reached. Upgrade your plan or wait until
+                    midnight UTC for the limit to reset.
+                  </InlineAlert>
                 )}
+                {billingInfo.usage.remaining > 0 &&
+                  billingInfo.usage.remaining <= 10 && (
+                    <InlineAlert tone="warning">
+                      Running low on scans. Consider upgrading for more
+                      capacity.
+                    </InlineAlert>
+                  )}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>
+                    Resets at{" "}
+                    {new Date(billingInfo.usage.resetsAt).toLocaleTimeString(
+                      [],
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        timeZoneName: "short",
+                      },
+                    )}
+                  </span>
+                </div>
               </>
-            ) : /* Unreachable, same as the subscription panel above. */
-            null}
+            )}
           </CardContent>
         </Card>
       </section>
@@ -1050,138 +1008,127 @@ export function ProfileBillingTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-4">
-            {billingInfo ? (
+            {billingInfo.aiUsage.unlimited ? (
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
+                <Sparkles
+                  className="h-5 w-5 text-[hsl(var(--success))]"
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="font-medium text-foreground">
+                    Unlimited AI verification
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {billingInfo.aiUsage.usingOwnAi
+                      ? "You're using your own AI provider key, so this never counts against a plan limit."
+                      : "No cap applies to your account."}
+                  </p>
+                </div>
+              </div>
+            ) : (
               <>
-                {billingInfo.aiUsage.unlimited ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
-                    <Sparkles
-                      className="h-5 w-5 text-[hsl(var(--success))]"
-                      aria-hidden="true"
-                    />
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Unlimited AI verification
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {billingInfo.aiUsage.usingOwnAi
-                          ? "You're using your own AI provider key, so this never counts against a plan limit."
-                          : "No cap applies to your account."}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-2xl font-bold text-foreground">
-                          {billingInfo.aiUsage.used.toLocaleString()}{" "}
-                          <span className="text-muted-foreground text-base font-normal">
-                            / {billingInfo.aiUsage.limit.toLocaleString()}
-                          </span>
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          verification tokens used
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-semibold text-foreground">
-                          {Math.max(
-                            0,
-                            billingInfo.aiUsage.limit -
-                              billingInfo.aiUsage.used,
-                          ).toLocaleString()}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          remaining
-                        </p>
-                      </div>
-                    </div>
-                    <Progress
-                      value={Math.min(
-                        100,
-                        (billingInfo.aiUsage.used / billingInfo.aiUsage.limit) *
-                          100,
-                      )}
-                      className="h-2"
-                    />
-                    {billingInfo.aiUsage.used >= billingInfo.aiUsage.limit &&
-                      (billingInfo.aiUsage.creditBalance > 0 ? (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                          <Sparkles
-                            className="h-4 w-4 text-primary shrink-0"
-                            aria-hidden="true"
-                          />
-                          <p className="text-sm text-foreground">
-                            Free tokens for this window are used up.
-                            Verification keeps working, drawing from your{" "}
-                            {billingInfo.aiUsage.creditBalance.toLocaleString()}{" "}
-                            purchased tokens below.
-                          </p>
-                        </div>
-                      ) : (
-                        <InlineAlert tone="error">
-                          AI verification limit reached for this window. Upgrade
-                          your plan, buy AI tokens below, wait for it to reset,
-                          or connect your own AI provider key in Profile &gt; AI
-                          settings.
-                        </InlineAlert>
-                      ))}
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      <span>
-                        Resets{" "}
-                        {new Date(billingInfo.aiUsage.resetsAt).toLocaleString(
-                          [],
-                          {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            timeZoneName: "short",
-                          },
-                        )}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {billingInfo.aiUsage.used.toLocaleString()}{" "}
+                      <span className="text-muted-foreground text-base font-normal">
+                        / {billingInfo.aiUsage.limit.toLocaleString()}
                       </span>
-                    </div>
-                  </>
-                )}
-                {billingInfo.aiUsage.creditBalance > 0 && (
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
-                    <Sparkles
-                      className="h-4 w-4 text-primary shrink-0"
-                      aria-hidden="true"
-                    />
-                    <p className="text-sm text-foreground">
-                      <span className="font-semibold">
-                        {billingInfo.aiUsage.creditBalance.toLocaleString()}
-                      </span>{" "}
-                      purchased AI tokens available, on top of the plan above
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      verification tokens used
                     </p>
                   </div>
-                )}
-                {!billingInfo.aiUsage.usingOwnAi && (
-                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        Need more AI verification?
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Pick a token amount on the checkout page. Tokens never
-                        expire and are not reset by the window above.
+                  <div className="text-right">
+                    <p className="text-lg font-semibold text-foreground">
+                      {Math.max(
+                        0,
+                        billingInfo.aiUsage.limit - billingInfo.aiUsage.used,
+                      ).toLocaleString()}
+                    </p>
+                    <p className="text-sm text-muted-foreground">remaining</p>
+                  </div>
+                </div>
+                <Progress
+                  value={Math.min(
+                    100,
+                    (billingInfo.aiUsage.used / billingInfo.aiUsage.limit) *
+                      100,
+                  )}
+                  className="h-2"
+                />
+                {billingInfo.aiUsage.used >= billingInfo.aiUsage.limit &&
+                  (billingInfo.aiUsage.creditBalance > 0 ? (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                      <Sparkles
+                        className="h-4 w-4 text-primary shrink-0"
+                        aria-hidden="true"
+                      />
+                      <p className="text-sm text-foreground">
+                        Free tokens for this window are used up. Verification
+                        keeps working, drawing from your{" "}
+                        {billingInfo.aiUsage.creditBalance.toLocaleString()}{" "}
+                        purchased tokens below.
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 shrink-0"
-                      asChild
-                    >
-                      <a href="/ai-credits">Buy more credits</a>
-                    </Button>
-                  </div>
-                )}
+                  ) : (
+                    <InlineAlert tone="error">
+                      AI verification limit reached for this window. Upgrade
+                      your plan, buy AI tokens below, wait for it to reset, or
+                      connect your own AI provider key in Profile &gt; AI
+                      settings.
+                    </InlineAlert>
+                  ))}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>
+                    Resets{" "}
+                    {new Date(billingInfo.aiUsage.resetsAt).toLocaleString([], {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZoneName: "short",
+                    })}
+                  </span>
+                </div>
               </>
-            ) : /* Unreachable, same as the subscription panel above. */
-            null}
+            )}
+            {billingInfo.aiUsage.creditBalance > 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
+                <Sparkles
+                  className="h-4 w-4 text-primary shrink-0"
+                  aria-hidden="true"
+                />
+                <p className="text-sm text-foreground">
+                  <span className="font-semibold">
+                    {billingInfo.aiUsage.creditBalance.toLocaleString()}
+                  </span>{" "}
+                  purchased AI tokens available, on top of the plan above
+                </p>
+              </div>
+            )}
+            {!billingInfo.aiUsage.usingOwnAi && (
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Need more AI verification?
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Pick a token amount on the checkout page. Tokens never
+                    expire and are not reset by the window above.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0"
+                  asChild
+                >
+                  <a href="/ai-credits">Buy more credits</a>
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>
@@ -1198,159 +1145,151 @@ export function ProfileBillingTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-4">
-            {billingInfo ? (
+            {billingInfo.githubReviewUsage.unlimited ? (
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
+                <FaGithub
+                  className="h-5 w-5 text-[hsl(var(--success))]"
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="font-medium text-foreground">
+                    Unlimited GitHub review
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {billingInfo.githubReviewUsage.usingOwnAi
+                      ? "You're using your own AI provider key, so this never counts against a plan limit."
+                      : "No cap applies to your account."}
+                  </p>
+                </div>
+              </div>
+            ) : billingInfo.githubReviewUsage.limit === 0 ? (
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/30 border border-border">
+                <FaGithub
+                  className="h-5 w-5 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="font-medium text-foreground">
+                    Not included on your plan
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    You get one free GitHub AI review every 24 hours as a taste
+                    of the feature. Upgrade for regular access.
+                  </p>
+                </div>
+              </div>
+            ) : (
               <>
-                {billingInfo.githubReviewUsage.unlimited ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
-                    <FaGithub
-                      className="h-5 w-5 text-[hsl(var(--success))]"
-                      aria-hidden="true"
-                    />
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Unlimited GitHub review
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {billingInfo.githubReviewUsage.usingOwnAi
-                          ? "You're using your own AI provider key, so this never counts against a plan limit."
-                          : "No cap applies to your account."}
-                      </p>
-                    </div>
-                  </div>
-                ) : billingInfo.githubReviewUsage.limit === 0 ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/30 border border-border">
-                    <FaGithub
-                      className="h-5 w-5 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Not included on your plan
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        You get one free GitHub AI review every 24 hours as a
-                        taste of the feature. Upgrade for regular access.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-2xl font-bold text-foreground">
-                          {billingInfo.githubReviewUsage.used.toLocaleString()}{" "}
-                          <span className="text-muted-foreground text-base font-normal">
-                            /{" "}
-                            {billingInfo.githubReviewUsage.limit.toLocaleString()}
-                          </span>
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          review tokens used
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-semibold text-foreground">
-                          {Math.max(
-                            0,
-                            billingInfo.githubReviewUsage.limit -
-                              billingInfo.githubReviewUsage.used,
-                          ).toLocaleString()}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          remaining
-                        </p>
-                      </div>
-                    </div>
-                    <Progress
-                      value={Math.min(
-                        100,
-                        (billingInfo.githubReviewUsage.used /
-                          billingInfo.githubReviewUsage.limit) *
-                          100,
-                      )}
-                      className="h-2"
-                    />
-                    {billingInfo.githubReviewUsage.used >=
-                      billingInfo.githubReviewUsage.limit &&
-                      (billingInfo.githubReviewUsage.creditBalance > 0 ? (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                          <Sparkles
-                            className="h-4 w-4 text-primary shrink-0"
-                            aria-hidden="true"
-                          />
-                          <p className="text-sm text-foreground">
-                            Free tokens for this window are used up. Review
-                            keeps working, drawing from your{" "}
-                            {billingInfo.githubReviewUsage.creditBalance.toLocaleString()}{" "}
-                            purchased tokens below.
-                          </p>
-                        </div>
-                      ) : (
-                        <InlineAlert tone="error">
-                          AI review limit reached for this window. Upgrade your
-                          plan, buy GitHub review tokens below, wait for it to
-                          reset, or connect your own AI provider key in Profile
-                          &gt; AI settings.
-                        </InlineAlert>
-                      ))}
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      <span>
-                        Resets{" "}
-                        {new Date(
-                          billingInfo.githubReviewUsage.resetsAt,
-                        ).toLocaleString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          timeZoneName: "short",
-                        })}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {billingInfo.githubReviewUsage.used.toLocaleString()}{" "}
+                      <span className="text-muted-foreground text-base font-normal">
+                        / {billingInfo.githubReviewUsage.limit.toLocaleString()}
                       </span>
-                    </div>
-                  </>
-                )}
-                {billingInfo.githubReviewUsage.creditBalance > 0 && (
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
-                    <Sparkles
-                      className="h-4 w-4 text-primary shrink-0"
-                      aria-hidden="true"
-                    />
-                    <p className="text-sm text-foreground">
-                      <span className="font-semibold">
-                        {billingInfo.githubReviewUsage.creditBalance.toLocaleString()}
-                      </span>{" "}
-                      purchased GitHub review tokens available, on top of the
-                      plan above
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      review tokens used
                     </p>
                   </div>
-                )}
-                {!billingInfo.githubReviewUsage.usingOwnAi &&
-                  !billingInfo.githubReviewUsage.unlimited &&
-                  billingInfo.githubReviewUsage.limit > 0 && (
-                    <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          Need more GitHub review?
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Pick a token amount on the checkout page. Tokens never
-                          expire and are not reset by the window above.
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 shrink-0"
-                        asChild
-                      >
-                        <a href="/github-credits">Buy more credits</a>
-                      </Button>
-                    </div>
+                  <div className="text-right">
+                    <p className="text-lg font-semibold text-foreground">
+                      {Math.max(
+                        0,
+                        billingInfo.githubReviewUsage.limit -
+                          billingInfo.githubReviewUsage.used,
+                      ).toLocaleString()}
+                    </p>
+                    <p className="text-sm text-muted-foreground">remaining</p>
+                  </div>
+                </div>
+                <Progress
+                  value={Math.min(
+                    100,
+                    (billingInfo.githubReviewUsage.used /
+                      billingInfo.githubReviewUsage.limit) *
+                      100,
                   )}
+                  className="h-2"
+                />
+                {billingInfo.githubReviewUsage.used >=
+                  billingInfo.githubReviewUsage.limit &&
+                  (billingInfo.githubReviewUsage.creditBalance > 0 ? (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                      <Sparkles
+                        className="h-4 w-4 text-primary shrink-0"
+                        aria-hidden="true"
+                      />
+                      <p className="text-sm text-foreground">
+                        Free tokens for this window are used up. Review keeps
+                        working, drawing from your{" "}
+                        {billingInfo.githubReviewUsage.creditBalance.toLocaleString()}{" "}
+                        purchased tokens below.
+                      </p>
+                    </div>
+                  ) : (
+                    <InlineAlert tone="error">
+                      AI review limit reached for this window. Upgrade your
+                      plan, buy GitHub review tokens below, wait for it to
+                      reset, or connect your own AI provider key in Profile &gt;
+                      AI settings.
+                    </InlineAlert>
+                  ))}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>
+                    Resets{" "}
+                    {new Date(
+                      billingInfo.githubReviewUsage.resetsAt,
+                    ).toLocaleString([], {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZoneName: "short",
+                    })}
+                  </span>
+                </div>
               </>
-            ) : /* Unreachable, same as the subscription panel above. */
-            null}
+            )}
+            {billingInfo.githubReviewUsage.creditBalance > 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
+                <Sparkles
+                  className="h-4 w-4 text-primary shrink-0"
+                  aria-hidden="true"
+                />
+                <p className="text-sm text-foreground">
+                  <span className="font-semibold">
+                    {billingInfo.githubReviewUsage.creditBalance.toLocaleString()}
+                  </span>{" "}
+                  purchased GitHub review tokens available, on top of the plan
+                  above
+                </p>
+              </div>
+            )}
+            {!billingInfo.githubReviewUsage.usingOwnAi &&
+              !billingInfo.githubReviewUsage.unlimited &&
+              billingInfo.githubReviewUsage.limit > 0 && (
+                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Need more GitHub review?
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Pick a token amount on the checkout page. Tokens never
+                      expire and are not reset by the window above.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 shrink-0"
+                    asChild
+                  >
+                    <a href="/github-credits">Buy more credits</a>
+                  </Button>
+                </div>
+              )}
           </CardContent>
         </Card>
       </section>
@@ -1367,160 +1306,153 @@ export function ProfileBillingTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-4">
-            {billingInfo ? (
+            {billingInfo.browserbaseUsage.unlimited ? (
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
+                <Monitor
+                  className="h-5 w-5 text-[hsl(var(--success))]"
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="font-medium text-foreground">
+                    Unlimited live-browser minutes
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    No cap applies to your account.
+                  </p>
+                </div>
+              </div>
+            ) : billingInfo.browserbaseUsage.limitMinutes === 0 ? (
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/30 border border-border">
+                <Monitor
+                  className="h-5 w-5 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="font-medium text-foreground">
+                    Not included on your plan
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Upgrade for access, or buy live-browser minutes below.
+                  </p>
+                </div>
+              </div>
+            ) : (
               <>
-                {billingInfo.browserbaseUsage.unlimited ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
-                    <Monitor
-                      className="h-5 w-5 text-[hsl(var(--success))]"
-                      aria-hidden="true"
-                    />
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Unlimited live-browser minutes
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        No cap applies to your account.
-                      </p>
-                    </div>
-                  </div>
-                ) : billingInfo.browserbaseUsage.limitMinutes === 0 ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/30 border border-border">
-                    <Monitor
-                      className="h-5 w-5 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Not included on your plan
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Upgrade for access, or buy live-browser minutes below.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-2xl font-bold text-foreground">
-                          {formatMinutes(
-                            billingInfo.browserbaseUsage.usedSeconds,
-                          )}{" "}
-                          <span className="text-muted-foreground text-base font-normal">
-                            / {billingInfo.browserbaseUsage.limitMinutes} min
-                          </span>
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          used this month
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-semibold text-foreground">
-                          {formatMinutes(
-                            Math.max(
-                              0,
-                              billingInfo.browserbaseUsage.limitMinutes * 60 -
-                                billingInfo.browserbaseUsage.usedSeconds,
-                            ),
-                          )}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          min remaining
-                        </p>
-                      </div>
-                    </div>
-                    <Progress
-                      value={Math.min(
-                        100,
-                        (billingInfo.browserbaseUsage.usedSeconds /
-                          (billingInfo.browserbaseUsage.limitMinutes * 60)) *
-                          100,
-                      )}
-                      className="h-2"
-                    />
-                    {billingInfo.browserbaseUsage.usedSeconds >=
-                      billingInfo.browserbaseUsage.limitMinutes * 60 &&
-                      (billingInfo.browserbaseUsage.creditBalanceSeconds > 0 ? (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                          <Sparkles
-                            className="h-4 w-4 text-primary shrink-0"
-                            aria-hidden="true"
-                          />
-                          <p className="text-sm text-foreground">
-                            Free minutes for this month are used up. Sessions
-                            keep working, drawing from your{" "}
-                            {formatMinutes(
-                              billingInfo.browserbaseUsage.creditBalanceSeconds,
-                            )}{" "}
-                            purchased minutes below.
-                          </p>
-                        </div>
-                      ) : (
-                        <InlineAlert tone="error">
-                          Live-browser minute limit reached for this month.
-                          Upgrade your plan, buy more minutes below, or wait for
-                          it to reset.
-                        </InlineAlert>
-                      ))}
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      <span>
-                        Resets{" "}
-                        {new Date(
-                          billingInfo.browserbaseUsage.resetsAt,
-                        ).toLocaleString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          timeZoneName: "short",
-                        })}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {formatMinutes(billingInfo.browserbaseUsage.usedSeconds)}{" "}
+                      <span className="text-muted-foreground text-base font-normal">
+                        / {billingInfo.browserbaseUsage.limitMinutes} min
                       </span>
-                    </div>
-                  </>
-                )}
-                {billingInfo.browserbaseUsage.creditBalanceSeconds > 0 && (
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
-                    <Sparkles
-                      className="h-4 w-4 text-primary shrink-0"
-                      aria-hidden="true"
-                    />
-                    <p className="text-sm text-foreground">
-                      <span className="font-semibold">
-                        {formatMinutes(
-                          billingInfo.browserbaseUsage.creditBalanceSeconds,
-                        )}
-                      </span>{" "}
-                      purchased live-browser minutes available, on top of the
-                      plan above
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      used this month
                     </p>
                   </div>
-                )}
-                {!billingInfo.browserbaseUsage.unlimited && (
-                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        Need more live-browser time?
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Pick a minute amount on the checkout page. Minutes never
-                        expire and are not reset by the month above.
+                  <div className="text-right">
+                    <p className="text-lg font-semibold text-foreground">
+                      {formatMinutes(
+                        Math.max(
+                          0,
+                          billingInfo.browserbaseUsage.limitMinutes * 60 -
+                            billingInfo.browserbaseUsage.usedSeconds,
+                        ),
+                      )}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      min remaining
+                    </p>
+                  </div>
+                </div>
+                <Progress
+                  value={Math.min(
+                    100,
+                    (billingInfo.browserbaseUsage.usedSeconds /
+                      (billingInfo.browserbaseUsage.limitMinutes * 60)) *
+                      100,
+                  )}
+                  className="h-2"
+                />
+                {billingInfo.browserbaseUsage.usedSeconds >=
+                  billingInfo.browserbaseUsage.limitMinutes * 60 &&
+                  (billingInfo.browserbaseUsage.creditBalanceSeconds > 0 ? (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                      <Sparkles
+                        className="h-4 w-4 text-primary shrink-0"
+                        aria-hidden="true"
+                      />
+                      <p className="text-sm text-foreground">
+                        Free minutes for this month are used up. Sessions keep
+                        working, drawing from your{" "}
+                        {formatMinutes(
+                          billingInfo.browserbaseUsage.creditBalanceSeconds,
+                        )}{" "}
+                        purchased minutes below.
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 shrink-0"
-                      asChild
-                    >
-                      <a href="/browser-credits">Buy more minutes</a>
-                    </Button>
-                  </div>
-                )}
+                  ) : (
+                    <InlineAlert tone="error">
+                      Live-browser minute limit reached for this month. Upgrade
+                      your plan, buy more minutes below, or wait for it to
+                      reset.
+                    </InlineAlert>
+                  ))}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>
+                    Resets{" "}
+                    {new Date(
+                      billingInfo.browserbaseUsage.resetsAt,
+                    ).toLocaleString([], {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZoneName: "short",
+                    })}
+                  </span>
+                </div>
               </>
-            ) : /* Unreachable, same as the subscription panel above. */
-            null}
+            )}
+            {billingInfo.browserbaseUsage.creditBalanceSeconds > 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
+                <Sparkles
+                  className="h-4 w-4 text-primary shrink-0"
+                  aria-hidden="true"
+                />
+                <p className="text-sm text-foreground">
+                  <span className="font-semibold">
+                    {formatMinutes(
+                      billingInfo.browserbaseUsage.creditBalanceSeconds,
+                    )}
+                  </span>{" "}
+                  purchased live-browser minutes available, on top of the plan
+                  above
+                </p>
+              </div>
+            )}
+            {!billingInfo.browserbaseUsage.unlimited && (
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Need more live-browser time?
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Pick a minute amount on the checkout page. Minutes never
+                    expire and are not reset by the month above.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0"
+                  asChild
+                >
+                  <a href="/browser-credits">Buy more minutes</a>
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>

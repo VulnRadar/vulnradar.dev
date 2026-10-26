@@ -91,7 +91,10 @@ describe("social short links", () => {
     // repository directly so crawlers see which repository this site is
     // (another project shares the name). /github still redirects for people.
     const footer = read("components/scanner/footer.tsx");
-    expect(footer).toContain("href={`https://github.com/${APP_REPO}`}");
+    // The footer's source text, so the placeholder is meant literally. The `$`
+    // is split off so this stays a plain string instead of reading as a
+    // template literal that forgot its backticks.
+    expect(footer).toContain("href={`https://github.com/$" + "{APP_REPO}`}");
   });
 
   it("stops shipping a raw address for Cloudflare to rewrite", () => {

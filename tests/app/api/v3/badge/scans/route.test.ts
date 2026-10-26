@@ -32,7 +32,6 @@ describe("GET /api/v3/badge/scans", () => {
 
     expect(res.status).toBe(401);
     const json = await res.json();
-    const scans = json.scans;
     expect(json).toEqual({ error: "Unauthorized" });
     expect(mockQuery).not.toHaveBeenCalled();
   });

@@ -94,6 +94,12 @@ export default [
       // repository. Gitignored, so CI never has them, but locally `eslint .`
       // linted every one of them as well as the real tree.
       ".claude/**",
+      // Vite's build output for the browser extension (gitignored by
+      // extension/.gitignore, so CI never has it). It is minified bundle
+      // code, so `eslint .` on a machine that has run `npm run build` in
+      // extension/ reported thirty no-empty hits in files nobody can fix by
+      // editing them.
+      "extension/dist-*/**",
       "tsconfig.tsbuildinfo",
     ],
   },
@@ -158,13 +164,10 @@ export default [
       // comment, so satisfying this costs one line and, more to the point,
       // forces the author to say which of the two it is.
       //
-      // "warn" rather than "error" for the same reason as the react-hooks
-      // rules above: six pre-existing bare catches (app/api/v3/auth/me,
-      // components/ai-chat/chat-widget, components/profile/tabs/
-      // profile-social-tab, components/providers/auth-provider,
-      // components/shared/public-page-shell) predate the rule. Promote it to
-      // "error" once those six carry a comment; it is a one-line change each.
-      "no-empty": ["warn", { allowEmptyCatch: false }],
+      // An error now that every deliberate no-op catch says why in a comment
+      // (a block holding a comment is not empty to this rule). It was a
+      // warning while six bare catches predated it.
+      "no-empty": ["error", { allowEmptyCatch: false }],
     },
   },
   {

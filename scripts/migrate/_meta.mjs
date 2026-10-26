@@ -24,8 +24,6 @@
  * The CHECK (id = 1) ensures there's only ever one row.
  */
 
-import { info, success, warn, error } from "../_lib/_lib.output.mjs";
-
 const META_TABLE = "vulnradar_schema_meta";
 
 export async function ensureMetaTable(pool) {

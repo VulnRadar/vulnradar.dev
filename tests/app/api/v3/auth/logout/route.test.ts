@@ -14,14 +14,11 @@ import { makeCookieStore, makeHeaderStore } from "../_test-harness";
  */
 
 let sessionDeleteCalls: unknown[][] = [];
-let sessionRow: Record<string, unknown> | null = null;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
   if (s.startsWith("DELETE FROM sessions WHERE expires_at"))
     return { rows: [] };
-  if (s.includes("SELECT s.user_id"))
-    return { rows: sessionRow ? [sessionRow] : [] };
   if (s.startsWith("SELECT key, value FROM system_settings"))
     return { rows: [] };
   if (s.startsWith("DELETE FROM sessions WHERE id")) {
@@ -52,7 +49,6 @@ const { POST } = await import("@/app/api/v3/auth/logout/route");
 beforeEach(() => {
   mockQuery.mockClear();
   cookieState.clear();
-  sessionRow = null;
   sessionDeleteCalls = [];
   invalidateSettingsCache();
 });

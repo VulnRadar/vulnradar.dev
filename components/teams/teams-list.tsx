@@ -4,10 +4,7 @@ import Link from "next/link";
 import { Plus, Search, Users, ChevronRight, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
-import {
-  ListSearchInput,
-  worthFiltering,
-} from "@/components/shared/list-filter-bar";
+import { ListSearchInput } from "@/components/shared/list-filter-bar";
 import { plural, pluralize } from "@/lib/ui/plural";
 import { ROUTES } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";

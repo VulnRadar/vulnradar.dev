@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { CircleAlert } from "lucide-react";
 import { PublicPageShell } from "@/components/shared/public-page-shell";
 import { AppPageShell } from "@/components/shared/app-page-shell";
@@ -23,6 +23,11 @@ import {
 } from "@/lib/ui/url-state";
 
 const PAGE_SIZE = 20;
+
+// Nothing ever changes after mount, so there is nothing to subscribe to. Only
+// the pair of snapshots matters: the server and the hydration pass read
+// `false`, every later render reads `true`.
+const subscribeNever = () => () => {};
 
 function PublicScansTableSkeleton() {
   return (
@@ -55,10 +60,13 @@ export default function PublicScansPage() {
     1,
   );
 
-  function handlePageChange(page: number) {
-    setCurrentPage(page);
-    setQueryParam("page", page > 1 ? String(page) : null, { replace: true });
-  }
+  const handlePageChange = useCallback(
+    (page: number) => {
+      setCurrentPage(page);
+      setQueryParam("page", page > 1 ? String(page) : null, { replace: true });
+    },
+    [setCurrentPage],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +102,7 @@ export default function PublicScansPage() {
     return () => {
       cancelled = true;
     };
-  }, [currentPage]);
+  }, [currentPage, handlePageChange]);
 
   // Keeps currentPage in sync with browser back/forward on ?page=.
   useEffect(() => {
@@ -111,8 +119,11 @@ export default function PublicScansPage() {
     };
   }, [setCurrentPage]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false,
+  );
   const showAppNav = mounted && (authLoading ? hasCachedSignIn() : isLoggedIn);
 
   // This page is the fourth tab of the app's History strip (My History,

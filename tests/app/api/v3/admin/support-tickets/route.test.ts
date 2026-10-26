@@ -149,7 +149,7 @@ describe("GET /api/v3/admin/support-tickets search", () => {
 
     mockQuery.mockClear();
     await GET(getRequest("?q=412"));
-    [sql, params] = mockQuery.mock.calls[0];
+    [, params] = mockQuery.mock.calls[0];
     expect(params).toContain(412);
   });
 

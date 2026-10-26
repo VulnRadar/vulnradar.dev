@@ -883,7 +883,7 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     // reached a conclusion, which is what `incomplete` has to say: an empty
     // findings array with no marker is indistinguishable from "DNS, TLS and
     // live-fetch all ran and found nothing".
-    let hostAsync: AsyncCheckResult = { findings: [], incomplete: [] };
+    let hostAsync: AsyncCheckResult;
     try {
       hostAsync = await hostAsyncPromise;
     } catch (err) {

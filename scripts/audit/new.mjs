@@ -21,9 +21,6 @@ import {
   nextAuditId,
   saveManifest,
   syncRegistrySummary,
-  manifestPath,
-  findingsPath,
-  notesPath,
 } from "../../lib/audit/index.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

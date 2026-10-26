@@ -14,7 +14,6 @@ import { scanStatusPill } from "@/components/admin/scans/scan-status";
 import { SeverityBadge, toSeverity } from "@/components/scanner/severity-badge";
 import type { AdminScanDetail } from "@/components/admin/types";
 import {
-  FAILURE_KIND_LABELS,
   isEngineFailure,
   isFailureKind,
   type FailureKind,

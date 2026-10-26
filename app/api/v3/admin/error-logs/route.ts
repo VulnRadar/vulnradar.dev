@@ -14,10 +14,6 @@ import {
   buildErrorLogWhere,
   parseErrorLogFilter,
 } from "@/lib/admin/error-log-filter";
-import {
-  CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
-  CONFIG_PAGINATION_MAX_PAGE_SIZE,
-} from "@/lib/config/config-values";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

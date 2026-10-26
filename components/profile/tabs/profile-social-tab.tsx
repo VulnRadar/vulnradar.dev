@@ -134,7 +134,9 @@ function OAuthIdentityCard({
   const displayName = identity?.name || identity?.email || "Connected";
 
   const startLink = () => {
-    window.location.href = `${API.AUTH.OAUTH_START(provider)}?action=link`;
+    // A full document navigation on purpose: this is a route handler that
+    // redirects to the provider, not an app page the router could render.
+    window.location.href = API.AUTH.OAUTH_START(provider) + "?action=link";
   };
 
   const handleDisconnect = async () => {

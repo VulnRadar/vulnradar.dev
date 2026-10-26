@@ -42,7 +42,6 @@ function ctx(id: string) {
 }
 
 const OWNER_ID = 42;
-const OTHER_ID = 99;
 
 function row(overrides: Record<string, unknown> = {}) {
   return {

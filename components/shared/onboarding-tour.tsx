@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Play } from "lucide-react";
 import { API } from "@/lib/config/client-constants";
@@ -131,7 +131,6 @@ export function OnboardingTour() {
   const [takeFocus, setTakeFocus] = useState(true);
   const [announcement, setAnnouncement] = useState("");
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
-  const [radius, setRadius] = useState(8);
   const [loc, setLoc] = useState({ pathname: "", search: "" });
   const replayRef = useRef(false);
   // Set the moment the reader finishes or ends the tour, so the boot effect
@@ -161,6 +160,7 @@ export function OnboardingTour() {
     const saved = tourSession.read();
     if (saved) {
       replayRef.current = saved.replay;
+      // oxlint-disable-next-line react/set-state-in-effect -- boots from two external stores (the auth cache and sessionStorage) and writes both back, so it cannot be derived during render
       setIndex(saved.step);
       setPhase(saved.paused ? "paused" : "running");
       return;
@@ -209,15 +209,12 @@ export function OnboardingTour() {
   // inside a square hole looks like a rendering fault, and every radius in the
   // app is on the ladder in STYLE.md, so copying the computed value lands on
   // one of four sane numbers rather than an arbitrary one.
-  useEffect(() => {
-    if (!element) {
-      setRadius(8);
-      return;
-    }
+  const radius = useMemo(() => {
+    if (!element) return 8;
     const raw = parseFloat(
       window.getComputedStyle(element).borderTopLeftRadius,
     );
-    setRadius(Number.isFinite(raw) ? Math.min(raw + SPOTLIGHT_PAD, 28) : 8);
+    return Number.isFinite(raw) ? Math.min(raw + SPOTLIGHT_PAD, 28) : 8;
   }, [element]);
 
   const persist = useCallback((next: number, paused: boolean) => {
@@ -350,6 +347,7 @@ export function OnboardingTour() {
         new URLSearchParams(loc.search),
       )
     ) {
+      // oxlint-disable-next-line react/set-state-in-effect -- advance() writes sessionStorage and reads the focused element, so a location change has to reach it through an effect, not render
       advance();
     }
   }, [active, step.advance, loc, advance]);
@@ -369,6 +367,7 @@ export function OnboardingTour() {
   useEffect(() => {
     if (!active || !step.optional) return;
     if (anchorState !== "missing") return;
+    // oxlint-disable-next-line react/set-state-in-effect -- same as the route advance above: advance() has side effects, and the verdict comes from useAnchorRect's frame poll rather than an event this component owns
     advance();
   }, [active, step.optional, anchorState, advance]);
 
