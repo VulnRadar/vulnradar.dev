@@ -143,4 +143,23 @@ describe("the modal grammar stays in one place", () => {
     expect(grammar.modalBand.body).toContain("flex-1");
     expect(grammar.modalScrim).toContain("bg-background/80");
   });
+
+  it("keeps a tall modal's footer clear of the cookie bar", async () => {
+    const grammar = await import("@/components/ui/modal-grammar");
+    // components/shared/cookie-notice.tsx is a z-60 bar fixed to the bottom
+    // edge, about 125px tall at 375px, and publishes that height as
+    // --vr-cookie-h. Every modal sits at z-50, so a panel tall enough to reach
+    // the positioner's bottom padding (the crawl URL picker, the AI summary,
+    // share) had its footer painted over by it. The positioner pads by the
+    // variable and the panel's max-height gives it back, at both breakpoints.
+    expect(grammar.modalPositioner).toContain(
+      "pb-[calc(1rem+var(--vr-cookie-h,0px))]",
+    );
+    expect(grammar.modalPanel).toContain(
+      "max-h-[calc(100dvh-2rem-var(--vr-cookie-h,0px))]",
+    );
+    expect(grammar.modalPanel).toContain(
+      "sm:max-h-[min(85vh,calc(100dvh-2rem-var(--vr-cookie-h,0px)))]",
+    );
+  });
 });

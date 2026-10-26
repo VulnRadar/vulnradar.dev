@@ -35,9 +35,17 @@ export const modalScrim =
   "fixed inset-0 z-50 bg-background/80 backdrop-blur-xs";
 
 /** Centering layer. The p-4 is why the panel can be `rounded-lg` on mobile: it
- *  never touches the viewport edge, so square corners would be arbitrary. */
+ *  never touches the viewport edge, so square corners would be arbitrary.
+ *
+ *  The bottom padding adds --vr-cookie-h, the height components/shared/
+ *  cookie-notice.tsx publishes while its bar is up. That bar is a z-60 sheet
+ *  fixed to the bottom edge and about 125px tall at 375px, so a modal tall
+ *  enough to reach the viewport's bottom padding (the crawl URL picker, the AI
+ *  summary, share) had its footer, "Scan selected" and Cancel included, painted
+ *  over by it. The toaster and the floating save bars already offset by the same
+ *  variable; the modal layer simply never read it. */
 export const modalPositioner =
-  "fixed inset-0 z-50 flex items-center justify-center p-4";
+  "fixed inset-0 z-50 flex items-center justify-center p-4 pb-[calc(1rem+var(--vr-cookie-h,0px))]";
 
 /**
  * The panel surface, shared by every tier.
@@ -63,10 +71,13 @@ export const modalPositioner =
  *
  * The max-height is the reason nine modals stopped clipping their own footers:
  * `100dvh` follows the mobile URL bar, and the `-2rem` is the positioner's p-4
- * on both sides.
+ * on both sides. --vr-cookie-h comes off as well, because the positioner pads
+ * its bottom by it (see above) and a panel taller than what is left would
+ * overflow into the cookie bar all over again. From sm up the 85vh cap still
+ * applies, but never past the room the positioner leaves.
  */
 export const modalPanel =
-  "relative z-50 w-full max-h-[calc(100dvh-2rem)] rounded-lg border bg-card shadow-lg sm:max-h-[85vh]";
+  "relative z-50 w-full max-h-[calc(100dvh-2rem-var(--vr-cookie-h,0px))] rounded-lg border bg-card shadow-lg sm:max-h-[min(85vh,calc(100dvh-2rem-var(--vr-cookie-h,0px)))]";
 
 /** Tier bodies. `shell` is a flex column so the middle band can scroll on its
  *  own; `compact` scrolls as one box. */
