@@ -17,6 +17,9 @@ name: Attach Release Artifacts
 #   - checks whether a release for the tag exists
 #   - creates it if not, otherwise attaches to the existing one
 #   - idempotent: re-running on the same tag updates the same release
+#   - publishes the CLI (cli/) to npm as `vulnradar` with trusted
+#     publishing and provenance, for stable tags whose CLI version is not
+#     on the registry yet (see the last steps of the job)
 #
 # Self-hosters verifying a release can do:
 #
@@ -118,12 +121,18 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node.js
-        # release: needed to build the browser extension below. Same pin as
-        # ci.yml, read from the same file (Node 22 LTS, see
-        # package.json#engines).
+        # release: needed to build the browser extension below and to
+        # publish the CLI. Same pin as ci.yml, read from the same file
+        # (Node 22 LTS, see package.json#engines).
+        #
+        # registry-url points npm at the public registry for the publish
+        # step at the end of the job. It writes an .npmrc whose token is a
+        # placeholder; trusted publishing replaces it with an OIDC exchange,
+        # so no registry credential exists in this workflow.
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .nvmrc
+          registry-url: "https://registry.npmjs.org"
 
       - name: Build + package browser extension
         # release: the workflow_run trigger does NOT check out the tagged
@@ -439,6 +448,64 @@ jobs:
           fi
           gh release view "${TAG}" --json url -q .url > release_url.txt
           echo "release_url=$(cat release_url.txt)" >> $GITHUB_OUTPUT
+
+      - name: Install npm 11.5.1 or later
+        # Trusted publishing (OIDC, no stored token) is only implemented from
+        # npm 11.5.1. The npm bundled with the pinned Node 22 is 10.x, which
+        # would look for a token this workflow does not have and fail with
+        # ENEEDAUTH, so a newer npm is installed first and its version is
+        # asserted rather than assumed: a registry hiccup that leaves the old
+        # one in place fails here with a readable message instead of at
+        # publish time.
+        #
+        # Installed after the release is attached, not before: the extension
+        # build above runs on the npm that ships with Node, and a release page
+        # must never be held back by a registry problem.
+        #
+        # Skipped for prerelease tags (v4.0.0-rc.1), which "Find or create
+        # GitHub release" also marks as prereleases: a release candidate must
+        # not move the `latest` tag on npm.
+        if: ${{ !contains(steps.vars.outputs.tag, '-') }}
+        run: |
+          set -euo pipefail
+          npm install --global "npm@^11.5.1"
+          NPM_VERSION=$(npm --version)
+          echo "npm ${NPM_VERSION}"
+          if [ "$(printf '%s\n' 11.5.1 "${NPM_VERSION}" | sort -V | head -n1)" != "11.5.1" ]; then
+            echo "::error::npm ${NPM_VERSION} is older than 11.5.1, the first version that can publish with trusted publishing."
+            exit 1
+          fi
+
+      - name: Publish the CLI to npm
+        # Trusted publishing: npmjs.com trusts this workflow (release.yml in
+        # this repository) to publish the package `vulnradar`, and the OIDC
+        # token the job's `id-token: write` permission mints is the only
+        # credential. There is no NPM_TOKEN secret to leak or rotate, and
+        # --provenance attaches a signed statement of which commit and
+        # workflow built the tarball. The owner registers the Trusted
+        # Publisher once on npmjs.com (package settings, repository
+        # VulnRadar/vulnradar.dev, workflow release.yml); until then this
+        # step fails and everything above it has already shipped.
+        #
+        # Published from the tag's cli/, the same tree "Pack the CLI tarball"
+        # packed, and only when that exact version is not on the registry yet,
+        # so a re-run, or the second of the two triggers, is a no-op. Only a
+        # 404 counts as "not published": a network error or a 5xx must stop
+        # the job instead of being read as permission to publish.
+        if: ${{ !contains(steps.vars.outputs.tag, '-') }}
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/cli-src/cli"
+          VIEW=$(npm view "vulnradar@${CLI_VERSION}" version 2>&1) && STATUS=0 || STATUS=$?
+          if [ "${STATUS}" -eq 0 ] && [ "${VIEW}" = "${CLI_VERSION}" ]; then
+            echo "vulnradar@${CLI_VERSION} is already on npm; nothing to publish."
+            exit 0
+          fi
+          if [ "${STATUS}" -ne 0 ] && ! printf '%s' "${VIEW}" | grep -q "E404"; then
+            echo "::error::Could not tell whether vulnradar@${CLI_VERSION} is on npm: ${VIEW}"
+            exit 1
+          fi
+          npm publish --provenance --access public
 
       - name: Summary
         env:
