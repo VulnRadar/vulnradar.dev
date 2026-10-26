@@ -29,7 +29,9 @@ describe("links built from APP_REPO", () => {
       source.split("\n").forEach((line, index) => {
         // A template literal that STARTS with APP_REPO is a path, not a URL.
         if (!/`\$\{APP_REPO\}/.test(line)) return;
-        if (line.includes("github.com")) return;
+        // Matches the URL form, https://github.com/${APP_REPO}, rather than
+        // any line that mentions the host somewhere.
+        if (/https:\/\/github\.com\/\$\{APP_REPO\}/.test(line)) return;
         offenders.push(`${file}:${index + 1}`);
       });
     }

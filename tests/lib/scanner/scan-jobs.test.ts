@@ -466,9 +466,9 @@ describe("finalizeScanSuccess", () => {
     // Assigned nowhere in the SET list; RETURNING still reads it back.
     expect(sql).not.toMatch(/\burl\s*=/);
     expect(sql).toContain("RETURNING id, url, user_id");
-    expect(
-      (params as unknown[]).includes("https://sandbox.vulnradar.dev/landing"),
-    ).toBe(false);
+    expect(params as unknown[]).not.toContain(
+      "https://sandbox.vulnradar.dev/landing",
+    );
   });
 
   it("returns false when the row already reached a terminal state (guard no-op)", async () => {

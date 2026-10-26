@@ -113,8 +113,10 @@ describe("parseAuditFilters, the search term", () => {
     const ok = parse(`q=${encodeURIComponent(evil)}`);
     expect(ok.where).not.toContain("DROP");
     expect(ok.where).not.toContain(evil);
-    // Only LIKE-escaped (the underscores), never altered or split.
-    expect(ok.params[0]).toBe(`%${evil.replace(/_/g, "\\_")}%`);
+    // Only LIKE-escaped, never altered or split. The expected value applies
+    // the same three escapes the parser does (backslash, %, _), so it stays
+    // right if the probe string ever gains one of the others.
+    expect(ok.params[0]).toBe(`%${evil.replace(/[\\%_]/g, "\\$&")}%`);
   });
 
   it("searches details, action, ip and both people, and needs the users join", () => {

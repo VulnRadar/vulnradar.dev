@@ -22,8 +22,21 @@ const EVAL_CHECKS = [
   "code-csp-no-trustedtypes",
 ];
 
+// Escaped the way Next.js writes flight data into a script (its
+// htmlEscapeJsonString), so the fixture is the real wire format rather than
+// bare JSON a "</script>" in a chunk could break out of.
+const SCRIPT_ESCAPES: Record<string, string> = {
+  "<": "\\u003c",
+  ">": "\\u003e",
+  "&": "\\u0026",
+  "\u2028": "\\u2028",
+  "\u2029": "\\u2029",
+};
 const push = (chunk: string) =>
-  `self.__next_f.push(${JSON.stringify([1, chunk])})`;
+  `self.__next_f.push(${JSON.stringify([1, chunk]).replace(
+    /[<>&\u2028\u2029]/g,
+    (c) => SCRIPT_ESCAPES[c],
+  )})`;
 
 /** `text` cut just after the first `marker`, the way the body cap cuts. */
 const cutAfter = (text: string, marker: string) =>
