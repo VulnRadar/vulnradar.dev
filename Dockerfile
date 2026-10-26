@@ -2,12 +2,13 @@
 # Node 22 LTS only. Node 20 reached end-of-life on 2026-04-30 and is no
 # longer receiving security patches.
 #
-# infra: base image pinned to a specific minor version
-# (`node:22.23.3-alpine`) instead of the moving `node:22-alpine` tag.
-# Self-hosters who want a fully immutable build should replace this
-# with `node:22.23.3-alpine@sha256:<digest>`: pull
-# `node:22.23.3-alpine` locally and grab the digest via
-# `docker images --digests node:22.23.3-alpine`.
+# infra: base image pinned to an exact patch instead of the moving
+# `node:22-alpine` tag. The patch lives in three places that must agree: the
+# two FROM node lines in this file, .nvmrc and .node-version. CI and
+# tests/repo/ci-node-pin.test.ts fail when they drift, so bump them together.
+# Self-hosters who want a fully immutable build can also add the digest to
+# both FROM lines (`node:<patch>-alpine@sha256:<digest>`): pull the image
+# locally and read the digest from `docker images --digests node`.
 FROM node:22.23.4-alpine AS builder
 
 WORKDIR /app

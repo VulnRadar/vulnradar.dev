@@ -15,15 +15,12 @@ We cannot override these on the consumer side. The fix is to switch Node to 22, 
 
 Before opening a bug report:
 
-1. Confirm `node --version` is **v22.23.3** (use `nvm use` in the repo root;
-   `.nvmrc` carries the exact patch the Dockerfile builds on and every CI job
-   runs, so a local reproduction is on the same runtime as the published
-   image). Any 22.x satisfies `engines`; the pin is what makes "works on my
-   machine" mean something.
-
-   > `.node-version`, read by fnm / nodenv / asdf rather than nvm, still says
-   > `22.11.0` and has drifted from the other three. If your version manager
-   > reads that file, set 22.23.3 by hand until the pin is corrected.
+1. Confirm `node --version` matches the version in `.nvmrc` (use `nvm use` in
+   the repo root; fnm, nodenv and asdf read `.node-version`, which carries the
+   same number). That file is the exact patch the Dockerfile builds on and
+   every CI job runs, so a local reproduction is on the same runtime as the
+   published image. Any 22.x satisfies `engines`; the pin is what makes "works
+   on my machine" mean something.
 
 2. Reinstall dependencies with `rm -rf node_modules && npm ci`.
 

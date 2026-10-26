@@ -54,15 +54,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          # Pinned to the EXACT patch the Dockerfile builds on, not the
-          # floating "22" this used to be. A floating major resolves to
-          # whatever 22.x the runner happens to carry that day, so CI could
-          # go green on a language or runtime feature the published image
-          # does not have. The "Assert CI Node matches the published image"
-          # step in the typecheck job fails the build if these two drift
-          # apart again, so bump this, release.yml and the Dockerfile
-          # together.
-          node-version: "22.23.3"
+          # Read from .nvmrc, which pins the EXACT patch the Dockerfile builds
+          # on, not the floating "22" this used to be. A floating major
+          # resolves to whatever 22.x the runner happens to carry that day, so
+          # CI could go green on a language or runtime feature the published
+          # image does not have. Every setup-node step in this file and in
+          # release.yml reads the same file, so there is one number to bump;
+          # the "Assert CI Node matches the published image" step in the
+          # typecheck job and tests/repo/ci-node-pin.test.ts fail the build if
+          # it and the Dockerfile drift apart.
+          node-version-file: .nvmrc
           cache: "npm"
 
       - name: Guard the lockfile
@@ -122,27 +123,51 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.3"
+          node-version-file: .nvmrc
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
       - name: Assert CI Node matches the published image
-        # The Dockerfile pins an exact patch and the workflows pin the same
-        # one. Nothing reconciled the two before, so the moment either side
-        # moved, CI was testing a runtime the shipped image was not. This
-        # reads the pin straight out of the Dockerfile and fails on any
-        # difference, which is what makes the two pins stay one number.
+        # The Dockerfile pins an exact patch and the workflows read the same
+        # one from .nvmrc. Nothing reconciled the two before, so the moment
+        # either side moved, CI was testing a runtime the shipped image was
+        # not. This reads the pin out of the Dockerfile's real FROM lines (not
+        # the first `node:X-alpine` it can find, which was a comment that had
+        # already gone stale) and fails on any difference between every stage,
+        # .nvmrc, .node-version and the Node this runner actually has, which
+        # is what makes the pins stay one number.
         run: |
           set -euo pipefail
-          IMAGE_NODE=$(grep -m1 -oE 'node:[0-9]+\.[0-9]+\.[0-9]+-alpine' Dockerfile | sed 's/node://; s/-alpine//')
-          CI_NODE=$(node -p "process.versions.node")
-          echo "Dockerfile pins Node ${IMAGE_NODE}; this runner has ${CI_NODE}"
-          if [ "${IMAGE_NODE}" != "${CI_NODE}" ]; then
-            echo "::error::CI runs Node ${CI_NODE} but the published image is built on Node ${IMAGE_NODE}. Bump node-version in ci.yml and release.yml alongside the Dockerfile pin."
+          IMAGE_NODES=""
+          while IFS= read -r line; do
+            version=$(printf '%s\n' "${line}" | sed -nE 's/^FROM node:([0-9]+\.[0-9]+\.[0-9]+)-alpine(@sha256:[0-9a-f]{64})?( .*)?$/\1/p')
+            if [ -z "${version}" ]; then
+              echo "::error::Dockerfile has a FROM node line that does not pin an exact patch: ${line}"
+              exit 1
+            fi
+            IMAGE_NODES="${IMAGE_NODES}${version}"$'\n'
+          done < <(grep -E '^FROM node:' Dockerfile)
+          if [ -z "${IMAGE_NODES}" ]; then
+            echo "::error::Dockerfile has no FROM node line to read the Node pin from."
             exit 1
           fi
+          if [ "$(printf '%s' "${IMAGE_NODES}" | sort -u | wc -l)" != "1" ]; then
+            echo "::error::The Dockerfile's stages are built on different Node patches: $(printf '%s' "${IMAGE_NODES}" | sort -u | tr '\n' ' ')"
+            exit 1
+          fi
+          IMAGE_NODE=$(printf '%s' "${IMAGE_NODES}" | sort -u)
+          NVMRC_NODE=$(tr -d '[:space:]' < .nvmrc)
+          NODE_VERSION_NODE=$(tr -d '[:space:]' < .node-version)
+          CI_NODE=$(node -p "process.versions.node")
+          echo "Dockerfile pins Node ${IMAGE_NODE}; .nvmrc ${NVMRC_NODE}; .node-version ${NODE_VERSION_NODE}; this runner has ${CI_NODE}"
+          for got in "${NVMRC_NODE}" "${NODE_VERSION_NODE}" "${CI_NODE}"; do
+            if [ "${got}" != "${IMAGE_NODE}" ]; then
+              echo "::error::The Node pins disagree: the published image is built on ${IMAGE_NODE}, .nvmrc says ${NVMRC_NODE}, .node-version says ${NODE_VERSION_NODE}, and this runner has ${CI_NODE}. Bump the Dockerfile's FROM lines, .nvmrc and .node-version together."
+              exit 1
+            fi
+          done
 
       - name: Run TypeScript typecheck
         # `continue-on-error: true` was removed here: any type error is a bug
@@ -179,7 +204,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.3"
+          node-version-file: .nvmrc
           cache: "npm"
 
       - name: Install dependencies
@@ -251,7 +276,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.3"
+          node-version-file: .nvmrc
           cache: "npm"
 
       - name: Install dependencies
@@ -348,7 +373,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.3"
+          node-version-file: .nvmrc
           cache: "npm"
           cache-dependency-path: extension/package-lock.json
 
@@ -472,7 +497,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.3"
+          node-version-file: .nvmrc
           cache: "npm"
 
       - name: Install dependencies
@@ -616,7 +641,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          node-version: "22.23.3"
+          node-version-file: .nvmrc
           cache: "npm"
 
       - name: Install dependencies
