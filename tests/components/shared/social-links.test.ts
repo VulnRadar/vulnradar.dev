@@ -132,7 +132,11 @@ describe("Organization sameAs", () => {
       .map((match) => match[0])
       .filter((name) => name !== "URL");
 
+    // APP_REPO is the GitHub organisation (its owner half), listed beside the
+    // repository so search engines tie both to this site rather than to an
+    // unrelated project with the same name.
     expect(sources).toEqual([
+      "APP_REPO",
       "SEO_GITHUB_URL",
       "SOCIAL_PROFILE_URLS",
       "CHROME_WEB_STORE_URL",

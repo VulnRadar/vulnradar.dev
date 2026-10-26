@@ -92,7 +92,7 @@ export function OrganizationStructuredData({ nonce }: { nonce?: string }) {
       [
         // The GitHub organisation and the repository. Another project on
         // GitHub is also called VulnRadar, and search engines picked it as
-        // ours; both URLs here, plus SourceCodeStructuredData on the home
+        // ours. Both URLs here, plus SourceCodeStructuredData on the home
         // page, state which one is.
         `https://github.com/${APP_REPO.split("/")[0]}`,
         SEO_GITHUB_URL,
