@@ -132,7 +132,7 @@
     "@types/react-dom": "19.3.0",
     "@typescript-eslint/eslint-plugin": "8.70.0",
     "@typescript-eslint/parser": "8.72.0",
-    "eslint": "^10.10.0",
+    "eslint": "^10.13.0",
     "eslint-config-next": "16.4.2",
     "eslint-plugin-oxlint": "1.89.0",
     "oxlint": "1.89.0",
