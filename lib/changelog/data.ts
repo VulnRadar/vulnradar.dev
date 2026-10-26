@@ -1414,6 +1414,48 @@ const CHANGELOG: Release[] = [
         desc: "Routine updates to the software the app is built on: the interface framework (React), the payment, email and data-validation libraries, the AI provider integrations, the icon set, code-quality tools, and the browser extension's build tools. This keeps the app's foundations current.",
         category: "changed",
       },
+      {
+        icon: Globe,
+        label: "Search Engines Now See One Home Page",
+        desc: "The home address used to send every visitor on to /landing, while that page told search engines the home address was the real one. The two pointed at each other, so search engines could not settle on which address to list. The home page now loads at the home address itself, carrying the site name, icon and description that search results show.",
+        category: "fixed",
+      },
+      {
+        icon: FileSearch,
+        label: "Search Results Describe Each Check in Its Own Words",
+        desc: 'Every check page\'s search description opened with the same few words, such as "High-severity headers finding.", so hundreds of results began identically and the part that matched a search came second or was cut off. Each description now opens with what the check detects. Pages that printed the same paragraph twice now print it once.',
+        category: "improved",
+      },
+      {
+        icon: Layout,
+        label: "Site Icon Works Everywhere It Appears",
+        desc: "The site icon is now a solid square at every size browsers, phones and search results ask for, from 16 to 512 pixels, including a version Android can crop to its own shape. It used to be a single 32 pixel icon plus one large image with see-through corners, which iPhones filled with black on the home screen.",
+        category: "improved",
+      },
+      {
+        icon: FileText,
+        label: "Removed Check Pages Forward to Their Replacement",
+        desc: "Fifty-four check pages that earlier versions published are gone in this release, because the checks behind them were retired or merged. Each old address now forwards to the check that covers the same problem, or to its category, instead of showing a page not found.",
+        category: "fixed",
+      },
+      {
+        icon: Shield,
+        label: "Shared Reports Stay Out of Search Results",
+        desc: "Shared scan reports were blocked from search engines in a way that also stopped them reading the instruction not to list the page, so a report linked from somewhere else could still be listed. Search engines can now read that instruction, and reports stay out. The public scans directory is no longer listed either.",
+        category: "fixed",
+      },
+      {
+        icon: Zap,
+        label: "A Tab Left Open Across an Update Reloads Itself",
+        desc: "After an update, a page opened earlier could ask for files the update had replaced and land on an error screen. It now reloads once into the new version instead.",
+        category: "fixed",
+      },
+      {
+        icon: Heart,
+        label: "Footer Credits Who Hosts the Site",
+        desc: "The footer now names the company whose servers run this site. A self-hosted install can name its own host or hide the line.",
+        category: "added",
+      },
     ],
   },
   {

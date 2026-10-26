@@ -19,7 +19,7 @@ the page is unimportant, and it is not licence to invent what it does.
 Route: /
 Access: public, no account needed
 
-This route holds no content of its own: it redirects to /landing.
+This page exists at /. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
 ### Open-Source Scanner Alternatives Compared
 Route: /alternatives
@@ -112,10 +112,10 @@ Also known as: scan new dashboard
 
 This page exists at /dashboard. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
-### Live Demo: Scan Any URL in 3 Seconds
+### Live Demo: Scan Any URL Without an Account
 Route: /demo
 Access: public, no account needed
-Page title: Live Demo: Scan Any URL in 3 Seconds
+Page title: Live Demo: Scan Any URL Without an Account
 Heading on the page: Point it at us first.
 
 This runs the real scanner against VulnRadar's own deployment and shows you the whole report, including whatever we fail. Nothing is pre-rendered and nothing is filtered out to make us look better.
@@ -153,12 +153,11 @@ Page title: Host Report
 
 This page exists at /host/[hostname]. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
-### Scan Any Website for Security Issues
+### /landing
 Route: /landing
 Access: public, no account needed
-Page title: Scan Any Website for Security Issues
 
-Paste a URL, get a security report in under 3 seconds: 855+ deterministic checks across headers, TLS, cookies, DNS, and secrets. No agent to install.
+Paste a URL and get 855+ security checks back, from headers, CSP, TLS and cookies to exposed .env files and leaked API keys, each with evidence and a fix.
 
 ### Pricing
 Route: /pricing
@@ -327,10 +326,10 @@ This page exists at /github-credits. Its source states no description in a form 
 
 ## Legal and policy pages
 
-### VulnRadar Legal: Terms, Privacy, and DMCA
+### Legal: Terms, Privacy and DMCA
 Route: /legal
 Access: public, no account needed
-Page title: VulnRadar Legal: Terms, Privacy, and DMCA
+Page title: Legal: Terms, Privacy and DMCA
 
 The terms of service, privacy policy, acceptable use policy, disclaimer, accessibility statement, and DMCA policy that govern using VulnRadar.
 
