@@ -348,8 +348,12 @@ describe("links into the operator pages land on a real anchor", () => {
     });
   }
 
+  // Only a rendered element's id attribute counts. The pages also list every
+  // anchor in a tocItems array as `{ id: "..." }`, and matching that would let
+  // a section whose element was renamed or removed keep passing on the stale
+  // table-of-contents entry while the link scrolled nowhere.
   const hasAnchor = (source: string, anchor: string) =>
-    new RegExp(`\\bid(?:=|:\\s*)"${anchor}"`).test(source);
+    new RegExp(`\\bid="${anchor}"`).test(source);
 
   it("resolves every /docs/<page>#anchor link to an id on that page", () => {
     const broken: string[] = [];
@@ -495,6 +499,53 @@ describe("the health check the operator pages describe", () => {
       expect(route, `route has ${field}`).toContain(field);
       expect(selfHosting, `page shows ${field}`).toContain(field);
     }
+  });
+});
+
+/**
+ * The paths the MAINTENANCE_MODE environment form leaves open.
+ *
+ * .env.example, the config page and the administration page each list them in
+ * prose. The list was short of robots.txt and the web manifest, which the
+ * middleware also leaves open, because nothing tied the sentences to the
+ * allow-list. This checks one direction: everything the prose says stays
+ * reachable is really in MAINTENANCE_ALWAYS_ALLOWED, and the prose names the
+ * ones a reader would not guess.
+ */
+describe("the maintenance break-glass list the operator pages describe", () => {
+  const middleware = read("middleware.ts");
+  const block =
+    /const MAINTENANCE_ALWAYS_ALLOWED = \[([\s\S]*?)\] as const;/.exec(
+      middleware,
+    )?.[1] ?? "";
+  const allowed = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+
+  it("finds the allow-list", () => {
+    expect(allowed.length).toBeGreaterThan(5);
+  });
+
+  it.each([
+    "/api/v3/health",
+    "/security.txt",
+    "/robots.txt",
+    "/manifest.webmanifest",
+    "/login",
+    "/admin",
+    "/api/v3/auth",
+    "/api/v3/admin",
+    "/_next",
+  ])("keeps %s open, as the prose says", (path) => {
+    expect(allowed).toContain(path);
+  });
+
+  it.each([
+    ".env.example",
+    "app/docs/config/page.tsx",
+    "app/docs/administration/page.tsx",
+  ])("%s names robots.txt and the web manifest", (file) => {
+    const text = read(file);
+    expect(text).toContain("robots.txt");
+    expect(text).toMatch(/web\s+manifest/);
   });
 });
 

@@ -1244,6 +1244,7 @@ export default function ConfigPage() {
               in Admin, Settings, Operations, for when the database is down and
               the panel is unreachable. Every path answers 503 except the health
               endpoint, <InlineCode>security.txt</InlineCode>,{" "}
+              <InlineCode>robots.txt</InlineCode>, the web manifest,{" "}
               <InlineCode>/login</InlineCode>, <InlineCode>/admin</InlineCode>,
               the auth and admin APIs and the static files those pages need. It
               cannot tell staff from anyone else, so unlike the panel switch it

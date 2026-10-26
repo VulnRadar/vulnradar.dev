@@ -342,6 +342,7 @@ export default function AdministrationPage() {
             <InlineCode>/api/v3/health</InlineCode> (so an orchestrator does not
             restart the container in a loop for as long as it lasts),{" "}
             <InlineCode>security.txt</InlineCode>,{" "}
+            <InlineCode>robots.txt</InlineCode>, the web manifest,{" "}
             <InlineCode>/login</InlineCode>, <InlineCode>/admin</InlineCode>,
             the auth and admin APIs, and the static files those pages are built
             from. That is a way back in for staff, and nothing more: this form
