@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import {
   APP_NAME,
-  RELEASES_URL,
+  APP_REPO,
   ROUTES,
   TOTAL_CHECKS_LABEL,
   CHROME_WEB_STORE_URL,
@@ -136,10 +136,17 @@ export default function ExtensionPage() {
             {
               step: 1,
               title: "Connect your account",
-              description: `Click the toolbar icon, then Open Settings. Generate an API key from your ${APP_NAME} profile and paste it in - the extension authenticates as you from then on.`,
+              description: `Click the toolbar icon, then Settings. Create an API key under Profile, Developer, API Keys on ${APP_NAME}, paste it in and press Test & Save. The extension authenticates as you from then on.`,
             },
           ]}
         />
+
+        <p className="text-sm text-muted-foreground">
+          Needs Chrome 120 or newer (Edge, Brave and other Chromium browsers at
+          the same version work too), Firefox 140 or newer, or Firefox for
+          Android 142 or newer. Ctrl+Shift+U opens the popup (Command+Shift+U on
+          Chrome for macOS).
+        </p>
 
         <DocsCallout variant="info" title="Building from source instead">
           <p>
@@ -167,13 +174,12 @@ export default function ExtensionPage() {
 
       <DocsSection id="scanning" title="Scanning from the popup">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-          Click the toolbar icon on any page and hit Scan. Quick and Deep mirror
-          the same two modes on the web app's scan form: Quick runs the fast
-          header/TLS/content family checks, Deep also crawls linked pages on the
-          same host. Which check families run is controlled from the extension's
-          own Settings, independent of your web app defaults, so you can keep
-          the popup fast day-to-day and still reach every check when you want
-          it.
+          Click the toolbar icon on any page and hit Scan. Quick scans the one
+          address you are on. Deep also follows links from it to other pages on
+          the same site, so it takes minutes, not seconds. Both run the check
+          families you have switched on in the extension's own Settings,
+          independent of your web app defaults, so you can keep the popup fast
+          day-to-day and still reach every check when you want it.
         </p>
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           A scan started from the popup counts against the same daily limit as
@@ -232,17 +238,37 @@ export default function ExtensionPage() {
 
       <DocsSection id="reputation-card" title="The on-page card">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-          When enabled, a small card can appear in the corner of a page
-          reporting one of two things: this host has been scanned before (and
-          what its last result was), or it hasn't and you can scan it now. Site
-          alerts are entirely separate from auto-scan below: this is about
-          surfacing information, not triggering a scan on its own.
+          A small card can appear in the corner of a page reporting one of two
+          things: this host has been scanned before (and what its last result
+          was), or it hasn't and you can scan it now. It is on by default and
+          each half has its own switch in Settings. Site alerts are entirely
+          separate from auto-scan below: this is about surfacing information,
+          not triggering a scan on its own.
         </p>
         <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
+            <strong className="text-foreground">What it sends:</strong> to pick
+            the card, the extension asks {APP_NAME} about each public site you
+            open, with the hostname and the page's address without its query
+            string or fragment, at most once every 45 seconds per site. It reads
+            existing scans and stores nothing. Nothing is sent from a private
+            window, or for localhost, an IP address, or an intranet name (one
+            ending in .localhost, .local, .internal, .lan, .test or .home.arpa,
+            or with no dot at all). Because the query string is left out, a page
+            that was scanned with one shows the site-level result for now, not
+            its own.
+          </li>
+          <li>
+            <strong className="text-foreground">Scan this site</strong> scans
+            the address the card was shown for, which is the page's address
+            without its query string. The extension remembers what it offered in
+            that tab and ignores any other address, and the card only reacts to
+            a real click.
+          </li>
+          <li>
             <strong className="text-foreground">Doesn't repeat itself:</strong>{" "}
             once you've seen the card for a host, it stays quiet on later page
-            loads and tab switches to that same host for 24 hours, unless a new
+            loads and tab switches to that same host for 4 hours, unless a new
             scan actually changes the result.
           </li>
           <li>
@@ -272,7 +298,8 @@ export default function ExtensionPage() {
       <DocsSection id="auto-scan" title="Auto-scan modes">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Off by default. Three modes decide when a scan fires without you
-          clicking anything:
+          clicking anything, and a scan that fires on its own is more careful
+          than one you start:
         </p>
         {/* A name plus a sentence, three times over, is a definition list.
           As a three-across card grid it read as generic filler and cost the
@@ -281,18 +308,16 @@ export default function ExtensionPage() {
           {[
             {
               name: "On page load",
-              description:
-                "Scans a host the first time you land on it, throttled per host so repeat navigation on the same site doesn't re-trigger.",
+              description: "Scans a page when it finishes loading.",
             },
             {
               name: "On tab focus",
-              description:
-                "Scans when you switch to a tab showing a host that hasn't been checked recently, not on every load.",
+              description: "Scans the page of a tab when you switch to it.",
             },
             {
               name: "On URL change",
               description:
-                "Follows SPA/client-side navigation within a site, not just full page loads.",
+                "Scans when a tab's address changes, including in-page navigation on single-page apps, not just full page loads.",
             },
           ].map((mode) => (
             <div key={mode.name} className="py-4">
@@ -305,10 +330,32 @@ export default function ExtensionPage() {
             </div>
           ))}
         </dl>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Two limits keep it from spending your daily limit. By default there is
+          at most one automatic scan of a site every 6 hours (the same-site
+          cooldown) and at most one every 60 seconds across all sites (the
+          throttle). Both are in Settings, and 0 turns either one off. The
+          cooldown is per hostname, so moving around one site does not rescan
+          it.
+        </p>
+        <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
+          <li>
+            Skipped entirely: private windows, localhost, IP addresses and
+            intranet names, and any address with a token, code, key, secret,
+            signature, OTP, reset or session in its query string.
+          </li>
+          <li>
+            The part of the address after # is never sent, and an automatic scan
+            never runs active probing or the port sweep, even when those are
+            switched on in Settings. Those are for scans you start.
+          </li>
+        </ul>
         <p className="text-sm text-muted-foreground">
-          A whitelist/blacklist and a global pause are available in Settings for
-          hosts or stretches of time you never want auto-scanned, regardless of
-          mode.
+          A whitelist and a blacklist (plain text matched anywhere in the
+          address, case-insensitive) and a global pause are available in
+          Settings for sites or stretches of time you never want auto-scanned,
+          regardless of mode. The blacklist does not stop the on-page card; mute
+          a site from the card or under Site Alerts for that.
         </p>
         <DocsFigure
           src="/extension/auto-scan-settings.png"
@@ -326,7 +373,9 @@ export default function ExtensionPage() {
           because a background scan you never look at is not worth running.
           Clicking it opens the full report. The severity threshold that decides
           whether a result is worth notifying you about is in Settings, so a
-          site with three info-level findings can stay quiet.
+          site with three info-level findings can stay quiet. Firefox for
+          Android has no desktop notifications, so there the toolbar badge is
+          the only signal.
         </p>
         <DocsFigure
           src="/extension/scan-finished-notification.png"
@@ -354,25 +403,38 @@ export default function ExtensionPage() {
 
       <DocsSection id="settings" title="Settings">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-          Open the full settings page from the popup's gear icon. Everything
-          above (check families, the port and service sweep, auto-scan mode and
-          throttle, notification threshold, card position, mute lists, and
-          theme) lives there and is stored locally in the browser, not on your
-          account, so it's per-install rather than per-user. The sweep is one
-          toggle now, not a per-service list: the old per-service panel
-          serialised a <InlineCode>probes</InlineCode> array the API had already
-          stopped reading, so configuring it did nothing.
+          Open the full settings page with the Settings button in the popup's
+          footer. Everything above (check families, the port and service sweep,
+          auto-scan mode and throttle, notification threshold, card position,
+          mute lists, and theme) lives there and is stored locally in the
+          browser, not on your account, so it's per-install rather than
+          per-user. The sweep is one toggle now, not a per-service list: the old
+          per-service panel serialised a <InlineCode>probes</InlineCode> array
+          the API had already stopped reading, so configuring it did nothing.
         </p>
       </DocsSection>
 
       <DocsSection id="permissions" title="Permissions and privacy">
         <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
-            <strong className="text-foreground">Runs on every page</strong>{" "}
+            <strong className="text-foreground">
+              Runs on every http and https page
+            </strong>{" "}
             (content script) so the on-page card and auto-scan work without a
-            click first. It reads the page's URL and a same-origin session
-            cookie name check; it does not read page content into anything that
-            leaves your browser.
+            click first. It reports that a page loaded and, on your device only,
+            checks whether the page has a cookie that looks like a sign-in; it
+            does not read page content into anything that leaves your browser.
+          </li>
+          <li>
+            <strong className="text-foreground">What it asks for:</strong>{" "}
+            <InlineCode>storage</InlineCode>, <InlineCode>tabs</InlineCode> (to
+            read a tab's address), <InlineCode>notifications</InlineCode>,{" "}
+            <InlineCode>contextMenus</InlineCode> (for &quot;Scan this
+            link&quot;), <InlineCode>downloads</InlineCode> (to save an exported
+            report), <InlineCode>alarms</InlineCode> (only to keep a long scan
+            alive, nothing is scheduled), and access to the {APP_NAME} API
+            address. The extension's README lists each one, and a test holds it
+            to the manifest.
           </li>
           <li>
             <strong className="text-foreground">Your API key</strong> is stored
@@ -388,10 +450,12 @@ export default function ExtensionPage() {
             Fully open source, same license as the rest of {APP_NAME}. Read the
             extension's source in the{" "}
             <a
-              href={RELEASES_URL}
+              href={`https://github.com/${APP_REPO}/tree/main/extension`}
               className="text-primary underline-offset-2 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              GitHub repository
+              extension folder of the GitHub repository
             </a>
             .
           </li>
