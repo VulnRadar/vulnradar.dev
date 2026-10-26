@@ -7,7 +7,7 @@ import {
 } from "@/components/seo/structured-data";
 
 const DESCRIPTION =
-  "The operator's guide to the admin panel: staff roles and permissions, the settings registry, the audit log, impersonation, access rules, backups, broadcasts and retention.";
+  "The operator's guide to the admin panel: staff roles, the settings registry, the audit log, impersonation, access rules, backups and retention.";
 
 export const metadata: Metadata = pageMetadata({
   title: "Administration: Admin Panel, Settings, Backups",
@@ -26,7 +26,7 @@ export default async function Layout({
     <>
       <BreadcrumbStructuredData
         items={[
-          { name: "Home", path: "/landing" },
+          { name: "Home", path: "/" },
           { name: "Docs", path: "/docs" },
           { name: "Administration", path: "/docs/administration" },
         ]}

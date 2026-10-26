@@ -1,10 +1,5 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { pageMetadata } from "@/lib/seo/metadata";
-import {
-  BreadcrumbStructuredData,
-  TechArticleStructuredData,
-} from "@/components/seo/structured-data";
 
 export const metadata: Metadata = pageMetadata({
   title: "REST API Reference: Endpoints and Schema",
@@ -18,31 +13,9 @@ export const metadata: Metadata = pageMetadata({
   ],
 });
 
-export default async function Layout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const nonce = (await headers()).get("x-nonce") ?? "";
-  return (
-    <>
-      <BreadcrumbStructuredData
-        items={[
-          { name: "Home", path: "/landing" },
-          { name: "Docs", path: "/docs" },
-          { name: "API Reference", path: "/docs/api" },
-        ]}
-        nonce={nonce}
-      />
-      <TechArticleStructuredData
-        title={"API Reference"}
-        description={
-          "REST API reference for the scanner: authentication, scan and bulk-scan endpoints, response schema, finding IDs, severity levels, and error codes."
-        }
-        path="/docs/api"
-        nonce={nonce}
-      />
-      {children}
-    </>
-  );
+// No structured data here. This layout also wraps /docs/api/playground, which
+// emits its own breadcrumb and article, so blocks placed here were doubled on
+// that page. The reference page emits its own (app/docs/api/page.tsx).
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return children;
 }

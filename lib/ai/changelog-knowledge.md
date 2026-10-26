@@ -418,6 +418,20 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Our optional active probe reported a confirmed critical cross-site scripting vulnerability whenever its test marker appeared anywhere in the response, including inside a text box, a quoted value or the page title, where a browser would never run it. It now only confirms a finding when the marker lands somewhere it could actually execute, removing a real source of false criticals.
 - [Package] **[CHANGED]** **Dependency Updates**
   Routine updates to the software the app is built on: the interface framework (React), the payment, email and data-validation libraries, the AI provider integrations, the icon set, code-quality tools, and the browser extension's build tools. This keeps the app's foundations current.
+- [Globe] **[FIXED]** **Search Engines Now See One Home Page**
+  The home address used to send every visitor on to /landing, while that page told search engines the home address was the real one. The two pointed at each other, so search engines could not settle on which address to list. The home page now loads at the home address itself, carrying the site name, icon and description that search results show.
+- [FileSearch] **[IMPROVED]** **Search Results Describe Each Check in Its Own Words**
+  Every check page's search description opened with the same few words, such as "High-severity headers finding.", so hundreds of results began identically and the part that matched a search came second or was cut off. Each description now opens with what the check detects. Pages that printed the same paragraph twice now print it once.
+- [Layout] **[IMPROVED]** **Site Icon Works Everywhere It Appears**
+  The site icon is now a solid square at every size browsers, phones and search results ask for, from 16 to 512 pixels, including a version Android can crop to its own shape. It used to be a single 32 pixel icon plus one large image with see-through corners, which iPhones filled with black on the home screen.
+- [FileText] **[FIXED]** **Removed Check Pages Forward to Their Replacement**
+  Check pages that earlier versions published and this release removed, because the checks behind them were retired or merged, no longer end in a page not found. Each old address now forwards to the check that covers the same problem, or to its category.
+- [Shield] **[FIXED]** **Shared Reports Stay Out of Search Results**
+  Shared scan reports were blocked from search engines in a way that also stopped them reading the instruction not to list the page, so a report linked from somewhere else could still be listed. Search engines can now read that instruction, and reports stay out. The public scans directory is no longer listed either.
+- [Zap] **[FIXED]** **A Tab Left Open Across an Update Reloads Itself**
+  After an update, a page opened earlier could ask for files the update had replaced and land on an error screen. It now reloads once into the new version instead.
+- [Heart] **[ADDED]** **Footer Credits Who Hosts the Site**
+  The footer now names the company whose servers run this site. A self-hosted install names its own host, or removes the line, in its configuration before building.
 
 ---
 
@@ -2726,6 +2740,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1055
+- **Total changes documented:** 1062
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

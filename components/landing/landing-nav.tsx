@@ -31,13 +31,26 @@ interface LandingNavProps {
 // gone. If a page needs a wider measure, widen the page, not the nav.
 const NAV_CONTAINER = "max-w-6xl";
 
-/** Each link's key under the "nav" namespace; the component translates it. */
-function navLinks(demoEnabled: boolean) {
+interface NavLink {
+  href: string;
+  /** The link's key under the "nav" namespace; the component translates it. */
+  label: "pricing" | "docs" | "checks" | "demo" | "changelog" | "contact";
+  /** Left out of the inline row below this breakpoint. */
+  inlineFrom?: "xl";
+}
+
+function navLinks(demoEnabled: boolean): NavLink[] {
   return [
     ...(BILLING_ENABLED
       ? [{ href: ROUTES.PRICING, label: "pricing" as const }]
       : []),
     { href: ROUTES.DOCS, label: "docs" as const },
+    // The ~800 per-check fix guides are the site's main search surface and
+    // were linked only from the footer. Inline from xl only: as a sixth link
+    // at lg it pushed the wordmark out of the bar in French at 1024px
+    // (tests/components/landing/landing-nav-layout.test.ts prices it). It is
+    // in the HTML at every width and in the menu panel below lg.
+    { href: ROUTES.CHECKS, label: "checks", inlineFrom: "xl" },
     ...(demoEnabled ? [{ href: ROUTES.DEMO, label: "demo" as const }] : []),
     { href: ROUTES.CHANGELOG, label: "changelog" as const },
     { href: ROUTES.CONTACT, label: "contact" as const },
@@ -135,6 +148,7 @@ export function LandingNav({ badge }: LandingNavProps) {
                 aria-current={isActive(link.href) ? "page" : undefined}
                 className={cn(
                   "text-sm rounded-sm",
+                  link.inlineFrom === "xl" && "hidden xl:inline",
                   transitions.colors,
                   focus.ring,
                   isActive(link.href)

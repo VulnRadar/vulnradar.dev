@@ -11,6 +11,8 @@ import { useOAuthProviders } from "@/lib/hooks/use-oauth-providers";
 function DiscordIcon() {
   return (
     <svg
+      width="1em"
+      height="1em"
       className="h-4 w-4"
       viewBox="0 0 24 24"
       fill="currentColor"

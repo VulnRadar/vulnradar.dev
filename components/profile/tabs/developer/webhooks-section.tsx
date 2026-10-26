@@ -393,6 +393,8 @@ export function WebhooksSection({
                     >
                       {wh.type === "discord" ? (
                         <svg
+                          width="1em"
+                          height="1em"
                           aria-hidden="true"
                           className="h-4 w-4 text-[#5865F2] shrink-0"
                           viewBox="0 0 24 24"
@@ -402,6 +404,8 @@ export function WebhooksSection({
                         </svg>
                       ) : wh.type === "slack" ? (
                         <svg
+                          width="1em"
+                          height="1em"
                           aria-hidden="true"
                           className="h-4 w-4 text-[#E01E5A] shrink-0"
                           viewBox="0 0 24 24"

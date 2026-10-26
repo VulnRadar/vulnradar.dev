@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import { DocsShell } from "@/components/docs/docs-shell";
 import { pageMetadata } from "@/lib/seo/metadata";
-import { APP_NAME } from "@/lib/config/constants";
 
 const DESCRIPTION =
   "Guides for scanning, the REST API, webhooks, scheduled scans, self-hosting, and configuration. Start here to get a first scan running.";
 
 export const metadata: Metadata = pageMetadata({
-  title: `${APP_NAME} Docs: Scanning, API, and Self-Hosting`,
+  title: "Docs: Scanning, the API and Self-Hosting",
   description: DESCRIPTION,
   path: "/docs",
   keywords: ["security scanner documentation", "vulnerability scanner docs"],

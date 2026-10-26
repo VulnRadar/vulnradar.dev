@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { APP_NAME, ROUTES } from "@/lib/config/client-constants";
 import { focus } from "@/lib/ui/animations";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { reloadOnceForStaleChunk } from "@/lib/ui/stale-chunk";
 
 /**
  * One of three pages that share a single composition: wordmark lockup, a ruled
@@ -35,6 +36,7 @@ export default function Error({
   }, []);
 
   useEffect(() => {
+    if (reloadOnceForStaleChunk(error)) return;
     console.error(`[${APP_NAME}] Unhandled error:`, error);
   }, [error]);
 

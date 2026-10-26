@@ -127,6 +127,8 @@ export function DiscordProfileModal() {
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#5865F2]">
               <svg
+                width="1em"
+                height="1em"
                 className="h-5 w-5 text-white"
                 viewBox="0 0 24 24"
                 fill="currentColor"

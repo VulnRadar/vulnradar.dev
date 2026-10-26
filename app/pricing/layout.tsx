@@ -1,18 +1,13 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { pageMetadata } from "@/lib/seo/metadata";
-import {
-  FaqStructuredData,
-  SoftwareStructuredData,
-} from "@/components/seo/structured-data";
-import { PRICING_FAQ } from "@/components/pricing/pricing-faq";
+import { SoftwareStructuredData } from "@/components/seo/structured-data";
 import {
   APP_NAME,
   BILLING_ENABLED,
   BILLING_PLAN_LIMITS,
 } from "@/lib/config/constants";
 import { getPaidPlans } from "@/lib/billing/plans";
-import { PRICING_MODEL_FAQ } from "./pricing-model-faq";
 
 // Cheapest paid plan, derived so the copy never drifts from the catalog.
 const CHEAPEST_PAID =
@@ -45,14 +40,8 @@ export default async function Layout({
   children: React.ReactNode;
 }) {
   const nonce = (await headers()).get("x-nonce") ?? "";
-  // Keep the FAQ rich result matched to whatever the page actually renders:
-  // the Stripe-facing FAQ when billing is on, the pricing-model explainer when
-  // it is off. Google penalises FAQ structured data that isn't visible on the
-  // page, and the two branches show different copy.
-  const faqItems = BILLING_ENABLED ? PRICING_FAQ : PRICING_MODEL_FAQ;
   return (
     <>
-      <FaqStructuredData items={faqItems} nonce={nonce} />
       {/* SoftwareStructuredData has taken an `offers` prop since it was
           written and not one of its five call sites passed anything, so the
           branch that emits prices was dead and no page was eligible for the

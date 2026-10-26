@@ -64,11 +64,23 @@ describe("buildCheckDescription", () => {
     expect(cut.length / CHECKS.length).toBeLessThan(0.4);
   });
 
+  it("leads with the check's own description, not a shared lead-in", () => {
+    // Every snippet used to open "<Severity>-severity <category> finding.",
+    // so ~800 results began with one of a handful of identical phrases.
+    for (const check of CHECKS) {
+      const description = buildCheckDescription(check);
+      expect(description, check.id).not.toMatch(/^\w+-severity /);
+      expect(description.slice(0, 20), check.id).toBe(
+        check.description.replace(/\s+/g, " ").trim().slice(0, 20),
+      );
+    }
+  });
+
   it("never appends half of the risk sentence", () => {
     // The old builder concatenated the risk sentence and then clamped, so most
     // pages published two thirds of it. Now it is all or nothing: anything the
     // description carries beyond the lead-in plus the check description has to
-    // be the complete riskImpact.
+    // be the complete riskImpact (or the short severity note).
     for (const check of CHECKS) {
       const description = buildCheckDescription(check);
       const risk = check.riskImpact?.replace(/\s+/g, " ").trim();

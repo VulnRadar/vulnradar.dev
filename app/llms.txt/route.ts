@@ -179,16 +179,11 @@ function buildLlmsTxt(): string {
   lines.push("");
   const product: [string, string, string][] = [
     [
-      "/landing",
+      "/",
       `What ${APP_NAME} is`,
       "Product overview, how a scan works, and the FAQ.",
     ],
     ["/demo", "Live demo", "Run a real scan without an account."],
-    [
-      "/public-scans",
-      "Public scans directory",
-      "Recently shared public scan reports.",
-    ],
     [
       "/changelog",
       "Changelog",

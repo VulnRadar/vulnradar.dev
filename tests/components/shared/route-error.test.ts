@@ -64,8 +64,9 @@ describe("RouteError keeps the page's chrome", () => {
     expect(src).toContain("{action ?? (");
     expect(src).toContain("ROUTES.DASHBOARD");
     expect(src).toContain("Back to scanner");
-    // The public shell has no scanner to go back to.
-    expect(src).toContain("ROUTES.LANDING");
+    // The public shell has no scanner to go back to. The home page is "/"
+    // itself now, so that is where "home" goes.
+    expect(src).toContain("ROUTES.HOME");
     expect(src).toContain("Back to home");
   });
 
@@ -126,5 +127,20 @@ describe("each route boundary picks the chrome its page wears", () => {
         `app/${segment}/page.tsx`,
       ).toMatch(APP_HEADER);
     }
+  });
+});
+
+// A tab left open across a deploy asks for chunks the deploy removed. Each
+// boundary reloads once into the new build before reporting anything.
+describe("error boundaries recover from a stale chunk", () => {
+  it.each([
+    "components/shared/route-error.tsx",
+    "app/error.tsx",
+    "app/global-error.tsx",
+  ])("%s reloads before it logs", (file) => {
+    const src = code(file);
+    const reload = src.indexOf("if (reloadOnceForStaleChunk(error)) return;");
+    expect(reload).toBeGreaterThan(-1);
+    expect(reload).toBeLessThan(src.indexOf("console.error("));
   });
 });

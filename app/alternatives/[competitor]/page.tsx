@@ -4,10 +4,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { pageMetadata, clampText } from "@/lib/seo/metadata";
-import {
-  BreadcrumbStructuredData,
-  FaqStructuredData,
-} from "@/components/seo/structured-data";
+import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 import { SeoPageShell, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
 import { getAllAlternatives, getAlternative } from "@/lib/seo/alternatives";
 import { APP_NAME } from "@/lib/config/constants";
@@ -65,7 +62,7 @@ export default async function AlternativePage({
 
   const nonce = (await headers()).get("x-nonce") ?? "";
   const breadcrumb = [
-    { name: "Home", path: "/landing" },
+    { name: "Home", path: "/" },
     { name: "Alternatives", path: "/alternatives" },
     { name: alt.name, path: `/alternatives/${alt.slug}` },
   ];
@@ -73,7 +70,6 @@ export default async function AlternativePage({
   return (
     <SeoPageShell>
       <BreadcrumbStructuredData items={breadcrumb} nonce={nonce} />
-      <FaqStructuredData items={alt.faq} nonce={nonce} />
 
       <article className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <Breadcrumbs items={breadcrumb} />

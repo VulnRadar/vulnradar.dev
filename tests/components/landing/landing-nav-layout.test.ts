@@ -46,6 +46,7 @@ function code(rel: string): string {
 type NavMessages = Record<
   | "pricing"
   | "docs"
+  | "checks"
   | "demo"
   | "changelog"
   | "contact"
@@ -125,24 +126,41 @@ describe("the public top bar fits, in every language", () => {
       expect(needed).toBeLessThanOrEqual(inner);
     });
 
+    // The theme toggle joins the bar with the inline links, and the menu
+    // button leaves it.
+    const right =
+      LANGUAGE_MENU_PX +
+      THEME_TOGGLE_PX +
+      8 +
+      buttonPx(t.logIn, 12) +
+      8 +
+      buttonPx(t.startFree, 12, ARROW_PX);
+    const row = (labels: string[]) =>
+      labels.map(textPx).reduce((a, b) => a + b, 0) + (labels.length - 1) * 24;
+
     it("fits the bar with the inline links at the breakpoint they appear at", () => {
-      const bp = SCREEN_PX[inlineLinksBreakpoint()];
-      const inner = bp - 48;
-      const links =
-        [t.pricing, t.docs, t.demo, t.changelog, t.contact]
-          .map(textPx)
-          .reduce((a, b) => a + b, 0) +
-        4 * 24;
-      // The theme toggle joins the bar here, and the menu button leaves it.
-      const right =
-        LANGUAGE_MENU_PX +
-        THEME_TOGGLE_PX +
-        8 +
-        buttonPx(t.logIn, 12) +
-        8 +
-        buttonPx(t.startFree, 12, ARROW_PX);
-      const needed = WORDMARK_PX + 24 + links + 24 + right;
-      expect(needed).toBeLessThanOrEqual(inner);
+      const inner = SCREEN_PX[inlineLinksBreakpoint()] - 48;
+      // Checks is not in the row yet at lg: see the next case.
+      const links = row([t.pricing, t.docs, t.demo, t.changelog, t.contact]);
+      expect(WORDMARK_PX + 24 + links + 24 + right).toBeLessThanOrEqual(inner);
+    });
+
+    it("fits the bar with the Checks link added at xl", () => {
+      // As a sixth link at lg it priced French 24px over the bar, which on
+      // screen was the wordmark dropping out at 1024px.
+      const inner = SCREEN_PX.xl - 48;
+      const links = row([
+        t.pricing,
+        t.docs,
+        t.checks,
+        t.demo,
+        t.changelog,
+        t.contact,
+      ]);
+      expect(WORDMARK_PX + 24 + links + 24 + right).toBeLessThanOrEqual(inner);
+      const atLg = SCREEN_PX.lg - 48;
+      if (locale === "fr")
+        expect(WORDMARK_PX + 24 + links + 24 + right).toBeGreaterThan(atLg);
     });
   });
 });
@@ -168,6 +186,13 @@ describe("landing-nav.tsx keeps the contract the numbers above assume", () => {
 
   it("shows the inline links from lg, and not before", () => {
     expect(inlineLinksBreakpoint()).toBe("lg");
+  });
+
+  it("keeps the Checks link out of the inline row until xl", () => {
+    expect(src).toMatch(
+      /\{ href: ROUTES\.CHECKS, label: "checks", inlineFrom: "xl" \}/,
+    );
+    expect(src).toContain('link.inlineFrom === "xl" && "hidden xl:inline"');
   });
 
   it("hides the menu button and the menu panel at the same breakpoint", () => {

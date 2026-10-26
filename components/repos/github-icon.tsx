@@ -1,9 +1,14 @@
 // lucide-react dropped brand/logo icons, so the mark is an inline SVG. It
 // lives here rather than inside app/repos/page.tsx because the list moved out
-// into its own component and both still need it.
+// into its own component and every repos view needs it (two of them used to
+// carry their own copy of this path). width/height are 1em so a render with
+// no stylesheet draws it text-sized instead of the browser's 300x150; the
+// className sizes it as normal.
 export function GithubIcon({ className }: { className?: string }) {
   return (
     <svg
+      width="1em"
+      height="1em"
       className={className}
       viewBox="0 0 24 24"
       fill="currentColor"

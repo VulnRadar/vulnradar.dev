@@ -310,10 +310,15 @@ function extractMetadata(source) {
   const locals = readLocalConstants(source);
   const titleLiteral =
     body.match(/\btitle:\s*"([^"]+)"/) ||
+    body.match(/\btitle:\s*`([^`]+)`/) ||
     body.match(/\btitle:\s*([A-Z][A-Za-z0-9_]*),/);
-  const title = titleLiteral
-    ? (locals[titleLiteral[1]] ?? titleLiteral[1])
+  // A template title (the home page's starts with ${APP_NAME}) is kept only
+  // when every interpolation resolves.
+  const resolvedTitle = titleLiteral
+    ? resolveTemplate(locals[titleLiteral[1]] ?? titleLiteral[1], locals)
     : null;
+  const title =
+    resolvedTitle && !/[{}]/.test(resolvedTitle) ? resolvedTitle : null;
   // Plain string, template literal, or a bare local constant. A template is
   // only usable when every ${} in it resolves, which the caller checks via
   // isCleanProse after substitution.
@@ -471,8 +476,28 @@ function declaresPrivateMetadata(route) {
   return false;
 }
 
+/**
+ * A page that is nothing but `export { default, ... } from "./other/page"`
+ * (app/page.tsx serving the landing page at "/") is described from the file
+ * it re-exports. Read as itself it has no metadata and no heading, and the
+ * assistant was told the home page had nothing to say about itself.
+ */
+function resolveReexportedPage(dir, source) {
+  const m = source.match(
+    /^\s*export\s*\{[^}]*\bdefault\b[^}]*\}\s*from\s*"(\.[^"]+)";?\s*$/m,
+  );
+  if (!m) return source;
+  const target = [`${join(dir, m[1])}.tsx`, `${join(dir, m[1])}.ts`].find((p) =>
+    existsSync(p),
+  );
+  return target ? readFileSync(target, "utf8") : source;
+}
+
 function describeRoute({ route, dir }, navLabels, disallowed, routesTable) {
-  const pageSrc = readFileSync(join(dir, "page.tsx"), "utf8");
+  const pageSrc = resolveReexportedPage(
+    dir,
+    readFileSync(join(dir, "page.tsx"), "utf8"),
+  );
   const layoutPath = join(dir, "layout.tsx");
   const layoutSrc = existsSync(layoutPath)
     ? readFileSync(layoutPath, "utf8")

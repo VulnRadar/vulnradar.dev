@@ -2,10 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { pageMetadata } from "@/lib/seo/metadata";
-import {
-  BreadcrumbStructuredData,
-  FaqStructuredData,
-} from "@/components/seo/structured-data";
+import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 import {
   SeoPageShell,
   SeverityPill,
@@ -38,11 +35,16 @@ const TITLE = "Every Web Vulnerability Check, With Fixes";
 // and this page counts only the ones with a public fix guide. Presented alone
 // the smaller number read as the larger one having been marketing. State both
 // so they reconcile instead of contradicting.
-const COUNT_SENTENCE = `The ${TOTAL_CHECKS_LABEL} checks ${APP_NAME} runs against a URL, grouped into ${EXACT_CHECK_CATEGORY_COUNT} categories. Most have a page here explaining what they catch and how to fix it; the rest only fire across several pages at once, so they have no standalone page.`;
+//
+// The description used to carry that reconciliation in full, ~283 characters
+// that then contradicted themselves ("the rest have no standalone page",
+// followed by "every one has a page"). It says "most" now, which is true, and
+// leaves the explanation to the FAQ below.
+const COUNT_SENTENCE = `${TOTAL_CHECKS_LABEL} checks across ${EXACT_CHECK_CATEGORY_COUNT} categories. Most have a page here: what the check detects, why it matters and how to fix it.`;
 
 export const metadata: Metadata = pageMetadata({
   title: TITLE,
-  description: `${COUNT_SENTENCE} Every one has a page explaining the risk and how to fix it.`,
+  description: COUNT_SENTENCE,
   path: "/checks",
   keywords: [
     "web vulnerability checks",
@@ -74,14 +76,13 @@ export default async function ChecksIndexPage() {
   const nonce = (await headers()).get("x-nonce") ?? "";
   const counts = getSeoCategoryCounts();
   const breadcrumb = [
-    { name: "Home", path: "/landing" },
+    { name: "Home", path: "/" },
     { name: "Checks", path: "/checks" },
   ];
 
   return (
     <SeoPageShell>
       <BreadcrumbStructuredData items={breadcrumb} nonce={nonce} />
-      <FaqStructuredData items={FAQ} nonce={nonce} />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <Breadcrumbs items={breadcrumb} />

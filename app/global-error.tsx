@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BRAND } from "@/lib/config/brand";
 import { APP_NAME, ROUTES } from "@/lib/config/client-constants";
+import { reloadOnceForStaleChunk } from "@/lib/ui/stale-chunk";
 
 // Inline styles are deliberate here, not an oversight: this boundary replaces
 // <html> and <body> themselves, so it has to render correctly even if
@@ -108,6 +109,7 @@ export default function GlobalError({
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    if (reloadOnceForStaleChunk(error)) return;
     console.error(`[${APP_NAME}] Fatal error:`, error);
   }, [error]);
 

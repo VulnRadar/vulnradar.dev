@@ -245,3 +245,38 @@ describe("privatePageMetadata", () => {
     expect(meta.title).toBe("Dashboard");
   });
 });
+
+describe("pageMetadata: home title and hreflang", () => {
+  it("publishes an absolute title as given, without the site-name suffix", () => {
+    const meta = pageMetadata({
+      title: "VulnRadar: Open-Source Website Security Scanner",
+      description: "d",
+      path: "/",
+      absoluteTitle: true,
+    });
+    expect(meta.title).toEqual({
+      absolute: "VulnRadar: Open-Source Website Security Scanner",
+    });
+    expect(meta.openGraph?.title).toBe(
+      "VulnRadar: Open-Source Website Security Scanner",
+    );
+  });
+
+  it("declares a self-referencing en and x-default on an indexable page", () => {
+    const meta = pageMetadata({
+      title: "T",
+      description: "d",
+      path: "/checks",
+    });
+    const url = `${APP_URL}/checks`;
+    expect(meta.alternates).toEqual({
+      canonical: url,
+      languages: { en: url, "x-default": url },
+    });
+  });
+
+  it("declares no languages on a noindex page", () => {
+    const meta = privatePageMetadata("Dashboard", "/dashboard");
+    expect(meta.alternates).toEqual({ canonical: `${APP_URL}/dashboard` });
+  });
+});

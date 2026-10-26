@@ -4,10 +4,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { pageMetadata, clampText } from "@/lib/seo/metadata";
 import { SEVERITY_ORDER } from "@/lib/config/client-constants";
-import {
-  BreadcrumbStructuredData,
-  FaqStructuredData,
-} from "@/components/seo/structured-data";
+import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 import {
   SeoPageShell,
   SeverityPill,
@@ -87,7 +84,7 @@ export default async function CategoryPage({
   })).filter((g) => g.items.length > 0);
 
   const breadcrumb = [
-    { name: "Home", path: "/landing" },
+    { name: "Home", path: "/" },
     { name: "Checks", path: "/checks" },
     { name: label, path: `/checks/category/${cat}` },
   ];
@@ -117,7 +114,6 @@ export default async function CategoryPage({
   return (
     <SeoPageShell>
       <BreadcrumbStructuredData items={breadcrumb} nonce={nonce} />
-      <FaqStructuredData items={faq} nonce={nonce} />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <Breadcrumbs items={breadcrumb} />

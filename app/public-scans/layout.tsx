@@ -6,11 +6,10 @@ export const metadata: Metadata = pageMetadata({
   description:
     "Browse security scans other people chose to share publicly: the URL, verdict, who ran it, and its findings, most recent first.",
   path: "/public-scans",
-  keywords: [
-    "public security scans",
-    "shared vulnerability reports",
-    "website security directory",
-  ],
+  // A list of other people's scan results, and every report it links to is
+  // noindex. Its rows also load in the browser, so the HTML a crawler gets is
+  // a skeleton. Out of the index and the sitemap, like the reports.
+  noIndex: true,
 });
 
 export default function Layout({ children }: { children: React.ReactNode }) {

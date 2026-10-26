@@ -15,6 +15,7 @@ import {
   APP_URL,
   ROUTES,
   BILLING_ENABLED,
+  HOSTING_PROVIDER,
 } from "@/lib/config/client-constants";
 import { Button } from "@/components/ui/button";
 import { ThemedLogo } from "@/components/shared/themed-logo";
@@ -37,6 +38,7 @@ export function Footer() {
   // request config on the server and the provider in the browser, so one call
   // works in both.
   const t = useTranslations("footer");
+  const host = HOSTING_PROVIDER;
   return (
     <footer className="border-t border-border bg-background mt-auto">
       {/* max-w-6xl and a flat px-6, the measure the nav and every public page
@@ -295,12 +297,34 @@ export function Footer() {
 
         {/* Bottom bar */}
         <div className="border-t border-border pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-muted-foreground">
-            {t("copyright", {
-              year: new Date().getFullYear(),
-              app: APP_NAME,
-            })}
-          </p>
+          <div className="flex flex-col items-center gap-1 text-sm text-muted-foreground sm:items-start">
+            <p>
+              {t("copyright", {
+                year: new Date().getFullYear(),
+                app: APP_NAME,
+              })}
+            </p>
+            {/* A plain followed link, not nofollow: crediting the company
+                that runs the servers is an editorial statement of fact, and
+                it is in the server-rendered HTML of every page that has a
+                footer. If hosting is ever given in exchange for this link,
+                Google's link policy wants rel="sponsored" on it instead. */}
+            {host && (
+              <p>
+                {t.rich("hostedBy", {
+                  provider: host.name,
+                  link: (chunks) => (
+                    <a
+                      href={host.url}
+                      className={`rounded-sm underline underline-offset-4 decoration-border transition-colors hover:text-foreground hover:decoration-foreground ${focus.ring}`}
+                    >
+                      {chunks}
+                    </a>
+                  ),
+                })}
+              </p>
+            )}
+          </div>
           {/* This row was already the footer's icon-link row (the repo mark
               and the support address), so the social accounts join it rather
               than getting a block of their own: same muted h-4 marks, same

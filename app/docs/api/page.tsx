@@ -1,5 +1,9 @@
 import Link from "next/link";
 import {
+  BreadcrumbStructuredData,
+  TechArticleStructuredData,
+} from "@/components/seo/structured-data";
+import {
   APP_URL,
   APP_NAME,
   APP_REPO,
@@ -1879,6 +1883,21 @@ for finding in result.findings:
 export default function APIDocsPage() {
   return (
     <div className="space-y-12 sm:space-y-16">
+      {/* Here, not in app/docs/api/layout.tsx, which also wraps the
+          playground. A JSON-LD block is data, not script, so it needs no
+          CSP nonce. */}
+      <BreadcrumbStructuredData
+        items={[
+          { name: "Home", path: "/" },
+          { name: "Docs", path: "/docs" },
+          { name: "API Reference", path: "/docs/api" },
+        ]}
+      />
+      <TechArticleStructuredData
+        title="API Reference"
+        description="REST API reference for the scanner: authentication, scan and bulk-scan endpoints, response schema, finding IDs, severity levels, and error codes."
+        path="/docs/api"
+      />
       <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"

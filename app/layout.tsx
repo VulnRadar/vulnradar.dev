@@ -35,7 +35,7 @@ import {
   SEO_BING_VERIFICATION,
   BRANDING_PRIMARY_COLOR,
 } from "@/lib/config/constants";
-import { SiteStructuredData } from "@/components/seo/structured-data";
+import { OrganizationStructuredData } from "@/components/seo/structured-data";
 import { ChatWidgetMount } from "@/components/shared/chat-widget-mount";
 import { TourMount } from "@/components/shared/tour/tour-mount";
 
@@ -65,20 +65,23 @@ export const metadata: Metadata = {
   authors: [{ name: APP_NAME, url: APP_URL }],
   creator: APP_NAME,
   publisher: APP_NAME,
-  // Pages without their own canonical fall back to the declared homepage
-  // rather than competing with each other under multiple URLs. That is
-  // "/landing", not "/": "/" always redirects (middleware.ts sends a signed-out
-  // visitor to /landing and a signed-in one to /dashboard), so a canonical
-  // pointing at it named a URL that never returns 200. Latent today because
-  // every page sets its own canonical, but the next page added without a
-  // pageMetadata() call would have inherited it.
-  alternates: { canonical: "/landing" },
+  // No site-wide canonical. Every public page names its own through
+  // pageMetadata(), and the only pages that inherited this one were the 404
+  // and error pages, which told Google a missing URL was a copy of the home
+  // page.
+  // All generated from public/favicon.svg by scripts/assets/build-icons.mjs,
+  // as an opaque tile: the transparent-cornered disc went black on iOS and
+  // lost its edge on a dark tab strip. The ICO declares 32x32 rather than
+  // "any" because Chrome picks an icon marked "any" over the SVG; it holds
+  // 16, 32 and 48. Google Search reads the ICO or the PNG (it does not use an
+  // SVG favicon) and wants one at least 48px.
   icons: {
     icon: [
-      { url: "/favicon.svg", type: "image/svg+xml", sizes: "any" },
-      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.ico", sizes: "32x32" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
     ],
-    apple: "/favicon.png",
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
   manifest: "/manifest.webmanifest",
   openGraph: {
@@ -257,7 +260,7 @@ export default async function RootLayout({
         >
           Skip to main content
         </a>
-        <SiteStructuredData />
+        <OrganizationStructuredData />
         {/* Follow the OS, and fall back to dark when the OS cannot be read.
             `enableSystem` alone did not do this: it only made "system" an
             available choice, while `defaultTheme="dark"` meant a first-time

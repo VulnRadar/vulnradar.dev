@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PUBLIC_PATHS } from "./lib/config/public-paths";
 import { AUTH_SESSION_COOKIE_NAME, ROUTES, API } from "./lib/config/constants";
 import { SOCIAL_REDIRECTS } from "./lib/config/client-constants";
+import { RETIRED_CHECK_REDIRECTS } from "./lib/seo/retired-checks";
 import {
   MAX_REQUEST_BODY_BYTES,
   BODY_CARRYING_METHODS,
@@ -552,6 +553,22 @@ export function middleware(request: NextRequest) {
     );
   }
 
+  // A check page this release removed. 301, unlike the short links above:
+  // the old URL is gone for good and search engines should move its standing
+  // to the target. Own-origin target, so there is nothing to move later.
+  const retiredCheck = socialPathname.startsWith("/checks/")
+    ? Object.hasOwn(RETIRED_CHECK_REDIRECTS, socialPathname.slice(8))
+      ? RETIRED_CHECK_REDIRECTS[socialPathname.slice(8)]
+      : undefined
+    : undefined;
+  if (retiredCheck) {
+    return applySecurityHeaders(
+      NextResponse.redirect(new URL(retiredCheck, request.url), 301),
+      nonce,
+      requestId,
+    );
+  }
+
   // Check if path is public (exact match for "/" and "/landing", startsWith for others)
   const isPublicPath = PUBLIC_PATHS.some((p) => {
     if (p === ROUTES.HOME || p === ROUTES.LANDING) {
@@ -612,18 +629,6 @@ export function middleware(request: NextRequest) {
         requestId,
       );
     }
-    // If not logged in and on root, redirect to landing.
-    // 308, not NextResponse.redirect's default 307: the arrangement is not
-    // temporary, and a temporary redirect tells Google to keep evaluating both
-    // "/" and "/landing" as separate URLs instead of consolidating the site's
-    // highest-authority URL onto the page that actually serves the content.
-    if (!sessionCookie && pathname === ROUTES.HOME) {
-      return applySecurityHeaders(
-        NextResponse.redirect(new URL(ROUTES.LANDING, request.url), 308),
-        nonce,
-        requestId,
-      );
-    }
     const publicResponse = applySecurityHeaders(
       nextWithNonce(),
       nonce,
@@ -634,6 +639,25 @@ export function middleware(request: NextRequest) {
         "Cross-Origin-Resource-Policy",
         "cross-origin",
       );
+    }
+    // A protected page bounces an anonymous visitor (and a crawler following
+    // a footer link) to /login?redirect=<path>. Each of those is the login
+    // page again under another URL. The header keeps them out of the index
+    // while the clean /login stays in it; robots.txt used to Disallow them,
+    // which only made Search Console list them as blocked.
+    if (
+      (pathname === ROUTES.LOGIN || pathname === ROUTES.SIGNUP) &&
+      request.nextUrl.searchParams.has("redirect")
+    ) {
+      publicResponse.headers.set("X-Robots-Tag", "noindex");
+    }
+    // Shared reports and per-host pages describe somebody's site, and robots.txt
+    // no longer blocks them so that their noindex can be read. The header
+    // carries it for every crawler, including the ones that get page metadata
+    // streamed into the body, and covers their generated preview images too.
+    // Link-preview bots ignore it, so a pasted report still unfurls.
+    if (pathname.startsWith("/shared/") || pathname.startsWith("/host/")) {
+      publicResponse.headers.set("X-Robots-Tag", "noindex, nofollow");
     }
     return publicResponse;
   }

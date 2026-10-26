@@ -29,7 +29,10 @@ export default async function Layout({
   return (
     <>
       <BreadcrumbStructuredData
-        items={[{ name: "Security", path: "/security" }]}
+        items={[
+          { name: "Home", path: "/" },
+          { name: "Security", path: "/security" },
+        ]}
         nonce={nonce}
       />
       {children}

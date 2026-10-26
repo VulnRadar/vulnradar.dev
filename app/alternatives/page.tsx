@@ -35,7 +35,7 @@ export const metadata: Metadata = pageMetadata({
 export default async function AlternativesIndexPage() {
   const nonce = (await headers()).get("x-nonce") ?? "";
   const breadcrumb = [
-    { name: "Home", path: "/landing" },
+    { name: "Home", path: "/" },
     { name: "Alternatives", path: "/alternatives" },
   ];
 
