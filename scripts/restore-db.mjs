@@ -21,7 +21,8 @@
  *
  * Usage:
  *   npm run db:restore -- --file=./backups/vulnradar-backup-2026-08-14T00-00-00-000Z.sql.gz --yes
- *   npm run db:restore -- --file=./backups/vulnradar-backup-...sql.gz.enc --yes   (needs BACKUP_ENCRYPTION_KEY, or API_KEY_ENCRYPTION_KEY, the fallback)
+ *   npm run db:restore -- --file=./backups/vulnradar-backup-...sql.gz.enc --yes   (needs BACKUP_ENCRYPTION_KEY, or API_KEY_ENCRYPTION_KEY, the fallback;
+ *                                                                                  a backup from before a key rotation also tries PREVIOUS_API_KEY_ENCRYPTION_KEY)
  *   npm run db:restore -- --file=... --yes --force   (allow restoring into a database that already has tables)
  *
  * Destructive: this applies whatever the dump contains on top of the database
@@ -106,6 +107,86 @@ export async function decryptBackupToFile({ sourcePath, key, meta, destPath }) {
     createWriteStream(destPath),
   );
   return destPath;
+}
+
+/**
+ * The keys a backup may have been encrypted with, in the order they are tried.
+ *
+ * The first is the key backup-db.mjs would use today (BACKUP_ENCRYPTION_KEY,
+ * else the API_KEY_ENCRYPTION_KEY fallback). The second is
+ * PREVIOUS_API_KEY_ENCRYPTION_KEY, which exists for exactly one situation: the
+ * operator rotated API_KEY_ENCRYPTION_KEY and kept the old value around so
+ * data written under it still opens (lib/auth/crypto.ts). A backup taken
+ * before that rotation, on an install that relies on the base-key fallback, was
+ * encrypted with the old value, and without this it became undecryptable the
+ * moment the rotation was done, in a restore that is by definition happening
+ * under pressure.
+ *
+ * AES-GCM authenticates, so a wrong key fails rather than producing garbage;
+ * trying a second key can never "succeed" with the wrong one.
+ * Exported for tests.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {{ name: string, key: string }[]}
+ */
+export function backupKeyCandidates(env = process.env) {
+  const candidates = [];
+  const primary = env.BACKUP_ENCRYPTION_KEY || env.API_KEY_ENCRYPTION_KEY;
+  if (primary) {
+    candidates.push({
+      name: env.BACKUP_ENCRYPTION_KEY
+        ? "BACKUP_ENCRYPTION_KEY"
+        : "API_KEY_ENCRYPTION_KEY",
+      key: primary,
+    });
+  }
+  const previous = env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
+  if (primary && previous && previous !== primary) {
+    candidates.push({ name: "PREVIOUS_API_KEY_ENCRYPTION_KEY", key: previous });
+  }
+  return candidates;
+}
+
+/**
+ * decryptBackupToFile with each candidate key in turn. Returns the name of the
+ * key that opened the file; throws the FIRST key's error when none does, since
+ * that is the key the operator is expected to have and so the failure worth
+ * reporting. `onFallback(failed, next)` is called before each retry so the
+ * caller can say what is happening.
+ * Exported for tests.
+ *
+ * @param {object} args
+ * @param {string} args.sourcePath
+ * @param {{ iv: string, authTag: string }} args.meta
+ * @param {string} args.destPath
+ * @param {{ name: string, key: string }[]} args.candidates
+ * @param {(failed: { name: string }, next: { name: string }) => void} [args.onFallback]
+ * @returns {Promise<string>}
+ */
+export async function decryptBackupWithFallback({
+  sourcePath,
+  meta,
+  destPath,
+  candidates,
+  onFallback,
+}) {
+  let firstError = null;
+  for (let i = 0; i < candidates.length; i++) {
+    try {
+      await decryptBackupToFile({
+        sourcePath,
+        key: candidates[i].key,
+        meta,
+        destPath,
+      });
+      return candidates[i].name;
+    } catch (err) {
+      firstError ??= err;
+      if (i + 1 < candidates.length)
+        onFallback?.(candidates[i], candidates[i + 1]);
+    }
+  }
+  throw firstError ?? new Error("No decryption key was provided.");
 }
 
 /**
@@ -276,14 +357,15 @@ async function runRestore() {
 
   try {
     if (filePath.endsWith(".enc")) {
-      // Identical resolution to backup-db.mjs: fall back to API_KEY_ENCRYPTION_KEY
-      // when no dedicated BACKUP_ENCRYPTION_KEY is set. If backup-db.mjs encrypted
-      // this file using that base-key fallback, restoring with a different key
-      // resolution would make it permanently undecryptable. A separate
-      // BACKUP_ENCRYPTION_KEY is still recommended for defense in depth.
-      const key =
-        process.env.BACKUP_ENCRYPTION_KEY || process.env.API_KEY_ENCRYPTION_KEY;
-      if (!key) {
+      // First key: identical resolution to backup-db.mjs, falling back to
+      // API_KEY_ENCRYPTION_KEY when no dedicated BACKUP_ENCRYPTION_KEY is set.
+      // If backup-db.mjs encrypted this file using that base-key fallback,
+      // restoring with a different key resolution would make it permanently
+      // undecryptable. A separate BACKUP_ENCRYPTION_KEY is still recommended
+      // for defense in depth. After a rotation, PREVIOUS_API_KEY_ENCRYPTION_KEY
+      // is tried second (see backupKeyCandidates).
+      const candidates = backupKeyCandidates();
+      if (candidates.length === 0) {
         // Thrown rather than process.exit'd: exit skips the finally below, and
         // from here on there may be a temp directory to clean up.
         throw new Error(
@@ -300,16 +382,29 @@ async function runRestore() {
       tempDir = await mkdtemp(join(tmpdir(), "vulnradar-restore-"));
       plaintextPath = join(tempDir, "backup.sql.gz");
       info("Decrypting and verifying...");
+      let usedKey;
       try {
-        await decryptBackupToFile({
+        usedKey = await decryptBackupWithFallback({
           sourcePath: filePath,
-          key,
           meta,
           destPath: plaintextPath,
+          candidates,
+          onFallback: (failed, next) =>
+            warn(
+              `${failed.name} did not open this backup; trying ${next.name}.`,
+            ),
         });
       } catch (err) {
         throw new Error(
-          `Decryption failed: ${err.message}. Nothing was applied to the database.`,
+          `Decryption failed: ${err.message}. Nothing was applied to the database. ` +
+            `Tried ${candidates.map((cand) => cand.name).join(", ")}; the ` +
+            "backup is either damaged or was encrypted with a key that is " +
+            "not set here.",
+        );
+      }
+      if (usedKey === "PREVIOUS_API_KEY_ENCRYPTION_KEY") {
+        info(
+          "Opened with PREVIOUS_API_KEY_ENCRYPTION_KEY: this backup predates a key rotation.",
         );
       }
       success("Backup integrity verified.");
