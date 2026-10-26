@@ -188,8 +188,8 @@ export default function PricingPage() {
           {/* "Get Started" named no action, the same generic-SaaS copy
                 already replaced in the landing nav and the pricing cards.
                 This link goes to /signup, so say that. */}
-          <Link href={me ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
-            {me ? "Go to Scanner" : "Create an account"}
+          <Link href={isLoggedIn ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
+            {isLoggedIn ? "Go to Scanner" : "Create an account"}
             <ArrowRight className="h-4 w-4" />
           </Link>
         </Button>
