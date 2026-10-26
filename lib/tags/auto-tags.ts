@@ -677,9 +677,12 @@ export function computeAutoTags(
 }
 
 /**
- * Admin-promoted rules (Admin > Engine Feedback > AI Tag Candidates,
- * app/api/v3/admin/engine-feedback/promoted-tags/route.ts), stored in
- * `promoted_auto_tag_rules`. This is the other half of the "AI generates a
+ * Admin-promoted rules, stored in `promoted_auto_tag_rules`. An admin creates
+ * one from Admin > Engine Feedback > AI Tag Candidates
+ * (app/api/v3/admin/engine-feedback/ai-tag-candidates/route.ts) and lists or
+ * removes it under "Promoted rules" on the same page
+ * (app/api/v3/admin/engine-feedback/promoted-tags/route.ts, via
+ * lib/tags/promoted-rules.ts). This is the other half of the "AI generates a
  * tag, and the system learns which ones keep recurring so an admin can
  * promote them" design: once promoted, a concept stops costing an AI call
  * per scan and becomes a normal, fast, free, deterministic rule, merged
@@ -693,7 +696,10 @@ export function computeAutoTags(
  * a pub/sub invalidation channel), matching this module's existing "keep
  * it simple" bar. invalidatePromotedRulesCache lets the promotion route
  * force an immediate refresh right after an INSERT so a newly promoted
- * rule takes effect on the very next scan instead of waiting out the TTL.
+ * rule takes effect on the very next scan instead of waiting out the TTL,
+ * and lets removing a rule (deletePromotedRule) stop it tagging at once.
+ * It clears this process's cache only; another process serves its copy
+ * until the TTL runs out.
  */
 const DB_RULES_CACHE_TTL_MS = 5 * 60 * 1000;
 let dbRulesCache: { rules: AutoTagRule[]; loadedAt: number } | null = null;
@@ -747,7 +753,7 @@ export async function loadPromotedRules(): Promise<AutoTagRule[]> {
   }
 }
 
-/** Forces the next loadPromotedRules() call to hit the DB instead of the cache. Called by the promotion API route right after it inserts a new row. */
+/** Forces the next loadPromotedRules() call to hit the DB instead of the cache. Called right after a rule is inserted (the promotion route) or deleted (lib/tags/promoted-rules.ts). */
 export function invalidatePromotedRulesCache(): void {
   dbRulesCache = null;
 }

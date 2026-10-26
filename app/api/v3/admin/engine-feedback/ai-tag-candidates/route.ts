@@ -40,7 +40,8 @@ export const dynamic = "force-dynamic";
  * real, free, deterministic rule (see lib/tags/auto-tags.ts's
  * loadPromotedRules), and lib/ai/auto-tag-suggest.ts never needs to be
  * called for that concept again (well, until a genuinely new scan trips a
- * concept the hardcoded rules AND every promoted rule still miss).
+ * concept the hardcoded rules AND every promoted rule still miss). A
+ * promoted rule is listed, and can be removed, at ./promoted-tags.
  */
 
 export const GET = withErrorHandling(async () => {

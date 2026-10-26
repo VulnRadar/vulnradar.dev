@@ -30,6 +30,8 @@ import {
   EyeOff,
   FileJson,
   FileSpreadsheet,
+  ListChecks,
+  Trash2,
 } from "lucide-react";
 import {
   SkeletonRegion,
@@ -53,6 +55,13 @@ import { downloadBlob, escapeCsv } from "@/lib/ui/download";
 import { cn } from "@/lib/ui/utils";
 import { formatDay } from "@/components/admin/utils";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
+import { useConfirm } from "@/components/shared/use-confirm";
+import {
+  describeRuleMatch,
+  describeRuleThreshold,
+  removePromotedRule,
+  type PromotedRuleEntry,
+} from "@/components/admin/features/engine-feedback-utils";
 
 interface AiTagCandidateExample {
   scanId: number;
@@ -215,6 +224,7 @@ export function EngineFeedbackManager() {
   const [checks, setChecks] = useState<CheckAccuracyEntry[]>([]);
   const [tags, setTags] = useState<TagDismissalEntry[]>([]);
   const [aiCandidates, setAiCandidates] = useState<AiTagCandidateEntry[]>([]);
+  const [promotedRules, setPromotedRules] = useState<PromotedRuleEntry[]>([]);
   const [minCandidateScans, setMinCandidateScans] = useState<number | null>(
     null,
   );
@@ -225,6 +235,7 @@ export function EngineFeedbackManager() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [promoteTarget, setPromoteTarget] =
     useState<AiTagCandidateEntry | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
 
   const [checkSearch, setCheckSearch] = useState("");
   const [checkFlaggedOnly, setCheckFlaggedOnly] = useState(false);
@@ -253,11 +264,13 @@ export function EngineFeedbackManager() {
     if (isInitial) setLoading(true);
     else setRefreshing(true);
     try {
-      const [checksRes, tagsRes, aiCandidatesRes] = await Promise.all([
-        fetch(`${API.ADMIN}/engine-feedback/checks`),
-        fetch(`${API.ADMIN}/engine-feedback/tags`),
-        fetch(`${API.ADMIN}/engine-feedback/ai-tag-candidates`),
-      ]);
+      const [checksRes, tagsRes, aiCandidatesRes, promotedRes] =
+        await Promise.all([
+          fetch(`${API.ADMIN}/engine-feedback/checks`),
+          fetch(`${API.ADMIN}/engine-feedback/tags`),
+          fetch(`${API.ADMIN}/engine-feedback/ai-tag-candidates`),
+          fetch(API.ADMIN_PROMOTED_TAGS),
+        ]);
       if (checksRes.ok) {
         const data = await checksRes.json();
         setChecks(data.checks || []);
@@ -275,7 +288,16 @@ export function EngineFeedbackManager() {
         setAiCandidates(data.candidates || []);
         setMinCandidateScans(data.minCandidateScans ?? null);
       }
-      if (!checksRes.ok || !tagsRes.ok || !aiCandidatesRes.ok) {
+      if (promotedRes.ok) {
+        const data = await promotedRes.json();
+        setPromotedRules(data.rules || []);
+      }
+      if (
+        !checksRes.ok ||
+        !tagsRes.ok ||
+        !aiCandidatesRes.ok ||
+        !promotedRes.ok
+      ) {
         setToast({ message: "Failed to load engine feedback.", type: "error" });
       }
     } catch {
@@ -370,13 +392,43 @@ export function EngineFeedbackManager() {
       }
       setPromoteTarget(null);
       setToast({
-        message: `"${fields.tag}" promoted to a permanent rule.`,
+        message: `"${fields.tag}" promoted to a rule.`,
         type: "success",
       });
       fetchData();
     },
     [fetchData],
   );
+
+  /**
+   * Throws on failure rather than toasting: it runs as a confirm dialog's
+   * onConfirm, and the dialog stays open showing whatever a rejected
+   * onConfirm throws. The refresh is not awaited, so the dialog closes when
+   * the rule is gone and not when the four lists on this page have re-read.
+   */
+  const removeRule = useCallback(
+    async (rule: PromotedRuleEntry) => {
+      await removePromotedRule(rule.id);
+      setToast({ message: `"${rule.tag}" rule removed.`, type: "success" });
+      void fetchData();
+    },
+    [fetchData],
+  );
+
+  const askToRemoveRule = (rule: PromotedRuleEntry) =>
+    confirm({
+      title: `Remove the "${rule.tag}" rule?`,
+      description: (
+        <>
+          New scans stop getting this tag. Scans that already have it keep it.
+          If enough AI-tagged scans still back it, the tag goes back to AI Tag
+          Candidates, where it can be promoted again with different fields.
+        </>
+      ),
+      confirmLabel: "Remove rule",
+      danger: true,
+      onConfirm: () => removeRule(rule),
+    });
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
@@ -1220,8 +1272,9 @@ export function EngineFeedbackManager() {
                   distinct scans.
                 </>
               )}{" "}
-              Promoting one saves it as a permanent, free, deterministic rule.
-              No more AI calls needed for that concept.
+              Promoting one saves it as a free, deterministic rule, so that
+              concept needs no more AI calls. Rules in effect are listed below
+              and can be removed.
             </>
           }
         />
@@ -1368,6 +1421,125 @@ export function EngineFeedbackManager() {
         </div>
       </div>
 
+      {/* Promoted rules */}
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
+        <AdminPanelHeader
+          icon={ListChecks}
+          title="Promoted rules"
+          subtitle="Rules saved from an AI tag. Each one tags every new scan whose findings match, for every user. Removing a rule stops that; scans that already have the tag keep it."
+        />
+        <div>
+          {loading ? (
+            <SkeletonRegion label="Loading promoted rules">
+              <DataTableSkeleton rows={2} />
+            </SkeletonRegion>
+          ) : promotedRules.length === 0 ? (
+            <EmptyState
+              icon={ListChecks}
+              title="No promoted rules"
+              description="Nothing has been promoted from an AI tag yet, so only the built-in rules tag scans."
+            />
+          ) : (
+            <>
+              <div className="hidden md:block">
+                <TableScrollArea maxHeight="40vh">
+                  <Table className="min-w-[640px]">
+                    <TableHeader className="sticky top-0 z-20 bg-muted">
+                      <TableRow className="border-y border-border/50 hover:bg-transparent">
+                        <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Tag
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Matches
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Threshold
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Promoted
+                        </TableHead>
+                        <TableHead className="px-5 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Action
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {promotedRules.map((rule) => (
+                        <TableRow key={rule.id} className="border-border/40">
+                          <TableCell className="px-5 py-3 text-sm font-medium wrap-break-word">
+                            {rule.tag}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-xs text-muted-foreground wrap-break-word">
+                            {describeRuleMatch(rule)}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-xs text-muted-foreground">
+                            {describeRuleThreshold(rule)}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-xs text-muted-foreground">
+                            <span className="block text-foreground">
+                              {rule.createdBy ?? "Account deleted"}
+                            </span>
+                            {formatDay(rule.createdAt)}
+                          </TableCell>
+                          <TableCell className="px-5 py-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              aria-label={`Remove the ${rule.tag} rule`}
+                              onClick={() => askToRemoveRule(rule)}
+                            >
+                              <Trash2
+                                className="h-3.5 w-3.5"
+                                aria-hidden="true"
+                              />
+                              Remove
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableScrollArea>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y divide-border/40">
+                {promotedRules.map((rule) => (
+                  <div key={rule.id} className="px-4 py-3.5">
+                    <p className="text-sm font-medium wrap-break-word">
+                      {rule.tag}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground wrap-break-word">
+                      {describeRuleMatch(rule)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {describeRuleThreshold(rule)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {rule.createdBy ?? "Account deleted"},{" "}
+                      {formatDay(rule.createdAt)}
+                    </p>
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        aria-label={`Remove the ${rule.tag} rule`}
+                        onClick={() => askToRemoveRule(rule)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
       {promoteTarget && (
         <PromoteTagModal
           candidate={promoteTarget}
@@ -1377,6 +1549,7 @@ export function EngineFeedbackManager() {
       )}
 
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+      {confirmDialog}
     </div>
   );
 }
@@ -1549,7 +1722,7 @@ function PromoteTagModal({
       onClose={onClose}
       size="sm"
       title={`Promote "${candidate.tag}"`}
-      description={`Saves this as a permanent rule in computeAutoTags. Fields below are pre-filled from a frequency analysis of the ${candidate.scanCount} scan${candidate.scanCount === 1 ? "" : "s"} that produced this tag. Review before saving.`}
+      description={`Saves this as a rule that tags every new scan it matches, for every user. You can remove it later under Promoted rules. Fields below are pre-filled from a frequency analysis of the ${candidate.scanCount} scan${candidate.scanCount === 1 ? "" : "s"} that produced this tag. Review before saving.`}
       bodyClassName="space-y-3"
       footer={
         <>
