@@ -174,10 +174,11 @@ COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
 # Install wget for health checks, tini for proper PID 1 signal handling
 # (npm as PID 1 does not forward SIGTERM to the Node worker on
 # container shutdown), and postgresql-client for pg_dump -- scripts/
-# migrate/migrate.mjs backs up the database to databases/ before
-# applying any schema changes; without this package that step warns and
-# skips instead of hard-failing the migration (see _lib.backup.mjs),
-# but a self-hosted deploy using this image gets the real thing.
+# migrate/migrate.mjs backs up the database to BACKUP_DIR/pre-migration
+# (/app/backups/pre-migration here, on the backup_data volume) before
+# applying any schema changes. A host without pg_dump falls back to the
+# built-in JavaScript dumper rather than skipping the backup (see
+# _lib.backup.mjs), but this image gets the real thing.
 RUN apk add --no-cache wget tini postgresql-client
 
 # infra: HEALTHCHECK gives orchestrators (k8s, ECS, compose) a real
@@ -192,7 +193,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 # the COPY --chown flags above only chown the children they copy, so /app
 # itself stays root:root and the uid-1001 process gets EACCES from
 # `mkdir -p`. That silently broke both the admin Backup button and
-# scripts/backup-db.mjs (BACKUP_DIR defaults to <cwd>/backups) and the legacy
+# scripts/backup-db.mjs (BACKUP_DIR defaults to <cwd>/backups), the dump
+# db:migrate takes first (it used to go to <cwd>/databases, which nothing
+# created, and now goes to BACKUP_DIR/pre-migration) and the legacy
 # avatar import (<cwd>/data/avatars). Create them here, owned by the runtime
 # user, so a named volume mounted over either path also inherits that
 # ownership. docker-compose.yml mounts both so the contents survive the

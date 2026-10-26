@@ -135,7 +135,10 @@ services:
       #
       # backup_data backs BACKUP_DIR, which defaults to <cwd>/backups for
       # both the admin Backup button and scripts/backup-db.mjs. Point
-      # BACKUP_DIR somewhere else only if you also mount that path.
+      # BACKUP_DIR somewhere else only if you also mount that path. The dump
+      # `npm run db:migrate` takes before changing the schema lands in the
+      # pre-migration folder of the same directory, so it survives an upgrade
+      # too.
       - backup_data:/app/backups
       # avatar_data holds the legacy on-disk avatars that
       # lib/uploads/avatar-migration.ts imports into the database. Keeps them

@@ -2,11 +2,23 @@
  * VulnRadar - Pre-migration database backup.
  *
  * Runs pg_dump against the target database before any DDL executes,
- * writing the dump under databases/v{major}/{schemaVersion}/ at the
- * project root -- organized by schema version (the thing a backup is
- * actually versioned by, for restore purposes) rather than crammed into
- * the filename, so the filename itself just needs a timestamp to stay
- * unique within that version's folder.
+ * writing the dump under
+ * <BACKUP_DIR or ./backups>/pre-migration/v{major}/{schemaVersion}/ --
+ * organized by schema version (the thing a backup is actually versioned by,
+ * for restore purposes) rather than crammed into the filename, so the
+ * filename itself just needs a timestamp to stay unique within that
+ * version's folder.
+ *
+ * Where it goes matters as much as that it happens. The dump used to land in
+ * <project root>/databases, a directory nothing created and, in the Docker
+ * image, one the runtime user could not create (/app is root-owned), so a
+ * containerised `npm run db:migrate` died on the mkdir before any DDL ran.
+ * BACKUP_DIR is already writable there, is a mounted volume in both compose
+ * files, and is the directory the admin Backup button and db:backup write to,
+ * so the one place an operator already protects now holds these dumps too.
+ * They sit in a pre-migration/ subfolder because every consumer of BACKUP_DIR
+ * (the admin list, the health row, retention) filters on the
+ * "vulnradar-backup-" prefix and so leaves a subfolder alone.
  *
  * AUDIT-013 migrate-12: this used to be a second, weaker dump path that
  * had none of the properties scripts/backup-db.mjs was explicitly fixed
@@ -34,10 +46,10 @@ import { createWriteStream } from "node:fs";
 import { createGzip } from "node:zlib";
 import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { ROOT } from "./_lib.env.mjs";
 import { splitDbUrlForEnv } from "./_lib.db-url.mjs";
-import { info, warn, success } from "./_lib.output.mjs";
+import { info, warn, success, error } from "./_lib.output.mjs";
 import { generateSqlDump } from "./_lib.sql-backup.mjs";
 import {
   backupFileName,
@@ -46,7 +58,89 @@ import {
   ENCRYPTION_ALGORITHM,
 } from "../backup-db.mjs";
 
-const BACKUP_ROOT = resolve(ROOT, "databases");
+const PRE_MIGRATION_DIRNAME = "pre-migration";
+
+/**
+ * Where the pre-migration dumps go: `dir` is the absolute path, `label` is how
+ * the logs name it.
+ *
+ * The directory is BACKUP_DIR (resolved the way backup-db.mjs resolves it, so
+ * a relative value means relative to the working directory) or ./backups under
+ * the app root, plus pre-migration/. It is read when the backup runs rather
+ * than when this module loads: migrate.mjs imports this file before loadEnv()
+ * has read BACKUP_DIR out of .env.local.
+ *
+ * The label is deliberately not the absolute path. The self-updater streams
+ * this script's output into the admin panel's job log, and the server's disk
+ * layout is not something that should reach a browser (backup-db.mjs makes the
+ * same choice for the same reason). `$BACKUP_DIR/...` pastes straight into a
+ * shell where that variable is set, which it is wherever the migration ran.
+ * Exported for tests.
+ *
+ * @param {{ env?: Record<string, string | undefined>, root?: string }} [options]
+ * @returns {{ dir: string, label: string }}
+ */
+export function resolvePreMigrationRoot({
+  env = process.env,
+  root = ROOT,
+} = {}) {
+  const configured = env.BACKUP_DIR || null;
+  return {
+    dir: resolve(configured || join(root, "backups"), PRE_MIGRATION_DIRNAME),
+    label: configured
+      ? `$BACKUP_DIR/${PRE_MIGRATION_DIRNAME}`
+      : `backups/${PRE_MIGRATION_DIRNAME}`,
+  };
+}
+
+/**
+ * What to tell the operator when the pre-migration backup could not be taken.
+ * The first line is the error, the rest are hints for `info`.
+ *
+ * A migration that stops here has changed nothing, and that is the point worth
+ * saying first: the likeliest cause is a directory that is not writable, which
+ * is a fix in the operator's hands, and the message used to be a bare
+ * `EACCES: permission denied, mkdir '...'` with a stack trace under it.
+ *
+ * `where` is resolvePreMigrationRoot()'s result. The filesystem errors Node
+ * throws quote the absolute path they failed on, so that path is swapped for
+ * the label before it is printed, for the reason resolvePreMigrationRoot gives.
+ * Exported for tests.
+ *
+ * @param {unknown} err
+ * @param {{ dir: string, label: string }} where
+ * @returns {string[]}
+ */
+export function describeBackupFailure(err, where) {
+  const { dir, label } = where;
+  const code = err && typeof err === "object" ? err.code : undefined;
+  const message = err instanceof Error ? err.message : String(err);
+  const reason = dir ? message.split(dir).join(label) : message;
+  const lines = [
+    `The pre-migration backup failed, so the migration was stopped before it changed anything: ${reason}`,
+  ];
+  if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
+    lines.push(
+      `${label} is not writable by the user running the migration. Make that directory writable, or point BACKUP_DIR at one that is.`,
+    );
+  } else if (code === "ENOSPC") {
+    lines.push(
+      `The disk that holds ${label} is full. Free some space, or point BACKUP_DIR at a larger disk.`,
+    );
+  } else if (code === "ENOTDIR" || code === "EEXIST") {
+    lines.push(
+      `A file is in the way of ${label}. BACKUP_DIR has to be a directory.`,
+    );
+  } else {
+    lines.push(
+      "Check the output above for the cause (pg_dump prints its own error) and that DATABASE_URL is reachable.",
+    );
+  }
+  lines.push(
+    "To migrate without this backup (not recommended), take a dump some other way and re-run with --skip-backup.",
+  );
+  return lines;
+}
 
 function commandAvailable(cmd) {
   return new Promise((resolvePromise) => {
@@ -104,7 +198,7 @@ async function pruneOldMigrationBackups(dir) {
 
 /**
  * Backs up `connectionString`'s database to
- * databases/v{major}/{schemaVersion}/vulnradar-backup-{timestamp}.sql.gz
+ * <BACKUP_DIR or ./backups>/pre-migration/v{major}/{schemaVersion}/vulnradar-backup-{timestamp}.sql.gz
  * (plus `.enc` and a `.json` sidecar when an encryption key is available).
  * Returns the written file's path, or null if pg_dump isn't on PATH --
  * this warns rather than throwing, so a self-hosted install without
@@ -133,8 +227,9 @@ export async function backupDatabase(connectionString, schemaVersion) {
     );
   }
 
+  const { dir: backupRoot, label: backupLabel } = resolvePreMigrationRoot();
   const backupDir = resolve(
-    BACKUP_ROOT,
+    backupRoot,
     majorFolder(schemaVersion),
     schemaVersion,
   );
@@ -155,7 +250,7 @@ export async function backupDatabase(connectionString, schemaVersion) {
   const baseName = backupFileName();
   const filename = encryptionKey ? `${baseName}.enc` : baseName;
   const filePath = resolve(backupDir, filename);
-  const relativePath = `databases/${majorFolder(schemaVersion)}/${schemaVersion}/${filename}`;
+  const relativePath = `${backupLabel}/${majorFolder(schemaVersion)}/${schemaVersion}/${filename}`;
 
   info(`Backing up database to ${relativePath} before migrating...`);
 
@@ -248,4 +343,40 @@ export async function backupDatabase(connectionString, schemaVersion) {
   );
   await pruneOldMigrationBackups(backupDir);
   return filePath;
+}
+
+/**
+ * The backup step of db:migrate: take the dump, or say clearly why not.
+ * Returns true when the migration may go on and false when it must stop.
+ *
+ * A failed backup has always stopped the migration (the throw reached
+ * main()'s catch and exited non-zero), which is right: the DDL that follows can
+ * drop columns. What was missing was an answer the operator could act on, and
+ * a way out for the cases where the dump is the problem and not the database
+ * (a read-only app directory, a full disk) and a backup exists some other way.
+ * `skip` is that way out, and it is an explicit flag, never a default.
+ */
+export async function runPreMigrationBackup({
+  connectionString,
+  schemaVersion,
+  skip = false,
+}) {
+  if (skip) {
+    warn(
+      "--skip-backup was passed: migrating without a pre-migration backup. If this migration goes wrong there is nothing here to restore from.",
+    );
+    return true;
+  }
+  try {
+    await backupDatabase(connectionString, schemaVersion);
+    return true;
+  } catch (err) {
+    const [headline, ...hints] = describeBackupFailure(
+      err,
+      resolvePreMigrationRoot(),
+    );
+    error(headline);
+    for (const line of hints) info(line);
+    return false;
+  }
 }

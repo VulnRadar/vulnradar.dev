@@ -10,6 +10,13 @@
  *   npm run db:migrate              # detect, target = recommended (app version)
  *   npm run db:migrate -- --dry-run # show plan only, don't execute
  *   npm run db:migrate -- --yes     # non-interactive: accept every default
+ *   npm run db:migrate -- --skip-backup
+ *                                   # migrate without the pre-migration dump
+ *
+ * Before any DDL runs, the database is dumped to
+ * <BACKUP_DIR or ./backups>/pre-migration/ (see _lib.backup.mjs). If that
+ * dump cannot be written the migration stops without changing anything, and
+ * --skip-backup is the explicit way past it.
  *
  * Non-interactive automatically, no flag needed, whenever stdin isn't a
  * real terminal (e.g. spawned by the in-app self-updater, or piped in
@@ -62,10 +69,11 @@ import { ensureMetaTable, readMeta, writeMeta } from "./_meta.mjs";
 import { fingerprintDetect } from "./_detect.mjs";
 import { buildPlan, renderPlan } from "./_planner.mjs";
 import { runPlan, repairAllSequences } from "./_runner.mjs";
-import { backupDatabase } from "../_lib/_lib.backup.mjs";
+import { runPreMigrationBackup } from "../_lib/_lib.backup.mjs";
 
-// ── Args (only one flag: --dry-run) ────────────────────────────────────────
+// ── Args (--dry-run and --skip-backup; --yes is read by _lib.prompts.mjs) ──
 const DRY_RUN = process.argv.includes("--dry-run");
+const SKIP_BACKUP = process.argv.includes("--skip-backup");
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   log(`
 VulnRadar: Version-aware Database Migration
@@ -74,6 +82,9 @@ Usage:
   npm run db:migrate              # run the migration
   npm run db:migrate:dry-run      # show the plan, SQL runs in a rolled-back transaction
   npm run db:migrate -- --yes     # non-interactive: accept every default
+  npm run db:migrate -- --skip-backup
+                                  # do not take the pre-migration dump (only
+                                  # when the dump itself is what fails)
 
 Behavior:
   The migration always runs, even if the database is already at the
@@ -607,7 +618,12 @@ async function main() {
     // that's the state this snapshot can actually restore.
     if (plan.steps.length > 0) {
       section("Step 5: Back up database");
-      await backupDatabase(process.env.DATABASE_URL, current);
+      const mayProceed = await runPreMigrationBackup({
+        connectionString: process.env.DATABASE_URL,
+        schemaVersion: current,
+        skip: SKIP_BACKUP,
+      });
+      if (!mayProceed) process.exit(1);
       log("");
     }
 
