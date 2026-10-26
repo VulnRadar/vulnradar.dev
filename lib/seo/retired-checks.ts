@@ -1,11 +1,13 @@
-// Check pages that the previous release published and this one does not.
+// Check ids that v3.9.1 defined and this release does not.
 //
 // Most were retired because no scan reports them any more (5a22b2e4: a
 // duplicate of another check, a header browsers dropped, a key that is public
 // by design); the rest had no implementation (a34d9d11) or were folded into
-// another check. The live site still serves every one of them and Google has
-// them indexed, so each answers a 301 rather than a 404: to the check that
-// covers the same finding where there is one, otherwise to its category page.
+// another check. 49 of them are pages the live site still serves and Google
+// has indexed; the other five were "disabled duplicate" ids v3.9.1 already
+// kept out of the sitemap, listed so an old link to one still lands. Each
+// answers a 301 rather than a 404: to the check that covers the same finding
+// where there is one, otherwise to its category page.
 //
 // middleware.ts reads this. tests/lib/seo/retired-checks.test.ts fails if a
 // target stops resolving or a retired id comes back as a live check.
@@ -15,9 +17,9 @@ export const RETIRED_CHECK_REDIRECTS: Readonly<Record<string, string>> = {
   "code-auth-localstorage-tokens": "/checks/category/code",
   "code-cookie-write-no-secure": "/checks/category/code",
   "code-fetch-without-credentials": "/checks/category/code",
-  "code-timing-no-constant-time-compare": "/checks/category/code",
+  "code-timing-no-constant-time-compare": "/checks/code-timing-hmac-equality",
   "console-log-production": "/checks/category/code",
-  "cookie-domain-set-too-loose": "/checks/category/cookies",
+  "cookie-domain-set-too-loose": "/checks/cookie-domain-broad",
   "cookie-host-prefix-injection-subdomain": "/checks/category/cookies",
   "cookie-max-age-zero": "/checks/category/cookies",
   "cookie-no-samesite-third-party": "/checks/category/cookies",
@@ -34,7 +36,7 @@ export const RETIRED_CHECK_REDIRECTS: Readonly<Record<string, string>> = {
   "email-dmarc-ruf-missing": "/checks/category/email",
   "email-mta-sts-id-not-rotated": "/checks/category/email",
   "etag-inode-leak": "/checks/etag-inode",
-  "eval-usage": "/checks/category/code",
+  "eval-usage": "/checks/eval-in-scripts",
   "excessive-permissions": "/checks/category/headers",
   "expect-ct-missing": "/checks/category/ssl",
   "form-no-action-https": "/checks/form-action-http",
@@ -48,7 +50,7 @@ export const RETIRED_CHECK_REDIRECTS: Readonly<Record<string, string>> = {
   "push-api-usage": "/checks/category/code",
   "recaptcha-key-leaked": "/checks/category/information-disclosure",
   "referrer-policy-missing": "/checks/category/headers",
-  "server-timing-sensitive-key-leak": "/checks/category/headers",
+  "server-timing-sensitive-key-leak": "/checks/server-timing-exposure",
   "session-cookie-flags": "/checks/category/cookies",
   "settimeout-string": "/checks/code-eval-setinterval-string",
   "sitemap-missing": "/checks/category/information-disclosure",

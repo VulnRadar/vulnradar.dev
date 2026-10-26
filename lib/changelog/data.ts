@@ -1435,7 +1435,7 @@ const CHANGELOG: Release[] = [
       {
         icon: FileText,
         label: "Removed Check Pages Forward to Their Replacement",
-        desc: "Fifty-four check pages that earlier versions published are gone in this release, because the checks behind them were retired or merged. Each old address now forwards to the check that covers the same problem, or to its category, instead of showing a page not found.",
+        desc: "Check pages that earlier versions published and this release removed, because the checks behind them were retired or merged, no longer end in a page not found. Each old address now forwards to the check that covers the same problem, or to its category.",
         category: "fixed",
       },
       {
@@ -1453,7 +1453,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Heart,
         label: "Footer Credits Who Hosts the Site",
-        desc: "The footer now names the company whose servers run this site. A self-hosted install can name its own host or hide the line.",
+        desc: "The footer now names the company whose servers run this site. A self-hosted install names its own host, or removes the line, in its configuration before building.",
         category: "added",
       },
     ],

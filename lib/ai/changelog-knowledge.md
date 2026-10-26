@@ -425,13 +425,13 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Layout] **[IMPROVED]** **Site Icon Works Everywhere It Appears**
   The site icon is now a solid square at every size browsers, phones and search results ask for, from 16 to 512 pixels, including a version Android can crop to its own shape. It used to be a single 32 pixel icon plus one large image with see-through corners, which iPhones filled with black on the home screen.
 - [FileText] **[FIXED]** **Removed Check Pages Forward to Their Replacement**
-  Fifty-four check pages that earlier versions published are gone in this release, because the checks behind them were retired or merged. Each old address now forwards to the check that covers the same problem, or to its category, instead of showing a page not found.
+  Check pages that earlier versions published and this release removed, because the checks behind them were retired or merged, no longer end in a page not found. Each old address now forwards to the check that covers the same problem, or to its category.
 - [Shield] **[FIXED]** **Shared Reports Stay Out of Search Results**
   Shared scan reports were blocked from search engines in a way that also stopped them reading the instruction not to list the page, so a report linked from somewhere else could still be listed. Search engines can now read that instruction, and reports stay out. The public scans directory is no longer listed either.
 - [Zap] **[FIXED]** **A Tab Left Open Across an Update Reloads Itself**
   After an update, a page opened earlier could ask for files the update had replaced and land on an error screen. It now reloads once into the new version instead.
 - [Heart] **[ADDED]** **Footer Credits Who Hosts the Site**
-  The footer now names the company whose servers run this site. A self-hosted install can name its own host or hide the line.
+  The footer now names the company whose servers run this site. A self-hosted install names its own host, or removes the line, in its configuration before building.
 
 ---
 

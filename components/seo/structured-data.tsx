@@ -268,7 +268,6 @@ export function TechArticleStructuredData({
         inLanguage: SEO_LANGUAGE,
         author: { "@id": ORGANIZATION_ID },
         publisher: { "@id": ORGANIZATION_ID },
-        isPartOf: { "@id": WEBSITE_ID },
       }}
     />
   );

@@ -33,17 +33,10 @@ export const metadata: Metadata = pageMetadata({
   title: `${APP_NAME}: Open-Source Website Security Scanner`,
   absoluteTitle: true,
   description: `Paste a URL and get ${TOTAL_CHECKS_LABEL} security checks back, from headers, CSP, TLS and cookies to exposed .env files and leaked API keys, each with evidence and a fix.`,
-  // Canonicalised to the ROOT, not to /landing.
-  //
-  // / permanently redirects here, so both URLs serve this page, and pointing
-  // the canonical at /landing left the URL people actually link (the bare
-  // domain) with nothing claiming it. Search Console reported /landing as
-  // "Duplicate without user-selected canonical" for exactly that reason.
-  //
-  // A canonical says which URL should be indexed, not which one renders, so
-  // naming "/" is correct even though this file is served at /landing. The
-  // sitemap lists "/" to match; a sitemap and a canonical that disagree is
-  // its own conflicting signal.
+  // Canonicalised to the ROOT. This page is served at "/" (app/page.tsx
+  // re-exports it) and still answers at /landing, where browsers that cached
+  // the old redirect from "/" end up; both name "/" as the one to index, and
+  // the sitemap lists "/" to match.
   path: "/",
 });
 
@@ -61,9 +54,9 @@ const FREE_RETENTION_CLAUSE =
 const PAID_RETENTION_CLAUSE =
   FREE_RETENTION === -1 ? "" : " and extend retention";
 
-// Questions people actually type into search. Rendered on the page and marked
-// up as an FAQPage from the same array, so the structured data can never
-// describe content the visitor cannot see. The first item leads with a crisp,
+// Questions people actually type into search, rendered as text on the page.
+// (They are no longer marked up as an FAQPage: Google stopped showing FAQ
+// results for every site in 2026.) The first item leads with a crisp,
 // self-contained definition an answer engine can quote directly.
 function buildFaq(checkCount: string, categoryCount: number): FaqItem[] {
   return [

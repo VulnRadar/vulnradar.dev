@@ -560,7 +560,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_HOSTING_PROVIDER_NAME,
     group: "General",
     label: "Hosting provider",
-    help: 'The company whose servers this deployment runs on, credited in the footer as "Hosted by" with a link. Leave empty to hide the credit. A self-hosted deployment should set its own or leave it empty.',
+    help: `The company whose servers this deployment runs on, credited in the footer as "Hosted by" with a link. Ships as vulnradar.dev's own host. A self-hosted deployment sets its own with the env variable, or sets CONFIG_HOSTING_PROVIDER_NAME to "" in lib/config/config-values.ts and rebuilds to remove the line (an empty env variable falls back to the default).`,
     env: "NEXT_PUBLIC_HOSTING_PROVIDER_NAME",
     max: 64,
   },

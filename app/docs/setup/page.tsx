@@ -402,8 +402,7 @@ npm start`}
             <h3 className="text-base font-semibold mb-2">1. Access the app</h3>
             <p className="text-sm text-muted-foreground">
               Open <InlineCode>http://localhost:3000</InlineCode>. The landing
-              page renders and middleware redirects unauthenticated users to{" "}
-              <InlineCode>/landing</InlineCode>.
+              page renders at that address for anyone who is signed out.
             </p>
           </div>
           <div>

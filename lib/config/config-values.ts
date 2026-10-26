@@ -270,7 +270,8 @@ export const CONFIG_SOCIAL_RSS_URL = "";
 // as "Hosted by WSLATL". Like the email addresses below, this describes
 // vulnradar.dev rather than the software: a self-hosted deployment sets its
 // own provider through NEXT_PUBLIC_HOSTING_PROVIDER_NAME / _URL, or blanks the
-// name here to drop the credit. A URL that is not absolute https drops it too.
+// name here to drop the credit (an empty env variable falls back to this
+// value, as the social links do). A URL that is not absolute https drops it.
 export const CONFIG_HOSTING_PROVIDER_NAME = "WSLATL";
 export const CONFIG_HOSTING_PROVIDER_URL = "https://wslatl.com";
 

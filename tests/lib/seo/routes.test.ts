@@ -12,9 +12,10 @@ import { join } from "node:path";
 import {
   DISALLOWED_PATHS,
   PUBLIC_ROUTES,
+  SCANNER_DISALLOWED_PATHS,
   STATIC_PUBLIC_ROUTES,
 } from "@/lib/seo/routes";
-import { APP_URL } from "@/lib/config/constants";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { CHECK_CATEGORY_LAST_MODIFIED } from "@/lib/config/check-stats.generated";
 import { getAllChecks, SEO_CATEGORIES } from "@/lib/seo/checks-content";
 import { DOCS_PAGES } from "@/components/docs/docs-nav";
@@ -86,7 +87,6 @@ describe("DISALLOWED_PATHS", () => {
     // nothing is disclosed by naming the prefix.
     const CANNOT_CARRY_A_TAG = [
       "/api/",
-      "/forgot-password",
       "/reset-password",
       "/verify-email",
       "/unsubscribe",
@@ -121,15 +121,46 @@ describe("DISALLOWED_PATHS", () => {
   });
 
   it("publishes the same rules to every crawler group except our own scanner", () => {
+    // Googlebot is named in the AI-crawler group, so it reads that group and
+    // never the "*" one: every group has to carry the same list.
     const groups = [robots().rules].flat();
-    const wildcard = groups.find((g) => g.userAgent === "*");
-    expect(wildcard?.disallow).toEqual([...DISALLOWED_PATHS]);
+    expect(groups.length).toBeGreaterThan(1);
     for (const group of groups) {
-      // No redirect-variant wildcard any more: the header in middleware.ts
-      // keeps those out of the index instead.
-      expect([group.disallow].flat()).not.toContain("/*?redirect=");
-      expect([group.disallow].flat()).not.toContain("/shared/");
+      const expected =
+        group.userAgent === APP_NAME
+          ? [...DISALLOWED_PATHS, ...SCANNER_DISALLOWED_PATHS]
+          : [...DISALLOWED_PATHS];
+      expect([group.disallow].flat(), String(group.userAgent)).toEqual(
+        expected,
+      );
     }
+    // No redirect-variant wildcard any more: the header in middleware.ts
+    // keeps those out of the index instead.
+    expect(DISALLOWED_PATHS).not.toContain("/*?redirect=");
+  });
+
+  it("lists no noindex page in the sitemap", () => {
+    // Pages built with pageMetadata({ noIndex: true }) rather than
+    // privatePageMetadata, which the walk above does not see.
+    const noindex: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (/^(layout|page)\.tsx$/.test(entry)) {
+          const source = readFileSync(full, "utf8");
+          const match = source.match(
+            /pageMetadata\(\{[\s\S]*?path:\s*"([^"]+)"[\s\S]*?noIndex:\s*true/,
+          );
+          if (match) noindex.push(match[1]);
+        }
+      }
+    };
+    walk(APP_DIR);
+    expect(noindex).toContain("/public-scans");
+    const listed = new Set(PUBLIC_ROUTES.map((r) => r.path));
+    expect(noindex.filter((p) => listed.has(p))).toEqual([]);
+    expect(privateLayoutPaths().filter((p) => listed.has(p))).toEqual([]);
   });
 
   it("never disallows a route that is published as public and indexable", () => {

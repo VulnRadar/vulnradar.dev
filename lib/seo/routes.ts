@@ -18,8 +18,8 @@ export interface PublicRoute {
     "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
   /**
    * `YYYY-MM-DD` of the last real change to the page's source data, where we
-   * can derive one. Omitted otherwise, and app/sitemap.ts then falls back to
-   * the build timestamp for that route only.
+   * can derive one. Omitted otherwise, and app/sitemap.ts then publishes no
+   * lastmod for the route rather than a made-up one.
    */
   lastModified?: string;
 }
@@ -31,11 +31,8 @@ export interface PublicRoute {
  * data the pages render so the sitemap can never drift out of sync with them.
  */
 export const STATIC_PUBLIC_ROUTES: readonly PublicRoute[] = [
-  // The ROOT, not /landing. / permanently redirects to /landing, so both
-  // serve the same page, and app/landing/page.tsx now declares "/" as its
-  // canonical. A sitemap listing /landing while the page canonicalises to /
-  // is two contradictory signals about the same document, which is what left
-  // Search Console reporting a duplicate with no canonical selected.
+  // The ROOT, not /landing. "/" serves the home page and /landing serves the
+  // same page with "/" as its canonical, so "/" is the one URL listed.
   { path: "/", priority: 1.0, changeFrequency: "weekly" },
   { path: "/pricing", priority: 0.9, changeFrequency: "weekly" },
   { path: "/demo", priority: 0.9, changeFrequency: "weekly" },
@@ -136,10 +133,11 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
 export const DISALLOWED_PATHS: readonly string[] = [
   "/api/",
   // One-time-token pages: a crawler FETCHING one can consume the token and
-  // break the user's real click. Not an indexing decision.
+  // break the user's real click. Not an indexing decision. /forgot-password
+  // is not one of them: it is the form that asks for a reset email, holds no
+  // token, is linked from /login, and is kept out of search by its noindex.
   "/verify-email",
   "/reset-password",
-  "/forgot-password",
   "/unsubscribe",
   // Token-gated staff invite acceptance. Public in the middleware sense (the
   // invitee has no account yet, see lib/config/public-paths.ts) but every URL

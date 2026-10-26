@@ -61,6 +61,22 @@ describe("reloadOnceForStaleChunk", () => {
     ).toBe(true);
   });
 
+  it("stops after three reloads in a tab even when each failure comes slowly", () => {
+    // A chunk request can take longer than the 30 s window to fail, which on
+    // its own would let a missing chunk reload forever, one minute apart.
+    const storage = memoryStorage();
+    const reload = vi.fn();
+    const outcomes = [0, 1, 2, 3, 4].map((i) =>
+      reloadOnceForStaleChunk(stale, {
+        storage,
+        reload,
+        now: 1_000_000 + i * 120_000,
+      }),
+    );
+    expect(outcomes).toEqual([true, true, true, false, false]);
+    expect(reload).toHaveBeenCalledTimes(3);
+  });
+
   it("does nothing for an ordinary error or without storage to guard a loop", () => {
     const reload = vi.fn();
     expect(

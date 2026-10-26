@@ -651,6 +651,14 @@ export function middleware(request: NextRequest) {
     ) {
       publicResponse.headers.set("X-Robots-Tag", "noindex");
     }
+    // Shared reports and per-host pages describe somebody's site, and robots.txt
+    // no longer blocks them so that their noindex can be read. The header
+    // carries it for every crawler, including the ones that get page metadata
+    // streamed into the body, and covers their generated preview images too.
+    // Link-preview bots ignore it, so a pasted report still unfurls.
+    if (pathname.startsWith("/shared/") || pathname.startsWith("/host/")) {
+      publicResponse.headers.set("X-Robots-Tag", "noindex, nofollow");
+    }
     return publicResponse;
   }
 

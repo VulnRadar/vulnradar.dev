@@ -20,10 +20,7 @@ import {
   getCategoryBlurb,
 } from "@/lib/seo/checks-content";
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
-import {
-  EXACT_CHECK_CATEGORY_COUNT,
-  EXACT_LEGACY_CHECK_COUNT,
-} from "@/lib/config/check-stats.generated";
+import { EXACT_CHECK_CATEGORY_COUNT } from "@/lib/config/check-stats.generated";
 
 const TITLE = "Every Web Vulnerability Check, With Fixes";
 // Deliberately NO second count. This page used to print its own rounded
@@ -39,11 +36,11 @@ const TITLE = "Every Web Vulnerability Check, With Fixes";
 // the smaller number read as the larger one having been marketing. State both
 // so they reconcile instead of contradicting.
 //
-// The description was ~283 characters and contradicted itself ("the rest have
-// no standalone page", then "every one has a page"). Both numbers below are
-// generated: the label from the full check count, the page count from the
-// checks that have a fix guide.
-const COUNT_SENTENCE = `${TOTAL_CHECKS_LABEL} checks across ${EXACT_CHECK_CATEGORY_COUNT} categories. ${EXACT_LEGACY_CHECK_COUNT} have a page here: what the check detects, why it matters and how to fix it.`;
+// The description used to carry that reconciliation in full, ~283 characters
+// that then contradicted themselves ("the rest have no standalone page",
+// followed by "every one has a page"). It says "most" now, which is true, and
+// leaves the explanation to the FAQ below.
+const COUNT_SENTENCE = `${TOTAL_CHECKS_LABEL} checks across ${EXACT_CHECK_CATEGORY_COUNT} categories. Most have a page here: what the check detects, why it matters and how to fix it.`;
 
 export const metadata: Metadata = pageMetadata({
   title: TITLE,

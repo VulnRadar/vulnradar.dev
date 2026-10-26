@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { inflateSync } from "node:zlib";
 import { join } from "node:path";
 import manifest from "@/app/manifest";
 
@@ -33,7 +34,45 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
+/**
+ * Alpha of a PNG's top-left pixel, 255 when the image has no alpha channel.
+ * The first pixel of the first row reads the same under every PNG filter
+ * (each predicts from neighbours that do not exist yet), so no unfiltering is
+ * needed for this one pixel.
+ */
+function cornerAlpha(file: string): number {
+  const bytes = readFileSync(file);
+  const bitDepth = bytes[24];
+  const colourType = bytes[25];
+  if (colourType === 2 || colourType === 0) return 255;
+  expect([bitDepth, colourType], file).toEqual([8, 6]);
+  const idat: Buffer[] = [];
+  for (let at = 8; at < bytes.length;) {
+    const length = bytes.readUInt32BE(at);
+    const type = bytes.subarray(at + 4, at + 8).toString("ascii");
+    if (type === "IDAT") idat.push(bytes.subarray(at + 8, at + 8 + length));
+    at += 12 + length;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  return raw[4];
+}
+
 describe("icons", () => {
+  // The old apple-touch-icon had transparent corners, which iOS fills with
+  // black, and a maskable icon is cropped by the launcher: both must be opaque.
+  it.each([
+    "/apple-touch-icon.png",
+    "/icon-192.png",
+    "/icon-512.png",
+    "/icon-maskable-512.png",
+  ])("%s is an opaque tile", (icon) => {
+    expect(cornerAlpha(publicFile(icon))).toBe(255);
+  });
+
+  it("would have caught the old transparent-cornered icon", () => {
+    expect(cornerAlpha(publicFile("/favicon.png"))).toBe(0);
+  });
+
   it("ships a favicon.ico holding 16, 32 and 48 px images", () => {
     const ico = readFileSync(publicFile("/favicon.ico"));
     expect(ico.readUInt16LE(2)).toBe(1);

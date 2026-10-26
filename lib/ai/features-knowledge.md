@@ -15,11 +15,12 @@ the page is unimportant, and it is not licence to invent what it does.
 
 ## Product features
 
-### /
+### VulnRadar: Open-Source Website Security Scanner
 Route: /
 Access: public, no account needed
+Page title: VulnRadar: Open-Source Website Security Scanner
 
-This page exists at /. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
+Paste a URL and get 855+ security checks back, from headers, CSP, TLS and cookies to exposed .env files and leaked API keys, each with evidence and a fix.
 
 ### Open-Source Scanner Alternatives Compared
 Route: /alternatives
@@ -153,9 +154,10 @@ Page title: Host Report
 
 This page exists at /host/[hostname]. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.
 
-### /landing
+### VulnRadar: Open-Source Website Security Scanner
 Route: /landing
 Access: public, no account needed
+Page title: VulnRadar: Open-Source Website Security Scanner
 
 Paste a URL and get 855+ security checks back, from headers, CSP, TLS and cookies to exposed .env files and leaked API keys, each with evidence and a fix.
 

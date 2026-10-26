@@ -9,11 +9,14 @@
 // different build; this covers the lazy loads it does not see.
 //
 // The fix is the reload a person would do anyway, done once: a fresh document
-// names the new chunks. The guard stops a genuinely missing chunk from
-// reloading in a loop.
+// names the new chunks. Two guards stop a genuinely missing chunk from
+// reloading in a loop: never twice within 30 seconds, and never more than
+// three times in one tab's session, because a chunk request can take longer
+// than 30 seconds to fail on a slow connection.
 
-const RELOAD_KEY = "vr_stale_chunk_reload_at";
+const RELOAD_KEY = "vr_stale_chunk_reload";
 const RELOAD_GUARD_MS = 30_000;
+const MAX_RELOADS_PER_SESSION = 3;
 
 /** True for the errors webpack and the browser raise for a chunk that is gone. */
 export function isStaleChunkError(error: unknown): boolean {
@@ -46,11 +49,11 @@ function browserDeps(): ReloadDeps | null {
 }
 
 /**
- * Reloads the page if `error` is a stale chunk and no such reload happened in
- * the last 30 seconds. Returns whether it reloaded, so the caller can skip
- * rendering an error the reader will never see. Without sessionStorage it
- * does nothing: with no way to remember the first reload, a second one could
- * be a loop.
+ * Reloads the page if `error` is a stale chunk, no such reload happened in the
+ * last 30 seconds, and this tab has not already reloaded three times for it.
+ * Returns whether it reloaded, so the caller can skip logging an error the
+ * reader will never see. Without sessionStorage it does nothing: with no way
+ * to remember the first reload, a second one could be a loop.
  */
 export function reloadOnceForStaleChunk(
   error: unknown,
@@ -58,9 +61,12 @@ export function reloadOnceForStaleChunk(
 ): boolean {
   if (!deps?.storage || !isStaleChunkError(error)) return false;
   try {
-    const last = Number(deps.storage.getItem(RELOAD_KEY) ?? 0);
-    if (deps.now - last < RELOAD_GUARD_MS) return false;
-    deps.storage.setItem(RELOAD_KEY, String(deps.now));
+    const [at = 0, count = 0] = (deps.storage.getItem(RELOAD_KEY) ?? "")
+      .split(":")
+      .map(Number);
+    if (count >= MAX_RELOADS_PER_SESSION) return false;
+    if (deps.now - at < RELOAD_GUARD_MS) return false;
+    deps.storage.setItem(RELOAD_KEY, `${deps.now}:${count + 1}`);
   } catch {
     return false;
   }

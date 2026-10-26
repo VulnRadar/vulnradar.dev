@@ -207,6 +207,24 @@ describe("middleware: public path / auth redirects", () => {
     );
   });
 
+  // robots.txt stopped blocking these so their noindex can be read; the
+  // header carries it to every crawler, metadata streaming or not.
+  it("sends noindex, nofollow on shared reports, host pages and their images", () => {
+    for (const path of [
+      "/shared/abcdefgh12345678",
+      "/shared/abcdefgh12345678/opengraph-image",
+      "/host/example.com",
+    ]) {
+      expect(
+        middleware(makeRequest(path)).headers.get("x-robots-tag"),
+        path,
+      ).toBe("noindex, nofollow");
+    }
+    expect(middleware(makeRequest("/checks")).headers.get("x-robots-tag")).toBe(
+      null,
+    );
+  });
+
   it("sends a retired check page to its replacement with a 301", () => {
     const res = middleware(makeRequest("/checks/csp-frame-ancestors"));
     expect(res.status).toBe(301);
@@ -255,6 +273,12 @@ describe("middleware: public path / auth redirects", () => {
   // error pages, which told Google a missing URL was a copy of the home page.
   it("sets no site-wide fallback canonical in the root layout", () => {
     expect(fallbackCanonical).toBeUndefined();
+    // Not only the quoted-string form: no `alternates` key at all, whatever
+    // its value is built from.
+    const code = rootLayoutSource
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    expect(code).not.toMatch(/^\s*alternates\s*:/m);
   });
 
   it("redirects a protected route to /login when there is no session cookie", () => {
