@@ -33,5 +33,5 @@
     "sast",
     "dast"
   ],
-  "homepage": "https://vulnradar.dev/docs/api"
+  "homepage": "https://vulnradar.dev/docs/cli"
 }
