@@ -278,7 +278,13 @@ export default async function CheckPage({
             </h2>
             <ul className="space-y-2 text-sm">
               {check.references.map((ref, i) => (
-                <li key={i}>
+                <li
+                  key={i}
+                  // flow-root: a plain block parent lets the link's negative
+                  // margins collapse out through it and into space-y-2, which
+                  // spaced the rows 34px apart instead of the 28px they were.
+                  className="flow-root"
+                >
                   <a
                     href={ref}
                     target="_blank"
@@ -293,7 +299,7 @@ export default async function CheckPage({
                 </li>
               ))}
               {check.cwe && cweUrl(check.cwe) && (
-                <li>
+                <li className="flow-root">
                   <a
                     href={cweUrl(check.cwe)!}
                     target="_blank"

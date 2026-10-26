@@ -28,6 +28,19 @@ interface Link {
   text: string;
   classText: string;
   line: number;
+  /** Enclosing JSX elements, nearest first, with their className text. */
+  ancestors: { tag: string; classText: string }[];
+}
+
+function classTextOf(
+  opening: ts.JsxOpeningLikeElement,
+  sf: ts.SourceFile,
+): string {
+  const attr = opening.attributes.properties.find(
+    (p): p is ts.JsxAttribute =>
+      ts.isJsxAttribute(p) && p.name.getText(sf) === "className",
+  );
+  return attr?.initializer?.getText(sf) ?? "";
 }
 
 function linksIn(rel: string): Link[] {
@@ -45,10 +58,6 @@ function linksIn(rel: string): Link[] {
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const tag = node.tagName.getText(sf);
       if (tag === "a" || tag === "Link") {
-        const attr = node.attributes.properties.find(
-          (p): p is ts.JsxAttribute =>
-            ts.isJsxAttribute(p) && p.name.getText(sf) === "className",
-        );
         const parent = node.parent;
         const text = ts.isJsxElement(parent)
           ? parent.children
@@ -57,11 +66,26 @@ function linksIn(rel: string): Link[] {
               .replace(/\s+/g, " ")
               .trim()
           : "";
+        // An opening element's own JsxElement is its direct parent; a
+        // self-closing one has no element of its own.
+        const ancestors: Link["ancestors"] = [];
+        let up: ts.Node | undefined = ts.isJsxOpeningElement(node)
+          ? node.parent.parent
+          : node.parent;
+        for (; up; up = up.parent) {
+          if (ts.isJsxElement(up)) {
+            ancestors.push({
+              tag: up.openingElement.tagName.getText(sf),
+              classText: classTextOf(up.openingElement, sf),
+            });
+          }
+        }
         found.push({
           tag,
           text,
-          classText: attr?.initializer?.getText(sf) ?? "",
+          classText: classTextOf(node, sf),
           line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
+          ancestors,
         });
       }
     }
@@ -96,6 +120,31 @@ function clearsTargetFloor(classText: string): boolean {
 
 function hasFocusRing(classText: string): boolean {
   return /focus-visible:ring|focus\.ring/.test(classText);
+}
+
+function makesFormattingContext(classText: string): boolean {
+  return tokens(classText).some((t) =>
+    /^(flex|inline-flex|grid|inline-grid|flow-root)$/.test(t),
+  );
+}
+
+/**
+ * `-my-1.5 block py-1.5` only keeps its row's height when the negative margin
+ * stays inside the link's parent. In a plain block parent (an <li> in a
+ * space-y list) the margins collapse out through it and into the list's own
+ * spacing: measured, three reference links came out 34px apart instead of 28.
+ * The parent has to be a flex or grid container or item, or `flow-root`.
+ * Links that are not `block` (flex items, inline-block) cannot collapse.
+ */
+function marginsStayInside(link: Link): boolean {
+  const t = tokens(link.classText);
+  if (!t.includes("block") || !t.some((x) => /^-my-/.test(x))) return true;
+  const [parent, grandparent] = link.ancestors;
+  if (!parent) return false;
+  return (
+    makesFormattingContext(parent.classText) ||
+    (grandparent !== undefined && makesFormattingContext(grandparent.classText))
+  );
 }
 
 /**
@@ -142,6 +191,13 @@ describe.each(Object.keys(INLINE_IN_SENTENCE))("%s", (rel) => {
     expect(offenders).toEqual([]);
   });
 
+  it("a block link pulled back with a negative margin does not sit in a plain block parent", () => {
+    const offenders = all
+      .filter((l) => !marginsStayInside(l))
+      .map((l) => `${rel}:${l.line} <${l.tag}> "${l.text}"`);
+    expect(offenders).toEqual([]);
+  });
+
   it("every standalone link draws a focus ring", () => {
     const offenders = standalone
       .filter((l) => !hasFocusRing(l.classText))
@@ -151,6 +207,53 @@ describe.each(Object.keys(INLINE_IN_SENTENCE))("%s", (rel) => {
 });
 
 describe("the helpers", () => {
+  const link = (classText: string, ancestors: Link["ancestors"]): Link => ({
+    tag: "a",
+    text: "x",
+    classText,
+    line: 1,
+    ancestors,
+  });
+
+  it("flags a pulled-back block link in a plain <li> inside a space-y list", () => {
+    expect(
+      marginsStayInside(
+        link('"-my-1.5 block py-1.5"', [
+          { tag: "li", classText: "" },
+          { tag: "ul", classText: '"space-y-2 text-sm"' },
+        ]),
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts flow-root, a flex or grid parent, and a grid item", () => {
+    const cls = '"-my-1.5 block py-1.5"';
+    expect(
+      marginsStayInside(link(cls, [{ tag: "li", classText: '"flow-root"' }])),
+    ).toBe(true);
+    expect(
+      marginsStayInside(
+        link(cls, [{ tag: "li", classText: '"flex items-start gap-2"' }]),
+      ),
+    ).toBe(true);
+    expect(
+      marginsStayInside(
+        link(cls, [
+          { tag: "dt", classText: "" },
+          { tag: "div", classText: '"grid grid-cols-1"' },
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not apply to links that are not block", () => {
+    expect(
+      marginsStayInside(
+        link('"-my-1.5 inline-block py-1.5"', [{ tag: "p", classText: "" }]),
+      ),
+    ).toBe(true);
+  });
+
   it("tell a padded link from a bare one", () => {
     expect(clearsTargetFloor('"-my-1.5 block py-1.5 text-sm"')).toBe(true);
     expect(clearsTargetFloor('"min-h-6 inline-flex"')).toBe(true);
