@@ -10,6 +10,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { InlineAlert } from "@/components/shared/inline-alert";
+import {
+  saveFailureMessage,
+  saveThrownMessage,
+} from "@/components/shared/save-confirmation-outcome";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -41,10 +46,10 @@ export interface AffectedUser {
 export interface SaveConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Return `{ ok: false }` (or throw) to signal failure -- the modal will
-   * keep showing the form instead of the success state. A `void`/undefined
-   * return is treated as success, for callers that already throw on
-   * failure. */
+  /** Return `{ ok: false, error }` (or throw) to signal failure -- the modal
+   * keeps showing the form instead of the success state, with `error` (or the
+   * thrown message) in an alert above the buttons. A `void`/undefined return
+   * is treated as success, for callers that already throw on failure. */
   onConfirm: (
     notifyUser?: boolean,
   ) => Promise<{ ok: boolean; error?: string } | void>;
@@ -90,6 +95,7 @@ export function SaveConfirmationModal({
 }: SaveConfirmationModalProps) {
   const [notifyUser, setNotifyUser] = React.useState(true);
   const [success, setSuccess] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
   // Detect if account-related fields are being changed
   const emailChange = changes.find(
@@ -144,6 +150,7 @@ export function SaveConfirmationModal({
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the modal's success state when it re-opens; gated to isOpen so it doesn't fire on every render
       setSuccess(false);
+      setErrorMessage(null);
       // Auto-enable notification for account changes
       if (requireNotification) {
         setNotifyUser(true);
@@ -153,6 +160,7 @@ export function SaveConfirmationModal({
   }, [isOpen]);
 
   const handleConfirm = async () => {
+    setErrorMessage(null);
     try {
       // Email changes require notification
       if (requireNotification && !notifyUser) {
@@ -171,20 +179,28 @@ export function SaveConfirmationModal({
       // rejecting) must not fall through to the success state -- otherwise
       // this shows "Changes Saved" for an action the server just rejected,
       // right on top of whatever error toast the caller already fired.
-      if (result && result.ok === false) return;
+      const failure = saveFailureMessage(result);
+      if (failure) {
+        setErrorMessage(failure);
+        return;
+      }
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
         onClose();
       }, 1500);
-    } catch {
-      // Error handling is done in the parent component
+    } catch (err) {
+      // The parent reports it too, but where it can: /profile puts it in a
+      // banner that sits under this dialog's scrim, so the reason has to be
+      // readable here, next to the button that was just pressed.
+      setErrorMessage(saveThrownMessage(err));
     }
   };
 
   const handleClose = () => {
     if (!loading) {
       setSuccess(false);
+      setErrorMessage(null);
       onClose();
     }
   };
@@ -208,7 +224,12 @@ export function SaveConfirmationModal({
             <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
               <Check className="h-8 w-8 text-primary" aria-hidden="true" />
             </div>
-            <p className="text-lg font-medium">Changes Saved</p>
+            {/* The dialog's name while it shows this state: the form's title
+                unmounts with the form, and a dialog with nothing for
+                aria-labelledby to point at has no accessible name. */}
+            <AlertDialogTitle className="text-lg font-medium">
+              Changes Saved
+            </AlertDialogTitle>
             {isAdminAction && notifyUser && affectedUser && (
               <div className="text-sm text-muted-foreground mt-2 text-center space-y-1">
                 {isEmailChanging ? (
@@ -382,6 +403,10 @@ export function SaveConfirmationModal({
                   </div>
                 )}
               </div>
+            )}
+
+            {errorMessage && (
+              <InlineAlert tone="error">{errorMessage}</InlineAlert>
             )}
 
             <AlertDialogFooter>
