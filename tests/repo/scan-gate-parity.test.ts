@@ -213,7 +213,7 @@ const RESULTS: Record<string, unknown> = {
   "a summary with missing counts": { summary: { critical: 1 } },
   "findings with entries that are not objects": {
     summary: SUMMARY,
-    findings: [finding("high"), null, "x", 3],
+    findings: [finding("high"), null, "x", 3, [finding("critical")]],
   },
 };
 

@@ -1230,6 +1230,17 @@ test("gateCounts: findings marked a false positive are not counted, unless asked
   });
 });
 
+test("gateCounts: an entry that is not an object is not a finding, as in the jq filters", () => {
+  const counts = gateCounts({
+    summary: {},
+    findings: [finding("high"), [finding("critical")], "x", 3, null],
+  });
+  assert.equal(counts.high, 1);
+  assert.equal(counts.critical, 0);
+  assert.equal(counts.total, 1);
+  assert.equal(counts.suppressed, 0);
+});
+
 test("gateCounts: with no findings array it falls back to the summary", () => {
   assert.deepEqual(gateCounts({ summary: { critical: 2, medium: 4 } }), {
     critical: 2,

@@ -633,7 +633,11 @@ export function hasSummary(result) {
 export function gateCounts(result, { includeSuppressed = false } = {}) {
   const findings = result?.findings;
   if (Array.isArray(findings)) {
-    const all = findings.filter((f) => f && typeof f === "object");
+    // Objects only, like the `objects` filter in the Action and the template's
+    // jq: an array or a string in the list is not a finding in any of the three.
+    const all = findings.filter(
+      (f) => f && typeof f === "object" && !Array.isArray(f),
+    );
     const kept = includeSuppressed
       ? all
       : all.filter((f) => f.suppressed !== true);
