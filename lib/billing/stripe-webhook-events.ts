@@ -12,9 +12,15 @@
  *
  * Keep it in sync with the switch in app/api/v3/webhooks/stripe/route.ts: an
  * event the handler reads but that is not registered here never arrives.
- * `ensureStripeWebhook` re-checks this list on every boot and updates an
- * existing endpoint to add anything missing, so adding an event here is enough
- * to backfill it onto a live webhook.
+ *
+ * `ensureStripeWebhook` compares this list with an existing endpoint and
+ * updates the endpoint to add anything missing, but only when something calls
+ * it, and nothing does at boot. The one caller is the admin GET to
+ * /api/v3/stripe/setup-webhook, and that route answers `configured: true`
+ * without reaching Stripe once STRIPE_WEBHOOK_SECRET is set. So adding an event
+ * here backfills it only if an admin runs the setup route while the secret is
+ * still unset; an endpoint that was created earlier and is already running
+ * keeps its old subscription until the event is added in the Stripe dashboard.
  */
 export const REQUIRED_EVENTS = [
   "checkout.session.completed",

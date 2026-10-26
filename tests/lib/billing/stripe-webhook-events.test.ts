@@ -20,8 +20,9 @@ import { REQUIRED_EVENTS } from "@/lib/billing/stripe-webhook-events";
  *
  *   Registered but not handled - the endpoint receives traffic it drops on the
  *   floor. Harmless to the customer, but it makes the list a claim about
- *   behaviour that is not true, and `ensureStripeWebhook` re-applies it to the
- *   live endpoint on every boot.
+ *   behaviour that is not true, and `ensureStripeWebhook` writes it onto the
+ *   live endpoint whenever an admin runs the setup route with no signing
+ *   secret stored (nothing runs it at boot).
  *
  * Reading the route as text rather than importing it is deliberate: that
  * module is `server-only` and pulls in Stripe and the database, none of which
