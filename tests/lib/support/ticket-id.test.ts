@@ -5,7 +5,7 @@ describe("parseTicketId", () => {
   it.each([
     ["1", 1],
     ["12", 12],
-    ["9876543210".slice(0, 9), 987654321],
+    ["987654321", 987654321],
     ["2147483647", 2147483647],
   ])("reads %j as %i", (raw, expected) => {
     expect(parseTicketId(raw)).toBe(expected);
