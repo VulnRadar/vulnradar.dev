@@ -134,7 +134,7 @@
     "@typescript-eslint/parser": "8.72.0",
     "eslint": "^10.10.0",
     "eslint-config-next": "16.4.2",
-    "eslint-plugin-oxlint": "1.83.0",
+    "eslint-plugin-oxlint": "1.89.0",
     "oxlint": "1.89.0",
     "postcss": "8.5.31",
     "prettier": "3.9.10",
