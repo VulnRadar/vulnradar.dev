@@ -148,10 +148,16 @@ function isLetter(code: number): boolean {
 }
 
 /**
- * Read the tag that starts at `open` (a "<"), or null when it is not one.
- * Quote-aware, because a ">" inside an attribute value does not end the tag.
+ * Read the tag that starts at `open` (a "<"), null when it is not one, or
+ * "unterminated" when it starts like a tag and is still open MAX_TAG_CHARS
+ * later. Quote-aware, because a ">" inside an attribute value does not end the
+ * tag. One that runs into the end of the document instead is not a tag, just
+ * text, the same as `price < 10`.
  */
-function readTag(html: string, open: number): ParsedTag | null {
+function readTag(
+  html: string,
+  open: number,
+): ParsedTag | null | "unterminated" {
   let cursor = open + 1;
   const closing = html.charCodeAt(cursor) === 47; // "/"
   if (closing) cursor += 1;
@@ -176,7 +182,7 @@ function readTag(html: string, open: number): ParsedTag | null {
       break;
     }
   }
-  if (end === -1) return null;
+  if (end === -1) return limit < html.length ? "unterminated" : null;
   return { name, closing, attributes: html.slice(cursor, end), end };
 }
 
@@ -275,6 +281,14 @@ export function htmlToText(html: string): string {
     }
 
     const tag = readTag(html, open);
+    // A tag still open after MAX_TAG_CHARS is the end of the message, like an
+    // unterminated comment. Reading on from the next "<" instead rescanned up
+    // to MAX_TAG_CHARS for every one of them, so a body of thousands of broken
+    // tags took seconds.
+    if (tag === "unterminated") {
+      flushText(open);
+      return finish();
+    }
     if (!tag) {
       // A "<" that opens nothing (`price < 10`) is just a character.
       cursor = open + 1;

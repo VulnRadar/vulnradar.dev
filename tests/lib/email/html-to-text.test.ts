@@ -157,6 +157,16 @@ describe("htmlToText", () => {
       expect(performance.now() - started).toBeLessThan(2_000);
     });
 
+    it("ends the message at a tag still open after the tag-length cap", () => {
+      // Reading on from the next "<" rescanned the cap for every broken tag,
+      // which is what made the case above take seconds on a slow machine.
+      expect(
+        htmlToText('<p>Hello</p><a "' + "x".repeat(5_000) + ">world"),
+      ).toBe("Hello");
+      // One that runs into the end of the document is just text.
+      expect(htmlToText("<p>Hi</p>a <b")).toBe("Hi\n\na <b");
+    });
+
     it("treats an unterminated comment or tag as the end of the message", () => {
       expect(htmlToText("<p>Before</p><!-- never closed <p>After</p>")).toBe(
         "Before",
