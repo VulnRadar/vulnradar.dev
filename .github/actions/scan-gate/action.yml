@@ -10,14 +10,14 @@ inputs:
     description: "The URL to scan."
     required: true
   api-key:
-    description: "VulnRadar API token (Settings > API Keys). Store as a repo secret, never hardcode it."
+    description: "VulnRadar API token (Profile > Developer > API Keys). Store as a repo secret, never hardcode it."
     required: true
   api-base-url:
     description: "Base API URL. Override for a self-hosted deployment."
     required: false
     default: "https://vulnradar.dev/api/v3"
   crawl:
-    description: "If true, crawl and scan several pages of the site instead of scanning just the one URL. How many is your plan's crawl page limit, from 25 upwards; it was documented here as 15, which is not a limit that exists."
+    description: "If true, crawl and scan several pages of the site instead of scanning just the one URL. How many is your plan's crawl page limit."
     required: false
     default: "false"
   max-critical:
@@ -32,6 +32,14 @@ inputs:
     description: "Fail the gate if the scan reports more than this many medium findings. -1 disables this check."
     required: false
     default: "-1"
+  include-suppressed:
+    description: "If true, count findings you marked as false positives toward the thresholds. Off by default, matching the dashboard and the SARIF report."
+    required: false
+    default: "false"
+  fail-on-incomplete:
+    description: "What to do when part of the target was not checked. blocking (the default) exits 3 when the site showed the scanner a bot challenge or the page could not be fetched, because a scan that never saw the page proves nothing. any also exits 3 when any other area was skipped. never only reports what was skipped."
+    required: false
+    default: "blocking"
   timeout-seconds:
     description: "Give up waiting for the scan after this many seconds. Left unset it follows the scan: the server's single-scan budget, or its much larger crawl budget when crawl is true."
     required: false
@@ -67,6 +75,9 @@ outputs:
   total:
     description: "Total number of findings."
     value: ${{ steps.scan.outputs.total }}
+  incomplete:
+    description: "Comma-separated areas the scan did not check, such as bot-challenge, page-unreachable or dns. Empty when it checked everything."
+    value: ${{ steps.scan.outputs.incomplete }}
 
 runs:
   using: "composite"
@@ -81,16 +92,60 @@ runs:
         VR_MAX_CRITICAL: ${{ inputs.max-critical }}
         VR_MAX_HIGH: ${{ inputs.max-high }}
         VR_MAX_MEDIUM: ${{ inputs.max-medium }}
+        VR_INCLUDE_SUPPRESSED: ${{ inputs.include-suppressed }}
+        VR_FAIL_ON_INCOMPLETE: ${{ inputs.fail-on-incomplete }}
         VR_TIMEOUT: ${{ inputs.timeout-seconds }}
         VR_POLL_INTERVAL: ${{ inputs.poll-interval-seconds }}
         VR_SARIF_FILE: ${{ inputs.sarif-file }}
       run: |
         set -euo pipefail
 
+        # Exit codes match the vulnradar CLI: 1 when the scan ran and a
+        # threshold was exceeded, 2 when it could not run, 3 when it ran but
+        # did not check the target (a bot challenge, or the page could not be
+        # fetched). A failed gate wins over 3.
+
         if [ -z "$VR_API_KEY" ]; then
           echo "::error::api-key is empty. Pass it from a repo secret, e.g. \${{ secrets.VULNRADAR_TOKEN }}."
           exit 2
         fi
+
+        # Checked before the scan is started and charged. A threshold that is
+        # not a number made the comparisons below error out, and an errored
+        # test inside `if` is just false, so the gate passed.
+        for pair in "max-critical:$VR_MAX_CRITICAL" "max-high:$VR_MAX_HIGH"; do
+          case "${pair#*:}" in
+            ''|*[!0-9]*)
+              echo "::error::${pair%%:*} must be 0 or more, got '${pair#*:}'."
+              exit 2
+              ;;
+          esac
+        done
+        # An empty max-medium means "no medium check", like the default.
+        if [ -z "$VR_MAX_MEDIUM" ]; then
+          VR_MAX_MEDIUM=-1
+        fi
+        case "$VR_MAX_MEDIUM" in
+          -1) ;;
+          ''|*[!0-9]*)
+            echo "::error::max-medium must be -1 (disabled) or 0 or more, got '$VR_MAX_MEDIUM'."
+            exit 2
+            ;;
+        esac
+        case "$VR_INCLUDE_SUPPRESSED" in
+          true|false) ;;
+          *)
+            echo "::error::include-suppressed must be true or false, got '$VR_INCLUDE_SUPPRESSED'."
+            exit 2
+            ;;
+        esac
+        case "$VR_FAIL_ON_INCOMPLETE" in
+          blocking|any|never) ;;
+          *)
+            echo "::error::fail-on-incomplete must be blocking, any or never, got '$VR_FAIL_ON_INCOMPLETE'."
+            exit 2
+            ;;
+        esac
 
         if [ "$VR_CRAWL" = "true" ]; then
           endpoint="$VR_API_BASE/scan/crawl"
@@ -180,6 +235,13 @@ runs:
           fi
           if [ "$status" = "failed" ]; then
             error_reason=$(echo "$status_body" | jq -r '.error // "unknown error"')
+            # Why it failed, when the API says. Appended last so the
+            # "Scan failed: " prefix is unchanged, and an older server that
+            # sends no kind adds nothing.
+            failure_kind=$(echo "$status_body" | jq -r '(.failureKind | strings) // empty')
+            if [ -n "$failure_kind" ]; then
+              error_reason="$error_reason [$failure_kind]"
+            fi
             echo "::error::Scan failed: $error_reason"
             exit 2
           fi
@@ -193,17 +255,67 @@ runs:
           exit 2
         fi
 
-        critical=$(echo "$result" | jq -r '.result.summary.critical // 0')
-        high=$(echo "$result" | jq -r '.result.summary.high // 0')
-        medium=$(echo "$result" | jq -r '.result.summary.medium // 0')
-        low=$(echo "$result" | jq -r '.result.summary.low // 0')
-        total=$(echo "$result" | jq -r '.result.summary.total // 0')
+        # Fail closed. A missing summary read as zeros would pass a response
+        # this script did not understand, and a gate that cannot judge must
+        # not pass.
+        if ! echo "$result" | jq -e '(.result | type) == "object" and (.result.summary | type) == "object"' > /dev/null; then
+          echo "::error::Scan $scan_id completed but its result has no summary object, so the thresholds cannot be judged."
+          exit 2
+        fi
+
+        # The counts the gate judges, the same rule as the vulnradar CLI
+        # (cli/lib.mjs gateCounts): taken from the findings, leaving out the
+        # ones you marked a false positive unless include-suppressed is true.
+        # The summary counts them, so gating on it failed the next run on a
+        # finding the dashboard and the SARIF report had hidden. With no
+        # findings array it falls back to the summary.
+        gate_counts_jq='
+          .result as $r
+          | (if ($r.findings | type) == "array" then [$r.findings[] | objects] else null end) as $all
+          | if $all == null then
+              { critical: ($r.summary.critical // 0), high: ($r.summary.high // 0),
+                medium: ($r.summary.medium // 0), low: ($r.summary.low // 0),
+                total: ($r.summary.total // 0), suppressed: 0 }
+            else
+              [$all[] | select($inc or (.suppressed != true))] as $kept
+              | { critical: ([$kept[] | select(.severity == "critical")] | length),
+                  high: ([$kept[] | select(.severity == "high")] | length),
+                  medium: ([$kept[] | select(.severity == "medium")] | length),
+                  low: ([$kept[] | select(.severity == "low")] | length),
+                  total: ($kept | length),
+                  suppressed: (($all | length) - ($kept | length)) }
+            end
+        '
+        counts=$(echo "$result" | jq -c --argjson inc "$VR_INCLUDE_SUPPRESSED" "$gate_counts_jq")
+        critical=$(echo "$counts" | jq -r '.critical')
+        high=$(echo "$counts" | jq -r '.high')
+        medium=$(echo "$counts" | jq -r '.medium')
+        low=$(echo "$counts" | jq -r '.low')
+        total=$(echo "$counts" | jq -r '.total')
+        suppressed=$(echo "$counts" | jq -r '.suppressed')
+
+        # What the scan did not look at. bot-challenge and page-unreachable
+        # mean the target was never read, so zero findings proves nothing.
+        incomplete=$(echo "$result" | jq -r '[(.result.incomplete // [])[]? | strings] | join(",")')
+        page_message=$(echo "$result" | jq -r '(.result.pageUnreachable | objects | .message | strings) // empty')
+        redirect_host=$(echo "$result" | jq -r '(.result.pageUnreachable | objects | .redirectHost | strings) // empty')
+        incomplete_blocking=false
+        case ",$incomplete," in
+          *,bot-challenge,*|*,page-unreachable,*) incomplete_blocking=true ;;
+        esac
+        if [ "$VR_FAIL_ON_INCOMPLETE" = "any" ] && [ -n "$incomplete" ]; then
+          incomplete_blocking=true
+        fi
+        if [ "$VR_FAIL_ON_INCOMPLETE" = "never" ]; then
+          incomplete_blocking=false
+        fi
 
         echo "critical=$critical" >> "$GITHUB_OUTPUT"
         echo "high=$high" >> "$GITHUB_OUTPUT"
         echo "medium=$medium" >> "$GITHUB_OUTPUT"
         echo "low=$low" >> "$GITHUB_OUTPUT"
         echo "total=$total" >> "$GITHUB_OUTPUT"
+        echo "incomplete=$incomplete" >> "$GITHUB_OUTPUT"
 
         {
           echo "### VulnRadar scan of $VR_URL"
@@ -215,9 +327,27 @@ runs:
           echo "| Medium | $medium |"
           echo "| Low | $low |"
           echo "| Total | $total |"
+          if [ "$suppressed" -gt 0 ]; then
+            echo "| Suppressed by false-positive verdicts (not counted) | $suppressed |"
+          fi
+          if [ -n "$incomplete" ]; then
+            echo "| Not checked | \`$incomplete\` |"
+          fi
         } >> "$GITHUB_STEP_SUMMARY"
 
         echo "Scan complete: critical=$critical high=$high medium=$medium low=$low total=$total"
+        if [ "$suppressed" -gt 0 ]; then
+          echo "$suppressed suppressed by false-positive verdicts, not counted (include-suppressed: true counts them)."
+        fi
+        if [ -n "$incomplete" ]; then
+          echo "::warning::Not checked: $incomplete"
+          if [ -n "$page_message" ]; then
+            echo "::warning::Page unreachable: $page_message"
+          fi
+          if [ -n "$redirect_host" ]; then
+            echo "::warning::It redirects to another host: $redirect_host"
+          fi
+        fi
 
         # The gate used to stop at these counts, so the findings themselves
         # never left the log: no annotations on the diff, nothing in the
@@ -260,4 +390,10 @@ runs:
 
         if [ "$fail" = "true" ]; then
           exit 1
+        fi
+
+        # After the thresholds, so a failed gate is reported as one.
+        if [ "$incomplete_blocking" = "true" ]; then
+          echo "::error::The scan did not check the target ($incomplete). A pass here would mean nothing was looked at. Set fail-on-incomplete: never to accept a partial scan."
+          exit 3
         fi
