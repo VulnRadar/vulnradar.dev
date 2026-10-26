@@ -1,3 +1,5 @@
+import { LegalLanguageNotice } from "./legal-language-notice";
+
 const kickerMap = {
   terms: "Legal · Terms of service",
   privacy: "Legal · Privacy",
@@ -48,6 +50,9 @@ export function LegalPageHeader({
       <p className="mt-3 text-sm text-muted-foreground">
         Last updated <time dateTime={lastUpdated}>{formatted}</time>
       </p>
+      {/* Under the title, and only for a reader who is not in English: the
+          notice used to open every page from LegalShell, above the H1. */}
+      <LegalLanguageNotice className="mt-5" />
     </div>
   );
 }

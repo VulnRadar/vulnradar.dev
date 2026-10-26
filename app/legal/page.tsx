@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { APP_NAME } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import { LegalLanguageNotice } from "@/components/legal";
 
 const legalPages = [
   {
@@ -61,6 +62,7 @@ export default async function LegalIndexPage() {
           The documents that govern using {APP_NAME}. All six were last revised{" "}
           <time dateTime={termsUpdatedAt}>{lastUpdatedDisplay}</time>.
         </p>
+        <LegalLanguageNotice className="mt-5" />
       </div>
 
       <dl className="divide-y divide-border/50 border-y border-border/50">
