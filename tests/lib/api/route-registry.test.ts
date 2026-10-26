@@ -307,6 +307,20 @@ describe("resolveApiPath: permalinks come first", () => {
     expect(resolveApiPath("/api/v3/badge/abc", false).kind).toBe("permalink");
   });
 
+  it("never lets an encoded spelling of a session sibling become the badge token", () => {
+    for (const sibling of ["%73cans", "sc%61ns", "%73ite", "si%74e"]) {
+      expect(
+        resolveApiPath(`/api/v3/badge/${sibling}`, false).kind,
+        sibling,
+      ).not.toBe("permalink");
+    }
+    // A malformed escape cannot be decoded, so it is just an odd token.
+    expect(resolveApiPath("/api/v3/badge/%zz", false).kind).toBe("permalink");
+    expect(resolveApiPath("/api/v3/badge/%73cansx", false).kind).toBe(
+      "permalink",
+    );
+  });
+
   it("never lets the badge token swallow its two session siblings", () => {
     for (const migrated of [false, true]) {
       if (migrated) finishMigration();

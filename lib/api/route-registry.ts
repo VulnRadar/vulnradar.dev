@@ -624,13 +624,31 @@ export function matchV4(tail: string): V4Route | null {
   return bestMatch(V4_ROUTES, (route) => route.template, tail);
 }
 
+/**
+ * A segment as the router will see it. Next also tries the decoded path when
+ * it looks a route up, so "%73cans" can reach the badge/scans route; a segment
+ * that only looks different from an excluded one must not slip past the
+ * exclusion. Matching everywhere else stays on the raw spelling, which fails
+ * closed: an encoded spelling of a permalink is simply not a permalink.
+ */
+function decodedSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 function matchPermalink(path: string): Permalink | null {
   const candidates = PERMALINKS.filter((link) => {
     if (!matchTemplate(link.template, path)) return false;
     if (!link.except) return true;
     const have = segmentsOf(path);
     return segmentsOf(link.template).every(
-      (segment, i) => !isParam(segment) || !link.except?.includes(have[i]),
+      (segment, i) =>
+        !isParam(segment) ||
+        (!link.except?.includes(have[i]) &&
+          !link.except?.includes(decodedSegment(have[i]))),
     );
   });
   return bestMatch(candidates, (link) => link.template, path);

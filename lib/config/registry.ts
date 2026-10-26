@@ -3483,7 +3483,7 @@ export const NEVER_CONFIGURABLE = {
   API_VERSION:
     "The version this server advertises: every public entry of the API route map, every documentation sample and every default base URL is built from it at module load, and Next inlines those paths into the client bundle at build time. A runtime edit would change what the server says and leave every already-loaded page calling the old paths. It moves no directory: a value naming a version whose routes do not exist advertises URLs that return 404.",
   API_CURRENT_VERSION:
-    "An alias of API_VERSION with the same meaning, kept because the docs and the version endpoint read this name.",
+    "An alias of API_VERSION with the same meaning, kept because the documentation and the client constants read this name.",
   API_SUPPORTED_VERSIONS:
     "The versions the router answers. A version is listed only once its routes exist and its contract is complete, so an edit cannot make an unfinished one reachable early: the router refuses an unlisted version with a 404 that names it. Middleware reads the list at the edge, where a runtime edit would not reach it.",
   API_INTERNAL_PREFIX:
