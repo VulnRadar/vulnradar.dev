@@ -955,7 +955,29 @@ export const CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50;
 // from forming an import cycle.
 export const CONFIG_API_VERSION = "v3";
 export const CONFIG_API_CURRENT_VERSION = CONFIG_API_VERSION;
-export const CONFIG_API_SUPPORTED_VERSIONS = [CONFIG_API_VERSION];
+// A literal, not derived from CONFIG_API_VERSION: when the advertised version
+// moves on, the older one is still served, so the two stop being the same
+// fact. A version is listed here only once its routes exist and its contract
+// is complete; the router answers an unlisted /api/v<n> with a 404 that says so.
+export const CONFIG_API_SUPPORTED_VERSIONS: readonly string[] = ["v3"];
+// Where the web app's own routes live. Not a contract: they may change in any
+// release. lib/api/route-registry.ts spells the same prefix (it imports
+// nothing, so that middleware's edge bundle stays small) and a test keeps the
+// two equal.
+export const CONFIG_API_INTERNAL_PREFIX = "/api/internal";
+// The retirement calendar for API v3, read at the edge, which cannot reach the
+// settings table, so these are constants and not settings. All three stay
+// empty until the release commit fills them, and an empty DEPRECATED_AT keeps
+// every Deprecation, Sunset and Link header off. SUNSET is DEPRECATED_AT plus
+// six calendar months, computed with addCalendarMonths in
+// lib/api/deprecation.ts rather than typed by hand (that is 181 to 184 days,
+// so a day count would be wrong). Brownouts are the short windows in the last
+// 45 days before it; whether an instance answers 410 in them, or after the
+// Sunset, is the API_V3_SUNSET_ENFORCE environment switch, off by default.
+export const CONFIG_API_V3_DEPRECATED_AT = "";
+export const CONFIG_API_V3_SUNSET = "";
+export const CONFIG_API_V3_BROWNOUTS: readonly { from: string; to: string }[] =
+  [];
 
 // AI CHAT CONFIGURATION
 //

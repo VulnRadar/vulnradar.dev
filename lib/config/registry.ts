@@ -3481,11 +3481,19 @@ export const NEVER_CONFIGURABLE = {
   API_KEY_PREFIX:
     "Issued keys carry the old prefix. Changing it invalidates every existing key lookup.",
   API_VERSION:
-    "Every entry of the API route map is built from it at module load, and Next inlines those paths into the client bundle at build time. A runtime edit would move the server and leave every already-loaded page calling the old paths.",
+    "The version this server advertises: every public entry of the API route map, every documentation sample and every default base URL is built from it at module load, and Next inlines those paths into the client bundle at build time. A runtime edit would change what the server says and leave every already-loaded page calling the old paths. It moves no directory: a value naming a version whose routes do not exist advertises URLs that return 404.",
   API_CURRENT_VERSION:
-    "Routes exist on disk. A value pointing at a version with no route directory returns 404.",
+    "An alias of API_VERSION with the same meaning, kept because the docs and the version endpoint read this name.",
   API_SUPPORTED_VERSIONS:
-    "Same as the current version: the list has to match the route directories that exist.",
+    "The versions the router answers. A version is listed only once its routes exist and its contract is complete, so an edit cannot make an unfinished one reachable early: the router refuses an unlisted version with a 404 that names it. Middleware reads the list at the edge, where a runtime edit would not reach it.",
+  API_INTERNAL_PREFIX:
+    "Where the web app's own routes live. Middleware, the route registry and the API route map all spell it, and the route files sit in a directory of that name, so changing it is a directory move and not a setting.",
+  API_V3_DEPRECATED_AT:
+    "Filled in once, by the release commit that starts API v3's retirement. While it is empty no Deprecation, Sunset or Link header is sent. Middleware reads it at the edge, where the settings table cannot be reached, so a runtime edit would not take effect.",
+  API_V3_SUNSET:
+    "Six calendar months after API_V3_DEPRECATED_AT, computed by the release commit. It is the date sent in the Sunset header and, on an instance that sets API_V3_SUNSET_ENFORCE, the date API v3 starts answering 410. Read at the edge, so a runtime edit would not take effect.",
+  API_V3_BROWNOUTS:
+    "The scheduled one-hour windows in the last 45 days before the Sunset in which an instance that sets API_V3_SUNSET_ENFORCE answers 410 early, so callers find out before the real date. Read at the edge, so a runtime edit would not take effect.",
   TOTP_VALIDITY_SECONDS:
     "RFC 6238 interoperability. Authenticator apps assume 30 seconds and cannot be told otherwise.",
   CLEANUP_INTERVAL_MS:
