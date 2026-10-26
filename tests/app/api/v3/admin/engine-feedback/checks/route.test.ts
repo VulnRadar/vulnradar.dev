@@ -290,4 +290,18 @@ describe("GET /api/v3/admin/engine-feedback/checks", () => {
     const res = await GET();
     expect(res.status).toBe(500);
   });
+
+  it("answers 500 rather than throwing when the settings read fails before the query", async () => {
+    // The two getSetting reads sit outside the route's own try/catch. Wrapping
+    // the handler in withErrorHandling is what turns that into a response.
+    withAdmin();
+    mockGetSetting.mockRejectedValueOnce(new Error("settings table missing"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await GET();
+      expect(res.status).toBe(500);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/authorization";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { logError } from "@/lib/logging/log";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getCheckDef } from "@/lib/scanner/registry";
 import { getAsyncCheckDef } from "@/lib/scanner/async-check-catalog";
@@ -49,7 +51,7 @@ export interface CheckAccuracyEntry {
  * for around 25 rows; getAsyncCheckDef resolves them against the catalog
  * those findings are actually built from.
  */
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const admin = await requirePermission(
     STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
   );
@@ -102,13 +104,12 @@ export async function GET() {
 
     return NextResponse.json({ checks, thresholdPercent, minSampleSize });
   } catch (error) {
-    console.error(
-      "[admin/engine-feedback/checks] Failed to aggregate check feedback:",
-      error,
-    );
+    logError("admin", "failed to aggregate check feedback", error, {
+      adminId: admin.id,
+    });
     return NextResponse.json(
       { error: "Failed to load check feedback." },
       { status: 500 },
     );
   }
-}
+});

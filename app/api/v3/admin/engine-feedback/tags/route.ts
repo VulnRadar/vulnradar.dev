@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { requirePermission } from "@/lib/auth/authorization";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { logError } from "@/lib/logging/log";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getSetting } from "@/lib/config/runtime-config";
 
@@ -38,7 +40,7 @@ export interface TagDismissalEntry {
  * the still-attached count (scan_tags) back to the dismissed count
  * (auto_tag_dismissals) to reconstruct it.
  */
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const admin = await requirePermission(
     STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
   );
@@ -93,13 +95,12 @@ export async function GET() {
 
     return NextResponse.json({ tags, thresholdPercent, minSampleSize });
   } catch (error) {
-    console.error(
-      "[admin/engine-feedback/tags] Failed to aggregate auto-tag dismissals:",
-      error,
-    );
+    logError("admin", "failed to aggregate auto-tag dismissals", error, {
+      adminId: admin.id,
+    });
     return NextResponse.json(
       { error: "Failed to load auto-tag dismissal data." },
       { status: 500 },
     );
   }
-}
+});

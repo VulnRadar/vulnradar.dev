@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/authorization";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { logError } from "@/lib/logging/log";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { fetchCheckFeedbackVerdicts } from "@/lib/scanner/check-accuracy";
 
@@ -29,7 +31,7 @@ const MAX_PER_CHECK = 100;
  * only: no linkification, so a staff member cannot be walked into
  * visiting a URL somebody planted here.
  */
-export async function GET(request: NextRequest) {
+export const GET = withErrorHandling(async (request: NextRequest) => {
   const admin = await requirePermission(
     STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
   );
@@ -70,13 +72,12 @@ export async function GET(request: NextRequest) {
       verdicts: Object.fromEntries(byCheck),
     });
   } catch (error) {
-    console.error(
-      "[admin/engine-feedback/checks/verdicts] Failed to load verdicts:",
-      error,
-    );
+    logError("admin", "failed to load check verdicts", error, {
+      adminId: admin.id,
+    });
     return NextResponse.json(
       { error: "Failed to load check verdicts." },
       { status: 500 },
     );
   }
-}
+});
