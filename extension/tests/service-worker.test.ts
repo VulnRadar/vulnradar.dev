@@ -20,6 +20,7 @@ vi.mock("webextension-polyfill", async () => ({
   default: (await import("./_polyfill-fake")).fake,
 }));
 
+import { VULNRADAR } from "../src/lib/constants";
 import { DEFAULT_SETTINGS } from "../src/lib/types";
 
 /**
@@ -383,7 +384,7 @@ describe("the scan the card offers", () => {
       string,
       { offeredAt: number }
     >;
-    offers["7"]!.offeredAt = Date.now() - 31 * 60 * 1000;
+    offers["7"]!.offeredAt = Date.now() - VULNRADAR.offeredScanTtlMs - 1000;
     const out = await deliver(
       router,
       { kind: "reputation:scan" },

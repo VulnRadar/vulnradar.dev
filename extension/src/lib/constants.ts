@@ -80,8 +80,10 @@ export const VULNRADAR = {
   snoozedHostLimit: 500,
   /** How long the card's "Scan this site" offer stays redeemable. The offer is
    *  what lets the background scan without trusting an address sent from the
-   *  page, so it has to outlive the card's own countdown but not the visit. */
-  offeredScanTtlMs: 30 * 60 * 1000,
+   *  page. The card can be put back on screen from the popup's "Show site
+   *  alert" at any point in a visit, and a tab can be left open for days, so
+   *  the window is a day rather than the card's own twenty seconds. */
+  offeredScanTtlMs: 24 * 60 * 60 * 1000,
   /** Longest per-host cooldown the setting accepts. The map that remembers
    *  scans is pruned at this age, so a longer cooldown could not be kept. */
   autoScanHostCooldownMaxHours: 24,
