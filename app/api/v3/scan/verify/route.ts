@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { parseBearer } from "@/lib/api/bearer";
 import { validateApiKey } from "@/lib/api/api-keys";
 import {
   hasApiKeyScope,
   apiKeyScopeErrorMessage,
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
-import { BEARER_PREFIX } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
 import { runAiVerification } from "@/lib/ai/verify-findings";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -36,10 +36,9 @@ export async function POST(req: NextRequest) {
   if (session) {
     userId = session.userId;
   } else {
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader?.startsWith(BEARER_PREFIX)) {
-      const key = authHeader.slice(BEARER_PREFIX.length);
-      const keyResult = await validateApiKey(key);
+    const bearerToken = parseBearer(req.headers.get("Authorization"));
+    if (bearerToken !== null) {
+      const keyResult = await validateApiKey(bearerToken);
       if (!keyResult) {
         return NextResponse.json(
           { error: "Invalid API key." },

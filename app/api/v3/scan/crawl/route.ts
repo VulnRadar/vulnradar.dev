@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { parseBearer } from "@/lib/api/bearer";
 import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
@@ -15,7 +16,7 @@ import { executeCrawlScan } from "@/lib/scanner/execute-crawl-scan";
 import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
 import { withErrorHandling } from "@/lib/api/api-utils";
 import { logError } from "@/lib/logging/log";
-import { BEARER_PREFIX, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
+import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import {
   canMakeRequest,
@@ -65,7 +66,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (paused) return paused;
 
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const authHeader = request.headers.get("authorization");
+  const bearerToken = parseBearer(request.headers.get("authorization"));
   let apiKeyId: number | null = null;
   let isApiKeyAuth = false;
   let authedUserId: number | null = null;
@@ -76,9 +77,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   let apiKeyRateLimit: Awaited<ReturnType<typeof checkApiKeyRateLimit>> | null =
     null;
 
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7);
-    const keyData = await validateApiKey(token);
+  if (bearerToken !== null) {
+    const keyData = await validateApiKey(bearerToken);
 
     if (!keyData) {
       return NextResponse.json(

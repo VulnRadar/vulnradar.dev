@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { ERROR_MESSAGES, BEARER_PREFIX } from "@/lib/config/constants";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { parseBearer } from "@/lib/api/bearer";
 import { validateApiKey } from "@/lib/api/api-keys";
 import {
   hasApiKeyScope,
@@ -68,11 +69,10 @@ async function authenticate(request: NextRequest): Promise<
     }
   | { ok: false; response: NextResponse }
 > {
-  const authHeader = request.headers.get("authorization");
+  const bearerToken = parseBearer(request.headers.get("authorization"));
 
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7);
-    const keyData = await validateApiKey(token);
+  if (bearerToken !== null) {
+    const keyData = await validateApiKey(bearerToken);
     if (!keyData) {
       return {
         ok: false,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { parseBearer } from "@/lib/api/bearer";
 import { validateApiKey } from "@/lib/api/api-keys";
 import {
   hasApiKeyScope,
@@ -49,10 +50,9 @@ export async function POST(request: NextRequest) {
       userId = session.userId;
     } else {
       // Try API key auth
-      const authHeader = request.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const apiKey = authHeader.slice(7);
-        const keyData = await validateApiKey(apiKey);
+      const bearerToken = parseBearer(request.headers.get("authorization"));
+      if (bearerToken !== null) {
+        const keyData = await validateApiKey(bearerToken);
         if (!keyData) {
           return NextResponse.json(
             { error: "Invalid or revoked API key." },

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { parseBearer } from "@/lib/api/bearer";
 import { validateApiKey } from "@/lib/api/api-keys";
 import {
   hasApiKeyScope,
   apiKeyScopeErrorMessage,
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
-import { BEARER_PREFIX } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { discoverPages } from "@/lib/scanner/crawl-discovery";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
@@ -38,10 +38,9 @@ export async function POST(request: NextRequest) {
   if (session) {
     userId = session.userId;
   } else {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader?.startsWith(BEARER_PREFIX)) {
-      const token = authHeader.slice(BEARER_PREFIX.length);
-      const keyData = await validateApiKey(token);
+    const bearerToken = parseBearer(request.headers.get("authorization"));
+    if (bearerToken !== null) {
+      const keyData = await validateApiKey(bearerToken);
       if (!keyData) {
         return NextResponse.json(
           { error: "Invalid or revoked API key." },

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { parseBearer } from "@/lib/api/bearer";
 import { validateApiKey } from "@/lib/api/api-keys";
 import {
   hasApiKeyScope,
@@ -23,10 +24,8 @@ export async function GET(
 ) {
   const session = await getSession();
   if (!session) {
-    const authHeader = request.headers.get("authorization");
-    const key = authHeader?.startsWith("Bearer ")
-      ? await validateApiKey(authHeader.slice(7))
-      : null;
+    const bearerToken = parseBearer(request.headers.get("authorization"));
+    const key = bearerToken !== null ? await validateApiKey(bearerToken) : null;
     if (!key) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

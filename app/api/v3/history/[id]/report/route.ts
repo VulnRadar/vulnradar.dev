@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { parseBearer } from "@/lib/api/bearer";
 import { recordUsage } from "@/lib/api/api-keys";
 import { validateApiKey } from "@/lib/api/api-keys";
 import { checkRateLimit as checkApiKeyRateLimit } from "@/lib/api/api-keys";
@@ -15,11 +16,7 @@ import { getSetting } from "@/lib/config/runtime-config";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
 import { attachOwnerFindingState } from "@/lib/scanner/remediation-store";
 import { severityCounts } from "@/lib/reports/severity-counts";
-import {
-  ERROR_MESSAGES,
-  BEARER_PREFIX,
-  APP_SLUG,
-} from "@/lib/config/constants";
+import { ERROR_MESSAGES, APP_SLUG } from "@/lib/config/constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { generateSarifReport } from "@/lib/reports/sarif-report";
 import { generateMarkdownReport } from "@/lib/reports/markdown-report";
@@ -119,12 +116,12 @@ export async function GET(
 
   // Auth: Bearer API key (scan:read) first, then session cookie -- mirrors
   // GET /api/v3/history/[id].
-  const authHeader = request.headers.get("authorization");
+  const bearerToken = parseBearer(request.headers.get("authorization"));
   let authedUserId: number | null = null;
   let apiKeyId: number | null = null;
 
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const keyData = await validateApiKey(authHeader.slice(7));
+  if (bearerToken !== null) {
+    const keyData = await validateApiKey(bearerToken);
     if (!keyData) {
       return NextResponse.json(
         { error: "Invalid or revoked API key." },

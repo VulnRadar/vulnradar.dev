@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { ERROR_MESSAGES, BEARER_PREFIX } from "@/lib/config/constants";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { parseBearer } from "@/lib/api/bearer";
 import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
@@ -30,14 +31,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const authHeader = request.headers.get("authorization");
+  const bearerToken = parseBearer(request.headers.get("authorization"));
   let authedUserId: number | null = null;
   let apiKeyId: number | null = null;
   let keyData: Awaited<ReturnType<typeof validateApiKey>> = null;
 
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7);
-    keyData = await validateApiKey(token);
+  if (bearerToken !== null) {
+    keyData = await validateApiKey(bearerToken);
 
     if (!keyData) {
       return NextResponse.json(
@@ -222,14 +222,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const authHeader = request.headers.get("authorization");
+  const bearerToken = parseBearer(request.headers.get("authorization"));
   let authedUserId: number | null = null;
   let apiKeyId: number | null = null;
   let keyData: Awaited<ReturnType<typeof validateApiKey>> = null;
 
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7);
-    keyData = await validateApiKey(token);
+  if (bearerToken !== null) {
+    keyData = await validateApiKey(bearerToken);
 
     if (!keyData) {
       return NextResponse.json(
@@ -470,14 +469,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const authHeader = request.headers.get("authorization");
+  const bearerToken = parseBearer(request.headers.get("authorization"));
   let authedUserId: number | null = null;
   let apiKeyId: number | null = null;
   let keyData: Awaited<ReturnType<typeof validateApiKey>> = null;
 
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7);
-    keyData = await validateApiKey(token);
+  if (bearerToken !== null) {
+    keyData = await validateApiKey(bearerToken);
 
     if (!keyData) {
       return NextResponse.json(

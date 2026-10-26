@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { parseBearer } from "@/lib/api/bearer";
 import { validateApiKey } from "@/lib/api/api-keys";
 import {
   hasApiKeyScope,
@@ -11,7 +12,7 @@ import {
   RATE_LIMITS,
 } from "@/lib/rate-limiting/rate-limit";
 import pool from "@/lib/database/db";
-import { APP_NAME, BEARER_PREFIX } from "@/lib/config/constants";
+import { APP_NAME } from "@/lib/config/constants";
 import {
   normalizeHostForReputation,
   getExactUrlReputation,
@@ -83,12 +84,11 @@ export async function GET(request: NextRequest) {
   try {
     // Auth: check API key first (Bearer token), then fall back to session
     // cookie. Same dual-auth pattern as POST /api/v3/scan.
-    const authHeader = request.headers.get("authorization");
+    const bearerToken = parseBearer(request.headers.get("authorization"));
     let authedUserId: number | null = null;
 
-    if (authHeader?.startsWith(BEARER_PREFIX)) {
-      const token = authHeader.slice(7);
-      const keyData = await validateApiKey(token);
+    if (bearerToken !== null) {
+      const keyData = await validateApiKey(bearerToken);
 
       if (!keyData) {
         return NextResponse.json(

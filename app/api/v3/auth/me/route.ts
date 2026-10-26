@@ -2,12 +2,9 @@ import { type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
+import { parseBearer } from "@/lib/api/bearer";
 import { validateApiKey } from "@/lib/api/api-keys";
-import {
-  ERROR_MESSAGES,
-  STAFF_ROLES,
-  BEARER_PREFIX,
-} from "@/lib/config/constants";
+import { ERROR_MESSAGES, STAFF_ROLES } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { getPlanLimitsForPlan, planRank } from "@/lib/billing/plan-limits";
 import { resolveEffectivePlan } from "@/lib/rate-limiting/daily-limits";
@@ -30,10 +27,9 @@ function higherPlan(
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Bearer token path: used by the browser extension and API clients.
   // Session cookie path below handles the web dashboard.
-  const authHeader = request.headers.get("authorization");
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(BEARER_PREFIX.length);
-    const keyData = await validateApiKey(token);
+  const bearerToken = parseBearer(request.headers.get("authorization"));
+  if (bearerToken !== null) {
+    const keyData = await validateApiKey(bearerToken);
     if (!keyData) {
       return ApiResponse.unauthorized("Invalid or revoked API key.");
     }

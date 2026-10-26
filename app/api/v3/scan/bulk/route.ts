@@ -9,6 +9,7 @@ import {
   incrementDailyCountCapped,
   getRateLimitHeaders,
 } from "@/lib/rate-limiting/daily-limits";
+import { parseBearer } from "@/lib/api/bearer";
 import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
@@ -47,7 +48,7 @@ import {
   API_KEY_LIMIT_MESSAGE,
   DAILY_LIMIT_MESSAGE,
 } from "@/lib/scanner/failure-messages";
-import { BEARER_PREFIX, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
+import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { logError } from "@/lib/logging/log";
 import { withErrorHandling } from "@/lib/api/api-utils";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
@@ -130,15 +131,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const authHeader = request.headers.get("authorization");
+  const bearerToken = parseBearer(request.headers.get("authorization"));
   let apiKeyId: number | null = null;
   let apiKeyDailyLimit: number | null = null;
   let isApiKeyAuth = false;
   let authedUserId: number | null = null;
 
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7);
-    const keyData = await validateApiKey(token);
+  if (bearerToken !== null) {
+    const keyData = await validateApiKey(bearerToken);
 
     if (!keyData) {
       return NextResponse.json(

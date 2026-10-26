@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
+import { parseBearer } from "@/lib/api/bearer";
 import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
@@ -29,7 +30,6 @@ import {
 import pool from "@/lib/database/db";
 import {
   APP_NAME,
-  BEARER_PREFIX,
   DEFAULT_SCAN_NOTE,
   ERROR_MESSAGES,
   SEVERITY_LEVELS,
@@ -176,7 +176,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  const authHeader = request.headers.get("authorization");
+  const bearerToken = parseBearer(request.headers.get("authorization"));
   let authedUserId: number | null = null;
   let isApiKeyAuth = false;
   // Set in the session branch when the read-only daily-quota gate passes; the
@@ -186,9 +186,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   let chargeDailyQuota = false;
   let dailyQuotaLimit = -1;
 
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(BEARER_PREFIX.length);
-    const keyData = await validateApiKey(token);
+  if (bearerToken !== null) {
+    const keyData = await validateApiKey(bearerToken);
     if (!keyData)
       return ApiResponse.unauthorized("Invalid or revoked API key.");
     if (keyData.needsTermsAcceptance) {

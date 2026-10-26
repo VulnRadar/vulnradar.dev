@@ -11,6 +11,7 @@ import {
   getProtocolType,
 } from "@/lib/scanner/execute-scan";
 import { getSession } from "@/lib/auth";
+import { parseBearer } from "@/lib/api/bearer";
 import { validateApiKey, checkRateLimit } from "@/lib/api/api-keys";
 import {
   hasApiKeyScope,
@@ -27,7 +28,7 @@ import {
   getRateLimitHeaders,
 } from "@/lib/rate-limiting/daily-limits";
 import type { Category } from "@/lib/scanner/types";
-import { BEARER_PREFIX, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
+import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { logError } from "@/lib/logging/log";
 import { withErrorHandling } from "@/lib/api/api-utils";
 import { getSetting } from "@/lib/config/runtime-config";
@@ -62,7 +63,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     if (paused) return paused;
 
     // Auth: check API key first (Bearer token), then fall back to session cookie
-    const authHeader = request.headers.get("authorization");
+    const bearerToken = parseBearer(request.headers.get("authorization"));
     let apiKeyId: number | null = null;
     let isApiKeyAuth = false;
     let authedUserId: number | null = null;
@@ -74,9 +75,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       null;
     let keyData: Awaited<ReturnType<typeof validateApiKey>> | null = null;
 
-    if (authHeader?.startsWith(BEARER_PREFIX)) {
-      const token = authHeader.slice(7);
-      keyData = await validateApiKey(token);
+    if (bearerToken !== null) {
+      keyData = await validateApiKey(bearerToken);
 
       if (!keyData) {
         return NextResponse.json(

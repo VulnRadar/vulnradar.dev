@@ -3,11 +3,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
-import {
-  ERROR_MESSAGES,
-  SUCCESS_MESSAGES,
-  BEARER_PREFIX,
-} from "@/lib/config/constants";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import type { SettingKey } from "@/lib/config/registry";
 import { buildHistoryFilter } from "@/lib/history/list-filter";
@@ -15,6 +11,7 @@ import {
   incompleteFlagSql,
   withPublicErrorMessage,
 } from "@/lib/history/list-row";
+import { parseBearer } from "@/lib/api/bearer";
 import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
@@ -95,14 +92,13 @@ function parseFilters(searchParams: URLSearchParams): {
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const authHeader = request.headers.get("authorization");
+  const bearerToken = parseBearer(request.headers.get("authorization"));
   let authedUserId: number | null = null;
   let apiKeyId: number | null = null;
   let keyData: Awaited<ReturnType<typeof validateApiKey>> = null;
 
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7);
-    keyData = await validateApiKey(token);
+  if (bearerToken !== null) {
+    keyData = await validateApiKey(bearerToken);
 
     if (!keyData) {
       return ApiResponse.unauthorized("Invalid or revoked API key.");
@@ -298,14 +294,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
 export const DELETE = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const authHeader = request.headers.get("authorization");
+  const bearerToken = parseBearer(request.headers.get("authorization"));
   let authedUserId: number | null = null;
   let apiKeyId: number | null = null;
   let keyData: Awaited<ReturnType<typeof validateApiKey>> = null;
 
-  if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7);
-    keyData = await validateApiKey(token);
+  if (bearerToken !== null) {
+    keyData = await validateApiKey(bearerToken);
 
     if (!keyData) {
       return ApiResponse.unauthorized("Invalid or revoked API key.");
