@@ -15,8 +15,8 @@ import { LandingCta } from "@/components/landing/landing-cta";
 import { LandingSocialPrompt } from "@/components/landing/landing-social-prompt";
 import { pageMetadata } from "@/lib/seo/metadata";
 import {
-  FaqStructuredData,
   SoftwareStructuredData,
+  WebSiteStructuredData,
 } from "@/components/seo/structured-data";
 import {
   APP_NAME,
@@ -29,8 +29,10 @@ import { getCategoryCounts } from "@/lib/scanner/registry";
 import { AGENTIC_PENTEST_FAQ } from "@/lib/seo/alternatives";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Scan Any Website for Security Issues",
-  description: `Paste a URL, get a security report in under 3 seconds: ${TOTAL_CHECKS_LABEL} deterministic checks across headers, TLS, cookies, DNS, and secrets. No agent to install.`,
+  // Brand first on the home page, then the category people search for.
+  title: `${APP_NAME}: Open-Source Website Security Scanner`,
+  absoluteTitle: true,
+  description: `Paste a URL and get ${TOTAL_CHECKS_LABEL} security checks back, from headers, CSP, TLS and cookies to exposed .env files and leaked API keys, each with evidence and a fix.`,
   // Canonicalised to the ROOT, not to /landing.
   //
   // / permanently redirects here, so both URLs serve this page, and pointing
@@ -128,8 +130,8 @@ export default async function LandingPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <WebSiteStructuredData nonce={nonce} />
       <SoftwareStructuredData nonce={nonce} />
-      <FaqStructuredData items={faq} nonce={nonce} />
       <LandingNav />
       <main id="main-content" tabIndex={-1} className="flex-1 min-w-0">
         <LandingHero checkCount={checkCount} categoryCount={categoryCount} />

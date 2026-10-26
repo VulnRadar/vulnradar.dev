@@ -77,25 +77,29 @@ function endOnSentence(text: string, max: number, min: number): string | null {
   return null;
 }
 
+// The check's own description leads. It used to open with a
+// "<Severity>-severity <category> finding." lead-in, so all ~800 snippets
+// started with one of a handful of identical phrases and the part that
+// matches a search ("Strict-Transport-Security header is missing") came
+// second or got cut. The severity now goes last, and only when it fits.
 export function buildCheckDescription(check: SeoCheck): string {
-  const severity = check.severity;
-  const label = getCategoryLabel(check.category).toLowerCase();
-  const lead = `${severity.charAt(0).toUpperCase()}${severity.slice(1)}-severity ${label} finding.`;
-  const full = `${lead} ${normalise(check.description)}`;
-  if (full.length > DESCRIPTION_MAX) {
+  const description = normalise(check.description);
+  if (description.length > DESCRIPTION_MAX) {
     // Prefer stopping on a complete sentence; the word-boundary clamp is the
     // last resort for a check whose first sentence is itself over the window.
     // clampText's `max` bounds the text BEFORE its ellipsis, so the budget it
     // gets has to leave room for the three dots it appends.
     return (
-      endOnSentence(full, DESCRIPTION_MAX, 100) ??
-      clampText(full, DESCRIPTION_MAX - 3)
+      endOnSentence(description, DESCRIPTION_MAX, 80) ??
+      clampText(description, DESCRIPTION_MAX - 3)
     );
   }
+  const fits = (extra: string) =>
+    description.length + 1 + extra.length <= DESCRIPTION_MAX;
   const risk = check.riskImpact ? normalise(check.riskImpact) : "";
   // riskImpact is appended only when the whole sentence fits, so a terse
   // description still fills the window without ever being cut in half.
-  return risk && full.length + 1 + risk.length <= DESCRIPTION_MAX
-    ? `${full} ${risk}`
-    : full;
+  if (risk && fits(risk)) return `${description} ${risk}`;
+  const severity = `${check.severity.charAt(0).toUpperCase()}${check.severity.slice(1)} severity.`;
+  return fits(severity) ? `${description} ${severity}` : description;
 }

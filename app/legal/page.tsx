@@ -2,6 +2,7 @@ import Link from "next/link";
 import { APP_NAME } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { LegalLanguageNotice } from "@/components/legal";
+import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 
 const legalPages = [
   {
@@ -54,6 +55,12 @@ export default async function LegalIndexPage() {
   });
   return (
     <div className="space-y-8">
+      <BreadcrumbStructuredData
+        items={[
+          { name: "Home", path: "/" },
+          { name: "Legal", path: "/legal" },
+        ]}
+      />
       <div>
         <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance text-foreground">
           Legal

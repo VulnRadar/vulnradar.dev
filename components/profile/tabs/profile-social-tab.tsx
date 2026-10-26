@@ -28,6 +28,8 @@ import type { ProfileTabProps } from "../types";
 
 const DiscordIcon = () => (
   <svg
+    width="1em"
+    height="1em"
     className="h-5 w-5 text-white"
     viewBox="0 0 24 24"
     fill="currentColor"

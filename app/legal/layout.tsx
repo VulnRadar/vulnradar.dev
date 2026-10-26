@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { pageMetadata } from "@/lib/seo/metadata";
-import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 import { LegalShell } from "@/components/legal";
 
-const TITLE = "VulnRadar Legal: Terms, Privacy, and DMCA";
+const TITLE = "Legal: Terms, Privacy and DMCA";
 const DESCRIPTION =
   "The terms of service, privacy policy, acceptable use policy, disclaimer, accessibility statement, and DMCA policy that govern using VulnRadar.";
 
@@ -17,19 +15,13 @@ export const metadata: Metadata = pageMetadata({
   isSectionRoot: true,
 });
 
-export default async function LegalLayout({
+// No breadcrumb here. A layout wraps every legal page, so its one-item
+// "Legal" trail was emitted alongside each page's own, and every legal page
+// carried two BreadcrumbLists. The index page now emits its own.
+export default function LegalLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const nonce = (await headers()).get("x-nonce") ?? "";
-  return (
-    <>
-      <BreadcrumbStructuredData
-        items={[{ name: "Legal", path: "/legal" }]}
-        nonce={nonce}
-      />
-      <LegalShell>{children}</LegalShell>
-    </>
-  );
+  return <LegalShell>{children}</LegalShell>;
 }

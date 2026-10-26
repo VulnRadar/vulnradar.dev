@@ -64,8 +64,9 @@ describe("RouteError keeps the page's chrome", () => {
     expect(src).toContain("{action ?? (");
     expect(src).toContain("ROUTES.DASHBOARD");
     expect(src).toContain("Back to scanner");
-    // The public shell has no scanner to go back to.
-    expect(src).toContain("ROUTES.LANDING");
+    // The public shell has no scanner to go back to. The home page is "/"
+    // itself now, so that is where "home" goes.
+    expect(src).toContain("ROUTES.HOME");
     expect(src).toContain("Back to home");
   });
 

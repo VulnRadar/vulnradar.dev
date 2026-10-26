@@ -4,7 +4,6 @@ import Link from "next/link";
 import { pageMetadata } from "@/lib/seo/metadata";
 import {
   BreadcrumbStructuredData,
-  FaqStructuredData,
   SoftwareStructuredData,
 } from "@/components/seo/structured-data";
 import {
@@ -63,7 +62,7 @@ const HIGHLIGHTS = [
 export default async function ApiScannerPage() {
   const nonce = (await headers()).get("x-nonce") ?? "";
   const breadcrumb = [
-    { name: "Home", path: "/landing" },
+    { name: "Home", path: "/" },
     { name: "Tools", path: "/tools" },
     { name: "API Scanner", path: "/tools/api-scanner" },
   ];
@@ -73,7 +72,6 @@ export default async function ApiScannerPage() {
     <SeoPageShell>
       <BreadcrumbStructuredData items={breadcrumb} nonce={nonce} />
       <SoftwareStructuredData nonce={nonce} />
-      <FaqStructuredData items={FAQ} nonce={nonce} />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <Breadcrumbs items={breadcrumb} />

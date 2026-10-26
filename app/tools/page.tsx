@@ -40,7 +40,7 @@ const TOOLS = [
 export default async function ToolsIndexPage() {
   const nonce = (await headers()).get("x-nonce") ?? "";
   const breadcrumb = [
-    { name: "Home", path: "/landing" },
+    { name: "Home", path: "/" },
     { name: "Tools", path: "/tools" },
   ];
 

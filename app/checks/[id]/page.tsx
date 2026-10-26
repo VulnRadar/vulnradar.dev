@@ -6,8 +6,6 @@ import { pageMetadata, clampText } from "@/lib/seo/metadata";
 import { buildCheckTitle, buildCheckDescription } from "@/lib/seo/check-meta";
 import {
   BreadcrumbStructuredData,
-  FaqStructuredData,
-  HowToStructuredData,
   TechArticleStructuredData,
 } from "@/components/seo/structured-data";
 import { CodeBlock, InlineCode } from "@/components/docs";
@@ -134,7 +132,7 @@ export default async function CheckPage({
     .slice(0, 8);
 
   const breadcrumb = [
-    { name: "Home", path: "/landing" },
+    { name: "Home", path: "/" },
     { name: "Checks", path: "/checks" },
     { name: label, path: categoryPath },
     { name: check.title, path: checkPath(check.id) },
@@ -148,16 +146,6 @@ export default async function CheckPage({
         path={checkPath(check.id)}
         nonce={nonce}
       />
-      <FaqStructuredData items={faq} nonce={nonce} />
-      {check.fixSteps.length > 0 && (
-        <HowToStructuredData
-          name={`How to fix: ${check.title}`}
-          description={clampText(check.riskImpact, 300)}
-          steps={check.fixSteps}
-          path={checkPath(check.id)}
-          nonce={nonce}
-        />
-      )}
       <BreadcrumbStructuredData items={breadcrumb} nonce={nonce} />
 
       <article className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
@@ -209,11 +197,16 @@ export default async function CheckPage({
           <p className="text-sm sm:text-base text-foreground/90 leading-relaxed">
             {check.riskImpact}
           </p>
-          {check.explanation && check.explanation !== check.riskImpact && (
-            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-              {check.explanation}
-            </p>
-          )}
+          {/* Not when it repeats a paragraph already shown: 117 checks have
+              an explanation identical to their description, and printed it
+              twice, once at the top and again here. */}
+          {check.explanation &&
+            check.explanation !== check.riskImpact &&
+            check.explanation !== check.description && (
+              <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+                {check.explanation}
+              </p>
+            )}
         </section>
 
         {check.fixSteps.length > 0 && (

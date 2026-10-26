@@ -1,4 +1,5 @@
 import createNextIntlPlugin from "next-intl/plugin";
+import { HTML_LIMITED_BOT_UA_RE } from "next/dist/shared/lib/router/utils/html-bots.js";
 
 // Points next-intl at lib/i18n/request.ts rather than its default ./i18n
 // path, so the whole translation layer lives in one directory with the rest
@@ -54,6 +55,22 @@ const nextConfig = {
   // accidental re-enablement via future config additions.
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
+  // Crawlers that get the <title>, canonical, hreflang and icon links in the
+  // <head>. Next streams page metadata into the <body> for any user agent
+  // not on this list, and its default list leaves out Googlebot itself
+  // (on the reasoning that it runs JavaScript, after which React moves the
+  // tags into the head). Google's documentation says it honours a canonical
+  // only in the <head>, and reads the favicon from the home page's <head>,
+  // so the raw HTML has to have them there. The AI crawlers mostly do not run
+  // JavaScript at all. The cost is that these user agents wait for metadata
+  // before the first byte, which on this app is a few milliseconds.
+  //
+  // Setting this replaces Next's default list, so the default is extended
+  // rather than restated: a Next upgrade that moves it fails the build.
+  htmlLimitedBots: new RegExp(
+    `${HTML_LIMITED_BOT_UA_RE.source}|Googlebot|Google Favicon|Storebot|bingbot|GPTBot|OAI-SearchBot|ChatGPT-User|ClaudeBot|Claude-User|Claude-SearchBot|PerplexityBot|Perplexity-User|CCBot|Amazonbot|DuckAssistBot|Bytespider|Meta-ExternalAgent`,
+    "i",
+  ),
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {

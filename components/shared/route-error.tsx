@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { PublicPageShell } from "@/components/shared/public-page-shell";
 import { ROUTES } from "@/lib/config/client-constants";
+import { reloadOnceForStaleChunk } from "@/lib/ui/stale-chunk";
 
 interface RouteErrorProps {
   /** The route's own name, used in the console tag: "[Profile] ...". */
@@ -56,6 +57,9 @@ export function RouteError({
   chrome = "app",
 }: RouteErrorProps) {
   useEffect(() => {
+    // A chunk from the build before the last deploy: reload into the new one
+    // instead of showing an error for a page that is fine.
+    if (reloadOnceForStaleChunk(error)) return;
     console.error(`[${area}] Unhandled error:`, error);
   }, [area, error]);
 
@@ -97,9 +101,7 @@ export function RouteError({
                 depend on the client router still being sound. */}
             {action ?? (
               <Button asChild variant="outline">
-                <a
-                  href={chrome === "public" ? ROUTES.LANDING : ROUTES.DASHBOARD}
-                >
+                <a href={chrome === "public" ? ROUTES.HOME : ROUTES.DASHBOARD}>
                   <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                   {chrome === "public" ? "Back to home" : "Back to scanner"}
                 </a>

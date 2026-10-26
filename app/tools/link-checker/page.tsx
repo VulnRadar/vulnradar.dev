@@ -4,7 +4,6 @@ import Link from "next/link";
 import { pageMetadata } from "@/lib/seo/metadata";
 import {
   BreadcrumbStructuredData,
-  FaqStructuredData,
   SoftwareStructuredData,
 } from "@/components/seo/structured-data";
 import { SeoPageShell, Breadcrumbs, ScanCta, SeoFaq } from "@/lib/seo/seo-ui";
@@ -102,7 +101,7 @@ function toneFor(severity: "high" | "medium" | null): string {
 export default async function LinkCheckerPage() {
   const nonce = (await headers()).get("x-nonce") ?? "";
   const breadcrumb = [
-    { name: "Home", path: "/landing" },
+    { name: "Home", path: "/" },
     { name: "Tools", path: "/tools" },
     { name: "Link Checker", path: "/tools/link-checker" },
   ];
@@ -111,7 +110,6 @@ export default async function LinkCheckerPage() {
     <SeoPageShell>
       <BreadcrumbStructuredData items={breadcrumb} nonce={nonce} />
       <SoftwareStructuredData nonce={nonce} />
-      <FaqStructuredData items={FAQ} nonce={nonce} />
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <Breadcrumbs items={breadcrumb} />

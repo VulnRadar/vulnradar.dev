@@ -4,7 +4,6 @@ import {
   APP_URL,
   APP_DESCRIPTION,
   APP_VERSION,
-  LOGO_URL,
   SEO_TAGLINE,
   SEO_GITHUB_URL,
   SEO_LANGUAGE,
@@ -20,9 +19,13 @@ import {
 /**
  * JSON-LD structured data.
  *
- * Search engines use this to build rich results: the sitelinks search box,
- * the software panel with rating and price, breadcrumb trails, and FAQ
- * accordions in the results page. Plain HTML gives them none of that.
+ * Only types that still do something. Google retired FAQ rich results for
+ * every site on 2026-05-07 and HowTo in 2023, and the sitelinks search box in
+ * 2024, so FAQPage and HowTo blocks were six extra scripts on every check page
+ * that earned nothing; the FAQs themselves are still on the page as text. What
+ * is left: Organization (who publishes the site), WebSite (the site name, on
+ * the home page only, where Google reads it), SoftwareApplication, breadcrumb
+ * trails (desktop results) and TechArticle for reference pages.
  *
  * Everything is derived from lib/config so a self-hosted deployment does not
  * publish our name, repo, or contact details.
@@ -62,12 +65,16 @@ function JsonLd({
 
 const ORGANIZATION_ID = `${APP_URL}/#organization`;
 const WEBSITE_ID = `${APP_URL}/#website`;
+const HOME_URL = `${APP_URL}/`;
+/** Written by scripts/assets/build-icons.mjs from public/favicon.svg. */
+const ORGANIZATION_LOGO = { url: `${APP_URL}/icon-512.png`, size: 512 };
 
 /**
- * Organization plus WebSite. Belongs on every page: the @id references let
- * the other blocks point at these instead of repeating them.
+ * Organization, on every page, so the @id that TechArticle and
+ * SoftwareApplication point at as their publisher always resolves on the page
+ * that references it.
  */
-export function SiteStructuredData({ nonce }: { nonce?: string }) {
+export function OrganizationStructuredData({ nonce }: { nonce?: string }) {
   // sameAs links the entity to its verified profiles elsewhere, which is what
   // answer engines use to resolve "VulnRadar" to one thing. All real and
   // config-derived: the source repo, every configured social account
@@ -89,41 +96,59 @@ export function SiteStructuredData({ nonce }: { nonce?: string }) {
   ];
 
   return (
-    <>
-      <JsonLd
-        nonce={nonce}
-        data={{
-          "@context": "https://schema.org",
-          "@type": "Organization",
-          "@id": ORGANIZATION_ID,
-          name: APP_NAME,
-          url: APP_URL,
-          logo: LOGO_URL,
-          description: APP_DESCRIPTION,
-          foundingDate: SEO_ORG_FOUNDING_YEAR,
-          ...(sameAs.length ? { sameAs } : {}),
-          contactPoint: {
-            "@type": "ContactPoint",
-            email: SUPPORT_EMAIL,
-            contactType: "customer support",
-            availableLanguage: SEO_LANGUAGE,
-          },
-        }}
-      />
-      <JsonLd
-        nonce={nonce}
-        data={{
-          "@context": "https://schema.org",
-          "@type": "WebSite",
-          "@id": WEBSITE_ID,
-          name: APP_NAME,
-          url: APP_URL,
-          description: APP_DESCRIPTION,
-          publisher: { "@id": ORGANIZATION_ID },
-          inLanguage: SEO_LANGUAGE,
-        }}
-      />
-    </>
+    <JsonLd
+      nonce={nonce}
+      data={{
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "@id": ORGANIZATION_ID,
+        name: APP_NAME,
+        url: HOME_URL,
+        // A raster logo at least 112px square is what Google accepts here.
+        // This was /favicon.svg, a dark disc on a transparent square.
+        logo: {
+          "@type": "ImageObject",
+          url: ORGANIZATION_LOGO.url,
+          width: ORGANIZATION_LOGO.size,
+          height: ORGANIZATION_LOGO.size,
+        },
+        description: APP_DESCRIPTION,
+        foundingDate: SEO_ORG_FOUNDING_YEAR,
+        ...(sameAs.length ? { sameAs } : {}),
+        contactPoint: {
+          "@type": "ContactPoint",
+          email: SUPPORT_EMAIL,
+          contactType: "customer support",
+          availableLanguage: SEO_LANGUAGE,
+        },
+      }}
+    />
+  );
+}
+
+/**
+ * WebSite, on the home page only. This is where Google takes the site name
+ * shown above a result, and its documentation is explicit that it reads the
+ * markup from the home page and nowhere else. The alternate name is the bare
+ * domain, which is the fallback Google itself suggests when it does not pick
+ * the preferred name.
+ */
+export function WebSiteStructuredData({ nonce }: { nonce?: string }) {
+  return (
+    <JsonLd
+      nonce={nonce}
+      data={{
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "@id": WEBSITE_ID,
+        name: APP_NAME,
+        alternateName: [new URL(APP_URL).host],
+        url: HOME_URL,
+        description: APP_DESCRIPTION,
+        publisher: { "@id": ORGANIZATION_ID },
+        inLanguage: SEO_LANGUAGE,
+      }}
+    />
   );
 }
 
@@ -133,8 +158,11 @@ interface SoftwareOffer {
 }
 
 /**
- * SoftwareApplication. Drives the software rich result, which shows price and
- * category directly in search listings.
+ * SoftwareApplication. Google's software rich result also needs a rating or a
+ * review, and this site has neither and will not invent one, so this does not
+ * earn the rich result on its own. It still states what the product is, that
+ * it is free to use, and what each paid plan costs, which is what answer
+ * engines read it for.
  */
 export function SoftwareStructuredData({
   offers = [],
@@ -171,17 +199,15 @@ export function SoftwareStructuredData({
           "Scheduled and bulk scanning",
           "REST API and webhooks",
         ],
-        ...(offers.length
-          ? {
-              offers: offers.map((o) => ({
-                "@type": "Offer",
-                name: o.name,
-                price: (o.priceInCents / 100).toFixed(2),
-                priceCurrency: "USD",
-                availability: "https://schema.org/InStock",
-              })),
-            }
-          : {}),
+        // The free tier first: true on every deployment, billing or not
+        // (with billing off, every account gets everything for nothing).
+        offers: [{ name: "Free", priceInCents: 0 }, ...offers].map((o) => ({
+          "@type": "Offer",
+          name: o.name,
+          price: (o.priceInCents / 100).toFixed(2),
+          priceCurrency: "USD",
+          availability: "https://schema.org/InStock",
+        })),
       }}
     />
   );
@@ -209,73 +235,6 @@ export function BreadcrumbStructuredData({
           position: i + 1,
           name: item.name,
           item: `${APP_URL}${item.path}`,
-        })),
-      }}
-    />
-  );
-}
-
-/**
- * FAQPage. Eligible for an expandable answer block in search results, which
- * takes up far more vertical space than a standard listing.
- */
-export function FaqStructuredData({
-  items,
-  nonce,
-}: {
-  items: { question: string; answer: string }[];
-  nonce?: string;
-}) {
-  return (
-    <JsonLd
-      nonce={nonce}
-      data={{
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        mainEntity: items.map((item) => ({
-          "@type": "Question",
-          name: item.question,
-          acceptedAnswer: { "@type": "Answer", text: item.answer },
-        })),
-      }}
-    />
-  );
-}
-
-/**
- * HowTo. The per-check fix guides are literally ordered remediation steps, so
- * marking them up as a HowTo lets generative engines lift the exact sequence
- * to answer a "how do I fix X" question. Only render this where the page
- * actually shows those steps, so the structured data never claims a procedure
- * the reader cannot see (which Google also penalises).
- */
-export function HowToStructuredData({
-  name,
-  description,
-  steps,
-  path,
-  nonce,
-}: {
-  name: string;
-  description: string;
-  steps: string[];
-  path: string;
-  nonce?: string;
-}) {
-  return (
-    <JsonLd
-      nonce={nonce}
-      data={{
-        "@context": "https://schema.org",
-        "@type": "HowTo",
-        name,
-        description,
-        url: `${APP_URL}${path}`,
-        inLanguage: SEO_LANGUAGE,
-        step: steps.map((text, i) => ({
-          "@type": "HowToStep",
-          position: i + 1,
-          text,
         })),
       }}
     />

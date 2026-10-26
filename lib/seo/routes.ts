@@ -44,7 +44,6 @@ export const STATIC_PUBLIC_ROUTES: readonly PublicRoute[] = [
   { path: "/tools", priority: 0.7, changeFrequency: "monthly" },
   { path: "/tools/api-scanner", priority: 0.7, changeFrequency: "monthly" },
   { path: "/tools/link-checker", priority: 0.7, changeFrequency: "monthly" },
-  { path: "/public-scans", priority: 0.6, changeFrequency: "daily" },
   { path: "/changelog", priority: 0.6, changeFrequency: "weekly" },
   { path: "/contact", priority: 0.5, changeFrequency: "yearly" },
   { path: "/security", priority: 0.5, changeFrequency: "yearly" },
@@ -123,39 +122,21 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
 ];
 
 /**
- * Paths crawlers must not index. Two kinds live here:
+ * Paths crawlers must not FETCH. Short on purpose: Disallow is not how a page
+ * is kept out of search (see the note at the bottom of this list), so what is
+ * here is only what a crawler must not request at all.
  *
- *  - Authenticated surfaces. Crawling them wastes budget and they render as
- *    a login redirect anyway, so an indexed copy is a thin duplicate.
- *  - Tokenised or per-entity URLs (/shared/<token>, /browser/<id>,
- *    /host/<hostname>). Not enumerable ahead of time, so there is no fixed
- *    list to publish a sitemap entry or canonical for -- unlisted by design,
- *    not because the page is private.
+ * /shared/, /host/, /browser/ and /badge used to be listed. All four carry a
+ * noindex, and the Disallow stopped Google ever reading it, so a scan report
+ * linked from elsewhere could sit in the index as "Indexed, though blocked by
+ * robots.txt" (Search Console counted 16 blocked URLs). They are crawlable now
+ * and the noindex does the job. That also let link-preview bots back in
+ * without a robots.txt group of their own.
  */
 export const DISALLOWED_PATHS: readonly string[] = [
   "/api/",
-  // Tokenised or per-entity report URLs. Not enumerable, so there is no fixed
-  // list to publish a sitemap entry or a canonical for. Both carry a noindex of
-  // their own, and app/robots.ts re-allows the link-preview fetchers back into
-  // these two so a pasted report still unfurls.
-  //
-  // The two comment blocks that used to sit here described "/admin" and
-  // "/compare" entries. Both were removed by the auth-gated-routes rule at the
-  // bottom of this list; the comments stayed behind and read as if they
-  // explained "/shared/".
-  "/shared/",
-  "/host/",
-  "/browser/",
-  // Auth-gated. The badge BUILDER reads the caller's own scan history and is
-  // out of PUBLIC_PATHS, so a crawl of it lands on /login?redirect=/badge. The
-  // badge IMAGE it produces lives under /api/ and is disallowed by the first
-  // entry in this list, which is right too: it is an image embedded on someone
-  // else's page, not a page of ours to index.
-  //
-  // This is the one auth-gated path still listed, against the rule at the
-  // bottom of this list, and tests/lib/seo/routes.test.ts exempts it by name so
-  // the exception is deliberate rather than an oversight.
-  "/badge",
+  // One-time-token pages: a crawler FETCHING one can consume the token and
+  // break the user's real click. Not an indexing decision.
   "/verify-email",
   "/reset-password",
   "/forgot-password",

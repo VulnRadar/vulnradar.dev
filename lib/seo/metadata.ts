@@ -45,6 +45,11 @@ interface PageSeoOptions {
    * on both this page and everything beneath it.
    */
   isSectionRoot?: boolean;
+  /**
+   * Publish `title` exactly as given, without the " | <app>" suffix. For the
+   * home page, whose title starts with the brand instead of ending with it.
+   */
+  absoluteTitle?: boolean;
 }
 
 /**
@@ -65,22 +70,32 @@ export function pageMetadata({
   type = "website",
   publishedTime,
   isSectionRoot = false,
+  absoluteTitle = false,
 }: PageSeoOptions): Metadata {
   const url = `${APP_URL}${path}`;
   // The root layout applies a "%s | <app>" template, so `title` here is the
   // page part only. Social cards do not inherit that template, so they get
   // the full string.
-  const fullTitle = `${title} | ${APP_NAME}`;
+  const fullTitle = absoluteTitle ? title : `${title} | ${APP_NAME}`;
 
   return {
     // `default` is still passed through the root template, so it stays the
     // bare page title. `template` is what child routes inherit.
-    title: isSectionRoot
-      ? { default: title, template: `%s | ${APP_NAME}` }
-      : title,
+    title: absoluteTitle
+      ? { absolute: title }
+      : isSectionRoot
+        ? { default: title, template: `%s | ${APP_NAME}` }
+        : title,
     description,
     ...(keywords?.length ? { keywords } : {}),
-    alternates: { canonical: url },
+    // Self-referencing hreflang with an x-default. Every language is served
+    // at this one URL (the locale comes from a cookie or Accept-Language, and
+    // Googlebot sends neither), so the English page is the only version a
+    // crawler sees and the right fallback for everyone else. No other
+    // language is listed because none has a URL of its own to list.
+    alternates: noIndex
+      ? { canonical: url }
+      : { canonical: url, languages: { en: url, "x-default": url } },
     robots: noIndex
       ? { index: false, follow: false, nocache: true }
       : {

@@ -6,30 +6,6 @@ import { DISALLOWED_PATHS, SCANNER_DISALLOWED_PATHS } from "@/lib/seo/routes";
 export const dynamic = "force-static";
 
 /**
- * Link-preview (unfurl) fetchers. These are not indexers: they fetch a URL
- * once to read its Open Graph tags so a pasted link renders as a card. They
- * honour robots.txt, so a Disallow on /shared/ and /host/ silently reduced
- * every shared report to a bare link in Slack, X, LinkedIn, Discord and
- * iMessage.
- */
-const PREVIEW_CRAWLERS = [
-  "Twitterbot",
-  "facebookexternalhit",
-  "Facebot",
-  "Slackbot",
-  "Slackbot-LinkExpanding",
-  "LinkedInBot",
-  "Discordbot",
-  "WhatsApp",
-  "TelegramBot",
-  "redditbot",
-  "Applebot", // also powers iMessage link previews
-  "SkypeUriPreview",
-  "vkShare",
-  "Iframely",
-];
-
-/**
  * The answer-engine and generative-engine crawlers we explicitly want reading
  * the public content: search-grounding fetchers (an AI cites us when it
  * answers a question), training crawlers (Google-Extended, Applebot-Extended,
@@ -66,22 +42,13 @@ const AI_CRAWLERS = [
   "Meta-ExternalAgent",
 ];
 
-// Query-string patterns to keep out of the index without hiding the underlying
-// page. /login and /signup stay fully indexable and in the sitemap, but a
-// protected page bouncing an anonymous visitor produces /login?redirect=<path>
-// (and /signup?redirect=<path>) variants that Search Console flagged as
-// "duplicate without user-selected canonical". A `*` wildcard (honored by
-// Google/Bing) blocks only the redirect-carrying variants; the clean paths
-// (no ?redirect=) never match, so they crawl and index normally.
-const QUERY_DISALLOW = ["/*?redirect="];
-
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
         userAgent: "*",
         allow: "/",
-        disallow: [...DISALLOWED_PATHS, ...QUERY_DISALLOW],
+        disallow: [...DISALLOWED_PATHS],
       },
       {
         // Explicitly allow the AI answer/generative engines onto the full
@@ -90,26 +57,7 @@ export default function robots(): MetadataRoute.Robots {
         // for them). Same private/tokenised paths stay disallowed.
         userAgent: AI_CRAWLERS,
         allow: "/",
-        disallow: [...DISALLOWED_PATHS, ...QUERY_DISALLOW],
-      },
-      {
-        // seo: link-preview fetchers must reach /shared/ and /host/, which the
-        // wildcard group above disallows. These bots honour robots.txt, so a
-        // shared scan report pasted into Slack, X, LinkedIn, Discord or
-        // iMessage unfurled as a bare URL with no title, description or image.
-        // Sharing a report is a core feature and the main organic loop, so
-        // that was the loop silently broken.
-        //
-        // Allowing them costs nothing in indexing terms: those pages already
-        // carry a `noindex` robots meta tag, which is what actually keeps them
-        // out of search results. robots.txt Disallow was never the control
-        // doing that job, it only stopped the preview fetch.
-        userAgent: PREVIEW_CRAWLERS,
-        allow: ["/shared/", "/host/", "/"],
-        disallow: [
-          ...DISALLOWED_PATHS.filter((p) => p !== "/shared/" && p !== "/host/"),
-          ...QUERY_DISALLOW,
-        ],
+        disallow: [...DISALLOWED_PATHS],
       },
       {
         // VulnRadar's own scan crawler honors Disallow rules that name it
@@ -121,11 +69,7 @@ export default function robots(): MetadataRoute.Robots {
         // document for others who want pages kept out of a VulnRadar scan.
         userAgent: APP_NAME,
         allow: "/",
-        disallow: [
-          ...DISALLOWED_PATHS,
-          ...SCANNER_DISALLOWED_PATHS,
-          ...QUERY_DISALLOW,
-        ],
+        disallow: [...DISALLOWED_PATHS, ...SCANNER_DISALLOWED_PATHS],
       },
     ],
     sitemap: `${APP_URL}/sitemap.xml`,

@@ -44,8 +44,12 @@ export default function DemoPage() {
     );
   }
 
+  // No fallback. It used to be <DemoScanning />, whose "Running checks"
+  // heading went into the server HTML ahead of the real page, so a crawler
+  // read two h1s and the first one claimed a scan was in progress. The
+  // boundary resolves in the same response, so there is nothing to bridge.
   return (
-    <Suspense fallback={<DemoScanning />}>
+    <Suspense fallback={null}>
       <DemoPageContent />
     </Suspense>
   );

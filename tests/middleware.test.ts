@@ -189,6 +189,38 @@ describe("middleware: public path / auth redirects", () => {
     expect(res.status).not.toBe(308);
   });
 
+  // The /login?redirect=<path> variants a protected page produces are the
+  // login page again under another URL; the clean /login stays indexable.
+  it("sends noindex on a login or signup URL carrying ?redirect, and not on the clean one", () => {
+    expect(
+      middleware(makeRequest("/login?redirect=%2Fhistory")).headers.get(
+        "x-robots-tag",
+      ),
+    ).toBe("noindex");
+    expect(
+      middleware(makeRequest("/signup?redirect=%2Fbadge")).headers.get(
+        "x-robots-tag",
+      ),
+    ).toBe("noindex");
+    expect(middleware(makeRequest("/login")).headers.get("x-robots-tag")).toBe(
+      null,
+    );
+  });
+
+  it("sends a retired check page to its replacement with a 301", () => {
+    const res = middleware(makeRequest("/checks/csp-frame-ancestors"));
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe(
+      "https://vulnradar.dev/checks/clickjack-missing",
+    );
+    const live = middleware(makeRequest("/checks/clickjack-missing"));
+    expect(live.headers.get("location")).toBeNull();
+    // An inherited property name is not a retired check.
+    expect(
+      middleware(makeRequest("/checks/constructor")).headers.get("location"),
+    ).toBeNull();
+  });
+
   it("redirects a logged-in user away from /login to the dashboard", () => {
     const res = middleware(
       makeRequest("/login", { cookie: "vulnradar_session=abc123" }),
@@ -196,31 +228,33 @@ describe("middleware: public path / auth redirects", () => {
     expect(res.headers.get("location")).toContain("/dashboard");
   });
 
-  it("redirects a logged-out visitor on / to /landing", () => {
+  // "/" is the home page and serves it directly. It used to 308 to /landing
+  // while /landing named "/" as its canonical, so Google was told two
+  // opposite things about which URL is the home page.
+  it("serves / to a signed-out visitor without a redirect", () => {
     const res = middleware(makeRequest("/"));
-    expect(res.headers.get("location")).toContain("/landing");
-  });
-
-  // NextResponse.redirect defaults to 307, which tells a crawler the
-  // arrangement is temporary and to keep evaluating "/" as its own URL. The
-  // signed-out root has always resolved to /landing, so it is a 308 and the
-  // link equity consolidates. Nothing asserted the code, so the default
-  // could have come back on any edit to this branch.
-  it("makes the anonymous / redirect permanent (308), not the NextResponse default 307", () => {
-    const res = middleware(makeRequest("/"));
-    expect(res.status).toBe(308);
-  });
-
-  // The other half of the same decision. app/layout.tsx's site-wide fallback
-  // canonical used to be "/", the one path this middleware ALWAYS redirects,
-  // so any page added without its own pageMetadata() call inherited a
-  // canonical naming a URL that never returns 200. It is "/landing" now, and
-  // the invariant worth guarding is not the literal string but that the
-  // fallback names a path the middleware serves directly.
-  it("serves the root layout's fallback canonical without a redirect, so it names a URL that can return 200", () => {
-    expect(fallbackCanonical).toBe("/landing");
-    const res = middleware(makeRequest(fallbackCanonical!));
     expect(res.headers.get("location")).toBeNull();
+    expect([307, 308]).not.toContain(res.status);
+  });
+
+  it("serves / to a signed-in visitor without a redirect", () => {
+    const res = middleware(
+      makeRequest("/", { cookie: "vulnradar_session=abc123" }),
+    );
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  // /landing must not redirect to "/" either: browsers cached the old
+  // permanent redirect the other way, and the pair would loop for them.
+  it("keeps serving /landing, so a cached old redirect still lands on a page", () => {
+    const res = middleware(makeRequest("/landing"));
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  // The root layout's site-wide canonical was inherited only by the 404 and
+  // error pages, which told Google a missing URL was a copy of the home page.
+  it("sets no site-wide fallback canonical in the root layout", () => {
+    expect(fallbackCanonical).toBeUndefined();
   });
 
   it("redirects a protected route to /login when there is no session cookie", () => {

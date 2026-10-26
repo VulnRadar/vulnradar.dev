@@ -2,8 +2,9 @@
  * DISALLOWED_PATHS is what app/robots.ts publishes. A page can be noindex in
  * its own metadata and still be invited into robots.txt, which is what
  * happened to /admin (AUDIT-014#seo-15): the meta tag stops the indexing but
- * only after the crawler has already spent the fetch, and that fetch lands on
- * the /login?redirect=... duplicate the QUERY_DISALLOW rule exists to stop.
+ * only after the crawler has already spent the fetch. The opposite mistake is
+ * the one this file mostly guards now: a noindex page that robots.txt also
+ * blocks, so the noindex is never read.
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -18,6 +19,7 @@ import { CHECK_CATEGORY_LAST_MODIFIED } from "@/lib/config/check-stats.generated
 import { getAllChecks, SEO_CATEGORIES } from "@/lib/seo/checks-content";
 import { DOCS_PAGES } from "@/components/docs/docs-nav";
 import sitemap from "@/app/sitemap";
+import robots from "@/app/robots";
 
 const APP_DIR = join(process.cwd(), "app");
 
@@ -89,13 +91,21 @@ describe("DISALLOWED_PATHS", () => {
       "/verify-email",
       "/unsubscribe",
       "/staff-invite",
-      "/badge",
-      "/host/",
     ];
-    const blocked = privateLayoutPaths().filter(
+    // A dynamic layout records its static prefix ("/shared" for
+    // /shared/[token]), and "/shared" does not start with a "/shared/" rule,
+    // so the check also tries a child path. Without that, this test passed
+    // while /shared/, /host/ and /browser/ were noindex AND disallowed.
+    const blocked = [
+      ...privateLayoutPaths(),
+      "/shared",
+      "/host",
+      "/browser",
+      "/badge",
+    ].filter(
       (p) =>
         !CANNOT_CARRY_A_TAG.some((prefix) => p.startsWith(prefix)) &&
-        isDisallowed(p),
+        (isDisallowed(p) || isDisallowed(`${p}/x`)),
     );
     expect(
       blocked,
@@ -108,6 +118,18 @@ describe("DISALLOWED_PATHS", () => {
     // /api/ serves JSON, so there is no document to put a meta tag in and
     // Disallow is the only control that applies.
     expect(isDisallowed("/api/")).toBe(true);
+  });
+
+  it("publishes the same rules to every crawler group except our own scanner", () => {
+    const groups = [robots().rules].flat();
+    const wildcard = groups.find((g) => g.userAgent === "*");
+    expect(wildcard?.disallow).toEqual([...DISALLOWED_PATHS]);
+    for (const group of groups) {
+      // No redirect-variant wildcard any more: the header in middleware.ts
+      // keeps those out of the index instead.
+      expect([group.disallow].flat()).not.toContain("/*?redirect=");
+      expect([group.disallow].flat()).not.toContain("/shared/");
+    }
   });
 
   it("never disallows a route that is published as public and indexable", () => {
@@ -148,10 +170,6 @@ describe("DOCS_NAV", () => {
 describe("sitemap coverage", () => {
   it("has a real page file behind every hand-listed route", () => {
     const missing = STATIC_PUBLIC_ROUTES.filter((route) => {
-      // "/" is the one entry with no page.tsx of its own on purpose: it
-      // permanently redirects to /landing, which canonicalises back to "/".
-      // The three-way agreement between those is asserted below.
-      if (route.path === "/") return false;
       const dir = join(APP_DIR, ...route.path.slice(1).split("/"));
       return !existsSync(join(dir, "page.tsx"));
     }).map((route) => route.path);
@@ -180,20 +198,44 @@ describe("sitemap coverage", () => {
 /**
  * The homepage is reachable at two URLs and only one of them may be indexed.
  *
- * "/" permanently redirects to /landing (app/page.tsx and middleware.ts), the
- * page served there declares "/" as its canonical, and the sitemap lists "/" to
- * match. Any two of those three changing without the third is a self-
- * contradicting signal, which is exactly the state that had Search Console
- * reporting /landing as "Duplicate without user-selected canonical" before
- * 1e87119d. Nothing else in the repo pins them together, so this does.
+ * "/" serves the home page with a 200 (app/page.tsx re-exports the landing
+ * page), /landing serves the same page, both declare "/" as the canonical, and
+ * the sitemap lists "/" only. It used to be a 308 from "/" to /landing with
+ * /landing naming "/" as canonical: the redirect and the canonical pointed in
+ * opposite directions. Nothing else in the repo pins these together, so this
+ * does.
  */
 describe("homepage canonicalisation", () => {
   const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
 
-  it("redirects / to the page that claims / as its canonical", () => {
-    expect(read("app/page.tsx")).toContain("permanentRedirect(ROUTES.LANDING)");
+  it("serves the home page at / and canonicalises both URLs to /", () => {
+    const root = read("app/page.tsx");
+    expect(root).toContain(
+      'export { default, metadata } from "./landing/page"',
+    );
+    expect(root).not.toMatch(/redirect\(/i);
     expect(read("app/landing/page.tsx")).toMatch(/path:\s*"\/",/);
+    expect(read("middleware.ts")).not.toMatch(
+      /redirect\(new URL\(ROUTES\.LANDING/,
+    );
   });
+
+  it("points every Home breadcrumb at /, not /landing", () => {
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const full = join(dir, name);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(name)) {
+          if (/path:\s*"\/landing"/.test(readFileSync(full, "utf8")))
+            offenders.push(full);
+        }
+      }
+    };
+    for (const dir of ["app", "components", "lib"])
+      walk(join(process.cwd(), dir));
+    expect(offenders).toEqual([]);
+  }, 30_000);
 
   it("lists that same URL in the sitemap, and not the one it renders at", () => {
     const urls = sitemap().map((entry) => entry.url);
@@ -232,15 +274,16 @@ describe("sitemap lastmod", () => {
     }
   });
 
-  it("emits per-source dates rather than one timestamp for everything", () => {
+  it("emits only source dates, never the build time", () => {
     const entries = sitemap();
-    const stamps = new Set(
-      entries.map((e) => new Date(e.lastModified as Date).toISOString()),
-    );
-    // The hand-listed marketing and legal pages still share the build
-    // timestamp, which is honest: they change when the deploy does. What must
-    // not happen again is the whole sitemap collapsing to that single value.
-    expect(stamps.size).toBeGreaterThan(1);
+    // A route with no source date has no lastmod. The hand-listed pages used
+    // to carry the build time, which claimed they all changed on every deploy.
+    for (const entry of entries) {
+      if (entry.lastModified === undefined) continue;
+      expect(new Date(entry.lastModified).getUTCHours(), entry.url).toBe(0);
+    }
+    const undated = entries.filter((e) => e.lastModified === undefined);
+    expect(undated.map((e) => e.url)).toContain(`${APP_URL}/pricing`);
 
     const checkPages = entries.filter((e) => /\/checks\/[^/]+$/.test(e.url));
     expect(checkPages.length).toBeGreaterThan(700);

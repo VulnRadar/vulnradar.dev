@@ -5,9 +5,9 @@ import { pageMetadata } from "@/lib/seo/metadata";
 import { SoftwareStructuredData } from "@/components/seo/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Live Demo: Scan Any URL in 3 Seconds",
+  title: "Live Demo: Scan Any URL Without an Account",
   description:
-    "Scan any URL and see a full security report in under 3 seconds. No signup, no agent to install. Try the scanner before creating an account.",
+    "Run a real scan of any public URL without signing up. Same detection engine as the full scanner, with the response evidence and a fix for every finding.",
   path: "/demo",
   keywords: [
     "free website security scan",

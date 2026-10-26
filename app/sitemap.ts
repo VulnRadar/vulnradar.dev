@@ -7,18 +7,17 @@ import { PUBLIC_ROUTES } from "@/lib/seo/routes";
 export const dynamic = "force-static";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  // Fallback only, for the routes with no derivable source date (the
-  // hand-listed marketing and legal pages). Every route that CAN say when its
-  // source last changed does: this used to be the value for all ~820 URLs,
-  // which, on a force-static route rebuilt on every deploy, told crawlers the
-  // entire site changed at the same instant several times a week. Google
-  // ignores lastmod site-wide when it is not consistently accurate, so the
-  // field was costing the sitemap its one freshness signal.
-  const buildTime = new Date();
-
+  // A route with no source date gets no lastmod at all. The hand-listed
+  // marketing, docs and legal pages (49 of them) used to fall back to the
+  // build time, so every deploy told crawlers they had all changed that
+  // second whether or not anything on them had. Google and Bing both stop
+  // trusting lastmod on a site whose dates do not match reality, and that
+  // would have cost the check pages their real per-category dates too.
   return PUBLIC_ROUTES.map((route) => ({
     url: `${APP_URL}${route.path}`,
-    lastModified: route.lastModified ? new Date(route.lastModified) : buildTime,
+    ...(route.lastModified
+      ? { lastModified: new Date(route.lastModified) }
+      : {}),
     changeFrequency: route.changeFrequency,
     priority: route.priority,
   }));
