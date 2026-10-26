@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { isIP } from "node:net";
-import { AUTH_HEADER, BEARER_PREFIX } from "@/lib/config/constants";
+import { AUTH_HEADER } from "@/lib/config/constants";
+import { parseBearer } from "@/lib/api/bearer";
 
 /**
  * Client information helpers
@@ -294,9 +295,7 @@ export async function getReferer(): Promise<string | null> {
  */
 export async function getBearerToken(): Promise<string | null> {
   const h = await headers();
-  const authHeader = h.get(AUTH_HEADER);
-  if (!authHeader?.startsWith(BEARER_PREFIX)) return null;
-  return authHeader.slice(BEARER_PREFIX.length);
+  return parseBearer(h.get(AUTH_HEADER));
 }
 
 /**

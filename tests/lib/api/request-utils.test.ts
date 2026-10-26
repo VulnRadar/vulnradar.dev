@@ -263,9 +263,14 @@ describe("getBearerToken", () => {
     expect(await getBearerToken()).toBeNull();
   });
 
-  it("returns an empty string for a bare 'Bearer ' prefix with nothing after it", async () => {
+  it("reads the scheme case-insensitively, like every handler now does", async () => {
+    mockHeaders.set("authorization", "bearer abc123");
+    expect(await getBearerToken()).toBe("abc123");
+  });
+
+  it("returns null for a bare 'Bearer ' prefix with nothing after it", async () => {
     mockHeaders.set("authorization", "Bearer ");
-    expect(await getBearerToken()).toBe("");
+    expect(await getBearerToken()).toBeNull();
   });
 });
 
