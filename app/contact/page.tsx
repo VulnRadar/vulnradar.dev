@@ -30,7 +30,7 @@ export default function ContactPage() {
     const ticketId = getQueryParamInt("ticket");
     const initial = getQueryParam("category");
     if (ticketId && ticketId > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the URL's query string (an external system) to seed initial state
+      // oxlint-disable-next-line react/set-state-in-effect -- reads the URL's query string (an external system) to seed initial state
       setCategory("ticket");
     } else if (initial && VALID_CATEGORIES.includes(initial)) {
       setCategory(initial);

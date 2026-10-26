@@ -22,7 +22,7 @@ export default function NotFound() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads localStorage, which is external to React and unavailable during render
+    // oxlint-disable-next-line react/set-state-in-effect -- reads localStorage, which is external to React and unavailable during render
     setIsLoggedIn(hasCachedSignIn());
   }, []);
 

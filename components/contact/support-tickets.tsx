@@ -248,7 +248,7 @@ export function SupportTickets() {
   );
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState runs only in loadTickets' async continuation
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState runs only in loadTickets' async continuation
     if (me) void loadTickets();
   }, [me, loadTickets]);
 
@@ -263,7 +263,7 @@ export function SupportTickets() {
   useEffect(() => {
     if (!me) return;
     const id = getQueryParamInt("ticket");
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot deep-link open on mount
+    // oxlint-disable-next-line react/set-state-in-effect -- one-shot deep-link open on mount
     if (id && id > 0) void openThread(id);
     // Only react to the initial deep link, not to every openThread identity change.
     // oxlint-disable-next-line react-hooks/exhaustive-deps

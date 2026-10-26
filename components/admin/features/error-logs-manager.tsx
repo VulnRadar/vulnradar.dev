@@ -157,7 +157,7 @@ export function ErrorLogsManager() {
 
   useEffect(() => {
     const seeded = filtersFromLocation();
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the deep link once on mount, then fetches; the filters are only known client-side
+    // oxlint-disable-next-line react/set-state-in-effect -- reads the deep link once on mount, then fetches; the filters are only known client-side
     setFilters(seeded);
     fetchLogs(1, "", pageSize, seeded, true);
     // oxlint-disable-next-line react-hooks/exhaustive-deps

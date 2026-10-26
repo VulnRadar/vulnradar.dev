@@ -92,7 +92,7 @@ export function ProfileNotificationsTab({
   useEffect(() => {
     if (preloadedNotifPrefs) {
       const prefs = { ...DEFAULT_PREFERENCES, ...preloadedNotifPrefs };
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local editable state from an async-loaded parent prop, gated by that dependency changing
+      // oxlint-disable-next-line react/set-state-in-effect -- syncs local editable state from an async-loaded parent prop, gated by that dependency changing
       setNotifPrefs(prefs);
       setOriginalPrefs(prefs);
     }
@@ -103,7 +103,7 @@ export function ProfileNotificationsTab({
     // leaves the parent's value null, and the `?? false` below it then
     // rendered "we do not know" as "you are unsubscribed".
     if (typeof preloadedDigestEmailEnabled !== "boolean") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local editable state from an async-loaded parent prop, gated by that dependency changing
+    // oxlint-disable-next-line react/set-state-in-effect -- syncs local editable state from an async-loaded parent prop, gated by that dependency changing
     setDigestEmailEnabled(preloadedDigestEmailEnabled);
     setOriginalDigestEmailEnabled(preloadedDigestEmailEnabled);
   }, [preloadedDigestEmailEnabled]);
@@ -111,7 +111,7 @@ export function ProfileNotificationsTab({
   // Reset to original values when discardKey changes (discard was clicked)
   useEffect(() => {
     if (discardKey && discardKey > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets to original values when the parent's discard-changes signal (discardKey) increments, gated by that dependency
+      // oxlint-disable-next-line react/set-state-in-effect -- resets to original values when the parent's discard-changes signal (discardKey) increments, gated by that dependency
       setNotifPrefs(originalPrefs);
       setDigestEmailEnabled(originalDigestEmailEnabled);
     }
@@ -120,7 +120,7 @@ export function ProfileNotificationsTab({
   // Update original values when saveKey changes (save was successful)
   useEffect(() => {
     if (saveKey && saveKey > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- updates the "original" baseline when the parent's save-succeeded signal (saveKey) increments, gated by that dependency
+      // oxlint-disable-next-line react/set-state-in-effect -- updates the "original" baseline when the parent's save-succeeded signal (saveKey) increments, gated by that dependency
       setOriginalPrefs(notifPrefs);
       setOriginalDigestEmailEnabled(digestEmailEnabled);
     }

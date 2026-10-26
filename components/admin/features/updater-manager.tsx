@@ -184,7 +184,7 @@ export function UpdaterManager() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: fetchStatus' setState calls only fire after its async request resolves, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: fetchStatus' setState calls only fire after its async request resolves, not synchronously in this effect
     fetchStatus();
   }, [fetchStatus]);
 
@@ -213,7 +213,7 @@ export function UpdaterManager() {
 
   useEffect(() => {
     if (!job?.id) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- poll-on-job-change: pollJob's setState calls only fire after its async request resolves, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- poll-on-job-change: pollJob's setState calls only fire after its async request resolves, not synchronously in this effect
     pollJob(job.id);
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.id]);

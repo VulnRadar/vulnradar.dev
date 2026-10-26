@@ -26,7 +26,7 @@ export function CookieNotice() {
     } catch {
       // Storage blocked (private mode, etc.): show it; dismiss just won't persist.
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot post-mount reveal based on localStorage; keeps SSR/first-render output empty
+    // oxlint-disable-next-line react/set-state-in-effect -- one-shot post-mount reveal based on localStorage; keeps SSR/first-render output empty
     if (!dismissed) setVisible(true);
   }, []);
 

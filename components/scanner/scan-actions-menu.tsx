@@ -70,6 +70,7 @@ import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useConfirm } from "@/components/shared/use-confirm";
+import { nowIso, todayStamp } from "@/lib/ui/clock";
 
 interface ScanActionsMenuProps {
   result: ScanResult;
@@ -491,14 +492,13 @@ export function ScanActionsMenu({
       return "scan";
     }
   })();
-  const date = new Date().toISOString().split("T")[0];
 
   function exportJson() {
     const data = {
       meta: {
         tool: APP_NAME,
         version: APP_VERSION,
-        exportedAt: new Date().toISOString(),
+        exportedAt: nowIso(),
       },
       scan: {
         url: result.url,
@@ -529,7 +529,7 @@ export function ScanActionsMenu({
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
     });
-    const filename = `${APP_SLUG}-${hostname}-${date}.json`;
+    const filename = `${APP_SLUG}-${hostname}-${todayStamp()}.json`;
     downloadBlob(blob, filename);
     return filename;
   }
@@ -538,7 +538,7 @@ export function ScanActionsMenu({
     const blob = new Blob([UTF8_BOM, generateCsvReport(result)], {
       type: "text/csv;charset=utf-8;",
     });
-    const filename = `${APP_SLUG}-${hostname}-${date}.csv`;
+    const filename = `${APP_SLUG}-${hostname}-${todayStamp()}.csv`;
     downloadBlob(blob, filename);
     return filename;
   }
@@ -548,7 +548,7 @@ export function ScanActionsMenu({
     const blob = new Blob([new Uint8Array(pdfBytes)], {
       type: "application/pdf",
     });
-    const filename = `${APP_SLUG}-${hostname}-${date}.pdf`;
+    const filename = `${APP_SLUG}-${hostname}-${todayStamp()}.pdf`;
     downloadBlob(blob, filename);
     return filename;
   }
@@ -558,7 +558,7 @@ export function ScanActionsMenu({
     const blob = new Blob([JSON.stringify(sarif, null, 2)], {
       type: "application/sarif+json",
     });
-    const filename = `${APP_SLUG}-${hostname}-${date}.sarif`;
+    const filename = `${APP_SLUG}-${hostname}-${todayStamp()}.sarif`;
     downloadBlob(blob, filename);
     return filename;
   }
@@ -566,7 +566,7 @@ export function ScanActionsMenu({
   function exportMarkdown() {
     const md = generateMarkdownReport(result);
     const blob = new Blob([md], { type: "text/markdown" });
-    const filename = `${APP_SLUG}-${hostname}-${date}.md`;
+    const filename = `${APP_SLUG}-${hostname}-${todayStamp()}.md`;
     downloadBlob(blob, filename);
     return filename;
   }
@@ -574,7 +574,7 @@ export function ScanActionsMenu({
   function exportCompliance() {
     const md = generateComplianceReport(result);
     const blob = new Blob([md], { type: "text/markdown" });
-    const filename = `${APP_SLUG}-${hostname}-compliance-${date}.md`;
+    const filename = `${APP_SLUG}-${hostname}-compliance-${todayStamp()}.md`;
     downloadBlob(blob, filename);
     return filename;
   }

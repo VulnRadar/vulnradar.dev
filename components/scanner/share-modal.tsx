@@ -29,6 +29,7 @@ import {
   CopiedAnnouncement,
 } from "@/components/shared/copy-feedback";
 import { EXPIRY_PRESETS, activePreset, formatExpiry } from "./share-expiry";
+import { useNow } from "@/lib/ui/clock";
 
 interface ShareModalProps {
   open: boolean;
@@ -136,7 +137,8 @@ export function ShareModal({
 }: ShareModalProps) {
   const { copied, copy } = useCopyFeedback();
   const selectedDays = activePreset(expiresAt);
-  const expired = Boolean(expiresAt && new Date(expiresAt) <= new Date());
+  const now = useNow();
+  const expired = Boolean(expiresAt && new Date(expiresAt).getTime() <= now);
 
   function handleCopy() {
     copy(shareUrl);

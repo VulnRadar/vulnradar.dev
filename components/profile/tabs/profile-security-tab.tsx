@@ -229,7 +229,7 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
   // Fetch backup codes remaining count on mount when 2FA is enabled
   useEffect(() => {
     if (totpEnabled && twoFactorMethod === "app") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears any stale failure flag before the fresh fetch-on-mount below runs
+      // oxlint-disable-next-line react/set-state-in-effect -- clears any stale failure flag before the fresh fetch-on-mount below runs
       setBackupCodesCheckFailed(false);
       fetch(API.AUTH.TWO_FA.BACKUP_CODES)
         .then((res) => res.json())

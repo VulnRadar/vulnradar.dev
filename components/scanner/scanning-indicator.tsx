@@ -293,7 +293,7 @@ export function ScanningIndicator({
     // motion in the product that ignored the user's setting. Jump to the end
     // instead of animating there.
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads a media query (an external system, unavailable during SSR) and writes the end state once, in place of the animation this effect otherwise starts
+      // oxlint-disable-next-line react/set-state-in-effect -- reads a media query (an external system, unavailable during SSR) and writes the end state once, in place of the animation this effect otherwise starts
       setSettlePercent(100);
       return;
     }

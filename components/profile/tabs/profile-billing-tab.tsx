@@ -80,7 +80,7 @@ export function ProfileBillingTab({
   // Update state when preloaded data changes
   useEffect(() => {
     if (preloadedBillingInfo) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local billingInfo state from the preloadedBillingInfo prop whenever the parent refreshes it
+      // oxlint-disable-next-line react/set-state-in-effect -- syncs local billingInfo state from the preloadedBillingInfo prop whenever the parent refreshes it
       setBillingInfo(preloadedBillingInfo);
     }
   }, [preloadedBillingInfo]);

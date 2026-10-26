@@ -47,7 +47,7 @@ function UnsubscribeContent() {
 
   useEffect(() => {
     if (!token) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the URL's token param (an external system) to decide initial state before fetch-on-mount below
+      // oxlint-disable-next-line react/set-state-in-effect -- reads the URL's token param (an external system) to decide initial state before fetch-on-mount below
       setInvalid(true);
       setLoading(false);
       return;

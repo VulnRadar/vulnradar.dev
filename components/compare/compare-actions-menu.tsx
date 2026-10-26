@@ -8,6 +8,7 @@ import { copyToClipboard } from "@/lib/ui/clipboard";
 import { toast } from "@/components/ui/use-toast";
 import { downloadBlob, escapeCsv } from "@/lib/ui/download";
 import { displayUrl, type DiffResult } from "./compare-types";
+import { todayStamp } from "@/lib/ui/clock";
 
 interface CompareActionsMenuProps {
   result: DiffResult;
@@ -18,7 +19,6 @@ export function CompareActionsMenu({ result }: CompareActionsMenuProps) {
   const [copied, setCopied] = useState(false);
 
   const hostname = displayUrl(result.scanA.url).replace(/[./]/g, "-");
-  const date = new Date().toISOString().split("T")[0];
 
   function exportJson() {
     const data = {
@@ -37,7 +37,7 @@ export function CompareActionsMenu({ result }: CompareActionsMenuProps) {
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
     });
-    downloadBlob(blob, `${APP_SLUG}-compare-${hostname}-${date}.json`);
+    downloadBlob(blob, `${APP_SLUG}-compare-${hostname}-${todayStamp()}.json`);
   }
 
   function exportCsv() {
@@ -49,7 +49,7 @@ export function CompareActionsMenu({ result }: CompareActionsMenuProps) {
     ].map((row) => row.map(escapeCsv));
     const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    downloadBlob(blob, `${APP_SLUG}-compare-${hostname}-${date}.csv`);
+    downloadBlob(blob, `${APP_SLUG}-compare-${hostname}-${todayStamp()}.csv`);
   }
 
   // The menu closes on select, so the item's own "Link copied" label was

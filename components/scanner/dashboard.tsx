@@ -263,7 +263,7 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires once the request resolves, not synchronously here
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState only fires once the request resolves, not synchronously here
     load();
   }, [load]);
 

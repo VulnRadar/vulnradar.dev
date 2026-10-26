@@ -31,6 +31,10 @@ import { useTranslations } from "next-intl";
 // radius per the radius ladder: this is an icon button.
 const iconLinkClass = `inline-flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ${focus.ring}`;
 
+// Read once when the module loads (a server start or a page load), not during
+// render: a render is meant to be a pure function of its inputs.
+const COPYRIGHT_YEAR = new Date().getFullYear();
+
 export function Footer() {
   // useTranslations, not the async getTranslations: this file renders inside
   // server trees (the page shells) AND inside client ones (the docs, legal and
@@ -301,7 +305,7 @@ export function Footer() {
           <div className="flex flex-col items-center gap-1 text-sm text-muted-foreground sm:items-start">
             <p>
               {t("copyright", {
-                year: new Date().getFullYear(),
+                year: COPYRIGHT_YEAR,
                 app: APP_NAME,
               })}
             </p>

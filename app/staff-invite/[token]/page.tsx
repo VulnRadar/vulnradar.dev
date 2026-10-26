@@ -82,7 +82,7 @@ export default function StaffInvitePage() {
 
   useEffect(() => {
     if (!token) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- terminal state for a route that cannot be reached without a token segment
+      // oxlint-disable-next-line react/set-state-in-effect -- terminal state for a route that cannot be reached without a token segment
       setLoadError("This invite link is missing its token.");
       setLoading(false);
       return;

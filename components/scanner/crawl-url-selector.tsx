@@ -59,7 +59,7 @@ export function CrawlUrlSelector({
 
   // Select up to the plan cap by default as URLs arrive from discovery.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local selection state from a changed prop
+    // oxlint-disable-next-line react/set-state-in-effect -- syncs local selection state from a changed prop
     setSelected(new Set(urls.slice(0, maxSelectable)));
   }, [urls, maxSelectable]);
 

@@ -141,7 +141,7 @@ export function AIChatsManager() {
   );
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/page-change: fetchConversations' setState calls only fire after its async request resolves, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount/page-change: fetchConversations' setState calls only fire after its async request resolves, not synchronously in this effect
     fetchConversations(page, pageSize, quality);
   }, [page, pageSize, quality, fetchConversations]);
 

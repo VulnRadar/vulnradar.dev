@@ -308,7 +308,7 @@ export function EmailLogsManager() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchLogs(1, "", "", pageSize, true);
     void fetchReasons();
     // oxlint-disable-next-line react-hooks/exhaustive-deps

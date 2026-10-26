@@ -148,7 +148,7 @@ export function SaveConfirmationModal({
   // re-open) should ever trigger this reset.
   React.useEffect(() => {
     if (isOpen) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the modal's success state when it re-opens; gated to isOpen so it doesn't fire on every render
+      // oxlint-disable-next-line react/set-state-in-effect -- resets the modal's success state when it re-opens; gated to isOpen so it doesn't fire on every render
       setSuccess(false);
       setErrorMessage(null);
       // Auto-enable notification for account changes

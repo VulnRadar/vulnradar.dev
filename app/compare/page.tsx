@@ -208,7 +208,7 @@ export default function ComparePage() {
     if (selectedA === null || selectedB === null) return;
     const match = scans.find((s) => s.id === selectedA || s.id === selectedB);
     if (match) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time backfill, gated by the `selectedHost !== null` early-return above so it can't cascade once set
+      // oxlint-disable-next-line react/set-state-in-effect -- one-time backfill, gated by the `selectedHost !== null` early-return above so it can't cascade once set
       setSelectedHost(getDomain(match.url));
     }
   }, [scans, selectedA, selectedB, selectedHost]);
@@ -261,7 +261,7 @@ export default function ComparePage() {
         )
         .slice(0, 2);
       const [newer, older] = recent;
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot deep-link resolution, gated by hostParamHandledRef so it cannot cascade
+      // oxlint-disable-next-line react/set-state-in-effect -- one-shot deep-link resolution, gated by hostParamHandledRef so it cannot cascade
       setSelectedHost(host);
       setQueryParams({ a: String(older.id), b: String(newer.id), host: null });
     } else {

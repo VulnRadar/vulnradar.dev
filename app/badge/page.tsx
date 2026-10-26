@@ -61,7 +61,7 @@ export default function BadgePage() {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the initial load; the same function is the retry
+    // oxlint-disable-next-line react/set-state-in-effect -- the initial load; the same function is the retry
     void fetchBadgeScans();
   }, []);
 

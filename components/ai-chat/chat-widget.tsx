@@ -369,7 +369,7 @@ function useTypewriter(raw: string, active: boolean): string {
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (!active || reduceMotion) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the typewriter position when the active prop turns off, gated by that dependency
+      // oxlint-disable-next-line react/set-state-in-effect -- resets the typewriter position when the active prop turns off, gated by that dependency
       setPos(Infinity);
       return;
     }
@@ -648,7 +648,7 @@ export function ChatWidget() {
   // never lands on "Clear it?" for a decision the user walked away from.
   useEffect(() => {
     if (isOpen) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets a two-step confirmation on close, gated on isOpen
+    // oxlint-disable-next-line react/set-state-in-effect -- resets a two-step confirmation on close, gated on isOpen
     setConfirmClear(false);
   }, [isOpen]);
 
@@ -672,7 +672,7 @@ export function ChatWidget() {
   useEffect(() => {
     if (isOpen) {
       barLiftRef.current = 0;
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the measurement when the panel opens and the probe stops running; gated on isOpen so it fires on the state change, not every render
+      // oxlint-disable-next-line react/set-state-in-effect -- resets the measurement when the panel opens and the probe stops running; gated on isOpen so it fires on the state change, not every render
       setBarLift(0);
       return;
     }

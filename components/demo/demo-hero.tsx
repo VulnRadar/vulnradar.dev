@@ -25,7 +25,7 @@ export function DemoHero({ scansRemaining, onScan, isLoading }: DemoHeroProps) {
   const [ownUrl, setOwnUrl] = useState("");
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads window.location.origin (unavailable during SSR) to resolve the real value after hydration, per the comment above
+    // oxlint-disable-next-line react/set-state-in-effect -- reads window.location.origin (unavailable during SSR) to resolve the real value after hydration, per the comment above
     setTarget(window.location.origin);
   }, []);
 

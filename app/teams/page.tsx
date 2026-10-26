@@ -256,7 +256,7 @@ export default function TeamsPage() {
   }, [fetchTeams, fetchInvitations]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the requests settle, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState only fires after the requests settle, not synchronously in this effect
     loadTeamsPage();
   }, [loadTeamsPage]);
 
@@ -269,7 +269,7 @@ export default function TeamsPage() {
     if (loading) return;
     if (!teamParam) {
       if (selectedTeam) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- follows a browser history change (an external system), and the `if (selectedTeam)` guard makes it a no-op on the very next render
+        // oxlint-disable-next-line react/set-state-in-effect -- follows a browser history change (an external system), and the `if (selectedTeam)` guard makes it a no-op on the very next render
         setSelectedTeam(null);
         setViewingMember(null);
       }

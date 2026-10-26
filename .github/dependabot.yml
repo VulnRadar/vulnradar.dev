@@ -66,6 +66,19 @@ updates:
           - "pg"
           - "zod"
           - "@hookform/resolvers"
+      # One PR for the linters. eslint-plugin-oxlint declares a peer of
+      # oxlint@~<its own version>, so an oxlint bump on its own fails npm ci
+      # and so does a plugin bump on its own: #413 and #416 sat red for that
+      # reason until they were landed together by hand. ESLint and
+      # typescript-eslint come along so a lint upgrade is one decision.
+      lint:
+        patterns:
+          - "oxlint"
+          - "eslint-plugin-oxlint"
+          - "eslint"
+          - "@eslint/*"
+          - "@typescript-eslint/*"
+          - "typescript-eslint"
       # No autoprefixer here: this project runs Tailwind v4's own pipeline
       # through @tailwindcss/postcss (see postcss.config.mjs) and
       # autoprefixer is not a dependency in any form, so the pattern only

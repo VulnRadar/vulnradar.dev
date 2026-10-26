@@ -123,7 +123,7 @@ function DemoPageContent() {
     const target = requestedTarget?.trim();
     if (!target) return;
     autoScanned.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- runs the scan the arriving link asked for; setStatus fires inside handleSelfScan, not synchronously here, and the ref guard makes it run once
+    // oxlint-disable-next-line react/set-state-in-effect -- runs the scan the arriving link asked for; setStatus fires inside handleSelfScan, not synchronously here, and the ref guard makes it run once
     handleSelfScan(target);
   }, [requestedTarget]);
 

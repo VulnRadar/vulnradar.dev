@@ -212,14 +212,14 @@ export function StaffList({
   // expired unaccepted, and the operator arriving from it must see that
   // without first opening an unrelated dialog.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchPendingInvites();
   }, [fetchPendingInvites]);
 
   // Reload whenever the modal opens, so it reflects invites sent from another
   // admin's session too, not just this tab's own sends.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-open: kicks off an async load when the modal opens; the loading flag it sets is for that request, not synchronous derived state
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-open: kicks off an async load when the modal opens; the loading flag it sets is for that request, not synchronous derived state
     if (inviteOpen) fetchPendingInvites();
   }, [inviteOpen, fetchPendingInvites]);
 

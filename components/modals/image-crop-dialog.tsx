@@ -49,7 +49,7 @@ export function ImageCropDialog({
   // Load image when src changes
   useEffect(() => {
     if (!imageSrc) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets crop state when imageSrc changes, gated by that dependency, before loading the new external Image resource below
+    // oxlint-disable-next-line react/set-state-in-effect -- resets crop state when imageSrc changes, gated by that dependency, before loading the new external Image resource below
     setImageLoaded(false);
     setZoom(1);
     setOffset({ x: 0, y: 0 });
@@ -132,7 +132,7 @@ export function ImageCropDialog({
   // higher zoom can leave a gap once the image shrinks back down.
   useEffect(() => {
     if (!imageLoaded) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-clamps offset when zoom changes (via clampOffset), gated by imageLoaded/that dependency, not run on every render
+    // oxlint-disable-next-line react/set-state-in-effect -- re-clamps offset when zoom changes (via clampOffset), gated by imageLoaded/that dependency, not run on every render
     setOffset(clampOffset);
   }, [zoom, imageLoaded, clampOffset]);
 

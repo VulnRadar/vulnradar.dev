@@ -55,6 +55,7 @@ import { formatDay } from "@/components/admin/utils";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
 import { PromotedRulesPanel } from "@/components/admin/features/promoted-rules-panel";
 import type { PromotedRuleEntry } from "@/components/admin/features/engine-feedback-utils";
+import { todayStamp } from "@/lib/ui/clock";
 
 interface AiTagCandidateExample {
   scanId: number;
@@ -403,7 +404,7 @@ export function EngineFeedbackManager() {
   );
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchData(true);
   }, [fetchData]);
 
@@ -455,8 +456,6 @@ export function EngineFeedbackManager() {
   const attentionCheckCount = checks.filter(needsAttention).length;
   const flaggedTagCount = tags.filter((t) => t.flagged).length;
 
-  const exportStamp = new Date().toISOString().split("T")[0];
-
   const exportChecksCsv = () => {
     const headers = [
       "Check ID",
@@ -491,7 +490,7 @@ export function EngineFeedbackManager() {
     const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     downloadBlob(
       new Blob([csv], { type: "text/csv;charset=utf-8;" }),
-      `${APP_SLUG}-check-accuracy-${exportStamp}.csv`,
+      `${APP_SLUG}-check-accuracy-${todayStamp()}.csv`,
     );
   };
 
@@ -515,7 +514,7 @@ export function EngineFeedbackManager() {
     const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     downloadBlob(
       new Blob([csv], { type: "text/csv;charset=utf-8;" }),
-      `${APP_SLUG}-auto-tag-dismissals-${exportStamp}.csv`,
+      `${APP_SLUG}-auto-tag-dismissals-${todayStamp()}.csv`,
     );
   };
 
@@ -566,7 +565,7 @@ export function EngineFeedbackManager() {
       );
       downloadBlob(
         new Blob([csv], { type: "text/csv;charset=utf-8;" }),
-        `${APP_SLUG}-check-verdicts-${exportStamp}.csv`,
+        `${APP_SLUG}-check-verdicts-${todayStamp()}.csv`,
       );
       setToast({
         message: `Exported ${rows.length} verdict${rows.length === 1 ? "" : "s"}.`,
@@ -607,7 +606,7 @@ export function EngineFeedbackManager() {
         new Blob([JSON.stringify(payload, null, 2)], {
           type: "application/json",
         }),
-        `${APP_SLUG}-engine-feedback-${exportStamp}.json`,
+        `${APP_SLUG}-engine-feedback-${todayStamp()}.json`,
       );
     } catch {
       setToast({ message: "Failed to export engine feedback.", type: "error" });

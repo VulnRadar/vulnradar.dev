@@ -124,7 +124,7 @@ export function RepoDetail({
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-repo-change plus resetting selection state, gated by repo.fullName changing; loadScans' own setState only fires after its request resolves
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-repo-change plus resetting selection state, gated by repo.fullName changing; loadScans' own setState only fires after its request resolves
     loadScans();
     setSelectedScanId(null);
     setScanDetail(null);

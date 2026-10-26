@@ -72,7 +72,7 @@ export function TurnstileWidget({
 
   useEffect(() => {
     if (ready) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the externally-loaded Turnstile script's readiness (a global, not React-owned state)
+    // oxlint-disable-next-line react/set-state-in-effect -- reads the externally-loaded Turnstile script's readiness (a global, not React-owned state)
     if (getTurnstile()) setReady(true);
   }, [ready]);
 
@@ -108,7 +108,7 @@ export function TurnstileWidget({
       });
     } catch (err) {
       console.error("[Turnstile] Failed to render widget:", err);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- turnstile.render() throws synchronously when the externally loaded script rejects the call, so there is no event or render-time value to derive this from
+      // oxlint-disable-next-line react/set-state-in-effect -- turnstile.render() throws synchronously when the externally loaded script rejects the call, so there is no event or render-time value to derive this from
       setFailed(true);
     }
     return () => {

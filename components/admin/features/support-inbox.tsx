@@ -319,7 +319,7 @@ function TicketInbox() {
   );
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState runs only in loadInbox' async continuation
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState runs only in loadInbox' async continuation
     void loadInbox();
   }, [loadInbox]);
 

@@ -98,7 +98,7 @@ export function ContactSubmissionsView() {
   }, [filter]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState runs only in load's async continuation
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState runs only in load's async continuation
     void load();
   }, [load]);
 

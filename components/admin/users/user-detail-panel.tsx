@@ -110,6 +110,7 @@ import { AccountHistory } from "./account-history";
 import { UsageReadout } from "./usage-readout";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { Textarea } from "@/components/ui/textarea";
+import { useNow } from "@/lib/ui/clock";
 
 /**
  * The panel had three native selects styled three ways (h-8 text-xs, h-9
@@ -190,6 +191,14 @@ export function UserDetailPanel({
 }: UserDetailPanelProps) {
   const u = detail.user;
   const perms = useAdminPermissions(callerRole);
+  // Whether a gifted plan is still running, read against a clock that ticks
+  // rather than a `new Date()` in render (see lib/ui/clock.ts).
+  const now = useNow();
+  const giftActive = Boolean(
+    u.gifted_plan &&
+    u.gift_end_date &&
+    new Date(u.gift_end_date).getTime() > now,
+  );
   const canRunSupportActions = useMemo(
     () => SUPPORT_CARD_ACTIONS.some((a) => canPerformAction(callerRole, a)),
     [callerRole],
@@ -404,7 +413,7 @@ export function UserDetailPanel({
 
   // Reset pending changes when user changes
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets local edit-buffer state to match a new u.id identity (switching which user is being viewed), gated on the dependency array so it only fires on an actual prop change, not every render
+    // oxlint-disable-next-line react/set-state-in-effect -- resets local edit-buffer state to match a new u.id identity (switching which user is being viewed), gated on the dependency array so it only fires on an actual prop change, not every render
     setPendingChanges({});
     setPendingBadgeAwards([]);
     setPendingBadgeRevokes([]);
@@ -2884,9 +2893,7 @@ export function UserDetailPanel({
                     Gifted Subscription
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {u.gifted_plan &&
-                    u.gift_end_date &&
-                    new Date(u.gift_end_date) > new Date() ? (
+                    {giftActive && u.gifted_plan && u.gift_end_date ? (
                       <GatedActionCard
                         action="gift_subscription"
                         callerRole={callerRole}
@@ -2929,9 +2936,7 @@ export function UserDetailPanel({
                       isLoading("gift_subscription") || isLoading("revoke_gift")
                     }
                     existingGift={
-                      u.gifted_plan &&
-                      u.gift_end_date &&
-                      new Date(u.gift_end_date) > new Date()
+                      giftActive && u.gifted_plan && u.gift_end_date
                         ? { plan: u.gifted_plan, end_date: u.gift_end_date }
                         : null
                     }

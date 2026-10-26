@@ -56,7 +56,7 @@ export function EmailLink({
   // is that the FIRST render, the one that becomes HTML, has no address in it.
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot post-mount reveal, exactly as components/shared/cookie-notice.tsx does it; the point is that the render which becomes HTML has no address in it
+    // oxlint-disable-next-line react/set-state-in-effect -- one-shot post-mount reveal, exactly as components/shared/cookie-notice.tsx does it; the point is that the render which becomes HTML has no address in it
     setMounted(true);
   }, []);
 

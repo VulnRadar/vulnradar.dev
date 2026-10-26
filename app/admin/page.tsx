@@ -781,20 +781,20 @@ function AdminContent() {
   ]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the URL's query string (an external system) to seed tab/filter state, then subscribes to popstate for back/forward navigation
+    // oxlint-disable-next-line react/set-state-in-effect -- reads the URL's query string (an external system) to seed tab/filter state, then subscribes to popstate for back/forward navigation
     handleQueryChange();
     window.addEventListener("popstate", handleQueryChange);
     return () => window.removeEventListener("popstate", handleQueryChange);
   }, [handleQueryChange]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-tab-change: setState only fires after the request resolves, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-tab-change: setState only fires after the request resolves, not synchronously in this effect
     if (activeTab === "audit") fetchAudit();
     if (activeTab === "admins") fetchActiveAdmins();
   }, [activeTab, fetchActiveAdmins, fetchAudit]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchData(1, "", true, 10);
     fetchStats();
     fetchAllBadges();
@@ -1099,7 +1099,7 @@ function AdminContent() {
   useEffect(() => {
     if (loading || ALL_ADMIN_TABS.length === 0) return;
     if (ALL_ADMIN_TABS.some((t) => t.key === activeTab)) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time redirect off a tab this role can't see, gated by the ALL_ADMIN_TABS.some() check above so it can't loop
+    // oxlint-disable-next-line react/set-state-in-effect -- one-time redirect off a tab this role can't see, gated by the ALL_ADMIN_TABS.some() check above so it can't loop
     handleTabChange(ALL_ADMIN_TABS[0].key);
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, callerRole]);

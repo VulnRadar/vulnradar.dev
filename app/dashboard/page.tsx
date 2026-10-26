@@ -997,7 +997,7 @@ function DashboardContent() {
       consumeScanAgain,
     );
     if (scanUrl) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers an async scan; setState only fires after its own awaited network calls resolve, not synchronously here
+      // oxlint-disable-next-line react/set-state-in-effect -- triggers an async scan; setState only fires after its own awaited network calls resolve, not synchronously here
       handleScan({ url: scanUrl, mode: "quick" });
     }
     // oxlint-disable-next-line react-hooks/exhaustive-deps

@@ -67,7 +67,7 @@ export default function HostReportPage() {
 
   useEffect(() => {
     try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads document.referrer (unavailable during SSR) to seed initial value
+      // oxlint-disable-next-line react/set-state-in-effect -- reads document.referrer (unavailable during SSR) to seed initial value
       setCanGoBack(
         !!document.referrer &&
           new URL(document.referrer).origin === window.location.origin,
@@ -120,7 +120,10 @@ export default function HostReportPage() {
     data && data.known
       ? {
           url: `https://${data.host}`,
-          scannedAt: data.lastScannedAt || new Date().toISOString(),
+          // Always set when the host is known: the route reads it off the
+          // host_reputation row. It fell back to "now" before, which would
+          // have dated a scan to whenever the page was opened.
+          scannedAt: data.lastScannedAt ?? "",
           duration: 0,
           findings: data.findings,
           summary: {

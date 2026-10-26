@@ -37,7 +37,7 @@ export function TourMount() {
   // sessionStorage does not exist there: an initialiser would compute one
   // answer on the server and a different one on the client.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reading browser storage, which is exactly the external system an effect is for; it cannot be read during render
+    // oxlint-disable-next-line react/set-state-in-effect -- reading browser storage, which is exactly the external system an effect is for; it cannot be read during render
     setResumable(tourSession.read() !== null);
   }, []);
 

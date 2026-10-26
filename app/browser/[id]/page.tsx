@@ -218,7 +218,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
   }, [sessionId]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: load()'s setState calls only fire after its async requests resolve, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: load()'s setState calls only fire after its async requests resolve, not synchronously in this effect
     void load();
   }, [load]);
 
@@ -227,7 +227,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const wide = window.matchMedia?.("(min-width: 640px)").matches ?? true;
-    /* eslint-disable react-hooks/set-state-in-effect -- one-shot restore of remembered UI state, runs once on mount */
+    /* oxlint-disable react/set-state-in-effect -- one-shot restore of remembered UI state, runs once on mount */
     setShowLogs(
       readViewerFlag(
         window.localStorage,
@@ -242,7 +242,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
         true,
       ),
     );
-    /* eslint-enable react-hooks/set-state-in-effect */
+    /* oxlint-enable react/set-state-in-effect */
   }, []);
 
   const toggleLogs = useCallback(() => {
