@@ -51,7 +51,7 @@ async function waitReady(port, isAlive, timeoutMs) {
  * HOSTNAME at all is one of the things the run reveals; `bind` adds the -H
  * variant that a bare-metal or Pterodactyl install uses.
  */
-export async function startNext({ mode, workdir, port, bind }) {
+export async function startNext({ mode, workdir, port, bind, controlToken }) {
   const args = [nextBin(workdir), mode, "-p", String(port)];
   if (bind) args.push("-H", bind);
 
@@ -60,6 +60,7 @@ export async function startNext({ mode, workdir, port, bind }) {
     NEXT_TELEMETRY_DISABLED: "1",
     NODE_ENV: mode === "dev" ? "development" : "production",
     PORT: String(port),
+    SPIKE_CONTROL_TOKEN: controlToken,
   };
   if (mode === "start") env.HOSTNAME = "0.0.0.0";
 
@@ -134,7 +135,7 @@ export function dockerAvailable() {
  * made-up hostname at the host gateway so a rewrite that left the origin would
  * reach the recording listener running on the host.
  */
-export async function startImage({ workdir, port, hostileName }) {
+export async function startImage({ workdir, port, hostileName, controlToken }) {
   const tag = "vulnradar-spike-fixture:ci";
   const name = `vr-spike-${process.pid}`;
 
@@ -149,6 +150,8 @@ export async function startImage({ workdir, port, hostileName }) {
     name,
     "--add-host",
     `${hostileName}:host-gateway`,
+    "-e",
+    `SPIKE_CONTROL_TOKEN=${controlToken}`,
     "-p",
     `127.0.0.1:${port}:3000`,
     tag,

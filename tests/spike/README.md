@@ -53,6 +53,12 @@ deliberately unsafe rewrite built from the Host header is proxied to it, with
 the Cookie, the Authorization header and the body. Without that control a
 clean result would only mean the listener was unreachable.
 
+That control is an open proxy by design, and the fixture listens on every
+interface of the machine running it, so the route answers only a caller that
+holds a per-run random token (`SPIKE_CONTROL_TOKEN`, handed to the server by
+the harness) and returns 404 to everyone else. `2c-control` checks that refusal
+before it sends the real control.
+
 ## Proving the harness can fail
 
 A table that has only ever said PASS has not shown it can say anything else.

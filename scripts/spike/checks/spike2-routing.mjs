@@ -167,18 +167,33 @@ function hostileCombos(name) {
 }
 
 async function controlProxied(ctx) {
-  const { recorder, recorderHostHeader } = ctx.hostile;
+  const { recorder, recorderHostHeader, controlToken } = ctx.hostile;
+  const sendControl = (token) =>
+    ctx.req("/api/spike-control/proxy-from-host", {
+      method: "POST",
+      headers: {
+        host: recorderHostHeader,
+        cookie: "session=control-cookie",
+        authorization: "Bearer control-token",
+        "content-type": "text/plain",
+        ...(token ? { "x-spike-control": token } : {}),
+      },
+      body: "control-body",
+    });
+
+  // The control is an open proxy on purpose, and the fixture listens on every
+  // interface of the machine running the harness. It answers only a caller
+  // that holds the per-run token, and this proves a caller without one gets
+  // nothing before the real control is sent.
   recorder.reset();
-  const res = await ctx.req("/api/spike-control/proxy-from-host", {
-    method: "POST",
-    headers: {
-      host: recorderHostHeader,
-      cookie: "session=control-cookie",
-      authorization: "Bearer control-token",
-      "content-type": "text/plain",
-    },
-    body: "control-body",
-  });
+  const tokenless = await sendControl(null);
+  const tokenlessRefused =
+    tokenless.status === 404 &&
+    recorder.requests().length === 0 &&
+    recorder.connections() === 0;
+
+  recorder.reset();
+  const res = await sendControl(controlToken);
   const seen = recorder.requests();
   const hit = seen.find((r) => r.url?.startsWith("/api/spike-control/target"));
   const forwarded = hit
@@ -192,9 +207,11 @@ async function controlProxied(ctx) {
     status: res.status,
     recorderRequests: seen.length,
     forwarded,
+    tokenlessRefused,
   };
   return {
     proxied: Boolean(hit),
+    tokenlessRefused,
     forwarded,
     status: res.status,
     servedLocally: res.headers["x-spike-handler"] === "control-target-local",
@@ -361,6 +378,10 @@ export async function run(ctx, report) {
     async () => {
       control = await controlProxied(ctx);
       const v = verify();
+      v.expect(
+        control.tokenlessRefused,
+        "harness defect: the unsafe control answered a request without the per-run token, so anything that can reach this port could use it as a proxy",
+      );
       v.expect(
         control.proxied,
         `the listener saw nothing (status ${control.status}, served locally: ${control.servedLocally}); a clean origin result below would prove nothing`,

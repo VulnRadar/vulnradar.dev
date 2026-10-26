@@ -26,6 +26,7 @@
  *
  * `start-h` is `next start -H 0.0.0.0`, the bare-metal and Pterodactyl shape.
  */
+import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -148,6 +149,8 @@ async function runTarget(target, opts, mutation = null) {
     error: null,
   };
   const recorder = await startRecorder();
+  // Gates the fixture's deliberately unsafe control route (see middleware.js).
+  const controlToken = randomBytes(16).toString("hex");
   let server = null;
 
   try {
@@ -158,6 +161,7 @@ async function runTarget(target, opts, mutation = null) {
         workdir,
         port: opts.port,
         hostileName: EVIL_NAME,
+        controlToken,
       });
       result.node = `container ${server.nodeVersion()}`;
     } else {
@@ -169,6 +173,7 @@ async function runTarget(target, opts, mutation = null) {
         workdir,
         port: opts.port,
         bind: target.bind,
+        controlToken,
       });
     }
 
@@ -185,12 +190,15 @@ async function runTarget(target, opts, mutation = null) {
       target: {
         ...target,
         internalPort: target.mode === "image" ? IMAGE_PORT : opts.port,
-        hostnameEnv: target.mode === "start" ? "0.0.0.0" : undefined,
+        // The image sets HOSTNAME in its Dockerfile, `next start` gets it from
+        // startNext, and `next dev` is started without it.
+        hostnameEnv: target.mode === "dev" ? undefined : "0.0.0.0",
       },
       port: opts.port,
       req: makeRequester(opts.port),
       hostile: {
         recorder,
+        controlToken,
         evilName: EVIL_NAME,
         recorderHostHeader:
           target.mode === "image"

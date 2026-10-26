@@ -14,6 +14,16 @@ export async function run(ctx, report) {
     async () => {
       const manifest = await ctx.readBuildManifest();
       if (!manifest) {
+        // Only `next dev` is allowed to have no manifest. A built target
+        // without one (the image reads it through docker exec) must not turn
+        // the build-level claim into a skip that the table reads as a pass.
+        if (ctx.target.mode !== "dev") {
+          return {
+            ok: false,
+            detail:
+              "no functions-config-manifest.json in the build output of a built target",
+          };
+        }
         return {
           skip: "no build manifest: next dev does not write functions-config-manifest.json",
         };

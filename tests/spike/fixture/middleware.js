@@ -69,6 +69,14 @@ export function middleware(request) {
     // real check would be meaningful), and that Cookie, Authorization and the
     // body travel with it. If this control is not proxied, the origin
     // assertion proves nothing and the harness reports it as inconclusive.
+    //
+    // It is an open proxy, and the fixture listens on every interface of the
+    // machine that runs the harness, so it answers only a caller holding the
+    // per-run token the harness gave the server. Anything else gets a 404.
+    const token = process.env.SPIKE_CONTROL_TOKEN;
+    if (!token || request.headers.get("x-spike-control") !== token) {
+      return new NextResponse("not found", { status: 404 });
+    }
     const host =
       request.headers.get("x-forwarded-host") ?? request.headers.get("host");
     const destination = new URL(
