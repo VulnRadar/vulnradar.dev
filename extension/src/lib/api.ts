@@ -11,6 +11,8 @@
 // and `scan.ts` instead.
 
 import { VULNRADAR } from "./constants";
+import { lookupUrl } from "./lookup-url";
+import { isReportFormat } from "./types";
 import type {
   ApiError,
   ReportFormat,
@@ -222,6 +224,12 @@ export async function fetchReport(
   format: ReportFormat,
   timeoutMs: number = VULNRADAR.apiTimeoutMs,
 ): Promise<{ bytes: ArrayBuffer; contentType: string }> {
+  // The id lands in the request path and the format in its query, so both are
+  // checked here as well as at the message boundary: this is the function that
+  // builds the URL, and a value like "../../auth/me" must not get this far.
+  if (!Number.isSafeInteger(scanId) || scanId <= 0 || !isReportFormat(format)) {
+    throw new Error("That report cannot be requested.");
+  }
   const url = `${VULNRADAR.apiHost}/api/v3/history/${scanId}/report?format=${encodeURIComponent(format)}`;
   const res = await send(url, {
     method: "GET",
@@ -304,7 +312,10 @@ export const api = {
       apiKey,
     ),
 
-  // `url` is optional in the signature and always sent in practice. The
+  // `url` is optional in the signature and sent whenever the caller has one.
+  // It is reduced to origin and path here, at the one place the request is
+  // built, so no caller can put a query string or a fragment on the wire: see
+  // lookupUrl in lib/lookup-url.ts for what that protects. The
   // endpoint checks for an exact-page record first and only falls back to the
   // host-level one, and its own comment says "the caller passes url ... the
   // extension does since it always knows the current tab's exact URL". It did
@@ -312,12 +323,14 @@ export const api = {
   // from the extension and a scan of one page on a big shared host (one repo
   // on github.com, one doc on a wiki) was reported as the reputation of every
   // other page there.
-  reputation: (apiKey: string, host: string, url?: string) =>
-    call<ReputationResponse>(
+  reputation: (apiKey: string, host: string, url?: string) => {
+    const safeUrl = url ? lookupUrl(url) : null;
+    return call<ReputationResponse>(
       "GET",
       `/api/v3/scan/reputation?host=${encodeURIComponent(host)}` +
-        (url ? `&url=${encodeURIComponent(url)}` : ""),
+        (safeUrl ? `&url=${encodeURIComponent(safeUrl)}` : ""),
       undefined,
       apiKey,
-    ),
+    );
+  },
 };

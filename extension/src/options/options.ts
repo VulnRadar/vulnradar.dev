@@ -2,7 +2,11 @@
 // sticky sidebar nav + a column of 8 sections (Authentication, Auto-
 // Scan, Scan Families, Port Sweep, Notifications, Appearance,
 // Privacy). Every change writes straight back to chrome.storage.local
-// through lib/storage.
+// through lib/storage, and only the key it owns: a toggle rewrites the
+// settings key, a mute edit rewrites its list, nothing here rewrites the
+// whole snapshot. The page stays open for a long time while the background
+// refreshes the key and the card writes mutes, so storage.onChanged (see
+// init) pulls those changes back in rather than leaving stale copies on screen.
 //
 // All sections are inline here (rather than split into per-section
 // files) for v0.1 - this keeps the surface area small while we figure
@@ -10,14 +14,25 @@
 
 import { html, render, type TemplateResult } from "lit-html";
 import browser from "webextension-polyfill";
-import { get, loadAll, saveAll, set } from "../lib/storage";
+import {
+  get,
+  loadAll,
+  normalizeSettings,
+  onChanged,
+  patchSettings,
+} from "../lib/storage";
+import {
+  addMutePattern,
+  clearSnooze,
+  removeMutePattern,
+  unmuteHost,
+} from "../lib/reputation";
 import { pasteKey, clear as clearAuth, refreshMe } from "../lib/auth";
 import { applyTheme, watchSystemTheme } from "../lib/theme";
 import { CATEGORIES } from "../lib/categories";
 import { planLabel } from "../lib/plans";
 import { VULNRADAR } from "../lib/constants";
 import { api } from "../lib/api";
-import { isValidUrlPattern } from "../lib/url-patterns";
 import {
   DEFAULT_SETTINGS,
   type AuthState,
@@ -53,7 +68,12 @@ let mutePatternError: string | null = null;
 let snoozedHosts: Record<string, number> = {};
 
 let activeSection: string = "auth";
-let toast: { text: string; ts: number } | null = null;
+let toast: { text: string } | null = null;
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+const TOAST_MS = 3000;
+// Whether the API key field shows its characters. Reset after a key is saved,
+// so the next time the field is used it starts hidden again.
+let showApiKey = false;
 // True when a key is configured but the last background connectivity
 // check failed for a reason other than the key being rejected (see
 // auth.ts's RefreshMeResult). Kept separate from `currentAuth` so the
@@ -65,8 +85,17 @@ let testStatus:
   | { kind: "ok"; me: AuthMe }
   | { kind: "error"; message: string } = { kind: "idle" };
 
+// The toast removes itself. It used to be hidden only by a timestamp test at
+// render time, so nothing re-rendered once the three seconds were up and the
+// message stayed on screen (and in the live region) until the next unrelated
+// change.
 function showToast(text: string) {
-  toast = { text, ts: Date.now() };
+  toast = { text };
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast = null;
+    scheduleRender();
+  }, TOAST_MS);
   scheduleRender();
 }
 
@@ -74,16 +103,18 @@ async function patch(partial: Partial<Settings>) {
   const families: Settings["families"] = partial.families
     ? { ...settings.families, ...partial.families }
     : settings.families;
-  const merged: Settings = { ...settings, ...partial, families };
-  settings = merged;
+  // Shown at once so the control answers the click; replaced below by what was
+  // actually stored.
+  settings = { ...settings, ...partial, families };
   if (partial.theme) applyTheme(partial.theme);
-  const storage = await loadAll();
-  // Spread the loaded state rather than listing fields. Enumerating them
-  // dropped lastResult, and saveAll writes `lastResult ?? null`, so saving
-  // any setting wiped the persisted scan result the popup restores on open.
-  await saveAll({ ...storage, auth: currentAuth, settings: merged });
-  showToast("Saved");
   scheduleRender();
+  // patchSettings re-reads the stored settings and writes this change over
+  // them, and writes nothing else. Saving used to rebuild the whole snapshot
+  // from a copy read a moment earlier and put `auth: currentAuth` back with it,
+  // so a toggle clicked while the background was refreshing the key (or after a
+  // key was cleared in another window) restored the older value.
+  settings = await patchSettings(partial);
+  showToast("Saved");
 }
 
 async function testConnection(key: string) {
@@ -104,52 +135,75 @@ async function testConnection(key: string) {
   scheduleRender();
 }
 
-async function unmuteHost(host: string) {
-  const next = { ...mutedHosts };
-  delete next[host];
-  mutedHosts = next;
-  await set("mutedHosts", next);
+/**
+ * Test & Save, from the button or Enter. The field is cleared once the key has
+ * been verified and stored: it is uncontrolled, so the pasted key otherwise
+ * stayed in the DOM (and in the Show state) for as long as the tab was open,
+ * next to a banner that already says the key was accepted.
+ */
+async function submitApiKey() {
+  const input = document.getElementById(
+    "api-key-input",
+  ) as HTMLInputElement | null;
+  const key = input?.value.trim();
+  if (!input || !key) return;
+  await testConnection(key);
+  if (testStatus.kind === "ok") {
+    input.value = "";
+    showApiKey = false;
+    scheduleRender();
+  }
+}
+
+// The three lists below are edited by this page, by the background and by the
+// card on a page, so every edit is a read-modify-write of its own key in
+// lib/reputation.ts and the page then reloads from storage. It used to change
+// its own in-memory copy and write that whole array back, which restored
+// anything the card had muted since the page was opened.
+async function reloadLists() {
+  mutedHosts = (await get("mutedHosts")) ?? {};
+  mutedPatterns = [...((await get("mutedPatterns")) ?? [])];
+  snoozedHosts = (await get("snoozedHosts")) ?? {};
+}
+
+async function onUnmuteHost(host: string) {
+  await unmuteHost(host);
+  await reloadLists();
   showToast("Unmuted");
-  scheduleRender();
 }
 
 async function addMutePatternFromInput() {
   const value = mutePatternInput.trim();
   if (!value) return;
-  if (!isValidUrlPattern(value)) {
+  const result = await addMutePattern(value);
+  if (result === "invalid") {
     mutePatternError =
       "Use one of: https://example.com, https://example.com/*, or https://*.example.com/*";
     scheduleRender();
     return;
   }
-  mutePatternError = null;
-  if (!mutedPatterns.includes(value)) {
-    mutedPatterns = [...mutedPatterns, value];
-    await set("mutedPatterns", mutedPatterns);
+  if (result === "full") {
+    mutePatternError = `You can keep up to ${VULNRADAR.mutePatternLimit} muted patterns. Remove one first.`;
+    scheduleRender();
+    return;
   }
+  mutePatternError = null;
   mutePatternInput = "";
-  showToast("Pattern added");
-  scheduleRender();
+  await reloadLists();
+  showToast(result === "added" ? "Pattern added" : "Already muted");
 }
 
-async function removeMutePattern(pattern: string) {
-  mutedPatterns = mutedPatterns.filter((p) => p !== pattern);
-  await set("mutedPatterns", mutedPatterns);
+async function onRemoveMutePattern(pattern: string) {
+  await removeMutePattern(pattern);
+  await reloadLists();
   showToast("Removed");
-  scheduleRender();
 }
 
-/** Ends an active snooze early. Direct get()/set() on the `snoozedHosts`
- *  key, never round-tripping the whole settings object - same
- *  storage-key-isolation convention as unmuteHost()/removeMutePattern()
- *  above and snoozeHost() in lib/reputation.ts. */
-async function clearSnooze(host: string) {
-  const next = { ...snoozedHosts };
-  delete next[host];
-  snoozedHosts = next;
-  await set("snoozedHosts", next);
+/** Ends an active snooze early. */
+async function onClearSnooze(host: string) {
+  await clearSnooze(host);
+  await reloadLists();
   showToast("Snooze cleared");
-  scheduleRender();
 }
 
 /** Non-expired entries from snoozedHosts, sorted by host. Expired entries
@@ -458,11 +512,7 @@ function App(): TemplateResult {
     <!-- Every setting on this page saves silently and confirms only with this
          toast, so it is the textbook status message (SC 4.1.3). -->
     <div class="toast-region" role="status" aria-live="polite">
-      ${
-        toast && Date.now() - toast.ts < 3000
-          ? html`<div class="toast">${toast.text}</div>`
-          : null
-      }
+      ${toast ? html`<div class="toast">${toast.text}</div>` : null}
     </div>
     ${ConfirmDialog()}
   `;
@@ -538,10 +588,10 @@ function SectionAuth(): TemplateResult {
         <span
           >Generate an API key at
           <a
-            href="${VULNRADAR.apiHost}/profile"
+            href="${VULNRADAR.apiHost}/profile?tab=developer&amp;dtab=api-keys"
             target="_blank"
             rel="noreferrer"
-            >Profile &rsaquo; API Keys</a
+            >Profile &rsaquo; Developer &rsaquo; API Keys</a
           >, then paste it below.</span
         >
       </div>
@@ -585,27 +635,46 @@ function SectionAuth(): TemplateResult {
             Format: vr_live_ followed by 64 hex chars
           </div>
         </div>
+        <!-- A secret, so it is a password field. As plain text it was drawn
+             on screen, offered to the browser's autofill and spell-checker,
+             and saved by every password manager that watches text inputs for
+             something key-shaped. autocomplete="new-password" and the
+             data-* opt-outs keep the browser and the common managers from
+             offering to fill or save it; Show is for checking a paste. -->
         <input
           class="input mono"
           style="min-width:280px"
+          type=${showApiKey ? "text" : "password"}
+          autocomplete="new-password"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          data-1p-ignore
+          data-lpignore="true"
+          data-bwignore="true"
+          data-form-type="other"
           placeholder="vr_live_..."
           id="api-key-input"
           aria-describedby="api-key-desc"
-          @keydown=${async (e: KeyboardEvent) => {
-            if (e.key === "Enter") {
-              const v = (e.target as HTMLInputElement).value.trim();
-              if (v) await testConnection(v);
-            }
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === "Enter") void submitApiKey();
           }}
         />
         <button
-          class="btn primary"
-          @click=${async () => {
-            const el = document.getElementById(
-              "api-key-input",
-            ) as HTMLInputElement | null;
-            if (el?.value.trim()) await testConnection(el.value.trim());
+          type="button"
+          class="btn"
+          aria-pressed=${showApiKey}
+          aria-controls="api-key-input"
+          @click=${() => {
+            showApiKey = !showApiKey;
+            scheduleRender();
           }}
+        >
+          Show
+        </button>
+        <button
+          class="btn primary"
+          @click=${() => void submitApiKey()}
           ?disabled=${testStatus.kind === "loading"}
         >
           ${testStatus.kind === "loading" ? "Testing\u2026" : "Test & Save"}
@@ -639,17 +708,17 @@ const AUTO_MODES: ReadonlyArray<{
   {
     id: "onTabFocus",
     label: "On tab focus",
-    desc: "Scan when you focus a tab",
+    desc: "Scan the page of a tab when you switch to it",
   },
   {
     id: "onPageLoad",
     label: "On page load",
-    desc: "Scan every page as it finishes loading",
+    desc: "Scan a page when it finishes loading",
   },
   {
     id: "onUrlChange",
     label: "On URL change",
-    desc: "Scan on navigations (same-origin)",
+    desc: "Scan when a tab's address changes, in-page navigation included",
   },
 ];
 
@@ -739,12 +808,19 @@ function SectionAutoScan(): TemplateResult {
         </h2>
         <div class="section-desc">
           When the extension should automatically scan pages in the background.
-          Off by default.
+          Off by default. An automatic scan never runs active probing or the
+          port sweep, and it skips private windows, private addresses
+          (localhost, IP addresses, intranet names) and addresses with a token
+          or key in the query string. The part of the address after # is never
+          sent.
         </div>
       </div>
       ${PauseControl()}
       <h3 class="subsection-label">Trigger</h3>
-      <div class="grid">
+      <!-- a11y (SC 1.3.1/4.1.2): the radios are named by their own labels but
+           nothing said they were one choice, so a screen reader announced
+           four unrelated radio buttons. The group needs a name of its own. -->
+      <div class="grid" role="radiogroup" aria-label="Auto-scan trigger">
         ${AUTO_MODES.map(
           (m) => html`
             <label
@@ -802,10 +878,11 @@ function SectionAutoScan(): TemplateResult {
       <div class="row">
         <div class="row-label">
           <label class="title" for="throttle-input"
-            >Throttle (seconds between scans)</label
+            >Throttle (seconds between any two scans)</label
           >
           <div class="desc" id="throttle-desc">
-            Prevents burning through your daily quota on tab switching
+            The least time between two automatic scans, whichever sites they are
+            for. Each one counts against your daily limit. 0 turns this off.
           </div>
         </div>
         <input
@@ -826,6 +903,42 @@ function SectionAutoScan(): TemplateResult {
           }}
         />
       </div>
+      <div class="row">
+        <div class="row-label">
+          <label class="title" for="host-cooldown-input"
+            >Same-site cooldown (hours)</label
+          >
+          <div class="desc" id="host-cooldown-desc">
+            Once a site has been scanned automatically, it is not scanned
+            automatically again for this long, however often you visit it. Up to
+            ${VULNRADAR.autoScanHostCooldownMaxHours}. 0 turns this off.
+          </div>
+        </div>
+        <input
+          class="input"
+          type="number"
+          min="0"
+          max=${VULNRADAR.autoScanHostCooldownMaxHours}
+          step="1"
+          style="width:96px"
+          id="host-cooldown-input"
+          aria-describedby="host-cooldown-desc"
+          .value=${String(settings.autoScanHostCooldownHours)}
+          @change=${(e: Event) => {
+            const raw = Number((e.target as HTMLInputElement).value);
+            const hours = Number.isFinite(raw)
+              ? Math.max(
+                  0,
+                  Math.min(
+                    VULNRADAR.autoScanHostCooldownMaxHours,
+                    Math.round(raw),
+                  ),
+                )
+              : DEFAULT_SETTINGS.autoScanHostCooldownHours;
+            patch({ autoScanHostCooldownHours: hours });
+          }}
+        />
+      </div>
       <h3 class="subsection-label">URL filters</h3>
       <div class="row">
         <div
@@ -836,7 +949,8 @@ function SectionAutoScan(): TemplateResult {
             >Whitelist (one per line, case-insensitive)</label
           >
           <div class="desc" id="whitelist-desc">
-            Only auto-scan URLs containing one of these fragments
+            Only auto-scan an address that contains one of these. Plain text,
+            matched anywhere in the address; wildcards are not supported.
           </div>
           <textarea
             class="input wide"
@@ -862,15 +976,18 @@ function SectionAutoScan(): TemplateResult {
           style="flex-direction:column;align-items:stretch"
         >
           <label class="title" for="blacklist-input"
-            >Blacklist (one per line)</label
+            >Blacklist (one per line, case-insensitive)</label
           >
           <div class="desc" id="blacklist-desc">
-            Never auto-scan URLs containing one of these fragments
+            Never auto-scan an address that contains one of these. Plain text,
+            matched anywhere in the address; wildcards are not supported. This
+            does not stop Site Alerts: to silence the card on a site, add a
+            pattern under Site Alerts.
           </div>
           <textarea
             class="input wide"
             style="margin-top:8px;min-height:64px;font-family:var(--vr-mono);font-size:12px"
-            placeholder="*.internal.corp"
+            placeholder="internal.example.com"
             id="blacklist-input"
             aria-describedby="blacklist-desc"
             .value=${settings.blacklist.join("\n")}
@@ -912,10 +1029,12 @@ function SectionSiteAlerts(): TemplateResult {
           The small card shown on the page itself when you visit a site:
           VulnRadar's last scan of it if there is one, or a one-click offer to
           scan it if there isn't. Independent of auto-scan above. To choose the
-          card, the extension asks ${VULNRADAR.apiHost} about each site you
-          open, sending its hostname and page URL at most once every
+          card, the extension asks ${VULNRADAR.apiHost} about each public site
+          you open, sending its hostname and the page's address without the
+          query string or fragment, at most once every
           ${Math.round(VULNRADAR.reputationThrottleMs / 1000)} seconds per site.
-          Turning both switches off stops those requests.
+          Private windows, localhost, IP addresses and intranet names are never
+          looked up. Turning both switches off stops those requests.
         </div>
       </div>
       <div class="row">
@@ -1038,7 +1157,7 @@ function SectionSiteAlerts(): TemplateResult {
                           type="button"
                           class="text-btn"
                           aria-label=${`Remove muted pattern ${p}`}
-                          @click=${() => removeMutePattern(p)}
+                          @click=${() => onRemoveMutePattern(p)}
                         >
                           Remove
                         </button>
@@ -1078,7 +1197,7 @@ function SectionSiteAlerts(): TemplateResult {
                           type="button"
                           class="text-btn"
                           aria-label=${`Clear the snooze on ${host}`}
-                          @click=${() => clearSnooze(host)}
+                          @click=${() => onClearSnooze(host)}
                         >
                           Clear
                         </button>
@@ -1115,7 +1234,7 @@ function SectionSiteAlerts(): TemplateResult {
                           type="button"
                           class="text-btn"
                           aria-label=${`Unmute ${h}`}
-                          @click=${() => unmuteHost(h)}
+                          @click=${() => onUnmuteHost(h)}
                         >
                           Unmute
                         </button>
@@ -1248,7 +1367,7 @@ function SectionNotifications(): TemplateResult {
           When to show a desktop notification after a scan completes.
         </div>
       </div>
-      <div class="grid">
+      <div class="grid" role="radiogroup" aria-label="Notification level">
         ${NOTIFY_THRESHOLDS.map(
           (n) => html`
             <label
@@ -1384,30 +1503,33 @@ function SectionPrivacy(): TemplateResult {
         The extension talks to <strong>${VULNRADAR.apiHost}</strong> only, and
         sends it two kinds of request. <br /><br />
         <strong>Scans.</strong> When you click "Scan this page" or auto-scan
-        fires, the current page URL is sent and scanned, and the scan is saved
-        to your account's history. <br /><br />
+        fires, the page address is sent and scanned, and the scan is saved to
+        your account's history. Auto-scan drops the part after # and skips
+        addresses with a token, key or code in the query string. <br /><br />
         <strong>Site Alerts</strong>, on unless you turn them off. When you open
-        a page, its hostname and full URL are sent to look up whether VulnRadar
-        has scanned it, at most once every
-        ${Math.round(VULNRADAR.reputationThrottleMs / 1000)} seconds per site.
-        The lookup reads existing scans only: it does not start a scan and does
-        not store the address. Turn off both Site Alerts switches to stop it
-        everywhere, or mute a single site from its card. <br /><br />
+        a page, its hostname and its address without the query string or
+        fragment are sent to look up whether VulnRadar has scanned it, at most
+        once every ${Math.round(VULNRADAR.reputationThrottleMs / 1000)} seconds
+        per site. Nothing is sent from a private window, or for localhost, an IP
+        address or an intranet name. The lookup reads existing scans only: it
+        does not start a scan and does not store the address. Turn off both Site
+        Alerts switches to stop it everywhere, or mute a single site from its
+        card. <br /><br />
         Responses (findings, severity counts) are cached in
         <code>extension storage</code> on this device so the popup can show
         recent scans without re-querying. They are never synced across devices.
         Nothing is sent to any other origin. The extension has no analytics, no
         telemetry, no third-party scripts. <br /><br />
         <strong>What runs on the pages you visit.</strong> A small script loads
-        on every page so it can show the site alert card and the scan status
-        badge. It also checks, on this device only, whether the page has a
-        cookie that looks like a sign-in, so the scan prompt can mention that a
-        signed-in page may look different to the scanner. That check is never
-        sent anywhere. <br /><br />
+        on every web page (http and https only) so it can show the site alert
+        card and the scan status badge. It also checks, on this device only,
+        whether the page has a cookie that looks like a sign-in, so the scan
+        prompt can mention that a signed-in page may look different to the
+        scanner. That check is never sent anywhere. <br /><br />
         <strong>Why the permissions.</strong> Tabs, to know which page to scan.
         Notifications, to tell you when a scan finishes. Downloads, to save a
         report you export. The right-click menu, for "Scan this link". Alarms,
-        to keep a long scan alive in the background. Storage, for your key,
+        only to keep a long scan alive in the background. Storage, for your key,
         settings and the cache above.
       </div>
       <div class="row">
@@ -1454,10 +1576,38 @@ async function init() {
   const storage = await loadAll();
   settings = storage.settings;
   currentAuth = storage.auth ?? null;
-  mutedHosts = (await get("mutedHosts")) ?? {};
-  mutedPatterns = [...((await get("mutedPatterns")) ?? [])];
-  snoozedHosts = (await get("snoozedHosts")) ?? {};
+  await reloadLists();
   applyTheme(settings.theme);
+  // This page is one of three writers to these keys: the background refreshes
+  // the key and stamps scans, and the card on a page adds mutes and snoozes.
+  // Without this the page showed whatever it read at load, and "Remove" on a
+  // list then wrote a list that no longer matched storage.
+  onChanged((changes) => {
+    if (changes.settings) {
+      settings = normalizeSettings(
+        (changes.settings.newValue as Settings | undefined) ?? null,
+      );
+      applyTheme(settings.theme);
+    }
+    if (changes.auth) {
+      currentAuth = (changes.auth.newValue as AuthState | undefined) ?? null;
+    }
+    if (changes.mutedPatterns) {
+      mutedPatterns = [
+        ...((changes.mutedPatterns.newValue as string[] | undefined) ?? []),
+      ];
+    }
+    if (changes.mutedHosts) {
+      mutedHosts =
+        (changes.mutedHosts.newValue as Record<string, true> | undefined) ?? {};
+    }
+    if (changes.snoozedHosts) {
+      snoozedHosts =
+        (changes.snoozedHosts.newValue as Record<string, number> | undefined) ??
+        {};
+    }
+    scheduleRender();
+  });
   // applyTheme only resolves "system" once. The options page stays open for a
   // long time, so without this an OS light/dark flip left it on the old theme
   // until reload. Reads settings.theme at event time, so switching to or away

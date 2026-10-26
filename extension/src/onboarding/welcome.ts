@@ -58,12 +58,12 @@ function App(): TemplateResult {
             <p>
               Go to
               <a
-                href="${VULNRADAR.apiHost}/profile"
+                href="${VULNRADAR.apiHost}/profile?tab=developer&amp;dtab=api-keys"
                 target="_blank"
                 rel="noreferrer"
-                >Profile › API Keys</a
+                >Profile › Developer › API Keys</a
               >
-              and click <strong>Generate New Key</strong>. Copy the
+              and click <strong>Create key</strong>. Copy the
               <code>vr_live_...</code> value.
             </p>
           </div>
@@ -90,7 +90,14 @@ function App(): TemplateResult {
         <strong>Privacy:</strong> the key is stored in
         <code>extension storage</code> on this device only. It is never sent
         anywhere except <code>${VULNRADAR.apiHost}</code> as a Bearer token. No
-        telemetry, no analytics, no third-party scripts.
+        telemetry, no analytics, no third-party scripts. <br /><br />
+        <strong>Site Alerts is on by default.</strong> When you open a public
+        web page, the extension sends its hostname and its address without the
+        query string or fragment to <code>${VULNRADAR.apiHost}</code>, to show
+        you a past scan or offer one. Private windows, localhost, IP addresses
+        and intranet names are never sent. Turn it off under Settings › Site
+        Alerts. Scanning a page sends the address you scan, and auto-scan is off
+        until you turn it on.
       </div>
 
       <div class="actions">

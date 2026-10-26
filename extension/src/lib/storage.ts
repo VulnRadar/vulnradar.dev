@@ -3,10 +3,11 @@
 // scoped to the extension profile (not synced to Google) and survives
 // browser restarts.
 //
-// Schema versioning: only clears storage when an OLDER version is
-// explicitly present. Missing schemaVersion = fresh install; we merge
-// with DEFAULT rather than wiping (prevents the API key from being
-// erased on every background-page reload).
+// Schema versioning: when an OLDER version is explicitly present, only the
+// derived caches are dropped (DERIVED_CACHE_KEYS); the API key, the settings
+// and the mute lists are the user's own and survive a bump. Missing
+// schemaVersion = fresh install; we merge with DEFAULT rather than wiping
+// (prevents the API key from being erased on every background-page reload).
 
 import browser from "webextension-polyfill";
 import type Browser from "webextension-polyfill";
@@ -65,6 +66,15 @@ export interface LastShownReputation {
   readonly shownAt: number;
 }
 
+/** A "Scan this site" offer the background made for one tab, kept so the
+ *  scan can be started from what the background recorded instead of from an
+ *  address the page-side card sends back. See lib/offered-scan.ts. */
+export interface OfferedScan {
+  readonly host: string;
+  readonly url: string;
+  readonly offeredAt: number;
+}
+
 export interface StorageShape {
   schemaVersion: number;
   auth: AuthState | null;
@@ -83,11 +93,18 @@ export interface StorageShape {
    */
   historyFetchedAt: number;
   lastAutoScanAt: number;
+  /** hostname -> when auto-scan last scanned it (ms). The per-site cooldown
+   *  (Settings.autoScanHostCooldownHours) reads this; entries older than a
+   *  day are pruned on write. Read and written directly through get()/set(),
+   *  like `mutedHosts`. */
+  autoScannedAt: Record<string, number>;
+  /** tab id (as a string) -> the scan the card offered in that tab. */
+  offeredScans: Record<string, OfferedScan>;
   rateLimitInfo: RateLimitInfo | null;
   lastResult: ScanResult | null;
   /** host -> last reputation-check timestamp (ms). Throttles the on-page
-   *  site-alert lookup per host; not part of saveAll()'s core snapshot,
-   *  read/written directly via get()/set() like `mutedHosts` below. */
+   *  site-alert lookup per host; read/written directly via get()/set() like
+   *  `mutedHosts` below. */
   reputationThrottleMap: Record<string, number>;
   /** host -> last known reputation result, kept independently of the
    *  throttle timestamp above. When canCheckReputationNow() blocks a fresh
@@ -133,8 +150,8 @@ export interface StorageShape {
    *  noteReputationShown. Same direct get()/set() storage-key-isolation
    *  pattern as `reputationThrottleMap`. */
   lastShownReputation: Record<string, LastShownReputation>;
-  /** See ScanInProgress above. Not part of saveAll()'s core snapshot,
-   *  read/written directly via get()/set() like `mutedHosts` above. */
+  /** See ScanInProgress above. Read/written directly via get()/set() like
+   *  `mutedHosts` above. */
   scanInProgress: ScanInProgress | null;
   /** See LastScanCompletion above. Same access pattern as scanInProgress. */
   lastScanCompletion: LastScanCompletion | null;
@@ -147,6 +164,8 @@ export const DEFAULT: StorageShape = {
   historyCache: [],
   historyFetchedAt: 0,
   lastAutoScanAt: 0,
+  autoScannedAt: {},
+  offeredScans: {},
   rateLimitInfo: null,
   lastResult: null,
   reputationThrottleMap: {},
@@ -191,11 +210,48 @@ export async function getApiKey(): Promise<string | null> {
 }
 
 /**
- * Loads the full stored snapshot. Only clears storage when an older
- * schema version is explicitly present (real upgrade path). Missing
- * schemaVersion means fresh install — merge with DEFAULT to preserve
- * any keys already written (e.g. auth written by pasteKey() before
- * saveAll() stamps the version).
+ * Everything the extension can rebuild or re-fetch, as opposed to what the
+ * user entered. A schema bump removes exactly these. It used to clear storage
+ * outright, which signed everyone out and threw away their settings and mute
+ * lists the first time a release changed the shape of a cache.
+ */
+export const DERIVED_CACHE_KEYS: readonly (keyof StorageShape)[] = [
+  "historyCache",
+  "historyFetchedAt",
+  "lastResult",
+  "lastScanCompletion",
+  "reputationCache",
+  "reputationThrottleMap",
+  "lastShownReputation",
+  "rateLimitInfo",
+  "autoScannedAt",
+  "offeredScans",
+];
+
+/**
+ * A stored settings blob laid over DEFAULT_SETTINGS. `settings` is stored as
+ * one object, so a blob saved before a new family or setting existed would
+ * otherwise fully replace DEFAULT_SETTINGS and silently drop it: a newly added
+ * scan category would read as unchecked and never run instead of defaulting on
+ * like a fresh install. The nested `families` map is merged explicitly;
+ * everything the user actually changed is still preserved since it is spread
+ * last.
+ */
+export function normalizeSettings(raw: Partial<Settings> | null): Settings {
+  if (!raw) return DEFAULT_SETTINGS;
+  return {
+    ...DEFAULT_SETTINGS,
+    ...raw,
+    families: { ...DEFAULT_SETTINGS.families, ...raw.families },
+  };
+}
+
+/**
+ * Loads the full stored snapshot. When an older schema version is explicitly
+ * present (a real upgrade) the derived caches are removed and the version is
+ * stamped, and everything the user owns is kept. Missing schemaVersion means
+ * fresh install: merge with DEFAULT to preserve any keys already written (e.g.
+ * auth written by pasteKey() before anything stamps the version).
  */
 export async function loadAll(): Promise<StorageShape> {
   const raw = (await browser.storage.local.get(null)) as Partial<
@@ -205,37 +261,61 @@ export async function loadAll(): Promise<StorageShape> {
     typeof raw.schemaVersion === "number" &&
     raw.schemaVersion < STORAGE_SCHEMA_VERSION
   ) {
-    await clearAll();
-    return DEFAULT;
+    await browser.storage.local.remove([...DERIVED_CACHE_KEYS]);
+    await browser.storage.local.set({
+      schemaVersion: STORAGE_SCHEMA_VERSION,
+    });
+    for (const key of DERIVED_CACHE_KEYS) delete raw[key];
+    raw.schemaVersion = STORAGE_SCHEMA_VERSION;
   }
   const merged = { ...DEFAULT, ...raw } as StorageShape;
-  // `settings` is stored as one object, so a settings blob saved before a
-  // new family/probe existed would otherwise fully replace DEFAULT_SETTINGS
-  // and silently drop it - a newly added scan category would read as
-  // unchecked and never run instead of defaulting on like a fresh install.
-  // Merge the two nested maps explicitly; everything the user actually
-  // changed is still preserved since it's spread last.
   if (raw.settings) {
-    const rawSettings = raw.settings as Settings;
-    merged.settings = {
-      ...DEFAULT_SETTINGS,
-      ...rawSettings,
-      families: { ...DEFAULT_SETTINGS.families, ...rawSettings.families },
-    };
+    merged.settings = normalizeSettings(raw.settings as Settings);
   }
   return merged;
 }
 
-export async function saveAll(state: StorageShape): Promise<void> {
-  await browser.storage.local.set({
-    schemaVersion: STORAGE_SCHEMA_VERSION,
-    auth: state.auth,
-    settings: state.settings,
-    historyCache: state.historyCache,
-    historyFetchedAt: state.historyFetchedAt,
-    lastAutoScanAt: state.lastAutoScanAt,
-    rateLimitInfo: state.rateLimitInfo ?? null,
-    lastResult: state.lastResult ?? null,
+// Read-modify-write on one key, serialised per key within this JS context.
+// Two writers that each read, change and set the same key would otherwise
+// interleave their awaits and the second set would erase the first's change:
+// two quick clicks in Options, or two tabs finishing loading in the same tick.
+// Writers in different contexts (the options page and the background) can
+// still race, but the window is one storage round trip rather than a whole
+// handler.
+const updateChains = new Map<string, Promise<unknown>>();
+
+export function update<K extends keyof StorageShape>(
+  key: K,
+  change: (current: StorageShape[K] | null) => StorageShape[K],
+): Promise<StorageShape[K]> {
+  const previous = updateChains.get(key) ?? Promise.resolve();
+  const run = previous.then(async () => {
+    const next = change(await get(key));
+    await set(key, next);
+    return next;
+  });
+  updateChains.set(
+    key,
+    run.catch(() => {}),
+  );
+  return run;
+}
+
+/**
+ * Writes `partial` over the stored settings and nothing else. The options
+ * page used to rebuild the whole storage snapshot to save one toggle, which
+ * rewrote auth, the history cache and the last auto-scan time from a copy read
+ * moments earlier, so a toggle clicked while a key refresh or a scan was
+ * landing could put the older values back.
+ */
+export function patchSettings(partial: Partial<Settings>): Promise<Settings> {
+  return update("settings", (current) => {
+    const base = normalizeSettings(current);
+    return {
+      ...base,
+      ...partial,
+      families: { ...base.families, ...partial.families },
+    };
   });
 }
 

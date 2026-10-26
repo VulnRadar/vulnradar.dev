@@ -41,27 +41,6 @@ export type ScannerCategory =
   | "reputation"
   | "active-probes";
 
-export const ALL_CATEGORIES: readonly ScannerCategory[] = [
-  "headers",
-  "ssl",
-  "tls",
-  "content",
-  "cookies",
-  "configuration",
-  "information-disclosure",
-  "dns",
-  "email",
-  "api",
-  "code",
-  "secrets-extended",
-  "vibe-code",
-  "client-side",
-  "supply-chain",
-  "host-validation",
-  "reputation",
-  "active-probes",
-] as const;
-
 export type AiVerdict = "confirmed" | "possible_fp" | "uncertain";
 
 export interface CodeExample {
@@ -190,6 +169,22 @@ export interface ScanStatusResponse {
  */
 export type ReportFormat = "sarif" | "pdf" | "md" | "json";
 
+/** The closed set above as a value, so the background can refuse a format
+ *  that did not come from the popup's own buttons. */
+export const REPORT_FORMATS: readonly ReportFormat[] = [
+  "sarif",
+  "pdf",
+  "md",
+  "json",
+];
+
+export function isReportFormat(value: unknown): value is ReportFormat {
+  return (
+    typeof value === "string" &&
+    (REPORT_FORMATS as readonly string[]).includes(value)
+  );
+}
+
 export interface ScanHistoryRow {
   /**
    * The scan's opaque public id, a 32-character hex string.
@@ -257,7 +252,11 @@ export type CardPosition =
 
 export interface Settings {
   readonly autoScan: AutoScanMode;
+  /** Minimum seconds between any two auto-scans, across all sites. */
   readonly autoScanThrottleSeconds: number;
+  /** Hours before auto-scan may scan the same site again. 0 turns the
+   *  per-site cooldown off and leaves only the global throttle above. */
+  readonly autoScanHostCooldownHours: number;
   readonly families: Readonly<Record<ScannerCategory, boolean>>;
   /** Curated port and service sweep. Needs a verified domain, so it is off
    *  by default and a scan requesting it on an unverified domain is
@@ -295,6 +294,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   autoScan: "off",
   autoScanThrottleSeconds: 60,
+  autoScanHostCooldownHours: 6,
   families: {
     headers: true,
     ssl: true,

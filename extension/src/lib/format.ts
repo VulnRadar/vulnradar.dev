@@ -31,6 +31,28 @@ export function meetsThreshold(
   return severityRank(findingSeverity) >= severityRank(threshold);
 }
 
+/**
+ * The reference links worth rendering for a finding: https only, at most
+ * `limit`. A finding's references come from the scan result, which is data the
+ * extension did not write, so a javascript:, data: or plain http link is
+ * dropped rather than becoming an anchor in the popup. The filter runs before
+ * the cut, so a bad link early in the list does not use up a slot.
+ */
+export function httpsReferences(
+  references: readonly string[] | undefined,
+  limit: number,
+): string[] {
+  return (references ?? [])
+    .filter((href) => {
+      try {
+        return new URL(href).protocol === "https:";
+      } catch {
+        return false;
+      }
+    })
+    .slice(0, limit);
+}
+
 const DURATION_UNITS: readonly {
   readonly ms: number;
   readonly suffix: string;

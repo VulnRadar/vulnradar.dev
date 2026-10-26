@@ -1,7 +1,7 @@
-// Content script: runs on every page (<all_urls>). Reports the
-// current page URL to the background service worker on load.
-// The background uses sender.tab.url (not msg.url) as the authoritative
-// URL — but we still send url+title for completeness.
+// Content script: runs on every http and https page. Tells the background
+// service worker that a page loaded; the message carries nothing else. The
+// background reads the address from sender.tab.url, which is the browser's own
+// record of the tab and not something this script (or the page) supplies.
 //
 // Receives scan lifecycle messages back from the background to show/hide
 // the page indicator badge, and reputation:* messages to show the
@@ -31,10 +31,17 @@ import type {
   Settings,
 } from "../lib/types";
 
-interface PageLoadedMsg {
-  readonly kind: "page:loaded";
-  readonly url: string;
-  readonly title: string;
+/**
+ * What "reputation:scan" resolves to when the background declined to start
+ * anything. A scan that ran and failed is reported by a scan:error message
+ * instead, so only this shape needs handling here.
+ */
+function isRefusal(
+  response: unknown,
+): response is { readonly refused: true; readonly error: string } {
+  if (typeof response !== "object" || response === null) return false;
+  const r = response as { refused?: unknown; error?: unknown };
+  return r.refused === true && typeof r.error === "string";
 }
 
 type FromBackground =
@@ -133,12 +140,7 @@ function reportPage(): void {
   ) {
     return;
   }
-  const msg: PageLoadedMsg = {
-    kind: "page:loaded",
-    url: location.href,
-    title: document.title || location.hostname,
-  };
-  browser.runtime.sendMessage(msg as unknown as string).catch(() => {
+  browser.runtime.sendMessage({ kind: "page:loaded" }).catch(() => {
     // background SW may be inactive during page transitions; safe to ignore.
   });
 }
@@ -200,21 +202,50 @@ function dismissCardScan(): void {
   hideCard();
 }
 
+/** "Try again" on the error card. The earlier attempt may have left
+ *  cardScanUrl set (a dropped message does not clear it, so a late result can
+ *  still land), which the guard in startCardScan would read as a scan in
+ *  flight. */
+function retryCardScan(url: string): void {
+  cardScanUrl = null;
+  startCardScan(url);
+}
+
 function startCardScan(url: string): void {
+  // One card scan at a time: a second press while the first is running would
+  // send a second message for the same offer.
+  if (cardScanUrl !== null) return;
   cardScanUrl = url;
   showScanningCard(url, dismissCardScan);
-  browser.runtime.sendMessage({ kind: "reputation:scan", url }).catch(() => {
-    // The background may be momentarily unreachable (service worker
-    // waking up) -- scan:error normally reports a real failure, but a
-    // dropped message never arrives at all, so surface the same error
-    // card here rather than leaving the spinner up forever.
-    if (cardScanUrl !== url) return;
-    showScanErrorCard(
-      "Could not reach the extension's background service. Try again.",
-      () => startCardScan(url),
-      dismissCardScan,
-    );
-  });
+  // No address in the message. The background scans the one it recorded when
+  // it offered this scan in this tab, so there is nothing here a page could
+  // have steered.
+  browser.runtime
+    .sendMessage({ kind: "reputation:scan" })
+    .then((response: unknown) => {
+      // The scan itself reports through scan:started/complete/error. A
+      // refusal started nothing, so no such message follows and the spinner
+      // would never end.
+      if (!isRefusal(response) || cardScanUrl !== url) return;
+      cardScanUrl = null;
+      showScanErrorCard(
+        response.error,
+        () => retryCardScan(url),
+        dismissCardScan,
+      );
+    })
+    .catch(() => {
+      // The background may be momentarily unreachable (service worker
+      // waking up) -- scan:error normally reports a real failure, but a
+      // dropped message never arrives at all, so surface the same error
+      // card here rather than leaving the spinner up forever.
+      if (cardScanUrl !== url) return;
+      showScanErrorCard(
+        "Could not reach the extension's background service. Try again.",
+        () => retryCardScan(url),
+        dismissCardScan,
+      );
+    });
 }
 
 function cardActions(): CardActions {
@@ -372,7 +403,7 @@ browser.runtime.onMessage.addListener((msg: unknown) => {
         cardScanUrl = null;
         showScanErrorCard(
           m.error,
-          () => startCardScan(failedUrl),
+          () => retryCardScan(failedUrl),
           dismissCardScan,
         );
       } else {

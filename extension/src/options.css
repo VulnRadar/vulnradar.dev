@@ -306,6 +306,14 @@ textarea.input {
   border-color: var(--vr-danger);
 }
 
+/* A toggle button (Show, on the API key field). Its label does not change, so
+   the pressed state is what tells a sighted user the key is showing; the
+   screen reader hears it from aria-pressed. */
+.btn[aria-pressed="true"] {
+  background: var(--vr-card);
+  border-color: var(--vr-primary-text);
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;

@@ -24,7 +24,12 @@ import { classifyScanTarget } from "../lib/scan-target";
 import { applyTheme, watchSystemTheme } from "../lib/theme";
 import { VULNRADAR } from "../lib/constants";
 import { sendTabMessage, TabMessageTimeoutError } from "../lib/messaging";
-import { formatCount, formatDuration, formatRelative } from "../lib/format";
+import {
+  formatCount,
+  formatDuration,
+  formatRelative,
+  httpsReferences,
+} from "../lib/format";
 import { ConnectPill } from "./components/connect-pill";
 import { ScanButton } from "./components/scan-button";
 import { DEFAULT_SETTINGS } from "../lib/types";
@@ -619,12 +624,13 @@ function ExportBar(r: ScanResult): TemplateResult {
  */
 function FindingRow(v: Vulnerability): TemplateResult {
   const isOpen = state.expandedFindings.has(v.id);
+  const references = httpsReferences(v.references, MAX_REFERENCES);
   const hasDetail = Boolean(
     v.evidence ||
     v.riskImpact ||
     v.explanation ||
     (v.fixSteps && v.fixSteps.length > 0) ||
-    (v.references && v.references.length > 0),
+    references.length > 0,
   );
 
   const toggle = () => {
@@ -697,6 +703,7 @@ function FindingHeaderContent(
 }
 
 function FindingDetail(v: Vulnerability): TemplateResult {
+  const references = httpsReferences(v.references, MAX_REFERENCES);
   return html`
     <div class="finding-detail">
       ${
@@ -742,23 +749,18 @@ function FindingDetail(v: Vulnerability): TemplateResult {
           : null
       }
       ${
-        v.references && v.references.length > 0
+        references.length > 0
           ? html`
               <div class="fd-block">
                 <div class="fd-label">References</div>
                 <div class="fd-refs">
-                  ${v.references
-                    .slice(0, 4)
-                    .map(
-                      (href) => html`
-                        <a
-                          href=${href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          >${shortRef(href)}</a
-                        >
-                      `,
-                    )}
+                  ${references.map(
+                    (href) => html`
+                      <a href=${href} target="_blank" rel="noopener noreferrer"
+                        >${shortRef(href)}</a
+                      >
+                    `,
+                  )}
                 </div>
               </div>
             `
@@ -767,6 +769,9 @@ function FindingDetail(v: Vulnerability): TemplateResult {
     </div>
   `;
 }
+
+/** How many reference links a finding shows. */
+const MAX_REFERENCES = 4;
 
 /** Hostname + a trimmed path, so a long docs URL stays on one line. */
 function shortRef(href: string): string {

@@ -13,6 +13,7 @@ import { html, render, type TemplateResult } from "lit-html";
 import { TIER_VAR, tierForScore } from "../lib/badge";
 import { VULNRADAR } from "../lib/constants";
 import { formatRelative } from "../lib/format";
+import { onlyTrusted } from "../lib/trusted-event";
 import { buildScopedTokensCss } from "../lib/tokens";
 import type {
   CardPosition,
@@ -121,7 +122,10 @@ function ensureRoot(): ShadowRoot {
     host.style.setProperty(prop, value, "important");
   }
   overlayParent().appendChild(host);
-  shadowRoot = host.attachShadow({ mode: "open" });
+  // Closed, so the page cannot reach into the card through host.shadowRoot
+  // to read it or press its buttons. This module keeps the only reference.
+  // Isolation of styles in both directions is the same either way.
+  shadowRoot = host.attachShadow({ mode: "closed" });
   // Escape closes the card, the way it closes the options page's confirm
   // dialog. Bound to the host element rather than to the document on purpose:
   // this listener only ever fires while focus is INSIDE the card, so it can
@@ -238,13 +242,17 @@ const VERDICT_RAIL: Record<SafetyVerdict, string> = {
 function MuteRow(actions: CardActions): TemplateResult {
   return html`
     <div class="mute-row">
-      <button type="button" class="text-btn" @click=${actions.onSnooze}>
+      <button
+        type="button"
+        class="text-btn"
+        @click=${onlyTrusted(actions.onSnooze)}
+      >
         Snooze 24h
       </button>
       <button
         type="button"
         class="text-btn"
-        @click=${actions.onMuteSite}
+        @click=${onlyTrusted(actions.onMuteSite)}
         aria-label="Never show this alert on this site"
       >
         Not this site
@@ -252,7 +260,7 @@ function MuteRow(actions: CardActions): TemplateResult {
       <button
         type="button"
         class="text-btn"
-        @click=${actions.onMuteGlobal}
+        @click=${onlyTrusted(actions.onMuteGlobal)}
         aria-label="Turn off site alerts everywhere"
       >
         Turn off
@@ -468,7 +476,7 @@ export function showUnknownCard(
     <button
       type="button"
       class="btn-primary"
-      @click=${() => actions.onScanNow(url)}
+      @click=${onlyTrusted(() => actions.onScanNow(url))}
     >
       Scan this site
     </button>
@@ -582,7 +590,7 @@ export function showScanErrorCard(
       <div class="title">Could not finish scanning this site</div>
       <div class="sub">${error}</div>
     </div>
-    <button type="button" class="btn-primary" @click=${onRetry}>
+    <button type="button" class="btn-primary" @click=${onlyTrusted(onRetry)}>
       Try again
     </button>
   `;
@@ -620,6 +628,10 @@ ${SEVERITY_CHIP_VARS}
     top: 16px;
     right: 16px;
     width: 360px;
+    /* Firefox for Android is a narrower viewport than 360px plus both
+       gutters; without this the card is wider than the screen and its
+       dismiss button is off the edge. */
+    max-width: calc(100vw - 32px);
     /* The elevated-surface token, not the page background: this is a card
        floating over someone else's site. */
     background: var(--vr-card);

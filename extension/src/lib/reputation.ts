@@ -10,13 +10,19 @@
 // Throttled per HOST (not per URL - the endpoint itself is host-scoped) so
 // repeat navigations to different pages on the same site within a short
 // window don't spam the endpoint.
+//
+// The address a caller passes here is already the stripped one from
+// lib/lookup-url.ts (origin and path, no query or fragment). api.reputation
+// strips it again at the point it builds the request, so nothing in this file
+// is the only thing standing between a reset link and the network.
 
 import { api } from "./api";
-import { get, set } from "./storage";
+import { get, set, update } from "./storage";
 import type { CachedReputation, LastShownReputation } from "./storage";
-import { VULNRADAR } from "./constants";
+import { SHOWN_SUPPRESS_MS, SNOOZE_DURATION_MS, VULNRADAR } from "./constants";
+import { isPublicHostname } from "./lookup-url";
 import { shouldAutoScanPolicy } from "./scan";
-import { matchesUrlPattern } from "./url-patterns";
+import { isValidUrlPattern, matchesUrlPattern } from "./url-patterns";
 import type { ReputationResponse, ScanResult, Settings } from "./types";
 
 export async function canCheckReputationNow(
@@ -80,7 +86,10 @@ export async function cacheReputation(
   // day is well past any realistic revisit window.
   const maxAgeMs = 24 * 60 * 60 * 1000;
   for (const [h, entry] of Object.entries(cache)) {
-    if (now - entry.cachedAt >= maxAgeMs) delete cache[h];
+    // 0.2.2 and earlier filed an exact-page result under the tab's full URL,
+    // query string and all. Drop those on the next write rather than leave a
+    // reset link sitting in storage until its day is up.
+    if (now - entry.cachedAt >= maxAgeMs || /[?#@]/.test(h)) delete cache[h];
   }
   // An exact-page answer is filed under the page, not the host, for the
   // reason in getCachedReputation above. Everything else is host-level and
@@ -91,9 +100,6 @@ export async function cacheReputation(
   };
   await set("reputationCache", cache);
 }
-
-/** How long a repeat of the same result stays suppressed for one host. */
-const SHOWN_SUPPRESS_MS = 4 * 60 * 60 * 1000;
 
 /**
  * Identity of a reputation result, covering both the known and unknown
@@ -198,6 +204,11 @@ export async function checkReputation(
   host: string,
   url?: string,
 ): Promise<ReputationResponse | null> {
+  // No request for a host that is not on the public internet. The endpoint
+  // answers 400 to an IP literal and has nothing on localhost, so the call
+  // could only spend a unit of the hourly budget and tell the server which
+  // private address the user was visiting.
+  if (!isPublicHostname(host)) return null;
   try {
     const res = await api.reputation(apiKey, host, url);
     return res.body;
@@ -248,10 +259,62 @@ export async function isHostMuted(host: string): Promise<boolean> {
   return muted[host] === true;
 }
 
-export async function addMutePattern(pattern: string): Promise<void> {
-  const patterns = (await get("mutedPatterns")) ?? [];
-  if (patterns.includes(pattern)) return;
-  await set("mutedPatterns", [...patterns, pattern]);
+export type MuteAddResult = "added" | "exists" | "invalid" | "full";
+
+/** Longest pattern accepted. A hostname is at most 253 characters and the
+ *  grammar allows one path, so nothing legitimate is anywhere near this. */
+const MAX_MUTE_PATTERN_LENGTH = 512;
+
+/**
+ * Adds a URL pattern to the mute list. The pattern is validated here and not
+ * only in the Options form, because the card's "Not this site" reaches this
+ * through a message and a list that every page load reads must not accept
+ * anything the matcher cannot honour. The read, the check and the write are
+ * one serialised update, so two additions in the same tick both land.
+ */
+export async function addMutePattern(pattern: string): Promise<MuteAddResult> {
+  const value = pattern.trim();
+  if (value.length > MAX_MUTE_PATTERN_LENGTH || !isValidUrlPattern(value)) {
+    return "invalid";
+  }
+  let result: MuteAddResult = "added";
+  await update("mutedPatterns", (current) => {
+    const list = current ?? [];
+    if (list.includes(value)) {
+      result = "exists";
+      return list;
+    }
+    if (list.length >= VULNRADAR.mutePatternLimit) {
+      result = "full";
+      return list;
+    }
+    return [...list, value];
+  });
+  return result;
+}
+
+export async function removeMutePattern(pattern: string): Promise<void> {
+  await update("mutedPatterns", (current) =>
+    (current ?? []).filter((p) => p !== pattern),
+  );
+}
+
+/** Lifts a legacy exact-hostname mute (see the comment block above). */
+export async function unmuteHost(host: string): Promise<void> {
+  await update("mutedHosts", (current) => {
+    const next = { ...current };
+    delete next[host];
+    return next;
+  });
+}
+
+/** Ends an active snooze early. */
+export async function clearSnooze(host: string): Promise<void> {
+  await update("snoozedHosts", (current) => {
+    const next = { ...current };
+    delete next[host];
+    return next;
+  });
 }
 
 /**
@@ -270,8 +333,6 @@ export async function isUrlMuted(url: string): Promise<boolean> {
   const patterns = (await get("mutedPatterns")) ?? [];
   return patterns.some((p) => matchesUrlPattern(url, p));
 }
-
-const SNOOZE_DURATION_MS = 24 * 60 * 60 * 1000;
 
 /**
  * True when `host` is currently within an active (non-expired) snooze
@@ -299,14 +360,21 @@ export async function snoozeHost(
   host: string,
   now: number = Date.now(),
 ): Promise<void> {
-  const map: Record<string, number> = {
-    ...(await get("snoozedHosts")),
-  };
-  for (const [h, expiresAt] of Object.entries(map)) {
-    if (expiresAt <= now) delete map[h];
-  }
-  map[host] = now + SNOOZE_DURATION_MS;
-  await set("snoozedHosts", map);
+  await update("snoozedHosts", (current) => {
+    const map: Record<string, number> = { ...current };
+    for (const [h, expiresAt] of Object.entries(map)) {
+      if (expiresAt <= now) delete map[h];
+    }
+    map[host] = now + SNOOZE_DURATION_MS;
+    // A bounded list: past the limit the sooner-to-expire entries go first,
+    // since those are the ones that would have lapsed on their own anyway.
+    const entries = Object.entries(map);
+    if (entries.length > VULNRADAR.snoozedHostLimit) {
+      entries.sort(([, x], [, y]) => y - x);
+      return Object.fromEntries(entries.slice(0, VULNRADAR.snoozedHostLimit));
+    }
+    return map;
+  });
 }
 
 /**

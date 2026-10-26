@@ -14,9 +14,15 @@ import {
   VulnRadarApiError,
   type FetchResult,
 } from "./api";
-import { get, set, getApiKey } from "./storage";
+import { get, set, update, getApiKey } from "./storage";
 import { VULNRADAR } from "./constants";
 import { looksLikeApiKey } from "./auth";
+import {
+  carriesCredential,
+  isPublicHostname,
+  withoutFragment,
+} from "./lookup-url";
+import { DEFAULT_SETTINGS } from "./types";
 import type {
   RateLimitInfo,
   ScanHistoryRow,
@@ -25,13 +31,6 @@ import type {
   ScannerCategory,
   Settings,
 } from "./types";
-
-export class ScanThrottledError extends Error {
-  constructor(public readonly retryAfterMs: number) {
-    super(`Scan throttled; retry in ${retryAfterMs}ms`);
-    this.name = "ScanThrottledError";
-  }
-}
 
 export class ScanUnauthenticatedError extends Error {
   constructor() {
@@ -95,7 +94,21 @@ export function shouldAutoScanPolicy(
   }
   if (settings.autoScan === "off") return "Auto-scan is off";
 
-  const u = url.toLowerCase();
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return "Skipped (not a web address)";
+  }
+  // Unattended means nobody looked at this address first, so it has to be one
+  // that is safe to send away: a public host, and nothing in the address that
+  // reads as a credential. A scan stores its URL in the account's history.
+  if (!isPublicHostname(host)) return "Skipped (private address)";
+  if (carriesCredential(url)) return "Skipped (address carries a credential)";
+
+  // Never the fragment: it does not reach a server, so a rule written against
+  // the address should not be able to match on it either.
+  const u = withoutFragment(url).toLowerCase();
 
   for (const deny of settings.blacklist) {
     if (deny && u.includes(deny.toLowerCase())) {
@@ -113,25 +126,120 @@ export function shouldAutoScanPolicy(
   return null;
 }
 
-/**
- * Throttle auto-scans globally so the user doesn't burn through
- * their daily quota if the content-script fires for every navigation.
- * Returns true if the scan should proceed.
- */
-export async function canAutoScanNow(
-  _url: string,
-  now: number = Date.now(),
-): Promise<boolean> {
-  const settings = await get("settings");
-  if (!settings) return true;
-  const last = await get("lastAutoScanAt");
-  if (!last) return true;
-  const throttleMs = settings.autoScanThrottleSeconds * 1000;
-  return now - last >= throttleMs;
+// ---- Auto-scan throttle ----
+//
+// Two limits, both on what an unattended scan may cost the user's daily quota:
+//
+//   - globally, no two auto-scans closer than Settings.autoScanThrottleSeconds,
+//     whichever sites they are for;
+//   - per site, no second auto-scan of the same hostname inside
+//     Settings.autoScanHostCooldownHours.
+//
+// The persisted half (lastAutoScanAt, autoScannedAt) survives a service worker
+// restart. The in-memory half exists for a race the persisted one cannot close:
+// a browser restoring a session fires page:loaded for every tab in the same
+// tick, each handler reads storage before any of them has written it, and all
+// of them used to pass. claimAutoScan() is synchronous, so the second handler
+// to reach it sees the first one's claim.
+
+const HOUR_MS = 60 * 60 * 1000;
+
+function cooldownMs(settings: Settings): number {
+  const hours = settings.autoScanHostCooldownHours;
+  const clamped = Number.isFinite(hours)
+    ? Math.min(VULNRADAR.autoScanHostCooldownMaxHours, Math.max(0, hours))
+    : DEFAULT_SETTINGS.autoScanHostCooldownHours;
+  return clamped * HOUR_MS;
 }
 
-export async function noteAutoScanRan(now: number = Date.now()): Promise<void> {
+const claimedHosts = new Map<string, number>();
+let lastClaimAt = 0;
+
+export interface AutoScanClaim {
+  /** Hands the claim back when the scan turned out not to run. */
+  readonly release: () => void;
+}
+
+/**
+ * Reserves the right to auto-scan `host` right now, or returns null when the
+ * global throttle or the host's cooldown says no. Call it before the first
+ * await of an auto-scan, then confirm with canAutoScanNow() and
+ * noteAutoScanRan(), releasing the claim if the scan does not go ahead.
+ */
+export function claimAutoScan(
+  host: string,
+  settings: Settings,
+  now: number = Date.now(),
+): AutoScanClaim | null {
+  if (
+    lastClaimAt !== 0 &&
+    now - lastClaimAt < settings.autoScanThrottleSeconds * 1000
+  ) {
+    return null;
+  }
+  const maxAgeMs = VULNRADAR.autoScanHostCooldownMaxHours * HOUR_MS;
+  for (const [h, at] of claimedHosts) {
+    if (now - at >= maxAgeMs) claimedHosts.delete(h);
+  }
+  const previousHostClaim = claimedHosts.get(host);
+  if (
+    previousHostClaim !== undefined &&
+    now - previousHostClaim < cooldownMs(settings)
+  ) {
+    return null;
+  }
+  const previousGlobalClaim = lastClaimAt;
+  lastClaimAt = now;
+  claimedHosts.set(host, now);
+  return {
+    release: () => {
+      if (lastClaimAt === now) lastClaimAt = previousGlobalClaim;
+      if (claimedHosts.get(host) !== now) return;
+      if (previousHostClaim === undefined) claimedHosts.delete(host);
+      else claimedHosts.set(host, previousHostClaim);
+    },
+  };
+}
+
+/** Test seam: forgets every in-memory claim. */
+export function resetAutoScanClaims(): void {
+  claimedHosts.clear();
+  lastClaimAt = 0;
+}
+
+/**
+ * The persisted check behind claimAutoScan(): true when neither the global
+ * throttle nor the host's cooldown, as last written to storage, forbids a scan
+ * of `host` now.
+ */
+export async function canAutoScanNow(
+  host: string,
+  settings: Settings,
+  now: number = Date.now(),
+): Promise<boolean> {
+  const last = (await get("lastAutoScanAt")) ?? 0;
+  if (last && now - last < settings.autoScanThrottleSeconds * 1000) {
+    return false;
+  }
+  const seen = (await get("autoScannedAt")) ?? {};
+  const scannedAt = seen[host];
+  return scannedAt === undefined || now - scannedAt >= cooldownMs(settings);
+}
+
+export async function noteAutoScanRan(
+  host: string,
+  now: number = Date.now(),
+): Promise<void> {
   await set("lastAutoScanAt", now);
+  const maxAgeMs = VULNRADAR.autoScanHostCooldownMaxHours * HOUR_MS;
+  await update("autoScannedAt", (current) => {
+    const next: Record<string, number> = { ...current };
+    for (const [h, at] of Object.entries(next)) {
+      if (now - at >= maxAgeMs) delete next[h];
+    }
+    next[host] = now;
+    return next;
+  });
 }
 
 const SCAN_KEEPALIVE_ALARM = "vulnradar-scan-keepalive";
@@ -193,6 +301,14 @@ export interface ScanInput {
   readonly settings: Settings;
   /** Override the scan mode; falls back to settings.scanMode if omitted. */
   readonly mode?: "quick" | "deep";
+  /**
+   * True for a scan nobody asked for in the moment: auto-scan. It never sends
+   * active probing or the port sweep, whatever Options says. Both write to or
+   * open connections against the target (and need a verified domain), which a
+   * person ticks on for a scan they start, not for every page a rule happens
+   * to match.
+   */
+  readonly unattended?: boolean;
 }
 
 const SCAN_POLL_INTERVAL_MS = 3_000;
@@ -277,10 +393,13 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   const url = normalizeUrl(input.url);
   const mode = input.mode ?? input.settings.scanMode;
 
+  const unattended = input.unattended === true;
   const allFamilies = Object.entries(input.settings.families) as Array<
     [ScannerCategory, boolean]
   >;
-  const families = allFamilies.filter(([, on]) => on).map(([id]) => id);
+  const families = allFamilies
+    .filter(([id, on]) => on && !(unattended && id === "active-probes"))
+    .map(([id]) => id);
   // "The user narrowed the set" is not the same as "the user picked nothing",
   // and the API cannot tell them apart: it reads a missing or empty
   // `scanners` as "run every default category". So omitting the key when the
@@ -308,7 +427,7 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   const body: ScanRequest = {
     url,
     scanners: families,
-    ...(input.settings.portScan ? { portScan: true } : {}),
+    ...(input.settings.portScan && !unattended ? { portScan: true } : {}),
   };
 
   const fetchResult = await withScanKeepAlive(async () => {
@@ -376,7 +495,6 @@ export type ScanOutcome =
   | {
       readonly ok: false;
       readonly error: string;
-      readonly retryAfterMs?: number;
       readonly requiresAuth?: boolean;
     };
 
@@ -387,9 +505,6 @@ export async function runScanSafe(input: ScanInput): Promise<ScanOutcome> {
   } catch (err) {
     if (err instanceof ScanUnauthenticatedError) {
       return { ok: false, error: err.message, requiresAuth: true };
-    }
-    if (err instanceof ScanThrottledError) {
-      return { ok: false, error: err.message, retryAfterMs: err.retryAfterMs };
     }
     if (err instanceof VulnRadarApiError) {
       const msg =

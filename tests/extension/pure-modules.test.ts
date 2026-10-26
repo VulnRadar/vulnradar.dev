@@ -15,6 +15,12 @@ import {
 import { VULNRADAR } from "../../extension/src/lib/constants";
 import { SEVERITY_SOLID } from "../../extension/src/lib/tokens";
 import extensionTokens from "../../extension/src/lib/tokens.json";
+import { CATEGORIES } from "../../extension/src/lib/categories";
+import { PLAN_LABEL } from "../../extension/src/lib/plans";
+import { DEFAULT_SETTINGS, SEVERITY_RANK } from "../../extension/src/lib/types";
+import { ALL_CATEGORIES } from "@/lib/scanner/types";
+import { PLANS } from "@/lib/billing/catalog";
+import { SEVERITY_ORDER } from "@/lib/config/client-constants";
 
 /**
  * The browser extension is a separate npm package with its own build, so it
@@ -26,7 +32,9 @@ import extensionTokens from "../../extension/src/lib/tokens.json";
  * stale scan record bricks the popup.
  *
  * Only modules that import nothing from webextension-polyfill can be tested
- * this way, since that package lives in extension/node_modules only.
+ * this way, since that package lives in extension/node_modules only. The ones
+ * that do reach browser.* are covered by extension/tests, over an in-memory
+ * fake of it (see extension/tests/_polyfill-fake.ts).
  */
 
 describe("extension url-patterns", () => {
@@ -260,5 +268,62 @@ describe("extension design tokens track the app", () => {
 
   it("exposes the dark ramp as the theme-agnostic solid colour", () => {
     expect(SEVERITY_SOLID).toEqual(extensionTokens.themes.dark.severity);
+  });
+});
+
+/**
+ * Constants the extension copies from the server because it cannot import
+ * them. A copy is only safe if something compares it, and these were three
+ * copies nothing compared: a category added to the scanner would never appear
+ * in Options, a renamed plan would show its old name in the popup, and a
+ * severity added to the engine would sort as undefined.
+ */
+describe("extension constants track the server's", () => {
+  it("offers exactly the scanner categories, plus active probing", () => {
+    expect(CATEGORIES.map((c) => c.id)).toEqual([
+      ...ALL_CATEGORIES,
+      "active-probes",
+    ]);
+  });
+
+  it("turns on by default exactly the categories the engine runs by default", () => {
+    // ALL_CATEGORIES is the set an omitted `scanners` runs; active-probes is
+    // deliberately outside it because it writes to the target.
+    for (const category of CATEGORIES) {
+      expect(category.defaultEnabled, `${category.id} defaultEnabled`).toBe(
+        (ALL_CATEGORIES as readonly string[]).includes(category.id),
+      );
+    }
+  });
+
+  it("starts the settings with the same families on and off", () => {
+    expect(Object.keys(DEFAULT_SETTINGS.families).sort()).toEqual(
+      CATEGORIES.map((c) => c.id).sort(),
+    );
+    for (const category of CATEGORIES) {
+      expect(
+        DEFAULT_SETTINGS.families[category.id],
+        `${category.id} in DEFAULT_SETTINGS`,
+      ).toBe(category.defaultEnabled);
+    }
+  });
+
+  it("names the plans the way the catalog does", () => {
+    expect(Object.keys(PLAN_LABEL).sort()).toEqual(
+      PLANS.map((p) => p.id).sort(),
+    );
+    for (const plan of PLANS) {
+      expect(PLAN_LABEL[plan.id], plan.id).toBe(plan.name);
+    }
+  });
+
+  it("ranks severities in the engine's order", () => {
+    expect(Object.keys(SEVERITY_RANK).sort()).toEqual(
+      [...SEVERITY_ORDER].sort(),
+    );
+    const worstFirst = (
+      Object.keys(SEVERITY_RANK) as (keyof typeof SEVERITY_RANK)[]
+    ).sort((a, b) => SEVERITY_RANK[b] - SEVERITY_RANK[a]);
+    expect(worstFirst).toEqual([...SEVERITY_ORDER]);
   });
 });

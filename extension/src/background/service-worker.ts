@@ -7,6 +7,10 @@
 // "which tab triggered this". We never re-query the active tab for
 // auto-scan; we use sender.tab directly.
 //
+// Who may send what is decided in lib/message-guard.ts, before any handler
+// runs: the first two kinds below only from this extension's own pages, the
+// rest only from the content script in a tab.
+//
 // Message kinds:
 //   From popup / options:
 //     { kind: "scan:url",      url: string, mode?: "quick"|"deep" }
@@ -23,7 +27,10 @@
 //   through lib/ modules and chrome.storage directly; nothing sends them here.
 //   From content script:
 //     { kind: "page:loaded",  url: string, title: string }
-//     { kind: "reputation:scan",        url: string }
+//       Only the sender's tab is used; the fields are ignored.
+//     { kind: "reputation:scan" }
+//       Scans the address this worker recorded when it offered the scan in
+//       that tab (lib/offered-scan.ts), never one the page sends.
 //     { kind: "reputation:mute-site",   pattern: string }
 //     { kind: "reputation:mute-global"  }
 //     { kind: "reputation:snooze-site", host: string }
@@ -35,9 +42,10 @@ import browser from "webextension-polyfill";
 import type Browser from "webextension-polyfill";
 import { fetchReport, VulnRadarApiError } from "../lib/api";
 import { refreshMe } from "../lib/auth";
-import { get, getApiKey, loadAll, saveAll, set } from "../lib/storage";
+import { get, getApiKey, loadAll, patchSettings, set } from "../lib/storage";
 import {
   canAutoScanNow,
+  claimAutoScan,
   noteAutoScanRan,
   runScanSafe,
   shouldAutoScanPolicy,
@@ -57,6 +65,10 @@ import {
   snoozeHost,
   willAutoScanHandleSilently,
 } from "../lib/reputation";
+import { getOfferedScan, recordOfferedScan } from "../lib/offered-scan";
+import { validateMessage } from "../lib/message-guard";
+import type { GuardContext, SenderTab } from "../lib/message-guard";
+import { lookupUrl, withoutFragment } from "../lib/lookup-url";
 import { clearBadge, setBadgeForResult, setBadgeForScore } from "../lib/badge";
 import { meetsThreshold } from "../lib/format";
 import { VULNRADAR } from "../lib/constants";
@@ -64,6 +76,7 @@ import { DEFAULT_SETTINGS } from "../lib/types";
 import type {
   ReportFormat,
   ReputationResponse,
+  ScanMode,
   ScanResult,
   Settings,
   Vulnerability,
@@ -71,6 +84,23 @@ import type {
 
 const NOT_SCANNABLE =
   "Only websites (http or https addresses) can be scanned, not browser or extension pages.";
+
+// Firefox for Android has no contextMenus or notifications API at all, and an
+// unguarded `browser.notifications.onClicked` at the top level throws while
+// this script loads, which takes every other listener below down with it. The
+// polyfill's types say both always exist, so they are widened here once and
+// every use goes through these two names.
+const contextMenus = browser.contextMenus as
+  typeof browser.contextMenus | undefined;
+const notifications = browser.notifications as
+  typeof browser.notifications | undefined;
+
+function guardContext(): GuardContext {
+  return {
+    extensionBase: browser.runtime.getURL(""),
+    extensionId: browser.runtime.id,
+  };
+}
 
 // ---- Lifecycle ----
 
@@ -103,12 +133,12 @@ browser.runtime.onInstalled.addListener(async (details) => {
   // so every update/reload logged an unhandled promise rejection and
   // silently failed to (re-)register the menu item.
   try {
-    await browser.contextMenus.removeAll();
+    await contextMenus?.removeAll();
   } catch {
     /* noop */
   }
   try {
-    await browser.contextMenus.create({
+    await contextMenus?.create({
       id: "vulnradar-scan-link",
       title: "Scan this link with VulnRadar",
       contexts: ["link"],
@@ -153,7 +183,7 @@ void clearStaleScanInProgress();
 // scan trigger (auto-scan, the on-page card's "Scan now") already goes
 // through runScanAndNotify() for exactly this reason; this one had
 // silently never been upgraded to match when it was added.
-browser.contextMenus.onClicked.addListener((info, tab) => {
+contextMenus?.onClicked.addListener((info, tab) => {
   const url = info.linkUrl;
   if (!url || !/^https?:/i.test(url)) return;
   void (async () => {
@@ -178,7 +208,7 @@ browser.alarms.onAlarm.addListener((alarm) => {
 
 // ---- Notification click → open history ----
 
-browser.notifications.onClicked.addListener((_notifId) => {
+notifications?.onClicked.addListener((_notifId) => {
   void (async () => {
     // Settings > Notifications > "Open dashboard on click". Was previously
     // unconditional -- the setting existed (default true) but nothing ever
@@ -206,52 +236,47 @@ browser.runtime.onMessage.addListener(
     sender: Browser.Runtime.MessageSender,
     sendResponse: (r: unknown) => void,
   ) => {
-    const m = msg as { kind: string } & Record<string, unknown>;
+    const m = validateMessage(msg, sender, guardContext());
+    if (!m) {
+      // A kind nobody handles, a sender that may not send it, or a field that
+      // is not what it should be. This is the only onMessage listener in the
+      // background context, so nothing else is waiting on it: answer rather
+      // than return without a response, which would leave the caller's
+      // sendMessage promise pending until the channel closes.
+      sendResponse(undefined);
+      return true;
+    }
     let promise: Promise<unknown>;
 
     switch (m.kind) {
       case "scan:url":
-        promise = handleScanUrl(
-          m.url as string,
-          m.mode as "quick" | "deep" | undefined,
-        );
+        promise = handleScanUrl(m.url, m.mode);
         break;
       case "report:export":
-        promise = handleReportExport(
-          m.id as number,
-          m.format as ReportFormat,
-          m.host as string,
-        );
+        promise = handleReportExport(m.id, m.format, m.host);
         break;
       case "page:loaded":
-        // Auto-scan pipeline: use sender.tab.url (reliable cross-browser).
+        // Auto-scan pipeline: use the sender's tab (reliable cross-browser).
         // Runs alongside the site-alert reputation check below - the two
         // are independent features (auto-scan can be off while alerts
         // stay on, and vice versa).
         promise = Promise.all([
-          maybeAutoScanFromSender(sender).catch(() => {}),
-          maybeShowReputationFromSender(sender).catch(() => {}),
+          maybeAutoScanFromTab(m.tab).catch(() => {}),
+          maybeShowReputationFromTab(m.tab).catch(() => {}),
         ]).then(() => undefined);
         break;
       case "reputation:scan":
-        promise = handleReputationScan(m.url as string, sender.tab?.id);
+        promise = handleReputationScan(m.tab);
         break;
       case "reputation:mute-site":
-        promise = handleMuteSite(m.pattern as string);
+        promise = handleMuteSite(m.pattern);
         break;
       case "reputation:mute-global":
         promise = handleMuteGlobal();
         break;
       case "reputation:snooze-site":
-        promise = handleSnoozeSite(m.host as string);
+        promise = handleSnoozeSite(m.host);
         break;
-      default:
-        // This is the only onMessage listener in the background context, so
-        // nothing else is waiting to handle an unknown kind. Answer it rather
-        // than returning without a response, which would leave the caller's
-        // sendMessage promise pending until the channel closes.
-        sendResponse(undefined);
-        return true;
     }
 
     promise.then(sendResponse).catch(() => sendResponse(undefined));
@@ -261,20 +286,17 @@ browser.runtime.onMessage.addListener(
 
 // ---- Auto-scan: page load (content script message) ----
 
-async function maybeAutoScanFromSender(
-  sender: Browser.Runtime.MessageSender,
-): Promise<void> {
-  // sender.tab.url is the definitive URL of the tab that loaded the page.
-  // Never re-query the active tab — it may have changed by the time the
-  // async handler runs, which is exactly the Firefox bug we're fixing.
-  const url = sender.tab?.url;
-  if (!url || !/^https?:/i.test(url)) return;
+async function maybeAutoScanFromTab(tab: SenderTab): Promise<void> {
+  // The sender's tab URL is the definitive URL of the tab that loaded the
+  // page. Never re-query the active tab -- it may have changed by the time
+  // the async handler runs, which is exactly the Firefox bug we're fixing.
+  if (!/^https?:/i.test(tab.url)) return;
 
   const storage = await loadAll();
   if (!storage.auth) return;
   if (storage.settings.autoScan !== "onPageLoad") return;
 
-  await maybeAutoScanUrl(url, storage.settings, sender.tab?.id);
+  await maybeAutoScanUrl(tab.url, storage.settings, tab.id, tab.incognito);
 }
 
 // ---- Site alerts: reputation popup on page load ----
@@ -284,19 +306,20 @@ async function maybeAutoScanFromSender(
 // offering to scan an unknown one. See lib/reputation.ts for the
 // throttle/mute/policy helpers this composes.
 
-async function maybeShowReputationFromSender(
-  sender: Browser.Runtime.MessageSender,
-): Promise<void> {
-  const url = sender.tab?.url;
-  const tabId = sender.tab?.id;
-  if (!url || !/^https?:/i.test(url) || tabId === undefined) return;
+async function maybeShowReputationFromTab(tab: SenderTab): Promise<void> {
+  // A private window is not looked up at all: the whole point of one is that
+  // the sites in it are not reported anywhere.
+  if (tab.incognito) return;
 
-  let host: string;
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    return;
-  }
+  // Origin and path of a public host, or nothing. This is the only address
+  // that goes into the lookup, the caches and the card from here on; the tab's
+  // own URL (with its query string, which may be a reset or login link) is
+  // used only for the local auto-scan policy check below. localhost, a router
+  // page or an intranet host return null here, so no request is made for them
+  // and no "scan this site?" card appears on them.
+  const lookup = lookupUrl(tab.url);
+  if (!lookup) return;
+  const host = new URL(lookup).hostname;
   // Only the live app instance itself is excluded from the reputation
   // popup (not the wider EXCLUDED_HOSTS list used below for auto-scan) -
   // the public marketing domain (vulnradar.dev / www) is an ordinary
@@ -306,14 +329,14 @@ async function maybeShowReputationFromSender(
 
   const storage = await loadAll();
   if (!storage.auth) return;
-  if (!(await canShowPopupForUrl(url, storage.settings))) return;
+  if (!(await canShowPopupForUrl(lookup, storage.settings))) return;
 
   let rep: ReputationResponse | null;
   if (await canCheckReputationNow(host)) {
-    // The exact URL, not just its host: the endpoint prefers a record for
+    // The exact page, not just its host: the endpoint prefers a record for
     // this specific page and only falls back to the host, which is what
     // stops one scanned repo standing in for the whole of github.com.
-    rep = await checkReputation(storage.auth.apiKey, host, url);
+    rep = await checkReputation(storage.auth.apiKey, host, lookup);
     // Only consume the throttle window / update the cache once a check
     // actually completed. If checkReputation() failed (network error,
     // non-2xx, bad auth), marking the host "checked" here would silence
@@ -323,7 +346,7 @@ async function maybeShowReputationFromSender(
     // once. Let a genuine failure retry on the very next visit instead.
     if (!rep) return;
     await noteReputationChecked(host);
-    await cacheReputation(host, rep, Date.now(), url);
+    await cacheReputation(host, rep, Date.now(), lookup);
   } else {
     // Throttled: a fresh network check would spam the endpoint on every
     // reload/renavigation within the window, but returning here with
@@ -332,7 +355,7 @@ async function maybeShowReputationFromSender(
     // Fall back to the last-known result for this host instead of going
     // silent - only skip entirely if we've never learned anything about
     // it yet.
-    rep = await getCachedReputation(host, url);
+    rep = await getCachedReputation(host, lookup);
     if (!rep) return;
   }
 
@@ -347,7 +370,7 @@ async function maybeShowReputationFromSender(
     // the first one every throttle window. Unconditional on purpose: the
     // toolbar badge is a separate surface from the on-page card below, not
     // gated by showScanResults/showScanPrompts.
-    setBadgeForScore(rep.dangerScore ?? 0, tabId);
+    setBadgeForScore(rep.dangerScore ?? 0, tab.id);
     // Pass the raw tab hostname (not rep.host) as the mute key. The API
     // normalizes to the root domain internally (e.g. app.example.com ->
     // example.com) for its own lookup, but canShowPopupForUrl/
@@ -370,15 +393,23 @@ async function maybeShowReputationFromSender(
       storage.settings.showScanResults &&
       (await shouldShowReputationCard(host, rep))
     ) {
-      notifyTab(tabId, { kind: "reputation:known", data: rep, host });
+      notifyTab(tab.id, { kind: "reputation:known", data: rep, host });
       await noteReputationShown(host, rep);
     }
   } else if (
     storage.settings.showScanPrompts &&
-    !willAutoScanHandleSilently(url, storage.settings) &&
+    !willAutoScanHandleSilently(tab.url, storage.settings) &&
     (await shouldShowReputationCard(host, rep))
   ) {
-    notifyTab(tabId, { kind: "reputation:unknown", data: rep, url, host });
+    // Recorded before the card is told to appear, so a click that arrives the
+    // instant it renders already finds the offer it is redeeming.
+    await recordOfferedScan(tab.id, host, lookup);
+    notifyTab(tab.id, {
+      kind: "reputation:unknown",
+      data: rep,
+      url: lookup,
+      host,
+    });
     await noteReputationShown(host, rep);
   }
 }
@@ -391,7 +422,12 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
     const tab = await browser.tabs.get(tabId);
     if (!tab.url || !/^https?:/i.test(tab.url)) return;
-    await maybeAutoScanUrl(tab.url, storage.settings, tabId);
+    await maybeAutoScanUrl(
+      tab.url,
+      storage.settings,
+      tabId,
+      tab.incognito === true,
+    );
   } catch {
     // tab may not exist anymore
   }
@@ -399,12 +435,17 @@ browser.tabs.onActivated.addListener(async ({ tabId }) => {
 
 // ---- Auto-scan: URL change (onUrlChange mode) ----
 
-browser.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!changeInfo.url) return; // only fire when the URL itself changes
   const storage = await loadAll();
   if (!storage.auth || storage.settings.autoScan !== "onUrlChange") return;
   if (!/^https?:/i.test(changeInfo.url)) return;
-  await maybeAutoScanUrl(changeInfo.url, storage.settings, tabId);
+  await maybeAutoScanUrl(
+    changeInfo.url,
+    storage.settings,
+    tabId,
+    tab.incognito === true,
+  );
 });
 
 // Derived from the configured instance rather than listed literally: a build
@@ -429,13 +470,19 @@ async function maybeAutoScanUrl(
   url: string,
   settings: Settings,
   tabId?: number,
+  incognito = false,
 ): Promise<void> {
-  // Never auto-scan the VulnRadar platform itself.
+  // Same rule as Site Alerts: a private window is never scanned unattended.
+  if (incognito) return;
+
+  let host: string;
   try {
-    if (EXCLUDED_HOSTS.includes(new URL(url).hostname)) return;
+    host = new URL(url).hostname;
   } catch {
     return;
   }
+  // Never auto-scan the VulnRadar platform itself.
+  if (EXCLUDED_HOSTS.includes(host)) return;
 
   const reason = shouldAutoScanPolicy(url, settings);
   if (reason !== null) {
@@ -444,10 +491,29 @@ async function maybeAutoScanUrl(
     }
     return;
   }
-  if (!(await canAutoScanNow(url))) return;
-  await noteAutoScanRan();
 
-  await runScanAndNotify(url, settings, tabId);
+  // Claimed synchronously, before the first await below: page:loaded for every
+  // tab of a restored session arrives in the same tick, and the storage-backed
+  // check cannot tell them apart until the first one has written. See the
+  // comment on the auto-scan throttle in lib/scan.ts.
+  const claim = claimAutoScan(host, settings);
+  if (!claim) return;
+  try {
+    if (!(await canAutoScanNow(host, settings))) {
+      claim.release();
+      return;
+    }
+    await noteAutoScanRan(host);
+  } catch (err) {
+    claim.release();
+    throw err;
+  }
+
+  // The fragment never reaches a server and an OAuth redirect puts the access
+  // token in it, so the scan is started without it.
+  await runScanAndNotify(withoutFragment(url), settings, tabId, {
+    unattended: true,
+  });
 }
 
 /**
@@ -482,12 +548,17 @@ async function runScanAndNotify(
   url: string,
   settings: Settings,
   tabId?: number,
+  options: { readonly unattended?: boolean } = {},
 ): Promise<ScanOutcome> {
   if (tabId !== undefined) {
     notifyTab(tabId, { kind: "scan:started" });
   }
 
-  const outcome = await runScanSafe({ url, settings });
+  const outcome = await runScanSafe({
+    url,
+    settings,
+    ...(options.unattended ? { unattended: true } : {}),
+  });
   if (outcome.ok) {
     if (tabId !== undefined) {
       notifyTab(tabId, { kind: "scan:complete", result: outcome.result });
@@ -508,10 +579,7 @@ async function runScanAndNotify(
 
 // ---- Message handlers ----
 
-async function handleScanUrl(
-  url: string,
-  mode?: "quick" | "deep",
-): Promise<unknown> {
+async function handleScanUrl(url: string, mode?: ScanMode): Promise<unknown> {
   if (!url || !/^https?:/i.test(url)) {
     return { ok: false, error: NOT_SCANNABLE };
   }
@@ -557,38 +625,73 @@ async function handleScanUrl(
 }
 
 /**
+ * The answer to a "reputation:scan" the background declined to act on, as
+ * opposed to a scan that ran and failed (those reach the card as scan:error
+ * from runScanAndNotify). Nothing was started, so no lifecycle message will
+ * follow, and the card would otherwise sit on "Scanning" for good.
+ */
+interface RefusedScan {
+  readonly ok: false;
+  readonly refused: true;
+  readonly error: string;
+}
+
+const cardScansInFlight = new Set<number>();
+
+/**
  * "Scan now" from the on-page site-alert card. Unlike auto-scan this is
  * an explicit user click, so it skips shouldAutoScanPolicy() and the
  * auto-scan throttle entirely (same principle as the popup's manual scan
  * button) but still drives the same tab lifecycle messages, badge, and
  * desktop notification as an auto-scan would.
+ *
+ * What is scanned is the address this worker recorded when it offered the
+ * scan in this tab, never one the page-side card sends: the click message
+ * carries no address at all. The offer must still be live, the tab must still
+ * be on the host it was offered for, and a tab can have one card scan running
+ * at a time.
  */
 async function handleReputationScan(
-  url: string,
-  tabId?: number,
-): Promise<ScanOutcome> {
-  if (!url || !/^https?:/i.test(url)) {
-    return { ok: false, error: NOT_SCANNABLE };
+  tab: SenderTab,
+): Promise<ScanOutcome | RefusedScan> {
+  if (cardScansInFlight.has(tab.id)) {
+    return refusedScan("A scan for this tab is already running.");
   }
-  const storage = await loadAll();
-  return runScanAndNotify(url, storage.settings, tabId);
+  cardScansInFlight.add(tab.id);
+  try {
+    const offer = await getOfferedScan(tab.id);
+    const current = lookupUrl(tab.url);
+    const currentHost = current ? new URL(current).hostname : null;
+    if (!offer || currentHost !== offer.host) {
+      return refusedScan(
+        "That offer has expired. Reload the page to try again.",
+      );
+    }
+    const storage = await loadAll();
+    return await runScanAndNotify(offer.url, storage.settings, tab.id);
+  } finally {
+    cardScansInFlight.delete(tab.id);
+  }
 }
 
-async function handleMuteSite(pattern: string): Promise<{ ok: true }> {
-  await addMutePattern(pattern);
-  return { ok: true };
+function refusedScan(error: string): RefusedScan {
+  return { ok: false, refused: true, error };
 }
 
+async function handleMuteSite(pattern: string): Promise<{ ok: boolean }> {
+  const result = await addMutePattern(pattern);
+  return { ok: result === "added" || result === "exists" };
+}
+
+/**
+ * Turns both Site Alerts switches off. A read-modify-write of the settings key
+ * alone (patchSettings), not a rebuild of the whole storage snapshot: that
+ * rewrote auth, the history cache and the last auto-scan time from a copy read
+ * moments earlier, so a click on "Turn off" landing while a key refresh or a
+ * scan was saving could put the older values back.
+ */
 async function handleMuteGlobal(): Promise<{ ok: true }> {
-  const storage = await loadAll();
-  await saveAll({
-    ...storage,
-    settings: {
-      ...storage.settings,
-      showScanResults: false,
-      showScanPrompts: false,
-    },
-  });
+  await patchSettings({ showScanResults: false, showScanPrompts: false });
   return { ok: true };
 }
 
@@ -744,12 +847,19 @@ async function sendScanNotification(
         ? findings[0]!.title
         : `${findings[0]!.title} +${findings.length - 1} more`;
 
-  await browser.notifications.create("vulnradar-scan", {
-    type: "basic",
-    iconUrl: browser.runtime.getURL("icons/icon-128.png"),
-    title: `VulnRadar: ${head}`,
-    message: body,
-  });
+  // Absent on Firefox for Android, and a browser or OS with notifications
+  // switched off can reject the call. Neither should cost the scan its badge
+  // or its sound, which follow below.
+  try {
+    await notifications?.create("vulnradar-scan", {
+      type: "basic",
+      iconUrl: browser.runtime.getURL("icons/icon-128.png"),
+      title: `VulnRadar: ${head}`,
+      message: body,
+    });
+  } catch {
+    /* no desktop notification here; the badge still shows the result */
+  }
 
   // A real MV3 service worker (Chrome) has no DOM, so there is nowhere here
   // to host an <audio> element or drive a Web Audio graph directly. Chrome's

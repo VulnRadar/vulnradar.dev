@@ -33,21 +33,20 @@ export const VULNRADAR = {
   /** Per-request timeout for quick calls (auth, history, reputation). */
   apiTimeoutMs: 30_000,
   /**
-   * Timeout for a single-URL scan request. /api/v3/scan holds the HTTP
-   * connection open for the whole scan and only responds once it's done --
-   * the server's own watchdog (SCAN_TIMEOUT_SECONDS, default 300s, see
-   * lib/scanner/execute-scan.ts) allows a legitimate scan up to 5 minutes.
-   * This must stay comfortably above that or the extension aborts the
-   * request client-side on a slow-but-successful scan, which still
-   * finishes and lands in history -- exactly the "scan failed" report
-   * for a scan that's actually sitting right there in history.
+   * How long runScan() keeps polling GET /api/v3/scan/status for a single-URL
+   * scan before it gives up and points the user at History. A poll deadline,
+   * not a request timeout: POST /api/v3/scan answers at once with a job id and
+   * every individual request uses apiTimeoutMs. It sits above the server's own
+   * watchdog (SCAN_TIMEOUT_SECONDS, default 300s, see
+   * lib/scanner/execute-scan.ts) so a slow but successful scan is not reported
+   * as failed while it is still landing in history.
    */
   scanTimeoutMs: 310_000,
   /**
-   * Timeout for a crawl (deep mode) scan request, same reasoning as
-   * scanTimeoutMs but matching CRAWL_SCAN_TIMEOUT_SECONDS (default 900s,
-   * see lib/scanner/execute-crawl-scan.ts) since a multi-page crawl is
-   * allowed much longer.
+   * The same poll deadline for a crawl (deep mode) scan, matching the
+   * server's CRAWL_SCAN_TIMEOUT_SECONDS (default 900s, see
+   * lib/scanner/execute-crawl-scan.ts) since a multi-page crawl is allowed
+   * much longer.
    */
   crawlTimeoutMs: 910_000,
   /** Max history rows cached locally. */
@@ -73,4 +72,25 @@ export const VULNRADAR = {
    *  A long-backgrounded Firefox tab's message port can go unanswered
    *  forever with no rejection - see messaging.ts's doc comment. */
   tabMessageTimeoutMs: 4_000,
+  /** Most muted URL patterns kept in storage (Options and the card's "Not
+   *  this site" both stop adding past this). Bounds a storage key that every
+   *  page load reads. */
+  mutePatternLimit: 500,
+  /** Most snoozed hosts kept at once. The oldest expiry is dropped first. */
+  snoozedHostLimit: 500,
+  /** How long the card's "Scan this site" offer stays redeemable. The offer is
+   *  what lets the background scan without trusting an address sent from the
+   *  page, so it has to outlive the card's own countdown but not the visit. */
+  offeredScanTtlMs: 30 * 60 * 1000,
+  /** Longest per-host cooldown the setting accepts. The map that remembers
+   *  scans is pruned at this age, so a longer cooldown could not be kept. */
+  autoScanHostCooldownMaxHours: 24,
 } as const;
+
+/** How long an identical site-alert card stays suppressed for one host. The
+ *  docs page states this in hours, and tests/extension/docs-claims.test.ts
+ *  holds that sentence to this value. */
+export const SHOWN_SUPPRESS_MS = 4 * 60 * 60 * 1000;
+
+/** How long the card's "Snooze 24h" action silences a host. */
+export const SNOOZE_DURATION_MS = 24 * 60 * 60 * 1000;

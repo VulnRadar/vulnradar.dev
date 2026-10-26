@@ -1,12 +1,11 @@
 // The 18 scanner categories, with human-readable labels and the
-// "what this checks" tooltip copy. Labels mirror components/scanner/
-// scan-form.tsx's CHECK_FAMILIES and descriptions mirror components/landing/
-// landing-categories.tsx in the main app, so the extension UI stays in sync
-// with the main product instead of inventing its own wording. This is a
-// hand-maintained copy, not a shared import -- the extension is a separate
-// build target that can't import from the Next.js app's lib/ or
-// components/. Re-check against the main app's source whenever a category
-// changes there.
+// "what this checks" tooltip copy. This is a hand-maintained copy, not a
+// shared import: the extension is a separate build target that can't import
+// from the Next.js app's lib/ or components/. What is held to the app is the
+// ids and which of them are on by default: tests/extension/pure-modules.test.ts
+// compares them with ALL_CATEGORIES in lib/scanner/types.ts, so a category
+// added there fails the test until it is added here. The labels and the
+// descriptions are the extension's own wording and are not checked.
 
 import type { ScannerCategory } from "./types";
 
