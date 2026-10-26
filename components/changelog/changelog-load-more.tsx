@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useTransition,
-  type ReactNode,
-} from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { APP_NAME } from "@/lib/config/client-constants";
 import { loadMoreReleases } from "@/components/changelog/changelog-actions";
 
@@ -17,6 +10,16 @@ import { loadMoreReleases } from "@/components/changelog/changelog-actions";
  * The releases it appends are rendered on the server and arrive as markup, so
  * this component never imports lib/changelog/data: it only knows an offset and
  * a total. That is the whole point of the split.
+ *
+ * Loading is button-only. It used to also fire from an IntersectionObserver
+ * whenever the button came within 400px of the viewport, which meant the
+ * footer (legal links, contact, status) was only reachable once every release
+ * had loaded: someone scrolling or pressing End towards it kept triggering the
+ * next batch, which pushed the footer away again, batch after batch, until the
+ * whole history was on the page. Content also arrived ahead of a keyboard or
+ * screen-reader user's position without their asking. With only the button,
+ * the footer sits directly under it and a batch arrives when the reader says
+ * so.
  */
 export function ChangelogLoadMore({
   initialOffset,
@@ -30,11 +33,10 @@ export function ChangelogLoadMore({
   const [total, setTotal] = useState(initialTotal);
   const [failed, setFailed] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const hasMore = offset < total;
 
-  const loadMore = useCallback(() => {
+  const loadMore = () => {
     if (isPending) return;
     startTransition(async () => {
       try {
@@ -50,23 +52,7 @@ export function ChangelogLoadMore({
         setFailed(true);
       }
     });
-  }, [isPending, offset]);
-
-  useEffect(() => {
-    if (!hasMore) return;
-    const node = sentinelRef.current;
-    if (!node) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) loadMore();
-      },
-      { rootMargin: "400px 0px" },
-    );
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [hasMore, loadMore]);
+  };
 
   return (
     <>
@@ -75,17 +61,7 @@ export function ChangelogLoadMore({
       )}
 
       {hasMore ? (
-        // The sentinel is an optimisation, not the mechanism. It used to be
-        // the only way to advance the list, so anything without a working
-        // IntersectionObserver (an older browser, a reader that never
-        // scrolls the element into view, a keyboard user tabbing through)
-        // sat on "Loading more releases..." forever with no way past it.
-        // The button always works; the observer just means you rarely need
-        // to press it.
-        <div
-          ref={sentinelRef}
-          className="flex flex-col items-center justify-center gap-3 py-10"
-        >
+        <div className="flex flex-col items-center justify-center gap-3 py-10">
           <button
             type="button"
             onClick={loadMore}
