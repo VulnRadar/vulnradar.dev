@@ -182,7 +182,9 @@ export function AuthOutcome({
       </AuthOutcomeHeader>
       {actions ? <div className="mt-7 space-y-2.5">{actions}</div> : null}
       {footnote ? (
-        <p className="mt-5 text-xs text-muted-foreground/70 leading-relaxed">
+        // Full-strength muted: the /70 variant is 3.1:1 on the light theme
+        // (see AuthFooter in auth-layout.tsx).
+        <p className="mt-5 text-xs text-muted-foreground leading-relaxed">
           {footnote}
         </p>
       ) : null}

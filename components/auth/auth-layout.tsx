@@ -70,7 +70,11 @@ export function AuthFooter({ className }: { className?: string }) {
   return (
     <footer
       className={cn(
-        "shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground/70",
+        // Full-strength muted, not an opacity variant. --muted-foreground
+        // only clears AA at full strength: at /70 it measured 3.1:1 in the
+        // light theme and 4.27:1 in dark, and this footer holds the only way
+        // out for someone who cannot sign in.
+        "shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground",
         className,
       )}
     >
