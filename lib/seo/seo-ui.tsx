@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cn } from "@/lib/ui/utils";
+import { focus } from "@/lib/ui/animations";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { Footer } from "@/components/scanner/footer";
 import { ScanCtaForm } from "@/components/seo/scan-cta-form";
@@ -88,7 +89,13 @@ export function Breadcrumbs({
               {item.path && !last ? (
                 <Link
                   href={item.path}
-                  className="hover:text-foreground transition-colors"
+                  // text-xs puts the bare link at 16px. This trail is on every
+                  // SEO page, so the padding is on the link and the negative
+                  // margin keeps the row as tall as it was.
+                  className={cn(
+                    "-my-1.5 block rounded-sm py-1.5 hover:text-foreground transition-colors",
+                    focus.ring,
+                  )}
                 >
                   {item.name}
                 </Link>
@@ -194,11 +201,20 @@ export function ContributeCheckCta({ className }: { className?: string }) {
           href={`https://github.com/${APP_REPO}/issues/new?template=detector.md`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary hover:underline"
+          className={cn(
+            "-my-1.5 rounded-sm py-1.5 text-primary hover:underline",
+            focus.ring,
+          )}
         >
           Propose a check
         </a>
-        <Link href="/docs/developers" className="text-primary hover:underline">
+        <Link
+          href="/docs/developers"
+          className={cn(
+            "-my-1.5 rounded-sm py-1.5 text-primary hover:underline",
+            focus.ring,
+          )}
+        >
           How a check is built
         </Link>
       </p>
@@ -236,10 +252,22 @@ export function ScanCta({ heading, body }: { heading: string; body: string }) {
           </p>
           <ScanCtaForm />
           <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <Link href={ROUTES.DEMO} className="text-primary hover:underline">
+            <Link
+              href={ROUTES.DEMO}
+              className={cn(
+                "-my-1.5 rounded-sm py-1.5 text-primary hover:underline",
+                focus.ring,
+              )}
+            >
               Or scan this site as a demo
             </Link>
-            <Link href={ROUTES.DOCS} className="text-primary hover:underline">
+            <Link
+              href={ROUTES.DOCS}
+              className={cn(
+                "-my-1.5 rounded-sm py-1.5 text-primary hover:underline",
+                focus.ring,
+              )}
+            >
               Read the docs
             </Link>
           </p>

@@ -167,7 +167,9 @@ export default async function CheckPage({
           <SeverityPill severity={check.severity} />
           <Link
             href={categoryPath}
-            className="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+            // min-h-6: py-0.5 on text-xs came to 22px, under WCAG 2.2's 24px
+            // minimum for the way into the whole category.
+            className="inline-flex min-h-6 items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             {label}
           </Link>
@@ -222,14 +224,21 @@ export default async function CheckPage({
             >
               How to fix it
             </h2>
+            {/* A plain numbered list, the way DocsSteps draws a procedure in
+                the docs: the number is text on the step's own line, not a
+                badge beside it. The <ol> is what tells assistive tech the
+                steps are ordered, so the visible numeral is hidden from it. */}
             <ol className="space-y-3">
               {check.fixSteps.map((step, i) => (
                 <li
                   key={i}
                   className="flex gap-3 text-sm sm:text-base leading-relaxed"
                 >
-                  <span className="shrink-0 mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold tabular-nums">
-                    {i + 1}
+                  <span
+                    aria-hidden="true"
+                    className="w-6 shrink-0 font-semibold text-primary tabular-nums"
+                  >
+                    {i + 1}.
                   </span>
                   <span className="text-foreground/90">{step}</span>
                 </li>
@@ -274,7 +283,10 @@ export default async function CheckPage({
                     href={ref}
                     target="_blank"
                     rel="noopener noreferrer nofollow"
-                    className="text-primary hover:underline wrap-break-word"
+                    // A 20px line in a space-y-2 list: the padding makes the
+                    // target 32px and the negative margin leaves the list's
+                    // rhythm as it was.
+                    className="-my-1.5 block rounded-sm py-1.5 text-primary hover:underline wrap-break-word focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {ref}
                   </a>
@@ -286,7 +298,7 @@ export default async function CheckPage({
                     href={cweUrl(check.cwe)!}
                     target="_blank"
                     rel="noopener noreferrer nofollow"
-                    className="text-primary hover:underline wrap-break-word"
+                    className="-my-1.5 block rounded-sm py-1.5 text-primary hover:underline wrap-break-word focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {check.cwe} at MITRE
                   </a>
@@ -327,7 +339,10 @@ export default async function CheckPage({
                   />
                   <Link
                     href={checkPath(c.id)}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    // The negative margin keeps the row, and the severity pill
+                    // beside it, where they were: the padding only grows the
+                    // target from 20px to 32px.
+                    className="-my-1.5 block rounded-sm py-1.5 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {c.title}
                   </Link>
@@ -337,7 +352,7 @@ export default async function CheckPage({
             <p className="pt-1">
               <Link
                 href={categoryPath}
-                className="text-sm text-primary hover:underline"
+                className="-my-1.5 inline-block rounded-sm py-1.5 text-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 See every {label.toLowerCase()} check
               </Link>
