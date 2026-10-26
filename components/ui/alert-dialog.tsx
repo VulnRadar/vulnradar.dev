@@ -17,6 +17,11 @@ import {
   type ModalSize,
   type ModalTier,
 } from "@/components/ui/modal-grammar";
+import {
+  composeAutoFocus,
+  DialogFocusOrigin,
+  useDialogFocusRestore,
+} from "@/components/ui/dialog-focus";
 
 const AlertDialog = AlertDialogPrimitive.Root;
 
@@ -56,41 +61,56 @@ const AlertDialogContent = React.forwardRef<
   AlertDialogContentProps
 >(
   (
-    { className, children, variant = "compact", size = "sm", ...props },
+    {
+      className,
+      children,
+      variant = "compact",
+      size = "sm",
+      onOpenAutoFocus,
+      onCloseAutoFocus,
+      ...props
+    },
     ref,
-  ) => (
-    <AlertDialogPortal>
-      <AlertDialogOverlay />
-      <div className={modalPositioner}>
-        <AlertDialogPrimitive.Content
-          ref={ref}
-          className={cn(
-            modalPanel,
-            modalMotion.panel,
-            modalTier[variant],
-            modalSize[size],
-            className,
-          )}
-          onOpenAutoFocus={(e) => {
-            // Same reasoning as DialogContent's override: Radix's default
-            // auto-focuses the first focusable descendant, which for an
-            // AlertDialog is very often the confirm/destructive action button,
-            // so Enter must not be able to fire it on open. Focus then moves to
-            // the panel rather than being left on the now aria-hidden trigger,
-            // so the dialog is announced and Tab starts inside it. See
-            // DialogContent for the full note.
-            e.preventDefault();
-            (e.currentTarget as HTMLElement).focus();
-          }}
-          {...props}
-        >
-          <AlertTierContext.Provider value={variant}>
-            {children}
-          </AlertTierContext.Provider>
-        </AlertDialogPrimitive.Content>
-      </div>
-    </AlertDialogPortal>
-  ),
+  ) => {
+    // Every useConfirm() dialog opens from state, with no AlertDialogTrigger
+    // for Radix to hand focus back to. See components/ui/dialog-focus.ts.
+    const focus = useDialogFocusRestore(onCloseAutoFocus);
+    return (
+      <AlertDialogPortal>
+        <DialogFocusOrigin originRef={focus.originRef} />
+        <AlertDialogOverlay />
+        <div className={modalPositioner}>
+          <AlertDialogPrimitive.Content
+            ref={ref}
+            className={cn(
+              modalPanel,
+              modalMotion.panel,
+              modalTier[variant],
+              modalSize[size],
+              className,
+            )}
+            onOpenAutoFocus={composeAutoFocus(onOpenAutoFocus, (e) => {
+              // Same reasoning as DialogContent's override: Radix's default
+              // auto-focuses the first focusable descendant, which for an
+              // AlertDialog is very often the confirm/destructive action button,
+              // so Enter must not be able to fire it on open. Focus then moves to
+              // the panel rather than being left on the now aria-hidden trigger,
+              // so the dialog is announced and Tab starts inside it. See
+              // DialogContent for the full note.
+              e.preventDefault();
+              (e.currentTarget as HTMLElement).focus();
+            })}
+            onCloseAutoFocus={focus.onCloseAutoFocus}
+            {...props}
+          >
+            <AlertTierContext.Provider value={variant}>
+              {children}
+            </AlertTierContext.Provider>
+          </AlertDialogPrimitive.Content>
+        </div>
+      </AlertDialogPortal>
+    );
+  },
 );
 AlertDialogContent.displayName = AlertDialogPrimitive.Content.displayName;
 

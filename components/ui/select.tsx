@@ -74,8 +74,10 @@ const SelectContent = React.forwardRef<
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
-      // Disable scroll lock to prevent page/sidebar jumping when dropdown opens
-      onCloseAutoFocus={(e) => e.preventDefault()}
+      // No onCloseAutoFocus override. An `e.preventDefault()` here used to sit
+      // under a "disable scroll lock" comment, but all it did was cancel Radix's
+      // own `trigger.focus({ preventScroll: true })`, so every Select dropped
+      // focus to <body> when it closed. Callers can still pass their own.
       className={cn(
         "relative z-50 max-h-96 min-w-32 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md outline-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         position === "popper" &&

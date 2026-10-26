@@ -19,6 +19,11 @@ import {
   type ModalSize,
   type ModalTier,
 } from "@/components/ui/modal-grammar";
+import {
+  composeAutoFocus,
+  DialogFocusOrigin,
+  useDialogFocusRestore,
+} from "@/components/ui/dialog-focus";
 
 const Dialog = DialogPrimitive.Root;
 
@@ -71,58 +76,73 @@ const DialogContent = React.forwardRef<
   DialogContentProps
 >(
   (
-    { className, children, variant = "compact", size = "md", ...props },
+    {
+      className,
+      children,
+      variant = "compact",
+      size = "md",
+      onOpenAutoFocus,
+      onCloseAutoFocus,
+      ...props
+    },
     ref,
-  ) => (
-    <DialogPortal>
-      <DialogOverlay />
-      <div className={modalPositioner}>
-        <DialogPrimitive.Content
-          ref={ref}
-          className={cn(
-            modalPanel,
-            modalMotion.panel,
-            modalTier[variant],
-            modalSize[size],
-            className,
-          )}
-          onOpenAutoFocus={(e) => {
-            // Radix's default focuses the first focusable descendant, which in
-            // this product is often a submit or destructive button, so Enter
-            // could fire it the instant the dialog opened. That is still the
-            // reason for preventDefault().
-            //
-            // What preventDefault() ALONE did was leave focus on the trigger,
-            // which Radix has just put behind an aria-hidden barrier: a
-            // keyboard user got no visible focus anywhere on screen, a screen
-            // reader was never told a dialog had opened, and the first Tab was
-            // eaten by FocusScope hauling focus back inside. Moving focus to
-            // the panel itself keeps Enter inert (the panel is not a control)
-            // while satisfying SC 2.4.3 and 4.1.2: focus is inside the dialog,
-            // the dialog is announced, and Tab continues from here. Radix gives
-            // Content tabindex="-1" for exactly this, and the global
-            // :focus-visible rule in app/globals.css skips tabindex="-1", so
-            // this does not paint a ring around the whole panel.
-            e.preventDefault();
-            // preventScroll: focusing an element scrolls it into view, and on
-            // a panel taller than a phone's viewport the browser satisfied
-            // that by scrolling to the bottom of the dialog. The focus itself
-            // is what this block is for; the scroll was never wanted.
-            (e.currentTarget as HTMLElement).focus({ preventScroll: true });
-          }}
-          {...props}
-        >
-          <DialogTierContext.Provider value={variant}>
-            {children}
-          </DialogTierContext.Provider>
-          <DialogPrimitive.Close className={modalCloseChip}>
-            <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
-        </DialogPrimitive.Content>
-      </div>
-    </DialogPortal>
-  ),
+  ) => {
+    // Radix returns focus only to a rendered <DialogTrigger>, and most dialogs
+    // here open from state. See components/ui/dialog-focus.ts.
+    const focus = useDialogFocusRestore(onCloseAutoFocus);
+    return (
+      <DialogPortal>
+        <DialogFocusOrigin originRef={focus.originRef} />
+        <DialogOverlay />
+        <div className={modalPositioner}>
+          <DialogPrimitive.Content
+            ref={ref}
+            className={cn(
+              modalPanel,
+              modalMotion.panel,
+              modalTier[variant],
+              modalSize[size],
+              className,
+            )}
+            onOpenAutoFocus={composeAutoFocus(onOpenAutoFocus, (e) => {
+              // Radix's default focuses the first focusable descendant, which in
+              // this product is often a submit or destructive button, so Enter
+              // could fire it the instant the dialog opened. That is still the
+              // reason for preventDefault().
+              //
+              // What preventDefault() ALONE did was leave focus on the trigger,
+              // which Radix has just put behind an aria-hidden barrier: a
+              // keyboard user got no visible focus anywhere on screen, a screen
+              // reader was never told a dialog had opened, and the first Tab was
+              // eaten by FocusScope hauling focus back inside. Moving focus to
+              // the panel itself keeps Enter inert (the panel is not a control)
+              // while satisfying SC 2.4.3 and 4.1.2: focus is inside the dialog,
+              // the dialog is announced, and Tab continues from here. Radix gives
+              // Content tabindex="-1" for exactly this, and the global
+              // :focus-visible rule in app/globals.css skips tabindex="-1", so
+              // this does not paint a ring around the whole panel.
+              e.preventDefault();
+              // preventScroll: focusing an element scrolls it into view, and on
+              // a panel taller than a phone's viewport the browser satisfied
+              // that by scrolling to the bottom of the dialog. The focus itself
+              // is what this block is for; the scroll was never wanted.
+              (e.currentTarget as HTMLElement).focus({ preventScroll: true });
+            })}
+            onCloseAutoFocus={focus.onCloseAutoFocus}
+            {...props}
+          >
+            <DialogTierContext.Provider value={variant}>
+              {children}
+            </DialogTierContext.Provider>
+            <DialogPrimitive.Close className={modalCloseChip}>
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+          </DialogPrimitive.Content>
+        </div>
+      </DialogPortal>
+    );
+  },
 );
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
