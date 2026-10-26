@@ -1,0 +1,113 @@
+name: API rewrite spike
+
+# Proves the Next.js routing claims the API v4 Move rests on (spec 14.1) on the
+# repository's own Next version: forwarded request headers, params and route
+# precedence across a middleware rewrite, the rewrite origin (a destination on
+# another origin makes Next proxy the request with its credentials), bodies
+# and streams, response headers, request.url, maxDuration, and the cost of
+# versioned()'s parse and stringify.
+#
+# It runs a small fixture app (tests/spike/fixture) three ways: `next dev`,
+# `next start` (plain and with -H 0.0.0.0) and a container built like the
+# production image. Nothing here touches the product code, and nothing here
+# runs on a pull request: it is started by hand, or by a push to the spike
+# branch, because a workflow_dispatch workflow can only be run from a branch
+# once the file exists on the default branch.
+#
+# The job summary carries one pass or fail row per SPIKE item and target, and
+# for each failure the fallback spec 14.1 decided in advance. Read it before
+# the Move starts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Which targets to run"
+        type: choice
+        options:
+          - all
+          - dev
+          - start
+          - start-h
+          - image
+        default: all
+  push:
+    branches:
+      - "v4/api-rewrite-spike"
+    paths:
+      - "tests/spike/**"
+      - "scripts/spike/**"
+      - ".github/workflows/spike-api-rewrite.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    name: Spike
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        with:
+          # The same patch ci.yml runs. The image target uses the Dockerfile's
+          # own node:22.23.4-alpine inside the container.
+          node-version: "22.23.3"
+
+      - name: Self-test the harness
+        # Fails before any server starts if a helper, a verdict rule or the
+        # spike Dockerfile has drifted from the production one.
+        run: node scripts/spike/selftest.mjs
+
+      - name: Run the checks
+        # The input goes through the environment, never into the script text.
+        env:
+          SPIKE_TARGETS: ${{ inputs.targets || 'all' }}
+        run: |
+          set -euo pipefail
+          node scripts/spike/run.mjs \
+            --target "$SPIKE_TARGETS" \
+            --install \
+            --require-docker \
+            --out spike-results
+
+      - name: Prove the harness can fail
+        # Breaks the scratch copy of the fixture in ten ways, covering SPIKE
+        # 1 to 6, and requires the checks to notice each. A table that has only
+        # ever said PASS has not shown it can say anything else.
+        if: ${{ always() && (inputs.targets == '' || inputs.targets == 'all') }}
+        run: node scripts/spike/run.mjs --mutate all --install --out spike-results/mutations
+
+      - name: Benchmark parse and stringify
+        if: ${{ always() && (inputs.targets == '' || inputs.targets == 'all') }}
+        run: node --expose-gc scripts/spike/bench-serialise.mjs --out spike-results
+
+      - name: Summarise
+        if: ${{ always() }}
+        env:
+          SPIKE_TARGETS: ${{ inputs.targets || 'all' }}
+        run: |
+          set -euo pipefail
+          strict=""
+          if [ "$SPIKE_TARGETS" = "all" ]; then strict="--strict"; fi
+          node scripts/spike/summarise.mjs spike-results $strict
+
+      - name: Upload results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spike-results
+          path: spike-results/
+          retention-days: 14
+          if-no-files-found: warn
