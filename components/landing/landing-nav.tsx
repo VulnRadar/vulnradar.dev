@@ -38,6 +38,9 @@ function navLinks(demoEnabled: boolean) {
       ? [{ href: ROUTES.PRICING, label: "pricing" as const }]
       : []),
     { href: ROUTES.DOCS, label: "docs" as const },
+    // The ~800 per-check fix guides are the site's main search surface and
+    // were linked only from the footer.
+    { href: ROUTES.CHECKS, label: "checks" as const },
     ...(demoEnabled ? [{ href: ROUTES.DEMO, label: "demo" as const }] : []),
     { href: ROUTES.CHANGELOG, label: "changelog" as const },
     { href: ROUTES.CONTACT, label: "contact" as const },

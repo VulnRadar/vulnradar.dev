@@ -452,6 +452,7 @@ export const ROUTES = {
   GDPR_REQUEST: "/legal/privacy#gdpr",
   CHANGELOG: "/changelog",
   DOCS: "/docs",
+  CHECKS: "/checks",
   DOCS_API: "/docs/api",
   /** Interactive API explorer (app/docs/api/playground). */
   API_PLAYGROUND: "/docs/api/playground",
