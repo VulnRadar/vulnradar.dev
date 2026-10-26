@@ -111,7 +111,7 @@ export function InlineAlert({
           // alert component reused across teams, profile and the dashboard.
           // A fixed 24x24 box centring the same icon keeps the mark the size
           // it was and only grows the hit area.
-          className="-my-px -mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          className="-my-px -mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X aria-hidden="true" className="h-3.5 w-3.5" />
         </button>

@@ -419,7 +419,7 @@ export function WebhooksSection({
                           </p>
                           <span
                             className={cn(
-                              "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border shrink-0",
+                              "inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border shrink-0",
                               wh.type === "discord"
                                 ? "bg-[#5865F2]/10 text-[#5865F2] border-[#5865F2]/20"
                                 : wh.type === "slack"
@@ -430,7 +430,7 @@ export function WebhooksSection({
                             {wh.type}
                           </span>
                           {!wh.active && (
-                            <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border border-border bg-muted text-muted-foreground shrink-0">
+                            <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border border-border bg-muted text-muted-foreground shrink-0">
                               Paused
                             </span>
                           )}
@@ -614,7 +614,7 @@ export function WebhooksSection({
                                     >
                                       <span
                                         className={cn(
-                                          "inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                                          "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
                                           tone.className,
                                         )}
                                       >

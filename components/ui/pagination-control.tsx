@@ -133,7 +133,7 @@ export function PaginationControl({
           {/* First page */}
           <button
             className={cn(
-              "h-11 w-11 sm:h-8 sm:w-8 rounded-lg flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
+              "h-11 w-11 sm:h-8 sm:w-8 rounded-md flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
               currentPage <= 1
                 ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60",
@@ -148,7 +148,7 @@ export function PaginationControl({
           {/* Previous page */}
           <button
             className={cn(
-              "h-11 w-11 sm:h-8 sm:w-8 rounded-lg flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
+              "h-11 w-11 sm:h-8 sm:w-8 rounded-md flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
               currentPage <= 1
                 ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60",
@@ -174,7 +174,7 @@ export function PaginationControl({
                 <button
                   key={p}
                   className={cn(
-                    "h-11 min-w-11 sm:h-8 sm:min-w-8 px-2 rounded-lg text-xs font-medium",
+                    "h-11 min-w-11 sm:h-8 sm:min-w-8 px-2 rounded-md text-xs font-medium",
                     toggles.control,
                     p === currentPage
                       ? "bg-primary text-primary-foreground shadow-xs"
@@ -193,7 +193,7 @@ export function PaginationControl({
           {/* Next page */}
           <button
             className={cn(
-              "h-11 w-11 sm:h-8 sm:w-8 rounded-lg flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
+              "h-11 w-11 sm:h-8 sm:w-8 rounded-md flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
               currentPage >= totalPages
                 ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60",
@@ -208,7 +208,7 @@ export function PaginationControl({
           {/* Last page */}
           <button
             className={cn(
-              "h-11 w-11 sm:h-8 sm:w-8 rounded-lg flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
+              "h-11 w-11 sm:h-8 sm:w-8 rounded-md flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
               currentPage >= totalPages
                 ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60",
