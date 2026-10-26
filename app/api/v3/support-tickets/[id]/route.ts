@@ -23,6 +23,7 @@ import {
   type TicketCategory,
   type TicketStatus,
 } from "@/lib/support/ticket-constants";
+import { parseTicketId } from "@/lib/support/ticket-id";
 
 /**
  * GET   /api/v3/support-tickets/[id]  -> a ticket + its full message thread
@@ -67,11 +68,6 @@ async function loadTicket(id: number): Promise<TicketRow | null> {
     [id],
   );
   return res.rows[0] ?? null;
-}
-
-function parseId(raw: string): number | null {
-  const n = Number.parseInt(raw, 10);
-  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 /**
@@ -125,7 +121,7 @@ export const GET = withErrorHandling(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id: rawId } = await params;
-    const id = parseId(rawId);
+    const id = parseTicketId(rawId);
     if (id === null) {
       return NextResponse.json(
         { error: "Invalid ticket id." },
@@ -238,7 +234,7 @@ export const POST = withErrorHandling(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id: rawId } = await params;
-    const id = parseId(rawId);
+    const id = parseTicketId(rawId);
     if (id === null) {
       return NextResponse.json(
         { error: "Invalid ticket id." },
@@ -417,7 +413,7 @@ export const PATCH = withErrorHandling(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id: rawId } = await params;
-    const id = parseId(rawId);
+    const id = parseTicketId(rawId);
     if (id === null) {
       return NextResponse.json(
         { error: "Invalid ticket id." },

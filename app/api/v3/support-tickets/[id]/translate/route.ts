@@ -12,6 +12,7 @@ import {
 } from "@/lib/support/translate";
 import { getUserLocale } from "@/lib/i18n/translate";
 import { isLocale } from "@/lib/i18n/config";
+import { parseTicketId } from "@/lib/support/ticket-id";
 
 /**
  * POST /api/v3/support-tickets/[id]/translate
@@ -35,8 +36,8 @@ export async function POST(
   }
 
   const { id: rawId } = await params;
-  const ticketId = Number.parseInt(rawId, 10);
-  if (!Number.isInteger(ticketId) || ticketId <= 0) {
+  const ticketId = parseTicketId(rawId);
+  if (ticketId === null) {
     return NextResponse.json({ error: "Invalid ticket id." }, { status: 400 });
   }
 

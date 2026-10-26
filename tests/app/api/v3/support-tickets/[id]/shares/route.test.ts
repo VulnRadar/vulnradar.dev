@@ -104,3 +104,45 @@ describe("DELETE shares", () => {
     );
   });
 });
+
+describe("the ticket id in the path", () => {
+  const refused = [
+    "12.png",
+    "12.svg",
+    "12abc",
+    "1e3",
+    "0x10",
+    "1.5",
+    "012",
+    "0",
+    "-5",
+    "2147483648",
+  ];
+
+  function withId(id: string) {
+    return { params: Promise.resolve({ id }) };
+  }
+
+  it.each(refused)("refuses %j on GET, POST and DELETE", async (id) => {
+    for (const [handler, request] of [
+      [GET, req("GET")],
+      [POST, req("POST", { userId: 6 })],
+      [DELETE, req("DELETE", undefined, "?userId=5")],
+    ] as const) {
+      const res = await handler(request, withId(id));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe("Invalid ticket id.");
+    }
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("still serves a plain numeric id", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ user_id: 7 }] }) // requireOwner
+      .mockResolvedValueOnce({ rows: [] }) // current shares
+      .mockResolvedValueOnce({ rows: [] }); // eligible
+    const res = await GET(req("GET"), withId("12"));
+    expect(res.status).toBe(200);
+    expect(mockQuery.mock.calls[0][1]).toEqual([12]);
+  });
+});

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { areTeammates } from "@/lib/support/ticket-access";
+import { parseTicketId } from "@/lib/support/ticket-id";
 
 /**
  * Manage who a ticket is shared with. Owner-only, and a ticket can only be
@@ -12,11 +13,6 @@ import { areTeammates } from "@/lib/support/ticket-access";
  * POST   { userId } -> share with that teammate
  * DELETE ?userId=N  -> stop sharing with that user
  */
-
-function parseId(raw: string): number | null {
-  const n = Number.parseInt(raw, 10);
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
 
 async function requireOwner(
   ticketId: number,
@@ -40,7 +36,7 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id: rawId } = await params;
-  const id = parseId(rawId);
+  const id = parseTicketId(rawId);
   if (id === null) {
     return NextResponse.json({ error: "Invalid ticket id." }, { status: 400 });
   }
@@ -110,7 +106,7 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id: rawId } = await params;
-  const id = parseId(rawId);
+  const id = parseTicketId(rawId);
   if (id === null) {
     return NextResponse.json({ error: "Invalid ticket id." }, { status: 400 });
   }
@@ -171,7 +167,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id: rawId } = await params;
-  const id = parseId(rawId);
+  const id = parseTicketId(rawId);
   if (id === null) {
     return NextResponse.json({ error: "Invalid ticket id." }, { status: 400 });
   }

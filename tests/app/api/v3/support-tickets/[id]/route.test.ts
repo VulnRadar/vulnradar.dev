@@ -885,3 +885,61 @@ describe("GET /api/v3/support-tickets/[id] languages", () => {
     expect(body.messages[1].bodyLocale).toBe("en");
   });
 });
+
+/**
+ * The id segment used to go through Number.parseInt, which reads the digits
+ * off the front and ignores the rest. "12.png" was ticket 12, which is how a
+ * PATCH to /support-tickets/12.png was served on a path the middleware matcher
+ * skipped. Every one of these now answers what any other invalid id answers.
+ */
+describe("the ticket id in the path", () => {
+  const refused = [
+    "12.png",
+    "12.svg",
+    "12abc",
+    "1e3",
+    "0x10",
+    "1.5",
+    "012",
+    "0",
+    "-5",
+    "12 ",
+    "2147483648",
+  ];
+
+  function withId(id: string) {
+    return { params: Promise.resolve({ id }) };
+  }
+
+  it.each(refused)("refuses %j on GET, POST and PATCH", async (id) => {
+    asUser(7, "user");
+    for (const [handler, method, body] of [
+      [GET, "GET", undefined],
+      [POST, "POST", { message: "hello" }],
+      [PATCH, "PATCH", { status: "closed" }],
+    ] as const) {
+      const res = await handler(req(method, body), withId(id));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe("Invalid ticket id.");
+    }
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("still serves a plain numeric id", async () => {
+    asUser(7, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow({ id: 12 })] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await GET(req("GET"), withId("12"));
+    expect(res.status).toBe(200);
+    expect(mockQuery.mock.calls[0][1]).toEqual([12]);
+  });
+
+  it("still serves the largest id an int4 column can hold", async () => {
+    asUser(7, "user");
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await GET(req("GET"), withId("2147483647"));
+    expect(res.status).toBe(404);
+    expect(mockQuery.mock.calls[0][1]).toEqual([2147483647]);
+  });
+});
