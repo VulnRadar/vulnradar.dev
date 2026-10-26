@@ -73,6 +73,24 @@ export async function getCachedReputation(
   return cache[host]?.data ?? null;
 }
 
+/**
+ * True for a cache key that is a page address carrying what lookupUrl would
+ * now strip: a query string, a fragment or userinfo. Read from the parsed
+ * address rather than by looking for "@" in the text, because a path may
+ * legitimately contain one (/@user on Mastodon and Medium pages), and those
+ * are current exact-page keys that must survive the next write.
+ */
+function isLegacyPageKey(key: string): boolean {
+  if (!key.includes("://")) return false;
+  if (/[?#]/.test(key)) return true;
+  try {
+    const u = new URL(key);
+    return u.username !== "" || u.password !== "";
+  } catch {
+    return true;
+  }
+}
+
 export async function cacheReputation(
   host: string,
   data: ReputationResponse,
@@ -89,7 +107,7 @@ export async function cacheReputation(
     // 0.2.2 and earlier filed an exact-page result under the tab's full URL,
     // query string and all. Drop those on the next write rather than leave a
     // reset link sitting in storage until its day is up.
-    if (now - entry.cachedAt >= maxAgeMs || /[?#@]/.test(h)) delete cache[h];
+    if (now - entry.cachedAt >= maxAgeMs || isLegacyPageKey(h)) delete cache[h];
   }
   // An exact-page answer is filed under the page, not the host, for the
   // reason in getCachedReputation above. Everything else is host-level and

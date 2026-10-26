@@ -137,6 +137,26 @@ describe("the reputation cache", () => {
     expect(JSON.stringify(storageData.reputationCache)).not.toContain("SECRET");
   });
 
+  it("keeps an exact-page entry whose path contains an @", async () => {
+    const now = Date.now();
+    storageData.reputationCache = {
+      "https://mastodon.social/@someone": { data: KNOWN_EXACT, cachedAt: now },
+      "https://user:pass@legacy.example/page": {
+        data: KNOWN_EXACT,
+        cachedAt: now,
+      },
+    };
+    await cacheReputation(
+      "other.example",
+      { ...KNOWN_EXACT, matchType: "host" },
+      now,
+    );
+    expect(Object.keys(storageData.reputationCache as object).sort()).toEqual([
+      "https://mastodon.social/@someone",
+      "other.example",
+    ]);
+  });
+
   it("states the suppression window as hours", () => {
     expect(SHOWN_SUPPRESS_MS / 3_600_000).toBe(4);
   });
