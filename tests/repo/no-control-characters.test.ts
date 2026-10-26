@@ -16,7 +16,9 @@ import { readFileSync } from "node:fs";
 const SOURCE = /\.(?:ts|tsx|mts|cts|js|mjs|cjs|json|css|md|yml|yaml)$/;
 
 describe("source files", () => {
-  it("contain no stray control characters", () => {
+  // Reads every tracked file, so it is I/O bound and the default 5 s limit
+  // failed it on a busy machine while every file was clean.
+  it("contain no stray control characters", { timeout: 30_000 }, () => {
     const files = execFileSync("git", ["ls-files"], { encoding: "utf8" })
       .split("\n")
       .filter((f) => SOURCE.test(f));

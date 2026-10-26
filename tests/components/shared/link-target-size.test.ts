@@ -138,7 +138,7 @@ function makesFormattingContext(classText: string): boolean {
  */
 function marginsStayInside(link: Link): boolean {
   const t = tokens(link.classText);
-  if (!t.includes("block") || !t.some((x) => /^-my-/.test(x))) return true;
+  if (!t.includes("block") || !t.some((x) => x.startsWith("-my-"))) return true;
   const [parent, grandparent] = link.ancestors;
   if (!parent) return false;
   return (
