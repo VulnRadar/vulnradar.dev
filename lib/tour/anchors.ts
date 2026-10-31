@@ -20,7 +20,7 @@
  * the element too, which is exactly the friction we want.
  */
 export const TOUR_ANCHORS = {
-  // Header nav. Rendered twice (a desktop `hidden lg:flex` nav and a mobile
+  // Header nav. Rendered twice (a desktop `hidden xl:flex` nav and a mobile
   // Sheet), so both copies carry the same attribute and the resolver picks
   // whichever one is actually visible. See resolveAnchor().
   navHistory: "nav-history",

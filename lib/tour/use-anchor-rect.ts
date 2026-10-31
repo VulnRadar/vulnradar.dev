@@ -125,7 +125,7 @@ export function useAnchorRect(
       // hidden. React re-renders replace nodes rather than mutating them, so a
       // cached element goes stale on any parent re-render, and the header nav
       // exists twice (desktop row, mobile sheet) with only one visible at a
-      // time: a viewport resize across the lg breakpoint swaps which copy is
+      // time: a viewport resize across the xl breakpoint swaps which copy is
       // the real one.
       //
       // getClientRects(), not offsetParent. Both answer "is this element laid
