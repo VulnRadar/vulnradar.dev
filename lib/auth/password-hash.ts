@@ -1,22 +1,58 @@
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { availableParallelism } from "node:os";
 import { promisify } from "node:util";
 
 // Async scrypt runs on the libuv threadpool. scryptSync pins the event loop
 // for the full ~650ms of a single hash, which stalls every other request the
 // server is handling, so only the async form is exported from this module.
-const scryptAsync = promisify(scrypt) as (
+const scryptRaw = promisify(scrypt) as (
   password: string,
   salt: string,
   keylen: number,
   options?: { N: number; r: number; p: number; maxmem: number },
 ) => Promise<Buffer>;
 
+// At the production cost one scrypt holds ~128 MiB and a threadpool thread for
+// ~650ms. The pool has four threads by default and also serves DNS lookups,
+// file reads and zlib, so a burst of logins or signups that all hash at once
+// both multiplies the memory (four at once is half a gigabyte) and parks every
+// other threadpool job behind them, the scanner's DNS included. Two at a time
+// (one on a single-core host) keeps the worst case bounded; the rest wait here
+// in order. Callers already sit behind per-IP and per-account rate limits, so
+// the queue cannot be fed without bound by one client.
+export const SCRYPT_MAX_CONCURRENT = Math.max(
+  1,
+  Math.min(2, availableParallelism()),
+);
+
+let scryptInFlight = 0;
+const scryptWaiting: Array<() => void> = [];
+
+async function scryptAsync(
+  ...args: Parameters<typeof scryptRaw>
+): Promise<Buffer> {
+  if (scryptInFlight >= SCRYPT_MAX_CONCURRENT) {
+    // The releasing call hands its slot straight to us, so the count is not
+    // touched here and a newcomer cannot slip in ahead of a waiter.
+    await new Promise<void>((resolve) => scryptWaiting.push(resolve));
+  } else {
+    scryptInFlight++;
+  }
+  try {
+    return await scryptRaw(...args);
+  } finally {
+    const next = scryptWaiting.shift();
+    if (next) next();
+    else scryptInFlight--;
+  }
+}
+
 // Password hashing using scrypt (built-in, no extra dependency).
 // Hash format: "N:r:p:salt:hash". Params are stored alongside the digest so
 // the cost can be raised over time without invalidating older hashes.
 // Defaults match OWASP 2024+ recommendations for interactive logins.
 //
-// This module deliberately imports nothing but node:crypto. It used to live
+// This module deliberately imports nothing but node builtins. It used to live
 // in auth.ts next to `next/headers` and the pg pool, which made it impossible
 // to unit test without mocking scrypt itself, and that mock is what hid the
 // maxmem bug described below.
