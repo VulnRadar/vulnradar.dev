@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { AlertTriangle, Check, Info, X } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { focus, transitions } from "@/lib/ui/animations";
@@ -9,6 +9,7 @@ import {
   type PasswordRequirementContext,
 } from "@/lib/auth/password-strength";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { useFocusOnMount } from "@/lib/hooks/use-focus-on-mount";
 
 /**
  * Shared building blocks for the auth flow. Every screen in the flow is one
@@ -39,14 +40,6 @@ export const authPillClass = cn(
   transitions.colors,
   authFocusRing,
 );
-
-function useFocusOnMount(enabled: boolean) {
-  const ref = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    if (enabled) ref.current?.focus();
-  }, [enabled]);
-  return ref;
-}
 
 export function AuthSteps({
   current,
@@ -93,7 +86,9 @@ export function AuthHeading({
   description?: React.ReactNode;
   focusOnMount?: boolean;
 }) {
-  const ref = useFocusOnMount(focusOnMount);
+  const ref = useFocusOnMount<HTMLHeadingElement>(undefined, {
+    enabled: focusOnMount,
+  });
   return (
     <div className="mb-6">
       <h1
@@ -174,7 +169,7 @@ export function AuthOutcome({
   actions?: React.ReactNode;
   footnote?: React.ReactNode;
 }) {
-  const ref = useFocusOnMount(true);
+  const ref = useFocusOnMount<HTMLHeadingElement>();
   return (
     <div>
       <AuthOutcomeHeader tone={tone} title={title} headingRef={ref}>
