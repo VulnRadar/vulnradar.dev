@@ -34,8 +34,8 @@ do intentionally change dependencies, check the diff for removed
 | ------------------------- | -------------------------------------------------- |
 | `npm run dev`             | Start dev server                                   |
 | `npm run build`           | Production build                                   |
-| `npm run lint`            | Run ESLint                                         |
-| `npm run lint:fix`        | Run ESLint with `--fix`                            |
+| `npm run lint`            | Run Oxlint, then ESLint                            |
+| `npm run lint:fix`        | The same two with `--fix`                          |
 | `npm run typecheck`       | Run `tsc --noEmit`                                 |
 | `npm run format`          | Format with Prettier                               |
 | `npm run format:check`    | Check formatting without writing. CI runs this one |
@@ -109,6 +109,15 @@ Then, depending on what you touched:
 `npm audit --audit-level=high --omit=dev` also gates a PR, so a dependency
 change that introduces a high-severity advisory will fail even if everything
 above passes.
+
+## Translations
+
+The app speaks more than one language, and the wording lives under
+`lib/i18n/messages`. A key a language has not translated yet falls back to
+English, so a translation can land a few strings at a time.
+[`lib/i18n/README.md`](lib/i18n/README.md) covers how a reader's language is
+chosen, what must never be translated (finding IDs, header names, code, URLs),
+and how to write a string so it survives translation.
 
 ## Pull requests
 

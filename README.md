@@ -9,9 +9,9 @@ checks back, each with the response evidence behind it, a finding ID that does
 not change between runs, and the config line that fixes it. No agent to
 install. GPL-3.0 and self-hostable.
 
-**[Scan a URL with no account](https://vulnradar.dev/demo)** ·
-**[Docs](https://vulnradar.dev/docs)** ·
-**[Self-host](https://vulnradar.dev/docs/self-hosting)** ·
+**[Scan a URL with no account](https://vulnradar.dev/demo)** |
+**[Docs](https://vulnradar.dev/docs)** |
+**[Self-host](https://vulnradar.dev/docs/self-hosting)** |
 **[Changelog](https://vulnradar.dev/changelog)**
 
 [![Secured by VulnRadar](https://vulnradar.dev/api/v3/badge/9e5fb4e1fe33513bf6799a588fe9831b844f1cfbdedde844e5fafdd379f6a51c)](https://vulnradar.dev/shared/9e5fb4e1fe33513bf6799a588fe9831b844f1cfbdedde844e5fafdd379f6a51c)
@@ -45,9 +45,12 @@ install. GPL-3.0 and self-hostable.
 - **Exports** to PDF, JSON, CSV, SARIF, Markdown, or a compliance crosswalk, so
   findings go into the tool your team already uses
 - **A browser extension** for Chrome and Firefox that scans the tab you are on
-- **Runs on your own hardware** under GPL-3.0, with no telemetry. The only
-  outbound call it makes on its own behalf is the admin-triggered update check
-  against the GitHub releases API
+- **Runs on your own hardware** under GPL-3.0, with no telemetry. Besides the
+  integrations you configure (SMTP, Stripe, OAuth, an AI provider, Browserbase),
+  it asks the GitHub releases API for the latest version and each scan queries
+  public security data sources. The
+  [network egress list](https://vulnradar.dev/docs/self-hosting#network-egress)
+  names every host and what is sent to it
 
 Auth, teams, billing, the admin panel and the AI triage assistant are all
 covered in the [docs](https://vulnradar.dev/docs).
@@ -92,13 +95,17 @@ cp .env.example .env
 # Rate limits, feature flags and billing limits are runtime-tier: change them
 # in Admin -> Settings after the first sign-in, no rebuild needed.
 
-# 3. Build and run. The schema creates itself on first boot; there is no
-#    separate init step.
-docker compose up -d
+# 3. Build and run. --build compiles the image from this checkout, so the
+#    config-values.ts edits above are in it. A plain `docker compose up -d`
+#    runs the published image instead, with upstream's name and URL. The
+#    schema creates itself on first boot; there is no separate init step.
+docker compose up -d --build
 ```
 
-`API_KEY_ENCRYPTION_KEY` is required. Without it the app refuses to store TOTP
-secrets rather than falling back to plaintext.
+`API_KEY_ENCRYPTION_KEY` is required: the app refuses to start without a
+64-character hex value, rather than falling back to plaintext. It encrypts API
+keys, TOTP secrets and other stored credentials at rest, so a lost key means
+those values can no longer be decrypted.
 
 ## Configuration
 
@@ -164,7 +171,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 | `npm run dev`             | Development server                                           |
 | `npm run build`           | Production build                                             |
 | `npm run typecheck`       | `tsc --noEmit`                                               |
-| `npm run lint`            | ESLint, including type-aware rules on auth code              |
+| `npm run lint`            | Oxlint, then ESLint with type-aware rules on auth code       |
 | `npm run format`          | Prettier                                                     |
 | `npm run format:check`    | Prettier in check mode. CI gates on this                     |
 | `npm test`                | Vitest suite                                                 |
@@ -188,7 +195,9 @@ request process.
 - **Database:** PostgreSQL via the `pg` driver
 - **Auth:** HTTP-only session cookies, scrypt password hashing (N=2^17, params
   stored per hash so the cost can be raised without invalidating old hashes),
-  custom TOTP (RFC 6238), bcrypt for API key hashing
+  custom TOTP (RFC 6238). API keys are encrypted at rest with AES-256-GCM and
+  found by a short HMAC locator; only legacy rows from before encryption was
+  required still carry a bcrypt hash
 - **Payments:** Stripe (Elements)
 - **Scanner:** Custom TypeScript engine over HTTP/HTTPS/WebSocket/FTP
 - **Testing:** Vitest
