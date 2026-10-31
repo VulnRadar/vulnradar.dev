@@ -125,7 +125,7 @@ describe("discoverSubdomainsForRoot", () => {
       reachable: true,
       statusCode: 301,
     });
-    expect(result.sources["crt.sh"]).toBe(1);
+    expect(result.sources?.["crt.sh"]).toBe(1);
   });
 
   it("names the scanner in the User-Agent of every reachability request", async () => {

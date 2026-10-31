@@ -26,7 +26,10 @@ const CONTEXT = {
 };
 
 function fakePool(storedSchema: string | null) {
-  const query = vi.fn(async (sql: string) => {
+  // Typed with the optional parameters array so a test can read the arguments
+  // of the UPDATE the gate issues.
+  const query = vi.fn(async (...args: [sql: string, params?: unknown[]]) => {
+    const sql = args[0];
     if (sql.includes("SELECT schema_version")) {
       return {
         rows:
