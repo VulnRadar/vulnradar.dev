@@ -81,10 +81,21 @@ function admit(maxConcurrent: number): void {
   }
 }
 
+/**
+ * What an acquire hands back, and what a caller passes to
+ * releaseConcurrencySlot() so the release matches the acquire.
+ */
 export interface ConcurrencySlotResult {
   acquired: boolean;
   /** True if this request ever had to wait at all, even briefly. */
   queued: boolean;
+  /**
+   * True when this call took a unit of the in-flight count, which is the only
+   * thing a release may give back. False for a request that timed out
+   * waiting: it holds nothing, so releasing it must not hand back a slot that
+   * a running session holds.
+   */
+  counted: boolean;
 }
 
 /**
@@ -101,17 +112,29 @@ export interface ConcurrencySlotResult {
  * entirely (always acquires immediately, never queues) -- the same "-1
  * means unlimited" convention every other plan/setting numeric field in
  * this codebase uses.
+ *
+ * An acquire with the cap disabled is still COUNTED; only the comparison with
+ * the cap is skipped. It used to skip the count as well, which broke the
+ * moment an admin set a cap while sessions were open: a session that ended
+ * after the change released a slot that a different, capped session held, so
+ * more than the cap could run and the counter under-read until a restart. A
+ * session ends in a later request (DELETE) or in the cleanup sweep, neither of
+ * which has the acquire's result to hand, so the count has to be right without
+ * one.
  */
 export async function acquireConcurrencySlot(
   priority: boolean,
 ): Promise<ConcurrencySlotResult> {
   const maxConcurrent = await getSetting("BROWSERBASE_MAX_CONCURRENT_SESSIONS");
-  if (maxConcurrent === -1) return { acquired: true, queued: false };
+  if (maxConcurrent === -1) {
+    inFlight++;
+    return { acquired: true, queued: false, counted: true };
+  }
 
   admit(maxConcurrent); // opportunistically clear any stale waiters first
   if (inFlight < maxConcurrent && waiters.length === 0) {
     inFlight++;
-    return { acquired: true, queued: false };
+    return { acquired: true, queued: false, counted: true };
   }
 
   const maxWaitMs = await getSetting("BROWSERBASE_QUEUE_MAX_WAIT_MS");
@@ -120,7 +143,9 @@ export async function acquireConcurrencySlot(
     const waiter: Waiter = {
       priority,
       settled: false,
-      resolve: (acquired) => resolve({ acquired, queued: true }),
+      // admit() has already taken the unit by the time it resolves true.
+      resolve: (acquired) =>
+        resolve({ acquired, queued: true, counted: acquired }),
     };
     waiters.push(waiter);
     admit(maxConcurrent);
@@ -132,7 +157,7 @@ export async function acquireConcurrencySlot(
       waiter.settled = true;
       const idx = waiters.indexOf(waiter);
       if (idx !== -1) waiters.splice(idx, 1);
-      resolve({ acquired: false, queued: true });
+      resolve({ acquired: false, queued: true, counted: false });
     }, maxWaitMs);
     timer.unref?.();
   });
@@ -140,11 +165,19 @@ export async function acquireConcurrencySlot(
 
 /**
  * Releases a previously-acquired slot and immediately tries to admit the
- * next waiter(s). Safe to call even when the cap is disabled (-1) or
- * nothing was ever acquired in the first place -- inFlight never goes
- * negative.
+ * next waiter(s). Safe to call when nothing was ever acquired in the first
+ * place -- inFlight never goes negative.
+ *
+ * A caller that still holds the acquire's result passes it back, and a result
+ * that did not take a unit (`counted: false`, a request that timed out
+ * waiting) releases nothing. Callers that end a session later, in another
+ * request or in the cleanup sweep, have no result to pass and release one
+ * unit, which is correct for them: every acquire that succeeded took one.
  */
-export async function releaseConcurrencySlot(): Promise<void> {
+export async function releaseConcurrencySlot(
+  slot?: Pick<ConcurrencySlotResult, "counted">,
+): Promise<void> {
+  if (slot && !slot.counted) return;
   if (inFlight === 0) return;
   inFlight--;
   // admit() must run even if the settings lookup fails. A throw from

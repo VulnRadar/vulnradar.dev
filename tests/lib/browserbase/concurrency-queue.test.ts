@@ -38,24 +38,25 @@ describe("acquireConcurrencySlot", () => {
   it("acquires immediately when under the concurrency cap", async () => {
     settingsFor(5);
     const result = await acquireConcurrencySlot(false);
-    expect(result).toEqual({ acquired: true, queued: false });
+    expect(result).toEqual({ acquired: true, queued: false, counted: true });
     expect(_getInFlightForTests()).toBe(1);
   });
 
-  it("never queues when the cap is disabled (-1)", async () => {
+  it("never queues when the cap is disabled (-1), but still counts each session", async () => {
     settingsFor(-1);
     for (let i = 0; i < 10; i++) {
       const result = await acquireConcurrencySlot(false);
-      expect(result).toEqual({ acquired: true, queued: false });
+      expect(result).toEqual({ acquired: true, queued: false, counted: true });
     }
-    // Disabled cap never increments the in-flight counter at all.
-    expect(_getInFlightForTests()).toBe(0);
+    // The cap comparison is skipped, the count is not: every one of these
+    // sessions will release a unit when it ends.
+    expect(_getInFlightForTests()).toBe(10);
   });
 
   it("queues a request once the cap is reached, and admits it after a release", async () => {
     settingsFor(1);
     const first = await acquireConcurrencySlot(false);
-    expect(first).toEqual({ acquired: true, queued: false });
+    expect(first).toEqual({ acquired: true, queued: false, counted: true });
     expect(_getInFlightForTests()).toBe(1);
 
     const secondPromise = acquireConcurrencySlot(false);
@@ -64,7 +65,7 @@ describe("acquireConcurrencySlot", () => {
 
     await releaseConcurrencySlot();
     const second = await secondPromise;
-    expect(second).toEqual({ acquired: true, queued: true });
+    expect(second).toEqual({ acquired: true, queued: true, counted: true });
     expect(_getInFlightForTests()).toBe(1);
   });
 
@@ -72,7 +73,7 @@ describe("acquireConcurrencySlot", () => {
     settingsFor(1, 50);
     await acquireConcurrencySlot(false); // fills the only slot, never released
     const result = await acquireConcurrencySlot(false);
-    expect(result).toEqual({ acquired: false, queued: true });
+    expect(result).toEqual({ acquired: false, queued: true, counted: false });
     // The timed-out waiter never actually consumed a slot.
     expect(_getInFlightForTests()).toBe(1);
   });
@@ -100,6 +101,90 @@ describe("acquireConcurrencySlot", () => {
 
   it("releaseConcurrencySlot never goes negative when nothing was acquired", async () => {
     settingsFor(3);
+    await releaseConcurrencySlot();
+    await releaseConcurrencySlot();
+    expect(_getInFlightForTests()).toBe(0);
+  });
+});
+
+describe("releaseConcurrencySlot with the acquire's result", () => {
+  it("gives back the unit a counted acquire took", async () => {
+    settingsFor(5);
+    const slot = await acquireConcurrencySlot(false);
+    expect(slot.counted).toBe(true);
+    await releaseConcurrencySlot(slot);
+    expect(_getInFlightForTests()).toBe(0);
+  });
+
+  it("gives back nothing for a request that timed out waiting, so it cannot free a running session's slot", async () => {
+    settingsFor(1, 30);
+    const running = await acquireConcurrencySlot(false);
+    expect(running.counted).toBe(true);
+
+    const timedOut = await acquireConcurrencySlot(false);
+    expect(timedOut).toEqual({ acquired: false, queued: true, counted: false });
+
+    // A caller that releases unconditionally in a finally block would have
+    // taken the running session's slot here.
+    await releaseConcurrencySlot(timedOut);
+    expect(_getInFlightForTests()).toBe(1);
+  });
+
+  it("releases one unit when called with no result, for the callers that end a session in a later request", async () => {
+    settingsFor(5);
+    await acquireConcurrencySlot(false);
+    await acquireConcurrencySlot(false);
+    await releaseConcurrencySlot();
+    expect(_getInFlightForTests()).toBe(1);
+  });
+});
+
+describe("a cap turned on while sessions opened without one are still running", () => {
+  // The drift this guards against: with the cap disabled, acquires were not
+  // counted, so when one of those sessions ended it released a unit that a
+  // different, capped session held. The counter then under-read and more than
+  // the cap ran at once.
+  it("keeps the cap exact when the uncapped sessions end", async () => {
+    settingsFor(-1);
+    const uncapped = await acquireConcurrencySlot(false);
+    expect(uncapped.counted).toBe(true);
+
+    // The admin sets a cap of one. The uncapped session is still open, so the
+    // next request has to wait for it.
+    settingsFor(1, 2000);
+    const capped = acquireConcurrencySlot(false);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(_getInFlightForTests()).toBe(1);
+
+    // The uncapped session ends in a later request, with no result in hand.
+    await releaseConcurrencySlot();
+    const cappedResult = await capped;
+    expect(cappedResult).toEqual({
+      acquired: true,
+      queued: true,
+      counted: true,
+    });
+    expect(_getInFlightForTests()).toBe(1);
+
+    // The capped session is running now. A third request must wait: with the
+    // old accounting the uncapped session's release had already taken this
+    // slot back, and a third session ran alongside it.
+    settingsFor(1, 30);
+    const third = await acquireConcurrencySlot(false);
+    expect(third.acquired).toBe(false);
+    expect(_getInFlightForTests()).toBe(1);
+  });
+
+  it("keeps counting sessions that end after the cap is turned back off", async () => {
+    settingsFor(2);
+    const a = await acquireConcurrencySlot(false);
+    const b = await acquireConcurrencySlot(false);
+    settingsFor(-1);
+    const c = await acquireConcurrencySlot(false);
+    expect([a, b, c].every((s) => s.counted)).toBe(true);
+    expect(_getInFlightForTests()).toBe(3);
+
+    await releaseConcurrencySlot();
     await releaseConcurrencySlot();
     await releaseConcurrencySlot();
     expect(_getInFlightForTests()).toBe(0);
