@@ -7,6 +7,16 @@ import { LeadingIcon } from "./leading-icon";
 export type InlineAlertTone = "error" | "success" | "warning" | "info";
 
 /**
+ * How an alert reaches a screen reader.
+ *
+ * `assertive` is role="alert" and interrupts, `polite` is role="status" and
+ * waits for a pause, `off` is no live role at all: the text is page content a
+ * reader finds by moving through the page, and nothing is spoken when it
+ * appears.
+ */
+export type InlineAlertLive = "assertive" | "polite" | "off";
+
+/**
  * The one inline alert.
  *
  * 23 distinct geometries used to ship for this single element across 53
@@ -21,6 +31,13 @@ export type InlineAlertTone = "error" | "success" | "warning" | "info";
  *
  * One geometry, one tone table. `role="alert"` comes free at every call site,
  * which is the other thing the hand-rolled copies kept forgetting.
+ *
+ * That default is right for the outcome of something the user just did (a
+ * failed save, a rejected code). It is wrong for a standing notice that is
+ * simply true of the page, like the limit and cancellation lines on the
+ * billing tab: six of those rendered with role="alert" and were announced
+ * assertively the moment the tab opened, before the user had done anything.
+ * Those pass `live="off"`.
  */
 const TONE_STYLES: Record<
   InlineAlertTone,
@@ -59,7 +76,28 @@ export interface InlineAlertProps {
   onDismiss?: () => void;
   /** Hides the leading icon, for the rare dense row that has no space. */
   hideIcon?: boolean;
+  /**
+   * Overrides how the alert is announced. Omitted, an error or warning is
+   * assertive and a success or info line is polite. Use `off` for a notice
+   * that is already on the page when the user arrives rather than the result
+   * of an action.
+   */
+  live?: InlineAlertLive;
   className?: string;
+}
+
+/** The role an alert carries, or undefined for none. Exported for tests. */
+export function alertRole(
+  tone: InlineAlertTone,
+  live?: InlineAlertLive,
+): "alert" | "status" | undefined {
+  if (live === "off") return undefined;
+  if (live === "assertive") return "alert";
+  if (live === "polite") return "status";
+  // "error" and "warning" are the two a user needs told about immediately;
+  // a success or info line is a confirmation of something they just did,
+  // so it is announced politely rather than interrupting.
+  return tone === "error" || tone === "warning" ? "alert" : "status";
 }
 
 export function InlineAlert({
@@ -68,6 +106,7 @@ export function InlineAlert({
   children,
   onDismiss,
   hideIcon,
+  live,
   className,
 }: InlineAlertProps) {
   const styles = TONE_STYLES[tone];
@@ -75,10 +114,7 @@ export function InlineAlert({
 
   return (
     <div
-      // "error" and "warning" are the two a user needs told about immediately;
-      // a success or info line is a confirmation of something they just did,
-      // so it is announced politely rather than interrupting.
-      role={tone === "error" || tone === "warning" ? "alert" : "status"}
+      role={alertRole(tone, live)}
       className={cn(
         // leading-relaxed lives HERE, not on the text child. LeadingIcon
         // aligns against the type it inherits, and inheriting text-sm with

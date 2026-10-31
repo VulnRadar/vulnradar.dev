@@ -425,7 +425,7 @@ export function ProfileBillingTab({
                 )}
 
                 {billingInfo.subscription.cancelAtPeriodEnd && (
-                  <InlineAlert tone="warning" className="mt-2">
+                  <InlineAlert tone="warning" live="off" className="mt-2">
                     Your subscription will end on{" "}
                     {billingInfo.subscription.currentPeriodEnd
                       ? formatDate(billingInfo.subscription.currentPeriodEnd)
@@ -963,14 +963,14 @@ export function ProfileBillingTab({
                   className="h-2"
                 />
                 {billingInfo.usage.remaining === 0 && (
-                  <InlineAlert tone="error">
+                  <InlineAlert tone="error" live="off">
                     Daily scan limit reached. Upgrade your plan or wait until
                     midnight UTC for the limit to reset.
                   </InlineAlert>
                 )}
                 {billingInfo.usage.remaining > 0 &&
                   billingInfo.usage.remaining <= 10 && (
-                    <InlineAlert tone="warning">
+                    <InlineAlert tone="warning" live="off">
                       Running low on scans. Consider upgrading for more
                       capacity.
                     </InlineAlert>
@@ -1072,7 +1072,7 @@ export function ProfileBillingTab({
                       </p>
                     </div>
                   ) : (
-                    <InlineAlert tone="error">
+                    <InlineAlert tone="error" live="off">
                       AI verification limit reached for this window. Upgrade
                       your plan, buy AI tokens below, wait for it to reset, or
                       connect your own AI provider key in Profile &gt; AI
@@ -1228,7 +1228,7 @@ export function ProfileBillingTab({
                       </p>
                     </div>
                   ) : (
-                    <InlineAlert tone="error">
+                    <InlineAlert tone="error" live="off">
                       AI review limit reached for this window. Upgrade your
                       plan, buy GitHub review tokens below, wait for it to
                       reset, or connect your own AI provider key in Profile &gt;
@@ -1392,7 +1392,7 @@ export function ProfileBillingTab({
                       </p>
                     </div>
                   ) : (
-                    <InlineAlert tone="error">
+                    <InlineAlert tone="error" live="off">
                       Live-browser minute limit reached for this month. Upgrade
                       your plan, buy more minutes below, or wait for it to
                       reset.
