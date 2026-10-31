@@ -4,8 +4,11 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 3.9.x   | :white_check_mark: |
-| < 3.9   | :x:                |
+| 4.0.x   | :white_check_mark: |
+| < 4.0   | :x:                |
+
+Only the latest minor line receives security fixes. When a new minor ships,
+this table moves with it.
 
 ## Reporting a Vulnerability
 
