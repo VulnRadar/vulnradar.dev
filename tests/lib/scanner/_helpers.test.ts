@@ -125,19 +125,21 @@ describe("withDeadline", () => {
     await expect(outcome).resolves.toBe("timeout");
   });
 
-  it("clears and unrefs its timer", async () => {
-    const unref = vi.fn();
-    const handle = { unref };
-    const clear = vi.fn();
-    const set = vi.fn(() => handle);
-    vi.stubGlobal("setTimeout", set);
-    vi.stubGlobal("clearTimeout", clear);
+  it("unrefs its timer, so a pending deadline never holds a worker open", async () => {
+    vi.useFakeTimers();
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 
-    await withDeadline(Promise.resolve(1), 123);
+    const raced = withDeadline(new Promise<string>(() => {}), 4000);
+    void raced.catch(() => {});
 
-    expect(set).toHaveBeenCalledWith(expect.any(Function), 123);
-    expect(unref).toHaveBeenCalledTimes(1);
-    expect(clear).toHaveBeenCalledWith(handle);
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 4000);
+    // The handle is the fake clock's own, which tracks ref and unref like
+    // Node's does.
+    const handle = setTimeoutSpy.mock.results[0].value as {
+      hasRef(): boolean;
+    };
+    expect(handle.hasRef()).toBe(false);
   });
 
   it("still works where a timer handle has no unref", async () => {
