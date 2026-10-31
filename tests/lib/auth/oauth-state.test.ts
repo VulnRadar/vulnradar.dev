@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { createHmac } from "node:crypto";
 import {
   signOAuthState,
@@ -84,6 +84,48 @@ describe("signOAuthState / verifyOAuthState", () => {
       const tampered = `${payload}.${sigBytes.toString("base64url")}`;
       const result = verifyOAuthState(tampered, "google");
       expect(result).toEqual({ ok: false, reason: "bad-signature" });
+    });
+  });
+
+  it("rejects a signature re-spelled so that it decodes to the same bytes", () => {
+    withSecret(() => {
+      const state = signOAuthState("google");
+      const [payload, sig] = state.split(".");
+      const alphabet =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+      // Only the top four bits of the final character are data; flipping the
+      // lowest bit changes the spelling and leaves the decoded bytes alone.
+      const spareBits =
+        sig!.slice(0, -1) + alphabet[alphabet.indexOf(sig!.slice(-1)) ^ 1];
+      for (const respelled of [spareBits, `${sig}=`]) {
+        expect(
+          Buffer.from(respelled, "base64url").equals(
+            Buffer.from(sig!, "base64url"),
+          ),
+        ).toBe(true);
+        expect(verifyOAuthState(`${payload}.${respelled}`, "google")).toEqual({
+          ok: false,
+          reason: "bad-signature",
+        });
+      }
+    });
+  });
+
+  describe("wire format", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("signs a fixed payload to the same string it always did", () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(1_700_000_000_000);
+      withSecret(() => {
+        expect(
+          signOAuthState("google", { intent: "login", nonce: "n0nce" }),
+        ).toBe(
+          "eyJub25jZSI6Im4wbmNlIiwicHJvdmlkZXIiOiJnb29nbGUiLCJ0cyI6MTcwMDAwMDAwMDAwMCwiaW50ZW50IjoibG9naW4ifQ.vkkVTz3UzviT_cGUA5HimWA0spiNoRCIq2_DHuTS6gw",
+        );
+      });
     });
   });
 

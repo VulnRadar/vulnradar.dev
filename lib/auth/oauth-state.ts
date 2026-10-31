@@ -1,16 +1,21 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   CONFIG_OAUTH_STATE_TTL_SECONDS,
   CONFIG_OAUTH_STATE_CLOCK_SKEW_SECONDS,
 } from "@/lib/config/config-values";
+import {
+  openEnvelope,
+  resolveStateSecret,
+  sealEnvelope,
+} from "@/lib/auth/signed-envelope";
 
 /**
  * HMAC-signed OAuth state for the sign-up/sign-in providers (Google,
- * GitHub, Discord). Mirrors lib/auth/discord-state.ts's proven pattern
- * (same HMAC construction, same secret resolution, same timing-safe
- * compare) but is a separate module on purpose: keeping it separate means
- * this file can change without touching, or risking, the existing Discord
- * account-linking flow.
+ * GitHub, Discord). Mirrors lib/auth/discord-state.ts (same HMAC
+ * construction, secret resolution and timing-safe compare, both from
+ * lib/auth/signed-envelope.ts) but is a separate module on purpose: its
+ * payload, lifetime and checks differ, and this file can change without
+ * touching, or risking, the existing Discord account-linking flow.
  *
  * `purpose` distinguishes a fresh sign-in/sign-up (the default -- omitted
  * entirely, so every previously-issued state and every existing test still
@@ -34,16 +39,7 @@ import {
 // CSRF/replay protection on a login flow.
 const STATE_TTL_MS = CONFIG_OAUTH_STATE_TTL_SECONDS * 1000;
 
-function getStateSecret(): string {
-  const secret = process.env.AUTH_SECRET || process.env.API_KEY_ENCRYPTION_KEY;
-  if (!secret) {
-    throw new Error(
-      "[oauth-state] Either AUTH_SECRET or API_KEY_ENCRYPTION_KEY must be " +
-        "configured to sign OAuth state. Set one in .env.",
-    );
-  }
-  return secret;
-}
+const getStateSecret = () => resolveStateSecret("oauth-state");
 
 export interface OAuthStatePayload {
   nonce: string;
@@ -102,11 +98,7 @@ export function signOAuthState(
     userId: options?.userId,
     intent: options?.intent,
   };
-  const json = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = createHmac("sha256", getStateSecret())
-    .update(json)
-    .digest("base64url");
-  return `${json}.${sig}`;
+  return sealEnvelope(payload, getStateSecret);
 }
 
 export function verifyOAuthState(
@@ -118,31 +110,9 @@ export function verifyOAuthState(
       ok: false;
       reason: "malformed" | "bad-signature" | "expired" | "provider-mismatch";
     } {
-  const dot = state.lastIndexOf(".");
-  if (dot < 1 || dot >= state.length - 1) {
-    return { ok: false, reason: "malformed" };
-  }
-  const json = state.slice(0, dot);
-  const sig = state.slice(dot + 1);
-  const expected = createHmac("sha256", getStateSecret()).update(json).digest();
-  let provided: Buffer;
-  try {
-    provided = Buffer.from(sig, "base64url");
-  } catch {
-    return { ok: false, reason: "bad-signature" };
-  }
-  if (provided.length !== expected.length) {
-    return { ok: false, reason: "bad-signature" };
-  }
-  if (!timingSafeEqual(provided, expected)) {
-    return { ok: false, reason: "bad-signature" };
-  }
-  let payload: OAuthStatePayload;
-  try {
-    payload = JSON.parse(Buffer.from(json, "base64url").toString());
-  } catch {
-    return { ok: false, reason: "malformed" };
-  }
+  const opened = openEnvelope(state, getStateSecret);
+  if (!opened.ok) return opened;
+  const payload = opened.payload as OAuthStatePayload;
   if (
     typeof payload !== "object" ||
     payload === null ||

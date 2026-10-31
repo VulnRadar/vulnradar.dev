@@ -73,6 +73,44 @@ describe("signDiscordState / verifyDiscordState", () => {
     });
   });
 
+  it("rejects a signature re-spelled so that it decodes to the same bytes", () => {
+    withSecret(() => {
+      const state = signDiscordState({ action: "link" });
+      const [payload, sig] = state.split(".");
+      const alphabet =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+      // Only the top four bits of the final character are data; flipping the
+      // lowest bit changes the spelling and leaves the decoded bytes alone.
+      const spareBits =
+        sig!.slice(0, -1) + alphabet[alphabet.indexOf(sig!.slice(-1)) ^ 1];
+      for (const respelled of [spareBits, `${sig}=`]) {
+        expect(
+          Buffer.from(respelled, "base64url").equals(
+            Buffer.from(sig!, "base64url"),
+          ),
+        ).toBe(true);
+        expect(verifyDiscordState(`${payload}.${respelled}`)).toEqual({
+          ok: false,
+          reason: "bad-signature",
+        });
+      }
+    });
+  });
+
+  it("keeps the wire format: a fixed payload signs to the same string it always did", () => {
+    withSecret(() => {
+      const state = signDiscordState({
+        action: "link",
+        nonce: "n0nce",
+        ts: 1_700_000_000_000,
+        userId: 42,
+      });
+      expect(state).toBe(
+        "eyJub25jZSI6Im4wbmNlIiwiYWN0aW9uIjoibGluayIsInRzIjoxNzAwMDAwMDAwMDAwLCJ1c2VySWQiOjQyfQ.MezJR34Tm2sFLVhmFuGt35iwe8vaSC9HSIeO3K3mjE4",
+      );
+    });
+  });
+
   it("rejects malformed state (no dot)", () => {
     withSecret(() => {
       expect(verifyDiscordState("nodot")).toEqual({

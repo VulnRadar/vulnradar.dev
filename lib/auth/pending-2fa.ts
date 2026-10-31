@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { domainToken } from "@/lib/auth/domain-token";
 
 /**
  * Tamper-proof "first factor already passed" token for the 2FA step.
@@ -12,42 +12,22 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * account to its second factor alone. These sign the pending payload with the
  * server's key so only a real first-factor success on the server can mint one.
  *
- * Format: `base64url(json).base64url(hmacSHA256)`. The HMAC is domain-separated
- * (a fixed prefix) so this key's other uses can't produce a colliding tag. The
- * payload still carries `ts`; freshness stays the caller's admin-configurable
+ * Format: `base64url(json).base64url(hmacSHA256)`, built by
+ * lib/auth/domain-token.ts. The HMAC is domain-separated (a fixed prefix) so
+ * this key's other uses can't produce a colliding tag. The payload still
+ * carries `ts`; freshness stays the caller's admin-configurable
  * `2FA_PENDING_MAX_AGE_SECONDS` check -- the signature only guarantees the ts
  * (and userId) weren't altered.
  */
 
-const HMAC_DOMAIN = "vulnradar.2fa-pending.v1";
-
-function signingKey(): Buffer {
-  const hex = process.env.API_KEY_ENCRYPTION_KEY;
-  if (!hex || hex.length !== 64) {
-    throw new Error(
-      "API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes) to sign 2FA pending tokens.",
-    );
-  }
-  return Buffer.from(hex, "hex");
-}
-
-function computeTag(payloadB64: string): string {
-  // HMAC-SHA256 keyed with the server's 32-byte secret, signing a 2FA-pending
-  // TOKEN (userId + ts) -- a MAC, not a password hash. HMAC-SHA256 is the
-  // correct primitive for keyed token signing; a slow password KDF would be
-  // wrong here. Real password hashing lives in lib/auth/password-hash.ts.
-  // codeql[js/insufficient-password-hash]
-  return createHmac("sha256", signingKey())
-    .update(`${HMAC_DOMAIN}.${payloadB64}`)
-    .digest("base64url");
-}
+const pendingToken = domainToken(
+  "vulnradar.2fa-pending.v1",
+  "2FA pending tokens",
+);
 
 /** Sign a pending-2FA payload into an opaque cookie value. */
 export function signPendingToken(payload: Record<string, unknown>): string {
-  const payloadB64 = Buffer.from(JSON.stringify(payload), "utf8").toString(
-    "base64url",
-  );
-  return `${payloadB64}.${computeTag(payloadB64)}`;
+  return pendingToken.sign(payload);
 }
 
 /**
@@ -58,22 +38,5 @@ export function signPendingToken(payload: Record<string, unknown>): string {
 export function verifyPendingToken<T = Record<string, unknown>>(
   token: string | undefined | null,
 ): T | null {
-  if (!token) return null;
-  const dot = token.lastIndexOf(".");
-  if (dot <= 0 || dot === token.length - 1) return null;
-  const payloadB64 = token.slice(0, dot);
-  const providedTag = token.slice(dot + 1);
-  const expectedTag = computeTag(payloadB64);
-
-  const a = Buffer.from(providedTag, "utf8");
-  const b = Buffer.from(expectedTag, "utf8");
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-
-  try {
-    return JSON.parse(
-      Buffer.from(payloadB64, "base64url").toString("utf8"),
-    ) as T;
-  } catch {
-    return null;
-  }
+  return pendingToken.verify<T>(token);
 }

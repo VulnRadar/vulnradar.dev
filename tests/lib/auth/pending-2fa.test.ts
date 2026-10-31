@@ -49,6 +49,46 @@ describe("pending-2fa signed token", () => {
     expect(verifyPendingToken(token)).toEqual({ userId: 42, ts: 1000 });
   });
 
+  it("rejects a signature re-spelled so that it decodes to the same bytes", () => {
+    const [payload, sig] = signPendingToken({ userId: 42, ts: 1000 }).split(
+      ".",
+    );
+    const alphabet =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const spareBits =
+      sig!.slice(0, -1) + alphabet[alphabet.indexOf(sig!.slice(-1)) ^ 1];
+    for (const respelled of [spareBits, `${sig}=`]) {
+      expect(verifyPendingToken(`${payload}.${respelled}`)).toBeNull();
+    }
+  });
+
+  it("keeps the wire format: a fixed payload signs to the same string it always did", () => {
+    process.env.API_KEY_ENCRYPTION_KEY = "ab".repeat(32);
+    try {
+      expect(
+        signPendingToken({ userId: 7, method: "email", ts: 1_700_000_000_000 }),
+      ).toBe(
+        "eyJ1c2VySWQiOjcsIm1ldGhvZCI6ImVtYWlsIiwidHMiOjE3MDAwMDAwMDAwMDB9.VsV1NXz4ZhPhV0wWAfMYuty16gl00H3cBl5e6KK79dI",
+      );
+    } finally {
+      process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
+    }
+  });
+
+  it("names what it was signing when the key is not configured", () => {
+    delete process.env.API_KEY_ENCRYPTION_KEY;
+    try {
+      expect(() => signPendingToken({ userId: 1 })).toThrow(
+        "API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes) to sign 2FA pending tokens.",
+      );
+      // A cookie that is not even shaped like a token is still just null,
+      // not a server error.
+      expect(verifyPendingToken("42")).toBeNull();
+    } finally {
+      process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
+    }
+  });
+
   it("returns null for missing / malformed input", () => {
     expect(verifyPendingToken(undefined)).toBeNull();
     expect(verifyPendingToken(null)).toBeNull();

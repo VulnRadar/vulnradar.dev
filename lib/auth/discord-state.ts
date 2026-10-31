@@ -1,13 +1,19 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   CONFIG_DISCORD_OAUTH_STATE_TTL_SECONDS,
   CONFIG_OAUTH_STATE_CLOCK_SKEW_SECONDS,
 } from "@/lib/config/config-values";
+import {
+  openEnvelope,
+  resolveStateSecret,
+  sealEnvelope,
+} from "@/lib/auth/signed-envelope";
 
 /**
  * HMAC-signed OAuth state for Discord (H-5).
  *
- * Format: `base64url(JSON({nonce,action,userId,ts})).base64url(HMAC-SHA256(payload, secret))`
+ * Format: `base64url(JSON({nonce,action,userId,ts})).base64url(HMAC-SHA256(payload, secret))`,
+ * sealed and opened by lib/auth/signed-envelope.ts.
  *
  * The previous implementation base64url-encoded the payload without a
  * signature, so any caller who observed a `state` value (or guessed one)
@@ -25,19 +31,7 @@ import {
 // at runtime weakens CSRF/replay protection on a login flow.
 const STATE_TTL_MS = CONFIG_DISCORD_OAUTH_STATE_TTL_SECONDS * 1000;
 
-function getStateSecret(): string {
-  // The namespace used to be a hardcoded `"vulnradar-discord-state-v1"`
-  // string. Anyone who read the source could forge a state value if it
-  // was used as the HMAC key. Fail closed — require one of the real secrets.
-  const secret = process.env.AUTH_SECRET || process.env.API_KEY_ENCRYPTION_KEY;
-  if (!secret) {
-    throw new Error(
-      "[discord-state] Either AUTH_SECRET or API_KEY_ENCRYPTION_KEY must be " +
-        "configured to sign OAuth state. Set one in .env.",
-    );
-  }
-  return secret;
-}
+const getStateSecret = () => resolveStateSecret("discord-state");
 
 export interface DiscordStatePayload {
   nonce: string;
@@ -58,11 +52,7 @@ export function signDiscordState(
     ts: payload.ts ?? Date.now(),
     userId: payload.userId,
   };
-  const json = Buffer.from(JSON.stringify(full)).toString("base64url");
-  const sig = createHmac("sha256", getStateSecret())
-    .update(json)
-    .digest("base64url");
-  return `${json}.${sig}`;
+  return sealEnvelope(full, getStateSecret);
 }
 
 export function verifyDiscordState(
@@ -74,31 +64,9 @@ export function verifyDiscordState(
       ok: false;
       reason: "malformed" | "bad-signature" | "expired" | "user-mismatch";
     } {
-  const dot = state.lastIndexOf(".");
-  if (dot < 1 || dot >= state.length - 1) {
-    return { ok: false, reason: "malformed" };
-  }
-  const json = state.slice(0, dot);
-  const sig = state.slice(dot + 1);
-  const expected = createHmac("sha256", getStateSecret()).update(json).digest();
-  let provided: Buffer;
-  try {
-    provided = Buffer.from(sig, "base64url");
-  } catch {
-    return { ok: false, reason: "bad-signature" };
-  }
-  if (provided.length !== expected.length) {
-    return { ok: false, reason: "bad-signature" };
-  }
-  if (!timingSafeEqual(provided, expected)) {
-    return { ok: false, reason: "bad-signature" };
-  }
-  let payload: DiscordStatePayload;
-  try {
-    payload = JSON.parse(Buffer.from(json, "base64url").toString());
-  } catch {
-    return { ok: false, reason: "malformed" };
-  }
+  const opened = openEnvelope(state, getStateSecret);
+  if (!opened.ok) return opened;
+  const payload = opened.payload as DiscordStatePayload;
   if (
     typeof payload !== "object" ||
     payload === null ||
