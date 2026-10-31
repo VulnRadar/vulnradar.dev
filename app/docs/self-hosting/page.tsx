@@ -85,7 +85,7 @@ const EGRESS_EVERY_SCAN: EgressRow[] = [
   },
   {
     host: "dns.google and cloudflare-dns.com",
-    sent: "The scanned domain name, asked over HTTPS for A, DNSKEY, DS, NSEC and NSEC3PARAM records. Both resolvers are asked every time.",
+    sent: "The scanned domain name, asked over HTTPS for A, DNSKEY, DS and NSEC3PARAM records. The DNSSEC checks also ask for a TXT record under a throwaway random label of that domain, and for DANE, TLSA records at the names of up to four of its own mail servers. Both resolvers are asked every time.",
     blocked:
       "If neither answers, the DNSSEC checks report nothing rather than a failure.",
   },
@@ -97,7 +97,7 @@ const EGRESS_EVERY_SCAN: EgressRow[] = [
   },
   {
     host: "urlhaus-api.abuse.ch",
-    sent: "The scanned hostname, in a POST. URLHAUS_AUTH_KEY goes along when set. abuse.ch asks for a free Auth-Key, and without one the answer is an error.",
+    sent: "The scanned hostname, in a POST. URLHAUS_AUTH_KEY goes along when set. abuse.ch has been moving to per-key authentication with a free Auth-Key, so without one a request may be refused.",
     blocked:
       "URLhaus shows as unavailable in the threat intelligence panel, never clean. That is also what an unkeyed request ends up as.",
   },
@@ -997,13 +997,17 @@ cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vu
             title="Do not run db:repair mid-rotation"
           >
             <p>
-              <InlineCode>npm run db:diagnose</InlineCode> reads only{" "}
+              <InlineCode>npm run db:diagnose</InlineCode> and{" "}
+              <InlineCode>npm run db:diagnose-2fa</InlineCode> read only{" "}
               <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode>, so while{" "}
               <InlineCode>PREVIOUS_API_KEY_ENCRYPTION_KEY</InlineCode> is
-              covering for rows that still sit under the old key, it reports
-              those rows as undecryptable. Its repairs for them clear the value
-              or revoke the key, which is exactly the loss the rotation was set
-              up to avoid. Read the report if you like; do not apply it.
+              covering for rows that still sit under the old key, they report
+              those rows as undecryptable. The repairs for them,{" "}
+              <InlineCode>npm run db:repair</InlineCode> and{" "}
+              <InlineCode>npm run db:repair-2fa</InlineCode>, clear the value,
+              delete the row, revoke the key or reset two-factor, which is
+              exactly the loss the rotation was set up to avoid. Read a report
+              if you like; do not apply the repair.
             </p>
           </DocsCallout>
         </DocsSubSection>

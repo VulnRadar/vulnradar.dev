@@ -313,18 +313,20 @@ export default function ConfigPage() {
             </li>
             <li>
               <InlineCode>CONFIG_DB_CLEANUP_INTERVAL_MS</InlineCode> (default:{" "}
-              <InlineCode>300000</InlineCode> = 5 minutes): how often the
-              periodic database cleanup pass runs, which deletes expired tokens,
-              old sessions, stale caches and rows past their retention window.
+              <InlineCode>300000</InlineCode> = 5 minutes): the cadence the
+              admin health overview expects from the periodic database cleanup
+              pass, which deletes expired tokens, old sessions, stale caches and
+              rows past their retention window. The pass itself is scheduled at
+              boot with a fixed five minutes, so changing this constant moves
+              when the overview calls the worker late, not how often it runs.
               Retention windows are settings you can change in the admin panel;
-              this interval is not.
+              the cadence is not.
             </li>
           </ul>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            Both intervals are read once, when the process starts, so they are
-            compiled constants: edit them in{" "}
-            <InlineCode>config-values.ts</InlineCode> and rebuild. Neither has
-            an admin-panel field or an environment override.
+            Both are compiled constants with no admin-panel field and no
+            environment override: edit <InlineCode>config-values.ts</InlineCode>{" "}
+            and rebuild.
           </p>
         </DocsSubSection>
 
@@ -1094,9 +1096,9 @@ export default function ConfigPage() {
           <p className="text-sm text-muted-foreground">
             The reputation check and the software-inventory CVE correlation are
             all optional. Web Risk is skipped when its key is unset, URLhaus is
-            still asked and answers an error without one, and no source ever
-            reports a clean result it could not actually verify (a missing key
-            or error reads as unavailable, not clean). The fixed hosts the
+            still asked without one and may refuse the request, and no source
+            ever reports a clean result it could not actually verify (a missing
+            key or error reads as unavailable, not clean). The fixed hosts the
             server calls are listed, with what is sent and what happens when
             each is blocked, under{" "}
             <a

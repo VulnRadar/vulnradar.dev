@@ -320,7 +320,7 @@ export default function AdministrationPage() {
               refuses:
                 "Shows a maintenance page instead of the app, and turns on the other three.",
               spares:
-                "Staff, who keep the whole app, and the login page, which stays reachable for everyone.",
+                "Staff, who still get the pages and the panel (a scan is still refused for them, see below), and the login page, which stays reachable for everyone.",
             },
           ]}
         />
