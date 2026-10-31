@@ -31,6 +31,13 @@ import {
   type Size,
 } from "@/lib/browserbase/viewer-layout";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { SessionCountdown } from "@/components/browser/session-countdown";
+import { NetworkRequestRow } from "@/components/browser/network-request-row";
+import {
+  earliestDeadline,
+  onDeadline,
+  parseExpiry,
+} from "@/lib/browserbase/viewer-session";
 
 interface BrowserSession {
   id: string;
@@ -56,13 +63,6 @@ const REMOTE_VIEWPORT: Size = {
   height: BROWSERBASE_VIEWPORT.HEIGHT,
 };
 
-function formatMmSs(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
-}
-
 function truncateUrl(url: string, max = 52): string {
   try {
     const u = new URL(url);
@@ -71,52 +71,6 @@ function truncateUrl(url: string, max = 52): string {
   } catch {
     return url.length > max ? url.slice(0, max) + "..." : url;
   }
-}
-
-function methodColor(method: string): string {
-  switch (method.toUpperCase()) {
-    case "GET":
-      return "text-[hsl(var(--success))]";
-    case "POST":
-      return "text-primary";
-    case "PUT":
-    case "PATCH":
-      return "text-[hsl(var(--warning))]";
-    case "DELETE":
-      return "text-destructive";
-    default:
-      return "text-muted-foreground";
-  }
-}
-
-function statusColor(status: number | undefined, failed?: boolean): string {
-  if (failed || status === 0) return "text-destructive";
-  if (!status) return "text-muted-foreground/40";
-  if (status < 300) return "text-[hsl(var(--success))]";
-  if (status < 400) return "text-primary";
-  if (status < 500) return "text-[hsl(var(--warning))]";
-  return "text-destructive";
-}
-
-function statusLabel(status: number | undefined, failed?: boolean): string {
-  if (failed || status === 0) return "ERR";
-  if (!status) return "...";
-  return String(status);
-}
-
-/** Short devtools-style resource label from a CDP mimeType. */
-function resourceType(mimeType: string | undefined): string {
-  if (!mimeType) return "";
-  const m = mimeType.toLowerCase();
-  if (m.includes("html")) return "doc";
-  if (m.includes("javascript") || m.includes("ecmascript")) return "js";
-  if (m.includes("css")) return "css";
-  if (m.includes("json")) return "json";
-  if (m.startsWith("image/")) return "img";
-  if (m.includes("font")) return "font";
-  if (m.startsWith("video/") || m.startsWith("audio/")) return "media";
-  if (m.includes("xml")) return "xml";
-  return m.split("/")[1]?.slice(0, 4) ?? "";
 }
 
 export default function BrowserViewerPage({ params }: PageProps) {
@@ -129,7 +83,6 @@ export default function BrowserViewerPage({ params }: PageProps) {
   const [session, setSession] = useState<BrowserSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState<number>(() => Date.now());
   const [ending, setEnding] = useState(false);
   const [ended, setEnded] = useState(false);
   const [autoCloseCountdown, setAutoCloseCountdown] = useState<number | null>(
@@ -310,24 +263,20 @@ export default function BrowserViewerPage({ params }: PageProps) {
     }
   }, [session]);
 
+  // End the session when the user-controlled timer runs out, or at
+  // Browserbase's own expiry if that comes first (it kills the session then
+  // regardless). One timeout for the earlier of the two. This was a
+  // once-a-second interval that set page state, so the whole viewer rendered
+  // every second just to compare two numbers; the visible clock is
+  // SessionCountdown's own concern now.
+  //
+  const providerExpiresMs = parseExpiry(session?.expiresAt);
   useEffect(() => {
     if (ended) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [ended]);
-
-  // End when the virtual (user-controlled) timer fires.
-  useEffect(() => {
-    if (ended || virtualExpiresAt === null) return;
-    if (now >= virtualExpiresAt) void endSession();
-  }, [now, virtualExpiresAt, ended, endSession]);
-
-  // Hard backstop: Browserbase kills the session at its own expiry regardless.
-  useEffect(() => {
-    if (ended || !session?.expiresAt) return;
-    const expiresMs = new Date(session.expiresAt).getTime();
-    if (now >= expiresMs) void endSession();
-  }, [now, session?.expiresAt, ended, endSession]);
+    const deadline = earliestDeadline([virtualExpiresAt, providerExpiresMs]);
+    if (deadline === null) return;
+    return onDeadline(deadline, () => void endSession());
+  }, [ended, virtualExpiresAt, providerExpiresMs, endSession]);
 
   useEffect(() => {
     if (autoCloseCountdown === null) return;
@@ -372,14 +321,6 @@ export default function BrowserViewerPage({ params }: PageProps) {
       window.removeEventListener("unload", handler);
     };
   }, [sessionId]);
-
-  const remaining =
-    virtualExpiresAt !== null && !ended
-      ? Math.max(0, Math.floor((virtualExpiresAt - now) / 1000))
-      : 0;
-  const expiresSoon = !ended && virtualExpiresAt !== null && remaining <= 60;
-  const expiresCritical =
-    !ended && virtualExpiresAt !== null && remaining <= 20;
 
   const viewerUrl = useMemo(() => {
     if (!session) return null;
@@ -528,72 +469,13 @@ export default function BrowserViewerPage({ params }: PageProps) {
               Closing in {autoCloseCountdown}s
             </div>
           ) : virtualExpiresAt !== null && !ended ? (
-            <div
-              className={cn(
-                "shrink-0 flex items-stretch h-9 sm:h-8 rounded-md border overflow-hidden transition-colors",
-                expiresCritical
-                  ? "border-destructive/30 bg-destructive/10 text-destructive"
-                  : expiresSoon
-                    ? "border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]"
-                    : "border-border/60 bg-muted/40 text-muted-foreground",
-              )}
-            >
-              <div
-                className="flex items-center gap-1.5 px-2.5 text-xs font-medium tabular-nums"
-                aria-live="polite"
-                title={`Session time remaining: ${formatMmSs(remaining)}`}
-              >
-                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-                  <span
-                    className={cn(
-                      "animate-ping absolute inline-flex h-full w-full rounded-full opacity-60",
-                      expiresCritical
-                        ? "bg-destructive"
-                        : expiresSoon
-                          ? "bg-[hsl(var(--warning))]"
-                          : "bg-[hsl(var(--success))]",
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "relative inline-flex rounded-full h-1.5 w-1.5",
-                      expiresCritical
-                        ? "bg-destructive"
-                        : expiresSoon
-                          ? "bg-[hsl(var(--warning))]"
-                          : "bg-[hsl(var(--success))]",
-                    )}
-                  />
-                </span>
-                {formatMmSs(remaining)}
-              </div>
-              <button
-                onClick={handleExtend}
-                disabled={!canExtend}
-                // a11y (SC 4.1.2): the visible "+1m" is an abbreviation, so the
-                // accessible name spells the action out. title stays as the
-                // sighted-user tooltip, which is unreachable on touch.
-                aria-label="Extend session by 1 minute"
-                title={
-                  canExtend
-                    ? `Add 1 minute (${minutesAllocated}/${MAX_MINUTES} min used)`
-                    : "Maximum session time reached (5 min total)"
-                }
-                className={cn(
-                  "flex items-center px-2 border-l text-[11px] font-medium tabular-nums transition-colors",
-                  expiresCritical
-                    ? "border-destructive/30"
-                    : expiresSoon
-                      ? "border-[hsl(var(--warning))]/25"
-                      : "border-border/60",
-                  canExtend
-                    ? "hover:bg-foreground/5 hover:text-foreground cursor-pointer"
-                    : "opacity-40 cursor-not-allowed",
-                )}
-              >
-                +1m
-              </button>
-            </div>
+            <SessionCountdown
+              expiresAt={virtualExpiresAt}
+              canExtend={canExtend}
+              minutesAllocated={minutesAllocated}
+              maxMinutes={MAX_MINUTES}
+              onExtend={handleExtend}
+            />
           ) : null}
 
           {/* Re-opens the safety notice once it has been dismissed, so the
@@ -887,54 +769,9 @@ export default function BrowserViewerPage({ params }: PageProps) {
                     </p>
                   </div>
                 ) : (
-                  // Two lines per request rather than four fixed columns. The
-                  // path had roughly 170px of a four-column grid and every URL
-                  // clipped to a stub; here it gets the dock's full width on
-                  // its own line, with the host and resource type below it.
-                  networkRequests.map((req) => {
-                    const type = resourceType(req.mimeType);
-                    return (
-                      <div
-                        key={req.requestId}
-                        className="border-b border-border/20 px-2.5 py-1.5 hover:bg-muted/25 transition-colors"
-                        title={req.url}
-                      >
-                        <div className="flex items-baseline gap-2 min-w-0">
-                          <span
-                            className={cn(
-                              "w-8 shrink-0 text-[10px] font-mono font-semibold",
-                              methodColor(req.method),
-                            )}
-                          >
-                            {req.method.length > 4
-                              ? req.method.slice(0, 3)
-                              : req.method}
-                          </span>
-                          <span
-                            className={cn(
-                              "w-7 shrink-0 text-[10px] font-mono font-medium tabular-nums",
-                              statusColor(req.status, req.failed),
-                            )}
-                          >
-                            {statusLabel(req.status, req.failed)}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-[11px] font-mono text-foreground/85">
-                            {req.path}
-                          </span>
-                        </div>
-                        <div className="mt-0.5 flex items-center gap-2 min-w-0">
-                          <span className="min-w-0 flex-1 truncate text-[10px] font-mono text-muted-foreground/70">
-                            {req.host}
-                          </span>
-                          {type && (
-                            <span className="shrink-0 rounded-md bg-muted px-1 text-[9px] font-mono text-muted-foreground/70">
-                              {type}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
+                  networkRequests.map((req) => (
+                    <NetworkRequestRow key={req.requestId} req={req} />
+                  ))
                 )}
               </div>
             )}
