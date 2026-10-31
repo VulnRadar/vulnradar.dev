@@ -8,6 +8,7 @@ import {
   CONFIG_SCAN_FETCH_TIMEOUT_MS,
   CONFIG_CRAWL_PAGE_FETCH_TIMEOUT_MS,
 } from "@/lib/config/config-values";
+import { SETTINGS_REGISTRY } from "@/lib/config/registry";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -245,10 +246,13 @@ export default function TroubleshootingPage() {
           ]}
         />
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Separately, each individual request has its own much shorter timeout:{" "}
-          {CONFIG_SCAN_FETCH_TIMEOUT_MS / 1000} seconds for a page fetch and{" "}
-          {CONFIG_CRAWL_PAGE_FETCH_TIMEOUT_MS / 1000} seconds for a crawled
-          page. A request hitting that limit does{" "}
+          Separately, each individual request has its own much shorter timeout.
+          The defaults are {CONFIG_SCAN_FETCH_TIMEOUT_MS / 1000} seconds for a
+          page fetch and {CONFIG_CRAWL_PAGE_FETCH_TIMEOUT_MS / 1000} seconds for
+          a crawled page, and both are admin settings: an instance can raise
+          them, up to {SETTINGS_REGISTRY.SCAN_FETCH_TIMEOUT_MS.max / 1000} and{" "}
+          {SETTINGS_REGISTRY.CRAWL_PAGE_FETCH_TIMEOUT_MS.max / 1000} seconds,
+          for slow targets. A request hitting the limit does{" "}
           <strong className="text-foreground">not</strong> fail the scan: the
           affected group of checks is reported as incomplete and the rest of the
           scan continues. That includes the page fetch itself, which is then
