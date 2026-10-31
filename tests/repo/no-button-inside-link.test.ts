@@ -51,11 +51,11 @@ function rel(file: string): string {
  * are the same defect as the `<Link>` form and are listed rather than ignored:
  * the last test below fails when an entry no longer matches, so fixing a file
  * means deleting its line here, and the list can only shrink.
+ *
+ * It is empty now: the last two (the "Visit site" button on /host and
+ * /shared) went to `<Button asChild><a>`.
  */
-const KNOWN_ANCHOR_WRAPPERS: string[] = [
-  "app/host/[hostname]/page.tsx",
-  "app/shared/[token]/page.tsx",
-];
+const KNOWN_ANCHOR_WRAPPERS: string[] = [];
 
 describe("a link never wraps a button", () => {
   describe("the scanner", () => {

@@ -244,21 +244,21 @@ export default function SharedScanPage() {
                           )}
                         </div>
                       </div>
-                      <a
-                        href={safeHref(result.url)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0"
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 gap-1.5 bg-transparent"
                       >
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5 bg-transparent"
+                        <a
+                          href={safeHref(result.url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
                         >
                           <ExternalLink aria-hidden className="h-3.5 w-3.5" />
                           Visit site
-                        </Button>
-                      </a>
+                        </a>
+                      </Button>
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
