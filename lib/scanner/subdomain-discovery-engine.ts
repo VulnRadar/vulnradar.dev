@@ -26,13 +26,11 @@ import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { safeReadBody } from "@/lib/scanner/read-bounded-body";
 import { getSetting } from "@/lib/config/runtime-config";
 import { setDiscoveryStage } from "@/lib/scanner/discovery-progress";
-import { APP_NAME } from "@/lib/config/constants";
+import { SCANNER_UA, SCANNER_UA_DISCOVERY } from "@/lib/scanner/user-agent";
 import type {
   DiscoveredSubdomain,
   DiscoveryResult,
 } from "@/lib/scanner/subdomain-types";
-
-const DISCOVERY_USER_AGENT = `Mozilla/5.0 (compatible; ${APP_NAME}/1.0)`;
 
 // Hard backstop on any single passive source. Each source also sets its own
 // (smaller) AbortSignal.timeout; this is the belt-and-suspenders ceiling that
@@ -464,7 +462,7 @@ async function fetchPassiveSource(
   extraHeaders: Record<string, string> = {},
 ): Promise<Response | null> {
   const signal = AbortSignal.timeout(timeoutMs);
-  const headers = { "User-Agent": DISCOVERY_USER_AGENT, ...extraHeaders };
+  const headers = { "User-Agent": SCANNER_UA_DISCOVERY, ...extraHeaders };
   let currentUrl = url;
 
   for (let hop = 0; hop <= PASSIVE_SOURCE_MAX_REDIRECT_HOPS; hop++) {
@@ -901,6 +899,7 @@ async function batchHttpCheck(
             url,
             {
               method: "HEAD",
+              headers: { "User-Agent": SCANNER_UA },
               signal: AbortSignal.timeout(4000),
             },
             [sub],
@@ -912,6 +911,7 @@ async function batchHttpCheck(
               `http://${sub}`,
               {
                 method: "HEAD",
+                headers: { "User-Agent": SCANNER_UA },
                 signal: AbortSignal.timeout(3000),
               },
               [sub],

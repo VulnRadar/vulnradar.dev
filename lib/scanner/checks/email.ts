@@ -72,6 +72,7 @@ import type { Vulnerability, Severity } from "../types";
 import { generateId, withDeadline } from "../_helpers";
 import { resolveTxtOnce, resolveMxOnce } from "../dns-memo";
 import { safeFetch } from "../safe-fetch";
+import { SCANNER_UA } from "../user-agent";
 
 const DNS_TIMEOUT_MS = 4000;
 
@@ -737,6 +738,7 @@ export async function checkMtaStsPolicyContent(
     const res = await safeFetch(policyUrl, {
       method: "GET",
       redirect: "error",
+      headers: { "User-Agent": SCANNER_UA },
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return []; // unreachable/errored is checkMTASTSPolicyFile's job

@@ -20,6 +20,7 @@ import {
 import { safeFetch } from "../safe-fetch";
 import { safeReadBody } from "../read-bounded-body";
 import { versionBelow } from "../library-fingerprints";
+import { SCANNER_UA } from "../user-agent";
 import {
   hasTagWith,
   htmlComments,
@@ -2692,6 +2693,7 @@ export async function checkSourceMapSourcesExposed(
   try {
     const res = await safeFetch(mapUrl, {
       method: "GET",
+      headers: { "User-Agent": SCANNER_UA },
       signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return null;

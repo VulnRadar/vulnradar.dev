@@ -27,6 +27,8 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
 
 import * as dns from "dns/promises";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
+import { SCANNER_UA, SCANNER_UA_PRODUCT } from "@/lib/scanner/user-agent";
+import { userAgentOf } from "../_user-agent-of";
 import {
   detectors,
   checkSpfRecordQuality,
@@ -469,6 +471,23 @@ describe("checkMtaStsPolicyContent", () => {
     expect(
       await checkMtaStsPolicyContent("example.com", URL_UNDER_TEST),
     ).toEqual([]);
+  });
+
+  it("names the scanner in the User-Agent of the policy fetch", async () => {
+    txtByName({ "_mta-sts.example.com": ["v=STSv1; id=20260101000000Z"] });
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mail.example.com", priority: 10 },
+    ]);
+    safeFetchMock.mockResolvedValue(
+      policyResponse(
+        "version: STSv1\nmode: enforce\nmx: mail.example.com\nmax_age: 1209600\n",
+      ),
+    );
+    await checkMtaStsPolicyContent("example.com", URL_UNDER_TEST);
+
+    expect(safeFetchMock).toHaveBeenCalledTimes(1);
+    expect(userAgentOf(safeFetchMock.mock.calls[0][1])).toBe(SCANNER_UA);
+    expect(SCANNER_UA).toContain(SCANNER_UA_PRODUCT);
   });
 
   it("does not fetch anything when the domain publishes no MTA-STS record", async () => {

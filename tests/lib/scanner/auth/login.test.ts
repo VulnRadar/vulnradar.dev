@@ -39,6 +39,11 @@ vi.mock("@/lib/database/db", () => ({
 
 import { getSettings } from "@/lib/config/runtime-config";
 import {
+  SCANNER_UA_AUTHENTICATED,
+  SCANNER_UA_PRODUCT,
+} from "@/lib/scanner/user-agent";
+import { userAgentOf } from "../_user-agent-of";
+import {
   establishScanSession,
   readCappedBody,
   verifySession,
@@ -109,6 +114,25 @@ describe("header credential: verified via the generic heuristic", () => {
         ? headers.get("Authorization")
         : (headers as Record<string, string>).Authorization;
     expect(authValue).toBe("Bearer secret-api-token");
+  });
+
+  it("names the scanner as an authenticated client on both verification requests", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(htmlResponse("<html>anon</html>"));
+    fetchMock.mockResolvedValueOnce(
+      htmlResponse('<html>Welcome back <a href="/logout">Sign out</a></html>'),
+    );
+    await establishScanSession(
+      { method: "header", headerValue: "Bearer secret-api-token" },
+      "https://app.example.com/api/status",
+      USER_ID,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(userAgentOf(init as RequestInit)).toBe(SCANNER_UA_AUTHENTICATED);
+    }
+    expect(SCANNER_UA_AUTHENTICATED).toContain(SCANNER_UA_PRODUCT);
   });
 
   it("respects a custom header name", async () => {

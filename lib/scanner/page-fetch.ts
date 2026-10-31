@@ -11,13 +11,12 @@
  * request) makes its own.
  */
 
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { safeFetch } from "./safe-fetch";
+import { SCANNER_UA } from "./user-agent";
 
 const PAGE_FETCH_TIMEOUT_MS = 8000;
 /** The same ceiling the scan applies to the body it checks. */
 const MAX_BODY_CHARS = 1_000_000;
-const USER_AGENT = `Mozilla/5.0 (compatible; ${APP_NAME}/1.0; +${APP_URL})`;
 
 export interface FetchedPage {
   status: number;
@@ -41,7 +40,7 @@ async function fetchPage(url: string): Promise<FetchedPage | null> {
   try {
     const res = await safeFetch(url, {
       method: "GET",
-      headers: { "User-Agent": USER_AGENT },
+      headers: { "User-Agent": SCANNER_UA },
       signal: AbortSignal.timeout(PAGE_FETCH_TIMEOUT_MS),
     });
     const body = (await res.text()).slice(0, MAX_BODY_CHARS);

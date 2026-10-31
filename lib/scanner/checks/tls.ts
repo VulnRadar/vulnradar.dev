@@ -32,9 +32,7 @@ import { generateId, type EvidenceFn as DetectFn } from "../_helpers";
 import type { Vulnerability, Severity } from "../types";
 import { validateScanTarget } from "../safe-fetch";
 import { readTlsHandshake } from "../tls-handshake";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
-
-const USER_AGENT = `Mozilla/5.0 (compatible; ${APP_NAME}/1.0; +${APP_URL})`;
+import { SCANNER_UA } from "../user-agent";
 
 function makeTlsVuln(
   checkId: string,
@@ -133,7 +131,7 @@ export function checkHttpUpgradeToHttps(url: string): Promise<Vulnerability[]> {
             port,
             path,
             method: "GET",
-            headers: { Host: hostHeader, "User-Agent": USER_AGENT },
+            headers: { Host: hostHeader, "User-Agent": SCANNER_UA },
             timeout: 5000,
           },
           (res) => {

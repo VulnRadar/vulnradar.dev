@@ -18,7 +18,6 @@
  * credential material. Nothing here logs.
  */
 
-import { APP_NAME } from "@/lib/config/constants";
 import {
   CONFIG_SCAN_AUTH_BASELINE_DIFF_BYTES,
   CONFIG_SCAN_AUTH_MAX_COOKIE_AGE_SECONDS,
@@ -28,13 +27,12 @@ import {
 import { getSettings } from "@/lib/config/runtime-config";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
 import { safeReadBody } from "@/lib/scanner/read-bounded-body";
+import { SCANNER_UA_AUTHENTICATED } from "@/lib/scanner/user-agent";
 import { hasPasswordInput } from "./form-parser";
 import { blockedForAuthenticatedRequest } from "./logout-guard";
 import { ScanSession } from "./scan-session";
 import { establishBrowserFormSession } from "./browser-login";
 import type { EphemeralAuthInput } from "./types";
-
-const USER_AGENT = `${APP_NAME}/1.0 (Security Scanner; Authenticated)`;
 
 /** Text that only a signed-in page normally carries. */
 export const SIGNED_IN_MARKER =
@@ -249,7 +247,10 @@ async function probe(
       url,
       {
         method: "GET",
-        headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
+        headers: {
+          "User-Agent": SCANNER_UA_AUTHENTICATED,
+          Accept: "text/html",
+        },
         signal: AbortSignal.timeout(verifyTimeoutMs),
       },
       [hostnameOf(origin)],

@@ -72,6 +72,10 @@ import {
   detectChallenge,
   runLoginOverCdp,
 } from "@/lib/scanner/auth/browser-login";
+import {
+  SCANNER_UA_AUTHENTICATED,
+  SCANNER_UA_PRODUCT,
+} from "@/lib/scanner/user-agent";
 import type { CdpConnection } from "@/lib/browserbase/client";
 import type { EphemeralFormAuth } from "@/lib/scanner/auth/types";
 
@@ -340,6 +344,9 @@ describe("runLoginOverCdp: successful login", () => {
     expect(String(submitInit.body)).toContain("password=hunter2");
     const headers = submitInit.headers as Headers;
     expect(headers.get("Cookie")).toBe("cf_clearance=clearance-tok");
+    // ...and named the scanner as an authenticated client.
+    expect(headers.get("User-Agent")).toBe(SCANNER_UA_AUTHENTICATED);
+    expect(SCANNER_UA_AUTHENTICATED).toContain(SCANNER_UA_PRODUCT);
   });
 
   it("fails when the target still shows the login form after submitting", async () => {

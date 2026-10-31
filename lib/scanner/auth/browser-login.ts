@@ -42,7 +42,6 @@ import {
   releaseConcurrencySlot,
 } from "@/lib/browserbase/concurrency-queue";
 import { getUserPlan } from "@/lib/rate-limiting/daily-limits";
-import { APP_NAME } from "@/lib/config/constants";
 import { logError } from "@/lib/logging/log";
 import {
   CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS,
@@ -55,6 +54,7 @@ import {
 } from "@/lib/config/config-values";
 import { getSettings } from "@/lib/config/runtime-config";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { SCANNER_UA_AUTHENTICATED } from "@/lib/scanner/user-agent";
 import { extractMetaCsrfToken, findLoginFormCandidates } from "./form-parser";
 import {
   hostnameOf,
@@ -67,8 +67,6 @@ import type { BrowserCookie } from "./cookie-jar";
 import type { EphemeralFormAuth } from "./types";
 import type { EstablishSessionResult } from "./login";
 import { CHALLENGE_TITLE_MARKERS } from "../bot-challenge";
-
-const USER_AGENT = `${APP_NAME}/1.0 (Security Scanner; Authenticated)`;
 
 /**
  * The SCAN_AUTH_BROWSER_* + MAX_LOGIN_BODY_BYTES registry settings this
@@ -462,7 +460,7 @@ export async function runLoginOverCdp(
   body.set(form.secretField, auth.password);
 
   const headers: Record<string, string> = {
-    "User-Agent": USER_AGENT,
+    "User-Agent": SCANNER_UA_AUTHENTICATED,
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "text/html,application/xhtml+xml",
     Referer: loginUrl,

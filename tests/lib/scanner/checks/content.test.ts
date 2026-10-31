@@ -24,6 +24,8 @@ import {
   detectors,
   checkSourceMapSourcesExposed,
 } from "@/lib/scanner/checks/content";
+import { SCANNER_UA, SCANNER_UA_PRODUCT } from "@/lib/scanner/user-agent";
+import { userAgentOf } from "../_user-agent-of";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 // Assembled at runtime so the source never holds a token-shaped literal,
@@ -1263,6 +1265,20 @@ describe("checkSourceMapSourcesExposed", () => {
       "https://example.com/static/app.js.map",
       expect.anything(),
     );
+  });
+
+  it("names the scanner in the User-Agent of the .map fetch", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mapResponse({ version: 3, sources: [], sourcesContent: ["x"] }),
+    );
+    await checkSourceMapSourcesExposed(
+      "https://example.com/static/app.js",
+      new Headers(),
+      "//# sourceMappingURL=app.js.map",
+    );
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(userAgentOf(init)).toBe(SCANNER_UA);
+    expect(SCANNER_UA).toContain(SCANNER_UA_PRODUCT);
   });
 
   it("does not fire when the .map file 404s -- leaves the reference-only finding as the only signal", async () => {

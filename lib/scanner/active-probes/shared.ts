@@ -31,7 +31,7 @@ import { safeFetch, validateScanTarget } from "../safe-fetch";
 import { generateId } from "../_helpers";
 import { getCheckDef } from "../registry";
 import type { Vulnerability, Category } from "../types";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { SCANNER_UA_ACTIVE_PROBE } from "../user-agent";
 import { CONFIG_SCANNER_ACTIVE_PROBE_MAX_FORMS } from "@/lib/config/config-values";
 
 export const REQUEST_TIMEOUT_MS = 6000;
@@ -43,7 +43,7 @@ export const REQUEST_TIMEOUT_MS = 6000;
  *  raising it directly increases live traffic sent to someone else's site. */
 export const MAX_FORMS_TO_PROBE = CONFIG_SCANNER_ACTIVE_PROBE_MAX_FORMS;
 
-export const USER_AGENT = `${APP_NAME}/1.0 (Security Scanner; Active Probe; +${APP_URL})`;
+export const USER_AGENT = SCANNER_UA_ACTIVE_PROBE;
 
 export function buildFinding(
   checkId: string,

@@ -36,6 +36,7 @@ vi.mock("@/lib/scanner/safe-fetch", async (importOriginal) => {
 
 import * as tls from "tls";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { SCANNER_UA, SCANNER_UA_PRODUCT } from "@/lib/scanner/user-agent";
 import {
   checkHttpUpgradeToHttps,
   checkTlsCertChainCompleteness,
@@ -149,6 +150,22 @@ describe("checkHttpUpgradeToHttps", () => {
       );
       expect(findings.length).toBe(1);
       expect(findings[0].title).toMatch(/does not redirect to https/i);
+    } finally {
+      await close(server);
+    }
+  });
+
+  it("names the scanner in the User-Agent of the :80 request", async () => {
+    let seen: string | undefined;
+    const { server, port } = await listen((req, res) => {
+      seen = req.headers["user-agent"];
+      res.writeHead(301, { Location: "https://example.com/" });
+      res.end();
+    });
+    try {
+      await checkHttpUpgradeToHttps(`http://example.com:${port}/`);
+      expect(seen).toBe(SCANNER_UA);
+      expect(seen).toContain(SCANNER_UA_PRODUCT);
     } finally {
       await close(server);
     }

@@ -42,8 +42,8 @@ import {
   resolveCnameOnce,
   resolveCaaOnce,
 } from "@/lib/scanner/dns-memo";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { generateId, withDeadline } from "@/lib/scanner/_helpers";
+import { SCANNER_UA } from "@/lib/scanner/user-agent";
 import { checkReputation } from "@/lib/scanner/reputation-lookup";
 import { checkOsvVulnerableLibraries } from "@/lib/scanner/osv-check";
 import { readTlsHandshake } from "@/lib/scanner/tls-handshake";
@@ -3064,7 +3064,7 @@ const FETCH_OPTS = {
   // still use FETCH_OPTS directly and keep this stricter "error" behavior.
   redirect: "error" as RequestRedirect,
   headers: {
-    "User-Agent": `Mozilla/5.0 (compatible; ${APP_NAME}/1.0; +${APP_URL})`,
+    "User-Agent": SCANNER_UA,
     Accept: "text/plain, text/*;q=0.9, */*;q=0.8",
   },
 };

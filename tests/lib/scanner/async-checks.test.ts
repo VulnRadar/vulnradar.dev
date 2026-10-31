@@ -91,6 +91,8 @@ import * as tls from "tls";
 import * as http from "http";
 import * as crypto from "crypto";
 import { generateId } from "@/lib/scanner/_helpers";
+import { SCANNER_UA, SCANNER_UA_PRODUCT } from "@/lib/scanner/user-agent";
+import { userAgentOf } from "./_user-agent-of";
 import {
   checkSPF,
   checkSPFChain,
@@ -1752,6 +1754,18 @@ describe("checkRobotsTxt", () => {
     });
     const findings = await checkRobotsTxt("https://example.com");
     expect(findings).toEqual([]);
+  });
+
+  it("names the scanner in the User-Agent of every request it makes", async () => {
+    const fetchMock = vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>);
+    fetchMock.mockResolvedValue({ ok: false, status: 404 });
+    await checkRobotsTxt("https://example.com");
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(userAgentOf(init as RequestInit)).toBe(SCANNER_UA);
+    }
+    expect(SCANNER_UA).toContain(SCANNER_UA_PRODUCT);
   });
 
   it("returns sensitive-paths finding when robots.txt exposes admin/internal paths", async () => {
