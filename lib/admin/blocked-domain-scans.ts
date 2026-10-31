@@ -24,7 +24,12 @@ import { purgeScansWhere } from "@/lib/admin/purge-user-scans";
 export function normalizeBlockedDomain(value: string): string {
   let normalized = value.trim().toLowerCase();
   const protoEnd = normalized.indexOf("://");
-  if (protoEnd !== -1) normalized = normalized.slice(protoEnd + 3);
+  // A scheme only if nothing that ends a host comes before it. Without the
+  // check "evil.com/r?u=http://victim.com" read as the host victim.com, and
+  // the purge that follows deletes every account's scans of the wrong domain.
+  if (protoEnd !== -1 && !/[/?#]/.test(normalized.slice(0, protoEnd))) {
+    normalized = normalized.slice(protoEnd + 3);
+  }
   normalized = normalized.split(/[/?#]/, 1)[0];
   const atIndex = normalized.lastIndexOf("@");
   if (atIndex !== -1) normalized = normalized.slice(atIndex + 1);

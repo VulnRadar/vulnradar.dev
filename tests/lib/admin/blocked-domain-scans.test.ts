@@ -46,6 +46,22 @@ describe("normalizeBlockedDomain", () => {
   ])("reduces %j to %j", (input, expected) => {
     expect(normalizeBlockedDomain(input)).toBe(expected);
   });
+
+  // The first "://" is only a scheme when it comes before the path, the query
+  // and the fragment. Otherwise the value names the host in front of it and the
+  // URL after it is data.
+  it.each([
+    ["evil.com/r?u=http://victim.com", "evil.com"],
+    ["evil.com?u=https://victim.com/x", "evil.com"],
+    ["evil.com#http://victim.com", "evil.com"],
+    ["https://evil.com/r?u=http://victim.com", "evil.com"],
+    ["ftp://files.evil.com/pub", "files.evil.com"],
+  ])(
+    "reads the host in front of a URL carried as data: %j",
+    (input, expected) => {
+      expect(normalizeBlockedDomain(input)).toBe(expected);
+    },
+  );
 });
 
 describe("the host match", () => {
