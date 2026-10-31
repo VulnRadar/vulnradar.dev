@@ -90,6 +90,17 @@ function updateCalls() {
   );
 }
 
+/**
+ * The UPDATEs that give a domain a verdict. Every one of them writes
+ * last_checked_at; the attempt-only UPDATE for a lookup that got no answer
+ * deliberately does not.
+ */
+function verdictCalls() {
+  return updateCalls().filter(([sql]) =>
+    String(sql).includes("last_checked_at"),
+  );
+}
+
 let errorSpy: MockInstance<typeof console.error>;
 
 beforeEach(() => {
@@ -145,6 +156,18 @@ describe("runDomainReverifyPass", () => {
     expect(params).toEqual([30, 50]);
   });
 
+  it("orders the batch by when a domain was last TRIED, never tried first, then by last answer", async () => {
+    // last_checked_at only moves on an answer, so ordering by it alone pinned
+    // domains whose nameserver never replies at the front of every batch.
+    // The row-level proof is tests/integration/domain-reverify-rotation.test.ts.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await runDomainReverifyPass();
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain(
+      "ORDER BY last_attempt_at ASC NULLS FIRST, last_checked_at ASC NULLS FIRST",
+    );
+  });
+
   it("updates last_checked_at and clears last_check_error for a domain that still verifies", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [due(1, "example.com", "tok-1")],
@@ -165,6 +188,7 @@ describe("runDomainReverifyPass", () => {
     );
     const [updateSql, updateParams] = mockQuery.mock.calls[1];
     expect(updateSql).toContain("SET last_checked_at = NOW()");
+    expect(updateSql).toContain("last_attempt_at = NOW()");
     expect(updateSql).toContain("last_check_error = NULL");
     expect(updateParams).toEqual([1]);
     expect(mockCreateUserNotification).not.toHaveBeenCalled();
@@ -190,6 +214,7 @@ describe("runDomainReverifyPass", () => {
       });
       const [updateSql, updateParams] = mockQuery.mock.calls[1];
       expect(updateSql).toContain("status = 'reverify_failed'");
+      expect(updateSql).toContain("last_attempt_at = NOW()");
       expect(updateParams).toEqual([2, "No matching TXT record found."]);
     });
 
@@ -277,7 +302,7 @@ describe("runDomainReverifyPass", () => {
   });
 
   describe("when DNS did not answer (lookup_error)", () => {
-    it("leaves the domain exactly as it was: no UPDATE, no downgrade, no notification", async () => {
+    it("leaves the verdict alone and only records the attempt: no downgrade, no notification", async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [due(1, "flaky.example.com")],
       });
@@ -291,10 +316,18 @@ describe("runDomainReverifyPass", () => {
         downgraded: 0,
         failed: 1,
       });
-      // Not even last_checked_at: the domain stays due, so the next tick asks
-      // again instead of waiting out another 30 days.
-      expect(updateCalls()).toHaveLength(0);
-      expect(mockQuery).toHaveBeenCalledTimes(1);
+      // Not last_checked_at and not status: the domain stays due and keeps its
+      // permission, since silence is not a verdict.
+      expect(verdictCalls()).toHaveLength(0);
+      // What moves is last_attempt_at, so the domain goes to the back of the
+      // batch order instead of pinning the front of it forever.
+      const attempts = updateCalls();
+      expect(attempts).toHaveLength(1);
+      const [sql, params] = attempts[0];
+      expect(sql).toContain("SET last_attempt_at = NOW()");
+      expect(sql).not.toContain("status");
+      expect(params).toEqual([1]);
+      expect(mockQuery).toHaveBeenCalledTimes(2);
       expect(mockCreateUserNotification).not.toHaveBeenCalled();
     });
 
@@ -341,7 +374,10 @@ describe("runDomainReverifyPass", () => {
         downgraded: 1,
         failed: 1,
       });
-      expect(updateCalls().map(([, params]) => params[0])).toEqual([2, 3]);
+      // Every domain is touched once (the flaky one only for its attempt), but
+      // only the two that got an answer receive a verdict.
+      expect(updateCalls().map(([, params]) => params[0])).toEqual([1, 2, 3]);
+      expect(verdictCalls().map(([, params]) => params[0])).toEqual([2, 3]);
     });
 
     it("downgrades nothing when the resolver is down for the whole batch", async () => {
@@ -358,7 +394,10 @@ describe("runDomainReverifyPass", () => {
         downgraded: 0,
         failed: 3,
       });
-      expect(updateCalls()).toHaveLength(0);
+      expect(verdictCalls()).toHaveLength(0);
+      // All three are marked tried, so the next pass starts with whatever
+      // this one did not reach.
+      expect(updateCalls().map(([, params]) => params[0])).toEqual([1, 2, 3]);
     });
   });
 
@@ -443,7 +482,7 @@ describe("schedulePeriodicDomainReverify / stopPeriodicDomainReverify", () => {
       expect(mockRecordFailure).toHaveBeenCalledTimes(1);
       expect(mockRecordSuccess).not.toHaveBeenCalled();
       // And the outage did not strip anyone's permission on the way.
-      expect(updateCalls()).toHaveLength(0);
+      expect(verdictCalls()).toHaveLength(0);
     } finally {
       stopPeriodicDomainReverify();
       vi.useRealTimers();

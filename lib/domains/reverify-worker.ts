@@ -59,9 +59,17 @@ interface DueDomainRow {
  * 'reverify_failed' with the reason recorded in last_check_error.
  *
  * Only an ANSWER that the record is gone downgrades a domain. A lookup that
- * got no answer (see DnsVerificationResult) leaves the row untouched, last
- * check time included, so the domain stays due and the next tick asks again.
- * A resolver outage used to downgrade the whole batch.
+ * got no answer (see DnsVerificationResult) leaves status and last_checked_at
+ * as they were, so the domain stays due and is asked again. A resolver outage
+ * used to downgrade the whole batch.
+ *
+ * Every attempt, answered or not, moves last_attempt_at, and the batch is
+ * ordered by it. last_checked_at cannot do that job: it only moves on an
+ * answer, so a domain whose nameserver never replies kept the oldest value
+ * forever and, with enough of them, filled every batch and starved the
+ * domains behind them. Those are exactly the domains that may have changed
+ * hands. A domain that never answers still comes round again, just after
+ * everything that has not been tried more recently.
  *
  * Exported directly (not just via the periodic timer) so a test or an
  * admin "force a run now" caller has something to call without waiting
@@ -86,7 +94,7 @@ export async function runDomainReverifyPass(): Promise<ReverifyPassStats> {
     `SELECT id, user_id, domain, verification_token FROM domains
      WHERE status = 'verified'
        AND (last_checked_at IS NULL OR last_checked_at < NOW() - ($1 * INTERVAL '1 day'))
-     ORDER BY last_checked_at ASC NULLS FIRST
+     ORDER BY last_attempt_at ASC NULLS FIRST, last_checked_at ASC NULLS FIRST
      LIMIT $2`,
     [intervalDays, batchSize],
   );
@@ -101,7 +109,9 @@ export async function runDomainReverifyPass(): Promise<ReverifyPassStats> {
     if (result.outcome === "verified") {
       stats.stillVerified++;
       await pool.query(
-        `UPDATE domains SET last_checked_at = NOW(), last_check_error = NULL WHERE id = $1`,
+        `UPDATE domains
+         SET last_checked_at = NOW(), last_attempt_at = NOW(), last_check_error = NULL
+         WHERE id = $1`,
         [row.id],
       );
     } else if (result.outcome === "lookup_error") {
@@ -112,12 +122,17 @@ export async function runDomainReverifyPass(): Promise<ReverifyPassStats> {
         result.cause,
         { domainId: row.id, userId: row.user_id, domain: row.domain },
       );
+      await pool.query(
+        `UPDATE domains SET last_attempt_at = NOW() WHERE id = $1`,
+        [row.id],
+      );
     } else {
       stats.downgraded++;
       await pool.query(
         `UPDATE domains
          SET status = 'reverify_failed'::varchar,
              last_checked_at = NOW(),
+             last_attempt_at = NOW(),
              last_check_error = $2
          WHERE id = $1`,
         [row.id, result.error],
