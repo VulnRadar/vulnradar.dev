@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 /**
  * Tests for lib/auth/impersonation.ts. Mocked at the database boundary
@@ -272,9 +272,18 @@ describe("stopImpersonation", () => {
       expect(opts?.maxAge).toBe(2 * DAY_S);
     });
 
-    it("never goes below one second for a session about to expire", async () => {
-      const opts = await stopAfterStart(400);
-      expect(opts?.maxAge).toBe(1);
+    describe("with the clock held still", () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it("never goes below one second for a session about to expire", async () => {
+        // 400ms of life is only 400ms if nothing ticks between seeding the
+        // row and reading it back, which a loaded machine does not promise.
+        vi.useFakeTimers({ toFake: ["Date"] });
+        const opts = await stopAfterStart(400);
+        expect(opts?.maxAge).toBe(1);
+      });
     });
   });
 

@@ -364,14 +364,6 @@ describe("fetchOAuthUserInfo: discord", () => {
   });
 });
 
-/**
- * The callback turns any null from this module into a bare redirect, so the
- * log written here is the only place a rotated secret, a redirect_uri that no
- * longer matches or a provider outage can be told apart. Each failure path
- * must write exactly one console.error naming the provider, the stage, the
- * status and the provider's error code, and none of them may write anything
- * that came from the person signing in or from our own secrets.
- */
 describe("provider timeout", () => {
   // AbortSignal.timeout runs on Node's own timer, which vitest's fake timers
   // do not reach, so the signal is replaced by one the test aborts by hand.
@@ -658,6 +650,14 @@ describe("a body that is not the JSON the provider promised", () => {
   });
 });
 
+/**
+ * The callback turns any null from this module into a bare redirect, so the
+ * log written here is the only place a rotated secret, a redirect_uri that no
+ * longer matches or a provider outage can be told apart. Each failure path
+ * must write exactly one console.error naming the provider, the stage, the
+ * status and the provider's error code, and none of them may write anything
+ * that came from the person signing in or from our own secrets.
+ */
 describe("failure logging", () => {
   function jsonResponse(body: unknown, status: number) {
     return new Response(JSON.stringify(body), { status });
