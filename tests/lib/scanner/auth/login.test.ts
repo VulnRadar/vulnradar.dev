@@ -10,7 +10,7 @@
  * `safeFetch` invokes it (the network boundary). Everything above that,
  * including the real `safeFetch` redirect/session logic, runs for real.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("dns/promises", () => ({
   lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
@@ -37,7 +37,12 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) },
 }));
 
-import { establishScanSession, verifySession } from "@/lib/scanner/auth/login";
+import { getSettings } from "@/lib/config/runtime-config";
+import {
+  establishScanSession,
+  readCappedBody,
+  verifySession,
+} from "@/lib/scanner/auth/login";
 import { ScanSession } from "@/lib/scanner/auth/scan-session";
 import type { EphemeralAuthInput } from "@/lib/scanner/auth/types";
 
@@ -258,5 +263,115 @@ describe("verifySession reports mid-scan session loss", () => {
       "https://app.example.com/dashboard",
     );
     expect(result.ok).toBe(false);
+  });
+});
+
+// readCappedBody is a thin wrapper over the shared bounded reader
+// (lib/scanner/read-bounded-body.ts). It used to carry a copy of that loop with
+// a size cap and no read timeout, so a target that sent headers and then
+// trickled the login or verification body held the scan slot open.
+describe("readCappedBody", () => {
+  const encoder = new TextEncoder();
+
+  /** A response whose body emits `chunks` and then stalls without closing. */
+  function stallingResponse(...chunks: string[]): Response {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      },
+    });
+    return new Response(stream);
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns a body that fits under the cap", async () => {
+    expect(
+      await readCappedBody(htmlResponse("<html>signed in</html>"), 1000),
+    ).toBe("<html>signed in</html>");
+  });
+
+  it("stops at maxBytes, partway through a chunk", async () => {
+    expect(await readCappedBody(htmlResponse("0123456789"), 4)).toBe("0123");
+  });
+
+  it("reads a response that has no body stream through text()", async () => {
+    const bodiless = {
+      body: null,
+      text: async () => "from text()",
+    } as unknown as Response;
+    expect(await readCappedBody(bodiless, 4)).toBe("from");
+  });
+
+  it("returns an empty string rather than throwing when text() fails", async () => {
+    const broken = {
+      body: null,
+      text: async () => {
+        throw new Error("body already consumed");
+      },
+    } as unknown as Response;
+    expect(await readCappedBody(broken, 100)).toBe("");
+  });
+
+  it("gives up on a stalled body after the timeout it is given and keeps what arrived", async () => {
+    const started = Date.now();
+    const body = await readCappedBody(stallingResponse("first part"), 1000, 30);
+    expect(body).toBe("first part");
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it("applies the shared reader's 10 second timeout when none is given", async () => {
+    vi.useFakeTimers();
+    let settled = false;
+    const pending = readCappedBody(stallingResponse("partial"), 1000);
+    void pending.then(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(pending).resolves.toBe("partial");
+  });
+});
+
+describe("verifySession bounds the body it reads", () => {
+  it("gives up on a trickling probe body at the verify timeout instead of holding the scan", async () => {
+    // The target answers the anonymous probe, then answers the authenticated
+    // one with headers and a body that never finishes. The authenticated page
+    // is judged on what arrived, which here is enough to confirm the login.
+    // The verify timeout is set to 50ms: were it not forwarded to the reader,
+    // the reader's own 10 second default would outlast the test.
+    vi.mocked(getSettings).mockResolvedValueOnce({
+      SCAN_AUTH_VERIFY_TIMEOUT_MS: 50,
+    } as never);
+    const encoder = new TextEncoder();
+    const trickling = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode("<html>Welcome <a>Sign out</a>"));
+        },
+      }),
+      { headers: { "content-type": "text/html" } },
+    );
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(htmlResponse("<html>Please log in</html>"));
+    fetchMock.mockResolvedValueOnce(trickling);
+
+    const session = new ScanSession({
+      origin: "https://app.example.com",
+      authType: "header",
+      staticHeaders: { Authorization: "Bearer ok" },
+    });
+
+    const result = await verifySession(
+      session,
+      "https://app.example.com/dashboard",
+    );
+
+    expect(result.ok).toBe(true);
   });
 });

@@ -501,6 +501,7 @@ export async function runLoginOverCdp(
   const loginBody = await readCappedBody(
     loginResponse,
     timings.maxLoginBodyBytes,
+    timings.navTimeoutMs,
   );
 
   const cookiesAfter = session.jar.headerFor(`${origin}/`) ?? "";

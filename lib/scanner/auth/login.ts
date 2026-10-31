@@ -27,6 +27,7 @@ import {
 } from "@/lib/config/config-values";
 import { getSettings } from "@/lib/config/runtime-config";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
+import { safeReadBody } from "@/lib/scanner/read-bounded-body";
 import { hasPasswordInput } from "./form-parser";
 import { blockedForAuthenticatedRequest } from "./logout-guard";
 import { ScanSession } from "./scan-session";
@@ -254,7 +255,11 @@ async function probe(
       [hostnameOf(origin)],
       session,
     );
-    const body = await readCappedBody(response, maxLoginBodyBytes);
+    const body = await readCappedBody(
+      response,
+      maxLoginBodyBytes,
+      verifyTimeoutMs,
+    );
     return { status: response.status, body };
   } catch {
     return null;
@@ -270,48 +275,30 @@ export function looksStillSignedOut(html: string): boolean {
   return hasPasswordInput(html) && !SIGNED_IN_MARKER.test(html);
 }
 
-/** Read a response body, stopping at `maxBytes`. Never throws. */
+/**
+ * Read a response body, stopping at `maxBytes` or after `timeoutMs`, whichever
+ * comes first. Never throws.
+ *
+ * This is safeReadBody with the one extra case the login paths need: a
+ * response whose `body` is null (a mocked or already-consumed one) is read
+ * through `text()` instead of being treated as empty. The loop that used to
+ * live here had no read timeout, so a target that answered the login or the
+ * verification fetch with headers and then trickled the body held the scan
+ * slot until the socket closed. `timeoutMs` defaults to safeReadBody's.
+ */
 export async function readCappedBody(
   response: Response,
   maxBytes: number,
+  timeoutMs?: number,
 ): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) {
+  if (!response.body) {
     try {
       return (await response.text()).slice(0, maxBytes);
     } catch {
       return "";
     }
   }
-
-  const decoder = new TextDecoder("utf-8", { fatal: false });
-  const chunks: string[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        const overshoot = total - maxBytes;
-        const trimmed = value.slice(0, value.byteLength - overshoot);
-        if (trimmed.byteLength > 0) {
-          chunks.push(decoder.decode(trimmed, { stream: false }));
-        }
-        break;
-      }
-      chunks.push(decoder.decode(value, { stream: true }));
-    }
-  } catch {
-    /* partial body is fine */
-  } finally {
-    try {
-      await reader.cancel();
-    } catch {
-      /* ignore */
-    }
-  }
-  return chunks.join("");
+  return safeReadBody(response, maxBytes, timeoutMs);
 }
 
 export function sameOrigin(url: string, origin: string): boolean {
