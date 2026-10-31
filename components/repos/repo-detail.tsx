@@ -214,13 +214,29 @@ export function RepoDetail({
         )}
         {/* Tier B, the same size the repo list's own H1 uses. At text-lg the
             title shrank the moment you drilled into a repo. */}
-        {/* No text-balance: it is a no-op next to truncate's nowrap. */}
-        <h1
-          title={repo.fullName}
-          className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground truncate flex-1 min-w-0"
-        >
-          {repo.fullName}
-        </h1>
+        {/* No text-balance: it is a no-op next to truncate's nowrap.
+
+            The repo name is the page's h1 until a finding opens. A finding's
+            title is an h1 of its own (IssueDetail), and the other result
+            pages drop their header when one is open; this header has to stay,
+            because it carries the back button and the rescan action, so the
+            name is demoted to a paragraph of the same look rather than left
+            as a second h1. */}
+        {selectedIssue ? (
+          <p
+            title={repo.fullName}
+            className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground truncate flex-1 min-w-0"
+          >
+            {repo.fullName}
+          </p>
+        ) : (
+          <h1
+            title={repo.fullName}
+            className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground truncate flex-1 min-w-0"
+          >
+            {repo.fullName}
+          </h1>
+        )}
         <Button
           size="sm"
           variant="outline"
