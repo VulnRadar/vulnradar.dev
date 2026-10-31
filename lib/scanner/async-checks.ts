@@ -43,6 +43,7 @@ import {
   resolveCaaOnce,
 } from "@/lib/scanner/dns-memo";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { generateId } from "@/lib/scanner/_helpers";
 import { checkReputation } from "@/lib/scanner/reputation-lookup";
 import { checkOsvVulnerableLibraries } from "@/lib/scanner/osv-check";
 import { readTlsHandshake } from "@/lib/scanner/tls-handshake";
@@ -101,21 +102,6 @@ function withDnsTimeout<T>(promise: Promise<T>, ms = 4000): Promise<T> {
       setTimeout(() => reject(new Error("dns timeout")), ms),
     ),
   ]);
-}
-
-function fnvHash(s: string): string {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h.toString(36);
-}
-
-// Deterministic ID: same check + same URL → same ID across scans.
-// def.checkId is the slugified title, fixed per check, so this is stable.
-function generateId(def: AsyncCheckDef, url: string): string {
-  return `${def.checkId}--${fnvHash(url)}`;
 }
 
 /** True for the rejection a probe's own deadline race produces. */
@@ -179,7 +165,10 @@ function makeVuln(
   confidence = 90,
 ): Vulnerability {
   return {
-    id: generateId(def, url),
+    // def.checkId is the slugified title, fixed per check, so the id is stable
+    // across scans. It is the same hash the sync checks use: a second copy of
+    // it is how async and sync ids for one check would silently drift apart.
+    id: generateId(def.checkId, url),
     title: def.title,
     severity: def.severity,
     category: def.category,

@@ -90,6 +90,7 @@ import * as dns from "dns/promises";
 import * as tls from "tls";
 import * as http from "http";
 import * as crypto from "crypto";
+import { generateId } from "@/lib/scanner/_helpers";
 import {
   checkSPF,
   checkSPFChain,
@@ -222,6 +223,44 @@ describe("checkSPF", () => {
     dnsMock.resolveTxt.mockRejectedValueOnce(new Error("ENOTFOUND"));
     const findings = await checkSPF("example.com", "https://example.com");
     expect(findings).toEqual([]);
+  });
+});
+
+// ── Finding ids ───────────────────────────────────────────────────────
+//
+// The async layer used to carry its own copy of the id hash. Ids key stored
+// feedback rows and regression-alert baselines, so the output has to stay
+// byte-for-byte what it was, and has to be the same function the sync checks
+// call. The literals below were produced by the old private copy.
+
+describe("async finding ids", () => {
+  it("are <checkId>--<FNV-1a of the url> exactly as before", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf2.0"]]);
+    const [finding] = await checkSPF("example.com", "https://example.com");
+    expect(finding.id).toBe("async-missing-spf-record--v03177");
+  });
+
+  it("come from the shared generateId", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf1 +all"]]);
+    const [finding] = await checkSPF(
+      "example.com",
+      "https://sub.example.org/path?q=1",
+    );
+    expect(finding.id).toBe(
+      generateId(
+        "async-weak-spf-record-all-",
+        "https://sub.example.org/path?q=1",
+      ),
+    );
+    expect(finding.id).toBe("async-weak-spf-record-all---13ervfc");
+  });
+
+  it("differ when only the url differs", async () => {
+    dnsMock.resolveTxt.mockResolvedValue([["v=spf2.0"]]);
+    const [bare] = await checkSPF("example.com", "https://example.com");
+    const [slash] = await checkSPF("example.com", "https://example.com/");
+    expect(bare.id).not.toBe(slash.id);
+    expect(slash.id).toBe("async-missing-spf-record--1qfat2s");
   });
 });
 
