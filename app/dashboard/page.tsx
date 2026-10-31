@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { ROUTES } from "@/lib/config/client-constants";
 import { useConfirm } from "@/components/shared/use-confirm";
+import { fetchAiInfo, isAiAvailable } from "@/components/shared/ai-info";
 import {
   setQueryParams,
   removeQueryParam,
@@ -247,10 +248,9 @@ function DashboardContent() {
 
   useEffect(() => {
     if (!me?.userId) return;
-    fetch(API.AI_INFO)
-      .then((r) => r.json())
-      .then((d) => {
-        aiAvailableRef.current = (d.configured || false) && !d.aiDisabled;
+    fetchAiInfo(me.userId)
+      .then((info) => {
+        aiAvailableRef.current = isAiAvailable(info);
       })
       .catch(() => {});
   }, [me?.userId]);

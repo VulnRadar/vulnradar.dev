@@ -63,6 +63,7 @@ import {
 import { AI_CHAT_ASK_EVENT, type AiChatAskDetail } from "@/lib/ai/chat-bridge";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { fetchAiInfo } from "@/components/shared/ai-info";
 
 type ProviderInfo = {
   configured: boolean;
@@ -556,8 +557,9 @@ function getUniqueSuggestions(input: string): SlashCommand[] {
 }
 
 export function ChatWidget() {
-  const { me } = useAuth();
+  const { me, isLoading: authLoading } = useAuth();
   const isLoggedIn = !!me?.userId;
+  const viewerId = me?.userId ?? null;
   const pathname = usePathname();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -914,13 +916,22 @@ export function ChatWidget() {
     return () => window.clearTimeout(t);
   }, [isOpen, scrollToBottom]);
 
-  // Fetch provider info eagerly on mount so it's ready before the widget opens
+  // Fetch provider info eagerly on mount so it's ready before the widget opens.
+  // Held until the session has resolved: the answer includes this user's own
+  // AI opt-out, and ai-info.ts shares one request with the dashboard and the
+  // scan menu, keyed by who is asking.
   useEffect(() => {
-    fetch(API.AI_INFO)
-      .then((r) => r.json())
-      .then((d) => setProvider(d as ProviderInfo))
+    if (authLoading) return;
+    let cancelled = false;
+    fetchAiInfo(viewerId)
+      .then((info) => {
+        if (!cancelled) setProvider(info);
+      })
       .catch(() => {});
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, viewerId]);
 
   useEffect(() => {
     if (!isOpen) return;
