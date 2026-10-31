@@ -179,10 +179,11 @@ export default function ArchitecturePage() {
             </li>
             <li>
               <InlineCode>lib/config/client-constants.ts</InlineCode>:
-              client-safe subset (no server-only secrets). It is the only config
-              module a <InlineCode>{`"use client"`}</InlineCode> file may
-              import: <InlineCode>constants.ts</InlineCode> is its server-side
-              superset and reads non-public environment variables
+              client-safe subset (no server-only secrets). A client component
+              imports this one, never <InlineCode>constants.ts</InlineCode>:
+              that is its server-side superset and reads non-public environment
+              variables, which a client import would carry into the browser
+              bundle. A test fails on a client file that imports it
             </li>
           </ul>
         </DocsSubSection>

@@ -674,12 +674,12 @@ npm run dev
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           <InlineCode>npm run lint</InlineCode> runs Oxlint (
           <InlineCode>.oxlintrc.json</InlineCode>) and then ESLint 10 with flat
-          config (<InlineCode>eslint.config.mjs</InlineCode>). Oxlint owns every
-          rule it implements, and the last block of the ESLint config switches
-          those rules off again, so a rule lives in exactly one of them. ESLint
-          keeps what Oxlint cannot do yet: the type-aware promise rules on the
-          auth and billing code, the React Compiler readiness rules, and the
-          selector that flags a hardcoded{" "}
+          config (<InlineCode>eslint.config.mjs</InlineCode>). Oxlint runs the
+          rules its config turns on, and the last block of the ESLint config
+          switches those same rules off again, so a rule runs in exactly one of
+          them. ESLint runs the rest, including what Oxlint cannot do yet: the
+          type-aware promise rules on the auth and billing code, the React
+          Compiler readiness rules, and the selector that flags a hardcoded{" "}
           <InlineCode>/api/v&lt;n&gt;</InlineCode> path passed to{" "}
           <InlineCode>fetch</InlineCode>. The config wraps{" "}
           <InlineCode>next/core-web-vitals</InlineCode> for React / Next / TS
@@ -975,7 +975,7 @@ npm run lint:fix    # oxlint --fix, then eslint --fix`}
           </li>
           <li>
             <strong className="text-foreground">The in-app updater:</strong>{" "}
-            Admin &rarr; Updater refuses to run when{" "}
+            Admin &rarr; Operations &rarr; Updater refuses to run when{" "}
             <InlineCode>VULNRADAR_UPDATER_DISABLED=true</InlineCode>, which the
             official Dockerfile sets because an image updates by pulling a new
             tag. A source checkout leaves it unset. The updater also refuses on

@@ -242,6 +242,17 @@ describe("the architecture page", () => {
     expect(page).not.toMatch(/It used to be\s+4,000/);
   });
 
+  it("states the client config rule as far as the code enforces it", () => {
+    // Client files also import brand, feature-surfaces, registry and
+    // config-values, so "the only config module" is false. What
+    // client-server-split.test.ts fails on is a client file importing
+    // constants.ts, the server-side superset.
+    expect(page).not.toMatch(/only\s+config\s+module/);
+    expect(read("tests/lib/config/client-server-split.test.ts")).toContain(
+      "does not let a new client component import the server config module",
+    );
+  });
+
   it("lists each config module once", () => {
     for (const file of ["registry.ts", "runtime-config.ts"]) {
       const tag = `<InlineCode>lib/config/${file}</InlineCode>`;
@@ -333,10 +344,15 @@ describe("CONTRIBUTING.md", () => {
     expect(section?.[1]).toContain("lib/i18n/messages");
 
     expect(existsSync(path.join(ROOT, "lib/i18n/README.md"))).toBe(true);
+    // The section only says where the wording lives, and that has to hold when
+    // a language is one file (messages/de.json) and when it is a folder of
+    // per-namespace files (messages/de/), which is the shape the split of the
+    // messages gives it.
     for (const locale of LOCALES) {
+      const base = path.join(ROOT, "lib/i18n/messages", locale);
       expect(
-        existsSync(path.join(ROOT, "lib/i18n/messages", `${locale}.json`)),
-        `messages/${locale}.json`,
+        existsSync(`${base}.json`) || existsSync(base),
+        `messages for ${locale}`,
       ).toBe(true);
     }
   });
