@@ -9,6 +9,8 @@
  * configured to refuse site data all throw on the first read.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { tourSession } from "@/lib/tour/tour-session";
 import { TOUR_STEPS } from "@/lib/tour/steps";
 
@@ -55,14 +57,40 @@ describe("tourSession", () => {
     // removed steps. Their stored index now points past the array, and the
     // orchestrator reads TOUR_STEPS[index].chapter on its very first render.
     backing.set(KEY, JSON.stringify({ step: 9999, paused: false }));
-    expect(tourSession.read()?.step).toBe(TOUR_STEPS.length - 1);
+    expect(tourSession.read(TOUR_STEPS.length)?.step).toBe(
+      TOUR_STEPS.length - 1,
+    );
+  });
+
+  it("does not import the step list, so the layout gate stays light", () => {
+    // tour-mount.tsx is in the root layout and calls read() only to learn
+    // whether a session exists. A static import of ./steps here dragged all
+    // of the tour's copy into every route's entry chunk.
+    const src = fs.readFileSync(
+      path.join(__dirname, "../../../lib/tour/tour-session.ts"),
+      "utf8",
+    );
+    expect(src).not.toMatch(/from\s+["']\.\/steps["']/);
+    expect(src).not.toMatch(/from\s+["']@\/lib\/tour\/steps["']/);
+  });
+
+  it("floors a negative index but caps nothing when the caller passes no step count", () => {
+    backing.set(KEY, JSON.stringify({ step: 9999, paused: false }));
+    expect(tourSession.read()?.step).toBe(9999);
+    backing.set(KEY, JSON.stringify({ step: -4, paused: false }));
+    expect(tourSession.read()?.step).toBe(0);
+  });
+
+  it("clamps to zero for an empty step list", () => {
+    backing.set(KEY, JSON.stringify({ step: 5, paused: false }));
+    expect(tourSession.read(0)?.step).toBe(0);
   });
 
   it("clamps a negative or fractional step", () => {
     backing.set(KEY, JSON.stringify({ step: -4, paused: false }));
-    expect(tourSession.read()?.step).toBe(0);
+    expect(tourSession.read(TOUR_STEPS.length)?.step).toBe(0);
     backing.set(KEY, JSON.stringify({ step: 2.9, paused: false }));
-    expect(tourSession.read()?.step).toBe(2);
+    expect(tourSession.read(TOUR_STEPS.length)?.step).toBe(2);
   });
 
   it("ignores a stored value that is not a session", () => {

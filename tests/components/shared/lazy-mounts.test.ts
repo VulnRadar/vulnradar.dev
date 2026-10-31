@@ -134,6 +134,9 @@ describe("the root layout's static import graph", () => {
     // because the backup-code reminder lived in its module.
     ["the notification bell", "components/shared/notification-center.tsx"],
     ["the product tour", "components/shared/onboarding-tour.tsx"],
+    // The step copy. tour-session.ts used to import it for one clamp, which
+    // put every line of the tour's text in the layout chunk.
+    ["the tour's step copy", "lib/tour/steps.ts"],
     ["the AI chat widget", "components/ai-chat/chat-widget.tsx"],
   ])("does not reach %s", (_name, file) => {
     expect(graph.has(file)).toBe(false);

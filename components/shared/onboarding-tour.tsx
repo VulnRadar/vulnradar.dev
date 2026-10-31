@@ -157,7 +157,7 @@ export function OnboardingTour() {
       return;
     }
     if (dismissedRef.current) return;
-    const saved = tourSession.read();
+    const saved = tourSession.read(TOUR_STEPS.length);
     if (saved) {
       replayRef.current = saved.replay;
       // oxlint-disable-next-line react/set-state-in-effect -- boots from two external stores (the auth cache and sessionStorage) and writes both back, so it cannot be derived during render

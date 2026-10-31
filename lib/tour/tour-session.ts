@@ -1,7 +1,5 @@
 "use client";
 
-import { TOUR_STEPS } from "./steps";
-
 /**
  * Where a half-finished tour lives between page loads.
  *
@@ -34,7 +32,15 @@ export interface TourSession {
   replay: boolean;
 }
 
-function read(): TourSession | null {
+/**
+ * @param stepCount TOUR_STEPS.length, from a caller that is about to index the
+ *   step list. This module does not import the list itself: components/shared/
+ *   tour/tour-mount.tsx sits in the root layout and only asks whether a session
+ *   exists, and importing the step copy here put every line of it in the entry
+ *   chunk of every route. A caller that omits it gets the index floored at zero
+ *   and not capped, which is only safe for a caller that never indexes with it.
+ */
+function read(stepCount?: number): TourSession | null {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -43,10 +49,11 @@ function read(): TourSession | null {
     // A persisted index outside the current step list means the tour changed
     // under a session that was mid-flight. Resuming at a step that no longer
     // exists would either crash or silently land somewhere unrelated, so clamp.
-    const step = Math.min(
-      Math.max(0, Math.floor(parsed.step)),
-      TOUR_STEPS.length - 1,
-    );
+    const floored = Math.max(0, Math.floor(parsed.step));
+    const step =
+      stepCount === undefined
+        ? floored
+        : Math.min(floored, Math.max(0, stepCount - 1));
     return {
       step,
       paused: parsed.paused === true,
