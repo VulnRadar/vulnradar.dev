@@ -27,8 +27,9 @@ describe("the support inbox views", () => {
 
   it("lives under the support-tickets tab, the id a link to ?view=contact has to name", () => {
     // The admin page falls back to Overview for a tab id it does not know, so a
-    // link built with any other id (there is no "support" tab) opens the wrong
-    // page and the view parameter is never read.
+    // link built with any other id opens the wrong page and the view parameter
+    // is never read. There is no "support" tab: the one old link that used the
+    // word is rewritten to this id by components/admin/tab-aliases.ts.
     expect(ADMIN_NAV).toContain('"support-tickets"');
     expect(ADMIN_PAGE).toContain(
       'activeTab === "support-tickets" && <SupportInbox />',

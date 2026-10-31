@@ -21,6 +21,7 @@ import {
   type AdminNavItem,
   type AdminTabKey,
 } from "@/components/admin/nav";
+import { resolveAdminTab } from "@/components/admin/tab-aliases";
 import {
   getAllQueryParams,
   setQueryParam,
@@ -737,8 +738,14 @@ function AdminContent() {
   const handleQueryChange = useCallback(() => {
     if (typeof window === "undefined") return;
     const params = getAllQueryParams();
-    const tab = params.tab;
+    const tab = resolveAdminTab(params.tab);
     const user = params.user;
+    if (tab && tab !== params.tab) {
+      // An old id from a link in mail already sent (?tab=support). Rewriting
+      // the address bar means a bookmark or a share made from here carries the
+      // id the panel routes on; the other parameters (?view=contact) stay.
+      setQueryParam("tab", tab, { replace: true });
+    }
     if (!tab && !user) {
       setQueryParam("tab", "overview", { replace: true });
       setSelectedUser(null);

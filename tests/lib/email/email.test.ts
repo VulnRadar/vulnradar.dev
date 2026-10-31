@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildTemplateCorpus } from "./_template-corpus";
 import { APP_URL } from "@/lib/config/constants";
+import { VALID_TABS } from "@/components/admin/nav";
 
 /**
  * Tests for lib/email/email.ts.
@@ -1014,9 +1015,9 @@ describe("the contact form emails", () => {
 
     expect(mail.subject).toBe("New contact submission #128 (Security Issue)");
     expect(mail.text).toContain("#128");
-    expect(mail.text).toContain("/admin?tab=support&view=contact");
+    expect(mail.text).toContain("/admin?tab=support-tickets&view=contact");
     // The href is escaped in the document, so check both parts for the link.
-    expect(mail.html).toContain("/admin?tab=support&amp;view=contact");
+    expect(mail.html).toContain("/admin?tab=support-tickets&amp;view=contact");
     // Nothing a sender typed has anywhere to appear: the builder is not even
     // given it, and it offers no Reply-To to pass on. The shape of the input
     // is the guarantee.
@@ -1032,6 +1033,71 @@ describe("the contact form emails", () => {
     expect(mail.text).not.toMatch(/^Hi\b/);
     expect(mail.html).not.toMatch(/Hi [A-Z]/);
     expect(mail.text).toContain("bug report request");
+  });
+});
+
+/**
+ * Where the two staff alerts send the reader. The contact alert said
+ * `tab=support` and the ticket alert said bare `/admin`; the first is not a tab
+ * the admin page knows (it opened Overview and never read `view`), the second
+ * is Overview on purpose. Both now name the id components/admin/nav.ts routes
+ * on, and the second is checked against that table so a rename cannot leave
+ * the mail pointing at nothing again.
+ */
+describe("the staff alerts' links into the admin panel", () => {
+  const ticketAlert = {
+    ticketId: 3182,
+    subject: "Scheduled scan stopped running",
+    category: "help",
+    fromEmail: "dana@example.dev",
+    body: "The nightly sweep has not produced a report.",
+  };
+
+  function adminUrls(text: string): URL[] {
+    const found = text.match(/https?:\/\/\S+\/admin\?\S+/g) ?? [];
+    return found.map((raw) => new URL(raw));
+  }
+
+  it("opens the ticket queue for a new ticket", async () => {
+    const { supportTicketStaffAlertEmail } = await loadEmail();
+    const mail = supportTicketStaffAlertEmail({ ...ticketAlert, isNew: true });
+
+    expect(mail.text).toContain(`${APP_URL}/admin?tab=support-tickets`);
+    expect(mail.html).toContain(`${APP_URL}/admin?tab=support-tickets"`);
+    expect(mail.text).not.toMatch(/\/admin\s*$/);
+    expect(mail.html).not.toContain(`href="${APP_URL}/admin"`);
+  });
+
+  it("opens the same place for a reply on a ticket", async () => {
+    const { supportTicketStaffAlertEmail } = await loadEmail();
+    const mail = supportTicketStaffAlertEmail({ ...ticketAlert, isNew: false });
+
+    expect(mail.text).toContain(`${APP_URL}/admin?tab=support-tickets`);
+    expect(mail.html).toContain(`${APP_URL}/admin?tab=support-tickets"`);
+  });
+
+  it("opens the contact view of the same tab for a contact submission", async () => {
+    const { contactEmail } = await loadEmail();
+    const mail = contactEmail({ submissionId: 7, category: "Bug Report" });
+
+    const [url] = adminUrls(mail.text);
+    expect(url.searchParams.get("tab")).toBe("support-tickets");
+    expect(url.searchParams.get("view")).toBe("contact");
+  });
+
+  it("only ever names a tab the admin page routes on", async () => {
+    const { contactEmail, supportTicketStaffAlertEmail } = await loadEmail();
+    const urls = [
+      ...adminUrls(contactEmail({ submissionId: 7, category: "Other" }).text),
+      ...adminUrls(
+        supportTicketStaffAlertEmail({ ...ticketAlert, isNew: true }).text,
+      ),
+    ];
+
+    expect(urls).toHaveLength(2);
+    for (const url of urls) {
+      expect(VALID_TABS).toContain(url.searchParams.get("tab"));
+    }
   });
 });
 

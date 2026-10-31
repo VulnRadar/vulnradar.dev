@@ -882,6 +882,20 @@ export function broadcastPreheader(text: string, html?: string): string {
 }
 
 /**
+ * Where a staff email sends the reader in the admin panel.
+ *
+ * `support-tickets` is the id components/admin/nav.ts routes on. The contact
+ * alert used to say `tab=support`, which the admin page does not know, so
+ * every one of those links opened Overview and the `view` parameter was never
+ * read. The admin page now also accepts the old id for mail already sent, but
+ * new mail names the real one.
+ */
+function supportInboxUrl(view?: "contact"): string {
+  const base = `${APP_URL}${ROUTES.ADMIN}?tab=support-tickets`;
+  return view ? `${base}&view=${view}` : base;
+}
+
+/**
  * The staff notification for a contact-form submission, and nothing of the
  * submission itself.
  *
@@ -903,7 +917,7 @@ export function contactEmail(input: {
   category: string;
 }) {
   const category = escapeHtml(input.category);
-  const inboxUrl = `${APP_URL}${ROUTES.ADMIN}?tab=support&view=contact`;
+  const inboxUrl = supportInboxUrl("contact");
 
   return {
     template: "contact",
@@ -3005,11 +3019,12 @@ export function supportTicketStaffAlertEmail(input: {
   isNew: boolean;
 }) {
   const verb = input.isNew ? "New" : "Reply on";
+  const inboxUrl = supportInboxUrl();
   return {
     template: "supportTicketStaffAlert",
     subject: `[Ticket #${input.ticketId}] ${input.subject}`,
     preheader: `${input.category} from ${input.fromEmail}`,
-    text: `${verb} ${input.category} support ticket #${input.ticketId} from ${input.fromEmail}\n\nSubject: ${input.subject}\n\n${input.body}\n\nOpen the admin support inbox: ${APP_URL}/admin`,
+    text: `${verb} ${input.category} support ticket #${input.ticketId} from ${input.fromEmail}\n\nSubject: ${input.subject}\n\n${input.body}\n\nOpen the admin support inbox: ${inboxUrl}`,
     html: `
       ${emailHeading(input.isNew ? "New support ticket" : "New reply on a ticket")}
       ${emailLead(`${emailStrong(escapeHtml(input.fromEmail))} ${input.isNew ? "opened" : "replied on"} ticket #${input.ticketId}.`)}
@@ -3024,7 +3039,7 @@ export function supportTicketStaffAlertEmail(input: {
         { label: "From", value: escapeHtml(input.fromEmail) },
       ])}
       ${ticketBodyBlock(input.body)}
-      ${emailButton(`${APP_URL}/admin`, "Open the support inbox")}
+      ${emailButton(inboxUrl, "Open the support inbox")}
     `,
   };
 }
