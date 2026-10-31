@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildTemplateCorpus } from "./_template-corpus";
 import { APP_URL } from "@/lib/config/constants";
+import { FROZEN } from "@/lib/api/frozen-paths";
 import { VALID_TABS } from "@/components/admin/nav";
 
 /**
@@ -1098,6 +1099,56 @@ describe("the staff alerts' links into the admin panel", () => {
     for (const url of urls) {
       expect(VALID_TABS).toContain(url.searchParams.get("tab"));
     }
+  });
+});
+
+describe("the one-click unsubscribe URL", () => {
+  it("is the permalink every sent message already carries, byte for byte", async () => {
+    const { unsubscribeApiUrl } = await loadEmail();
+
+    expect(unsubscribeApiUrl("abc123", "email_scan_complete")).toBe(
+      `${APP_URL}/api/v3/account/unsubscribe?token=abc123&type=email_scan_complete`,
+    );
+  });
+
+  it("is built from FROZEN.UNSUBSCRIBE rather than a path of its own", async () => {
+    const { unsubscribeApiUrl } = await loadEmail();
+
+    expect(
+      unsubscribeApiUrl("t", "email_scan_complete").startsWith(
+        `${APP_URL}${FROZEN.UNSUBSCRIBE}?`,
+      ),
+    ).toBe(true);
+  });
+
+  it("encodes a token that is not URL safe", async () => {
+    const { unsubscribeApiUrl } = await loadEmail();
+
+    expect(unsubscribeApiUrl("a+b/c d&e", "email_scan_complete")).toContain(
+      "token=a%2Bb%2Fc%20d%26e&type=",
+    );
+  });
+
+  it("is what the List-Unsubscribe header carries", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+    const { sendEmail, unsubscribeApiUrl } = await loadEmail();
+
+    await sendEmail({
+      to: "user@example.com",
+      subject: "Digest",
+      text: "digest",
+      html: "<p>digest</p>",
+      unsubscribeToken: "abc123",
+      unsubscribeColumn: "email_posture_digest",
+    });
+
+    const headers = (
+      sendMailMock.mock.calls[0][0] as { headers: Record<string, string> }
+    ).headers;
+    expect(headers["List-Unsubscribe"]).toBe(
+      `<${unsubscribeApiUrl("abc123", "email_posture_digest")}>`,
+    );
   });
 });
 

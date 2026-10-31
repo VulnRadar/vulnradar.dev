@@ -39,6 +39,7 @@ import {
   type EmailAccent,
   type EmailDetailRow,
 } from "@/lib/email/layout";
+import { FROZEN } from "@/lib/api/frozen-paths";
 import { resolveEmailLogoSrc } from "@/lib/email/logo-src";
 import { getSetting } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
@@ -205,9 +206,17 @@ interface LayoutOptions {
  * /unsubscribe instead, which is the page a human should land on, and where
  * "unsubscribe from everything" is an explicit button rather than a side
  * effect of a mail client's own Unsubscribe link.
+ *
+ * The path is FROZEN.UNSUBSCRIBE, not a versioned API path: this URL is written
+ * into mail that sits in inboxes for years, and a mail client POSTs to whatever
+ * the header held on the day it was sent. It is exported so the permalink test
+ * can assert the exact string every message carries.
  */
-function unsubscribeApiUrl(token: string, column: NotificationColumn): string {
-  return `${APP_URL}/api/v3/account/unsubscribe?token=${encodeURIComponent(token)}&type=${column}`;
+export function unsubscribeApiUrl(
+  token: string,
+  column: NotificationColumn,
+): string {
+  return `${APP_URL}${FROZEN.UNSUBSCRIBE}?token=${encodeURIComponent(token)}&type=${column}`;
 }
 
 /**
