@@ -53,10 +53,18 @@ export interface BlockedDomainScanRow {
   user_email: string | null;
 }
 
-/** Up to 100 most recent scans of the domain, or of any subdomain of it. */
+/**
+ * Up to 100 most recent scans of the domain, or of any subdomain of it.
+ *
+ * An empty domain matches nothing. normalizeBlockedDomain returns one for a
+ * value that was only a port, a query, a fragment or userinfo, and the
+ * subdomain arm of an empty name is the pattern "%.", which every host that
+ * ends in a dot would satisfy.
+ */
 export async function findScansForBlockedDomain(
   domain: string,
 ): Promise<BlockedDomainScanRow[]> {
+  if (!domain) return [];
   const host = hostOfUrlSql("sh.url");
   const { rows } = await pool.query<BlockedDomainScanRow>(
     `SELECT sh.id, sh.url, sh.source, sh.scanned_at, sh.user_id,
@@ -78,10 +86,13 @@ export async function findScansForBlockedDomain(
  * to differ: the search passed the raw value to its LIKE while the delete
  * passed an escaped one, so an admin searching "%.com" was shown every .com
  * scan in the database and then deleted none of them.
+ *
+ * An empty domain deletes nothing, for the reason given on the search.
  */
 export async function deleteScansForBlockedDomain(
   domain: string,
 ): Promise<number> {
+  if (!domain) return 0;
   const host = hostOfUrlSql("url");
   // Through the shared purge, not a bare DELETE: the host reports these scans
   // sourced would otherwise be orphaned and keep serving the blocked domain's

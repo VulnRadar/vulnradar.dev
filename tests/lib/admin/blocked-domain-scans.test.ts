@@ -73,3 +73,26 @@ describe("the host match", () => {
     ]);
   });
 });
+
+describe("a value that normalizes to nothing", () => {
+  // A pasted ":8080", "?x=1", "#top", "@" or "user@" is only a port, a query, a
+  // fragment or userinfo, and reduces to the empty string. The subdomain arm of
+  // an empty name is "%.", which any host ending in a dot satisfies, so it must
+  // never reach the database.
+  it.each([":8080", "?x=1", "#top", "@", "user@", "https://", "/"])(
+    "reduces %j to an empty domain",
+    (value) => {
+      expect(normalizeBlockedDomain(value)).toBe("");
+    },
+  );
+
+  it("searches for nothing", async () => {
+    expect(await findScansForBlockedDomain("")).toEqual([]);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("deletes nothing", async () => {
+    expect(await deleteScansForBlockedDomain("")).toBe(0);
+    expect(mockPurge).not.toHaveBeenCalled();
+  });
+});
