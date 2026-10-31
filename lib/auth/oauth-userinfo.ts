@@ -50,6 +50,13 @@ export interface OAuthUserInfo {
 // GitHub's API rejects requests with no User-Agent header.
 const USER_AGENT = `${APP_NAME}-OAuth`;
 
+// Every call in this module sits between a person who just clicked "Sign in
+// with X" and a redirect, so a provider that accepts the connection and then
+// says nothing would hold that request open until the platform gave up. The
+// signal also covers reading the body, which is where a stalled provider
+// usually stalls.
+const PROVIDER_TIMEOUT_MS = 10_000;
+
 type OAuthStage = "token" | "userinfo" | "emails";
 
 /**
@@ -89,9 +96,81 @@ function failure(
   provider: OAuthProviderId,
   stage: OAuthStage,
   message: string,
-  detail: { status?: number; providerError?: string } = {},
+  detail: { status?: number; providerError?: string; timedOut?: boolean } = {},
 ): void {
   logError("oauth", message, undefined, { provider, stage, ...detail });
+}
+
+/**
+ * fetch with the module-wide timeout. Returns null after logging when the
+ * request could not be completed (network error, DNS failure or the timeout),
+ * so every caller has one failure shape to handle. The log message is
+ * "<stage> request failed" and the Error is passed through for its stack; a
+ * timeout is marked so it can be told from a refused connection.
+ */
+async function providerFetch(
+  provider: OAuthProviderId,
+  stage: OAuthStage,
+  url: string,
+  init: RequestInit,
+): Promise<Response | null> {
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
+  } catch (err) {
+    logError("oauth", `${stage} request failed`, err, {
+      provider,
+      stage,
+      timedOut: isTimeout(err) ? true : undefined,
+    });
+    return null;
+  }
+}
+
+function isTimeout(err: unknown): boolean {
+  return err instanceof Error && err.name === "TimeoutError";
+}
+
+/**
+ * res.json() that cannot throw. A provider error page served with a 200, a
+ * truncated body or a stalled stream used to surface as an unhandled
+ * rejection out of the callback route instead of the "did not go through"
+ * redirect every other failure here ends in. Resolves undefined (which JSON
+ * itself can never produce) after logging.
+ */
+async function readJson(
+  provider: OAuthProviderId,
+  stage: OAuthStage,
+  res: Response,
+): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch (err) {
+    failure(provider, stage, `${stage} response was not JSON`, {
+      status: res.status,
+      timedOut: isTimeout(err) ? true : undefined,
+    });
+    return undefined;
+  }
+}
+
+/** readJson for the endpoints whose body must be an object. */
+async function readJsonObject(
+  provider: OAuthProviderId,
+  stage: OAuthStage,
+  res: Response,
+): Promise<Record<string, unknown> | null> {
+  const body = await readJson(provider, stage, res);
+  if (body === undefined) return null;
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    failure(provider, stage, `${stage} response was not a JSON object`, {
+      status: res.status,
+    });
+    return null;
+  }
+  return body as Record<string, unknown>;
 }
 
 async function userinfoRejected(
@@ -143,20 +222,12 @@ export async function exchangeOAuthCode(
   // asked for JSON.
   if (provider === "github") headers.Accept = "application/json";
 
-  let res: Response;
-  try {
-    res = await fetch(providerConfig.tokenUrl, {
-      method: "POST",
-      headers,
-      body,
-    });
-  } catch (err) {
-    logError("oauth", "token request failed", err, {
-      provider,
-      stage: "token",
-    });
-    return null;
-  }
+  const res = await providerFetch(provider, "token", providerConfig.tokenUrl, {
+    method: "POST",
+    headers,
+    body,
+  });
+  if (!res) return null;
   if (!res.ok) {
     failure(provider, "token", "token endpoint returned an error status", {
       status: res.status,
@@ -165,15 +236,8 @@ export async function exchangeOAuthCode(
     return null;
   }
 
-  let data: Record<string, unknown>;
-  try {
-    data = await res.json();
-  } catch {
-    failure(provider, "token", "token response was not JSON", {
-      status: res.status,
-    });
-    return null;
-  }
+  const data = await readJsonObject(provider, "token", res);
+  if (!data) return null;
 
   // GitHub returns HTTP 200 with an `error` field in the body instead of a
   // non-2xx status when the code/secret is wrong -- res.ok alone would miss
@@ -205,24 +269,20 @@ export async function fetchOAuthUserInfo(
 async function fetchGoogleUserInfo(
   accessToken: string,
 ): Promise<OAuthUserInfo | null> {
-  let res: Response;
-  try {
-    res = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-  } catch (err) {
-    logError("oauth", "userinfo request failed", err, {
-      provider: "google",
-      stage: "userinfo",
-    });
-    return null;
-  }
+  const res = await providerFetch(
+    "google",
+    "userinfo",
+    "https://openidconnect.googleapis.com/v1/userinfo",
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!res) return null;
   if (!res.ok) {
     await userinfoRejected("google", res);
     return null;
   }
 
-  const data = await res.json();
+  const data = await readJsonObject("google", "userinfo", res);
+  if (!data) return null;
   if (typeof data.email !== "string") {
     noEmail("google", res);
     return null;
@@ -247,21 +307,19 @@ async function fetchGithubUserInfo(
     "User-Agent": USER_AGENT,
   };
 
-  let userRes: Response;
-  try {
-    userRes = await fetch("https://api.github.com/user", { headers });
-  } catch (err) {
-    logError("oauth", "userinfo request failed", err, {
-      provider: "github",
-      stage: "userinfo",
-    });
-    return null;
-  }
+  const userRes = await providerFetch(
+    "github",
+    "userinfo",
+    "https://api.github.com/user",
+    { headers },
+  );
+  if (!userRes) return null;
   if (!userRes.ok) {
     await userinfoRejected("github", userRes);
     return null;
   }
-  const user = await userRes.json();
+  const user = await readJsonObject("github", "userinfo", userRes);
+  if (!user) return null;
 
   // GitHub's /user.email is only populated when the user made their email
   // public; it also doesn't say whether the address is verified. /user/emails
@@ -270,37 +328,40 @@ async function fetchGithubUserInfo(
   let email: string | null = typeof user.email === "string" ? user.email : null;
   let emailVerified = false;
 
-  try {
-    const emailsRes = await fetch("https://api.github.com/user/emails", {
-      headers,
-    });
-    if (emailsRes.ok) {
-      const emails: Array<{
-        email: string;
-        primary: boolean;
-        verified: boolean;
-      }> = await emailsRes.json();
-      const primaryVerified = emails.find((e) => e.primary && e.verified);
+  // A failure from here down is not a null return: the sign-in carries on
+  // with whatever /user gave, unverified, and is refused further along.
+  const emailsRes = await providerFetch(
+    "github",
+    "emails",
+    "https://api.github.com/user/emails",
+    { headers },
+  );
+  if (emailsRes?.ok) {
+    const body = await readJson("github", "emails", emailsRes);
+    if (Array.isArray(body)) {
+      const emails = body.filter(isGithubEmailEntry);
+      const primaryVerified = emails.find(
+        (e) => e.primary === true && e.verified === true,
+      );
       if (primaryVerified) {
         email = primaryVerified.email;
         emailVerified = true;
       } else if (email) {
         emailVerified =
-          emails.find((e) => e.email === email)?.verified ?? false;
+          emails.find((e) => e.email === email)?.verified === true;
       }
-    } else {
-      // Not a null return, but the same blindness: without the user:email
-      // scope this 404s, the sign-in carries on with an unverified address,
-      // and the user is turned away as "email unverified" with no trace of why.
-      failure("github", "emails", "emails endpoint rejected the request", {
+    } else if (body !== undefined) {
+      failure("github", "emails", "emails response was not a JSON array", {
         status: emailsRes.status,
-        providerError: await providerErrorCode(emailsRes),
       });
     }
-  } catch (err) {
-    logError("oauth", "emails request failed", err, {
-      provider: "github",
-      stage: "emails",
+  } else if (emailsRes) {
+    // Without the user:email scope this 404s, the sign-in carries on with an
+    // unverified address, and the user is turned away as "email unverified"
+    // with no trace of why.
+    failure("github", "emails", "emails endpoint rejected the request", {
+      status: emailsRes.status,
+      providerError: await providerErrorCode(emailsRes),
     });
   }
 
@@ -331,6 +392,20 @@ async function fetchGithubUserInfo(
   };
 }
 
+interface GithubEmailEntry {
+  email: string;
+  primary: boolean;
+  verified: boolean;
+}
+
+function isGithubEmailEntry(value: unknown): value is GithubEmailEntry {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { email?: unknown }).email === "string"
+  );
+}
+
 /** Append a provider size cap to an avatar URL without clobbering whatever
  *  query string it already carries, and without failing the whole sign-in if
  *  the provider ever hands back something URL() cannot parse. */
@@ -349,24 +424,20 @@ function withAvatarSize(url: string, param: string, size: number): string {
 async function fetchDiscordUserInfo(
   accessToken: string,
 ): Promise<OAuthUserInfo | null> {
-  let res: Response;
-  try {
-    res = await fetch("https://discord.com/api/users/@me", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-  } catch (err) {
-    logError("oauth", "userinfo request failed", err, {
-      provider: "discord",
-      stage: "userinfo",
-    });
-    return null;
-  }
+  const res = await providerFetch(
+    "discord",
+    "userinfo",
+    "https://discord.com/api/users/@me",
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!res) return null;
   if (!res.ok) {
     await userinfoRejected("discord", res);
     return null;
   }
 
-  const data = await res.json();
+  const data = await readJsonObject("discord", "userinfo", res);
+  if (!data) return null;
   if (typeof data.email !== "string") {
     noEmail("discord", res);
     return null;

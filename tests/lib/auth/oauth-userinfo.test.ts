@@ -372,6 +372,292 @@ describe("fetchOAuthUserInfo: discord", () => {
  * status and the provider's error code, and none of them may write anything
  * that came from the person signing in or from our own secrets.
  */
+describe("provider timeout", () => {
+  // AbortSignal.timeout runs on Node's own timer, which vitest's fake timers
+  // do not reach, so the signal is replaced by one the test aborts by hand.
+  // The spy still proves the duration asked for and that the signal reaches
+  // fetch.
+  let controllers: AbortController[];
+  let timeoutSpy: MockInstance<typeof AbortSignal.timeout>;
+
+  beforeEach(() => {
+    controllers = [];
+    timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+      const controller = new AbortController();
+      controllers.push(controller);
+      return controller.signal;
+    });
+  });
+
+  afterEach(() => {
+    timeoutSpy.mockRestore();
+  });
+
+  const timeoutError = () =>
+    new DOMException("The operation timed out.", "TimeoutError");
+
+  /** Pending until the signal fires, then rejects with its reason. */
+  function untilAborted<T>(signal: AbortSignal | null | undefined) {
+    return new Promise<T>((_resolve, reject) => {
+      if (!signal) return;
+      if (signal.aborted) reject(signal.reason);
+      else signal.addEventListener("abort", () => reject(signal.reason));
+    });
+  }
+
+  /** A fetch that never answers until its signal fires, like a silent provider. */
+  function silentProvider(_url: unknown, init?: RequestInit) {
+    return untilAborted<Response>(init?.signal);
+  }
+
+  /** A response whose headers arrive but whose body never does. */
+  function stalledBody(init: RequestInit | undefined): Response {
+    const res = new Response("{}", { status: 200 });
+    vi.spyOn(res, "json").mockImplementation(() =>
+      untilAborted<never>(init?.signal),
+    );
+    return res;
+  }
+
+  it("gives the token POST a 10 second signal and returns null when it fires", async () => {
+    mockFetch.mockImplementationOnce(silentProvider);
+
+    const pending = exchangeOAuthCode("google", "c", "https://x/cb");
+    controllers[0].abort(timeoutError());
+
+    expect(await pending).toBeNull();
+    expect(timeoutSpy).toHaveBeenCalledWith(10_000);
+    expect(mockFetch.mock.calls[0][1].signal).toBe(controllers[0].signal);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [message, ctx, err] = errorSpy.mock.calls[0];
+    expect(message).toBe("[oauth] token request failed");
+    expect(ctx).toEqual({ provider: "google", stage: "token", timedOut: true });
+    expect(err).toBeInstanceOf(Error);
+  });
+
+  it.each(["google", "github", "discord"] as const)(
+    "returns null for a %s userinfo call that never answers",
+    async (provider) => {
+      mockFetch.mockImplementationOnce(silentProvider);
+
+      const pending = fetchOAuthUserInfo(provider, "tok");
+      controllers[0].abort(timeoutError());
+
+      expect(await pending).toBeNull();
+      expect(timeoutSpy).toHaveBeenCalledWith(10_000);
+      const [message, ctx] = errorSpy.mock.calls[0];
+      expect(message).toBe("[oauth] userinfo request failed");
+      expect(ctx).toEqual({ provider, stage: "userinfo", timedOut: true });
+    },
+  );
+
+  it("gives GitHub's emails call its own signal, and keeps the sign-in alive when it times out", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: 1, login: "ada", email: "ada@example.com" }),
+          { status: 200 },
+        ),
+      )
+      .mockImplementationOnce(silentProvider);
+
+    const pending = fetchOAuthUserInfo("github", "tok");
+    await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    expect(controllers).toHaveLength(2);
+    controllers[1].abort(timeoutError());
+
+    const info = await pending;
+    expect(info?.email).toBe("ada@example.com");
+    expect(info?.emailVerified).toBe(false);
+    const [message, ctx] = errorSpy.mock.calls[0];
+    expect(message).toBe("[oauth] emails request failed");
+    expect(ctx).toEqual({
+      provider: "github",
+      stage: "emails",
+      timedOut: true,
+    });
+  });
+
+  it("returns null when the token response body stalls after the headers", async () => {
+    mockFetch.mockImplementationOnce(async (_url, init) => stalledBody(init));
+
+    const pending = exchangeOAuthCode("github", "c", "https://x/cb");
+    controllers[0].abort(timeoutError());
+
+    expect(await pending).toBeNull();
+    const [message, ctx] = errorSpy.mock.calls[0];
+    expect(message).toBe("[oauth] token response was not JSON");
+    expect(ctx).toEqual({
+      provider: "github",
+      stage: "token",
+      status: 200,
+      timedOut: true,
+    });
+  });
+
+  it("returns null when a userinfo response body stalls after the headers", async () => {
+    mockFetch.mockImplementationOnce(async (_url, init) => stalledBody(init));
+
+    const pending = fetchOAuthUserInfo("discord", "tok");
+    controllers[0].abort(timeoutError());
+
+    expect(await pending).toBeNull();
+    expect(errorSpy.mock.calls[0][0]).toBe(
+      "[oauth] userinfo response was not JSON",
+    );
+  });
+
+  it("passes the request's own method, headers and body through alongside the signal", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ access_token: "t" }), { status: 200 }),
+    );
+
+    await exchangeOAuthCode("github", "the-code", "https://x/cb");
+
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe("https://github.com/login/oauth/access_token");
+    expect(init.method).toBe("POST");
+    expect(init.headers.Accept).toBe("application/json");
+    expect(String(init.body)).toContain("code=the-code");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe("a body that is not the JSON the provider promised", () => {
+  const html = () => new Response("<html>oops</html>", { status: 200 });
+  const jsonNull = () => new Response("null", { status: 200 });
+  const jsonArray = () => new Response("[]", { status: 200 });
+
+  it.each(["google", "github", "discord"] as const)(
+    "returns null instead of throwing when %s answers 200 with a non-JSON body",
+    async (provider) => {
+      mockFetch.mockResolvedValueOnce(html());
+
+      await expect(fetchOAuthUserInfo(provider, "tok")).resolves.toBeNull();
+
+      const [message, ctx] = errorSpy.mock.calls[0];
+      expect(message).toBe("[oauth] userinfo response was not JSON");
+      expect(ctx).toEqual({ provider, stage: "userinfo", status: 200 });
+    },
+  );
+
+  it.each([
+    ["null", jsonNull],
+    ["an array", jsonArray],
+  ])("returns null for a userinfo body that is %s", async (_label, body) => {
+    for (const provider of ["google", "github", "discord"] as const) {
+      errorSpy.mockClear();
+      mockFetch.mockResolvedValueOnce(body());
+
+      await expect(fetchOAuthUserInfo(provider, "tok")).resolves.toBeNull();
+
+      expect(errorSpy.mock.calls[0][0]).toBe(
+        "[oauth] userinfo response was not a JSON object",
+      );
+    }
+  });
+
+  it("returns null instead of throwing when the token body is JSON null", async () => {
+    mockFetch.mockResolvedValueOnce(jsonNull());
+
+    await expect(
+      exchangeOAuthCode("google", "c", "https://x/cb"),
+    ).resolves.toBeNull();
+    expect(errorSpy.mock.calls[0][0]).toBe(
+      "[oauth] token response was not a JSON object",
+    );
+  });
+
+  it("keeps GitHub's sign-in going, unverified, when /user/emails is not JSON", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: 1, login: "ada", email: "ada@example.com" }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(html());
+
+    const info = await fetchOAuthUserInfo("github", "tok");
+
+    expect(info).toMatchObject({
+      email: "ada@example.com",
+      emailVerified: false,
+    });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0][0]).toBe(
+      "[oauth] emails response was not JSON",
+    );
+  });
+
+  it("keeps GitHub's sign-in going, unverified, when /user/emails is an object", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: 1, login: "ada", email: "ada@example.com" }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "nope" }), { status: 200 }),
+      );
+
+    const info = await fetchOAuthUserInfo("github", "tok");
+
+    expect(info?.emailVerified).toBe(false);
+    expect(errorSpy.mock.calls[0][0]).toBe(
+      "[oauth] emails response was not a JSON array",
+    );
+  });
+
+  it("skips malformed entries in /user/emails instead of throwing on them", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 1, login: "ada" }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            null,
+            "ada@example.com",
+            { primary: true, verified: true },
+            { email: "ada@example.com", primary: true, verified: true },
+          ]),
+          { status: 200 },
+        ),
+      );
+
+    const info = await fetchOAuthUserInfo("github", "tok");
+
+    expect(info).toMatchObject({
+      email: "ada@example.com",
+      emailVerified: true,
+    });
+  });
+
+  it("only believes a verified flag that is the boolean true", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: 1, login: "ada", email: "ada@example.com" }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            { email: "ada@example.com", primary: true, verified: "false" },
+          ]),
+          { status: 200 },
+        ),
+      );
+
+    const info = await fetchOAuthUserInfo("github", "tok");
+
+    expect(info?.emailVerified).toBe(false);
+  });
+});
+
 describe("failure logging", () => {
   function jsonResponse(body: unknown, status: number) {
     return new Response(JSON.stringify(body), { status });
