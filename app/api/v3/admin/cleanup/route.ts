@@ -1,7 +1,48 @@
 import { NextResponse } from "next/server";
 import { logAction, requireAdmin } from "@/lib/auth/authorization";
 import { getClientIp } from "@/lib/api/request-utils";
-import { performDatabaseCleanup } from "@/lib/database/cleanup";
+import {
+  performDatabaseCleanup,
+  CleanupPassError,
+  type CleanupStats,
+} from "@/lib/database/cleanup";
+
+/** The per-table counts of a run, as the audit details string carries them. */
+function removedSummary(stats: CleanupStats, none: string): string {
+  const removed = Object.entries(stats)
+    .filter(([, count]) => Number(count) > 0)
+    .map(([table, count]) => `${table}: ${count}`);
+  return removed.length > 0 ? removed.join(", ") : none;
+}
+
+/**
+ * The one staff action that deletes rows from admin_audit_log itself, and it
+ * was the only state-changing admin endpoint that wrote nothing to it. A forced
+ * run past the retention windows destroys scan history, sessions and audit rows
+ * across roughly fifteen tables, so who asked for it and what it removed has to
+ * survive the run. The per-table counts go in the details string because the
+ * interval job that normally does this work reports the same numbers only to
+ * the server log, which rotates.
+ *
+ * Best-effort: the prune has already run by the time this executes, so a failed
+ * audit write must not be reported back as a failed cleanup.
+ */
+async function recordRun(adminId: number, details: string): Promise<void> {
+  try {
+    await logAction(
+      adminId,
+      null,
+      "database_cleanup_run",
+      details,
+      await getClientIp(),
+    );
+  } catch (auditErr) {
+    console.error(
+      "[admin/cleanup] Failed to write audit log for database_cleanup_run (non-fatal):",
+      auditErr,
+    );
+  }
+}
 
 /**
  * POST /api/v3/admin/cleanup
@@ -44,36 +85,22 @@ export async function POST() {
 
   try {
     const stats = await performDatabaseCleanup();
-    // The one staff action that deletes rows from admin_audit_log itself, and
-    // it was the only state-changing admin endpoint that wrote nothing to it.
-    // A forced run past the retention windows destroys scan history, sessions
-    // and audit rows across roughly fifteen tables, so who asked for it and
-    // what it removed has to survive the run. The per-table counts go in the
-    // details string because the interval job that normally does this work
-    // reports the same numbers only to the server log, which rotates.
-    //
-    // Best-effort: the prune has already run by the time this executes, so a
-    // failed audit write must not be reported back as a failed cleanup.
-    const removed = Object.entries(stats)
-      .filter(([, count]) => Number(count) > 0)
-      .map(([table, count]) => `${table}: ${count}`);
-    try {
-      await logAction(
-        admin.id,
-        null,
-        "database_cleanup_run",
-        `Ran database cleanup on demand (${removed.length > 0 ? removed.join(", ") : "nothing to remove"})`,
-        await getClientIp(),
-      );
-    } catch (auditErr) {
-      console.error(
-        "[admin/cleanup] Failed to write audit log for database_cleanup_run (non-fatal):",
-        auditErr,
-      );
-    }
+    await recordRun(
+      admin.id,
+      `Ran database cleanup on demand (${removedSummary(stats, "nothing to remove")})`,
+    );
     return NextResponse.json({ success: true, stats });
   } catch (err) {
     console.error("[admin/cleanup] Cleanup failed:", err);
+    // A pass that ran to the end with some prunes failing has still deleted
+    // everything the others reached. It is answered as a failure, but it is
+    // recorded like any other run, with how many prunes failed.
+    if (err instanceof CleanupPassError) {
+      await recordRun(
+        admin.id,
+        `Ran database cleanup on demand, ${err.errors.length} prune(s) failed (${removedSummary(err.stats, "nothing removed")})`,
+      );
+    }
     return NextResponse.json(
       {
         success: false,

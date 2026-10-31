@@ -205,6 +205,7 @@ vi.mock("@/lib/browserbase/concurrency-queue", () => ({
 
 const {
   performDatabaseCleanup,
+  CleanupPassError,
   formatCleanupStats,
   schedulePeriodicCleanup,
   stopPeriodicCleanup,
@@ -647,12 +648,19 @@ describe("performDatabaseCleanup", () => {
     );
 
     expect(outcome).toBeInstanceOf(AggregateError);
-    const failure = outcome as AggregateError;
+    expect(outcome).toBeInstanceOf(CleanupPassError);
+    const failure = outcome as InstanceType<typeof CleanupPassError>;
     expect(failure.errors).toHaveLength(1);
     expect((failure.errors[0] as Error).message).toMatch(/simulated failure/);
     // The message names the prune, so the escalator's alert says which one.
     expect(failure.message).toContain("api_usage");
     expect(failure.message).toMatch(/simulated failure/);
+    // The error carries what the other prunes removed, so a caller that
+    // records the run can still say what it deleted. The failed prune counted
+    // nothing.
+    expect(failure.stats.expiredSessions).toBe(3);
+    expect(failure.stats.oldApiUsage).toBe(0);
+    expect(failure.stats.oldRateLimits).toBe(8);
 
     // The sessions prune ran before the failure and is not undone: there is
     // no ROLLBACK to undo it with.
@@ -777,6 +785,43 @@ describe("performDatabaseCleanup", () => {
     expect(calls.some((c) => c.sql === "ROLLBACK")).toBe(true);
     expect(calls.some((c) => c.sql === "COMMIT")).toBe(false);
     expect(releaseSpy).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+  });
+
+  it("reports nothing archived or purged for an audit pair that rolled back", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // The archive step read and wrote two rows before the DELETE failed, and
+    // the rollback took both back. The stats of a failed pass are reported to
+    // the caller, so they must not claim rows that are still there.
+    auditArchiveSelectRows = [
+      {
+        id: 1,
+        admin_id: 7,
+        target_user_id: null,
+        action: "reset_password",
+        details: null,
+        ip_address: "127.0.0.1",
+        created_at: "2025-01-01T00:00:00Z",
+      },
+      {
+        id: 2,
+        admin_id: 7,
+        target_user_id: 3,
+        action: "set_role",
+        details: "role changed",
+        ip_address: "127.0.0.1",
+        created_at: "2025-01-02T00:00:00Z",
+      },
+    ];
+    queryFailureFor = "DELETE FROM admin_audit_log WHERE";
+    const outcome = await performDatabaseCleanup().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(outcome).toBeInstanceOf(CleanupPassError);
+    const { stats } = outcome as InstanceType<typeof CleanupPassError>;
+    expect(stats.archivedAuditLogs).toBe(0);
+    expect(stats.oldAuditLogs).toBe(0);
     errSpy.mockRestore();
   });
 

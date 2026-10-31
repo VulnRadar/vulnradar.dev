@@ -203,16 +203,35 @@ function trueUpExpiredBrowserSessions(
 }
 
 /**
+ * What performDatabaseCleanup throws when the pass ran to the end and at least
+ * one prune failed.
+ *
+ * `stats` is what the prunes that did succeed removed. It rides on the error
+ * because a failed pass has still deleted rows: the caller that records a run
+ * (the on-demand admin route writes an audit row) has to be able to say what
+ * went, or a run that emptied most of the tables would leave no trace of it.
+ */
+export class CleanupPassError extends AggregateError {
+  readonly stats: CleanupStats;
+
+  constructor(errors: unknown[], message: string, stats: CleanupStats) {
+    super(errors, message);
+    this.name = "CleanupPassError";
+    this.stats = stats;
+  }
+}
+
+/**
  * Execute database cleanup operations
  * Removes expired and old records to maintain database health.
  *
  * Every prune is isolated from the others. One that fails is logged and the
- * pass carries on with the rest, then throws an AggregateError of everything
- * that failed once the last prune has run, so the caller's failure escalator
- * still fires. Before this, the pass stopped at the first failure: a backlog
- * too big for the statement timeout in an early prune meant rate_limits,
- * system_error_logs, email_logs and webhook_deliveries were never reached, and
- * grew without bound.
+ * pass carries on with the rest, then throws a CleanupPassError (an
+ * AggregateError of everything that failed) once the last prune has run, so
+ * the caller's failure escalator still fires. Before this, the pass stopped at
+ * the first failure: a backlog too big for the statement timeout in an early
+ * prune meant rate_limits, system_error_logs, email_logs and webhook_deliveries
+ * were never reached, and grew without bound.
  */
 export async function performDatabaseCleanup(): Promise<CleanupStats> {
   const stats: CleanupStats = {
@@ -497,7 +516,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     const auditClient = await pool.connect();
     try {
       await auditClient.query("BEGIN");
-      stats.archivedAuditLogs = await archiveAdminAuditLogBeforePurge(
+      const archived = await archiveAdminAuditLogBeforePurge(
         auditClient,
         cleanupRetention.CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS,
       );
@@ -505,8 +524,11 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
         "DELETE FROM admin_audit_log WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
         [cleanupRetention.CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS],
       );
-      stats.oldAuditLogs = auditLogsRes.rowCount || 0;
       await auditClient.query("COMMIT");
+      // Only after the COMMIT. The stats of a failed pass are reported (see
+      // CleanupPassError), and a rolled-back pair archived and deleted nothing.
+      stats.archivedAuditLogs = archived;
+      stats.oldAuditLogs = auditLogsRes.rowCount || 0;
     } catch (auditErr) {
       try {
         await auditClient.query("ROLLBACK");
@@ -711,9 +733,10 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
           `${name}: ${error instanceof Error ? error.message : String(error)}`,
       )
       .join("; ");
-    throw new AggregateError(
+    throw new CleanupPassError(
       failures.map(({ error }) => error),
       `${failures.length} database cleanup prune(s) failed (${detail})`,
+      stats,
     );
   }
 
