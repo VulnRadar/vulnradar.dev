@@ -65,7 +65,7 @@ export function generateId(
  * is longer than the scan allots the whole async layer. Every DNS sub-check
  * therefore races its lookup, and each file used to carry its own copy of that
  * race. The copies never cleared their timer, so every lookup that answered in
- * a few milliseconds still left a 3 to 6 second timer pending behind it.
+ * a few milliseconds still left a timer of up to six seconds pending behind it.
  *
  * - The timer is cleared the moment the race is decided, and unref'd so a
  *   deadline never keeps a worker alive on its own.

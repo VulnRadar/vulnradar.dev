@@ -281,11 +281,12 @@ export function looksStillSignedOut(html: string): boolean {
  * comes first. Never throws.
  *
  * This is safeReadBody with the one extra case the login paths need: a
- * response whose `body` is null (a mocked or already-consumed one) is read
- * through `text()` instead of being treated as empty. The loop that used to
- * live here had no read timeout, so a target that answered the login or the
- * verification fetch with headers and then trickled the body held the scan
- * slot until the socket closed. `timeoutMs` defaults to safeReadBody's.
+ * response whose `body` is null (a test double, or one with no content such
+ * as a 204) is read through `text()` instead of being treated as empty. The
+ * loop that used to live here had no read timeout, so a target that answered
+ * the login or the verification fetch with headers and then trickled the body
+ * held the scan slot until the socket closed. `timeoutMs` defaults to
+ * safeReadBody's.
  */
 export async function readCappedBody(
   response: Response,

@@ -344,8 +344,8 @@ describe("lookup deadlines", () => {
 
     await checkDNSSecurity("example.com", "https://example.com");
 
-    // Each copied race used to leave its 3 to 6 second timer running behind
-    // an answer that arrived in a millisecond: dozens per scan.
+    // Each copied race used to leave its timer (up to six seconds) running
+    // behind an answer that arrived in a millisecond: dozens per scan.
     expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -20,7 +20,9 @@
  *
  * Build any new variant from SCANNER_UA_PRODUCT rather than writing the name
  * and version out again: a second copy is how a request ends up without it.
- * tests/lib/scanner/user-agent.test.ts checks the call sites.
+ * tests/lib/scanner/user-agent.test.ts pins the shapes and fails when a file
+ * under lib/scanner sets a User-Agent without the token; the suite of each
+ * module that makes a request asserts the header it sends.
  */
 
 import { APP_NAME, APP_URL } from "@/lib/config/client-constants";

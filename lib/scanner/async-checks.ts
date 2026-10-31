@@ -155,8 +155,8 @@ function makeVuln(
 ): Vulnerability {
   return {
     // def.checkId is the slugified title, fixed per check, so the id is stable
-    // across scans. It is the same hash the sync checks use: a second copy of
-    // it is how async and sync ids for one check would silently drift apart.
+    // across scans. It is the hash every sync check uses too; a private copy
+    // here is how async and sync ids would silently stop sharing one format.
     id: generateId(def.checkId, url),
     title: def.title,
     severity: def.severity,
