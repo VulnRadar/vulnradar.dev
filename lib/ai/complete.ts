@@ -1,8 +1,5 @@
-import { callAnthropicMessages, AnthropicApiError } from "@/lib/ai/anthropic";
-import { isAnthropicProvider } from "@/lib/ai/provider";
+import { postChatCompletion, type AiEndpoint } from "@/lib/ai/transport";
 import { visibleText } from "@/lib/ai/think-parser";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
-import type { AiEndpoint } from "@/lib/ai/verify-findings";
 
 /**
  * One short answer from the configured model, as plain text.
@@ -35,66 +32,24 @@ export async function completeShortText(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 30_000);
   try {
-    if (isAnthropicProvider(endpoint.baseUrl)) {
-      const { text } = await callAnthropicMessages(
-        {
-          baseUrl: endpoint.baseUrl,
-          apiKey: endpoint.apiKey,
-          model: endpoint.model,
-          system: input.system,
-          messages: [{ role: "user", content: input.prompt }],
-          maxTokens: input.maxTokens,
-        },
-        controller.signal,
-      );
-      return visibleText(text) || null;
-    }
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (endpoint.apiKey) headers["Authorization"] = `Bearer ${endpoint.apiKey}`;
-    try {
-      if (
-        new URL(endpoint.baseUrl).hostname.toLowerCase() === "openrouter.ai"
-      ) {
-        headers["HTTP-Referer"] = APP_URL;
-        headers["X-Title"] = APP_NAME;
-      }
-    } catch {
-      /* a malformed base URL fails on the fetch below, not here */
-    }
-
-    const res = await fetch(`${endpoint.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: endpoint.model,
-        max_tokens: input.maxTokens,
-        messages: [
-          { role: "system", content: input.system },
-          { role: "user", content: input.prompt },
-        ],
-      }),
+    const res = await postChatCompletion(endpoint, {
+      system: input.system,
+      prompt: input.prompt,
+      maxTokens: input.maxTokens,
+      reasoning: false,
       signal: controller.signal,
     });
     if (!res.ok) {
-      const detail = await res.text().catch(() => "");
       console.error(
-        `[AI-SHORT-TEXT] HTTP ${res.status} from ${hostOf(endpoint.baseUrl)} (${endpoint.model}): ${detail.slice(0, 200)}`,
+        `[AI-SHORT-TEXT] HTTP ${res.status} from ${hostOf(endpoint.baseUrl)} (${endpoint.model}): ${res.detail.slice(0, 200)}`,
       );
       return null;
     }
-    const body = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    return visibleText(body.choices?.[0]?.message?.content ?? "") || null;
+    return visibleText(res.text) || null;
   } catch (err) {
     console.error(
       `[AI-SHORT-TEXT] request to ${hostOf(endpoint.baseUrl)} (${endpoint.model}) failed:`,
-      err instanceof AnthropicApiError
-        ? `HTTP ${err.status} ${err.detail.slice(0, 200)}`
-        : err,
+      err,
     );
     return null;
   } finally {

@@ -25,15 +25,9 @@ import {
 } from "./verify-findings";
 import { recordGithubReviewTokens } from "@/lib/billing/github-review-usage";
 import { getSettings } from "@/lib/config/runtime-config";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
-import { isAnthropicProvider } from "@/lib/ai/provider";
-import { callAnthropicMessages } from "@/lib/ai/anthropic";
-import {
-  resolveAnthropicThinkingBudget,
-  resolveOpenAiCompatReasoningExtras,
-  resolveAiCallTimeoutMs,
-  noteReasoningRefusal,
-} from "@/lib/ai/reasoning";
+import { APP_NAME } from "@/lib/config/constants";
+import { postChatCompletion } from "@/lib/ai/transport";
+import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
 
 const REVIEW_SYSTEM_PROMPT_BASE = `You are a security code reviewer for ${APP_NAME}, a vulnerability scanner. You are given source files from a user's GitHub repository, each line prefixed with its line number. Review the code that is actually in front of you.
 
@@ -266,124 +260,34 @@ async function callReviewModel(
   const userPrompt = files.map(buildFileBlock).join("\n\n");
   const systemPrompt = buildReviewSystemPrompt(isPrivate);
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (endpoint.apiKey) headers["Authorization"] = `Bearer ${endpoint.apiKey}`;
   try {
-    const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
-    if (host === "openrouter.ai") {
-      // Identify THIS deployment to OpenRouter, not the SaaS: APP_URL already
-      // resolves NEXT_PUBLIC_APP_URL first, so a self-hoster's AI spend is no
-      // longer attributed to vulnradar.dev by a hardcoded fallback.
-      headers["HTTP-Referer"] = APP_URL;
-      headers["X-Title"] = APP_NAME;
-    }
-  } catch {
-    /* ignore */
-  }
-
-  try {
-    // Anthropic-shaped endpoints, which is Claude itself and any provider
-    // reached on its /anthropic path (MiniMax among them), have no
-    // /chat/completions at all. This was the ONE AI caller in the app that
-    // never learned that, so pointing AI_BASE_URL at an Anthropic endpoint
-    // left repo scans posting into a 404 and reporting "no AI findings" for
-    // every repository, with only a line in the server log to say otherwise.
-    if (isAnthropicProvider(endpoint.baseUrl)) {
-      const { text, usage } = await callAnthropicMessages(
-        {
-          baseUrl: endpoint.baseUrl,
-          apiKey: endpoint.apiKey,
-          model: endpoint.model,
-          system: systemPrompt,
-          messages: [{ role: "user", content: userPrompt }],
-          maxTokens,
-          thinkingBudgetTokens: resolveAnthropicThinkingBudget(maxTokens),
-        },
-        controller.signal,
-      );
-      return {
-        findings: parseFindings(text, files),
-        totalTokens: usage.inputTokens + usage.outputTokens,
-      };
-    }
-
-    // Reasoning on the OpenAI-compatible path, at the "verify" level: a code
-    // review is a judgement about whether a specific line is exploitable,
-    // which is the same kind of question finding verification asks and the
-    // same kind a snap answer gets wrong.
-    const extras = resolveOpenAiCompatReasoningExtras(
-      endpoint.baseUrl,
-      endpoint.model,
-      "verify",
-    );
-    const askedToReason = Object.keys(extras).length > 0;
-    const baseBody: Record<string, unknown> = {
-      model: endpoint.model,
-      max_tokens: maxTokens,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    };
-    const post = (body: Record<string, unknown>) =>
-      fetch(`${endpoint.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-    let res = await post({ ...baseBody, ...extras });
-    // A strict endpoint answers an unknown body field with a 400. Losing a
-    // whole batch of files over an optional quality knob is the wrong trade,
-    // so drop the field and ask once more. Same recovery as
-    // lib/ai/verify-findings.ts.
-    if (!res.ok && res.status === 400 && askedToReason) {
-      let refusal = "";
-      try {
-        refusal = await res.clone().text();
-      } catch {
-        /* ignore */
-      }
-      if (/reasoning/i.test(refusal)) {
-        noteReasoningRefusal("AI-REVIEW", endpoint.model);
-        res = await post(baseBody);
-      }
-    }
+    // Reasoning at the "verify" level: a code review is a judgement about
+    // whether a specific line is exploitable, which is the same kind of
+    // question finding verification asks and the same kind a snap answer gets
+    // wrong. Which API the endpoint speaks is the transport's to decide. This
+    // was the one caller that had never learned an Anthropic-shaped endpoint
+    // has no /chat/completions, so repo scans posted into a 404 and reported
+    // "no AI findings" for every repository.
+    const res = await postChatCompletion(endpoint, {
+      system: systemPrompt,
+      prompt: userPrompt,
+      maxTokens,
+      reasoning: "verify",
+      scope: "AI-REVIEW",
+      signal: controller.signal,
+    });
 
     if (!res.ok) {
-      let body = "";
-      try {
-        body = await res.text();
-      } catch {
-        /* ignore */
-      }
       console.error(
-        `[AI-REVIEW] HTTP ${res.status} from ${endpoint.baseUrl}: ${body.slice(0, 300)}`,
+        `[AI-REVIEW] HTTP ${res.status} from ${endpoint.baseUrl}: ${res.detail.slice(0, 300)}`,
       );
       return { findings: [], totalTokens: 0 };
     }
 
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        total_tokens?: number;
-      };
+    return {
+      findings: parseFindings(res.text, files),
+      totalTokens: res.tokensUsed,
     };
-    const text = data?.choices?.[0]?.message?.content;
-    const usage = data?.usage;
-    const totalTokens =
-      typeof usage?.total_tokens === "number"
-        ? usage.total_tokens
-        : (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
-
-    if (typeof text !== "string") return { findings: [], totalTokens };
-
-    return { findings: parseFindings(text, files), totalTokens };
   } catch (err) {
     console.error(
       "[AI-REVIEW] callReviewModel failed:",

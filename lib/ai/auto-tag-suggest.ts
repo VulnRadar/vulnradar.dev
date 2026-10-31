@@ -55,15 +55,9 @@ import {
   resolveUserEndpoint,
   type AiEndpoint,
 } from "./verify-findings";
-import { isAnthropicProvider } from "@/lib/ai/provider";
-import { callAnthropicMessages } from "@/lib/ai/anthropic";
-import {
-  resolveAnthropicThinkingBudget,
-  resolveOpenAiCompatReasoningExtras,
-  resolveAiCallTimeoutMs,
-  noteReasoningRefusal,
-} from "@/lib/ai/reasoning";
-import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { postChatCompletion } from "@/lib/ai/transport";
+import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
+import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { CONFIG_MAX_TAG_LENGTH } from "@/lib/config/config-values";
 import { checkAiUsageQuota, recordAiTokens } from "@/lib/billing/ai-usage";
@@ -264,120 +258,37 @@ async function callSuggestionModel(
   maxTagLength: number,
   signal: AbortSignal,
 ): Promise<CallResult> {
-  if (isAnthropicProvider(endpoint.baseUrl)) {
-    const { text, usage } = await callAnthropicMessages(
-      {
-        baseUrl: endpoint.baseUrl,
-        apiKey: endpoint.apiKey,
-        model: endpoint.model,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: prompt }],
-        maxTokens: maxOutputTokens,
-        thinkingBudgetTokens: resolveAnthropicThinkingBudget(maxOutputTokens),
-      },
-      signal,
-    );
-    return {
-      suggestions: sanitizeAiTagSuggestions(text, maxSuggestions, maxTagLength),
-      tokensUsed: usage.inputTokens + usage.outputTokens,
-    };
-  }
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (endpoint.apiKey) headers["Authorization"] = `Bearer ${endpoint.apiKey}`;
-  try {
-    const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
-    if (host === "openrouter.ai") {
-      // Identify THIS deployment to OpenRouter, not the SaaS: APP_URL already
-      // resolves NEXT_PUBLIC_APP_URL first, so a self-hoster's AI spend is no
-      // longer attributed to vulnradar.dev by a hardcoded fallback.
-      headers["HTTP-Referer"] = APP_URL;
-      headers["X-Title"] = APP_NAME;
-    }
-  } catch {
-    /* ignore */
-  }
-
-  // The timeout below already stretches for a model that reasons, and
-  // resolveAiCallTimeoutMs decides that by asking this exact function.
-  // Omitting the field here meant the allowance was granted for thinking
-  // the request never asked for: the Anthropic branch above got a
-  // thinking budget, the OpenAI-compatible one got the long timeout and
-  // answered as fast as it ever had.
-  const extras = resolveOpenAiCompatReasoningExtras(
-    endpoint.baseUrl,
-    endpoint.model,
-    "summary",
-  );
-  const askedToReason = Object.keys(extras).length > 0;
-  const baseBody: Record<string, unknown> = {
-    model: endpoint.model,
-    max_tokens: maxOutputTokens,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: prompt },
-    ],
-  };
-  const post = (body: Record<string, unknown>) =>
-    fetch(`${endpoint.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal,
-    });
-
-  let res = await post({ ...baseBody, ...extras });
-  // Asking for reasoning is what made this call fail on a strict endpoint,
-  // and a tag that never appears says nothing about why. Same fallback as
-  // scan-summary.ts: an endpoint that refuses the field should cost us the
-  // reasoning, not the suggestion.
-  if (!res.ok && res.status === 400 && askedToReason) {
-    let refusal = "";
-    try {
-      refusal = await res.clone().text();
-    } catch {
-      /* ignore */
-    }
-    if (/reasoning/i.test(refusal)) {
-      noteReasoningRefusal("AI-AUTO-TAG-SUGGEST", endpoint.model);
-      res = await post(baseBody);
-    }
-  }
+  // The caller's timeout already stretches for a model that reasons, and
+  // resolveAiCallTimeoutMs decides that with the same rules the transport
+  // uses to decide what to send. When this request left the field out, the
+  // allowance was granted for thinking it never asked for: the Anthropic
+  // branch got a thinking budget, the OpenAI-compatible one got the long
+  // timeout and answered as fast as it ever had. Asking for it also means an
+  // endpoint can refuse it, which the transport answers with one retry
+  // instead of a lost suggestion.
+  const res = await postChatCompletion(endpoint, {
+    system: SYSTEM_PROMPT,
+    prompt,
+    maxTokens: maxOutputTokens,
+    reasoning: "summary",
+    scope: "AI-AUTO-TAG-SUGGEST",
+    signal,
+  });
 
   if (!res.ok) {
-    let body = "";
-    try {
-      body = await res.text();
-    } catch {
-      /* ignore */
-    }
     console.error(
-      `[AI-AUTO-TAG-SUGGEST] HTTP ${res.status} from ${endpoint.baseUrl}: ${body.slice(0, 300)}`,
+      `[AI-AUTO-TAG-SUGGEST] HTTP ${res.status} from ${endpoint.baseUrl}: ${res.detail.slice(0, 300)}`,
     );
     return { suggestions: [], tokensUsed: 0 };
   }
 
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
-  };
-  const text = data?.choices?.[0]?.message?.content;
-  const usage = data?.usage;
-  const tokensUsed =
-    typeof usage?.total_tokens === "number"
-      ? usage.total_tokens
-      : (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
-  if (typeof text !== "string") return { suggestions: [], tokensUsed };
-
   return {
-    suggestions: sanitizeAiTagSuggestions(text, maxSuggestions, maxTagLength),
-    tokensUsed,
+    suggestions: sanitizeAiTagSuggestions(
+      res.text,
+      maxSuggestions,
+      maxTagLength,
+    ),
+    tokensUsed: res.tokensUsed,
   };
 }
 

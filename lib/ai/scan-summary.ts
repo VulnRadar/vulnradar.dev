@@ -36,16 +36,10 @@ import {
   resolveUserEndpoint,
   type AiEndpoint,
 } from "./verify-findings";
-import { isAnthropicProvider } from "@/lib/ai/provider";
-import { callAnthropicMessages } from "@/lib/ai/anthropic";
-import {
-  resolveAnthropicThinkingBudget,
-  resolveOpenAiCompatReasoningExtras,
-  resolveAiCallTimeoutMs,
-  noteReasoningRefusal,
-} from "@/lib/ai/reasoning";
+import { postChatCompletion } from "@/lib/ai/transport";
+import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
-import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { recordAiTokens } from "@/lib/billing/ai-usage";
 
@@ -115,112 +109,28 @@ async function callSummaryModel(
   maxOutputChars: number,
   signal: AbortSignal,
 ): Promise<CallSummaryResult> {
-  if (isAnthropicProvider(endpoint.baseUrl)) {
-    const { text, usage } = await callAnthropicMessages(
-      {
-        baseUrl: endpoint.baseUrl,
-        apiKey: endpoint.apiKey,
-        model: endpoint.model,
-        system: SUMMARY_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: prompt }],
-        maxTokens,
-        thinkingBudgetTokens: resolveAnthropicThinkingBudget(maxTokens),
-      },
-      signal,
-    );
-    return {
-      text: cleanSummaryText(text, maxOutputChars),
-      tokensUsed: usage.inputTokens + usage.outputTokens,
-    };
-  }
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (endpoint.apiKey) headers["Authorization"] = `Bearer ${endpoint.apiKey}`;
-  try {
-    const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
-    if (host === "openrouter.ai") {
-      // Identify THIS deployment to OpenRouter, not the SaaS: APP_URL already
-      // resolves NEXT_PUBLIC_APP_URL first, so a self-hoster's AI spend is no
-      // longer attributed to vulnradar.dev by a hardcoded fallback.
-      headers["HTTP-Referer"] = APP_URL;
-      headers["X-Title"] = APP_NAME;
-    }
-  } catch {
-    /* ignore */
-  }
-
-  // Low effort rather than high: a summary restates findings that have
+  // The "summary" purpose, not "verify": a summary restates findings that have
   // already been decided, and its latency is visible on every completed scan.
-  const extras = resolveOpenAiCompatReasoningExtras(
-    endpoint.baseUrl,
-    endpoint.model,
-    "summary",
-  );
-  const askedToReason = Object.keys(extras).length > 0;
-  const baseBody: Record<string, unknown> = {
-    model: endpoint.model,
-    max_tokens: maxTokens,
-    messages: [
-      { role: "system", content: SUMMARY_SYSTEM_PROMPT },
-      { role: "user", content: prompt },
-    ],
-  };
-  const post = (body: Record<string, unknown>) =>
-    fetch(`${endpoint.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal,
-    });
-
-  let res = await post({ ...baseBody, ...extras });
-  // Same fallback as the verifier: an endpoint that refuses the field should
-  // cost us the reasoning, not the summary.
-  if (!res.ok && res.status === 400 && askedToReason) {
-    let refusal = "";
-    try {
-      refusal = await res.clone().text();
-    } catch {
-      /* ignore */
-    }
-    if (/reasoning/i.test(refusal)) {
-      noteReasoningRefusal("AI-SCAN-SUMMARY", endpoint.model);
-      res = await post(baseBody);
-    }
-  }
+  const res = await postChatCompletion(endpoint, {
+    system: SUMMARY_SYSTEM_PROMPT,
+    prompt,
+    maxTokens,
+    reasoning: "summary",
+    scope: "AI-SCAN-SUMMARY",
+    signal,
+  });
 
   if (!res.ok) {
-    let body = "";
-    try {
-      body = await res.text();
-    } catch {
-      /* ignore */
-    }
     console.error(
-      `[AI-SCAN-SUMMARY] HTTP ${res.status} from ${endpoint.baseUrl}: ${body.slice(0, 300)}`,
+      `[AI-SCAN-SUMMARY] HTTP ${res.status} from ${endpoint.baseUrl}: ${res.detail.slice(0, 300)}`,
     );
     return { text: null, tokensUsed: 0 };
   }
 
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
+  return {
+    text: cleanSummaryText(res.text, maxOutputChars),
+    tokensUsed: res.tokensUsed,
   };
-  const text = data?.choices?.[0]?.message?.content;
-  const usage = data?.usage;
-  const tokensUsed =
-    typeof usage?.total_tokens === "number"
-      ? usage.total_tokens
-      : (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
-  if (typeof text !== "string") return { text: null, tokensUsed };
-
-  return { text: cleanSummaryText(text, maxOutputChars), tokensUsed };
 }
 
 /**
