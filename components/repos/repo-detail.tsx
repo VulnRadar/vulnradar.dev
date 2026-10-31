@@ -184,6 +184,17 @@ export function RepoDetail({
     setSelectedIssue(null);
   };
 
+  // The finding IssueDetail is actually showing, if one is. selectedIssue on
+  // its own is not that: the header's back arrow clears selectedScanId and
+  // leaves the issue set, so on the timeline it would still read as open and
+  // the page would be left with no h1 at all. The heading and the body both
+  // read this, so the h1 is demoted for exactly as long as IssueDetail's own
+  // is on screen.
+  const openIssue =
+    selectedScanId !== null && !detailLoading && scanDetail
+      ? selectedIssue
+      : null;
+
   return (
     <div className="flex flex-col gap-4">
       {/* flex-wrap: the back button, the visibility glyph, the repo name and
@@ -222,7 +233,7 @@ export function RepoDetail({
             because it carries the back button and the rescan action, so the
             name is demoted to a paragraph of the same look rather than left
             as a second h1. */}
-        {selectedIssue ? (
+        {openIssue ? (
           <p
             title={repo.fullName}
             className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground truncate flex-1 min-w-0"
@@ -269,9 +280,9 @@ export function RepoDetail({
           )}
           {!detailLoading &&
             scanDetail &&
-            (selectedIssue ? (
+            (openIssue ? (
               <IssueDetail
-                issue={selectedIssue}
+                issue={openIssue}
                 onBack={() => setSelectedIssue(null)}
               />
             ) : (

@@ -32,13 +32,24 @@ describe("repo detail headings", () => {
   it("renders the repo name as an h1 only when no finding is open", () => {
     expect(src.match(/<h1\b/g)).toHaveLength(1);
     const branch = src.match(
-      /\{selectedIssue \? \(\s*<p\b[\s\S]*?<\/p>\s*\) : \(\s*<h1\b[\s\S]*?<\/h1>\s*\)\}/,
+      /\{openIssue \? \(\s*<p\b[\s\S]*?<\/p>\s*\) : \(\s*<h1\b[\s\S]*?<\/h1>\s*\)\}/,
     );
-    expect(
-      branch,
-      "the h1 must sit in the selectedIssue ternary",
-    ).not.toBeNull();
+    expect(branch, "the h1 must sit in the openIssue ternary").not.toBeNull();
     expect(branch![0]).toContain("{repo.fullName}");
+  });
+
+  it("counts a finding as open only while IssueDetail is on screen", () => {
+    // selectedIssue alone outlives the view: the header's back arrow clears
+    // selectedScanId and leaves the issue set, and a heading keyed on it
+    // would be a paragraph over a timeline with no h1 anywhere.
+    expect(src).toMatch(
+      /const openIssue =\s*selectedScanId !== null && !detailLoading && scanDetail\s*\?\s*selectedIssue\s*:\s*null;/,
+    );
+    expect(src).not.toMatch(/\{selectedIssue \? \(\s*<p\b/);
+  });
+
+  it("renders IssueDetail from the same value, so the two cannot disagree", () => {
+    expect(src).toMatch(/openIssue \? \(\s*<IssueDetail\s+issue=\{openIssue\}/);
   });
 
   it("keeps the demoted name looking like the title", () => {
