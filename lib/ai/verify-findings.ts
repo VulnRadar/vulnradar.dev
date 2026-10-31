@@ -93,6 +93,39 @@ export function resolveServerEndpoint(): AiEndpoint | null {
   return { baseUrl, apiKey: process.env.AI_API_KEY ?? "", model };
 }
 
+/**
+ * Users whose saved AI key has already been reported as unreadable by this
+ * process. A key that does not decrypt is a standing fact about a stored row,
+ * not an event: resolveUserEndpoint runs for every verification, summary, tag
+ * suggestion and quota check, so reporting it each time would be an error row
+ * per request for as long as the row stays that way. A user is dropped from
+ * the set the moment their key reads again, so a second breakage is reported.
+ */
+const unreadableKeyReported = new Set<number>();
+
+function reportUnreadableUserKey(userId: number, err: unknown): void {
+  if (unreadableKeyReported.has(userId)) return;
+  unreadableKeyReported.add(userId);
+  // The cause is the decrypt error's message, which never carries the value
+  // being decrypted. The ciphertext itself is deliberately not logged.
+  console.error(
+    `[AI-ENDPOINT] The saved AI key for user ${userId} does not decrypt, so their AI calls use the instance's AI instead of their own. If API_KEY_ENCRYPTION_KEY was rotated, set PREVIOUS_API_KEY_ENCRYPTION_KEY to the old value; otherwise the user has to save the key again (${err instanceof Error ? err.message : "decrypt failed"}). Reported once per process per user.`,
+  );
+}
+
+/**
+ * The AI endpoint a user configured for themselves, or null for everything
+ * that means "use the instance's": no row, the VulnRadar AI option, an
+ * incomplete row, and the two failures below.
+ *
+ * Both failures used to be silent, and both end the same way for the caller:
+ * the instance's AI answers in place of the one the user chose. A saved key
+ * that no longer decrypts (a rotated API_KEY_ENCRYPTION_KEY with no
+ * PREVIOUS_API_KEY_ENCRYPTION_KEY set) and a lookup that threw both look,
+ * from the outside, exactly like a user who never configured anything.
+ * Neither changes what is returned; they are logged so an operator can tell
+ * them apart.
+ */
 export async function resolveUserEndpoint(
   userId: number,
 ): Promise<AiEndpoint | null> {
@@ -115,15 +148,21 @@ export async function resolveUserEndpoint(
     let apiKey: string;
     try {
       apiKey = decryptApiKey(row.api_key_encrypted as string);
-    } catch {
+    } catch (err) {
+      reportUnreadableUserKey(userId, err);
       return null;
     }
+    unreadableKeyReported.delete(userId);
     return {
       baseUrl: (row.base_url as string).replace(/\/$/, ""),
       model: row.model_id as string,
       apiKey,
     };
-  } catch {
+  } catch (err) {
+    console.error(
+      `[AI-ENDPOINT] Could not read the AI settings of user ${userId}, so their AI calls use the instance's AI:`,
+      err instanceof Error ? err.message : err,
+    );
     return null;
   }
 }
