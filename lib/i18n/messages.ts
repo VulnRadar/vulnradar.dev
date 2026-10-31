@@ -24,7 +24,10 @@ const en: Messages = CATALOG.en;
 // Every language is kept at English's key set by tests/lib/i18n/key-parity.test.ts,
 // but the merge below stays: a deploy that carries a stale file must degrade
 // to English, not to dotted keys, so the type does not promise completeness.
-const BY_LOCALE = CATALOG as Record<Locale, Messages>;
+// It does promise a folder for every language in LOCALES, as the hand-written
+// table this replaced did: naming a language without one fails to compile here
+// instead of throwing the first time a reader picks it.
+const BY_LOCALE: Record<Locale, unknown> = CATALOG;
 
 /** Deep merge of a translation over English, so every key always resolves. */
 function withEnglishBehind(
@@ -55,7 +58,7 @@ export async function getMessages(locale: Locale): Promise<Messages> {
   const cached = cache.get(locale);
   if (cached) return cached;
   const merged = withEnglishBehind(
-    BY_LOCALE[locale] as unknown as Record<string, unknown>,
+    BY_LOCALE[locale] as Record<string, unknown>,
     en as unknown as Record<string, unknown>,
   ) as Messages;
   cache.set(locale, merged);
