@@ -37,6 +37,31 @@ let expiredBrowserSessionRows: {
   created_at: string;
   expires_at: string | null;
 }[] = [];
+// Fails any statement the predicate accepts, for the cases where a prune that
+// is not the first in the pass must be the one that breaks.
+let failWhen: ((sql: string) => boolean) | null = null;
+// What each plan's scan_history DELETE reports, one number per call, in call
+// order. A plan with nothing queued answers its old fixed value: 10 for free,
+// 4 for core, 0 for the rest. All below the batch size, so one call per plan.
+let scanDeleteCounts: Record<string, number[]> = {};
+const SCAN_DELETE_DEFAULT: Record<string, number> = {
+  free: 10,
+  core_supporter: 4,
+};
+// Which plan each scan_history DELETE belonged to, in call order.
+let scanDeletePlans: string[] = [];
+// Side effects in the order they happened, for the cases that are about
+// "before" and "after" rather than "whether".
+let events: string[] = [];
+// Runs after every scan_history DELETE, for the wall-clock budget cases.
+let afterScanDelete: (() => void) | null = null;
+
+/** The plan a scan_history batch DELETE is scoped to, or null if it is not one. */
+function scanDeletePlan(s: string): string | null {
+  if (!s.startsWith("DELETE FROM scan_history")) return null;
+  const match = /plan = '(\w+)'/.exec(s);
+  return match ? match[1] : null;
+}
 
 async function scriptedQuery(sql: string, params?: unknown[]) {
   const s = String(sql).trim();
@@ -51,6 +76,9 @@ async function scriptedQuery(sql: string, params?: unknown[]) {
   if (queryFailureFor && s.startsWith(queryFailureFor)) {
     throw new Error(`simulated failure for: ${queryFailureFor}`);
   }
+  if (failWhen?.(s)) {
+    throw new Error(`simulated failure for: ${s.slice(0, 60)}`);
+  }
   if (s === "ROLLBACK" && rollbackShouldFail) {
     throw new Error("connection already closed");
   }
@@ -64,10 +92,14 @@ async function scriptedQuery(sql: string, params?: unknown[]) {
     return { rowCount: 2, rows: [] };
   if (s.startsWith("DELETE FROM data_requests"))
     return { rowCount: 1, rows: [] };
-  if (s.includes("FROM scan_history") && s.includes("plan = 'free'"))
-    return { rowCount: 10, rows: [] };
-  if (s.includes("FROM scan_history") && s.includes("core_supporter"))
-    return { rowCount: 4, rows: [] };
+  const scanPlan = scanDeletePlan(s);
+  if (scanPlan) {
+    scanDeletePlans.push(scanPlan);
+    const rowCount =
+      scanDeleteCounts[scanPlan]?.shift() ?? SCAN_DELETE_DEFAULT[scanPlan] ?? 0;
+    afterScanDelete?.();
+    return { rowCount, rows: [] };
+  }
   if (s.startsWith("DELETE FROM rate_limits")) return { rowCount: 8, rows: [] };
   if (s.startsWith("DELETE FROM password_reset_tokens"))
     return { rowCount: 1, rows: [] };
@@ -106,10 +138,14 @@ async function scriptedQuery(sql: string, params?: unknown[]) {
     return { rowCount: 9, rows: [] };
   if (s.startsWith("DELETE FROM github_review_usage"))
     return { rowCount: 2, rows: [] };
-  if (s.startsWith("DELETE FROM browser_sessions"))
+  if (s.startsWith("DELETE FROM browser_sessions")) {
+    events.push("delete browser_sessions");
     return { rowCount: 4, rows: expiredBrowserSessionRows };
-  if (s.startsWith("DELETE FROM cve_kev_cache"))
+  }
+  if (s.startsWith("DELETE FROM cve_kev_cache")) {
+    events.push("delete cve_kev_cache");
     return { rowCount: 1, rows: [] };
+  }
   if (s.startsWith("DELETE FROM system_error_logs"))
     return { rowCount: 5, rows: [] };
   if (s.startsWith("DELETE FROM webhook_deliveries"))
@@ -185,13 +221,22 @@ beforeEach(() => {
   retentionSettingsRows = [];
   auditArchiveSelectRows = [];
   expiredBrowserSessionRows = [];
+  failWhen = null;
+  scanDeleteCounts = {};
+  scanDeletePlans = [];
+  events = [];
+  afterScanDelete = null;
   clientQuery.mockClear();
   mockConnect.mockClear();
   mockPoolQuery.mockClear();
   mockRecordBrowserbaseSeconds.mockReset();
-  mockRecordBrowserbaseSeconds.mockResolvedValue(undefined);
+  mockRecordBrowserbaseSeconds.mockImplementation(async () => {
+    events.push("record browserbase usage");
+  });
   mockReleaseConcurrencySlot.mockReset();
-  mockReleaseConcurrencySlot.mockResolvedValue(undefined);
+  mockReleaseConcurrencySlot.mockImplementation(async () => {
+    events.push("release concurrency slot");
+  });
   invalidateSettingsCache();
   stopPeriodicCleanup();
 });
@@ -497,8 +542,9 @@ describe("performDatabaseCleanup", () => {
       (c) =>
         c.sql.includes("FROM scan_history") && c.sql.includes("core_supporter"),
     );
-    expect(freeScan?.params).toEqual([30]);
-    expect(coreScan?.params).toEqual([90]);
+    // The window, then the batch size.
+    expect(freeScan?.params).toEqual([30, 2000]);
+    expect(coreScan?.params).toEqual([90, 2000]);
     // Only two scan_history deletes total -- pro/elite (still -1, left at
     // their shipped default) never get a delete issued against them at all.
     const scanDeletes = calls.filter((c) =>
@@ -524,8 +570,8 @@ describe("performDatabaseCleanup", () => {
         c.sql.includes("FROM scan_history") &&
         c.sql.includes("plan = 'elite_supporter'"),
     );
-    expect(proScan?.params).toEqual([365]);
-    expect(eliteScan?.params).toEqual([730]);
+    expect(proScan?.params).toEqual([365, 2000]);
+    expect(eliteScan?.params).toEqual([730, 2000]);
 
     const scanDeletes = calls.filter((c) =>
       c.sql.includes("FROM scan_history"),
@@ -589,21 +635,137 @@ describe("performDatabaseCleanup", () => {
     errSpy.mockRestore();
   });
 
-  // ref: AUDIT-012#perf-22. The throw is preserved (the caller's failure
-  // escalation depends on it), but the prunes that already succeeded are now
-  // durably committed instead of being rolled back with it.
-  it("rethrows when a prune fails, keeping the unrelated prunes that already committed", async () => {
+  // ref: AUDIT-012#perf-22. The prunes that already succeeded are durably
+  // committed instead of being rolled back with a later failure, and (this
+  // change) the ones after the failure still run.
+  it("keeps pruning after one prune fails, then throws so the failure escalator still fires", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     queryFailureFor = "DELETE FROM api_usage";
-    await expect(performDatabaseCleanup()).rejects.toThrow(/simulated failure/);
+    const outcome = await performDatabaseCleanup().then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(outcome).toBeInstanceOf(AggregateError);
+    const failure = outcome as AggregateError;
+    expect(failure.errors).toHaveLength(1);
+    expect((failure.errors[0] as Error).message).toMatch(/simulated failure/);
+    // The message names the prune, so the escalator's alert says which one.
+    expect(failure.message).toContain("api_usage");
+    expect(failure.message).toMatch(/simulated failure/);
+
     // The sessions prune ran before the failure and is not undone: there is
     // no ROLLBACK to undo it with.
     expect(calls.some((c) => c.sql.startsWith("DELETE FROM sessions"))).toBe(
       true,
     );
     expect(calls.some((c) => c.sql === "ROLLBACK")).toBe(false);
-    // The failure landed before the audit pair, so no transaction was opened.
-    expect(calls.some((c) => c.sql === "BEGIN")).toBe(false);
+    // And the prunes after it were reached: the audit pair in the middle of the
+    // pass, and the last prune of all.
+    expect(calls.some((c) => c.sql === "COMMIT")).toBe(true);
+    expect(calls[calls.length - 1].sql).toContain(
+      "DELETE FROM webhook_deliveries",
+    );
+    // Each failure is logged as it happens, with the error itself.
+    expect(
+      errSpy.mock.calls.some(
+        ([message, error]) =>
+          String(message).includes('Prune "api_usage" failed') &&
+          error instanceof Error,
+      ),
+    ).toBe(true);
+    errSpy.mockRestore();
+  });
+
+  it("collects every failure into the one AggregateError", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    failWhen = (s) =>
+      s.startsWith("DELETE FROM rate_limits") ||
+      s.startsWith("DELETE FROM email_logs");
+    const outcome = await performDatabaseCleanup().then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(outcome).toBeInstanceOf(AggregateError);
+    const failure = outcome as AggregateError;
+    expect(failure.errors).toHaveLength(2);
+    expect(failure.message).toMatch(/^2 database cleanup prune\(s\) failed/);
+    expect(failure.message).toContain("rate_limits");
+    expect(failure.message).toContain("email_logs");
+    // The prune between them still ran.
+    expect(
+      calls.some((c) => c.sql.startsWith("DELETE FROM system_error_logs")),
+    ).toBe(true);
+    errSpy.mockRestore();
+  });
+
+  it("does not throw, and returns the stats, when every prune succeeds", async () => {
+    const stats = await performDatabaseCleanup();
+    expect(stats.expiredSessions).toBe(3);
+  });
+
+  it("records browser usage and frees the slots right after the browser_sessions DELETE, before the prunes that follow it", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expiredBrowserSessionRows = [
+      {
+        user_id: 42,
+        created_at: "2026-08-16T20:00:00.000Z",
+        expires_at: "2026-08-16T20:06:00.000Z",
+      },
+    ];
+    await performDatabaseCleanup();
+    // Not at the very end of the pass, as it used to run: the next prune is
+    // cve_kev_cache, and a failure there or later must not be able to strand
+    // the usage record or the slot.
+    expect(events).toEqual([
+      "delete browser_sessions",
+      "record browserbase usage",
+      "release concurrency slot",
+      "delete cve_kev_cache",
+    ]);
+    errSpy.mockRestore();
+  });
+
+  it("still records usage and frees the slots when a prune after browser_sessions fails", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expiredBrowserSessionRows = [
+      {
+        user_id: 42,
+        created_at: "2026-08-16T20:00:00.000Z",
+        expires_at: "2026-08-16T20:06:00.000Z",
+      },
+      {
+        user_id: 43,
+        created_at: "2026-08-16T20:00:00.000Z",
+        expires_at: "2026-08-16T20:02:00.000Z",
+      },
+    ];
+    failWhen = (s) => s.startsWith("DELETE FROM cve_kev_cache");
+    await expect(performDatabaseCleanup()).rejects.toBeInstanceOf(
+      AggregateError,
+    );
+    expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledWith(42, 360);
+    expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledWith(43, 120);
+    expect(mockReleaseConcurrencySlot).toHaveBeenCalledTimes(2);
+    errSpy.mockRestore();
+  });
+
+  it("does not record usage for sessions whose DELETE failed, since none were reclaimed", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expiredBrowserSessionRows = [
+      {
+        user_id: 42,
+        created_at: "2026-08-16T20:00:00.000Z",
+        expires_at: "2026-08-16T20:06:00.000Z",
+      },
+    ];
+    failWhen = (s) => s.startsWith("DELETE FROM browser_sessions");
+    await expect(performDatabaseCleanup()).rejects.toBeInstanceOf(
+      AggregateError,
+    );
+    expect(mockRecordBrowserbaseSeconds).not.toHaveBeenCalled();
+    expect(mockReleaseConcurrencySlot).not.toHaveBeenCalled();
     errSpy.mockRestore();
   });
 
@@ -626,6 +788,114 @@ describe("performDatabaseCleanup", () => {
       /simulated failure for: DELETE FROM admin_audit_log WHERE/,
     );
     expect(releaseSpy).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+  });
+});
+
+describe("plan-scoped scan_history retention", () => {
+  const BATCH = 2000;
+
+  function scanDeleteCalls() {
+    return calls.filter((c) => c.sql.startsWith("DELETE FROM scan_history"));
+  }
+
+  it("deletes a batch at a time by id, until a batch comes back short", async () => {
+    retentionSettingsRows = [{ key: "BILLING_FREE_RETENTION", value: "30" }];
+    scanDeleteCounts = { free: [BATCH, BATCH, 350] };
+
+    const stats = await performDatabaseCleanup();
+
+    expect(scanDeletePlans).toEqual(["free", "free", "free"]);
+    expect(stats.oldScans).toBe(BATCH + BATCH + 350);
+    const first = scanDeleteCalls()[0];
+    // Selected by id and capped, so no single statement can outrun the
+    // statement timeout, and each batch autocommits on the pool.
+    expect(first.sql).toContain("WHERE id IN (");
+    expect(first.sql).toContain("SELECT id FROM scan_history");
+    expect(first.sql).toMatch(/LIMIT \$2/);
+    expect(first.sql).not.toContain("ctid");
+    for (const call of scanDeleteCalls()) {
+      expect(call.params).toEqual([30, BATCH]);
+    }
+    expect(calls.filter((c) => c.sql === "BEGIN")).toHaveLength(1); // audit pair only
+  });
+
+  it("asks once more after an exactly full batch, and stops when that comes back empty", async () => {
+    retentionSettingsRows = [{ key: "BILLING_FREE_RETENTION", value: "30" }];
+    scanDeleteCounts = { free: [BATCH, 0] };
+    const stats = await performDatabaseCleanup();
+    expect(scanDeletePlans).toEqual(["free", "free"]);
+    expect(stats.oldScans).toBe(BATCH);
+  });
+
+  it("takes turns between plans, so a deep backlog on one cannot starve the others", async () => {
+    retentionSettingsRows = [
+      { key: "BILLING_FREE_RETENTION", value: "30" },
+      { key: "BILLING_CORE_SUPPORTER_RETENTION", value: "90" },
+    ];
+    scanDeleteCounts = {
+      free: [BATCH, BATCH, 5],
+      core_supporter: [BATCH, 7],
+    };
+
+    const stats = await performDatabaseCleanup();
+
+    expect(scanDeletePlans).toEqual([
+      "free",
+      "core_supporter",
+      "free",
+      "core_supporter",
+      "free",
+    ]);
+    expect(stats.oldScans).toBe(BATCH * 3 + 5 + 7);
+  });
+
+  it("stops at the pass budget and leaves the remaining backlog for the next pass", async () => {
+    retentionSettingsRows = [{ key: "BILLING_FREE_RETENTION", value: "30" }];
+    // A backlog far deeper than the pass can clear: every batch is full.
+    scanDeleteCounts = { free: Array.from({ length: 50 }, () => BATCH) };
+    // Each batch takes 8 s of wall clock; the budget is 20 s.
+    let clock = 1_800_000_000_000;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    afterScanDelete = () => {
+      clock += 8_000;
+    };
+    try {
+      const stats = await performDatabaseCleanup();
+      // Batches start at 0 s, 8 s and 16 s; the fourth would start at 24 s.
+      expect(scanDeletePlans).toHaveLength(3);
+      expect(stats.oldScans).toBe(BATCH * 3);
+      // The budget is for the scan deletes only. The rest of the pass ran.
+      expect(calls[calls.length - 1].sql).toContain(
+        "DELETE FROM webhook_deliveries",
+      );
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("reports a plan that fails and still prunes the other plans and every later table", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    retentionSettingsRows = [
+      { key: "BILLING_FREE_RETENTION", value: "30" },
+      { key: "BILLING_CORE_SUPPORTER_RETENTION", value: "90" },
+    ];
+    failWhen = (s) =>
+      s.startsWith("DELETE FROM scan_history") && s.includes("plan = 'free'");
+
+    const outcome = await performDatabaseCleanup().then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(outcome).toBeInstanceOf(AggregateError);
+    expect((outcome as AggregateError).message).toContain(
+      "scan_history (free plan)",
+    );
+    expect(scanDeletePlans).toEqual(["core_supporter"]);
+    expect(calls[calls.length - 1].sql).toContain(
+      "DELETE FROM webhook_deliveries",
+    );
     errSpy.mockRestore();
   });
 });
