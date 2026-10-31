@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/shared/app-page-shell";
 import {
   ScanInspectorHeader,
   ScanInspectorSkeleton,
-} from "@/components/admin/scans/scan-inspector";
+} from "@/components/admin/scans/scan-inspector-skeleton";
 
 /**
  * Without this file the segment inherited app/admin/loading.tsx, which draws

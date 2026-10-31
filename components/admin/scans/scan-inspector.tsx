@@ -1,16 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ScanSearch, ShieldOff } from "lucide-react";
+import { ScanSearch, ShieldOff } from "lucide-react";
 import { AppPageShell } from "@/components/shared/app-page-shell";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InlineAlert } from "@/components/shared/inline-alert";
-import { SkeletonRegion, StatusPill } from "@/components/admin/shared";
+import { StatusPill } from "@/components/admin/shared";
 import { formatTimestamp } from "@/components/admin/utils";
 import { scanStatusPill } from "@/components/admin/scans/scan-status";
+import {
+  ScanInspectorHeader,
+  ScanInspectorSkeleton,
+} from "@/components/admin/scans/scan-inspector-skeleton";
 import { SeverityBadge, toSeverity } from "@/components/scanner/severity-badge";
 import type { AdminScanDetail } from "@/components/admin/types";
 import {
@@ -20,49 +21,6 @@ import {
 } from "@/lib/scanner/failure-kinds";
 import { pluralize } from "@/lib/ui/plural";
 import { API, ROUTES } from "@/lib/config/client-constants";
-
-/**
- * The title block, with no data in it so the route fallback and the page draw
- * the same element instead of two copies that can disagree.
- */
-export function ScanInspectorHeader() {
-  return (
-    <div className="mb-6">
-      <Button
-        asChild
-        variant="outline"
-        size="sm"
-        className="h-8 gap-1.5 mb-3 border-border/60 bg-muted/40"
-      >
-        <Link href={ROUTES.ADMIN}>
-          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-          Back to admin
-        </Link>
-      </Button>
-      <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
-        Scan inspector
-      </h1>
-      <p className="text-sm text-muted-foreground mt-1">
-        The stored row, including the raw error the owner is never shown. Each
-        read is recorded in the audit log.
-      </p>
-    </div>
-  );
-}
-
-export function ScanInspectorSkeleton() {
-  return (
-    <SkeletonRegion label="Loading scan">
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <div className="space-y-6">
-          <Skeleton className="h-40 w-full rounded-xl" />
-          <Skeleton className="h-72 w-full rounded-xl" />
-        </div>
-        <Skeleton className="h-96 w-full rounded-xl" />
-      </div>
-    </SkeletonRegion>
-  );
-}
 
 /** What each failure kind means, in the operator's terms. The short labels
  *  live beside the kinds in lib/scanner/failure-kinds.ts. */
