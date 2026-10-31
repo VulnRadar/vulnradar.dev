@@ -30,18 +30,23 @@ export interface UserRow {
   tos_accepted_at: string | null;
 }
 
+/**
+ * The account with this address, or null when there is none.
+ *
+ * A database error is NOT "no such account" and is not turned into one: it
+ * propagates, so the route's error handler answers 500. This used to catch the
+ * error and return null, which made login answer 401 "invalid credentials" to
+ * every valid user for as long as Postgres was failing over (after spending a
+ * dummy scrypt on each), signup treat every address as new, and the staff
+ * invite page tell an existing account holder they had no account.
+ */
 export async function getUserByEmail(email: string): Promise<UserRow | null> {
-  try {
-    const result = await pool.query(
-      `SELECT id, email, password_hash, name, plan, role, disabled_at,
-              email_verified_at, totp_secret, totp_enabled,
-              two_factor_method, tos_accepted_at
-       FROM users WHERE email = $1`,
-      [email.toLowerCase().trim()],
-    );
-    return (result.rows[0] as UserRow) || null;
-  } catch (error) {
-    console.error("[DB] Failed to get user by email:", error);
-    return null;
-  }
+  const result = await pool.query(
+    `SELECT id, email, password_hash, name, plan, role, disabled_at,
+            email_verified_at, totp_secret, totp_enabled,
+            two_factor_method, tos_accepted_at
+     FROM users WHERE email = $1`,
+    [email.toLowerCase().trim()],
+  );
+  return (result.rows[0] as UserRow) || null;
 }

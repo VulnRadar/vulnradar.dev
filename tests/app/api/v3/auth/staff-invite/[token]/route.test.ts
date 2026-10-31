@@ -157,6 +157,23 @@ describe("GET /api/v3/auth/staff-invite/[token]", () => {
     expect(json.role).toBe("support");
     expect(json.hasAccount).toBe(true);
   });
+
+  it("answers 500, not hasAccount: false, when the account lookup fails", async () => {
+    // getUserByEmail used to swallow the error and return null, so an outage
+    // told an existing account holder they had no account and sent them to the
+    // create-a-password form.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [invite()] });
+    mockQuery.mockRejectedValueOnce(new Error("connection terminated"));
+
+    const res = await GET(getRequest(), ctx());
+
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json).not.toHaveProperty("hasAccount");
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
+  });
 });
 
 describe("POST /api/v3/auth/staff-invite/[token] — replay & lookup", () => {

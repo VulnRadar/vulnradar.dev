@@ -21,10 +21,21 @@ let verificationTokenInserts: unknown[][] = [];
 // Admin overrides the route's rate limits should resolve through, exactly as a
 // real system_settings row would.
 let systemSettingsRows: { key: string; value: string }[] = [];
+// When set, the users-by-email lookup rejects, as it does while the database
+// is down or failing over.
+let usersLookupError: Error | null = null;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
   queries.push({ sql: s, params });
+
+  if (
+    usersLookupError &&
+    s.includes("WHERE email = $1") &&
+    s.includes("password_hash")
+  ) {
+    throw usersLookupError;
+  }
 
   if (s.startsWith("SELECT key, value FROM system_settings"))
     return { rows: systemSettingsRows };
@@ -135,6 +146,7 @@ beforeEach(async () => {
   insertedUserCalls = [];
   verificationTokenInserts = [];
   systemSettingsRows = [];
+  usersLookupError = null;
   turnstileSuccess = true;
   invalidateSettingsCache();
 });
@@ -318,6 +330,29 @@ describe("POST /api/v3/auth/signup", () => {
       expect(sent.text).toContain("/login");
       expect(sent.text).toContain("/forgot-password");
     });
+  });
+
+  it("answers 500 and creates nothing when the user lookup itself fails", async () => {
+    // getUserByEmail used to swallow the error and return null, so a database
+    // outage looked like "this address is new" and signup went on to insert.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    usersLookupError = new Error("connection terminated unexpectedly");
+
+    const res = await POST(
+      postSignup({
+        name: "Alex Morgan",
+        email: "alex.morgan@example.com",
+        password: STRONG_PASSWORD,
+      }),
+    );
+
+    expect(res.status).toBe(500);
+    expect(insertedUserCalls).toHaveLength(0);
+    expect(verificationTokenInserts).toHaveLength(0);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
   });
 
   it("creates the account on a valid signup and stores a hashed (not raw) verification token", async () => {

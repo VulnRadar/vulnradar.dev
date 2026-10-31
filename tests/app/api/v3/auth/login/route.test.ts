@@ -46,10 +46,21 @@ let trustedDeviceRow: Record<string, unknown> | null = null;
 let rateLimitCount = 0;
 let sessionInsertCalls: unknown[][] = [];
 let email2FAInsertCalls: unknown[][] = [];
+// When set, the users-by-email lookup rejects, as it does while the database
+// is down or failing over.
+let usersLookupError: Error | null = null;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
   queries.push({ sql: s, params });
+
+  if (
+    usersLookupError &&
+    s.includes("WHERE email = $1") &&
+    s.includes("password_hash")
+  ) {
+    throw usersLookupError;
+  }
 
   if (s.startsWith("DELETE FROM rate_limits")) return { rows: [] };
   if (s.startsWith("UPDATE rate_limits")) return { rows: [] };
@@ -191,6 +202,7 @@ beforeEach(async () => {
   rateLimitCount = 0;
   sessionInsertCalls = [];
   email2FAInsertCalls = [];
+  usersLookupError = null;
   invalidateSettingsCache();
 });
 
@@ -323,6 +335,31 @@ describe("POST /api/v3/auth/login", () => {
       ),
     ).toBe(true);
     expect(sessionInsertCalls).toHaveLength(0);
+  });
+
+  it("answers 500, not 'invalid credentials', when the user lookup itself fails", async () => {
+    // getUserByEmail used to swallow the error and return null, which this
+    // route read as "no such account": every valid user was told their
+    // password was wrong for as long as the database was failing, a monitor saw
+    // 401s instead of 5xx, and each attempt still paid for a dummy scrypt.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    usersLookupError = new Error("connection terminated unexpectedly");
+    userRow = baseUser();
+    userInfoRow = baseUserInfo({ totp_enabled: false });
+
+    const res = await POST(
+      postLogin({ email: "user@example.com", password: REAL_PASSWORD }),
+    );
+
+    expect(res.status).toBe(500);
+    expect(sessionInsertCalls).toHaveLength(0);
+    // Nobody checked a password, so no failed-login counter moved.
+    expect(
+      queries.some((q) => q.params.includes(accountKey("user@example.com"))),
+    ).toBe(false);
+    // The failure is on record, not silent.
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
   });
 
   it("rejects a disabled account", async () => {

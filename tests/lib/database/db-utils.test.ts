@@ -40,11 +40,10 @@ describe("getUserByEmail", () => {
     expect(await getUserByEmail("nobody@x.com")).toBeNull();
   });
 
-  it("returns null and logs when the query fails", async () => {
-    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("lets a database error propagate instead of reporting 'no such user'", async () => {
+    // A null here reads as "this address has no account", and login answers
+    // that with 401. An outage must surface as an outage.
     mockQuery.mockRejectedValueOnce(new Error("down"));
-    expect(await getUserByEmail("u@x.com")).toBeNull();
-    expect(logged).toHaveBeenCalled();
-    logged.mockRestore();
+    await expect(getUserByEmail("u@x.com")).rejects.toThrow("down");
   });
 });
