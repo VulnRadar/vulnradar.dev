@@ -4,20 +4,11 @@ import type { Vulnerability } from "@/lib/scanner/types";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
 import { getSetCookies } from "@/lib/scanner/_helpers";
 import { VERIFY_SYSTEM_PROMPT } from "./verify-context";
-import {
-  resolveAiBaseUrl,
-  resolveAiDefaultModel,
-  isAnthropicProvider,
-} from "@/lib/ai/provider";
-import { callAnthropicMessages, AnthropicApiError } from "@/lib/ai/anthropic";
-import {
-  resolveAnthropicThinkingBudget,
-  resolveOpenAiCompatReasoningExtras,
-  resolveAiCallTimeoutMs,
-  noteReasoningRefusal,
-} from "@/lib/ai/reasoning";
+import { resolveAiBaseUrl, resolveAiDefaultModel } from "@/lib/ai/provider";
+import { postChatCompletion, type AiEndpoint } from "@/lib/ai/transport";
+import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
 import { getSettings } from "@/lib/config/runtime-config";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { APP_NAME } from "@/lib/config/constants";
 import { recordAiTokens } from "@/lib/billing/ai-usage";
 
 type AiVerdict = "confirmed" | "possible_fp" | "uncertain";
@@ -29,14 +20,12 @@ interface VerifyResult {
   reason: string;
 }
 
-// Exported so lib/ai/review-source.ts (GitHub repo AI code review) can
-// resolve the same server/user AI endpoint without duplicating this
-// module's DB lookup and env-var resolution logic.
-export interface AiEndpoint {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-}
+// The endpoint type lives with the transport that sends to it. It stays
+// exported from here as well because this module is where an endpoint is
+// resolved (lib/ai/review-source.ts, scan-summary.ts and auto-tag-suggest.ts
+// all import the resolvers and the type together), so that DB lookup and
+// env-var resolution is not duplicated by each of them.
+export type { AiEndpoint };
 
 export interface ProbeData {
   status_code: number;
@@ -408,134 +397,42 @@ async function callVerify(
   const prompt = buildVerifyPrompt(finding, probe);
 
   try {
-    if (isAnthropicProvider(endpoint.baseUrl)) {
-      const { text, usage } = await callAnthropicMessages(
-        {
-          baseUrl: endpoint.baseUrl,
-          apiKey: endpoint.apiKey,
-          model: endpoint.model,
-          system: VERIFY_SYSTEM_PROMPT,
-          messages: [{ role: "user", content: prompt }],
-          maxTokens: settings.maxTokens,
-          thinkingBudgetTokens: resolveAnthropicThinkingBudget(
-            settings.maxTokens,
-          ),
-        },
-        controller.signal,
-      );
-      return {
-        result: parseVerifyResponseText(finding.id, text),
-        tokensUsed: usage.inputTokens + usage.outputTokens,
-      };
-    }
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (endpoint.apiKey) headers["Authorization"] = `Bearer ${endpoint.apiKey}`;
-    try {
-      const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
-      if (host === "openrouter.ai") {
-        // Identify THIS deployment to OpenRouter, not the SaaS: APP_URL already
-        // resolves NEXT_PUBLIC_APP_URL first, so a self-hoster's AI spend is no
-        // longer attributed to vulnradar.dev by a hardcoded fallback.
-        headers["HTTP-Referer"] = APP_URL;
-        headers["X-Title"] = APP_NAME;
-      }
-    } catch {
-      /* ignore */
-    }
-
-    // Reasoning on the OpenAI-compatible path too, not just Anthropic's.
-    // Without this every GPT-5, o-series, Gemini 3 and Grok 4 verdict was a
-    // snap judgement, on a question whose answer is shown to the user as a
-    // statement about their security.
-    const extras = resolveOpenAiCompatReasoningExtras(
-      endpoint.baseUrl,
-      endpoint.model,
-      "verify",
-    );
-    const askedToReason = Object.keys(extras).length > 0;
-    const baseBody: Record<string, unknown> = {
-      model: endpoint.model,
-      max_tokens: settings.maxTokens,
-      messages: [
-        { role: "system", content: VERIFY_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-    };
-    const post = (body: Record<string, unknown>) =>
-      fetch(`${endpoint.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-    let res = await post({ ...baseBody, ...extras });
-    // A strict endpoint rejects an unknown body field with a 400. Throwing the
-    // whole verdict away over an optional quality knob is the wrong trade, and
-    // the allowlist in resolveOpenAiReasoningEffort cannot be right forever,
-    // so drop the field and ask once more instead of returning nothing.
-    if (!res.ok && res.status === 400 && askedToReason) {
-      let refusal = "";
-      try {
-        refusal = await res.clone().text();
-      } catch {
-        /* ignore */
-      }
-      if (/reasoning/i.test(refusal)) {
-        noteReasoningRefusal("AI-VERIFY", endpoint.model);
-        res = await post(baseBody);
-      }
-    }
+    // Reasoning on every API shape, not only Anthropic's. Without it every
+    // GPT-5, o-series, Gemini 3 and Grok 4 verdict was a snap judgement, on a
+    // question whose answer is shown to the user as a statement about their
+    // security. An endpoint that refuses the field is retried without it by
+    // the transport, so the verdict is not thrown away over a quality knob.
+    const res = await postChatCompletion(endpoint, {
+      system: VERIFY_SYSTEM_PROMPT,
+      prompt,
+      maxTokens: settings.maxTokens,
+      reasoning: "verify",
+      scope: "AI-VERIFY",
+      signal: controller.signal,
+    });
 
     if (!res.ok) {
       // A 429 is reported once, by verifyInChunks, for the whole pass: one
       // line per finding turned a single rate limit into dozens of identical
-      // error-log rows.
+      // error-log rows. The transport hands both API shapes' failures back
+      // as the same value, so this is the one place the mapping is written.
       if (res.status === 429) {
         return { result: null, tokensUsed: 0, rateLimited: true };
       }
       if (FATAL_STATUSES.has(res.status)) {
         return { result: null, tokensUsed: 0, fatalStatus: res.status };
       }
-      let body = "";
-      try {
-        body = await res.text();
-      } catch {
-        /* ignore */
-      }
       console.error(
-        `[AI-VERIFY] HTTP ${res.status} from ${endpoint.baseUrl} for "${finding.id}": ${body.slice(0, 300)}`,
+        `[AI-VERIFY] HTTP ${res.status} from ${endpoint.baseUrl} for "${finding.id}": ${res.detail.slice(0, 300)}`,
       );
       return { result: null, tokensUsed: 0 };
     }
 
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        total_tokens?: number;
-      };
+    return {
+      result: parseVerifyResponseText(finding.id, res.text),
+      tokensUsed: res.tokensUsed,
     };
-    const text = data?.choices?.[0]?.message?.content;
-    const usage = data?.usage;
-    const tokensUsed =
-      typeof usage?.total_tokens === "number"
-        ? usage.total_tokens
-        : (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
-    if (typeof text !== "string") return { result: null, tokensUsed };
-
-    return { result: parseVerifyResponseText(finding.id, text), tokensUsed };
   } catch (err) {
-    if (err instanceof AnthropicApiError && err.status === 429) {
-      return { result: null, tokensUsed: 0, rateLimited: true };
-    }
-    if (err instanceof AnthropicApiError && FATAL_STATUSES.has(err.status)) {
-      return { result: null, tokensUsed: 0, fatalStatus: err.status };
-    }
     // A template string, not console.error's "%s" placeholder: the admin error
     // log (lib/database/error-log-capture.ts) records the raw arguments, so the
     // placeholder showed up there literally as `callVerify failed for "%s"`.

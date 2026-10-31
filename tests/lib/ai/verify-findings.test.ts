@@ -346,6 +346,203 @@ describe("runAiVerification: says whether it actually ran", () => {
   });
 });
 
+describe("runAiVerification: an Anthropic-shaped endpoint fails the way an OpenAI-compatible one does", () => {
+  /**
+   * The 429 and 401/403/404 handling used to be written twice, once for a
+   * Response and once for the Anthropic adapter's thrown error. The request
+   * half is one function now (lib/ai/transport.ts) and the mapping is written
+   * once, so the two API shapes have to agree on what stops a pass.
+   */
+  beforeEach(() => {
+    process.env.AI_BASE_URL = "https://api.anthropic.com/v1";
+    process.env.AI_MODEL = "claude-haiku-4-5-20251001";
+    mockQuery.mockResolvedValue({ rows: [] });
+  });
+
+  function anthropicError(status: number, message: string): Response {
+    return new Response(JSON.stringify({ error: { message } }), { status });
+  }
+
+  function manyFindings(): Vulnerability[] {
+    return Array.from({ length: CONFIG_AI_VERIFY_CHUNK_SIZE * 4 }, (_, i) =>
+      makeFinding(`f${i}`),
+    );
+  }
+
+  it("stops at the first rate limit instead of sending every finding into it", async () => {
+    const calls = { n: 0 };
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      calls.n++;
+      return anthropicError(429, "rate limit reached");
+    });
+
+    const outcome = await runAiVerification(
+      "https://example.com",
+      manyFindings(),
+      42,
+      null,
+    );
+
+    expect(outcome.rateLimited).toBe(true);
+    expect(outcome.verdicts).toBe(0);
+    expect(calls.n).toBeLessThanOrEqual(CONFIG_AI_VERIFY_CHUNK_SIZE);
+  });
+
+  it.each([401, 403, 404])(
+    "stops at a %i and says so once, not once per finding",
+    async (status) => {
+      const calls = { n: 0 };
+      (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        async () => {
+          calls.n++;
+          return anthropicError(status, "invalid x-api-key");
+        },
+      );
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const outcome = await runAiVerification(
+        "https://example.com",
+        manyFindings(),
+        42,
+        null,
+      );
+
+      expect(outcome.verdicts).toBe(0);
+      expect(calls.n).toBeLessThanOrEqual(CONFIG_AI_VERIFY_CHUNK_SIZE);
+      const lines = errors.mock.calls.map((c) => String(c[0]));
+      expect(
+        lines.filter((l) => l.includes(`returned ${status}`)),
+      ).toHaveLength(1);
+      expect(lines.some((l) => l.includes('for "f'))).toBe(false);
+      errors.mockRestore();
+    },
+  );
+});
+
+describe("runAiVerification: what is logged for a failure that does not stop the pass", () => {
+  it.each([
+    ["an OpenAI-compatible endpoint", "https://api.example-llm.test/v1"],
+    ["an Anthropic-shaped endpoint", "https://api.anthropic.com/v1"],
+  ])(
+    "names the finding, the status and what %s said",
+    async (_label, baseUrl) => {
+      process.env.AI_BASE_URL = baseUrl;
+      process.env.AI_MODEL = "some-model";
+      mockQuery.mockResolvedValue({ rows: [] });
+      (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({ error: { message: "upstream exploded" } }),
+            { status: 500 },
+          ),
+      );
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const outcome = await runAiVerification(
+        "https://example.com",
+        [makeFinding("f1")],
+        42,
+        null,
+      );
+
+      expect(outcome.verdicts).toBe(0);
+      const line = errors.mock.calls
+        .map((c) => String(c[0]))
+        .find((l) => l.includes('for "f1"'));
+      expect(line).toBeDefined();
+      expect(line).toContain("[AI-VERIFY]");
+      expect(line).toContain("HTTP 500");
+      expect(line).toContain("upstream exploded");
+      errors.mockRestore();
+    },
+  );
+
+  it("logs a request that never got an answer against the finding too", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+    (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new TypeError("fetch failed"),
+    );
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const outcome = await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      null,
+    );
+
+    expect(outcome.verdicts).toBe(0);
+    const line = errors.mock.calls
+      .map((c) => String(c[0]))
+      .find((l) => l.includes("callVerify failed"));
+    expect(line).toContain('"f1"');
+    expect(line).toContain("fetch failed");
+    errors.mockRestore();
+  });
+});
+
+describe("verifyFindingsBatch: reasoning on an OpenAI-compatible endpoint", () => {
+  function sentBody(call: number): Record<string, unknown> {
+    const init = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[
+      call
+    ][1] as RequestInit;
+    return JSON.parse(init.body as string);
+  }
+
+  beforeEach(() => {
+    process.env.AI_BASE_URL = "https://api.openai.com/v1";
+    mockQuery.mockResolvedValue({ rows: [] });
+  });
+
+  it("asks a reasoning model for the most reasoning there is, because the verdict is shown as a statement about the user's security", async () => {
+    process.env.AI_MODEL = "gpt-5.4";
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      confirmedResponse("f1"),
+    );
+
+    await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
+
+    expect(sentBody(0).reasoning_effort).toBe("high");
+  });
+
+  it("sends nothing extra to a model that takes no reasoning field", async () => {
+    process.env.AI_MODEL = "gpt-4o-mini";
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      confirmedResponse("f1"),
+    );
+
+    await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
+
+    expect(sentBody(0)).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("keeps the verdict when the endpoint refuses the reasoning field, by asking again without it", async () => {
+    process.env.AI_MODEL = "gpt-5.4-verify-retry";
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        new Response("Unknown parameter: reasoning_effort", { status: 400 }),
+      )
+      .mockResolvedValueOnce(confirmedResponse("f1"));
+
+    const result = await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+    );
+
+    expect(result[0].aiVerdict).toBe("confirmed");
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(sentBody(0).reasoning_effort).toBe("high");
+    expect(sentBody(1)).not.toHaveProperty("reasoning_effort");
+    const notice = errors.mock.calls
+      .map((c) => String(c[0]))
+      .find((l) => l.includes("gpt-5.4-verify-retry"));
+    expect(notice).toContain("[AI-VERIFY]");
+    errors.mockRestore();
+  });
+});
+
 describe("runAiVerification: incremental persistence", () => {
   it("writes scan_history after every chunk, not only once at the end", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
