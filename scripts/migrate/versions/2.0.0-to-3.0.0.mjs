@@ -234,6 +234,10 @@
  */
 
 import { V3_NEW_TABLES } from "./_snippets.mjs";
+import {
+  PUBLIC_HOST_SQL,
+  URL_ORIGIN_PATH_SQL,
+} from "../../../lib/database/schema/sql-fragments.mjs";
 
 export const from = "2.0.0";
 export const to = "3.0.0";
@@ -1485,6 +1489,9 @@ export const upgrade = {
       column: "assigned_to",
       definition: "INTEGER REFERENCES users(id) ON DELETE SET NULL",
     },
+    // When the domain re-verification worker last tried a domain, answered
+    // or not, so domains that never answer rotate to the back of its batch.
+    { table: "domains", column: "last_attempt_at", definition: "TIMESTAMPTZ" },
   ],
 
   // AUDIT-011#drift-17: five columns a v2.0.0 database has that nothing ever
@@ -1617,6 +1624,39 @@ export const upgrade = {
       name: "idx_scan_history_url_public_completed",
       table: "scan_history",
       columns: "url",
+      where: "is_public = true AND status = 'completed'",
+    },
+    // Retention and read-path indexes, mirrored from the boot schema's
+    // "RETENTION AND READ-PATH INDEXES" steps. The two expression indexes
+    // take their text from the same module the boot schema does, so the
+    // parity guard compares one string with itself.
+    {
+      name: "idx_webhook_deliveries_attempted_at",
+      table: "webhook_deliveries",
+      columns: "attempted_at",
+    },
+    {
+      name: "idx_scan_history_user_shared",
+      table: "scan_history",
+      columns: "user_id, scanned_at DESC",
+      where: "share_token IS NOT NULL",
+    },
+    {
+      name: "idx_scan_history_user_url_completed",
+      table: "scan_history",
+      columns: "user_id, url, scanned_at DESC",
+      where: "status = 'completed'",
+    },
+    {
+      name: "idx_scan_history_public_host",
+      table: "scan_history",
+      columns: `(${PUBLIC_HOST_SQL}), scanned_at DESC`,
+      where: "is_public = true AND status = 'completed'",
+    },
+    {
+      name: "idx_scan_history_public_origin_path",
+      table: "scan_history",
+      columns: `(${URL_ORIGIN_PATH_SQL}), scanned_at DESC`,
       where: "is_public = true AND status = 'completed'",
     },
     // AUDIT-013 migrate-06: same name-collision problem as the index
