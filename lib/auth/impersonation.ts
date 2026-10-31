@@ -27,6 +27,7 @@ import { AUTH_SESSION_COOKIE_NAME } from "@/lib/config/constants";
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
 import { hashSessionId } from "@/lib/auth/auth";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
+import { getSetting } from "@/lib/config/runtime-config";
 
 const IMPERSONATION_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 const RETURN_SESSION_COOKIE = "imp_return_session";
@@ -146,9 +147,12 @@ export async function stopImpersonation(): Promise<StopImpersonationResult> {
     [hashSessionId(returnSessionToken)],
   );
   const returnSession = returnRes.rows[0];
+  const returnRemainingMs = returnSession
+    ? new Date(returnSession.expires_at).getTime() - Date.now()
+    : 0;
   const returnStillValid =
     !!returnSession &&
-    new Date(returnSession.expires_at) > new Date() &&
+    returnRemainingMs > 0 &&
     (STAFF_ROLE_HIERARCHY[returnSession.role || "user"] ?? 0) > 0;
 
   // Always tear down the impersonation session -- it should never outlive
@@ -167,11 +171,25 @@ export async function stopImpersonation(): Promise<StopImpersonationResult> {
     };
   }
 
+  // The restored cookie used to carry no Max-Age, which made it a browser
+  // session cookie: the admin was signed out whenever the browser closed,
+  // and a browser that restores tabs could keep it well past the row behind
+  // it. Give it the Max-Age an ordinary login gets, capped at what the admin
+  // session has left so the cookie never outlives its row.
+  const cookieMaxAgeDays = await getSetting("SESSION_MAX_AGE_DAYS");
+  const maxAge = Math.max(
+    1,
+    Math.min(
+      Math.floor(returnRemainingMs / 1000),
+      cookieMaxAgeDays * 24 * 60 * 60,
+    ),
+  );
   cookieStore.set(AUTH_SESSION_COOKIE_NAME, returnSessionToken, {
     httpOnly: true,
     secure: cookiesRequireHttps(),
     sameSite: "lax",
     path: "/",
+    maxAge,
   });
 
   return { ok: true };

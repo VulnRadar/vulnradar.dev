@@ -11,12 +11,16 @@ type Row = Record<string, unknown>;
 
 let usersById: Record<number, Row> = {};
 let sessionsById: Record<string, Row> = {};
+let settingsRows: Row[] = [];
 const queries: { sql: string; params: unknown[] }[] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   queries.push({ sql, params });
   const s = sql.trim();
 
+  if (s.startsWith("SELECT key, value FROM system_settings")) {
+    return { rows: settingsRows };
+  }
   if (s.startsWith("SELECT email, role, disabled_at FROM users")) {
     const row = usersById[params[0] as number];
     return { rows: row ? [row] : [] };
@@ -68,13 +72,15 @@ vi.mock("@/lib/database/db", () => ({
 }));
 
 const cookieState = new Map<string, string>();
+const cookieOptions = new Map<string, Record<string, unknown>>();
 const cookieStore = {
   get: vi.fn((name: string) => {
     const value = cookieState.get(name);
     return value === undefined ? undefined : { name, value };
   }),
-  set: vi.fn((name: string, value: string) => {
+  set: vi.fn((name: string, value: string, opts?: Record<string, unknown>) => {
     cookieState.set(name, value);
+    cookieOptions.set(name, opts ?? {});
   }),
   delete: vi.fn((name: string) => {
     cookieState.delete(name);
@@ -88,6 +94,7 @@ vi.mock("next/headers", () => ({
 const { startImpersonation, stopImpersonation } =
   await import("@/lib/auth/impersonation");
 const { hashSessionId } = await import("@/lib/auth/auth");
+const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 
 /**
@@ -96,12 +103,12 @@ const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
  * seeding both sides with the same string would let a regression that
  * forgets to hash keep passing.
  */
-function seedAdminSession(sessionToken: string) {
+function seedAdminSession(sessionToken: string, remainingMs = 60 * 60 * 1000) {
   const storedId = hashSessionId(sessionToken);
   sessionsById[storedId] = {
     id: storedId,
     user_id: 1,
-    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    expires_at: new Date(Date.now() + remainingMs).toISOString(),
     impersonated_by: null,
   };
   cookieState.set(AUTH_SESSION_COOKIE_NAME, sessionToken);
@@ -119,9 +126,12 @@ beforeEach(() => {
     4: { email: "support@example.com", role: "support", disabled_at: null },
   };
   sessionsById = {};
+  settingsRows = [];
   queries.length = 0;
   cookieState.clear();
+  cookieOptions.clear();
   mockQuery.mockClear();
+  invalidateSettingsCache();
 });
 
 describe("startImpersonation", () => {
@@ -226,6 +236,46 @@ describe("stopImpersonation", () => {
     expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("admin-sess");
     expect(cookieState.has("imp_return_session")).toBe(false);
     expect(sessionsById[hashSessionId(impSessionId)]).toBeUndefined();
+  });
+
+  describe("restored admin cookie lifetime", () => {
+    const DAY_S = 24 * 60 * 60;
+
+    async function stopAfterStart(remainingMs: number) {
+      seedAdminSession("admin-sess", remainingMs);
+      await startImpersonation(1, 2);
+      const result = await stopImpersonation();
+      expect(result.ok).toBe(true);
+      return cookieOptions.get(AUTH_SESSION_COOKIE_NAME);
+    }
+
+    it("is no longer a browser-session cookie: it carries the admin session's remaining time", async () => {
+      const opts = await stopAfterStart(60 * 60 * 1000);
+      expect(opts).toMatchObject({
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+      });
+      // One hour left, well under the 7 day default cookie lifetime.
+      expect(opts?.maxAge).toBeGreaterThan(59 * 60);
+      expect(opts?.maxAge).toBeLessThanOrEqual(60 * 60);
+    });
+
+    it("caps at SESSION_MAX_AGE_DAYS when the admin session has longer left", async () => {
+      const opts = await stopAfterStart(30 * DAY_S * 1000);
+      expect(opts?.maxAge).toBe(7 * DAY_S);
+    });
+
+    it("honours an admin-configured SESSION_MAX_AGE_DAYS", async () => {
+      settingsRows = [{ key: "SESSION_MAX_AGE_DAYS", value: "2" }];
+      const opts = await stopAfterStart(30 * DAY_S * 1000);
+      expect(opts?.maxAge).toBe(2 * DAY_S);
+    });
+
+    it("never goes below one second for a session about to expire", async () => {
+      const opts = await stopAfterStart(400);
+      expect(opts?.maxAge).toBe(1);
+    });
   });
 
   it("tears down the impersonation session even when the admin's return session expired", async () => {
