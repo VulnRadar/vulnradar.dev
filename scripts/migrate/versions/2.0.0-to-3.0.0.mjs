@@ -2619,6 +2619,12 @@ export const downgrade = {
     // The failed-scan read index. Its predicate names status, which the
     // drops above remove, so this is the same belt-and-suspenders.
     "idx_scan_history_failed_scanned",
+    // The shared-links read index. Of the retention and read-path indexes the
+    // upgrade adds on scan_history it is the only one nothing else removes: it
+    // uses user_id, scanned_at and share_token, and all three exist at v2.0.0.
+    // The others name status or is_public in their predicate and go with those
+    // columns.
+    "idx_scan_history_user_shared",
   ],
 
   dataUpdates: [

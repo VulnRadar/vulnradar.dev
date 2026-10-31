@@ -390,6 +390,14 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
       "idx_scan_history_url_public_completed",
     );
   });
+
+  it("downgrade drops idx_scan_history_user_shared, the one new scan_history read index that survives the column drops", () => {
+    // Every column it uses exists at v2.0.0, so nothing else takes it away and
+    // a downgraded database would keep an index v2.0.0 never had.
+    expect(migration.downgrade.dropIndexes).toContain(
+      "idx_scan_history_user_shared",
+    );
+  });
 });
 
 describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
