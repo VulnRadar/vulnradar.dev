@@ -504,3 +504,75 @@ describe("generateScanSummary: unified AI usage token accounting", () => {
     expect(result).toBe("Summary text.");
   });
 });
+
+describe("generateScanSummary: reasoning on an OpenAI-compatible endpoint", () => {
+  /**
+   * The rules for what goes on the wire are lib/ai/transport.ts's, and its own
+   * suite covers them. What belongs here is what a summary asks of it: the
+   * "summary" purpose, which is low effort because a summary restates findings
+   * that were already decided, not the high effort verification asks for, and
+   * its own name on the notice when an endpoint refuses the field.
+   */
+  let errors: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    process.env.AI_BASE_URL = "https://api.openai.com/v1";
+    errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errors.mockRestore();
+  });
+
+  function sentBody(call: number): Record<string, unknown> {
+    const init = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[
+      call
+    ][1] as RequestInit;
+    return JSON.parse(init.body as string);
+  }
+
+  it("asks a reasoning model for low effort, not the effort verification asks for", async () => {
+    process.env.AI_MODEL = "gpt-5.4";
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponse("Summary text."),
+    );
+
+    await generateScanSummary(makeResult([makeFinding("f1")]), 1);
+
+    expect(sentBody(0).reasoning_effort).toBe("low");
+  });
+
+  it("sends nothing extra to a model that takes no reasoning field", async () => {
+    process.env.AI_MODEL = "gpt-4o-mini";
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponse("Summary text."),
+    );
+
+    await generateScanSummary(makeResult([makeFinding("f1")]), 1);
+
+    expect(sentBody(0)).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("keeps the summary when the endpoint refuses the field, by asking again without it", async () => {
+    process.env.AI_MODEL = "gpt-5.4-summary-retry";
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        new Response("Unknown parameter: reasoning_effort", { status: 400 }),
+      )
+      .mockResolvedValueOnce(openAiResponse("Summary text."));
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+    );
+
+    expect(result).toBe("Summary text.");
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(sentBody(0).reasoning_effort).toBe("low");
+    expect(sentBody(1)).not.toHaveProperty("reasoning_effort");
+    const notice = errors.mock.calls
+      .map((c: unknown[]) => String(c[0]))
+      .find((line: string) => line.includes("gpt-5.4-summary-retry"));
+    expect(notice).toContain("[AI-SCAN-SUMMARY]");
+  });
+});
