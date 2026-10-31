@@ -4,7 +4,7 @@ import { getQueryParam, useQuerySeededState } from "@/lib/ui/url-state";
 import {
   HistorySkeleton,
   HistoryDetailRouteSkeleton,
-} from "@/components/history";
+} from "@/components/history/history-skeleton";
 
 /**
  * /history is two pages behind one URL: the scan list, and one scan's report

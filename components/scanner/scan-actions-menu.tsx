@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { cn, safeHref } from "@/lib/ui/utils";
 import {
@@ -40,19 +41,12 @@ import {
   PageActionsMenu,
   type PageActionEntry,
   type PageActionItem,
-} from "@/components/shared";
+} from "@/components/shared/page-actions-menu";
+import { fetchAiInfo, isAiAvailable } from "@/components/shared/ai-info";
 import { useToast } from "@/components/ui/use-toast";
 import { downloadBlob } from "@/lib/ui/download";
 import { armScanAgain } from "@/lib/ui/scan-again";
-import { ShareModal } from "./share-modal";
-import { AiVerifyResultModal } from "./ai-verify-result-modal";
 import type { AiVerificationOutcome } from "@/lib/ai/verify-findings";
-import { AiSummaryModal } from "./ai-summary-modal";
-import { generatePdfReport } from "@/lib/reports/pdf-report";
-import { generateSarifReport } from "@/lib/reports/sarif-report";
-import { generateMarkdownReport } from "@/lib/reports/markdown-report";
-import { generateCsvReport } from "@/lib/reports/csv-report";
-import { generateComplianceReport } from "@/lib/reports/compliance-report";
 import {
   API,
   APP_NAME,
@@ -71,6 +65,42 @@ import { InlineAlert } from "@/components/shared/inline-alert";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useConfirm } from "@/components/shared/use-confirm";
 import { nowIso, todayStamp } from "@/lib/ui/clock";
+
+// The three modals only exist once somebody asks for them, and each pulls in a
+// dialog tree of its own. `loading: () => null` is not decoration: without a
+// `loading` option next/dynamic gives the chunk no Suspense boundary and it
+// suspends the nearest ancestor, which on /history is the route's loading.tsx
+// (see the note in ./scan-result-detail.tsx).
+const ShareModal = dynamic(
+  () => import("./share-modal").then((m) => ({ default: m.ShareModal })),
+  { loading: () => null },
+);
+const AiVerifyResultModal = dynamic(
+  () =>
+    import("./ai-verify-result-modal").then((m) => ({
+      default: m.AiVerifyResultModal,
+    })),
+  { loading: () => null },
+);
+const AiSummaryModal = dynamic(
+  () =>
+    import("./ai-summary-modal").then((m) => ({
+      default: m.AiSummaryModal,
+    })),
+  { loading: () => null },
+);
+
+/**
+ * True from the first render in which `open` was true, and stays true.
+ * Mounting a lazy modal only once it has been opened keeps its chunk off the
+ * page until needed, and keeping it mounted afterwards lets Radix play the
+ * close animation instead of the dialog vanishing mid-fade.
+ */
+function useOpenedOnce(open: boolean): boolean {
+  const [opened, setOpened] = useState(open);
+  if (open && !opened) setOpened(true);
+  return opened;
+}
 
 interface ScanActionsMenuProps {
   result: ScanResult;
@@ -257,7 +287,8 @@ export function ScanActionsMenu({
   isPublic,
   onPrivacyChanged,
 }: ScanActionsMenuProps) {
-  const { me } = useAuth();
+  const { me, isLoading: authLoading } = useAuth();
+  const viewerId = me?.userId ?? null;
   const router = useRouter();
   const { toast } = useToast();
   const clientConfig = useClientConfig();
@@ -342,6 +373,8 @@ export function ScanActionsMenu({
 
   const [summarizing, setSummarizing] = useState(false);
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+  const verifyModalMounted = useOpenedOnce(verifyModalOpen);
+  const summaryModalMounted = useOpenedOnce(summaryModalOpen);
   const [summaryText, setSummaryText] = useState<string | null>(
     result.aiSummary ?? null,
   );
@@ -471,19 +504,20 @@ export function ScanActionsMenu({
     };
   }, [scanId, isOwner]);
 
+  // Waits for the session to resolve: the answer carries this user's own
+  // opt-out, and ai-info.ts caches it per viewer.
   useEffect(() => {
-    if (!scanId) return;
+    if (!scanId || authLoading) return;
     let cancelled = false;
-    fetch(API.AI_INFO)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setAiAvailable(Boolean(d.configured) && !d.aiDisabled);
+    fetchAiInfo(viewerId)
+      .then((info) => {
+        if (!cancelled) setAiAvailable(isAiAvailable(info));
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [scanId]);
+  }, [scanId, authLoading, viewerId]);
 
   const hostname = (() => {
     try {
@@ -534,7 +568,8 @@ export function ScanActionsMenu({
     return filename;
   }
 
-  function exportCsv() {
+  async function exportCsv() {
+    const { generateCsvReport } = await import("@/lib/reports/csv-report");
     const blob = new Blob([UTF8_BOM, generateCsvReport(result)], {
       type: "text/csv;charset=utf-8;",
     });
@@ -543,7 +578,8 @@ export function ScanActionsMenu({
     return filename;
   }
 
-  function exportPdf() {
+  async function exportPdf() {
+    const { generatePdfReport } = await import("@/lib/reports/pdf-report");
     const pdfBytes = generatePdfReport(result);
     const blob = new Blob([new Uint8Array(pdfBytes)], {
       type: "application/pdf",
@@ -553,7 +589,8 @@ export function ScanActionsMenu({
     return filename;
   }
 
-  function exportSarif() {
+  async function exportSarif() {
+    const { generateSarifReport } = await import("@/lib/reports/sarif-report");
     const sarif = generateSarifReport(result);
     const blob = new Blob([JSON.stringify(sarif, null, 2)], {
       type: "application/sarif+json",
@@ -563,7 +600,9 @@ export function ScanActionsMenu({
     return filename;
   }
 
-  function exportMarkdown() {
+  async function exportMarkdown() {
+    const { generateMarkdownReport } =
+      await import("@/lib/reports/markdown-report");
     const md = generateMarkdownReport(result);
     const blob = new Blob([md], { type: "text/markdown" });
     const filename = `${APP_SLUG}-${hostname}-${todayStamp()}.md`;
@@ -571,7 +610,9 @@ export function ScanActionsMenu({
     return filename;
   }
 
-  function exportCompliance() {
+  async function exportCompliance() {
+    const { generateComplianceReport } =
+      await import("@/lib/reports/compliance-report");
     const md = generateComplianceReport(result);
     const blob = new Blob([md], { type: "text/markdown" });
     const filename = `${APP_SLUG}-${hostname}-compliance-${todayStamp()}.md`;
@@ -587,13 +628,21 @@ export function ScanActionsMenu({
    * landed in a folder the user does not watch was indistinguishable from a
    * no-op. Set a busy flag, yield one turn so the spinner actually paints
    * before the generator blocks, then name the file that was written.
+   *
+   * The generators are imported when their format is picked rather than when
+   * this menu loads, so the PDF writer is not part of every report page. A
+   * chunk that fails to arrive lands in the same catch as a generator that
+   * throws.
    */
-  async function runExport(key: string, generate: () => string) {
+  async function runExport(
+    key: string,
+    generate: () => Promise<string> | string,
+  ) {
     if (exporting) return;
     setExporting(key);
     await new Promise((resolve) => setTimeout(resolve, 0));
     try {
-      const filename = generate();
+      const filename = await generate();
       toast({ title: "Report downloaded", description: filename });
     } catch {
       toast({
@@ -1071,7 +1120,7 @@ export function ScanActionsMenu({
     key: string,
     label: string,
     icon: PageActionItem["icon"],
-    generate: () => string,
+    generate: () => Promise<string> | string,
   ): PageActionEntry => ({
     key,
     label: exporting === key ? "Exporting..." : label,
@@ -1458,23 +1507,27 @@ export function ScanActionsMenu({
 
       {confirmDialog}
 
-      <AiVerifyResultModal
-        open={verifyModalOpen}
-        onOpenChange={handleVerifyModalOpenChange}
-        loading={verifying}
-        error={verifyError}
-        findings={verifiedFindings}
-        outcome={verifyOutcome}
-        pendingCount={result.findings.filter((f) => !f.aiVerdict).length}
-      />
+      {verifyModalMounted && (
+        <AiVerifyResultModal
+          open={verifyModalOpen}
+          onOpenChange={handleVerifyModalOpenChange}
+          loading={verifying}
+          error={verifyError}
+          findings={verifiedFindings}
+          outcome={verifyOutcome}
+          pendingCount={result.findings.filter((f) => !f.aiVerdict).length}
+        />
+      )}
 
-      <AiSummaryModal
-        open={summaryModalOpen}
-        onOpenChange={handleSummaryModalOpenChange}
-        loading={summarizing}
-        error={summaryError}
-        summary={summaryText}
-      />
+      {summaryModalMounted && (
+        <AiSummaryModal
+          open={summaryModalOpen}
+          onOpenChange={handleSummaryModalOpenChange}
+          loading={summarizing}
+          error={summaryError}
+          summary={summaryText}
+        />
+      )}
 
       {/* Compact: two sentences and a pair of buttons. Bands here would be
           three dividers around nothing. */}

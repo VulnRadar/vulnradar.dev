@@ -4,7 +4,7 @@ import { useState } from "react";
 import { PowerOff } from "lucide-react";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
-import { HistoryViewTabs } from "@/components/history";
+import { HistoryViewTabs } from "@/components/history/history-view-tabs";
 import { DomainsSection } from "@/components/profile/tabs/developer/domains-section";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { EmptyState } from "@/components/shared/empty-state";

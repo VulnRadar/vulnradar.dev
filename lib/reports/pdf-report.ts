@@ -797,13 +797,17 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   // the byte count is kept because it is the property the format actually
   // requires and a future addition here should not be able to break the xref
   // table silently.
+  // TextEncoder rather than Buffer.byteLength: this module is bundled for the
+  // browser (the scan menu generates reports client side), and the first
+  // reference to Buffer makes webpack ship a polyfill for it.
+  const utf8 = new TextEncoder();
   let pdf = "%PDF-1.4\n";
-  let byteLength = Buffer.byteLength(pdf, "utf8");
+  let byteLength = utf8.encode(pdf).length;
   const offsets: number[] = [];
   for (const obj of objects) {
     offsets.push(byteLength);
     pdf += obj.content;
-    byteLength += Buffer.byteLength(obj.content, "utf8");
+    byteLength += utf8.encode(obj.content).length;
   }
 
   const xrefOffset = byteLength;

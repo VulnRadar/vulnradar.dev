@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { generatePdfReport } from "@/lib/reports/pdf-report";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 
@@ -355,6 +357,46 @@ describe("generatePdfReport", () => {
       const headers = pdf.match(/VulnRadar Security Report\) Tj/g) ?? [];
       // One per findings page (the cover page carries the wordmark instead).
       expect(headers.length).toBeGreaterThanOrEqual(pageMatches.length - 1);
+    });
+  });
+
+  describe("cross-reference table", () => {
+    it("points every xref entry at the byte where that object starts", () => {
+      // The offsets are summed from encoded lengths. They used to come from
+      // Buffer.byteLength, which a browser bundle polyfills; the TextEncoder
+      // that replaced it has to give the same numbers or the file opens with
+      // a "repairing" prompt in Acrobat.
+      const findings = [
+        makeFinding({ title: "Café 中文 → arrow" }),
+        makeFinding({ id: "second", description: "Words. ".repeat(400) }),
+      ];
+      const bytes = generatePdfReport(makeResult(findings));
+      const pdf = decode(bytes);
+
+      const startxref = Number(pdf.match(/startxref\n(\d+)\n%%EOF$/)?.[1]);
+      expect(pdf.slice(startxref, startxref + 4)).toBe("xref");
+
+      const table = pdf.slice(startxref).split("\n");
+      const count = Number(table[1].split(" ")[1]);
+      const entries = table.slice(3, 3 + count - 1);
+      expect(entries.length).toBeGreaterThan(5);
+      entries.forEach((entry, i) => {
+        const offset = Number(entry.slice(0, 10));
+        expect(pdf.slice(offset, offset + `${i + 1} 0 obj`.length)).toBe(
+          `${i + 1} 0 obj`,
+        );
+      });
+    });
+
+    it("does not reach for Buffer, which a browser bundle would polyfill", () => {
+      const src = fs
+        .readFileSync(
+          path.join(__dirname, "../../../lib/reports/pdf-report.ts"),
+          "utf8",
+        )
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:])\/\/.*$/gm, "$1");
+      expect(src).not.toMatch(/\bBuffer\b/);
     });
   });
 });

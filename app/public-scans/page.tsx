@@ -7,7 +7,7 @@ import { AppPageShell } from "@/components/shared/app-page-shell";
 import { hasCachedSignIn } from "@/components/shared/auth-cache-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PaginationControl } from "@/components/ui/pagination-control";
-import { HistoryViewTabs } from "@/components/history";
+import { HistoryViewTabs } from "@/components/history/history-view-tabs";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
   PublicScansTable,

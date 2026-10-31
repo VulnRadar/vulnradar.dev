@@ -45,7 +45,7 @@ import {
   type SortDirection,
 } from "@/components/admin/shared";
 import type { ToastState } from "@/components/admin/types";
-import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
+import { PageActionsMenu, type PageActionEntry } from "@/components/shared/page-actions-menu";
 import { SeverityBadge, toSeverity } from "@/components/scanner/severity-badge";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { API, APP_SLUG, SEVERITY_LABELS } from "@/lib/config/client-constants";

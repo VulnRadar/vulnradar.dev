@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Check, FileJson, FileSpreadsheet, Link2 } from "lucide-react";
-import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
+import { PageActionsMenu, type PageActionEntry } from "@/components/shared/page-actions-menu";
 import { APP_SLUG } from "@/lib/config/client-constants";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { toast } from "@/components/ui/use-toast";

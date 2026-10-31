@@ -25,7 +25,7 @@ import {
   AssetsDataSkeleton,
   type AssetRow,
 } from "@/components/assets";
-import { HistoryViewTabs } from "@/components/history";
+import { HistoryViewTabs } from "@/components/history/history-view-tabs";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
