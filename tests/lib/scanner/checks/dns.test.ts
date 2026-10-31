@@ -139,7 +139,7 @@ describe("checkNsProviderConcentration", () => {
   });
 
   it("gives up quietly when the NS lookup hangs past the 4s timeout", async () => {
-    // withTimeout()'s reject arm: a resolver that never answers must resolve
+    // withDeadline()'s reject arm: a resolver that never answers must resolve
     // to "no finding" rather than hanging the whole async-check pass. Uses
     // fake timers so the 4s race is exercised without a 4s test.
     vi.useFakeTimers();

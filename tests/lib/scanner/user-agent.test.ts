@@ -1,10 +1,10 @@
 /**
  * The scanner's User-Agent strings. Every request that reaches a scan target
  * names the same product token, which is what lets a site owner allowlist or
- * recognise scan traffic with one rule (the docs say so), so these tests pin
- * the token, the shapes built around it, and the rule that no scanner module
- * sets a User-Agent without it. The call sites themselves are asserted in the
- * suites of the modules that make the requests.
+ * recognise scan traffic with one rule, so these tests pin the token, the
+ * shapes built around it, and the rule that no scanner module sets a
+ * User-Agent without it. The call sites themselves are asserted in the suites
+ * of the modules that make the requests.
  */
 
 import { describe, it, expect } from "vitest";
