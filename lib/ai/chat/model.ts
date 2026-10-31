@@ -6,13 +6,13 @@ import {
   type LanguageModel,
 } from "ai";
 
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { anthropicUsesAdaptiveThinking } from "@/lib/ai/anthropic";
 import { isAnthropicProvider } from "@/lib/ai/provider";
 import {
   resolveAnthropicThinkingBudget,
   resolveOpenAiCompatReasoningExtras,
 } from "@/lib/ai/reasoning";
+import { openRouterAttributionHeaders } from "@/lib/ai/transport";
 
 export interface ChatModelConfig {
   baseUrl: string;
@@ -92,17 +92,6 @@ export function resolveChatModel(cfg: ChatModelConfig): ResolvedChatModel {
     };
   }
 
-  const headers: Record<string, string> = {};
-  try {
-    // Identify this deployment to OpenRouter, not the SaaS: APP_URL resolves
-    // NEXT_PUBLIC_APP_URL first.
-    if (new URL(cfg.baseUrl).hostname.toLowerCase() === "openrouter.ai") {
-      headers["HTTP-Referer"] = APP_URL;
-      headers["X-Title"] = APP_NAME;
-    }
-  } catch {
-    // An unparseable base URL fails at request time with a clearer error.
-  }
   const extras = cfg.reasoning
     ? resolveOpenAiCompatReasoningExtras(cfg.baseUrl, cfg.model, "chat")
     : {};
@@ -110,7 +99,7 @@ export function resolveChatModel(cfg: ChatModelConfig): ResolvedChatModel {
     baseURL: cfg.baseUrl,
     // Ollama and LM Studio take no key; the SDK insists on a string.
     apiKey: cfg.apiKey || "not-needed",
-    headers,
+    headers: openRouterAttributionHeaders(cfg.baseUrl),
     ...(Object.keys(extras).length
       ? { fetch: fetchWithExtraBody(extras) }
       : {}),
