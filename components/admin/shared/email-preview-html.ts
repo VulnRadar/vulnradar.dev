@@ -19,12 +19,14 @@
  * must escape and wrap it themselves, the same way lib/email/email.ts's
  * template functions build HTML before handing it to the layout.
  */
+import { CONFIG_LOGO_URL } from "@/lib/config/config-values";
 import {
   emailLayout,
   emailHeading,
   emailProse,
   escapeHtml,
 } from "@/lib/email/layout";
+import { resolveEmailLogoSrc } from "@/lib/email/logo-src";
 
 export { escapeHtml };
 
@@ -84,8 +86,9 @@ export function generateEmailPreviewHtml({
   appName: string;
   appUrl: string;
   /**
-   * Absolute logo URL, so a deployment with a custom LOGO_URL previews its own
-   * logo. Falls back to the favicon only when the caller has nothing better.
+   * The deployment's logo, so a custom LOGO_URL previews its own. The default
+   * (the SVG favicon) is swapped for the PNG real mail carries, because Gmail
+   * and Outlook will not draw an SVG and the preview should show what they do.
    */
   logoSrc?: string;
   supportEmail?: string;
@@ -106,7 +109,7 @@ export function generateEmailPreviewHtml({
     content: `${emailHeading(safeTitle)}${emailProse(bodyHtml)}`,
     appName,
     appUrl,
-    logoSrc: logoSrc || `${appUrl}/favicon.svg`,
+    logoSrc: resolveEmailLogoSrc(logoSrc || CONFIG_LOGO_URL, appUrl),
     supportEmail: supportEmail || `support@${new URL(appUrl).hostname}`,
     unsubscribeUrl: unsubscribeUrl ?? null,
     title: title || undefined,

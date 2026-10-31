@@ -11,7 +11,6 @@ import {
 } from "@/lib/config/constants";
 import { STAFF_INVITE_EXPIRY_DAYS } from "@/lib/config/constants";
 import {
-  CONFIG_LOGO_URL,
   CONFIG_BILLING_VERIFY_CODE_EXPIRY_MINUTES,
   CONFIG_EMAIL_2FA_CODE_EXPIRY_MINUTES,
   CONFIG_TEAM_INVITE_EXPIRY_DAYS,
@@ -40,6 +39,7 @@ import {
   type EmailAccent,
   type EmailDetailRow,
 } from "@/lib/email/layout";
+import { resolveEmailLogoSrc } from "@/lib/email/logo-src";
 import { getSetting } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
 import { safeDisplayName } from "@/lib/email/safe-name";
@@ -261,30 +261,6 @@ function derivePreheader(text: string): string {
 }
 
 /**
- * A raster mark for the shell, shipped next to the SVG favicon: 52px, which is
- * the 26px the shell draws it at, doubled for dense screens.
- */
-const EMAIL_LOGO_PATH = "/email-logo.png";
-
-/**
- * The logo URL the shell puts in its header.
- *
- * Email clients do not resolve root-relative paths, so it has to be absolute.
- * It also has to be something they draw. The default logo is /favicon.svg, and
- * Gmail and Outlook on Windows both refuse an SVG `<img>`, so the header mark
- * was missing for those readers. The default is therefore swapped for the PNG;
- * anything an operator set themselves is theirs, and is used as written.
- */
-function emailLogoSrc(): string {
-  const absolute = /^https?:\/\//i.test(LOGO_URL)
-    ? LOGO_URL
-    : `${APP_URL}${LOGO_URL}`;
-  return absolute === `${APP_URL}${CONFIG_LOGO_URL}`
-    ? `${APP_URL}${EMAIL_LOGO_PATH}`
-    : absolute;
-}
-
-/**
  * The shell markup now lives in lib/email/layout.ts, which the admin preview
  * (components/admin/shared/email-preview-html.ts) also calls. It used to be
  * duplicated by hand there and had drifted on the logo source, the mobile
@@ -301,7 +277,7 @@ function layout(
     content,
     appName: APP_NAME,
     appUrl: APP_URL,
-    logoSrc: emailLogoSrc(),
+    logoSrc: resolveEmailLogoSrc(LOGO_URL, APP_URL),
     supportEmail: SUPPORT_EMAIL,
     unsubscribeUrl: unsubscribeToken
       ? `${APP_URL}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
