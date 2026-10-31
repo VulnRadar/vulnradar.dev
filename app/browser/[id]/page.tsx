@@ -269,7 +269,6 @@ export default function BrowserViewerPage({ params }: PageProps) {
   // once-a-second interval that set page state, so the whole viewer rendered
   // every second just to compare two numbers; the visible clock is
   // SessionCountdown's own concern now.
-  //
   const providerExpiresMs = parseExpiry(session?.expiresAt);
   useEffect(() => {
     if (ended) return;

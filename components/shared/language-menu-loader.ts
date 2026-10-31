@@ -32,9 +32,3 @@ export function loadLanguageMenuImpl(): Promise<LanguageMenuImpl> {
 export function peekLanguageMenuImpl(): LanguageMenuImpl | null {
   return loaded;
 }
-
-/** Forgets what was imported. For tests. */
-export function resetLanguageMenuLoader(): void {
-  loaded = null;
-  pending = null;
-}
