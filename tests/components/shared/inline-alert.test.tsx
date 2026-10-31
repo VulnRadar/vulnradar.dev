@@ -72,14 +72,27 @@ describe("InlineAlert markup", () => {
 });
 
 describe("the billing tab's standing notices", () => {
-  const src = readFileSync(
+  // Compared through a normaliser so a reflow by prettier cannot hide a match.
+  const flat = readFileSync(
     join(process.cwd(), "components/profile/tabs/profile-billing-tab.tsx"),
     "utf8",
-  );
+  ).replace(/\s+/g, " ");
 
-  it("are all quiet", () => {
-    const alerts = src.match(/<InlineAlert\b[^>]*>/g) ?? [];
-    expect(alerts.length).toBe(6);
-    for (const tag of alerts) expect(tag).toContain('live="off"');
+  // Named, not counted: a failed action on this tab should still be announced,
+  // so nothing here may push a future InlineAlert towards live="off".
+  it.each([
+    "Your subscription will end on",
+    "Daily scan limit reached.",
+    "Running low on scans.",
+    "AI verification limit reached",
+    "AI review limit reached",
+    "Live-browser minute limit reached",
+  ])("%s is page content, not an announcement", (text) => {
+    const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const opening = flat.match(
+      new RegExp(`(<InlineAlert\\b[^>]*>) ${escaped}`),
+    );
+    expect(opening, `no InlineAlert opens on "${text}"`).not.toBeNull();
+    expect(opening![1]).toContain('live="off"');
   });
 });
