@@ -3,6 +3,36 @@
 import { useState, useTransition, type ReactNode } from "react";
 import { APP_NAME } from "@/lib/config/client-constants";
 import { loadMoreReleases } from "@/components/changelog/changelog-actions";
+import { useFocusOnMount } from "@/lib/hooks/use-focus-on-mount";
+
+/** The first release of a batch, made focusable from script without a tab stop. */
+function firstRelease(root: HTMLElement): HTMLElement | null {
+  const release = root.querySelector<HTMLElement>("article");
+  if (release) release.tabIndex = -1;
+  return release;
+}
+
+/**
+ * One loaded batch of releases.
+ *
+ * It exists to move focus when the LAST batch arrives. The button unmounts
+ * with it, the browser drops focus on <body>, and the next Tab started from the
+ * top of a page that is now hundreds of releases long. useFocusOnMount only
+ * acts when focus has been dropped like that, so a batch that arrives while
+ * the person is still on the button leaves focus where it is.
+ */
+function LoadedBatch({ children }: { children: ReactNode }) {
+  // preventScroll: the batch lands where the button was, which is where the
+  // reader is already looking.
+  const ref = useFocusOnMount<HTMLDivElement>(firstRelease, {
+    preventScroll: true,
+  });
+  return (
+    <div ref={ref} className="flex flex-col gap-6">
+      {children}
+    </div>
+  );
+}
 
 /**
  * The reveal half of the changelog list.
@@ -20,6 +50,11 @@ import { loadMoreReleases } from "@/components/changelog/changelog-actions";
  * screen-reader user's position without their asking. With only the button,
  * the footer sits directly under it and a batch arrives when the reader says
  * so.
+ *
+ * The button is `aria-disabled` while a batch loads rather than `disabled`: a
+ * control that stops being focusable loses focus under the HTML focus fixup
+ * rule, so a keyboard user was dropped on <body> on every click, and again
+ * after a failed batch that they then had to find the button to retry.
  */
 export function ChangelogLoadMore({
   initialOffset,
@@ -28,7 +63,9 @@ export function ChangelogLoadMore({
   initialOffset: number;
   total: number;
 }) {
-  const [batches, setBatches] = useState<ReactNode[]>([]);
+  const [batches, setBatches] = useState<{ id: number; nodes: ReactNode }[]>(
+    [],
+  );
   const [offset, setOffset] = useState(initialOffset);
   const [total, setTotal] = useState(initialTotal);
   const [failed, setFailed] = useState(false);
@@ -41,7 +78,7 @@ export function ChangelogLoadMore({
     startTransition(async () => {
       try {
         const next = await loadMoreReleases(offset);
-        setBatches((prev) => [...prev, next.nodes]);
+        setBatches((prev) => [...prev, { id: prev.length, nodes: next.nodes }]);
         setOffset(next.nextOffset);
         setTotal(next.total);
         setFailed(false);
@@ -57,7 +94,11 @@ export function ChangelogLoadMore({
   return (
     <>
       {batches.length > 0 && (
-        <div className="mt-6 flex flex-col gap-6">{batches}</div>
+        <div className="mt-6 flex flex-col gap-6">
+          {batches.map((batch) => (
+            <LoadedBatch key={batch.id}>{batch.nodes}</LoadedBatch>
+          ))}
+        </div>
       )}
 
       {hasMore ? (
@@ -65,8 +106,8 @@ export function ChangelogLoadMore({
           <button
             type="button"
             onClick={loadMore}
-            disabled={isPending}
-            className="inline-flex h-10 items-center rounded-md border border-border/60 px-4 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            aria-disabled={isPending}
+            className="inline-flex h-10 items-center rounded-md border border-border/60 px-4 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-60"
           >
             {isPending ? "Loading..." : "Load more releases"}
           </button>

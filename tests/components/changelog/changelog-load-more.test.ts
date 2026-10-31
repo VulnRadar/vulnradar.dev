@@ -28,9 +28,11 @@ describe("changelog loading is button-only", () => {
     expect(src).not.toContain("IntersectionObserver");
     expect(src).not.toContain("rootMargin");
     expect(src).not.toContain("sentinel");
-    // The effect existed only to arm the observer. A new effect here would
-    // need its own reason, and this is the place to be asked for it.
-    expect(src).not.toMatch(/\buseEffect\b/);
+    // The effect existed only to arm the observer. The one thing that runs on
+    // mount here is the shared focus hook, which has its own reason (below);
+    // a new effect in this file would need one too, and this is the place to
+    // be asked for it.
+    expect(src).not.toMatch(/\buse(?:Layout)?Effect\b/);
   });
 
   it("advances only from the button's click", () => {
@@ -59,5 +61,36 @@ describe("changelog loading is button-only", () => {
     ]) {
       expect(code(rel), rel).not.toContain("IntersectionObserver");
     }
+  });
+});
+
+describe("changelog loading keeps keyboard focus somewhere real", () => {
+  const src = code("components/changelog/changelog-load-more.tsx");
+
+  it("does not disable the button it is focused on while a batch loads", () => {
+    // A control that stops being focusable drops focus on <body>.
+    expect(src).not.toMatch(/(?<![-\w])disabled=\{/);
+    expect(src).toContain("aria-disabled={isPending}");
+    expect(src).toContain("aria-disabled:opacity-60");
+    // The click guard that used to be backed up by `disabled`.
+    expect(src).toMatch(/if \(isPending\) return;/);
+  });
+
+  it("moves focus to the first release of a batch once the button has gone", () => {
+    expect(src).toContain(
+      'import { useFocusOnMount } from "@/lib/hooks/use-focus-on-mount";',
+    );
+    expect(src).toMatch(/useFocusOnMount<HTMLDivElement>\(firstRelease/);
+    expect(src).toContain('root.querySelector<HTMLElement>("article")');
+    // Focusable from script, not a tab stop.
+    expect(src).toContain("release.tabIndex = -1");
+    // The batch arrives where the reader is looking; do not scroll to it.
+    expect(src).toMatch(/preventScroll:\s*true/);
+  });
+
+  it("renders every loaded batch through that wrapper", () => {
+    expect(src).toMatch(
+      /batches\.map\(\(batch\) => \(\s*<LoadedBatch key=\{batch\.id\}>\{batch\.nodes\}<\/LoadedBatch>/,
+    );
   });
 });
