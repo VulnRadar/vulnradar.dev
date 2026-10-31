@@ -78,7 +78,8 @@ export const SCAN_RETENTION_BATCH_SIZE = 2000;
  * Wall-clock budget for the plan-scoped scan_history deletes in one pass. The
  * pass runs on the cleanup interval, so what is left when the budget runs out
  * is picked up by the next one; the budget only stops a single pass from
- * holding a pool connection for as long as a backlog is deep.
+ * spending as long as the backlog is deep on this one table while every prune
+ * after it waits.
  */
 const SCAN_RETENTION_PASS_BUDGET_MS = 20_000;
 
@@ -565,8 +566,8 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
   });
 
   // security_alerts: admin-configurable retention. The table tracks
-  // suspicious activity (brute-force attempts, anomaly hits) — kept
-  // long enough for SOC review, short enough to bound PII.
+  // suspicious activity (brute-force attempts, anomaly hits), kept long
+  // enough for SOC review and short enough to bound PII.
   await runPrune("security_alerts", async () => {
     const res = await pool.query(
       "DELETE FROM security_alerts WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
