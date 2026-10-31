@@ -4,6 +4,7 @@ import { STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
 import { ALL_CATEGORIES } from "@/lib/scanner/types";
 import { WEBSOCKET_CHECK_IDS } from "@/lib/scanner/protocols/websocket";
 import { FTP_CHECK_IDS } from "@/lib/scanner/protocols/ftp";
+import { REQUIRED_EVENTS } from "@/lib/billing/stripe-webhook-events";
 // EXACT_CHECK_COUNT is deliberately not imported here. Prose uses
 // TOTAL_CHECKS_LABEL; the exact figure belongs only where a number is the
 // only valid shape, which on the docs site is the API reference's JSON
@@ -86,7 +87,6 @@ export default function ArchitecturePage() {
 │   ├── pricing/                  # Pricing + Stripe checkout
 │   ├── profile/                  # User profile
 │   ├── shared/[token]/           # Public shared-scan viewer
-│   ├── staff/                    # Public staff list
 │   └── teams/                    # Team management
 │
 ├── components/                   # React components (mostly client)
@@ -112,7 +112,6 @@ export default function ArchitecturePage() {
 │   ├── rate-limiting/            # Generic + plan-based rate limits
 │   ├── reports/                  # SARIF, Markdown, compliance, PDF reports
 │   ├── scanner/                  # Detection engine
-│   ├── types/                    # Shared TypeScript types
 │   └── uploads/                  # Avatar validation
 │
 ├── instrumentation.ts            # Next.js startup hooks (DB init, schema check)
@@ -158,13 +157,15 @@ export default function ArchitecturePage() {
             <li>
               <InlineCode>lib/config/registry.ts</InlineCode>:{" "}
               <InlineCode>SETTINGS_REGISTRY</InlineCode> classifies each
-              constant (type, bounds, admin tab, runtime or build tier)
+              constant (type, bounds, admin tab, runtime or build tier). It
+              drives the admin settings UI at <InlineCode>/admin</InlineCode>{" "}
+              and the resolver below
             </li>
             <li>
               <InlineCode>lib/config/runtime-config.ts</InlineCode>: the
               resolver. Database value <InlineCode>??</InlineCode> environment
               override <InlineCode>??</InlineCode> shipped default, behind a 30
-              second cache
+              second in-process cache that a save invalidates
             </li>
             <li>
               <InlineCode>lib/config/env.ts</InlineCode>: Zod validation of the
@@ -178,20 +179,10 @@ export default function ArchitecturePage() {
             </li>
             <li>
               <InlineCode>lib/config/client-constants.ts</InlineCode>:
-              client-safe subset (no server-only secrets)
-            </li>
-            <li>
-              <InlineCode>lib/config/registry.ts</InlineCode>: classifies every
-              configurable <InlineCode>CONFIG_*</InlineCode> value into a
-              settings registry (type, bounds, admin-facing tab, and whether an
-              edit takes effect immediately or only on the next build) that
-              drives the admin settings UI at <InlineCode>/admin</InlineCode>{" "}
-              and the runtime resolver below
-            </li>
-            <li>
-              <InlineCode>lib/config/runtime-config.ts</InlineCode>: resolves a
-              registry key database-override, then env, then shipped default,
-              with a short in-process cache invalidated on write
+              client-safe subset (no server-only secrets). It is the only config
+              module a <InlineCode>{`"use client"`}</InlineCode> file may
+              import: <InlineCode>constants.ts</InlineCode> is its server-side
+              superset and reads non-public environment variables
             </li>
           </ul>
         </DocsSubSection>
@@ -222,11 +213,8 @@ export default function ArchitecturePage() {
               <InlineCode>04-constraints</InlineCode>,{" "}
               <InlineCode>seeds</InlineCode>), applied at boot by{" "}
               <InlineCode>lib/database/boot/apply-boot-schema.ts</InlineCode>{" "}
-              and by <InlineCode>npm run db:create</InlineCode>. It used to be
-              4,000 lines of template literals inside{" "}
-              <InlineCode>instrumentation.ts</InlineCode>, which is why a
-              database built by <InlineCode>db:create</InlineCode> silently
-              missed constraints no tool could extract from that file
+              and by <InlineCode>npm run db:create</InlineCode>, so a database
+              built either way gets the same tables and constraints
             </li>
             <li>
               <strong className="text-foreground">Schema version gate:</strong>{" "}
@@ -473,7 +461,7 @@ export default function ArchitecturePage() {
           <p className="text-sm text-muted-foreground">
             REST v3 is the only API this build serves. There is no{" "}
             <InlineCode>/api/v1</InlineCode> or <InlineCode>/api/v2</InlineCode>{" "}
-            route tree. Each v3 route handler:
+            route tree. A route handler typically:
           </p>
           <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
@@ -486,8 +474,15 @@ export default function ArchitecturePage() {
               or <InlineCode>validateApiKey()</InlineCode> (Bearer)
             </li>
             <li>
-              Validates input with Zod schemas using the{" "}
-              <InlineCode>Validate</InlineCode> helper
+              Reads the JSON body with <InlineCode>parseBody</InlineCode>, which
+              enforces the size cap, then checks the fields with the{" "}
+              <InlineCode>Validate</InlineCode> helpers. Zod is the exception
+              rather than the rule: it validates the environment (
+              <InlineCode>lib/config/env.ts</InlineCode>), the settings
+              registry, the AI chat tool arguments, and the request bodies of{" "}
+              <InlineCode>scan/authenticated</InlineCode>,{" "}
+              <InlineCode>scan/feedback</InlineCode> and{" "}
+              <InlineCode>scan/remediation</InlineCode>
             </li>
             <li>
               Applies a rate limit via <InlineCode>checkRateLimit</InlineCode> (
@@ -496,8 +491,10 @@ export default function ArchitecturePage() {
               <InlineCode>lib/rate-limiting/daily-limits.ts</InlineCode>)
             </li>
             <li>
-              Returns <InlineCode>NextResponse.json</InlineCode> with a standard
-              shape on both success and error
+              Returns through <InlineCode>ApiResponse.success</InlineCode> or{" "}
+              <InlineCode>ApiResponse.error</InlineCode> (or a named helper such
+              as <InlineCode>ApiResponse.notFound</InlineCode>), whose error
+              body is <InlineCode>{`{ error, status }`}</InlineCode>
             </li>
           </ul>
         </DocsSubSection>
@@ -530,12 +527,16 @@ export default function ArchitecturePage() {
             </li>
             <li>
               Webhook handler:{" "}
-              <InlineCode>app/api/v3/webhooks/stripe/route.ts</InlineCode>{" "}
-              processes <InlineCode>checkout.session.completed</InlineCode>,{" "}
-              <InlineCode>
-                customer.subscription.created/updated/deleted
-              </InlineCode>
-              , and <InlineCode>invoice.payment_succeeded/failed</InlineCode>
+              <InlineCode>app/api/v3/webhooks/stripe/route.ts</InlineCode> acts
+              on the events in <InlineCode>REQUIRED_EVENTS</InlineCode> (
+              <InlineCode>lib/billing/stripe-webhook-events.ts</InlineCode>),
+              rendered here from that list:{" "}
+              {REQUIRED_EVENTS.map((event, i) => (
+                <span key={event}>
+                  <InlineCode>{event}</InlineCode>
+                  {i < REQUIRED_EVENTS.length - 1 ? ", " : ""}
+                </span>
+              ))}
             </li>
             <li>
               Plan limits and retention windows are in{" "}
@@ -632,20 +633,20 @@ Route handler (app/api/v3/<resource>/route.ts)
   2. Auth check (getSession OR validateApiKey)
   3. Rate limit check (lib/rate-limiting/rate-limit.ts)
   4. Daily quota check (lib/rate-limiting/daily-limits.ts, API-key + session)
-  5. Input validation (Zod via Validate)
+  5. Input parsing and validation (parseBody + Validate)
   6. Authorization (requireStaff / requireAdmin / verifyOwnership)
   7. Business logic
   8. Database query (lib/database/db.ts)
-  9. ApiResponse.json(...)
+  9. ApiResponse.success(...) / ApiResponse.error(...)
   │
   ▼
 instrumentation.ts (server startup only)
   - Validate env, install error-log capture
   - Read vulnradar_schema_meta; refuse to start if version < required
   - Take a boot advisory lock, then, inside it:
-      apply lib/database/schema/ -> backfills -> cleanup + workers
-      -> safety nets. A failure in any of them exits rather than
-      serving traffic against a half-built database.`}
+      apply-boot-schema applies lib/database/schema/ -> backfills
+      -> cleanup + workers -> safety nets. A failure in any of them
+      exits rather than serving traffic against a half-built database.`}
         />
       </DocsSection>
 
@@ -653,7 +654,7 @@ instrumentation.ts (server startup only)
         <CodeBlock
           language="text"
           code={`On push to main / PR
-  ├── Lint (ESLint 9, flat config in eslint.config.mjs)
+  ├── Lint (Oxlint, then ESLint 10 with the flat config in eslint.config.mjs)
   ├── Typecheck (tsc --noEmit, hard gate)
   ├── Test (vitest run)
   ├── Format check (prettier --check)

@@ -34,6 +34,11 @@ import {
 import { cn } from "@/lib/ui/utils";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 
+// The link-shaped buttons in the Contributing card. A control sits on the
+// rounded-md rung of the radius ladder, not the rounded-lg of a card.
+const CARD_LINK_CLASS =
+  "inline-flex items-center gap-2 px-4 py-2 rounded-md bg-background border border-border text-sm font-medium hover:bg-muted transition-colors";
+
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
   { id: "finding-types", label: "Finding Types API" },
@@ -421,7 +426,7 @@ export default function DevelopersPage() {
             <InlineCode>package.json</InlineCode> is{" "}
             <InlineCode>{`{ "node": ">=22.0.0 <23.0.0" }`}</InlineCode>. There
             is no fallback to Node 20 and no jump to 24 either: the Dockerfile
-            builds and runs on <InlineCode>node:22.23.3-alpine</InlineCode>, and
+            builds and runs on <InlineCode>node:22.23.4-alpine</InlineCode>, and
             CI runs the full lint, typecheck, test, and build matrix on Node 22
             only. Match that locally.
           </p>
@@ -430,7 +435,7 @@ export default function DevelopersPage() {
           <li>
             <strong className="text-foreground">Node.js 22 LTS</strong> (the{" "}
             <InlineCode>.nvmrc</InlineCode> at the repo root pins{" "}
-            <InlineCode>22.23.3</InlineCode>, the same patch the Dockerfile and
+            <InlineCode>22.23.4</InlineCode>, the same patch the Dockerfile and
             CI pin)
           </li>
           <li>
@@ -472,7 +477,7 @@ export default function DevelopersPage() {
         <CodeBlock
           language="bash"
           code={`# nvm / fnm / volta / asdf will all auto-pick this from the repo root
-nvm use          # reads .nvmrc (which pins 22.23.3)
+nvm use          # reads .nvmrc (which pins 22.23.4)
 
 # or install + use explicitly
 nvm install 22
@@ -559,11 +564,11 @@ npm run dev
             },
             {
               cmd: "npm run lint",
-              what: "ESLint over the repo (no --fix)",
+              what: "Oxlint, then ESLint over the repo (no --fix)",
             },
             {
               cmd: "npm run lint:fix",
-              what: "ESLint with --fix (auto-fixes where safe)",
+              what: "The same two with --fix (auto-fixes where safe)",
             },
             {
               cmd: "npm run typecheck",
@@ -667,32 +672,47 @@ npm run dev
 
       <DocsSection id="linting" title="Linting" className="ml-0">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
-          ESLint 9 with flat config (<InlineCode>eslint.config.mjs</InlineCode>
-          ). The config wraps <InlineCode>next/core-web-vitals</InlineCode> for
-          React / Next / TS rules. CI runs <InlineCode>npm run lint</InlineCode>{" "}
-          and fails on errors. Warnings don&apos;t block the build.
+          <InlineCode>npm run lint</InlineCode> runs Oxlint (
+          <InlineCode>.oxlintrc.json</InlineCode>) and then ESLint 10 with flat
+          config (<InlineCode>eslint.config.mjs</InlineCode>). Oxlint owns every
+          rule it implements, and the last block of the ESLint config switches
+          those rules off again, so a rule lives in exactly one of them. ESLint
+          keeps what Oxlint cannot do yet: the type-aware promise rules on the
+          auth and billing code, the React Compiler readiness rules, and the
+          selector that flags a hardcoded{" "}
+          <InlineCode>/api/v&lt;n&gt;</InlineCode> path passed to{" "}
+          <InlineCode>fetch</InlineCode>. The config wraps{" "}
+          <InlineCode>next/core-web-vitals</InlineCode> for React / Next / TS
+          rules. CI runs <InlineCode>npm run lint</InlineCode> and fails on
+          errors. Warnings don&apos;t block the build.
         </p>
         <CodeBlock
           language="bash"
-          code={`npm run lint        # check
-npm run lint:fix    # auto-fix`}
+          code={`npm run lint        # oxlint, then eslint
+npm run lint:fix    # oxlint --fix, then eslint --fix`}
         />
         <p className="text-sm text-muted-foreground mt-3">
-          Notable rule overrides:
+          Notable rule settings:
         </p>
         <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
           <li>
-            <InlineCode>@typescript-eslint/no-unused-vars</InlineCode> →{" "}
-            <InlineCode>warn</InlineCode> (with <InlineCode>^_</InlineCode>{" "}
-            underscore convention)
+            <InlineCode>no-unused-vars</InlineCode> →{" "}
+            <InlineCode>warn</InlineCode> in Oxlint (with{" "}
+            <InlineCode>^_</InlineCode> underscore convention)
           </li>
           <li>
             <InlineCode>@typescript-eslint/no-explicit-any</InlineCode> →{" "}
-            <InlineCode>warn</InlineCode>
+            <InlineCode>warn</InlineCode> in ESLint
           </li>
           <li>
-            <InlineCode>@next/next/no-html-link-for-pages</InlineCode> → off (we
-            use <InlineCode>&lt;Link&gt;</InlineCode> exclusively)
+            <InlineCode>no-empty</InlineCode> → <InlineCode>error</InlineCode>,
+            even for a bare <InlineCode>catch</InlineCode>: a deliberate no-op
+            carries a comment saying why
+          </li>
+          <li>
+            <InlineCode>@next/next/no-html-link-for-pages</InlineCode> → off
+            (prefer <InlineCode>&lt;Link&gt;</InlineCode>; a plain anchor
+            reloads the page rather than navigating in place)
           </li>
           <li>
             <InlineCode>react/no-unescaped-entities</InlineCode> → off (too
@@ -882,6 +902,20 @@ npm run lint:fix    # auto-fix`}
             rate-limit helper from <InlineCode>lib/rate-limiting/</InlineCode>.
           </li>
           <li>
+            <strong className="text-foreground">Adding a docs page:</strong>{" "}
+            create <InlineCode>app/docs/&lt;slug&gt;/page.tsx</InlineCode> with
+            a <InlineCode>layout.tsx</InlineCode> beside it that sets the
+            metadata (copy another docs page&apos;s), then add the page to{" "}
+            <InlineCode>DOCS_NAV</InlineCode> in{" "}
+            <InlineCode>components/docs/docs-nav.ts</InlineCode>. That one table
+            drives the sidebar, the mobile drawer, the previous and next links
+            and the sitemap, so a page missing from it has no link from the docs
+            and is not in the sitemap. Then run{" "}
+            <InlineCode>npm run build:knowledge</InlineCode> and commit the
+            regenerated <InlineCode>lib/ai/</InlineCode> files: the assistant
+            answers from the docs, and CI fails on a stale diff.
+          </li>
+          <li>
             <strong className="text-foreground">Adding a new icon:</strong> use{" "}
             <InlineCode>lucide-react</InlineCode> (default) or{" "}
             <InlineCode>react-icons</InlineCode>
@@ -926,6 +960,28 @@ npm run lint:fix    # auto-fix`}
             <InlineCode>node_modules</InlineCode> from the build stage. Comments
             in <InlineCode>next.config.mjs</InlineCode> explain why.
           </li>
+          <li>
+            <strong className="text-foreground">
+              Calling the API from curl or Postman:
+            </strong>{" "}
+            a mutating request that authenticates with the session cookie has no{" "}
+            <InlineCode>Origin</InlineCode> header, so the CSRF check answers
+            403. For local work only, set{" "}
+            <InlineCode>SECURITY_ALLOW_NON_BROWSER_API=1</InlineCode> in{" "}
+            <InlineCode>.env</InlineCode> to skip that check. It does nothing
+            when <InlineCode>NODE_ENV</InlineCode> is{" "}
+            <InlineCode>production</InlineCode>, and a request that carries a
+            Bearer API key does not need it.
+          </li>
+          <li>
+            <strong className="text-foreground">The in-app updater:</strong>{" "}
+            Admin &rarr; Updater refuses to run when{" "}
+            <InlineCode>VULNRADAR_UPDATER_DISABLED=true</InlineCode>, which the
+            official Dockerfile sets because an image updates by pulling a new
+            tag. A source checkout leaves it unset. The updater also refuses on
+            Vercel and when the app directory is not writable by the user the
+            process runs as.
+          </li>
         </ul>
       </DocsSection>
 
@@ -942,17 +998,35 @@ npm run lint:fix    # auto-fix`}
               <h3 className="text-base font-semibold mb-2">Open source</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {APP_NAME} is GPL-3.0 open source and welcomes contributions:
-                bug fixes, new checks, documentation, SDKs, and translations.
+                bug fixes, new checks, documentation, SDKs, and{" "}
+                <a
+                  href={`https://github.com/${APP_REPO}/blob/main/lib/i18n/README.md`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  translations
+                </a>
+                .
               </p>
               <div className="flex flex-wrap gap-3">
                 <a
                   href={`https://github.com/${APP_REPO}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-background border border-border text-sm font-medium hover:bg-muted transition-colors"
+                  className={CARD_LINK_CLASS}
                 >
                   <FaGithub className="h-4 w-4" />
                   View on GitHub
+                  <ExternalLink className="h-3 w-3 opacity-50" />
+                </a>
+                <a
+                  href={`https://github.com/${APP_REPO}/blob/main/CONTRIBUTING.md`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={CARD_LINK_CLASS}
+                >
+                  Contributing guide
                   <ExternalLink className="h-3 w-3 opacity-50" />
                 </a>
               </div>
