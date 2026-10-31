@@ -139,7 +139,19 @@ describe("the language button in the header", () => {
     );
     expect(shell).toContain("onPointerDown={() => {");
     expect(shell).toContain("onPointerCancel={release}");
-    expect(shell).toContain("onPointerLeave={release}");
+  });
+
+  it("does not end a press when a touch pointer leaves, which happens before the click", () => {
+    // pointerleave fires for a touch as the finger lifts, ahead of the click.
+    // Releasing the hold there swapped the button out between the tap and its
+    // click, and the Radix trigger that replaced it opens on pointerdown, so a
+    // first tap on a touch screen opened nothing whenever the chunk arrived
+    // while the finger was still down.
+    expect(shell).not.toContain("onPointerLeave={release}");
+    const leave = shell.slice(shell.indexOf("onPointerLeave="));
+    expect(leave.slice(0, leave.indexOf("}}") + 2)).toContain(
+      'event.pointerType !== "touch"',
+    );
   });
 
   it("goes straight to the menu in a header that mounts after it was loaded", () => {

@@ -112,7 +112,14 @@ export function LanguageMenu({ className }: { className?: string }) {
         pointerDown.current = true;
       }}
       onPointerCancel={release}
-      onPointerLeave={release}
+      // A mouse leaving ends a press that will never click. A touch pointer
+      // "leaves" as the finger lifts, which is before the click: releasing
+      // there swapped the button out between the tap and its click, and the
+      // trigger that replaced it opens on pointerdown, so the tap did nothing.
+      // A touch press ends at its click, or at pointercancel.
+      onPointerLeave={(event) => {
+        if (event.pointerType !== "touch") release();
+      }}
       onClick={() => {
         pointerDown.current = false;
         wantsOpen.current = true;
