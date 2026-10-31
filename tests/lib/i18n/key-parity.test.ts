@@ -8,8 +8,7 @@
  * namespace, so a change adds its keys to all six languages in the same commit.
  *
  * The second half is a report and not a gate. English keys that no source file
- * refers to are listed (the audit counted about thirty before the surfaces that
- * use them were translated), never deleted and never a failure: a key added a
+ * refers to are listed, never deleted and never a failure: a key added a
  * commit before the component that reads it is normal work, and a failing test
  * for it would only teach people to add the reference first and the words
  * never. The list errs toward "used": it reads source text, not types, so a
@@ -215,6 +214,8 @@ describe("English keys that nothing references", () => {
       );
     }
 
-    expect(unreferenced.every((key) => english.has(key))).toBe(true);
+    // The one thing worth failing on: a list that is every key means the
+    // scanner matched nothing, which is a broken report and not a finding.
+    expect(unreferenced.length).toBeLessThan(english.size);
   });
 });
