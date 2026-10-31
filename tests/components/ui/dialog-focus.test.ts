@@ -5,11 +5,11 @@
  * <DialogTrigger>, and almost no dialog here renders one: every useConfirm()
  * call, the profile save modal and the ticket "Close ticket" confirm open from
  * state. Focus fell to <body> on close (SC 2.4.3). components/ui/dialog-focus.ts
- * is the fix, shared by DialogContent and AlertDialogContent.
+ * is the fix, shared by DialogContent, AlertDialogContent and SheetContent.
  *
  * There is no DOM in this suite (vitest runs in node, with no jsdom), so the
  * decision is exercised against plain objects that implement the slice of the
- * DOM it reads, and the two wrappers are checked at the source for the wiring
+ * DOM it reads, and the three wrappers are checked at the source for the wiring
  * a behavioural test cannot see: that the origin is recorded ahead of the
  * panel's own subtree and that the spread of caller props cannot clobber it.
  * The same wiring was also run in a real browser against Radix 1.2: cancel,
@@ -393,12 +393,13 @@ describe("useDialogFocusRestore + DialogFocusOrigin", () => {
   });
 });
 
-describe("the two wrappers are wired to it", () => {
+describe("the three wrappers are wired to it", () => {
   const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
 
   it.each([
     ["components/ui/dialog.tsx", "<DialogOverlay />"],
     ["components/ui/alert-dialog.tsx", "<AlertDialogOverlay />"],
+    ["components/ui/sheet.tsx", "<SheetOverlay />"],
   ])(
     "%s records the origin ahead of the panel and keeps the spread from clobbering it",
     (rel, overlay) => {

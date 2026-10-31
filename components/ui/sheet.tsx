@@ -7,6 +7,11 @@ import { X } from "lucide-react";
 
 import { cn } from "@/lib/ui/utils";
 import {
+  composeAutoFocus,
+  DialogFocusOrigin,
+  useDialogFocusRestore,
+} from "@/components/ui/dialog-focus";
+import {
   modalBand,
   modalCloseChip,
   modalCloseClearance,
@@ -93,35 +98,51 @@ const SheetContent = React.forwardRef<
   SheetContentProps
 >(
   (
-    { side = "right", variant = "shell", className, children, ...props },
+    {
+      side = "right",
+      variant = "shell",
+      className,
+      children,
+      onOpenAutoFocus,
+      onCloseAutoFocus,
+      ...props
+    },
     ref,
-  ) => (
-    <SheetPortal>
-      <SheetOverlay />
-      <SheetPrimitive.Content
-        ref={ref}
-        className={cn(sheetVariants({ side, variant }), className)}
-        onOpenAutoFocus={(e) => {
-          // Same reasoning as components/ui/dialog.tsx's override: don't
-          // auto-focus the first link/button inside (e.g. the mobile nav's
-          // first item), but do move focus into the panel so the sheet is
-          // announced and Tab starts inside it rather than on the trigger
-          // Radix has just hidden behind the scrim.
-          e.preventDefault();
-          (e.currentTarget as HTMLElement).focus();
-        }}
-        {...props}
-      >
-        <SheetTierContext.Provider value={variant ?? "shell"}>
-          {children}
-        </SheetTierContext.Provider>
-        <SheetPrimitive.Close className={modalCloseChip}>
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
-        </SheetPrimitive.Close>
-      </SheetPrimitive.Content>
-    </SheetPortal>
-  ),
+  ) => {
+    // A sheet has the same close-focus gap the dialogs had: Radix hands focus
+    // back only to a rendered <SheetTrigger>, and a sheet opened from state has
+    // none. See components/ui/dialog-focus.ts.
+    const focus = useDialogFocusRestore(onCloseAutoFocus);
+    return (
+      <SheetPortal>
+        <DialogFocusOrigin originRef={focus.originRef} />
+        <SheetOverlay />
+        <SheetPrimitive.Content
+          ref={ref}
+          className={cn(sheetVariants({ side, variant }), className)}
+          onOpenAutoFocus={composeAutoFocus(onOpenAutoFocus, (e) => {
+            // Same reasoning as components/ui/dialog.tsx's override: don't
+            // auto-focus the first link/button inside (e.g. the mobile nav's
+            // first item), but do move focus into the panel so the sheet is
+            // announced and Tab starts inside it rather than on the trigger
+            // Radix has just hidden behind the scrim.
+            e.preventDefault();
+            (e.currentTarget as HTMLElement).focus();
+          })}
+          onCloseAutoFocus={focus.onCloseAutoFocus}
+          {...props}
+        >
+          <SheetTierContext.Provider value={variant ?? "shell"}>
+            {children}
+          </SheetTierContext.Provider>
+          <SheetPrimitive.Close className={modalCloseChip}>
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+        </SheetPrimitive.Content>
+      </SheetPortal>
+    );
+  },
 );
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
