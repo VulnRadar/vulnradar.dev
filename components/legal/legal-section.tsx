@@ -69,7 +69,10 @@ export function LegalSection({
           <a
             href={`#${id}`}
             aria-label={`Link to clause ${number}, ${label}`}
-            className="w-6 shrink-0 rounded-sm font-mono text-sm tabular-nums text-primary underline-offset-4 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            // text-sm leaves the number 20px tall. The padding is on the link
+            // and the negative margin keeps the heading as tall as it was;
+            // the h2 is a flex row, so the margins stay inside it.
+            className="-my-1.5 w-6 shrink-0 rounded-sm py-1.5 font-mono text-sm tabular-nums text-primary underline-offset-4 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             {number}
           </a>
@@ -77,8 +80,10 @@ export function LegalSection({
           <a
             href={`#${id}`}
             aria-label={`Link to section: ${title}`}
+            // A bare "#" is about 10px wide. A fixed 24px box centring it
+            // meets the floor without moving the glyph.
             className={cn(
-              "order-last text-muted-foreground opacity-0 transition-opacity",
+              "order-last inline-flex h-6 w-6 shrink-0 items-center justify-center text-muted-foreground opacity-0 transition-opacity",
               "group-hover:opacity-100 focus-visible:opacity-100",
               "hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
             )}

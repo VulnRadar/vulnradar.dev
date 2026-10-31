@@ -7,6 +7,8 @@ import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 import { SeoPageShell, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
 import { getAllAlternatives } from "@/lib/seo/alternatives";
 import { APP_NAME } from "@/lib/config/constants";
+import { focus } from "@/lib/ui/animations";
+import { cn } from "@/lib/ui/utils";
 
 const ALTERNATIVES = getAllAlternatives();
 
@@ -70,7 +72,10 @@ export default async function AlternativesIndexPage() {
               <Link
                 key={alt.slug}
                 href={`/alternatives/${alt.slug}`}
-                className="group flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-card p-5 hover:border-primary/40 transition-colors"
+                className={cn(
+                  "group flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-card p-5 hover:border-primary/40 transition-colors",
+                  focus.ring,
+                )}
               >
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-2 flex-wrap">

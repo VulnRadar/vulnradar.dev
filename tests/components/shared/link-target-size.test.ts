@@ -16,6 +16,12 @@ import ts from "typescript";
  * page. This reads the real JSX of those files, so a link added later to any of
  * them has to meet the floor or be named below as inline-in-a-sentence.
  *
+ * It has since grown to the tools pages, the alternatives pages, the category
+ * index, the docs breadcrumb, the legal clause numbers and the changelog
+ * version chip. A link inside a sentence on those pages is padded as an inline
+ * box (`rounded-sm py-1.5`), which grows the tappable area to the floor
+ * without moving a line of the prose or stopping the link wrapping.
+ *
  * Source analysis rather than a render: the suite runs under `node` with no
  * DOM and no layout engine, and vitest cannot transform this repo's
  * `jsx: preserve` components, so what can be pinned is the class contract.
@@ -156,6 +162,15 @@ const INLINE_IN_SENTENCE: Record<string, string[]> = {
   "app/legal/page.tsx": ["documentation", "contact"],
   "app/checks/[id]/page.tsx": [],
   "lib/seo/seo-ui.tsx": [],
+  "app/checks/category/[category]/page.tsx": [],
+  "app/alternatives/page.tsx": [],
+  "app/alternatives/[competitor]/page.tsx": [],
+  "app/tools/page.tsx": [],
+  "app/tools/api-scanner/page.tsx": [],
+  "app/tools/link-checker/page.tsx": [],
+  "components/docs/docs-pager.tsx": [],
+  "components/legal/legal-section.tsx": [],
+  "components/changelog/changelog-release.tsx": [],
 };
 
 /** A floor on how many links each file is expected to hold, so a parser miss
@@ -164,6 +179,15 @@ const MIN_LINKS: Record<string, number> = {
   "app/legal/page.tsx": 3,
   "app/checks/[id]/page.tsx": 5,
   "lib/seo/seo-ui.tsx": 5,
+  "app/checks/category/[category]/page.tsx": 2,
+  "app/alternatives/page.tsx": 1,
+  "app/alternatives/[competitor]/page.tsx": 1,
+  "app/tools/page.tsx": 1,
+  "app/tools/api-scanner/page.tsx": 1,
+  "app/tools/link-checker/page.tsx": 1,
+  "components/docs/docs-pager.tsx": 1,
+  "components/legal/legal-section.tsx": 1,
+  "components/changelog/changelog-release.tsx": 1,
 };
 
 describe.each(Object.keys(INLINE_IN_SENTENCE))("%s", (rel) => {

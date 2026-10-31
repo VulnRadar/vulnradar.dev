@@ -262,7 +262,10 @@ export function ChangelogRelease({
             href={`#${slug}`}
             aria-label={`Link to version ${release.version}`}
             className={cn(
-              "inline-flex items-center rounded-md px-2.5 py-0.5 font-mono text-sm font-semibold",
+              // min-h-6 states the 24px floor outright: the chip only reached
+              // it through a 20px line plus 2px of padding a side, which one
+              // change of type size would have quietly undone.
+              "inline-flex min-h-6 items-center rounded-md px-2.5 py-0.5 font-mono text-sm font-semibold",
               "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
               isLatest
                 ? "bg-primary text-primary-foreground"

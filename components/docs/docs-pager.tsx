@@ -21,7 +21,10 @@ export function DocsBreadcrumb() {
         <li>
           <Link
             href="/docs"
-            className="rounded-sm hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            // text-xs puts the bare link at 16px. The padding is on the link
+            // and the negative margin keeps the breadcrumb row as tall as it
+            // was; the li is a flex item of the ol, so the margins stay inside.
+            className="-my-1.5 block rounded-sm py-1.5 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Docs
           </Link>

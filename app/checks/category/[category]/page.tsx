@@ -21,6 +21,8 @@ import {
 } from "@/lib/seo/checks-content";
 import type { Category } from "@/lib/scanner/types";
 import { APP_NAME } from "@/lib/config/constants";
+import { focus } from "@/lib/ui/animations";
+import { cn } from "@/lib/ui/utils";
 
 export const dynamicParams = true;
 
@@ -169,7 +171,10 @@ export default async function CategoryPage({
                     <li key={c.id}>
                       <Link
                         href={`/checks/${c.id}`}
-                        className="group -mx-2 flex flex-col gap-0.5 rounded-md px-2 py-3 transition-colors hover:bg-muted/30"
+                        className={cn(
+                          "group -mx-2 flex flex-col gap-0.5 rounded-md px-2 py-3 transition-colors hover:bg-muted/30",
+                          focus.ring,
+                        )}
                       >
                         {/* wrap-break-word: some check titles are a single
                             unbreakable identifier that line breaking will not
@@ -192,7 +197,15 @@ export default async function CategoryPage({
         <SeoFaq items={faq} heading={`About the ${label} checks`} />
 
         <p className="mt-10 text-sm">
-          <Link href="/checks" className="text-primary hover:underline">
+          <Link
+            href="/checks"
+            // text-sm leaves the bare link 20px tall. The padding is on the
+            // link and the negative margin gives the row its height back.
+            className={cn(
+              "-my-1.5 inline-block rounded-sm py-1.5 text-primary hover:underline",
+              focus.ring,
+            )}
+          >
             Back to all checks
           </Link>
         </p>

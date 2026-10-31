@@ -9,6 +9,8 @@ import {
 } from "@/components/seo/structured-data";
 import { SeoPageShell, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
 import { APP_NAME } from "@/lib/config/constants";
+import { focus } from "@/lib/ui/animations";
+import { cn } from "@/lib/ui/utils";
 
 export const metadata: Metadata = pageMetadata({
   title: "Free Online Security Tools, No Signup",
@@ -68,7 +70,10 @@ export default async function ToolsIndexPage() {
             <Link
               key={tool.href}
               href={tool.href}
-              className="group rounded-lg border border-border/60 bg-card p-5 sm:p-6 hover:border-primary/40 transition-colors"
+              className={cn(
+                "group rounded-lg border border-border/60 bg-card p-5 sm:p-6 hover:border-primary/40 transition-colors",
+                focus.ring,
+              )}
             >
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
@@ -93,7 +98,16 @@ export default async function ToolsIndexPage() {
 
         <p className="mt-8 text-sm text-muted-foreground">
           Looking for the whole picture?{" "}
-          <Link href="/checks" className="text-primary hover:underline">
+          <Link
+            href="/checks"
+            // An inline box: the vertical padding grows the tappable area to
+            // 24px without moving a line of the sentence, and the link can
+            // still wrap with it.
+            className={cn(
+              "rounded-sm py-1.5 text-primary hover:underline",
+              focus.ring,
+            )}
+          >
             Browse every check {APP_NAME} runs
           </Link>
           .

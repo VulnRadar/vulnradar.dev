@@ -15,6 +15,8 @@ import {
 } from "@/lib/seo/seo-ui";
 import { getChecksInCategory } from "@/lib/seo/checks-content";
 import { APP_NAME } from "@/lib/config/constants";
+import { focus } from "@/lib/ui/animations";
+import { cn } from "@/lib/ui/utils";
 
 const API_CHECKS = getChecksInCategory("api");
 
@@ -115,7 +117,12 @@ export default async function ApiScannerPage() {
             Each one is a real check with its own fix guide.{" "}
             <Link
               href="/checks/category/api"
-              className="text-primary hover:underline"
+              // Inline box: the padding grows the tappable area without
+              // moving a line of the sentence.
+              className={cn(
+                "rounded-sm py-1.5 text-primary hover:underline",
+                focus.ring,
+              )}
             >
               See all {API_CHECKS.length} API checks
             </Link>
@@ -126,7 +133,10 @@ export default async function ApiScannerPage() {
               <li key={c.id}>
                 <Link
                   href={`/checks/${c.id}`}
-                  className="group flex items-start gap-3 py-3 hover:bg-muted/30 -mx-2 px-2 rounded-md transition-colors"
+                  className={cn(
+                    "group flex items-start gap-3 py-3 hover:bg-muted/30 -mx-2 px-2 rounded-md transition-colors",
+                    focus.ring,
+                  )}
                 >
                   <SeverityPill
                     severity={c.severity}

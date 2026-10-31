@@ -8,6 +8,8 @@ import {
 } from "@/components/seo/structured-data";
 import { SeoPageShell, Breadcrumbs, ScanCta, SeoFaq } from "@/lib/seo/seo-ui";
 import { APP_NAME } from "@/lib/config/constants";
+import { focus } from "@/lib/ui/animations";
+import { cn } from "@/lib/ui/utils";
 
 export const metadata: Metadata = pageMetadata({
   title: "Link & Redirect Checker: See Where It Goes",
@@ -232,14 +234,22 @@ export default async function LinkCheckerPage() {
           Want the header detail on its own?{" "}
           <Link
             href="/checks/category/headers"
-            className="text-primary hover:underline"
+            // Inline boxes: the padding grows the tappable area without
+            // moving a line of the sentence.
+            className={cn(
+              "rounded-sm py-1.5 text-primary hover:underline",
+              focus.ring,
+            )}
           >
             Browse the security header checks
           </Link>{" "}
           or{" "}
           <Link
             href="/checks/category/host-validation"
-            className="text-primary hover:underline"
+            className={cn(
+              "rounded-sm py-1.5 text-primary hover:underline",
+              focus.ring,
+            )}
           >
             the redirect and host checks
           </Link>

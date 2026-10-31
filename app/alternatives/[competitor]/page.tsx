@@ -8,6 +8,8 @@ import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 import { SeoPageShell, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
 import { getAllAlternatives, getAlternative } from "@/lib/seo/alternatives";
 import { APP_NAME } from "@/lib/config/constants";
+import { focus } from "@/lib/ui/animations";
+import { cn } from "@/lib/ui/utils";
 
 export const dynamicParams = true;
 
@@ -202,7 +204,13 @@ export default async function AlternativePage({
         </section>
 
         <p className="mt-8 text-sm">
-          <Link href="/alternatives" className="text-primary hover:underline">
+          <Link
+            href="/alternatives"
+            className={cn(
+              "-my-1.5 inline-block rounded-sm py-1.5 text-primary hover:underline",
+              focus.ring,
+            )}
+          >
             See all comparisons
           </Link>
         </p>
