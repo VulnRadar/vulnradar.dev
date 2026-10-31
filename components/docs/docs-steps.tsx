@@ -1,5 +1,3 @@
-"use client";
-
 import type { Step } from "./docs-types";
 import { cn } from "@/lib/ui/utils";
 
@@ -7,6 +5,9 @@ import { cn } from "@/lib/ui/utils";
  * A real ordered list, numbered by the browser. Numbers in circle badges look
  * like a diagram and read like one too: the reader has to work out that the
  * items are sequential. An <ol> says it outright and survives copy-paste.
+ *
+ * No "use client": this is markup with no state, effect or handler, so on a
+ * docs page that is a server component it renders to HTML and ships no script.
  */
 export function DocsSteps({
   steps,
