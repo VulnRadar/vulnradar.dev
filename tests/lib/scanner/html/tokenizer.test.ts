@@ -3,7 +3,47 @@ import {
   tokenize,
   toElements,
   decodeEntities,
+  startTagAttributes,
 } from "@/lib/scanner/html/tokenizer";
+
+describe("startTagAttributes", () => {
+  it("reads the attributes of one opening tag by the tokenizer's rules", () => {
+    expect(
+      startTagAttributes(`<input TYPE="hidden" name='csrf' value=a&#43;b>`),
+    ).toEqual({ type: "hidden", name: "csrf", value: "a+b" });
+  });
+
+  it("matches names whole, so data-type is never type", () => {
+    expect(startTagAttributes(`<input data-type="x">`)).toEqual({
+      "data-type": "x",
+    });
+  });
+
+  it("keeps the first of a duplicated attribute", () => {
+    expect(startTagAttributes(`<a href="/one" href="/two">`)).toEqual({
+      href: "/one",
+    });
+  });
+
+  it("gives a valueless attribute the empty string and ignores a self-closing slash", () => {
+    expect(startTagAttributes(`<input disabled name=q />`)).toEqual({
+      disabled: "",
+      name: "q",
+    });
+  });
+
+  it("returns what it read of a tag that never closes", () => {
+    expect(startTagAttributes(`<input name="q" value="open`)).toEqual({
+      name: "q",
+      value: "open",
+    });
+  });
+
+  it("returns nothing for text with no tag in it", () => {
+    expect(startTagAttributes("just text")).toEqual({});
+    expect(startTagAttributes("<>")).toEqual({});
+  });
+});
 
 describe("tokenize", () => {
   it("emits start, text, and end tokens for a simple element", () => {

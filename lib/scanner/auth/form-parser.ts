@@ -15,9 +15,7 @@
  */
 
 import { openTags, openingTagOf, tagElements } from "../checks/_tag-scan";
-
-const ATTRIBUTE =
-  /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+import { startTagAttributes } from "../html/tokenizer";
 
 /** Names an identifier input commonly uses, most specific first. */
 const IDENTIFIER_NAMES = [
@@ -55,31 +53,6 @@ export interface ParsedLoginForm {
   secretField: string;
 }
 
-function parseAttributes(raw: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
-  ATTRIBUTE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = ATTRIBUTE.exec(raw)) !== null) {
-    const key = match[1].toLowerCase();
-    const value = match[2] ?? match[3] ?? match[4] ?? "";
-    if (!(key in attrs)) attrs[key] = decodeEntities(value);
-  }
-  return attrs;
-}
-
-function decodeEntities(value: string): string {
-  // &amp; must decode last: an input that was legitimately double-encoded
-  // (e.g. "&amp;lt;" meaning the literal text "&lt;") would otherwise get
-  // its inner entity decoded a second time by the earlier replacements.
-  return value
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&#x27;/gi, "'")
-    .replace(/&amp;/g, "&");
-}
-
 /**
  * The attributes of each opening `<tag ...>`, and of each `<form>` its body.
  *
@@ -87,11 +60,15 @@ function decodeEntities(value: string): string {
  * `/<input\b([^>]*?)\/?>/`, which rescan to the end of the document from every
  * tag that never closes. The page is the scanned site's, and the active
  * probes read every form on it, so they use the scanner's one-pass tag walk.
+ *
+ * Attributes are read by the tokenizer's rules rather than a second parser kept
+ * here. The local one decoded six named entities and no numeric reference, so
+ * a hidden CSRF value that a template engine escaped as `a&#43;b&#34;c` (Go's
+ * html/template, MarkupSafe) was replayed as that literal text instead of
+ * `a+b"c`, and a form `action="http&#58;//x"` was resolved as a relative path.
  */
 function tagAttributes(html: string, tag: string): Record<string, string>[] {
-  return openTags(html, tag, Infinity).map((t) =>
-    parseAttributes(t.slice(tag.length + 1, -1)),
-  );
+  return openTags(html, tag, Infinity).map((t) => startTagAttributes(t));
 }
 
 function formBlocks(
@@ -100,7 +77,7 @@ function formBlocks(
   return tagElements(html, "form").map((el) => {
     const open = openingTagOf(el);
     return {
-      attrs: parseAttributes(open.slice("<form".length, -1)),
+      attrs: startTagAttributes(open),
       body: el.slice(open.length, el.lastIndexOf("</")),
     };
   });

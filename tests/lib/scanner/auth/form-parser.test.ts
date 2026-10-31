@@ -166,6 +166,91 @@ describe("extractMetaCsrfToken", () => {
   });
 });
 
+// The form parser reads attributes through the HTML tokenizer's own
+// startTagAttributes, so every entity the tokenizer decodes is decoded here too.
+// The parser used to carry a decoder of its own that knew six named entities.
+describe("attribute values are decoded by the tokenizer's rules", () => {
+  const BASE = "https://app.example.com/login";
+  const loginForm = (hiddenValue: string) => `
+    <form action="/login" method="post">
+      <input type="hidden" name="token" value="${hiddenValue}">
+      <input type="text" name="username">
+      <input type="password" name="password">
+    </form>`;
+
+  it("replays a hidden CSRF value escaped with numeric references", () => {
+    // What Go's html/template and MarkupSafe emit for a+b"c.
+    const form = parseLoginForm(loginForm("a&#43;b&#34;c"), BASE);
+    expect(form!.hiddenFields.token).toBe('a+b"c');
+  });
+
+  it("decodes hex references and the named entities it always decoded", () => {
+    const form = parseLoginForm(
+      loginForm("&#x41;&amp;&lt;&gt;&quot;&#39;"),
+      BASE,
+    );
+    expect(form!.hiddenFields.token).toBe(`A&<>"'`);
+  });
+
+  it("decodes once: an escaped ampersand does not turn the text after it into a reference", () => {
+    const form = parseLoginForm(loginForm("&amp;#43;"), BASE);
+    expect(form!.hiddenFields.token).toBe("&#43;");
+  });
+
+  it("carries the same decoded value into findAllForms", () => {
+    const [form] = findAllForms(loginForm("a&#43;b&#34;c"), BASE);
+    expect(form.hiddenFields.token).toBe('a+b"c');
+  });
+
+  it("decodes a numeric reference in a form action before resolving it", () => {
+    // `http&#58;//` is an absolute URL to the browser. Left undecoded it was
+    // resolved as a relative path under the page.
+    const html = `<form action="http&#58;//other.example.net/post" method="post">
+      <input type="text" name="q"></form>`;
+    const [form] = findAllForms(html, BASE);
+    expect(form.action).toBe("http://other.example.net/post");
+  });
+
+  it("decodes a numeric reference in a meta CSRF token", () => {
+    expect(
+      extractMetaCsrfToken(
+        `<meta name="csrf-token" content="x&#43;y&#61;&#61;">`,
+      ),
+    ).toBe("x+y==");
+  });
+
+  it("reads double-quoted, single-quoted, unquoted and bare attributes alike", () => {
+    const html = `<form action='/login' METHOD=POST>
+      <INPUT TYPE=hidden NAME=csrf VALUE=abc123 />
+      <input type="text" name='username' autofocus>
+      <input type="password" name="password">
+    </form>`;
+    const form = parseLoginForm(html, BASE);
+    expect(form!.method).toBe("POST");
+    expect(form!.action).toBe("https://app.example.com/login");
+    expect(form!.hiddenFields).toEqual({ csrf: "abc123" });
+    expect(form!.identifierField).toBe("username");
+  });
+
+  it("matches attribute names whole, so data-type is never type", () => {
+    expect(hasPasswordInput(`<input data-type="password" name="plain">`)).toBe(
+      false,
+    );
+    expect(hasPasswordInput(`<input data-type="x" type="password">`)).toBe(
+      true,
+    );
+  });
+
+  it("keeps the first of a duplicated attribute, as a browser does", () => {
+    const form = parseLoginForm(
+      `<form action="/first" action="/second">
+        <input type="text" name="u"><input type="password" name="p"></form>`,
+      BASE,
+    );
+    expect(form!.action).toBe("https://app.example.com/first");
+  });
+});
+
 const SEARCH_FORM = `
 <html><body>
 <form action="/search" method="get">
