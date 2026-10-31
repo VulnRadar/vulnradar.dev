@@ -56,6 +56,46 @@ export function generateId(
   return `${checkId}--${fnvHash(hashInput)}`;
 }
 
+/**
+ * Settle with `promise`, or reject with `Error("timeout")` once `ms` have
+ * passed, whichever comes first.
+ *
+ * `dns.resolveTxt` and friends have no deadline of their own: against an
+ * unresponsive resolver the c-ares retry chain runs for tens of seconds, which
+ * is longer than the scan allots the whole async layer. Every DNS sub-check
+ * therefore races its lookup, and each file used to carry its own copy of that
+ * race. The copies never cleared their timer, so every lookup that answered in
+ * a few milliseconds still left a 3 to 6 second timer pending behind it.
+ *
+ * - The timer is cleared the moment the race is decided, and unref'd so a
+ *   deadline never keeps a worker alive on its own.
+ * - The message is the bare "timeout" on purpose. Callers tell a deadline from
+ *   an answer with `/timeout/i` (async-checks' isProbeTimeout) or by comparing
+ *   the message (reputation-lookup), and a DNS error code is what a real
+ *   answer looks like, so nothing here may look like one.
+ * - The underlying work is not cancelled, only abandoned. If it rejects after
+ *   the deadline has fired the rejection is absorbed here, so a late failure
+ *   cannot surface as an unhandled rejection.
+ * - A non-promise is accepted and passed through, as Promise.race accepted it,
+ *   because a test double for a resolver is not always a promise.
+ */
+export function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    if (typeof timer.unref === "function") timer.unref();
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 export function getHeader(headers: Headers, key: string): string | null {
   // Headers.get() throws TypeError for forbidden header names (those
   // starting with ":" — pseudo-headers — and any name containing

@@ -49,7 +49,7 @@
 import * as dns from "dns/promises";
 import { isIP } from "net";
 import type { Category, Severity, Vulnerability } from "./types";
-import { generateId } from "./_helpers";
+import { generateId, withDeadline } from "./_helpers";
 import { getCheckDef } from "./registry";
 import { getSetting } from "@/lib/config/runtime-config";
 import { isPrivateHostname } from "@/lib/scanner/safe-fetch";
@@ -388,12 +388,7 @@ async function resolveVia(
   const resolver = new dns.Resolver();
   resolver.setServers([server]);
   try {
-    return await Promise.race([
-      resolver.resolve4(host),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), timeoutMs),
-      ),
-    ]);
+    return await withDeadline(resolver.resolve4(host), timeoutMs);
   } catch (err: unknown) {
     const code =
       err && typeof err === "object" && "code" in err

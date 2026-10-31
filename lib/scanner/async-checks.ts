@@ -43,7 +43,7 @@ import {
   resolveCaaOnce,
 } from "@/lib/scanner/dns-memo";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
-import { generateId } from "@/lib/scanner/_helpers";
+import { generateId, withDeadline } from "@/lib/scanner/_helpers";
 import { checkReputation } from "@/lib/scanner/reputation-lookup";
 import { checkOsvVulnerableLibraries } from "@/lib/scanner/osv-check";
 import { readTlsHandshake } from "@/lib/scanner/tls-handshake";
@@ -85,24 +85,13 @@ import {
 } from "@/lib/scanner/checks/tls";
 
 /**
- * Race a DNS lookup against a hard deadline.
- *
- * `dns.resolveTxt` has no built-in timeout: against an unresponsive
- * resolver it can hang for the underlying c-ares retry chain, which is tens
- * of seconds and sometimes longer. Every other DNS sub-check in this file
- * already races its lookup this way; checkSPF and checkDMARC previously did
- * not, which meant a single slow domain could stall `checkDNSSecurity` well
- * past the 15s the scan route allots the whole async layer, discarding
- * every async finding rather than just the slow one.
+ * How long a DNS sub-check waits for one lookup before giving up on it. Every
+ * lookup in this file is raced against a deadline (withDeadline): without one,
+ * a single slow domain could stall `checkDNSSecurity` well past the 15s the
+ * scan route allots the whole async layer, discarding every async finding
+ * rather than just the slow one.
  */
-function withDnsTimeout<T>(promise: Promise<T>, ms = 4000): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("dns timeout")), ms),
-    ),
-  ]);
-}
+const DNS_LOOKUP_TIMEOUT_MS = 4000;
 
 /** True for the rejection a probe's own deadline race produces. */
 function isProbeTimeout(codeOrMessage: string): boolean {
@@ -192,7 +181,10 @@ export async function checkSPF(
 ): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
   try {
-    const txtRecords = await withDnsTimeout(resolveTxtOnce(domain));
+    const txtRecords = await withDeadline(
+      resolveTxtOnce(domain),
+      DNS_LOOKUP_TIMEOUT_MS,
+    );
     const flat = txtRecords.map((r) => r.join(""));
     const spf = flat.find((r) => r.startsWith("v=spf1"));
     if (!spf) {
@@ -332,7 +324,7 @@ async function walkSpfChain(
   try {
     let spf: string | undefined;
     try {
-      const records = await withDnsTimeout(resolveTxtOnce(domain), 2500);
+      const records = await withDeadline(resolveTxtOnce(domain), 2500);
       spf = records.map((r) => r.join("")).find((r) => r.startsWith("v=spf1"));
     } catch {
       return { lookupCount: 0, loop: false };
@@ -402,12 +394,10 @@ export async function checkSPFChain(
 ): Promise<Vulnerability[]> {
   let result: SpfWalkResult;
   try {
-    result = await Promise.race([
+    result = await withDeadline(
       walkSpfChain(domain, new Set(), { remaining: SPF_MAX_WALK_STEPS }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 6000),
-      ),
-    ]);
+      6000,
+    );
   } catch {
     return []; // Chain didn't finish in time -- don't guess.
   }
@@ -461,7 +451,10 @@ export async function checkSPFChain(
  * false-positive "missing".
  */
 async function lookupDmarcTxt(hostname: string): Promise<string | null> {
-  const records = await withDnsTimeout(resolveTxtOnce(`_dmarc.${hostname}`));
+  const records = await withDeadline(
+    resolveTxtOnce(`_dmarc.${hostname}`),
+    DNS_LOOKUP_TIMEOUT_MS,
+  );
   const flat = records.map((r) => r.join(""));
   return flat.find((r) => r.startsWith("v=DMARC1")) ?? null;
 }
@@ -738,12 +731,10 @@ export async function checkDKIM(
   ): Promise<{ found: boolean; selector: string; timedOut?: boolean }> {
     const dkimHost = `${sel}._domainkey.${domain}`;
     try {
-      const records = await Promise.race([
+      const records = await withDeadline(
         resolveTxtOnce(dkimHost),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), DKIM_QUERY_TIMEOUT_MS),
-        ),
-      ]);
+        DKIM_QUERY_TIMEOUT_MS,
+      );
       const flat = records.map((r) => r.join(""));
       if (flat.some((r) => r.includes("v=DKIM1") || r.includes("p="))) {
         return { found: true, selector: sel };
@@ -752,12 +743,10 @@ export async function checkDKIM(
       /* no TXT record or timeout */
     }
     try {
-      const cnames = await Promise.race([
+      const cnames = await withDeadline(
         resolveCnameOnce(dkimHost),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), DKIM_QUERY_TIMEOUT_MS),
-        ),
-      ]);
+        DKIM_QUERY_TIMEOUT_MS,
+      );
       if (cnames.length > 0) return { found: true, selector: sel };
     } catch (err) {
       // A timeout is not an answer. Both probes above swallowed every failure
@@ -878,12 +867,10 @@ export async function checkDKIMWeakKey(
   ): Promise<{ sel: string; record: string } | null> {
     const dkimHost = `${sel}._domainkey.${domain}`;
     try {
-      const records = await Promise.race([
+      const records = await withDeadline(
         resolveTxtOnce(dkimHost),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), DKIM_QUERY_TIMEOUT_MS),
-        ),
-      ]);
+        DKIM_QUERY_TIMEOUT_MS,
+      );
       const flat = records.map((r) => r.join(""));
       const rec = flat.find((r) => r.includes("p="));
       return rec ? { sel, record: rec } : null;
@@ -1054,12 +1041,7 @@ export async function checkDNSSEC(
  */
 async function hasCaaRecords(hostname: string): Promise<boolean | null> {
   try {
-    const records = await Promise.race([
-      resolveCaaOnce(hostname),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]);
+    const records = await withDeadline(resolveCaaOnce(hostname), 4000);
     return records.length > 0;
   } catch (err: unknown) {
     const code =
@@ -1134,12 +1116,7 @@ export async function checkCAAPermissive(
 ): Promise<Vulnerability[]> {
   async function fetchCaa(hostname: string) {
     try {
-      const records = await Promise.race([
-        resolveCaaOnce(hostname),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), 4000),
-        ),
-      ]);
+      const records = await withDeadline(resolveCaaOnce(hostname), 4000);
       // Defensive: a real dns.resolveCaa always resolves to an array or
       // rejects, never anything else -- this guard only matters for a test
       // double invoked without a matching mock, so it can't produce a
@@ -1231,12 +1208,7 @@ export async function checkNSCount(
   url: string,
 ): Promise<Vulnerability[]> {
   try {
-    const records = await Promise.race([
-      resolveNsOnce(domain),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]);
+    const records = await withDeadline(resolveNsOnce(domain), 4000);
     if (records.length >= 2) return [];
     if (records.length === 0) return [];
     return [
@@ -1278,12 +1250,10 @@ async function checkMTASTS(
       ],
     );
   try {
-    const records = await Promise.race([
+    const records = await withDeadline(
       resolveTxtOnce(`_mta-sts.${domain}`),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 3000),
-      ),
-    ]);
+      3000,
+    );
     const flat = records.map((r) => r.join(""));
     const stsRecord = flat.find((r) => r.includes("v=STSv1"));
     if (!stsRecord) return [missingVuln()];
@@ -1331,12 +1301,10 @@ async function checkMTASTSPolicyFile(
   url: string,
 ): Promise<Vulnerability[]> {
   try {
-    const records = await Promise.race([
+    const records = await withDeadline(
       resolveTxtOnce(`_mta-sts.${domain}`),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 3000),
-      ),
-    ]);
+      3000,
+    );
     const flat = records.map((r) => r.join(""));
     if (!flat.some((r) => r.includes("v=STSv1"))) return [];
   } catch {
@@ -1444,12 +1412,10 @@ async function checkTLSRPT(
       ],
     );
   try {
-    const records = await Promise.race([
+    const records = await withDeadline(
       resolveTxtOnce(`_smtp._tls.${domain}`),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 3000),
-      ),
-    ]);
+      3000,
+    );
     const flat = records.map((r) => r.join(""));
     const tlsRptRecord = flat.find((r) => r.includes("v=TLSRPTv1"));
     if (!tlsRptRecord) return [missingVuln()];
@@ -1507,12 +1473,7 @@ export async function checkBIMI(
   const bimiHost = `default._bimi.${domain}`;
   let record: string | undefined;
   try {
-    const records = await Promise.race([
-      resolveTxtOnce(bimiHost),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 3000),
-      ),
-    ]);
+    const records = await withDeadline(resolveTxtOnce(bimiHost), 3000);
     const flat = records.map((r) => r.join(""));
     record = flat.find((r) => r.includes("v=BIMI1"));
   } catch {
@@ -1594,12 +1555,7 @@ export async function checkBIMI(
  */
 async function hasNullMX(domain: string): Promise<boolean> {
   try {
-    const records = await Promise.race([
-      resolveMxOnce(domain),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]);
+    const records = await withDeadline(resolveMxOnce(domain), 4000);
     return records.length === 1 && /^\.?$/.test(records[0].exchange.trim());
   } catch {
     return false;
@@ -1615,12 +1571,7 @@ export async function checkMX(
   // configured for email. Domains intentionally not using email skip this.
   if (!hasSPF) return [];
   try {
-    const records = await Promise.race([
-      resolveMxOnce(domain),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]);
+    const records = await withDeadline(resolveMxOnce(domain), 4000);
     if (records.length > 0) return [];
   } catch (err: unknown) {
     const code =
@@ -1661,12 +1612,7 @@ export async function checkBackupMX(
   url: string,
 ): Promise<Vulnerability[]> {
   try {
-    const records = await Promise.race([
-      resolveMxOnce(domain),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]);
+    const records = await withDeadline(resolveMxOnce(domain), 4000);
     // No MX at all is dns-mx-record-missing's job, not this check's.
     if (records.length !== 1) return [];
     return [
@@ -1717,7 +1663,7 @@ export async function checkDanglingMX(
 ): Promise<Vulnerability[]> {
   let records: { exchange: string; priority: number }[];
   try {
-    records = await withDnsTimeout(resolveMxOnce(domain));
+    records = await withDeadline(resolveMxOnce(domain), DNS_LOOKUP_TIMEOUT_MS);
   } catch {
     return [];
   }
@@ -1738,8 +1684,8 @@ export async function checkDanglingMX(
   const missing: string[] = [];
   for (const host of exchanges) {
     const [v4, v6] = await Promise.allSettled([
-      withDnsTimeout(dns.resolve4(host)),
-      withDnsTimeout(dns.resolve6(host)),
+      withDeadline(dns.resolve4(host), DNS_LOOKUP_TIMEOUT_MS),
+      withDeadline(dns.resolve6(host), DNS_LOOKUP_TIMEOUT_MS),
     ]);
     if (codeOf(v4) === "ENOTFOUND" && codeOf(v6) === "ENOTFOUND") {
       missing.push(host);
@@ -1779,20 +1725,13 @@ export async function checkMXHostnameCname(
   url: string,
 ): Promise<Vulnerability[]> {
   try {
-    const records = await Promise.race([
-      resolveMxOnce(domain),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]);
+    const records = await withDeadline(resolveMxOnce(domain), 4000);
     for (const record of records.slice(0, 5)) {
       try {
-        const cnames = await Promise.race([
+        const cnames = await withDeadline(
           resolveCnameOnce(record.exchange),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("timeout")), 3000),
-          ),
-        ]);
+          3000,
+        );
         if (cnames.length > 0) {
           return [
             makeVuln(
@@ -1825,12 +1764,7 @@ export async function checkSOARefresh(
   url: string,
 ): Promise<Vulnerability[]> {
   try {
-    const soa = await Promise.race([
-      resolveSoaOnce(domain),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]);
+    const soa = await withDeadline(resolveSoaOnce(domain), 4000);
     if (soa.refresh <= 86400) return [];
     return [
       makeVuln(
@@ -1869,12 +1803,7 @@ export async function checkSOASerialStale(
   url: string,
 ): Promise<Vulnerability[]> {
   try {
-    const soa = await Promise.race([
-      resolveSoaOnce(domain),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]);
+    const soa = await withDeadline(resolveSoaOnce(domain), 4000);
     const serial = String(soa.serial);
     const m = serial.match(/^(\d{4})(\d{2})(\d{2})(\d{2})$/);
     if (!m) return []; // not a 10-digit YYYYMMDDnn shape -- can't infer a date
@@ -1927,18 +1856,8 @@ export async function checkDNSResolution(
   url: string,
 ): Promise<Vulnerability[]> {
   const [v4, v6] = await Promise.allSettled([
-    Promise.race([
-      dns.resolve4(domain),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]),
-    Promise.race([
-      dns.resolve6(domain),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]),
+    withDeadline(dns.resolve4(domain), 4000),
+    withDeadline(dns.resolve6(domain), 4000),
   ]);
   const addrs: string[] = [];
   if (v4.status === "fulfilled") addrs.push(...v4.value);
@@ -2191,12 +2110,7 @@ export async function checkTLSARecord(
 ): Promise<Vulnerability[]> {
   let exchanges: string[];
   try {
-    const records = await Promise.race([
-      resolveMxOnce(domain),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 4000),
-      ),
-    ]);
+    const records = await withDeadline(resolveMxOnce(domain), 4000);
     exchanges = records
       // RFC 7505 null MX ("."): the domain has declared it accepts no mail.
       .map((r) => r.exchange.replace(/[.]$/, "").trim())
@@ -2303,7 +2217,10 @@ export async function checkDanglingCNAME(
   try {
     let cnames: string[];
     try {
-      cnames = await withDnsTimeout(resolveCnameOnce(domain));
+      cnames = await withDeadline(
+        resolveCnameOnce(domain),
+        DNS_LOOKUP_TIMEOUT_MS,
+      );
     } catch {
       return []; // No CNAME record — not applicable
     }
@@ -2311,14 +2228,17 @@ export async function checkDanglingCNAME(
     const cnameTarget = cnames[0];
 
     try {
-      await withDnsTimeout(dns.resolve4(cnameTarget));
+      await withDeadline(dns.resolve4(cnameTarget), DNS_LOOKUP_TIMEOUT_MS);
       return []; // CNAME target resolves — not dangling
     } catch (err: unknown) {
       const code = (err as NodeJS.ErrnoException).code ?? "";
       if (code !== "ENOTFOUND" && code !== "ENODATA") return [];
       if (code === "ENODATA") {
         try {
-          const v6 = await withDnsTimeout(dns.resolve6(cnameTarget));
+          const v6 = await withDeadline(
+            dns.resolve6(cnameTarget),
+            DNS_LOOKUP_TIMEOUT_MS,
+          );
           if (v6.length > 0) return [];
         } catch (err6: unknown) {
           const code6 = (err6 as NodeJS.ErrnoException).code ?? "";
@@ -2447,7 +2367,7 @@ async function checkZoneTransfer(
 ): Promise<Vulnerability[]> {
   let nsHosts: string[];
   try {
-    nsHosts = await withDnsTimeout(resolveNsOnce(domain));
+    nsHosts = await withDeadline(resolveNsOnce(domain), DNS_LOOKUP_TIMEOUT_MS);
   } catch {
     return [];
   }
@@ -2455,7 +2375,7 @@ async function checkZoneTransfer(
   for (const ns of nsHosts.slice(0, 4)) {
     let ip: string | undefined;
     try {
-      const addrs = await withDnsTimeout(dns.resolve4(ns));
+      const addrs = await withDeadline(dns.resolve4(ns), DNS_LOOKUP_TIMEOUT_MS);
       ip = addrs[0];
     } catch {
       continue;

@@ -264,6 +264,90 @@ describe("async finding ids", () => {
   });
 });
 
+// ── Lookup deadlines ──────────────────────────────────────────────────
+//
+// Every lookup is raced against withDeadline (lib/scanner/_helpers.ts), which
+// replaced eleven withDnsTimeout calls and twenty-one inline copies of the
+// same race. Fake timers: the deadline itself is what is under test, and a
+// real four-second wait would only prove that the suite is slow.
+
+describe("lookup deadlines", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("abandons a lookup that never answers once its 4s deadline passes", async () => {
+    vi.useFakeTimers();
+    dnsMock.resolveTxt.mockReturnValue(new Promise(() => {}));
+    let settled = false;
+    const pending = checkSPF("example.com", "https://example.com");
+    void pending.then(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    // A lookup nobody answered says nothing about the record: no finding.
+    await expect(pending).resolves.toEqual([]);
+  });
+
+  it("still reports a probe that hit its own deadline as unanswered, not as absent", async () => {
+    vi.useFakeTimers();
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mail.example.com", priority: 10 },
+    ]);
+    dnsMock.resolveTxt.mockImplementation((name: string) => {
+      if (
+        typeof name === "string" &&
+        (name.startsWith("_mta-sts.") || name.startsWith("_smtp._tls."))
+      ) {
+        return new Promise(() => {}); // the resolver never answers
+      }
+      return Promise.reject(dnsError("ENOTFOUND"));
+    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+
+    const pending = checkDNSSecurity("example.com", "https://example.com");
+    await vi.advanceTimersByTimeAsync(5000);
+    const titles = (await pending).map((f) => f.title);
+
+    expect(titles).toContain("MTA-STS Check Did Not Complete");
+    expect(titles).toContain("TLS-RPT Check Did Not Complete");
+    expect(titles).not.toContain("MTA-STS Record Missing");
+    expect(titles).not.toContain("TLS-RPT Record Missing");
+  });
+
+  it("leaves no deadline timer pending once every lookup has answered", async () => {
+    vi.useFakeTimers();
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mail.example.com", priority: 10 },
+    ]);
+    dnsMock.resolveSoa.mockRejectedValue(dnsError("ENOTFOUND"));
+    // Answer every record type with a rejection, not the bare vi.fn()
+    // `undefined`: lib/scanner/dns-records.ts keeps its own timer and does
+    // not clear it when handed a non-promise, which is not what is measured.
+    dnsMock.resolveCaa.mockRejectedValue(dnsError("ENOTFOUND"));
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (typeof name === "string" && name.includes("._domainkey."))
+        return [["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCg"]];
+      throw dnsError("ENOTFOUND");
+    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+
+    await checkDNSSecurity("example.com", "https://example.com");
+
+    // Each copied race used to leave its 3 to 6 second timer running behind
+    // an answer that arrived in a millisecond: dozens per scan.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 // ── checkSPFChain (10-lookup limit) ───────────────────────────────────
 
 describe("checkSPFChain", () => {

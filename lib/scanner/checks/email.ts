@@ -69,20 +69,11 @@ export const detectors: Record<string, DetectFn> = {
 // answers those probes already fetched instead of re-querying.
 
 import type { Vulnerability, Severity } from "../types";
-import { generateId } from "../_helpers";
+import { generateId, withDeadline } from "../_helpers";
 import { resolveTxtOnce, resolveMxOnce } from "../dns-memo";
 import { safeFetch } from "../safe-fetch";
 
 const DNS_TIMEOUT_MS = 4000;
-
-function withTimeout<T>(promise: Promise<T>, ms = DNS_TIMEOUT_MS): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("dns timeout")), ms),
-    ),
-  ]);
-}
 
 function makeEmailVuln(
   checkId: string,
@@ -138,7 +129,7 @@ const MAX_TXT_RECORD_CHARS = 4096;
 
 async function txtRecords(name: string): Promise<string[] | null> {
   try {
-    const records = await withTimeout(resolveTxtOnce(name));
+    const records = await withDeadline(resolveTxtOnce(name), DNS_TIMEOUT_MS);
     return records.map((r) => r.join("").slice(0, MAX_TXT_RECORD_CHARS));
   } catch (err: unknown) {
     const code =
@@ -688,7 +679,7 @@ export async function checkMxIpLiteral(
 ): Promise<Vulnerability[]> {
   let records: { exchange: string; priority: number }[];
   try {
-    records = await withTimeout(resolveMxOnce(domain));
+    records = await withDeadline(resolveMxOnce(domain), DNS_TIMEOUT_MS);
   } catch {
     return [];
   }
@@ -792,8 +783,8 @@ export async function checkMtaStsPolicyContent(
   if (policyMx.length > 0) {
     let mxHosts: string[] = [];
     try {
-      mxHosts = (await withTimeout(resolveMxOnce(domain))).map((r) =>
-        r.exchange.toLowerCase().replace(/\.$/, ""),
+      mxHosts = (await withDeadline(resolveMxOnce(domain), DNS_TIMEOUT_MS)).map(
+        (r) => r.exchange.toLowerCase().replace(/\.$/, ""),
       );
     } catch {
       mxHosts = [];

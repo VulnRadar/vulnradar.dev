@@ -84,7 +84,7 @@ export const detectors: Record<string, DetectFn> = {
 
 import { randomBytes } from "crypto";
 import type { Vulnerability } from "../types";
-import { generateId } from "../_helpers";
+import { generateId, withDeadline } from "../_helpers";
 import { extractRootDomain } from "../root-domain";
 // Shared per-scan DNS memo: checkDNSSecurity resolves several of these exact
 // records too, so routing through it collapses the duplicates when this
@@ -105,14 +105,8 @@ function dnsErrorCode(err: unknown): string {
     : "";
 }
 
-function withTimeout<T>(promise: Promise<T>, ms = 4000): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("dns timeout")), ms),
-    ),
-  ]);
-}
+/** How long one lookup in this module may take before it is abandoned. */
+const DNS_TIMEOUT_MS = 4000;
 
 function makeDnsVuln(
   checkId: string,
@@ -152,7 +146,7 @@ function makeDnsVuln(
  */
 async function isNullMx(domain: string): Promise<boolean> {
   try {
-    const records = await withTimeout(resolveMxOnce(domain));
+    const records = await withDeadline(resolveMxOnce(domain), DNS_TIMEOUT_MS);
     return records.length === 1 && /^\.?$/.test(records[0].exchange.trim());
   } catch {
     return false;
@@ -177,7 +171,7 @@ export async function checkNsProviderConcentration(
 ): Promise<Vulnerability[]> {
   let records: string[];
   try {
-    records = await withTimeout(resolveNsOnce(domain));
+    records = await withDeadline(resolveNsOnce(domain), DNS_TIMEOUT_MS);
   } catch {
     return []; // DNS failure, or genuinely no NS -- dns-ns-record-count's job
   }
@@ -228,7 +222,7 @@ export async function checkWildcardDns(
   let recordType: "A" | "AAAA" | null = null;
 
   try {
-    const addrs = await withTimeout(resolve4Once(probe));
+    const addrs = await withDeadline(resolve4Once(probe), DNS_TIMEOUT_MS);
     if (addrs.length > 0) recordType = "A";
   } catch (err: unknown) {
     const code = dnsErrorCode(err);
@@ -239,7 +233,7 @@ export async function checkWildcardDns(
 
   if (!recordType) {
     try {
-      const addrs6 = await withTimeout(resolve6Once(probe));
+      const addrs6 = await withDeadline(resolve6Once(probe), DNS_TIMEOUT_MS);
       if (addrs6.length > 0) recordType = "AAAA";
     } catch (err: unknown) {
       const code = dnsErrorCode(err);
@@ -294,7 +288,7 @@ export async function checkNullMxRecommended(
   if (await isNullMx(domain)) return []; // already doing the right thing
 
   try {
-    const records = await withTimeout(resolveMxOnce(domain));
+    const records = await withDeadline(resolveMxOnce(domain), DNS_TIMEOUT_MS);
     if (records.length > 0) return []; // has real MX -- not this check's job
   } catch (err: unknown) {
     const code = dnsErrorCode(err);
@@ -304,7 +298,7 @@ export async function checkNullMxRecommended(
   }
 
   try {
-    const txt = await withTimeout(resolveTxtOnce(domain));
+    const txt = await withDeadline(resolveTxtOnce(domain), DNS_TIMEOUT_MS);
     const hasSpf = txt
       .map((r) => r.join(""))
       .some((r) => r.startsWith("v=spf1"));
@@ -783,7 +777,10 @@ export async function checkCnameChain(
   // the apex always carries SOA and NS, so a CNAME there is a violation.
   if (apex && apex === domain) {
     try {
-      const apexCname = await withTimeout(resolveCnameOnce(apex));
+      const apexCname = await withDeadline(
+        resolveCnameOnce(apex),
+        DNS_TIMEOUT_MS,
+      );
       if (apexCname.length > 0) {
         findings.push(
           makeDnsVuln(
@@ -833,7 +830,7 @@ export async function checkCnameChain(
     if (remaining <= 0) break;
     let next: string[];
     try {
-      next = await withTimeout(
+      next = await withDeadline(
         resolveCnameOnce(current),
         Math.min(4000, remaining),
       );
@@ -885,7 +882,10 @@ export async function checkCaaIodef(
 ): Promise<Vulnerability[]> {
   let records: { critical: number; issue?: string; iodef?: string }[];
   try {
-    records = (await withTimeout(resolveCaaOnce(domain))) as typeof records;
+    records = (await withDeadline(
+      resolveCaaOnce(domain),
+      DNS_TIMEOUT_MS,
+    )) as typeof records;
   } catch {
     return []; // no CAA at all is checkCAA's finding, not this one
   }
@@ -931,7 +931,7 @@ export async function checkVerificationTokenSprawl(
 ): Promise<Vulnerability[]> {
   let records: string[][];
   try {
-    records = await withTimeout(resolveTxtOnce(domain));
+    records = await withDeadline(resolveTxtOnce(domain), DNS_TIMEOUT_MS);
   } catch {
     return [];
   }
