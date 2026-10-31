@@ -32,6 +32,7 @@
  */
 
 import pool from "@/lib/database/db";
+import { hostOfUrlSql } from "@/lib/database/sql-fragments";
 import { coveringDomainCandidates } from "./covering";
 import { clearAccessRulesCache } from "@/lib/scanner/access-rules";
 
@@ -85,11 +86,13 @@ export interface DomainScan {
  * the hostname pulled out of the stored URL rather than against the URL, or
  * "https://evil.com/?x=example.com" would match.
  *
- * substring() with a POSIX class rather than a regexp_replace chain: the URL
- * column holds full URLs with schemes, ports, paths and query strings, and
- * this pulls out just the host between "://" and the first "/", ":" or "?".
+ * The extraction is the shared hostOfUrlSql, which skips userinfo and stops at
+ * the port, the path, a bare query and a fragment. This file used to carry its
+ * own copy that did not skip userinfo, so "https://www.example.com:x@evil.com/"
+ * read as www.example.com and a stranger's scan of evil.com was listed, and
+ * could be unpublished, as a scan of the owner's domain.
  */
-const HOST_OF_URL = `LOWER(substring(sh.url from '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/:?#]+)'))`;
+const HOST_OF_URL = hostOfUrlSql("sh.url");
 
 /**
  * Every publicly reachable scan of this domain, from any account.

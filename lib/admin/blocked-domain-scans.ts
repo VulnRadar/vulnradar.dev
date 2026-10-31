@@ -1,4 +1,5 @@
 import pool from "@/lib/database/db";
+import { hostOfUrlSql } from "@/lib/database/sql-fragments";
 import { purgeScansWhere } from "@/lib/admin/purge-user-scans";
 
 /**
@@ -14,19 +15,20 @@ import { purgeScansWhere } from "@/lib/admin/purge-user-scans";
  * without a staff session.
  */
 
-/** The hostname, lowercased, out of a stored URL column. */
-function hostnameOf(column: string): string {
-  return `LOWER(REGEXP_REPLACE(${column}, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1'))`;
-}
-
-/** Strip a protocol and any path, so "https://EVIL.com/x" is "evil.com". */
+/**
+ * Reduce a pasted value to the bare hostname, so "https://EVIL.com:8443/x?y#z"
+ * is "evil.com". The search compares against the host of each stored URL, which
+ * has no scheme, userinfo, port, path, query or fragment, so a value that kept
+ * any of them would match nothing.
+ */
 export function normalizeBlockedDomain(value: string): string {
   let normalized = value.trim().toLowerCase();
   const protoEnd = normalized.indexOf("://");
   if (protoEnd !== -1) normalized = normalized.slice(protoEnd + 3);
-  const pathIndex = normalized.indexOf("/");
-  if (pathIndex !== -1) normalized = normalized.slice(0, pathIndex);
-  return normalized;
+  normalized = normalized.split(/[/?#]/, 1)[0];
+  const atIndex = normalized.lastIndexOf("@");
+  if (atIndex !== -1) normalized = normalized.slice(atIndex + 1);
+  return normalized.replace(/:\d*$/, "");
 }
 
 /**
@@ -55,7 +57,7 @@ export interface BlockedDomainScanRow {
 export async function findScansForBlockedDomain(
   domain: string,
 ): Promise<BlockedDomainScanRow[]> {
-  const host = hostnameOf("sh.url");
+  const host = hostOfUrlSql("sh.url");
   const { rows } = await pool.query<BlockedDomainScanRow>(
     `SELECT sh.id, sh.url, sh.source, sh.scanned_at, sh.user_id,
             u.email AS user_email
@@ -80,7 +82,7 @@ export async function findScansForBlockedDomain(
 export async function deleteScansForBlockedDomain(
   domain: string,
 ): Promise<number> {
-  const host = hostnameOf("url");
+  const host = hostOfUrlSql("url");
   // Through the shared purge, not a bare DELETE: the host reports these scans
   // sourced would otherwise be orphaned and keep serving the blocked domain's
   // findings on /host/<hostname> (see lib/admin/purge-user-scans.ts).

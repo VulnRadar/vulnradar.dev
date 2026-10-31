@@ -41,6 +41,9 @@ describeIntegration("purging the scans of a blocked domain", () => {
       "evil.com",
     );
     expect(normalizeBlockedDomain("evil.com")).toBe("evil.com");
+    expect(normalizeBlockedDomain("https://u:p@Evil.com:8443/x?y#z")).toBe(
+      "evil.com",
+    );
   });
 
   it("takes the domain and its subdomains, across every account, and nothing else", async () => {
@@ -58,12 +61,29 @@ describeIntegration("purging the scans of a blocked domain", () => {
       // cross-tenant, because a blocked domain should not stay in anyone's
       // history.
       await seedScan(other.id, `https://sub.${domain}/`),
+      // The host is the same whatever follows it. A port, a query string with
+      // no path, a fragment and userinfo each used to hide the scan from the
+      // purge, which left it served on /host/<hostname> after the domain was
+      // blocked.
+      await seedScan(owner.id, `https://${domain}:8443/x`),
+      await seedScan(owner.id, `https://${domain}?x=1`),
+      await seedScan(owner.id, `https://${domain}#frag`),
+      await seedScan(other.id, `https://user:pw@${domain}/`),
+      await seedScan(other.id, `https://sub.${domain}:8080/`),
+      await seedScan(owner.id, `HTTPS://${domain.toUpperCase()}/Path`),
     ];
     const spared = [
       // Same suffix, different host: "notLABEL.example.test" must not be
       // taken by the subdomain arm, which anchors on the leading dot.
       await seedScan(owner.id, `https://not${domain}/`),
       await seedScan(other.id, "https://unrelated.example.test/"),
+      // The blocked name appears, but only as data: in the query string, in
+      // the path, or in userinfo in front of a different host.
+      await seedScan(other.id, `https://other.example.test/?next=${domain}`),
+      await seedScan(other.id, `https://other.example.test/${domain}`),
+      await seedScan(owner.id, `https://user@not${domain}/`),
+      await seedScan(owner.id, `https://${domain}.attacker.test/`),
+      await seedScan(owner.id, `https://sub.${domain}:pw@other.example.test/`),
     ];
 
     const found = await findScansForBlockedDomain(domain);
