@@ -124,6 +124,54 @@ describe("resolveChatModel: an OpenAI-compatible endpoint", () => {
   it("returns no provider options of its own", () => {
     expect(resolveChatModel(config()).providerOptions).toEqual({});
   });
+
+  describe("the fetch it installs for a model that reasons", () => {
+    const reasoningConfig = () =>
+      config({
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.4",
+        reasoning: true,
+      });
+
+    /** Runs the installed fetch against a stand-in for the network and returns what reached it. */
+    async function through(body: BodyInit | undefined): Promise<unknown> {
+      resolveChatModel(reasoningConfig());
+      const wrapped = openAiSettings().fetch as typeof fetch;
+      const upstream = vi.fn(async () => new Response("{}"));
+      const realFetch = global.fetch;
+      global.fetch = upstream as unknown as typeof fetch;
+      try {
+        await wrapped("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          body,
+        });
+      } finally {
+        global.fetch = realFetch;
+      }
+      return (upstream.mock.calls[0] as unknown as [string, RequestInit])[1]
+        .body;
+    }
+
+    it("splices the reasoning field into a JSON request body", async () => {
+      const sent = await through(
+        JSON.stringify({ model: "gpt-5.4", messages: [] }),
+      );
+
+      expect(JSON.parse(sent as string)).toEqual({
+        model: "gpt-5.4",
+        messages: [],
+        reasoning_effort: "medium",
+      });
+    });
+
+    it("sends a body that is not JSON exactly as it was", async () => {
+      expect(await through("not json")).toBe("not json");
+    });
+
+    it("sends a request with no body as it was", async () => {
+      expect(await through(undefined)).toBeUndefined();
+    });
+  });
 });
 
 describe("resolveChatModel: an Anthropic-shaped endpoint", () => {
@@ -151,6 +199,13 @@ describe("resolveChatModel: an Anthropic-shaped endpoint", () => {
       anthropic: { thinking: { type: "enabled", budgetTokens: 2000 } },
     });
     expect(resolveChatModel(anthropic()).providerOptions).toEqual({});
+  });
+
+  it("asks a model that picks its own thinking depth for adaptive thinking, with no budget", () => {
+    expect(
+      resolveChatModel(anthropic({ model: "claude-sonnet-5", reasoning: true }))
+        .providerOptions,
+    ).toEqual({ anthropic: { thinking: { type: "adaptive" } } });
   });
 
   it("says so out loud to a model that thinks unless told not to", () => {
