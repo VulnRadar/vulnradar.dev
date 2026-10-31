@@ -4,8 +4,25 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/config/client-constants";
+import { cn } from "@/lib/ui/utils";
 
 const STORAGE_KEY = "vr-cookie-notice-dismissed";
+
+/**
+ * Whether a modal has put this bar out of reach.
+ *
+ * The bar is a body child mounted beside the page, so an open modal treats it
+ * as page content behind the dialog: Radix marks it `aria-hidden`, and our own
+ * modal shells (useInertBackground) add `inert` as well. Either way its
+ * buttons stop working, but it is z-60, above the z-50 scrim, so it stayed on
+ * screen looking clickable and ignoring every click. Reading the same two
+ * attributes the modals write means it needs no list of modals to watch.
+ */
+export function isCoveredByModal(
+  el: Pick<Element, "getAttribute" | "hasAttribute">,
+): boolean {
+  return el.getAttribute("aria-hidden") === "true" || el.hasAttribute("inert");
+}
 
 /**
  * Dismissible cookie notice, shown once until dismissed (persisted in
@@ -17,6 +34,7 @@ const STORAGE_KEY = "vr-cookie-notice-dismissed";
  */
 export function CookieNotice() {
   const [visible, setVisible] = useState(false);
+  const [covered, setCovered] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,6 +83,24 @@ export function CookieNotice() {
     };
   }, [visible]);
 
+  // Hidden, not removed, while a modal covers it: `invisible` keeps the box, so
+  // --vr-cookie-h stays published and the modal layer's bottom padding does not
+  // jump as the dialog animates in, and the bar is back the moment the modal
+  // takes its attributes off. Display none would report a height of 0 and move
+  // everything anchored above the bar twice per modal.
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const observer = new MutationObserver(() => {
+      setCovered(isCoveredByModal(el));
+    });
+    observer.observe(el, {
+      attributes: true,
+      attributeFilter: ["aria-hidden", "inert"],
+    });
+    return () => observer.disconnect();
+  }, [visible]);
+
   function dismiss() {
     setVisible(false);
     try {
@@ -86,7 +122,10 @@ export function CookieNotice() {
       data-publishes-bottom-offset="--vr-cookie-h"
       // z-60, above the z-50 floating save bars, so the two never tie on
       // paint order; they offset above it via --vr-cookie-h.
-      className="fixed inset-x-0 bottom-0 z-60 border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80"
+      className={cn(
+        "fixed inset-x-0 bottom-0 z-60 border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80",
+        covered && "invisible",
+      )}
     >
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-6">
         <p className="flex-1 text-sm text-muted-foreground">
