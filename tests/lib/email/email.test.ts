@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildTemplateCorpus } from "./_template-corpus";
 import { APP_URL } from "@/lib/config/constants";
-import { FROZEN } from "@/lib/api/frozen-paths";
 import { VALID_TABS } from "@/components/admin/nav";
 
 /**
@@ -1112,13 +1111,26 @@ describe("the one-click unsubscribe URL", () => {
   });
 
   it("is built from FROZEN.UNSUBSCRIBE rather than a path of its own", async () => {
-    const { unsubscribeApiUrl } = await loadEmail();
+    // Today's FROZEN value is the same string a hand-typed path would hold, so
+    // comparing against it cannot tell the two apart. Move the value and the
+    // URL has to follow.
+    vi.doMock("@/lib/api/frozen-paths", async (importOriginal) => {
+      const actual =
+        await importOriginal<typeof import("@/lib/api/frozen-paths")>();
+      return {
+        ...actual,
+        FROZEN: { ...actual.FROZEN, UNSUBSCRIBE: "/probe/unsubscribe" },
+      };
+    });
+    try {
+      const { unsubscribeApiUrl } = await loadEmail();
 
-    expect(
-      unsubscribeApiUrl("t", "email_scan_complete").startsWith(
-        `${APP_URL}${FROZEN.UNSUBSCRIBE}?`,
-      ),
-    ).toBe(true);
+      expect(unsubscribeApiUrl("t", "email_scan_complete")).toBe(
+        `${APP_URL}/probe/unsubscribe?token=t&type=email_scan_complete`,
+      );
+    } finally {
+      vi.doUnmock("@/lib/api/frozen-paths");
+    }
   });
 
   it("encodes a token that is not URL safe", async () => {
