@@ -1,25 +1,22 @@
 "use client";
 
-import { useEffect } from "react";
-import { useLocale, useTranslations } from "next-intl";
-import { Languages, Loader2 } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
+import { Languages } from "lucide-react";
+import { languageTriggerClassName } from "@/components/shared/language-menu-trigger";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { useToast } from "@/components/ui/use-toast";
-import { cn } from "@/lib/ui/utils";
-import { focus } from "@/lib/ui/animations";
-import {
-  LOCALES,
-  LOCALE_NAMES,
-  isLocale,
-  type Locale,
-} from "@/lib/i18n/config";
-import { useSetLanguage } from "@/components/shared/use-set-language";
+  loadLanguageMenuImpl,
+  peekLanguageMenuImpl,
+  type LanguageMenuImpl,
+} from "@/components/shared/language-menu-loader";
+
+interface Loaded {
+  Menu: LanguageMenuImpl;
+  /** The reader's own press is what asked for it. */
+  open: boolean;
+  /** The button they were on is about to be replaced. */
+  focus: boolean;
+}
 
 /**
  * The language switcher in the header, beside the theme toggle.
@@ -28,68 +25,101 @@ import { useSetLanguage } from "@/components/shared/use-set-language";
  * buttons, and every language is listed in its own words, so the menu says
  * what it offers without the trigger having to.
  *
- * The list is a radio group, so the current language is part of the menu's
- * semantics (aria-checked) instead of a tick a screen reader never sees.
- * Saving shows on the trigger as aria-busy and a spinner rather than by
- * disabling it: the menu has just closed and handed focus back to that
- * trigger, and a button that is disabled in that same commit cannot hold it,
- * so focus fell to the page body after every choice. A failed save is
- * announced as a toast, since the menu is closed by then and has nowhere of
- * its own to say so.
+ * This is only the button. The menu itself (the Radix dropdown, the save hook,
+ * the toast) is in language-menu-impl.tsx and is imported the first time the
+ * pointer comes near, the button takes focus or a finger lands on it, so a
+ * header that nobody uses the switcher in does not carry any of it. The button
+ * is drawn with the same classes the real trigger uses
+ * (language-menu-trigger.ts), so the swap changes nothing on screen.
+ *
+ * Three things keep the swap from being noticed:
+ *
+ * - A press opens the menu as it mounts (defaultOpen), so the reader is not
+ *   asked to click twice for one intention.
+ * - The shell is replaced by an element that has no focus. If the shell had it,
+ *   the new trigger takes it, so a keyboard user who tabbed here does not land
+ *   on the page body when the chunk arrives.
+ * - While a pointer is down the swap waits for the click. Replacing the button
+ *   between pointerdown and click would send the click to an element Radix
+ *   does not open on, and the tap would do nothing.
+ *
+ * If the import fails the button stays, and the next press tries again.
  */
 export function LanguageMenu({ className }: { className?: string }) {
   const t = useTranslations("language");
-  const current = useLocale() as Locale;
-  const { setLanguage, busy, error } = useSetLanguage();
-  const { toast } = useToast();
+  // A header that mounts after another one already loaded the menu goes
+  // straight to it. Safe in an initialiser: the cache is only filled by a
+  // gesture after hydration, so a server-rendered first paint never sees it.
+  const [loaded, setLoaded] = useState<Loaded | null>(() => {
+    const Menu = peekLanguageMenuImpl();
+    return Menu ? { Menu, open: false, focus: false } : null;
+  });
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<LanguageMenuImpl | null>(null);
+  const wantsOpen = useRef(false);
+  const pointerDown = useRef(false);
 
-  useEffect(() => {
-    if (!error) return;
-    toast({
-      variant: "destructive",
-      title: "Could not change the language",
-      description: error,
-    });
-  }, [error, toast]);
+  const settle = useCallback(() => {
+    const Menu = menuRef.current;
+    if (!Menu || pointerDown.current) return;
+    const focus =
+      buttonRef.current !== null &&
+      document.activeElement === buttonRef.current;
+    const open = wantsOpen.current;
+    setLoaded((prev) => prev ?? { Menu, open, focus });
+  }, []);
 
-  function choose(next: string) {
-    if (busy || next === current || !isLocale(next)) return;
-    void setLanguage(next);
+  const warm = useCallback(() => {
+    loadLanguageMenuImpl()
+      .then((Menu) => {
+        menuRef.current = Menu;
+        settle();
+      })
+      .catch(() => {
+        wantsOpen.current = false;
+      });
+  }, [settle]);
+
+  const release = useCallback(() => {
+    pointerDown.current = false;
+    settle();
+  }, [settle]);
+
+  if (loaded) {
+    return (
+      <loaded.Menu
+        className={className}
+        defaultOpen={loaded.open}
+        focusTrigger={loaded.focus}
+      />
+    );
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label={t("select")}
-        title={t("label")}
-        aria-busy={busy}
-        className={cn(
-          // The same shape, size and states as the bell beside it: a circle,
-          // 44px below sm for the touch target, and a held-open look while
-          // the menu is showing.
-          "inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-busy:opacity-60 sm:h-9 sm:w-9",
-          "data-[state=open]:bg-muted data-[state=open]:text-foreground",
-          focus.ring,
-          className,
-        )}
-      >
-        {busy ? (
-          <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
-        ) : (
-          <Languages aria-hidden className="h-4 w-4" />
-        )}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuRadioGroup value={current} onValueChange={choose}>
-          {LOCALES.map((locale) => (
-            // Its own name, because that is what someone looking for it
-            // reads.
-            <DropdownMenuRadioItem key={locale} value={locale} lang={locale}>
-              {LOCALE_NAMES[locale]}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <button
+      ref={buttonRef}
+      type="button"
+      aria-label={t("select")}
+      title={t("label")}
+      aria-haspopup="menu"
+      aria-expanded={false}
+      data-state="closed"
+      className={languageTriggerClassName(className)}
+      onPointerEnter={warm}
+      onFocus={warm}
+      onTouchStart={warm}
+      onPointerDown={() => {
+        pointerDown.current = true;
+      }}
+      onPointerCancel={release}
+      onPointerLeave={release}
+      onClick={() => {
+        pointerDown.current = false;
+        wantsOpen.current = true;
+        warm();
+      }}
+    >
+      <Languages aria-hidden className="h-4 w-4" />
+    </button>
   );
 }
