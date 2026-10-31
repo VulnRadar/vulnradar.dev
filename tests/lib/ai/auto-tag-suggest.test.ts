@@ -445,3 +445,148 @@ describe("generateAutoTagSuggestions: token accounting (free, but still recorded
     expect(result).toEqual(["Some Tag Name"]);
   });
 });
+
+describe("generateAutoTagSuggestions: an endpoint that refuses the reasoning field", () => {
+  /**
+   * The call asks a reasoning model to reason, and a strict endpoint answers
+   * an unknown body field with a 400. Before the retry that landed here the
+   * suggestion was simply lost, with an error line that named the status and
+   * nothing about the field. scan-summary.ts and the verifier already recover
+   * from this; the tag suggester was the one that did not.
+   */
+  function sentBody(call: number): Record<string, unknown> {
+    const init = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[
+      call
+    ][1] as RequestInit;
+    return JSON.parse(init.body as string);
+  }
+
+  function reasoningModel(model: string) {
+    process.env.AI_BASE_URL = "https://api.openai.com/v1";
+    process.env.AI_MODEL = model;
+  }
+
+  it("asks a reasoning model to reason, so there is something to retry without", async () => {
+    reasoningModel("gpt-5.4");
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponse("Weak Redirect Chain"),
+    );
+
+    await generateAutoTagSuggestions([makeFinding()], 1);
+
+    expect(sentBody(0).reasoning_effort).toBe("low");
+  });
+
+  it("posts again without the field and returns the suggestion from the second answer", async () => {
+    reasoningModel("gpt-5.4-retry");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        new Response("unknown field reasoning_effort", { status: 400 }),
+      )
+      .mockResolvedValueOnce(openAiResponse("Weak Redirect Chain"));
+
+    const result = await generateAutoTagSuggestions([makeFinding()], 1);
+
+    expect(result).toEqual(["Weak Redirect Chain"]);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(sentBody(0).reasoning_effort).toBe("low");
+    expect(sentBody(1)).not.toHaveProperty("reasoning_effort");
+    // Everything but the optional knob is what was sent the first time.
+    const { reasoning_effort: _dropped, ...firstWithoutField } = sentBody(0);
+    expect(sentBody(1)).toEqual(firstWithoutField);
+    errors.mockRestore();
+  });
+
+  it("says which feature and model refused, once, instead of an error row per scan", async () => {
+    reasoningModel("gpt-5.4-notice");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    for (let i = 0; i < 2; i++) {
+      fetchMock
+        .mockResolvedValueOnce(
+          new Response("unknown field reasoning_effort", { status: 400 }),
+        )
+        .mockResolvedValueOnce(openAiResponse("Weak Redirect Chain"));
+      await generateAutoTagSuggestions([makeFinding()], 1);
+    }
+
+    const notices = errors.mock.calls
+      .map((c) => String(c[0]))
+      .filter((line) => line.includes("gpt-5.4-notice"));
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("[AI-AUTO-TAG-SUGGEST]");
+    expect(notices[0]).toContain("reasoning_effort");
+    errors.mockRestore();
+  });
+
+  it("does not retry a 400 that is not about reasoning, and logs what the endpoint said", async () => {
+    reasoningModel("gpt-5.4");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response("max_tokens is too large for this model", { status: 400 }),
+    );
+
+    const result = await generateAutoTagSuggestions([makeFinding()], 1);
+
+    expect(result).toEqual([]);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const lines = errors.mock.calls.map((c) => String(c[0]));
+    expect(
+      lines.some(
+        (l) => l.includes("HTTP 400") && l.includes("max_tokens is too large"),
+      ),
+    ).toBe(true);
+    errors.mockRestore();
+  });
+
+  it("does not retry when the model was never asked to reason, whatever the 400 says", async () => {
+    // gpt-4o-mini takes no reasoning field, so the 400 cannot be about one
+    // and a second request would only repeat the first.
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response("the reasoning you gave is invalid", { status: 400 }),
+    );
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await generateAutoTagSuggestions([makeFinding()], 1);
+
+    expect(result).toEqual([]);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(sentBody(0)).not.toHaveProperty("reasoning_effort");
+    errors.mockRestore();
+  });
+
+  it("gives up after the one retry rather than looping on an endpoint that refuses both", async () => {
+    reasoningModel("gpt-5.4-twice");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async () =>
+        new Response("unknown field reasoning_effort", { status: 400 }),
+    );
+
+    const result = await generateAutoTagSuggestions([makeFinding()], 1);
+
+    expect(result).toEqual([]);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    errors.mockRestore();
+  });
+
+  it("sends the retry to the same URL with the same credentials", async () => {
+    reasoningModel("gpt-5.4-same");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        new Response("unknown field reasoning_effort", { status: 400 }),
+      )
+      .mockResolvedValueOnce(openAiResponse("Weak Redirect Chain"));
+
+    await generateAutoTagSuggestions([makeFinding()], 1);
+
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls[1][0]).toBe(calls[0][0]);
+    expect((calls[1][1] as RequestInit).headers).toEqual(
+      (calls[0][1] as RequestInit).headers,
+    );
+    errors.mockRestore();
+  });
+});

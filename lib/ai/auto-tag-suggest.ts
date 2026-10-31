@@ -1,9 +1,13 @@
 /**
  * AI-generated auto-tag suggestions: the "AI generates a tag immediately
  * per-scan for cases the static rules miss" half of the layered auto-tag
- * design (the other half -- promoting a recurring AI tag into a permanent,
- * free, deterministic rule -- lives in the `promoted_auto_tag_rules` table
- * and Admin > Engine Feedback's "AI Tag Candidates" panel).
+ * design. The other half is a person, not this module: an admin watches the
+ * AI tags that keep recurring in Admin > Engine Feedback > AI Tag Candidates
+ * and can turn one into a row of `promoted_auto_tag_rules`. From then on
+ * lib/tags/auto-tags.ts matches it alongside the built-in rules as a plain
+ * lookup with no AI call, until an admin removes it again from "Promoted
+ * rules". Nothing here promotes anything, and a suggestion that never recurs
+ * never becomes a rule.
  *
  * Triggered from exactly one place: lib/tags/auto-tags.ts's
  * maybeSuggestAiTag, which only calls generateAutoTagSuggestions when
@@ -57,6 +61,7 @@ import {
   resolveAnthropicThinkingBudget,
   resolveOpenAiCompatReasoningExtras,
   resolveAiCallTimeoutMs,
+  noteReasoningRefusal,
 } from "@/lib/ai/reasoning";
 import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
@@ -295,30 +300,51 @@ async function callSuggestionModel(
     /* ignore */
   }
 
-  const res = await fetch(`${endpoint.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: endpoint.model,
-      max_tokens: maxOutputTokens,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      // The timeout below already stretches for a model that reasons, and
-      // resolveAiCallTimeoutMs decides that by asking this exact function.
-      // Omitting the field here meant the allowance was granted for thinking
-      // the request never asked for: the Anthropic branch above got a
-      // thinking budget, the OpenAI-compatible one got the long timeout and
-      // answered as fast as it ever had.
-      ...resolveOpenAiCompatReasoningExtras(
-        endpoint.baseUrl,
-        endpoint.model,
-        "summary",
-      ),
-    }),
-    signal,
-  });
+  // The timeout below already stretches for a model that reasons, and
+  // resolveAiCallTimeoutMs decides that by asking this exact function.
+  // Omitting the field here meant the allowance was granted for thinking
+  // the request never asked for: the Anthropic branch above got a
+  // thinking budget, the OpenAI-compatible one got the long timeout and
+  // answered as fast as it ever had.
+  const extras = resolveOpenAiCompatReasoningExtras(
+    endpoint.baseUrl,
+    endpoint.model,
+    "summary",
+  );
+  const askedToReason = Object.keys(extras).length > 0;
+  const baseBody: Record<string, unknown> = {
+    model: endpoint.model,
+    max_tokens: maxOutputTokens,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: prompt },
+    ],
+  };
+  const post = (body: Record<string, unknown>) =>
+    fetch(`${endpoint.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+
+  let res = await post({ ...baseBody, ...extras });
+  // Asking for reasoning is what made this call fail on a strict endpoint,
+  // and a tag that never appears says nothing about why. Same fallback as
+  // scan-summary.ts: an endpoint that refuses the field should cost us the
+  // reasoning, not the suggestion.
+  if (!res.ok && res.status === 400 && askedToReason) {
+    let refusal = "";
+    try {
+      refusal = await res.clone().text();
+    } catch {
+      /* ignore */
+    }
+    if (/reasoning/i.test(refusal)) {
+      noteReasoningRefusal("AI-AUTO-TAG-SUGGEST", endpoint.model);
+      res = await post(baseBody);
+    }
+  }
 
   if (!res.ok) {
     let body = "";
