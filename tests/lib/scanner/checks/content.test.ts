@@ -54,6 +54,61 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+  // The version comparison is versionBelow (lib/scanner/library-fingerprints.ts),
+  // which replaced an inline compare of three numbers here.
+  "outdated-js-libs": [
+    {
+      description: "Lodash below the patched 4.17.21",
+      body: '<script src="/js/lodash-4.17.5.min.js"></script>',
+      expect: "fire",
+      evidenceIncludes: "Lodash < 4.17.21 (found 4.17.5)",
+    },
+    {
+      description:
+        "Lodash 4.9.0 is below 4.17.21 by number, though it sorts above it as text",
+      body: '<script src="/js/lodash-4.9.0.js"></script>',
+      expect: "fire",
+      evidenceIncludes: "found 4.9.0",
+    },
+    {
+      description: "Lodash at the patched version",
+      body: '<script src="/js/lodash-4.17.21.min.js"></script>',
+      expect: "skip",
+    },
+    {
+      description: "Lodash newer than the patched version",
+      body: '<script src="/js/lodash-4.18.1.min.js"></script>',
+      expect: "skip",
+    },
+    {
+      description: "Bootstrap below 5.3.0",
+      body: '<script src="/js/bootstrap-4.6.2.min.js"></script>',
+      expect: "fire",
+      evidenceIncludes: "Bootstrap < 5.3.0 (found 4.6.2)",
+    },
+    {
+      description: "Bootstrap one minor below 5.3.0",
+      body: '<script src="/js/bootstrap-5.2.3.min.js"></script>',
+      expect: "fire",
+      evidenceIncludes: "found 5.2.3",
+    },
+    {
+      description: "Bootstrap at 5.3.0 and above",
+      body: '<script src="/js/bootstrap-5.3.0.min.js"></script><script src="/js/bootstrap-5.3.3.min.js"></script>',
+      expect: "skip",
+    },
+    {
+      description: "Moment.js is reported whatever its version",
+      body: '<script src="/js/moment.min.js"></script>',
+      expect: "fire",
+      evidenceIncludes: "Moment.js (deprecated)",
+    },
+    {
+      description: "regression: a library named in prose is not a script",
+      body: "<p>We moved off lodash-3.10.1 last year.</p>",
+      expect: "skip",
+    },
+  ],
   "base-tag-insecure": [
     {
       description: "an http: base on an HTTPS page",

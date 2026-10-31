@@ -1,9 +1,15 @@
 /**
- * Pure semver-ish comparison logic shared by GET /api/version and the
- * admin Updater endpoints (GET /api/v3/admin/updater/status). Extracted
- * from app/api/version/route.ts so both routes compare versions the same
- * way instead of maintaining two copies of the same three-part comparison.
+ * Pure comparison logic shared by GET /api/version and the admin Updater
+ * endpoints (GET /api/v3/admin/updater/status). Extracted from
+ * app/api/version/route.ts so both routes compare versions the same way
+ * instead of maintaining two copies of the same comparison.
+ *
+ * Which of the three states applies is decided by compareSemver, so a
+ * prerelease is older than the release it leads up to: 4.0.0-rc.1 is "behind"
+ * 4.0.0, not "up-to-date".
  */
+
+import { compareSemver, parseSemver } from "./semver";
 
 export type VersionStatus = "up-to-date" | "behind" | "ahead" | "unknown";
 
@@ -24,55 +30,50 @@ const TIME_TRAVELER_MESSAGES = [
   "You're living in the future and we're still fixing merge conflicts.",
 ];
 
-function parseVersionParts(version: string): number[] {
-  return version.split(".").map(Number);
+/**
+ * How far behind `current` is, in words. Only the numeric core is looked at,
+ * so a difference in the prerelease tag alone (4.0.0-rc.1 against 4.0.0) falls
+ * through to the patch wording: the numbers are the same, only the tag moved.
+ */
+function behindMessage(current: string, latest: string): string {
+  const [currentMajor = 0, currentMinor = 0] = parseSemver(current).core;
+  const [latestMajor = 0, latestMinor = 0] = parseSemver(latest).core;
+  const behindMajor = latestMajor - currentMajor;
+  const behindMinor = latestMinor - currentMinor;
+  if (behindMajor > 0) {
+    return `You are ${behindMajor} major version${behindMajor > 1 ? "s" : ""} behind. Update strongly recommended.`;
+  }
+  if (behindMinor > 0) {
+    return `A newer version (v${latest}) is available with new features and fixes.`;
+  }
+  return `A patch update (v${latest}) is available with bug fixes.`;
 }
 
 /**
- * Compares two "X.Y.Z"-shaped version strings. Missing/non-numeric parts
- * are treated as 0 (matches the original inline logic in
- * app/api/version/route.ts, which never validated its inputs either).
+ * Compares the running version against the latest release. Missing and
+ * non-numeric parts are treated as 0, as the original inline logic in
+ * app/api/version/route.ts did; see lib/updater/semver.ts for the ordering.
  */
 export function compareVersions(
   current: string,
   latest: string,
 ): VersionComparison {
-  const currentParts = parseVersionParts(current);
-  const latestParts = parseVersionParts(latest);
+  const order = compareSemver(current, latest);
 
-  let status: VersionStatus = "unknown";
-  let message = "";
-
-  for (let i = 0; i < 3; i++) {
-    const c = currentParts[i] || 0;
-    const l = latestParts[i] || 0;
-    if (c > l) {
-      status = "ahead";
-      message =
+  if (order > 0) {
+    return {
+      status: "ahead",
+      message:
         TIME_TRAVELER_MESSAGES[
           Math.floor(Math.random() * TIME_TRAVELER_MESSAGES.length)
-        ];
-      break;
-    }
-    if (c < l) {
-      status = "behind";
-      const behindMajor = latestParts[0] - currentParts[0];
-      const behindMinor = latestParts[1] - currentParts[1];
-      if (behindMajor > 0) {
-        message = `You are ${behindMajor} major version${behindMajor > 1 ? "s" : ""} behind. Update strongly recommended.`;
-      } else if (behindMinor > 0) {
-        message = `A newer version (v${latest}) is available with new features and fixes.`;
-      } else {
-        message = `A patch update (v${latest}) is available with bug fixes.`;
-      }
-      break;
-    }
+        ],
+    };
   }
-
-  if (status === "unknown") {
-    status = "up-to-date";
-    message = "You're running the latest version.";
+  if (order < 0) {
+    return { status: "behind", message: behindMessage(current, latest) };
   }
-
-  return { status, message };
+  return {
+    status: "up-to-date",
+    message: "You're running the latest version.",
+  };
 }

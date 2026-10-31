@@ -19,6 +19,7 @@ import {
 } from "../_helpers";
 import { safeFetch } from "../safe-fetch";
 import { safeReadBody } from "../read-bounded-body";
+import { versionBelow } from "../library-fingerprints";
 import {
   hasTagWith,
   htmlComments,
@@ -581,16 +582,8 @@ const rawDetectors: Record<string, DetectFn> = {
       if (match) {
         if (!lib.maxSafe) {
           found.push(lib.name);
-        } else if (match[1]) {
-          const v = match[1].split(".").map(Number);
-          const s = lib.maxSafe.split(".").map(Number);
-          if (
-            v[0] < s[0] ||
-            (v[0] === s[0] && v[1] < s[1]) ||
-            (v[0] === s[0] && v[1] === s[1] && v[2] < s[2])
-          ) {
-            found.push(`${lib.name} (found ${match[1]})`);
-          }
+        } else if (match[1] && versionBelow(match[1], lib.maxSafe)) {
+          found.push(`${lib.name} (found ${match[1]})`);
         }
       }
     }

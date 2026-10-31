@@ -13,6 +13,8 @@
  * executes the script. A version the URL does not carry is not guessed.
  */
 
+import { compareSemver } from "@/lib/updater/semver";
+
 export interface LibraryFingerprint {
   name: string;
   /** The npm package name, which is also what OSV.dev is queried with. */
@@ -227,51 +229,14 @@ export function libraryComponent(lib: DetectedLibrary): string {
  * True when version `a` sorts below `b`, in semver order: numeric parts left
  * to right with a missing part read as 0, then a prerelease below the release
  * it leads up to. Shared by both library checks, the OSV interval logic and
- * framework-fingerprint.ts, which compares CMS core versions.
+ * framework-fingerprint.ts, which compares CMS core versions. The ordering
+ * itself is compareSemver in lib/updater/semver.ts, which the app's own update
+ * checks use too; this keeps the scanner's name for it.
  *
  * The prerelease used to be read as more numeric parts, so 2.0.0 sorted below
  * 2.0.0-rc.1 and a site on 2.0.0 was reported for an advisory fixed in that
  * release candidate. A leading "v" is ignored rather than read as 0.
  */
 export function versionBelow(a: string, b: string): boolean {
-  return compareVersions(a, b) < 0;
-}
-
-function parseVersion(v: string): { core: number[]; pre: string[] | null } {
-  const bare = v.trim().replace(/^v/i, "").split("+", 1)[0];
-  const dash = bare.indexOf("-");
-  const core = (dash === -1 ? bare : bare.slice(0, dash))
-    .split(".")
-    .map((n) => parseInt(n, 10) || 0);
-  const pre = dash === -1 ? "" : bare.slice(dash + 1);
-  return { core, pre: pre ? pre.split(".") : null };
-}
-
-function compareVersions(a: string, b: string): number {
-  const va = parseVersion(a);
-  const vb = parseVersion(b);
-  for (let i = 0; i < Math.max(va.core.length, vb.core.length); i++) {
-    const d = (va.core[i] ?? 0) - (vb.core[i] ?? 0);
-    if (d !== 0) return d;
-  }
-  if (!va.pre || !vb.pre) {
-    if (va.pre === vb.pre) return 0;
-    return va.pre ? -1 : 1;
-  }
-  for (let i = 0; i < Math.max(va.pre.length, vb.pre.length); i++) {
-    const x = va.pre[i];
-    const y = vb.pre[i];
-    if (x === undefined) return -1;
-    if (y === undefined) return 1;
-    const nx = /^\d+$/.test(x);
-    const ny = /^\d+$/.test(y);
-    if (nx && ny) {
-      if (Number(x) !== Number(y)) return Number(x) - Number(y);
-    } else if (nx !== ny) {
-      return nx ? -1 : 1;
-    } else if (x !== y) {
-      return x < y ? -1 : 1;
-    }
-  }
-  return 0;
+  return compareSemver(a, b) < 0;
 }

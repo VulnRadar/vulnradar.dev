@@ -17,12 +17,8 @@
 import { KNOWN_SCHEMA_VERSIONS } from "@/lib/config/constants";
 import type { Pool } from "pg";
 import { META_TABLE_SQL } from "@/lib/database/schema/index.mjs";
+import { compareSemver } from "@/lib/updater/semver";
 
-/**
- * Compare two "X.Y.Z" semver-style strings. Returns -1 if a < b, 0 if a == b,
- * 1 if a > b. Missing segments default to 0. Used to compare schema versions
- * stored in vulnradar_schema_meta.
- */
 /**
  * Map a stored schema version onto a version that actually exists.
  *
@@ -50,22 +46,10 @@ export function normalizeSchemaVersion(
   if (!/^\d+\.\d+\.\d+$/.test(stored)) return stored;
   let best: string | null = null;
   for (const candidate of known) {
-    if (compareVersions(stored, candidate) < 0) continue;
-    if (best === null || compareVersions(candidate, best) > 0) best = candidate;
+    if (compareSemver(stored, candidate) < 0) continue;
+    if (best === null || compareSemver(candidate, best) > 0) best = candidate;
   }
   return best ?? stored;
-}
-
-export function compareVersions(a: string, b: string): number {
-  const av = a.split(".").map((s) => Number.parseInt(s, 10) || 0);
-  const bv = b.split(".").map((s) => Number.parseInt(s, 10) || 0);
-  const len = Math.max(av.length, bv.length);
-  for (let i = 0; i < len; i++) {
-    const x = av[i] ?? 0;
-    const y = bv[i] ?? 0;
-    if (x !== y) return x < y ? -1 : 1;
-  }
-  return 0;
 }
 
 /** The boxed console output both refusal paths below print. */
@@ -211,7 +195,7 @@ export async function ensureSchemaVersion(
           // nothing else.
         });
     }
-    if (compareVersions(dbSchema, minSchemaVersion) < 0) {
+    if (compareSemver(dbSchema, minSchemaVersion) < 0) {
       printBox("SCHEMA VERSION MISMATCH", [
         "Database schema:    v" + dbSchema,
         "App requires:        v" + minSchemaVersion,
