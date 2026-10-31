@@ -1,0 +1,6 @@
+{
+  "label": "Langue",
+  "description": "La langue dans laquelle ce compte lit le site, ses e-mails et les réponses de l'IA.",
+  "changed": "Langue mise à jour",
+  "select": "Choisir une langue"
+}

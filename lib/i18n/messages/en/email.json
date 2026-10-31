@@ -1,0 +1,12 @@
+{
+  "verify": {
+    "subject": "Verify your email for {app}",
+    "preheader": "One click and the account is live. The link works for the next 24 hours.",
+    "heading": "Verify your email address",
+    "lead": "Hi {name}, verify this is your address and your {app} account is ready to scan.",
+    "button": "Verify email address",
+    "expiry": "The link works for the next 24 hours. If it expires, request a new one from the sign-in page.",
+    "ignore": "If you didn't create this account, you can ignore this email. Nothing was set up.",
+    "textIntro": "Confirm this email address to activate your {app} account:"
+  }
+}

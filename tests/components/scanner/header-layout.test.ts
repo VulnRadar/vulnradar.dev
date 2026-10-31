@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { CATALOG } from "@/lib/i18n/messages/catalog";
+import type { Locale } from "@/lib/i18n/config";
 
 /**
  * The signed-in header's row: logo, nav, then bell / language / theme / log
@@ -292,7 +294,7 @@ const ALL_LOCALES = Object.keys(MEASURED);
 
 describe("the measurements are for the labels the app ships", () => {
   it.each(ALL_LOCALES)("%s", (locale) => {
-    const messages = JSON.parse(read(`lib/i18n/messages/${locale}.json`)) as {
+    const messages = CATALOG[locale as Locale] as {
       nav: Record<string, string>;
     };
     const m = MEASURED[locale];
@@ -302,9 +304,11 @@ describe("the measurements are for the labels the app ships", () => {
 
   it("covers every locale the app has", () => {
     const shipped = fs
-      .readdirSync(path.join(ROOT, "lib/i18n/messages"))
-      .filter((f) => f.endsWith(".json"))
-      .map((f) => f.replace(/\.json$/, ""))
+      .readdirSync(path.join(ROOT, "lib/i18n/messages"), {
+        withFileTypes: true,
+      })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
       .sort();
     expect([...ALL_LOCALES].sort()).toEqual(shipped);
   });

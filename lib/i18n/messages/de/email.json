@@ -1,0 +1,12 @@
+{
+  "verify": {
+    "subject": "Bestätige deine E-Mail-Adresse für {app}",
+    "preheader": "Ein Klick und das Konto ist aktiv. Der Link gilt die nächsten 24 Stunden.",
+    "heading": "E-Mail-Adresse bestätigen",
+    "lead": "Hallo {name}, bestätige, dass dies deine Adresse ist, dann ist dein {app}-Konto bereit zum Scannen.",
+    "button": "E-Mail-Adresse bestätigen",
+    "expiry": "Der Link gilt die nächsten 24 Stunden. Läuft er ab, fordere auf der Anmeldeseite einen neuen an.",
+    "ignore": "Wenn du dieses Konto nicht erstellt hast, kannst du diese E-Mail ignorieren. Es wurde nichts eingerichtet.",
+    "textIntro": "Bestätige diese E-Mail-Adresse, um dein {app}-Konto zu aktivieren:"
+  }
+}

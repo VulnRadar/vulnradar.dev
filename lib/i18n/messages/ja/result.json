@@ -1,0 +1,19 @@
+{
+  "findings": "{count, plural, =0 {検出なし} other {# 件の検出}}",
+  "riskScore": "リスクスコア",
+  "siteGrade": "サイト評価",
+  "sslGrade": "SSL 評価",
+  "confidence": "信頼度",
+  "checksRun": "実行したチェック",
+  "duration": "所要時間",
+  "scanned": "スキャン日時",
+  "clean": "問題なし",
+  "cancelled": "中止",
+  "didNotFinish": "完了しませんでした",
+  "running": "実行中",
+  "severityCritical": "重大",
+  "severityHigh": "高",
+  "severityMedium": "中",
+  "severityLow": "低",
+  "severityInfo": "情報"
+}

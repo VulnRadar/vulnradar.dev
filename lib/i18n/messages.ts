@@ -10,25 +10,21 @@ import { DEFAULT_LOCALE, type Locale } from "./config";
  *
  * Static imports, not a dynamic path: every message file has to be in the
  * bundle the server runs, and a template literal import leaves the bundler
- * guessing.
+ * guessing. There is one file per language and namespace
+ * (messages/<locale>/<namespace>.json), so a change to one surface's words
+ * touches that surface's files and no one else's. messages/catalog.ts is the
+ * generated list of them (lib/i18n/build-catalog.mjs).
  */
-import en from "./messages/en.json";
-import es from "./messages/es.json";
-import fr from "./messages/fr.json";
-import de from "./messages/de.json";
-import ptBR from "./messages/pt-BR.json";
-import ja from "./messages/ja.json";
+import { CATALOG } from "./messages/catalog";
 
-type Messages = typeof en;
+type Messages = typeof CATALOG.en;
 
-const BY_LOCALE: Record<Locale, Messages> = {
-  en,
-  es: es as Messages,
-  fr: fr as Messages,
-  de: de as Messages,
-  "pt-BR": ptBR as Messages,
-  ja: ja as Messages,
-};
+const en: Messages = CATALOG.en;
+
+// Every language is kept at English's key set by tests/lib/i18n/key-parity.test.ts,
+// but the merge below stays: a deploy that carries a stale file must degrade
+// to English, not to dotted keys, so the type does not promise completeness.
+const BY_LOCALE = CATALOG as Record<Locale, Messages>;
 
 /** Deep merge of a translation over English, so every key always resolves. */
 function withEnglishBehind(

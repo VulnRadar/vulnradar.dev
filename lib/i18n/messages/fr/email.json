@@ -1,0 +1,12 @@
+{
+  "verify": {
+    "subject": "Vérifiez votre e-mail pour {app}",
+    "preheader": "Un clic et le compte est actif. Le lien fonctionne pendant les 24 prochaines heures.",
+    "heading": "Vérifiez votre adresse e-mail",
+    "lead": "Bonjour {name}, confirmez que cette adresse est la vôtre et votre compte {app} sera prêt à analyser.",
+    "button": "Vérifier l'adresse e-mail",
+    "expiry": "Le lien fonctionne pendant les 24 prochaines heures. S'il expire, demandez-en un nouveau depuis la page de connexion.",
+    "ignore": "Si vous n'avez pas créé ce compte, vous pouvez ignorer cet e-mail. Rien n'a été configuré.",
+    "textIntro": "Confirmez cette adresse e-mail pour activer votre compte {app} :"
+  }
+}

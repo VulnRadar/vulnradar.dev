@@ -1,0 +1,19 @@
+{
+  "findings": "{count, plural, =0 {No findings} one {# finding} other {# findings}}",
+  "riskScore": "Risk score",
+  "siteGrade": "Site grade",
+  "sslGrade": "SSL grade",
+  "confidence": "Confidence",
+  "checksRun": "Checks run",
+  "duration": "Duration",
+  "scanned": "Scanned",
+  "clean": "Clean",
+  "cancelled": "Cancelled",
+  "didNotFinish": "Did not finish",
+  "running": "Running",
+  "severityCritical": "Critical",
+  "severityHigh": "High",
+  "severityMedium": "Medium",
+  "severityLow": "Low",
+  "severityInfo": "Info"
+}

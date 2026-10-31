@@ -1,9 +1,9 @@
 /**
  * The translation files themselves (lib/i18n/messages/).
  *
- * English is the source. A translation may be behind it, since a missing key
- * falls back to English, but it may not invent keys (a typo nothing reads) or
- * lose a placeholder (a sentence with a hole where the host name goes).
+ * English is the source. A translation may not lose a placeholder (a sentence
+ * with a hole where the host name goes). Which keys each language has is
+ * key-parity.test.ts.
  *
  * It also holds the rule in lib/i18n/README.md that some things are the same
  * in every language: the documentation domain and IP in particular, which are
@@ -11,27 +11,8 @@
  * "ejemplo.com" is a real domain somebody owns.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
 import { LOCALES, DEFAULT_LOCALE } from "@/lib/i18n/config";
-
-type Tree = { [key: string]: string | Tree };
-
-function load(locale: string): Tree {
-  return JSON.parse(
-    readFileSync(`lib/i18n/messages/${locale}.json`, "utf8"),
-  ) as Tree;
-}
-
-/** Every key as a dotted path, with its string value. */
-function flatten(tree: Tree, prefix = ""): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const [key, value] of Object.entries(tree)) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (typeof value === "string") out.set(path, value);
-    else for (const [k, v] of flatten(value, path)) out.set(k, v);
-  }
-  return out;
-}
+import { flatten, loadLocale as load } from "./_messages";
 
 /** The {placeholders} a string interpolates, ignoring plural machinery. */
 function placeholders(value: string): Set<string> {
@@ -44,13 +25,6 @@ const english = flatten(load(DEFAULT_LOCALE));
 const translations = LOCALES.filter((l) => l !== DEFAULT_LOCALE);
 
 describe("every translation", () => {
-  it.each(translations)("%s only uses keys English has", (locale) => {
-    const unknown = [...flatten(load(locale)).keys()].filter(
-      (key) => !english.has(key),
-    );
-    expect(unknown).toEqual([]);
-  });
-
   it.each(translations)("%s keeps every placeholder", (locale) => {
     const wrong: string[] = [];
     for (const [key, value] of flatten(load(locale))) {

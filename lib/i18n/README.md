@@ -5,10 +5,42 @@ account's saved setting, then this browser's cookie, then `Accept-Language`,
 then English. There are no locale-prefixed URLs, so every page keeps the
 address it has and the ~750 generated `/checks` pages are generated once.
 
-Adding a language is one file in `messages/` plus one entry in `LOCALES`.
-A key that language has not translated yet falls back to English
-(`messages.ts`), so a translation can land a few strings at a time and no page
-ever renders a dotted key.
+## Where the words live
+
+One JSON file per language and namespace: `messages/<locale>/<namespace>.json`,
+where the namespace is what a component passes to `useTranslations("nav")` and
+the file holds that namespace's keys directly (`nav.json` starts with
+`"scanner": "Scanner"`, not with `"nav"`). Splitting them means the people
+translating one surface edit that surface's files and nobody else's.
+
+- **A new string** goes in `en/<namespace>.json` and in the same file of every
+  other language, in the same change. `tests/lib/i18n/key-parity.test.ts` fails
+  on a language that is missing a key or has one English does not.
+- **A new namespace** is a new file in each language folder, named in camelCase
+  (`aiChat.json`). Then regenerate the list of imports:
+
+  ```
+  node lib/i18n/build-catalog.mjs
+  ```
+
+  `messages/catalog.ts` is that list. The imports have to be static (see
+  `messages.ts`), which is why a list exists at all. It is generated so that two
+  changes adding a namespace each cannot conflict on it: after merging, run the
+  command again. `tests/lib/i18n/catalog.test.ts` fails while it is out of date.
+
+- **A new language** is a new folder with a file for every namespace, one entry
+  in `LOCALES` (`config.ts`) and one in `LOCALE_NAMES`, then the command above.
+
+A key a language lacks still falls back to English at runtime (`messages.ts`),
+so one that slips past review reads in English and never renders as a dotted
+key. That is the safety net, not the plan: the parity test is what keeps every
+language complete.
+
+`key-parity.test.ts` also lists the English keys that no file under `app/`,
+`components/`, `hooks/` or `lib/` refers to. It is a report and never fails:
+a key waiting for the component that reads it is normal, and the list is how
+you find the ones that never got one. Delete a key only after reading the list
+and checking the surface really is gone.
 
 ## What is not translated
 

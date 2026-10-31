@@ -1,0 +1,15 @@
+{
+  "cancel": "キャンセル",
+  "save": "保存",
+  "saving": "保存中...",
+  "saved": "保存しました",
+  "delete": "削除",
+  "close": "閉じる",
+  "back": "戻る",
+  "retry": "再試行",
+  "copy": "コピー",
+  "copied": "コピーしました",
+  "search": "検索",
+  "loading": "読み込み中...",
+  "somethingWentWrong": "問題が発生しました。"
+}

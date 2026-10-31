@@ -1,0 +1,19 @@
+{
+  "findings": "{count, plural, =0 {Keine Funde} one {# Fund} other {# Funde}}",
+  "riskScore": "Risikowert",
+  "siteGrade": "Website-Note",
+  "sslGrade": "SSL-Note",
+  "confidence": "Konfidenz",
+  "checksRun": "Durchgeführte Prüfungen",
+  "duration": "Dauer",
+  "scanned": "Gescannt",
+  "clean": "Sauber",
+  "cancelled": "Abgebrochen",
+  "didNotFinish": "Nicht abgeschlossen",
+  "running": "Läuft",
+  "severityCritical": "Kritisch",
+  "severityHigh": "Hoch",
+  "severityMedium": "Mittel",
+  "severityLow": "Niedrig",
+  "severityInfo": "Info"
+}

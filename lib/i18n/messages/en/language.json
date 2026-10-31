@@ -1,0 +1,6 @@
+{
+  "label": "Language",
+  "description": "The language this account reads the site, its emails and its AI answers in.",
+  "changed": "Language updated",
+  "select": "Choose a language"
+}

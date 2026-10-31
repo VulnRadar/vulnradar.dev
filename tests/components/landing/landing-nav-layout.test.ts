@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { LOCALES } from "@/lib/i18n/config";
+import { LOCALES, type Locale } from "@/lib/i18n/config";
+import { CATALOG } from "@/lib/i18n/messages/catalog";
 
 /**
  * The public top bar has to fit the screen it is on, in every language.
@@ -57,8 +58,7 @@ type NavMessages = Record<
 >;
 
 function navMessages(locale: string): NavMessages {
-  const file = path.join(ROOT, "lib/i18n/messages", `${locale}.json`);
-  return JSON.parse(fs.readFileSync(file, "utf8")).nav;
+  return CATALOG[locale as Locale].nav as NavMessages;
 }
 
 const LATIN_PX = 7.6;

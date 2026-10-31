@@ -10,14 +10,14 @@
  * placeholder that does not survive translation reads as garbage aloud.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
 import { createTranslator } from "next-intl";
 import {
   announcementMessage,
   currentAnnouncement,
   type AnnouncementState,
 } from "@/app/dashboard/scan-announcement";
-import { LOCALES, DEFAULT_LOCALE } from "@/lib/i18n/config";
+import { LOCALES, DEFAULT_LOCALE, type Locale } from "@/lib/i18n/config";
+import { CATALOG } from "@/lib/i18n/messages/catalog";
 
 const base: AnnouncementState = {
   status: "idle",
@@ -112,18 +112,13 @@ describe("announcementMessage", () => {
   });
 });
 
-type Tree = { [key: string]: string | Tree };
-
-function load(locale: string): Tree {
-  return JSON.parse(
-    readFileSync(`lib/i18n/messages/${locale}.json`, "utf8"),
-  ) as Tree;
-}
-
 function translator(locale: string) {
   // Only the namespace the page reads, typed as plain strings so the keys under
   // test are not narrowed to whatever the JSON file happens to hold today.
-  const dashboard = load(locale).dashboard as Record<string, string>;
+  const dashboard = CATALOG[locale as Locale].dashboard as Record<
+    string,
+    string
+  >;
   return createTranslator({
     locale,
     messages: { dashboard },
@@ -142,8 +137,8 @@ describe.each(LOCALES)("announcement sentences in %s", (locale) => {
   const t = translator(locale);
 
   it("has all four, translated", () => {
-    const own = (load(locale).dashboard as Tree) ?? {};
-    const english = (load(DEFAULT_LOCALE).dashboard as Tree) ?? {};
+    const own: Record<string, string> = CATALOG[locale].dashboard;
+    const english: Record<string, string> = CATALOG[DEFAULT_LOCALE].dashboard;
     for (const key of KEYS) {
       expect(typeof own[key], `${locale} is missing ${key}`).toBe("string");
       if (locale !== DEFAULT_LOCALE) {
