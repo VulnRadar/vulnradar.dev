@@ -5,10 +5,11 @@
  *
  * Five modules (verification, scan summaries, tag suggestions, repository
  * review, short completions) each carried their own copy of that. The copies
- * had drifted: two recovered from a refused reasoning field and three did not,
- * and the error line differed in all of them. A new gateway header or provider
- * quirk had to be added five times, and a missed copy failed quietly, as an
- * answer that never arrived.
+ * had drifted: the tag suggester sent the reasoning field but, unlike
+ * verification, summaries and repository review, did not post again when an
+ * endpoint refused it, and the error line differed in all of them. A new
+ * gateway header or provider quirk had to be added five times, and a missed
+ * copy failed quietly, as an answer that never arrived.
  *
  * This is deliberately only the request. It does not build prompts, parse what
  * the model wrote, log a failure or decide what a failure means, because that
