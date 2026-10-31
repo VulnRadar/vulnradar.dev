@@ -76,6 +76,13 @@ describe("severityLabeller", () => {
     const label = severityLabeller(t);
     expect(label("informational" as never)).toBe("informational");
   });
+
+  it("does not take a property every object has for a severity", () => {
+    const label = severityLabeller(t);
+    for (const value of ["constructor", "toString", "__proto__"]) {
+      expect(label(value as never)).toBe(value);
+    }
+  });
 });
 
 describe("getSeverityLabeller (a mail away from a request)", () => {

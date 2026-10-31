@@ -33,13 +33,17 @@ export type ResultTranslator = (key: SeverityLabelKey) => string;
  * each get that translator their own way and share this.
  *
  * A value outside the five (a row from an older engine) is printed as it is,
- * not as a dotted key.
+ * not as a dotted key. The own-property check is what makes that hold for
+ * every string: a plain lookup finds `constructor` and `toString` on the
+ * table's prototype and hands the translator a function.
  */
 export function severityLabeller(
   t: ResultTranslator,
 ): (severity: SeverityName) => string {
   return (severity) => {
-    const key = SEVERITY_LABEL_KEYS[severity];
+    const key = Object.hasOwn(SEVERITY_LABEL_KEYS, severity)
+      ? SEVERITY_LABEL_KEYS[severity]
+      : undefined;
     return key ? t(key) : String(severity);
   };
 }
