@@ -24,8 +24,11 @@ vi.mock("@/lib/billing/ai-usage", () => ({
   recordAiTokens: (...args: unknown[]) => mockRecordAiTokens(...args),
 }));
 
-const { verifyFindingsBatch, runAiVerification } =
-  await import("@/lib/ai/verify-findings");
+const {
+  verifyFindingsBatch,
+  verifyFindingsBatchWithOutcome,
+  runAiVerification,
+} = await import("@/lib/ai/verify-findings");
 const { CONFIG_AI_VERIFY_CHUNK_SIZE } =
   await import("@/lib/config/config-values");
 
@@ -540,6 +543,247 @@ describe("verifyFindingsBatch: reasoning on an OpenAI-compatible endpoint", () =
       .find((l) => l.includes("gpt-5.4-verify-retry"));
     expect(notice).toContain("[AI-VERIFY]");
     errors.mockRestore();
+  });
+});
+
+describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", () => {
+  /**
+   * verifyFindingsBatch returns the findings and nothing else, so a clean
+   * sweep, a missing endpoint and a provider that was down for every chunk
+   * are the same array. This returns the same findings plus the outcome
+   * runAiVerification already reports, so a route can tell them apart.
+   */
+  beforeEach(() => {
+    mockQuery.mockResolvedValue({ rows: [] });
+  });
+
+  function errorResponse(status: number): Response {
+    return new Response(JSON.stringify({ error: { message: "nope" } }), {
+      status,
+    });
+  }
+
+  it("returns the findings with their verdicts and an outcome that counts them", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string);
+        const id = /finding_id: (\S+)/.exec(body.messages[1].content)?.[1];
+        return confirmedResponse(id ?? "unknown");
+      },
+    );
+
+    const { findings, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [makeFinding("f1"), makeFinding("f2"), makeFinding("f3")],
+      null,
+    );
+
+    expect(findings.map((f) => f.aiVerdict)).toEqual([
+      "confirmed",
+      "confirmed",
+      "confirmed",
+    ]);
+    // Strict: a pass that was not rate limited carries no rateLimited key at all.
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 3,
+      attempted: 3,
+    });
+  });
+
+  it("gives verifyFindingsBatch's findings exactly, so the two cannot disagree", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponse("x"),
+    );
+    const input = [makeFinding("f1"), makeFinding("f2")];
+
+    const bare = await verifyFindingsBatch("https://example.com", input, null);
+    const { findings } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      input,
+      null,
+    );
+
+    expect(Array.isArray(bare)).toBe(true);
+    expect(findings).toEqual(bare);
+  });
+
+  it("says no endpoint is configured, and hands the findings back untouched", async () => {
+    delete process.env.AI_BASE_URL;
+    delete process.env.AI_API_KEY;
+    const input = [makeFinding("f1"), makeFinding("f2")];
+
+    const { findings, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      input,
+      null,
+    );
+
+    expect(findings).toBe(input);
+    expect(outcome).toStrictEqual({
+      configured: false,
+      verdicts: 0,
+      attempted: 2,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("treats a batch with nothing in it as configured, because no endpoint was looked for", async () => {
+    delete process.env.AI_BASE_URL;
+    delete process.env.AI_API_KEY;
+    const input: Vulnerability[] = [];
+
+    const { findings, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      input,
+      null,
+    );
+
+    expect(findings).toBe(input);
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 0,
+      attempted: 0,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("reports a provider that was down as zero verdicts, not as nothing to confirm", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      errorResponse(503),
+    );
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { findings, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [makeFinding("f1"), makeFinding("f2")],
+      null,
+    );
+
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 0,
+      attempted: 2,
+    });
+    expect(findings.every((f) => f.aiVerdict === undefined)).toBe(true);
+    errors.mockRestore();
+  });
+
+  it("counts only the findings that got a verdict when the pass is partial", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string);
+        const id = /finding_id: (\S+)/.exec(body.messages[1].content)?.[1];
+        return id === "f2" ? errorResponse(500) : confirmedResponse(id!);
+      },
+    );
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { findings, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [makeFinding("f1"), makeFinding("f2")],
+      null,
+    );
+
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 1,
+      attempted: 2,
+    });
+    expect(findings[0].aiVerdict).toBe("confirmed");
+    expect(findings[1].aiVerdict).toBeUndefined();
+    errors.mockRestore();
+  });
+
+  it("marks a rate-limited pass so the reader is told to wait, not that nothing was wrong", async () => {
+    const calls = { n: 0 };
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      calls.n++;
+      return errorResponse(429);
+    });
+    const findings = Array.from(
+      { length: CONFIG_AI_VERIFY_CHUNK_SIZE * 4 },
+      (_, i) => makeFinding(`f${i}`),
+    );
+
+    const { outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      null,
+    );
+
+    expect(outcome).toMatchObject({
+      configured: true,
+      verdicts: 0,
+      rateLimited: true,
+    });
+    expect(outcome.attempted).toBe(findings.length);
+    expect(calls.n).toBeLessThanOrEqual(CONFIG_AI_VERIFY_CHUNK_SIZE);
+  });
+
+  it("does not call a refused key a rate limit", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      errorResponse(401),
+    );
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+    );
+
+    expect(outcome.verdicts).toBe(0);
+    expect(outcome).not.toHaveProperty("rateLimited");
+    errors.mockRestore();
+  });
+
+  it("bills the batch's real tokens once, exactly as verifyFindingsBatch does", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", 100, 50),
+    );
+
+    await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [makeFinding("f1"), makeFinding("f2")],
+      42,
+      false,
+    );
+
+    expect(mockRecordAiTokens).toHaveBeenCalledTimes(1);
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 300, undefined, true);
+  });
+
+  it("does not bill a user running on their own key", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", 100, 50),
+    );
+
+    await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      true,
+    );
+
+    expect(mockRecordAiTokens).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing to scan_history: persisting verdicts is runAiVerification's job", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponse("x"),
+    );
+
+    await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+    );
+
+    const wrote = mockQuery.mock.calls.some(([sql]) =>
+      String(sql).includes("UPDATE scan_history"),
+    );
+    expect(wrote).toBe(false);
   });
 });
 

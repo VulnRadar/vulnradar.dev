@@ -559,19 +559,43 @@ async function recordVerifyTokens(
   }
 }
 
-export async function verifyFindingsBatch(
+/**
+ * verifyFindingsBatch, and whether the pass actually happened.
+ *
+ * verifyFindingsBatch hands back the findings and nothing else, so "the AI
+ * looked and cleared everything", "no AI endpoint is configured" and "the
+ * provider was down for every chunk" all arrive as the same array, and a route
+ * that wraps it can only answer success. runAiVerification fixed that for the
+ * scan page with AiVerificationOutcome; this gives the batch the same answer.
+ *
+ * Nothing is persisted and nothing extra is logged, exactly as for
+ * verifyFindingsBatch, which now calls this: the caller has the outcome to act
+ * on. A batch with nothing in it counts as configured, as it does for
+ * runAiVerification, because no endpoint was looked for.
+ */
+export async function verifyFindingsBatchWithOutcome(
   url: string,
   findings: Vulnerability[],
   userId?: number | null,
   usingOwnAi = false,
-): Promise<Vulnerability[]> {
-  if (findings.length === 0) return findings;
+): Promise<{ findings: Vulnerability[]; outcome: AiVerificationOutcome }> {
+  if (findings.length === 0) {
+    return {
+      findings,
+      outcome: { configured: true, verdicts: 0, attempted: 0 },
+    };
+  }
 
   const endpoint =
     (userId ? await resolveUserEndpoint(userId) : null) ??
     resolveServerEndpoint();
 
-  if (!endpoint) return findings;
+  if (!endpoint) {
+    return {
+      findings,
+      outcome: { configured: false, verdicts: 0, attempted: findings.length },
+    };
+  }
 
   const settings = await resolveVerifySettings();
   const probe = await probeTarget(
@@ -580,7 +604,7 @@ export async function verifyFindingsBatch(
     settings.probeBodySnippetChars,
   );
   const deadline = Date.now() + settings.totalTimeoutMs;
-  const { verdictMap, totalTokens } = await verifyInChunks(
+  const { verdictMap, totalTokens, rateLimited } = await verifyInChunks(
     url,
     findings,
     endpoint,
@@ -590,7 +614,30 @@ export async function verifyFindingsBatch(
   );
   await recordVerifyTokens(userId, usingOwnAi, totalTokens);
 
-  return applyVerdicts(findings, verdictMap);
+  return {
+    findings: applyVerdicts(findings, verdictMap),
+    outcome: {
+      configured: true,
+      verdicts: verdictMap.size,
+      attempted: findings.length,
+      ...(rateLimited ? { rateLimited: true } : {}),
+    },
+  };
+}
+
+export async function verifyFindingsBatch(
+  url: string,
+  findings: Vulnerability[],
+  userId?: number | null,
+  usingOwnAi = false,
+): Promise<Vulnerability[]> {
+  const { findings: verified } = await verifyFindingsBatchWithOutcome(
+    url,
+    findings,
+    userId,
+    usingOwnAi,
+  );
+  return verified;
 }
 
 /**
