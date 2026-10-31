@@ -31,9 +31,11 @@ export type NumberInput = number | string | null | undefined;
 export interface FormatterOptions {
   /**
    * IANA zone to print dates in. Left out, the runtime's own: the reader's
-   * browser on the client, the server's (UTC) in a server component. A server
-   * render and its hydration then print different clock times, so format a
-   * time of day in a client component, or pass the zone to both.
+   * browser on the client, the server's (UTC) on the server. A client
+   * component is rendered once on the server as well, so it prints in the
+   * server's zone first and the reader's at hydration, and the two disagree
+   * about the clock time (and for some hours of the day, the date). Format
+   * where the value only exists after mount, or pass the same zone to both.
    */
   timeZone?: string;
 }

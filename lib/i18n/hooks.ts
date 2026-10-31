@@ -12,9 +12,9 @@ import { severityLabeller } from "./severity";
  * Formatting and severity words for a component that renders in the reader's
  * language.
  *
- * Neither file in this folder says "use client" on purpose: next-intl's own
- * hooks work in a client component and in a synchronous server component, and
- * so do these. An async server component uses the equivalents in server.ts.
+ * This file does not say "use client" on purpose: next-intl's own hooks work
+ * in a client component and in a synchronous server component, and so do
+ * these. An async server component uses the equivalents in server.ts.
  */
 
 /**

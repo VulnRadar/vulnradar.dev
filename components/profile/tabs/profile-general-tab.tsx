@@ -524,8 +524,8 @@ export function ProfileGeneralTab({
               >
                 lib/i18n/messages
               </a>
-              : each language is one file, a new one is a copy of{" "}
-              <code className="font-mono">en.json</code>, and anything left
+              : each language is a folder, a new one is a copy of the{" "}
+              <code className="font-mono">en</code> folder, and anything left
               untranslated falls back to English rather than breaking. Send a
               pull request, or{" "}
               <a

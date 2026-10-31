@@ -29,7 +29,8 @@ translating one surface edit that surface's files and nobody else's.
   command again. `tests/lib/i18n/catalog.test.ts` fails while it is out of date.
 
 - **A new language** is a new folder with a file for every namespace, one entry
-  in `LOCALES` (`config.ts`) and one in `LOCALE_NAMES`, then the command above.
+  in `LOCALES`, `LOCALE_NAMES` and `LOCALE_ENGLISH_NAMES` (`config.ts`), then
+  the command above.
 
 A key a language lacks still falls back to English at runtime (`messages.ts`),
 so one that slips past review reads in English and never renders as a dotted
@@ -123,10 +124,12 @@ fmt.percent(0.375); // "38%"
   with `useNow()` (`lib/ui/clock.ts`) instead of calling `Date.now()` in the
   component.
 - **Time zones.** Left alone, a date prints in the runtime's own zone: the
-  reader's on the client, the server's (UTC) in a server component. A server
-  render and its hydration then disagree about the clock time, so print a time
-  of day in a client component, or give both sides the same
-  `{ timeZone }`. A date with no time of day rarely cares.
+  reader's in the browser, the server's (UTC) on the server. A client component
+  is rendered once on the server too, so it prints in the server's zone first
+  and the reader's at hydration, and the two disagree about the clock time (and
+  about the date, for the hours when the zones are on different days). Format
+  where the value only exists after mount, such as data the component fetches,
+  or give both sides the same `{ timeZone }`.
 - **Numbers and dates inside a sentence** stay values in the message
   (`{count}`, `{date}`) and are formatted by next-intl; use the formatters for a
   number or date that stands on its own in the page.

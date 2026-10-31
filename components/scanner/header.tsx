@@ -45,7 +45,7 @@ import { tourAnchor, type TourAnchor } from "@/lib/tour/anchors";
 // lib/tour/anchors.ts.
 const NAV_LINKS: {
   href: string;
-  /** Key under the "nav" namespace (lib/i18n/messages/en.json). */
+  /** Key under the "nav" namespace (lib/i18n/messages/en/nav.json). */
   label:
     | "scanner"
     | "history"
