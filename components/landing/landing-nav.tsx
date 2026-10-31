@@ -16,7 +16,6 @@ import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { LanguageMenu } from "@/components/shared/language-menu";
 import { backdrops, focus, transitions } from "@/lib/ui/animations";
 import { cn } from "@/lib/ui/utils";
-import { useAuth } from "@/components/providers/auth-provider";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 
 interface LandingNavProps {
@@ -59,11 +58,9 @@ function navLinks(demoEnabled: boolean): NavLink[] {
 
 export function LandingNav({ badge }: LandingNavProps) {
   const t = useTranslations("nav");
-  const { me, isLoading } = useAuth();
   const { featureDemoMode } = useClientConfig();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const isLoggedIn = !!me?.userId;
   // Read without `loaded`: the pre-fetch value is the build-time FEATURES
   // default, so a deployment configured at build time never sees the row move.
   const links = navLinks(featureDemoMode);
@@ -172,47 +169,48 @@ export function LandingNav({ badge }: LandingNavProps) {
               </div>
             </div>
 
-            {isLoading ? (
-              <div className="h-8 w-24 rounded bg-muted/50 animate-pulse" />
-            ) : isLoggedIn ? (
-              <Button asChild size="sm" className="h-8 gap-1.5">
-                <Link href={ROUTES.DASHBOARD}>
-                  <LayoutDashboard className="h-3.5 w-3.5" />
-                  {t("dashboard")}
-                </Link>
-              </Button>
-            ) : (
-              <>
-                {/* asChild puts `hidden` on the anchor itself. Wrapped around
-                    a hidden button, the anchor stayed rendered below 640px with
-                    no text and still took a tab stop. */}
-                <Button
-                  asChild
-                  variant="ghost"
-                  size="sm"
-                  className="hidden sm:inline-flex h-8"
-                >
-                  <Link href={ROUTES.LOGIN}>{t("logIn")}</Link>
-                </Button>
-                <Button
-                  asChild
-                  size="sm"
-                  className="h-8 gap-1.5 px-2.5 sm:px-3"
-                >
-                  <Link href={ROUTES.SIGNUP}>
-                    {/* "Get Started" was title case on a sentence-case page and
-                        named no action. This is the first button a visitor
-                        sees on a page whose whole argument is specificity.
-                        Below sm the short label stands in: "Commencer
-                        gratuitement" alone is wider than a phone's spare room
-                        once the wordmark and menu button are in the row. */}
-                    <span className="sm:hidden">{t("signUp")}</span>
-                    <span className="hidden sm:inline">{t("startFree")}</span>
-                    <ArrowRight className="hidden h-3.5 w-3.5 sm:block" />
-                  </Link>
-                </Button>
-              </>
-            )}
+            {/* Both calls to action are in the markup and the data-vr-auth
+                attribute on <html> picks one (rules in app/globals.css).
+                This branched on useAuth(): the server and the first client
+                render both saw isLoading, so every visitor got a pulsing grey
+                placeholder where the button belongs until /auth/me answered,
+                and a signed-in one then watched Start free turn into
+                Dashboard. The attribute is stamped before first paint from
+                the cached session, so the right button is there at once. */}
+            <Button asChild size="sm" className="vr-auth-cta h-8 gap-1.5">
+              <Link href={ROUTES.DASHBOARD}>
+                <LayoutDashboard className="h-3.5 w-3.5" />
+                {t("dashboard")}
+              </Link>
+            </Button>
+            {/* asChild puts `hidden` on the anchor itself. Wrapped around a
+                hidden button, the anchor stayed rendered below 640px with no
+                text and still took a tab stop. */}
+            <Button
+              asChild
+              variant="ghost"
+              size="sm"
+              className="vr-anon-only hidden sm:inline-flex h-8"
+            >
+              <Link href={ROUTES.LOGIN}>{t("logIn")}</Link>
+            </Button>
+            <Button
+              asChild
+              size="sm"
+              className="vr-anon-only h-8 gap-1.5 px-2.5 sm:px-3"
+            >
+              <Link href={ROUTES.SIGNUP}>
+                {/* "Get Started" was title case on a sentence-case page and
+                    named no action. This is the first button a visitor sees
+                    on a page whose whole argument is specificity. Below sm the
+                    short label stands in: "Commencer gratuitement" alone is
+                    wider than a phone's spare room once the wordmark and menu
+                    button are in the row. */}
+                <span className="sm:hidden">{t("signUp")}</span>
+                <span className="hidden sm:inline">{t("startFree")}</span>
+                <ArrowRight className="hidden h-3.5 w-3.5 sm:block" />
+              </Link>
+            </Button>
 
             <button
               type="button"
@@ -274,18 +272,16 @@ export function LandingNav({ badge }: LandingNavProps) {
                   </div>
                   <ThemeToggle />
                 </div>
-                {!isLoading && !isLoggedIn && (
-                  <Button
-                    asChild
-                    variant="outline"
-                    size="sm"
-                    className="h-8 sm:hidden"
-                  >
-                    <Link href={ROUTES.LOGIN} onClick={() => setOpen(false)}>
-                      {t("logIn")}
-                    </Link>
-                  </Button>
-                )}
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="vr-anon-only h-8 sm:hidden"
+                >
+                  <Link href={ROUTES.LOGIN} onClick={() => setOpen(false)}>
+                    {t("logIn")}
+                  </Link>
+                </Button>
               </div>
             </div>
           </div>

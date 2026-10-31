@@ -225,8 +225,55 @@ describe("landing-nav.tsx keeps the contract the numbers above assume", () => {
     // asChild merges the classes onto the <a>. Around a hidden button the
     // anchor stayed rendered with no text and still took a tab stop.
     expect(src).toMatch(
-      /asChild\s+variant="ghost"\s+size="sm"\s+className="hidden sm:inline-flex h-8"/,
+      /asChild\s+variant="ghost"\s+size="sm"\s+className="vr-anon-only hidden sm:inline-flex h-8"/,
     );
+  });
+
+  describe("the calls to action pick themselves by attribute, not by a render branch", () => {
+    // The bar used to branch on useAuth(). The server and the first client
+    // render both saw isLoading, so every visitor got a pulsing placeholder
+    // where the button belongs until /auth/me answered, and a signed-in one
+    // then watched "Start free" turn into "Dashboard".
+    const css = fs.readFileSync(path.join(ROOT, "app/globals.css"), "utf8");
+
+    it("does not read the session at all", () => {
+      expect(src).not.toContain("useAuth");
+      expect(src).not.toContain("isLoading");
+      expect(src).not.toContain("isLoggedIn");
+      expect(src).not.toContain("animate-pulse");
+    });
+
+    it("draws the signed-in button and every signed-out one, in all cases", () => {
+      expect(src).toMatch(
+        /className="vr-auth-cta h-8 gap-1\.5"[^>]*>\s*<Link href=\{ROUTES\.DASHBOARD\}>/,
+      );
+      // The bar's log in and sign up, plus the log in in the menu panel.
+      expect(src.match(/vr-anon-only/g)).toHaveLength(3);
+      expect(src).toContain('className="vr-anon-only h-8 sm:hidden"');
+      expect(src).toContain(
+        'className="vr-anon-only h-8 gap-1.5 px-2.5 sm:px-3"',
+      );
+    });
+
+    it("hides the signed-out pair when data-vr-auth is set, and takes them out of the tab order", () => {
+      expect(css).toMatch(
+        /:root\[data-vr-auth="1"\] \.vr-anon-only \{\s*display: none !important;\s*\}/,
+      );
+    });
+
+    it("shows the signed-in button only when data-vr-auth is set", () => {
+      expect(css).toMatch(
+        /\n\s*\.vr-auth-cta \{\s*display: none !important;\s*\}/,
+      );
+      expect(css).toMatch(
+        /:root\[data-vr-auth="1"\] \.vr-auth-cta \{\s*display: inline-flex !important;\s*\}/,
+      );
+    });
+
+    it("uses display rather than visibility, which would leave a tab stop on a hidden link", () => {
+      const rules = css.slice(css.indexOf(".vr-anon-only {") - 120);
+      expect(rules.slice(0, rules.indexOf("\n}\n"))).not.toMatch(/visibility/);
+    });
   });
 
   it("lets the logo link give way and keeps the right group at full size", () => {

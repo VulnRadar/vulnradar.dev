@@ -364,6 +364,26 @@
   :root[data-vr-staff="1"] .vr-staff-only {
     display: flex !important;
   }
+
+  /* The public top bar's calls to action. It draws both and lets the
+     attribute choose, instead of branching on useAuth(): the server and the
+     first client render both saw "loading", so every visitor got a grey
+     placeholder in the button's place until /auth/me answered.
+
+     display, not visibility, because the hidden pair must leave the tab order
+     and the accessibility tree. !important because the Button primitive sets
+     its own display (inline-flex) in the same layer, and the login anchor also
+     carries `hidden sm:inline-flex`. The shown value is the primitive's own
+     inline-flex. */
+  :root[data-vr-auth="1"] .vr-anon-only {
+    display: none !important;
+  }
+  .vr-auth-cta {
+    display: none !important;
+  }
+  :root[data-vr-auth="1"] .vr-auth-cta {
+    display: inline-flex !important;
+  }
 }
 
 @layer base {
