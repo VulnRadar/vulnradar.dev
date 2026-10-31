@@ -72,3 +72,77 @@ order of the parts is different in German and Japanese, and a fragment cannot
 be translated without knowing the sentence it lands in. Use a plural rule
 (`{count, plural, ...}`) rather than an `if` around two strings, since some
 languages have more than two forms.
+
+The convention for a count is one message with the plural rule inside it, and
+`other` always present (ICU requires it; a count no branch names throws):
+
+```json
+"findings": "{count, plural, =0 {No findings} one {# finding} other {# findings}}"
+```
+
+```tsx
+t("findings", { count });
+```
+
+Every language writes the rule for its own forms but pluralises on the same
+`{count}` argument; `key-parity.test.ts` checks both. `lib/ui/plural.ts`
+(`pluralize(3, "member")`) is the English-only version for a surface that has
+not moved to `t()`; do not use it under a translated heading.
+
+## Formatting dates, times and numbers
+
+`lib/ui/format-date.ts`, `relative-time.ts` and `plural.ts` print US English on
+purpose and keep working: no call site has been moved. They are right for a
+surface that is still English. Once a surface reads its words from `t()`, it
+formats from here as well, since "5m ago" under a Japanese heading is the same
+bug the other way round.
+
+| Where the code runs                           | Use                                                                      |
+| --------------------------------------------- | ------------------------------------------------------------------------ |
+| Client component, or a synchronous server one | `useFormatters()` from `hooks.ts`                                        |
+| Async server component                        | `await getFormatters()` from `server.ts`                                 |
+| No request (email, cron, webhook)             | `createFormatters(locale)` from `format.ts`, with the recipient's locale |
+
+All three return the same object (`format.ts`):
+
+```tsx
+const fmt = useFormatters();
+fmt.date(iso); // "Sep 16, 2026", "2026年9月16日"
+fmt.dateTime(iso); // with the time; the clock follows the language
+fmt.monthDay(iso); // "Sep 16"
+fmt.relativeTime(iso, now); // "5 min. ago", "5 分前", a date past a week
+fmt.number(count); // "1,234" or "1.234"; a numeric string is fine
+fmt.compactNumber(count); // "1.2K"
+fmt.percent(0.375); // "38%"
+```
+
+- **They return `null` for a value they cannot read**, where the English
+  helpers return "Unknown date". The fallback wording is a translation, so the
+  caller supplies it: `fmt.date(iso) ?? t("unknownDate")`.
+- **`relativeTime` takes `now` as an argument** so a render stays pure. Read it
+  with `useNow()` (`lib/ui/clock.ts`) instead of calling `Date.now()` in the
+  component.
+- **Time zones.** Left alone, a date prints in the runtime's own zone: the
+  reader's on the client, the server's (UTC) in a server component. A server
+  render and its hydration then disagree about the clock time, so print a time
+  of day in a client component, or give both sides the same
+  `{ timeZone }`. A date with no time of day rarely cares.
+- **Numbers and dates inside a sentence** stay values in the message
+  (`{count}`, `{date}`) and are formatted by next-intl; use the formatters for a
+  number or date that stands on its own in the page.
+
+## Severity words
+
+A severity is stored and sent over the API as `critical`, `high`, `medium`,
+`low` or `info`. The word a reader sees is `result.severityCritical` and so
+on, mapped in `severity.ts`:
+
+```tsx
+const severityLabel = useSeverityLabel(); // or await getSeverityLabel()
+<Badge>{severityLabel(finding.severity)}</Badge>;
+```
+
+In a mail, `(await getSeverityLabeller(locale))(severity)` from `translate.ts`.
+`SEVERITY_TONE[...].label` and `SEVERITY_LABELS` are the English words, for a
+surface that has not been translated yet. A translated surface takes colour and
+weight from `SEVERITY_TONE` and the word from here.

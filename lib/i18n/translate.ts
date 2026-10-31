@@ -2,6 +2,7 @@ import { createTranslator } from "next-intl";
 import pool from "@/lib/database/db";
 import { DEFAULT_LOCALE, isLocale, type Locale } from "./config";
 import { getMessages } from "./messages";
+import { severityLabeller } from "./severity";
 
 /**
  * Translations away from a request.
@@ -13,6 +14,20 @@ import { getMessages } from "./messages";
  */
 export async function getTranslator(locale: Locale) {
   return createTranslator({ locale, messages: await getMessages(locale) });
+}
+
+/**
+ * The word for a severity in the recipient's language, for a mail or a report
+ * built away from a request (server.ts is the equivalent inside one).
+ */
+export async function getSeverityLabeller(locale: Locale) {
+  return severityLabeller(
+    createTranslator({
+      locale,
+      messages: await getMessages(locale),
+      namespace: "result",
+    }),
+  );
 }
 
 /**

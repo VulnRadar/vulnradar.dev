@@ -187,6 +187,7 @@ describe("English keys that nothing references", () => {
     expect(isReferenced("scan", "heading")).toBe(true);
     expect(isReferenced("footer", "tagline")).toBe(true);
     expect(isReferenced("dashboard", "announceComplete")).toBe(true);
+    expect(isReferenced("result", "severityHigh")).toBe(true);
     expect(isReferenced("nav", "noSuchKeyAnywhere")).toBe(false);
     expect(isReferenced("noSuchNamespace", "scanner")).toBe(false);
   });
