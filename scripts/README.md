@@ -14,8 +14,8 @@ them means editing those files in the same change.
 
 ```
 scripts/
-├── _lib/                          # Shared helpers (27 files). Highlights:
-│   ├── _lib.mjs                   # Barrel -- re-exports the rest
+├── _lib/                          # Shared helpers (28 files). Highlights:
+│   ├── _lib.mjs                   # Barrel that re-exports the rest
 │   ├── _lib.output.mjs            # Colours, banner, section, log/info/success/warn/error
 │   ├── _lib.prompts.mjs           # ask, askYesNo, askDanger, askExact
 │   ├── _lib.db.mjs                # parseDbUrl, buildConnectionString, createPool, connect
@@ -65,7 +65,11 @@ scripts/
 │   build timestamps): CI regenerates all of it and fails on any diff.
 │
 ├── assets/
+│   ├── build-icons.mjs            # Render every favicon and app icon from public/favicon.svg (run by hand)
 │   └── build-og-image.mjs         # Render the Open Graph image (run by hand)
+│
+├── ai/
+│   └── run-verify-eval.mjs        # npm run eval:verify: the AI verification eval, against .env.local
 │
 ├── backup-db.mjs                  # Full dump. Path pinned by lib/backup/run-backup.ts
 ├── restore-db.mjs                 # Restore a dump written by backup-db
@@ -84,37 +88,29 @@ scripts/
 │       ├── 2.0.0-to-1.0.0.mjs     # (down half of above)
 │       └── 2.0.0-to-3.0.0.mjs     # v2 -> v3 (folds the 3.0.0-5.9.0 dev tail into one step)
 │
-├── audit/                         # AUDIT-NNN workflow CLI
+├── audit/                         # AUDIT-NNN workflow CLI (its JSON lives in audits/ at the repo root)
 │   ├── new.mjs                    # allocates next ID, scaffolds dir
 │   ├── list.mjs                   # tabular view
 │   ├── show.mjs                   # dump audit + findings
 │   ├── add-finding.mjs            # append a finding
 │   └── close.mjs                  # transition status (in-progress / closed / shipped)
 │
-├── create-fresh-db/               # Side-by-side DB copy
-│   ├── create-fresh-db.mjs        # CLI entry
-│   └── schemas/                   # FROZEN snapshots of older versions
-│       ├── instrumentation-v1.ts  # v1 baseline (from git history)
-│       └── instrumentation-v2.ts  # v2 baseline
-│
-└── storage/                       # JSON store behind the audit CLI
+└── create-fresh-db/               # Side-by-side DB copy
+    ├── create-fresh-db.mjs        # CLI entry
+    └── schemas/                   # FROZEN snapshots of older versions
+        ├── instrumentation-v1.ts  # v1 baseline (from git history)
+        └── instrumentation-v2.ts  # v2 baseline
 ```
 
 ## Where the schema lives
 
 Not here. `lib/database/schema/` is an ordered array of steps that both
-`instrumentation.ts` (every boot) and `npm run db:create` EXECUTE, so the two
-cannot build different databases.
+`instrumentation.ts` (every boot, through `apply-boot-schema`) and
+`npm run db:create` EXECUTE, so the two cannot build different databases.
 
-That used to be untrue, and silently. The schema was ~4,400 lines of
-`pool.query(\`...\`)`inside`instrumentation.ts`, and `db:create`rebuilt it by
-reading that file as text. Text extraction cannot resolve a template literal
-whose table name comes from a loop variable, and six statements were exactly
-that, so a`db:create`d database had no ON DELETE SET NULL foreign keys, no
-value-set CHECK constraints, no `updated_at`triggers and no redundant-index
-drops.`scripts/_lib/_lib.schema-parity.mjs`still parses source text, but only
-for the two frozen snapshots (which are historical files nothing else executes)
-and for the three helper modules a schema step names via`moduleSource`.
+`scripts/_lib/_lib.schema-parity.mjs` still parses source text, but only for the
+two frozen snapshots (which are historical files nothing else executes) and for
+the helper modules a schema step names via `moduleSource`.
 
 ## Available scripts
 
@@ -137,21 +133,26 @@ and for the three helper modules a schema step names via`moduleSource`.
 | `npm run changelog:compile`   | Regenerate the changelog knowledge file only.                                                                                                                                                                                  |
 | `npm run checks:compile`      | Regenerate the checks knowledge file and `lib/config/check-stats.generated.ts`.                                                                                                                                                |
 | `npm run legal:compile`       | Regenerate the legal knowledge file only.                                                                                                                                                                                      |
+| `npm run features:compile`    | Regenerate the features knowledge file only.                                                                                                                                                                                   |
+| `npm run knowledge:index`     | Rebuild `lib/ai/knowledge-index.json` from the other knowledge files. It has to run after them, which `build:knowledge` guarantees.                                                                                            |
+| `npm run eval:verify`         | Run the AI verification eval against the endpoint in `.env.local` (`AI_BASE_URL`, `AI_MODEL`, `AI_API_KEY`). It costs real tokens: one call per case.                                                                          |
 | `npm run audit:new`           | Allocate the next AUDIT-NNN id and scaffold the audit directory.                                                                                                                                                               |
 | `npm run audit:list`          | Tabular listing of all audits.                                                                                                                                                                                                 |
 | `npm run audit:show`          | Full manifest + findings table for one audit.                                                                                                                                                                                  |
 | `npm run audit:add-finding`   | Append a finding to an audit.                                                                                                                                                                                                  |
 | `npm run audit:close`         | Transition an audit's status (in-progress / closed / shipped).                                                                                                                                                                 |
 
-`node scripts/maintenance/find-duplicate-ids.mjs` and `node scripts/assets/build-og-image.mjs`
-have no npm alias and are run by hand. `find-duplicate-ids.mjs` is on the
+`node scripts/maintenance/find-duplicate-ids.mjs`, `node scripts/assets/build-icons.mjs`
+and `node scripts/assets/build-og-image.mjs` have no npm alias and are run by
+hand. `find-duplicate-ids.mjs` is on the
 pre-commit checklist in AGENTS.md, but no CI workflow runs it, so a duplicate
 check ID will not fail a PR on its own. `build-og-image.mjs` rasterizes
 `public/og-image.svg` into `public/og-image.png`, substituting `CONFIG_APP_NAME`
 and the `CONFIG_APP_URL` hostname into the two `data-og` text nodes, so a
-renamed instance regenerates its own social card rather than shipping ours. It
-needs `sharp`, which this repo does not declare: install it for the run with
-`npm i --no-save sharp`.
+renamed instance regenerates its own social card rather than shipping ours.
+`build-icons.mjs` rasterizes `public/favicon.svg` into the favicon, manifest and
+touch icons. Both need `sharp`, which this repo does not declare: install it for
+the run with `npm i --no-save sharp`.
 
 ### Restoring a backup
 
@@ -204,15 +205,15 @@ preserved as commits, not as files in the tree.
 The migrator tracks the database schema state (not the app release
 version). Currently three schema versions are known:
 
-| Schema version | Tables | Notes                                                                  |
-| -------------- | -----: | ---------------------------------------------------------------------- |
-| **1.0.0**      |     19 | Pre-MVP baseline.                                                      |
-| **2.0.0**      |     34 | v2 production schema.                                                  |
-| **3.0.0**      |     66 | Current production schema (the app is at 3.7.2; schema min is v3.0.0). |
+| Schema version | Tables | Notes                                                             |
+| -------------- | -----: | ----------------------------------------------------------------- |
+| **1.0.0**      |     19 | Pre-MVP baseline.                                                 |
+| **2.0.0**      |     34 | v2 production schema.                                             |
+| **3.0.0**      |     71 | Current production schema (`CONFIG_MIN_SCHEMA_VERSION` is 3.0.0). |
 
-The app's `package.json` is at 3.7.2, well past the schema's 3.0.0 baseline:
-releases after a schema version only differ by columns the boot schema
-auto-adds, so they are not tracked as separate schema versions.
+The app's own version is well past the schema's 3.0.0 baseline: releases after
+a schema version only differ by columns the boot schema auto-adds, so they are
+not tracked as separate schema versions.
 `2.0.0-to-3.0.0.mjs` folds the whole 3.0.0-through-5.9.0 development tail (old
 numbering) into one upgrade step.
 
@@ -244,7 +245,7 @@ CREATE TABLE vulnradar_schema_meta (
 
 ### Adding a new schema version
 
-1. Bump `version` in `package.json` (e.g. `3.7.0` → `4.0.0`).
+1. Bump `version` in `package.json` (e.g. `4.0.0` → `4.1.0`).
 2. Add the new tables/columns as steps in `lib/database/schema/`. Both the
    boot path and `npm run db:create` execute that array, so there is nothing
    else to keep in step.

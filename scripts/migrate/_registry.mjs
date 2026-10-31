@@ -196,7 +196,7 @@ export const VERSIONS = [
   },
   {
     name: "3.0.0",
-    label: "v3.0 / production schema (47 tables)",
+    label: "v3.0 / production schema (71 tables)",
     // Squashed target: this used to be reached via nine intermediate
     // schema versions (3.0.0 through 5.9.0 under the old numbering), none
     // of which ever ran in production. This fingerprint is the exact NET
