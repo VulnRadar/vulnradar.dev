@@ -291,6 +291,69 @@ describe("getSession", () => {
       queries.some((q) => q.sql.startsWith("DELETE FROM sessions WHERE id")),
     ).toBe(true);
   });
+
+  // Server components (the /credits pages) read cookies but cannot write
+  // them, so Next throws from cookieStore.delete(). Each of the three places
+  // getSession() drops a dead cookie must still end in null, not a 500.
+  describe("with a read-only cookie store (server component render)", () => {
+    const readOnly = () => {
+      cookieStore.delete.mockImplementationOnce(() => {
+        throw new Error(
+          "Cookies can only be modified in a Server Action or Route Handler.",
+        );
+      });
+    };
+
+    it("returns null when the session row no longer exists", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-gone");
+      sessionRow = null;
+      readOnly();
+
+      await expect(getSession()).resolves.toBeNull();
+      expect(cookieStore.delete).toHaveBeenCalledWith(AUTH_SESSION_COOKIE_NAME);
+    });
+
+    it("returns null when the session has expired, and still deletes the row", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-old");
+      sessionRow = {
+        user_id: 42,
+        expires_at: new Date(Date.now() - 60_000).toISOString(),
+        ip_address: null,
+        email: "user@example.com",
+        name: "User",
+        tos_accepted_at: null,
+        disabled_at: null,
+        role: "user",
+      };
+      readOnly();
+
+      await expect(getSession()).resolves.toBeNull();
+      expect(cookieStore.delete).toHaveBeenCalledWith(AUTH_SESSION_COOKIE_NAME);
+      expect(
+        queries.some((q) => q.sql.startsWith("DELETE FROM sessions WHERE id")),
+      ).toBe(true);
+    });
+
+    it("returns null on an ip-binding mismatch", async () => {
+      enableSettingsRow(true);
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-moved");
+      sessionRow = {
+        user_id: 42,
+        expires_at: futureExpiry,
+        ip_address: "203.0.113.5",
+        email: "user@example.com",
+        name: "User",
+        tos_accepted_at: null,
+        disabled_at: null,
+        role: "user",
+      };
+      currentIp = "8.8.8.8";
+      readOnly();
+
+      await expect(getSession()).resolves.toBeNull();
+      expect(cookieStore.delete).toHaveBeenCalledWith(AUTH_SESSION_COOKIE_NAME);
+    });
+  });
 });
 
 describe("createUser", () => {

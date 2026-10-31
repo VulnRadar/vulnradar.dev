@@ -124,6 +124,27 @@ export async function createSession(
   return sessionToken;
 }
 
+/**
+ * Drop the session cookie, tolerating a read-only cookie store.
+ *
+ * getSession() is called from server components (the /credits pages) as well
+ * as route handlers, and Next only lets the latter write cookies: a
+ * cookies().delete() in a server component throws. Left bare, a stale or
+ * expired cookie turned the whole page into a 500 instead of the signed-out
+ * view. The row is already gone and getSession() is about to return null
+ * either way, so a cookie that cannot be cleared here is cleared the next
+ * time the browser reaches a route handler.
+ */
+function clearSessionCookie(
+  cookieStore: Awaited<ReturnType<typeof cookies>>,
+): void {
+  try {
+    cookieStore.delete(SESSION_COOKIE);
+  } catch {
+    // Read-only cookie store (server component render); see above.
+  }
+}
+
 export async function getSession(): Promise<{
   userId: number;
   email: string;
@@ -161,7 +182,7 @@ export async function getSession(): Promise<{
   );
 
   if (result.rows.length === 0) {
-    cookieStore.delete(SESSION_COOKIE);
+    clearSessionCookie(cookieStore);
     return null;
   }
 
@@ -170,7 +191,7 @@ export async function getSession(): Promise<{
   // If account is disabled or session expired, nuke the session + cookie
   if (session.disabled_at || new Date(session.expires_at) < new Date()) {
     await pool.query("DELETE FROM sessions WHERE id = $1", [sessionId]);
-    cookieStore.delete(SESSION_COOKIE);
+    clearSessionCookie(cookieStore);
     return null;
   }
 
@@ -182,7 +203,7 @@ export async function getSession(): Promise<{
   // owner is notified in case it genuinely wasn't them.
   const ipOk = await checkSessionIpBinding(sessionId, session);
   if (!ipOk) {
-    cookieStore.delete(SESSION_COOKIE);
+    clearSessionCookie(cookieStore);
     return null;
   }
 
