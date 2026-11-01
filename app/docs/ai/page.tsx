@@ -420,8 +420,9 @@ curl -sS -X POST "${APP_URL}/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=tr
           <li>
             <strong className="text-foreground">Free</strong>: not metered
             against the token budget (the prompt is tiny by construction),
-            though usage is recorded. A separate admin path can promote a
-            recurring AI tag into a permanent, deterministic rule.
+            though usage is recorded. An admin can turn a recurring AI tag into
+            a rule from Engine Feedback. Once promoted it matches with no AI
+            call, and it can be removed again.
           </li>
         </ul>
       </DocsSection>
