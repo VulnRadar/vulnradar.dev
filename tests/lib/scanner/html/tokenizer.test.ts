@@ -165,4 +165,33 @@ describe("decodeEntities", () => {
   it("leaves plain text without ampersands untouched", () => {
     expect(decodeEntities("no entities here")).toBe("no entities here");
   });
+
+  it.each([
+    // A browser leaves a name without its semicolon alone when a letter,
+    // digit or = follows, so these query strings reach the server as written.
+    ["/account?tab=1&gtm=GTM-ABC", "/account?tab=1&gtm=GTM-ABC"],
+    ["/x?plan=2&quota=5", "/x?plan=2&quota=5"],
+    ["/x?a=1&lt=2", "/x?a=1&lt=2"],
+    ["/x?a=1&amp2", "/x?a=1&amp2"],
+  ])("keeps %s as a browser would submit it", (value, submitted) => {
+    expect(decodeEntities(value)).toBe(submitted);
+  });
+
+  it("decodes a name without its semicolon when nothing word-like follows", () => {
+    expect(decodeEntities("a &amp b")).toBe("a & b");
+    expect(decodeEntities("x &lt")).toBe("x <");
+    expect(decodeEntities("&QUOT;up&QUOT;")).toBe('"up"');
+  });
+
+  it("never decodes &apos without its semicolon or a name in the wrong case", () => {
+    expect(decodeEntities("it&apos s")).toBe("it&apos s");
+    expect(decodeEntities("&Quot;x&Quot;")).toBe("&Quot;x&Quot;");
+  });
+
+  it("decodes once, so an escaped ampersand stays an ampersand", () => {
+    expect(decodeEntities("&#38;lt;")).toBe("&lt;");
+    expect(decodeEntities("&amp;lt;")).toBe("&lt;");
+    expect(decodeEntities("a&#43;b&#34;c")).toBe('a+b"c');
+    expect(decodeEntities("http&#58//x")).toBe("http://x");
+  });
 });

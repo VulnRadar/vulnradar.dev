@@ -106,28 +106,59 @@ const NAME_START = /[a-zA-Z]/;
 const NAME_CHAR = /[^\s/>]/;
 
 /**
+ * The named references decodeEntities knows, spelled exactly as the HTML
+ * table spells them: it has &QUOT; and &AMP; but no &Quot;.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  quot: '"',
+  QUOT: '"',
+  apos: "'",
+  lt: "<",
+  LT: "<",
+  gt: ">",
+  GT: ">",
+  nbsp: " ",
+  amp: "&",
+  AMP: "&",
+};
+
+/**
  * Decode the entity forms that appear in attribute values often enough to
  * change a security verdict. Full entity tables are not worth the weight: a
  * URL written as `http&#58;//x` is the only realistic evasion and numeric
  * references cover it.
+ *
+ * It follows the browser's attribute rules, because the authenticated scan
+ * replays these values as a browser would submit them. One pass, so `&#38;lt;`
+ * becomes `&lt;` and not `<`. A named reference without its semicolon is left
+ * alone when a letter, digit or `=` follows, so `?tab=1&gtm=GTM-1` keeps its
+ * `&gtm` parameter; `&apos` is never decoded without one.
  */
 export function decodeEntities(input: string): string {
   if (!input.includes("&")) return input;
-  return input
-    .replace(/&#x([0-9a-f]+);?/gi, (_m, hex) => {
-      const code = parseInt(hex, 16);
-      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : _m;
-    })
-    .replace(/&#(\d+);?/g, (_m, dec) => {
-      const code = parseInt(dec, 10);
-      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : _m;
-    })
-    .replace(/&quot;?/gi, '"')
-    .replace(/&apos;?/gi, "'")
-    .replace(/&lt;?/gi, "<")
-    .replace(/&gt;?/gi, ">")
-    .replace(/&nbsp;?/gi, " ")
-    .replace(/&amp;?/gi, "&");
+  return input.replace(
+    /&(?:#x([0-9a-f]+);?|#(\d+);?|([a-z]+)(;?))/gi,
+    (
+      match: string,
+      hex: string | undefined,
+      dec: string | undefined,
+      name: string | undefined,
+      semicolon: string,
+      offset: number,
+      whole: string,
+    ) => {
+      if (name === undefined) {
+        const code = hex !== undefined ? parseInt(hex, 16) : Number(dec);
+        return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : match;
+      }
+      const value = NAMED_ENTITIES[name];
+      if (value === undefined) return match;
+      if (semicolon) return value;
+      if (name === "apos") return match;
+      const next = whole.charAt(offset + match.length);
+      return /[A-Za-z0-9=]/.test(next) ? match : value;
+    },
+  );
 }
 
 interface ParsedTag {
