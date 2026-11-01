@@ -63,8 +63,14 @@ on:
 # Cancel any in-flight run on the same tag. If the user publishes
 # the release and docker-publish completes in quick succession, only
 # one of these will run for the same tag.
+#
+# security: keyed on the tag only for a run the job's if: below accepts. The
+# group is decided before any job condition, so keyed on head_branch alone, a
+# fork's pull request on a branch named after the tag being released joined
+# this group and, through cancel-in-progress, cancelled the real release in
+# the middle of its uploads. Any other run gets a group of its own.
 concurrency:
-  group: release-attach-${{ github.event.workflow_run.head_branch || github.event.release.tag_name }}
+  group: release-attach-${{ (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch) || github.event.release.tag_name || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -97,8 +103,9 @@ jobs:
 
     steps:
       # First, so "Resolve tag" can check the tag exists before anything
-      # reads it. This is the default branch, not the tag: every later step
-      # that needs the tagged tree runs `git archive` against it.
+      # reads it. On workflow_run this is the default branch, not the tag:
+      # every later step that needs the tagged tree runs `git archive`
+      # against it.
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

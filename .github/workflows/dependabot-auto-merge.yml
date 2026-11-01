@@ -41,7 +41,9 @@ jobs:
     timeout-minutes: 40
     # The pull request's author, GitHub's documented check for Dependabot.
     # github.actor is whoever caused this particular event, which is not the
-    # same question: it changes with a re-run or a push to the branch.
+    # same question: Dependabot is the actor when it pushes to the branch of a
+    # pull request someone else opened (a fork can arrange that), and a
+    # maintainer is the actor after pushing a fix to Dependabot's branch.
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
       - name: Fetch metadata

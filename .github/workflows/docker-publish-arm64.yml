@@ -45,8 +45,12 @@ on:
         required: true
         type: string
 
+# security: keyed on the tag only for a run the job's if: below accepts, as in
+# release.yml. The group is decided before any job condition, so a fork's pull
+# request on a branch named after the tag would otherwise cancel the real
+# arm64 build halfway, leaving the release amd64-only until someone re-runs it.
 concurrency:
-  group: docker-arm64-${{ github.event.workflow_run.head_branch || inputs.tag }}
+  group: docker-arm64-${{ (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch) || inputs.tag || github.run_id }}
   cancel-in-progress: true
 
 jobs:

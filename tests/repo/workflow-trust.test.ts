@@ -75,14 +75,16 @@ function tokenize(src: string): string[] {
   return tokens;
 }
 
-function evaluate(expr: string, ctx: Ctx): boolean {
+const truthy = (v: Value) => v !== null && v !== false && v !== "";
+
+/** The expression's value: && and || return an operand, as in Actions. */
+function evaluateValue(expr: string, ctx: Ctx): Value {
   const src = expr.replace(/^\$\{\{\s*|\s*\}\}$/g, "");
   const tokens = tokenize(src);
   let i = 0;
   const peek = () => tokens[i];
   const next = () => tokens[i++];
 
-  const truthy = (v: Value) => v !== null && v !== false && v !== "";
   const lookup = (path: string): Value => {
     let cur: unknown = ctx;
     for (const part of path.split(".")) {
@@ -144,8 +146,28 @@ function evaluate(expr: string, ctx: Ctx): boolean {
 
   const result = or();
   if (i !== tokens.length) throw new Error(`trailing tokens in: ${expr}`);
-  return truthy(result);
+  return result;
 }
+
+function evaluate(expr: string, ctx: Ctx): boolean {
+  return truthy(evaluateValue(expr, ctx));
+}
+
+/**
+ * The workflow's top-level concurrency group with its expressions filled in.
+ * It is decided before any job's if:, so a run every job skips still joins
+ * the group and, with cancel-in-progress, cancels whatever holds it.
+ */
+function concurrencyGroup(workflow: string, ctx: Ctx): string {
+  const m = /^concurrency:\n {2}group:\s*(.+)$/m.exec(workflow);
+  expect(m, "the workflow has a top-level concurrency group").not.toBeNull();
+  return m![1].replace(/\$\{\{(.+?)\}\}/g, (_, expr: string) => {
+    const v = evaluateValue(expr, ctx);
+    return v === null ? "" : String(v);
+  });
+}
+
+let runId = 1000;
 
 function workflowRun(run: {
   conclusion: string;
@@ -156,6 +178,7 @@ function workflowRun(run: {
     github: {
       event_name: "workflow_run",
       repository: REPO,
+      run_id: String(++runId),
       event: {
         workflow_run: {
           conclusion: run.conclusion,
@@ -232,6 +255,45 @@ describe("release.yml runs only for this repository's own tag pushes", () => {
 
   it("does not run when the Docker publish failed", () => {
     expect(evaluate(cond, FAILED_PUSH)).toBe(false);
+  });
+});
+
+describe("a fork's run cannot cancel a release through the concurrency group", () => {
+  const PUBLISHED = {
+    github: {
+      event_name: "release",
+      repository: REPO,
+      run_id: "1",
+      event: { release: { tag_name: "v4.0.0" } },
+    },
+  };
+  const DISPATCHED = {
+    github: { event_name: "workflow_dispatch", repository: REPO, run_id: "2" },
+    inputs: { tag: "v4.0.0" },
+  };
+
+  it("release.yml still shares one group between the two triggers for a tag", () => {
+    expect(concurrencyGroup(release, TAG_PUSH)).toBe("release-attach-v4.0.0");
+    expect(concurrencyGroup(release, PUBLISHED)).toBe("release-attach-v4.0.0");
+  });
+
+  it("release.yml gives a fork or pull request run on a tag-named branch its own group", () => {
+    const real = concurrencyGroup(release, TAG_PUSH);
+    for (const ctx of [FORK_PR, SAME_REPO_PR, FORK_PUSH]) {
+      expect(concurrencyGroup(release, ctx)).not.toBe(real);
+    }
+  });
+
+  it("docker-publish-arm64.yml still shares one group between a tag push and a re-run", () => {
+    expect(concurrencyGroup(arm64, TAG_PUSH)).toBe("docker-arm64-v4.0.0");
+    expect(concurrencyGroup(arm64, DISPATCHED)).toBe("docker-arm64-v4.0.0");
+  });
+
+  it("docker-publish-arm64.yml gives a fork or pull request run its own group", () => {
+    const real = concurrencyGroup(arm64, TAG_PUSH);
+    for (const ctx of [FORK_PR, SAME_REPO_PR, FORK_PUSH]) {
+      expect(concurrencyGroup(arm64, ctx)).not.toBe(real);
+    }
   });
 });
 
