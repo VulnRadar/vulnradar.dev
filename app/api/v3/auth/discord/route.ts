@@ -36,7 +36,8 @@ export async function GET(request: Request) {
   }
 
   // Build redirect URI from the resolved app URL (DB admin override, then
-  // NEXT_PUBLIC_APP_URL, then this request's own origin).
+  // APP_URL, then NEXT_PUBLIC_APP_URL as read at runtime, then this
+  // request's own origin).
   const baseUrl = await resolveAppUrl(request);
   const redirectUri = `${baseUrl}/api/v3/auth/discord/callback`;
 

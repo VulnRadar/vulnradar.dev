@@ -55,7 +55,8 @@ export async function GET(request: Request) {
   const error = searchParams.get("error");
 
   // Get base URL from the resolved app URL (DB admin override, then
-  // NEXT_PUBLIC_APP_URL, then this request's own origin). Must match
+  // APP_URL, then NEXT_PUBLIC_APP_URL as read at runtime, then this
+  // request's own origin). Must match
   // route.ts's redirect_uri exactly -- Discord's token exchange rejects a
   // mismatch.
   const baseUrl = await resolveAppUrl(request);

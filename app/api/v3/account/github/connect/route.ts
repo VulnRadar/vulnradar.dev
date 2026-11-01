@@ -16,8 +16,9 @@ const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 // see the dispatch in app/api/v3/auth/oauth/[provider]/callback/route.ts.
 //
 // Resolved via the same resolveAppUrl() every other OAuth-family route
-// uses (DB admin override, then NEXT_PUBLIC_APP_URL, then this request's
-// own origin) rather than a bespoke env-only check: that callback route
+// uses (DB admin override, then APP_URL, then NEXT_PUBLIC_APP_URL as read
+// at runtime, then this request's own origin) rather than a bespoke
+// env-only check: that callback route
 // resolves ITS OWN baseUrl the same way, and the two have to agree exactly
 // or GitHub's token exchange rejects the redirect_uri mismatch.
 async function sharedCallbackUrl(request: Request): Promise<string> {
