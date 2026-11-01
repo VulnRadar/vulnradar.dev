@@ -1,4 +1,3 @@
-import { isIP } from "node:net";
 import pool from "@/lib/database/db";
 
 /** The one answer for an invite the route will not complete, whatever the
@@ -23,35 +22,36 @@ const ALERT_TYPE = "staff_invite_unverified_email";
  * One open alert per invite and account: the acceptance page reloads, and
  * each load of a refused invite would otherwise add another row.
  *
+ * No IP address or user agent. The request that gets here is the token
+ * holder's, which in the case this exists for is the invitee, not the account
+ * the alert is filed against: the admin panel would show the invitee's
+ * address as that account's, and the data export hands an account its own
+ * alerts, so the squatter would receive the invitee's IP and browser.
+ *
  * Never throws. The refusal is the control; this only reports it.
  */
 export async function recordUnverifiedInviteRefusal(opts: {
   userId: number;
   inviteId: number;
   role: string;
-  ip: string | null | undefined;
-  userAgent: string | null | undefined;
 }): Promise<void> {
-  const ip = opts.ip && isIP(opts.ip) ? opts.ip : null;
   await pool
     .query(
       `INSERT INTO security_alerts
-         (user_id, alert_type, severity, description, details, ip_address, user_agent)
-       SELECT $1::int, $2::text, 'high', $3::text, $4::jsonb, $5::inet, $6::text
+         (user_id, alert_type, severity, description, details)
+       SELECT $1::int, $2::text, 'high', $3::text, $4::jsonb
        WHERE NOT EXISTS (
          SELECT 1 FROM security_alerts
           WHERE user_id = $1::int
             AND alert_type = $2::text
             AND resolved_at IS NULL
-            AND details->>'inviteId' = $7::text
+            AND details->>'inviteId' = $5::text
        )`,
       [
         opts.userId,
         ALERT_TYPE,
         "A staff invite to this account's email address was refused because the account has not verified that address. Either the address was set on this account by someone who does not own it, or the invitee never verified it. The invite is still open.",
         JSON.stringify({ inviteId: String(opts.inviteId), role: opts.role }),
-        ip,
-        opts.userAgent || null,
         String(opts.inviteId),
       ],
     )

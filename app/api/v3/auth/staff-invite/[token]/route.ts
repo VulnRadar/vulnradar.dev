@@ -115,7 +115,7 @@ async function newAccountPasswordError(
 
 export const GET = withErrorHandling(
   async (
-    request: NextRequest,
+    _request: NextRequest,
     { params }: { params: Promise<{ token: string }> },
   ) => {
     const { token } = await params;
@@ -146,8 +146,6 @@ export const GET = withErrorHandling(
         userId: existingUser.id,
         inviteId: invite.id,
         role: invite.role,
-        ip: await getClientIp(),
-        userAgent: request.headers.get("user-agent"),
       });
       return ApiResponse.badRequest(STAFF_INVITE_REFUSED_MESSAGE);
     }
@@ -359,8 +357,6 @@ export const POST = withErrorHandling(
           userId: outcome.unverifiedUserId,
           inviteId: invite.id,
           role: invite.role,
-          ip,
-          userAgent: request.headers.get("user-agent"),
         });
       }
       return ApiResponse.badRequest(STAFF_INVITE_REFUSED_MESSAGE);

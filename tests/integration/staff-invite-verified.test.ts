@@ -105,7 +105,9 @@ describeIntegration("staff invite acceptance needs a verified address", () => {
       inviteId: String(inviteId),
       role: "admin",
     });
-    expect(alerts[0].ip_address).toBe("203.0.113.9");
+    // The request is the token holder's, not the squatter's: its IP must not
+    // land on the squatter's alert, where their data export would return it.
+    expect(alerts[0].ip_address).toBeNull();
     expect(alerts[0].severity).toBe("high");
   });
 

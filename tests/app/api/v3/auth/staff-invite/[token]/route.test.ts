@@ -190,6 +190,16 @@ const allCalls = () => [...poolCalls, ...clientCalls];
 const callsMatching = (fragment: string) =>
   allCalls().filter((c) => c.sql.includes(fragment));
 
+// The refused request is the token holder's, normally the invitee, and the
+// alert is filed against the account that claimed the address. Its IP and
+// browser on that row would show in the admin panel as the squatter's and go
+// out in the squatter's own data export.
+function expectNoRequestDetails(alert: { sql: string; params: unknown[] }) {
+  expect(alert.sql).not.toMatch(/ip_address|user_agent/);
+  expect(alert.params).not.toContain("127.0.0.1");
+  expect(alert.params).not.toContain("vitest-agent");
+}
+
 beforeEach(() => {
   inviteRow = invite();
   userRow = null;
@@ -270,6 +280,7 @@ describe("GET /api/v3/auth/staff-invite/[token]", () => {
     const alerts = callsMatching("INSERT INTO security_alerts");
     expect(alerts).toHaveLength(1);
     expect(alerts[0].params[0]).toBe(3);
+    expectNoRequestDetails(alerts[0]);
   });
 
   it("answers 500, not hasAccount: false, when the account lookup fails", async () => {
@@ -391,6 +402,7 @@ describe("POST /api/v3/auth/staff-invite/[token] — verified binding (sec-auth-
     const alerts = callsMatching("INSERT INTO security_alerts");
     expect(alerts).toHaveLength(1);
     expect(alerts[0].params[0]).toBe(66);
+    expectNoRequestDetails(alerts[0]);
     // Written once the transaction has let go of its connection, not while
     // holding the invite row lock.
     expect(events.indexOf("release")).toBeGreaterThanOrEqual(0);
