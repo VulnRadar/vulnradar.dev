@@ -18,8 +18,10 @@
  *                notice. Proves the harness can fail. Replaces --target.
  *   --port       port to serve on, 3104 by default (3100 + the cluster index)
  *   --out        directory for the result files, ./spike-results by default
- *   --workdir    scratch directory for the copies and builds, in the OS temp
- *                directory by default (never inside the repository)
+ *   --workdir    scratch directory for the copies and builds. By default a new
+ *                private directory in the OS temp directory, removed when the
+ *                run ends; pass one to keep the builds or reuse an --install
+ *                (never inside the repository)
  *   --install    npm install the three pinned packages instead of linking the
  *                repository's node_modules (what CI does)
  *   --require-docker  fail instead of skipping the image when Docker is absent
@@ -28,9 +30,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { parseArgs } from "node:util";
 import { setTimeout as sleep } from "node:timers/promises";
 import { run as runSpike1 } from "./checks/spike1-headers.mjs";
 import { run as runSpike2 } from "./checks/spike2-routing.mjs";
@@ -47,6 +47,7 @@ import {
   repositoryNodeModules,
 } from "./lib/fixture.mjs";
 import { rawRequest } from "./lib/http.mjs";
+import { parseRunArgs, removeScratchRoot } from "./lib/options.mjs";
 import { startRecorder } from "./lib/recorder.mjs";
 import { createReport } from "./lib/report.mjs";
 import {
@@ -85,31 +86,6 @@ const PROD_LIKE_HEADERS = {
   "x-forwarded-proto": "https",
   "accept-encoding": "identity",
 };
-
-function parse() {
-  const { values } = parseArgs({
-    options: {
-      target: { type: "string", default: "all" },
-      mutate: { type: "string" },
-      port: { type: "string", default: "3104" },
-      out: { type: "string", default: "spike-results" },
-      workdir: { type: "string" },
-      install: { type: "boolean", default: false },
-      "require-docker": { type: "boolean", default: false },
-    },
-  });
-  return {
-    target: values.target,
-    mutate: values.mutate,
-    port: Number.parseInt(values.port, 10),
-    out: path.resolve(values.out),
-    workdir: path.resolve(
-      values.workdir ?? path.join(os.tmpdir(), "vulnradar-spike"),
-    ),
-    install: values.install,
-    requireDocker: values["require-docker"],
-  };
-}
 
 /** Request helper: production-like proxy headers, a null header removes one. */
 function makeRequester(port) {
@@ -336,7 +312,15 @@ async function runMutations(opts) {
 }
 
 async function main() {
-  const opts = parse();
+  const opts = parseRunArgs();
+  try {
+    await runAll(opts);
+  } finally {
+    if (opts.ownsWorkdir) removeScratchRoot(opts.workdir);
+  }
+}
+
+async function runAll(opts) {
   if (opts.mutate) {
     await runMutations(opts);
     return;

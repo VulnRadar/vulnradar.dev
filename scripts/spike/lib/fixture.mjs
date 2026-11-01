@@ -60,7 +60,7 @@ export function fixturePackageJson() {
  * deleted, so cleaning up can never reach through it into the tree it points
  * at (the repository's real node_modules, on a local run).
  */
-function unlinkIfLink(file) {
+export function unlinkIfLink(file) {
   try {
     if (lstatSync(file).isSymbolicLink()) unlinkSync(file);
   } catch {
