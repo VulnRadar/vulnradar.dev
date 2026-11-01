@@ -422,16 +422,16 @@ export interface Element {
 /**
  * Deepest element nesting that keeps a frame on the open-element stack.
  *
- * Two things below are O(open elements) per token: building `ancestors`, and
- * attributing text to every open element. Without a cap, a body of
- * `"<div>x".repeat(n)` makes both O(n) at every one of n tokens, so the whole
- * pass is quadratic in TIME and in RETAINED MEMORY. Measured on the real
- * function: 6 KB took 57 ms / 33 MB, 12 KB took 148 ms / 109 MB, and 24 KB
- * took 924 ms / 391 MB. Around 96 KB it exhausts the heap and kills the
- * process, and since this runs in one synchronous call, the engine's
- * between-check yielding cannot help and the scan watchdog's timer cannot
- * fire: every concurrent scan and unrelated request dies with it. A page can
- * do this to us with no crafted payload, just nested divs.
+ * An element's `ancestors` and `text` both depend on the elements open around
+ * it, so a body of `"<div>x".repeat(n)` has n elements each enclosed by up to
+ * n others. Computing both eagerly (copying the open stack into every element
+ * and appending every text token to every open element) was quadratic in TIME
+ * and in RETAINED MEMORY: 24 KB took 924 ms / 391 MB, and around 96 KB the
+ * heap ran out and killed the process. Since this runs in one synchronous
+ * call, the engine's between-check yielding cannot help and the scan
+ * watchdog's timer cannot fire: every concurrent scan and unrelated request
+ * dies with it. A page can do this to us with no crafted payload, just
+ * nested divs.
  *
  * 256 is well past anything real (browsers cap around 512, and genuine pages
  * sit under 50), so the bound is invisible to real documents and only ever
@@ -442,15 +442,93 @@ export interface Element {
 const MAX_OPEN_DEPTH = 256;
 
 /**
- * Cap on the text accumulated onto any single element.
- *
- * Depth alone does not bound memory: one deep chain with a large body still
- * copies the whole tail into every open element. Only the inline-script case
- * is actually read downstream (page-context.ts reads `el.text` for scripts
- * with no src), and a script larger than this is already far past anything a
- * check meaningfully inspects.
+ * Cap on the text read for any single element. Only the inline-script case is
+ * actually read downstream (page-context.ts reads `el.text` for scripts with
+ * no src), and a script larger than this is already far past anything a check
+ * meaningfully inspects.
  */
 const MAX_ELEMENT_TEXT = 128 * 1024;
+
+/**
+ * One open element. Frames are never changed once pushed, so an element can
+ * keep the frame that was on top when it opened and read its ancestors from
+ * the chain later, whatever the stack has done since.
+ */
+interface OpenFrame {
+  tag: string;
+  index: number;
+  parent: OpenFrame | null;
+  /** Tokens this element encloses: from just after its start tag to the
+   *  token that closed it, or the end of the document. */
+  range: { from: number; to: number };
+}
+
+/**
+ * An element whose `text` and `ancestors` are read from the token stream and
+ * the frame chain on first use instead of being built for every element up
+ * front. Even with the depth cap, building them eagerly kept about 400 MB live
+ * for 256 KB of unclosed `<code>x` and 1.4 GB for a full 1 MB page: every
+ * element held its own copy of up to 256 ancestor tags, and every text token
+ * was appended to up to 256 open elements. Nothing downstream reads either for
+ * most elements, so the work is now paid only for the elements that are asked.
+ */
+class TokenElement implements Element {
+  tag: string;
+  attrs: Record<string, string>;
+  raw: string;
+  start: number;
+  end: number;
+  depth: number;
+  private readonly tokens: Token[];
+  private readonly enclosing: OpenFrame | null;
+  private readonly range: OpenFrame["range"] | null;
+  private cachedText: string | undefined;
+  private cachedAncestors: string[] | undefined;
+
+  constructor(
+    token: StartTagToken,
+    depth: number,
+    tokens: Token[],
+    enclosing: OpenFrame | null,
+    range: OpenFrame["range"] | null,
+  ) {
+    this.tag = token.tag;
+    this.attrs = token.attrs;
+    this.raw = token.raw;
+    this.start = token.start;
+    this.end = token.end;
+    this.depth = depth;
+    this.tokens = tokens;
+    this.enclosing = enclosing;
+    this.range = range;
+  }
+
+  get text(): string {
+    if (this.cachedText !== undefined) return this.cachedText;
+    let text = "";
+    const range = this.range;
+    if (range) {
+      for (
+        let i = range.from;
+        i < range.to && text.length < MAX_ELEMENT_TEXT;
+        i++
+      ) {
+        const t = this.tokens[i];
+        if (t.kind === "text") text += t.text;
+      }
+    }
+    this.cachedText = text;
+    return text;
+  }
+
+  get ancestors(): string[] {
+    if (this.cachedAncestors) return this.cachedAncestors;
+    const tags: string[] = [];
+    for (let f = this.enclosing; f; f = f.parent) tags.push(f.tag);
+    this.cachedAncestors = tags.reverse();
+    return this.cachedAncestors;
+  }
+}
 
 /**
  * Flatten a token stream into an element index.
@@ -460,54 +538,39 @@ const MAX_ELEMENT_TEXT = 128 * 1024;
  * mis-nesting that occurs in real pages. Elements are returned in document
  * order.
  *
- * Bounded by MAX_OPEN_DEPTH and MAX_ELEMENT_TEXT above; see those for why.
+ * Bounded by MAX_OPEN_DEPTH and MAX_ELEMENT_TEXT above, and linear in the
+ * number of tokens; see TokenElement for why text and ancestors are lazy.
  */
 export function toElements(tokens: Token[]): Element[] {
-  const out: Element[] = [];
-  const stack: { tag: string; index: number }[] = [];
+  const out: TokenElement[] = [];
+  const stack: OpenFrame[] = [];
   /** Depth actually seen, including frames past the cap that were not pushed,
    *  so `el.depth` keeps reporting the document's real nesting. */
   let depth = 0;
 
-  for (const t of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
     if (t.kind === "start") {
-      const el: Element = {
-        tag: t.tag,
-        attrs: t.attrs,
-        text: "",
-        raw: t.raw,
-        start: t.start,
-        end: t.end,
-        // The document's real depth, not the stack's, so this stays truthful
-        // past the cap.
-        depth,
-        // stack is bounded by MAX_OPEN_DEPTH, so this copy is bounded too. It
-        // was the other half of the quadratic memory.
-        ancestors: stack.map((s) => s.tag),
-      };
-      out.push(el);
+      const enclosing = stack.length > 0 ? stack[stack.length - 1] : null;
+      // Past the cap the element is still emitted, it just stops being an
+      // open container: it collects no descendant text and encloses nothing.
+      const opens = !t.selfClosing && stack.length < MAX_OPEN_DEPTH;
+      const range = opens ? { from: i + 1, to: tokens.length } : null;
+      out.push(
+        // The document's real depth, not the stack's, so this stays
+        // truthful past the cap.
+        new TokenElement(t, depth, tokens, enclosing, range),
+      );
       if (!t.selfClosing) {
         depth++;
-        // Past the cap the element is still emitted, it just stops being an
-        // open container: it collects no descendant text and encloses nothing.
-        if (stack.length < MAX_OPEN_DEPTH) {
-          stack.push({ tag: t.tag, index: out.length - 1 });
+        if (range) {
+          stack.push({
+            tag: t.tag,
+            index: out.length - 1,
+            parent: enclosing,
+            range,
+          });
         }
-      }
-      continue;
-    }
-
-    if (t.kind === "text") {
-      // Attribute text to every currently open element so a check can ask for
-      // the text of a <form> or the source of a <script> without a tree walk.
-      // Bounded twice over: the stack cannot exceed MAX_OPEN_DEPTH, and an
-      // element stops accumulating at MAX_ELEMENT_TEXT. Without both, one text
-      // token is copied into every open element, and deep nesting makes the
-      // pass quadratic in time and in retained memory.
-      for (const frame of stack) {
-        const el = out[frame.index];
-        if (el.text.length >= MAX_ELEMENT_TEXT) continue;
-        el.text += t.text;
       }
       continue;
     }
@@ -523,6 +586,7 @@ export function toElements(tokens: Token[]): Element[] {
       if (found === -1) continue;
       for (let s = stack.length - 1; s >= found; s--) {
         out[stack[s].index].end = t.end;
+        stack[s].range.to = i;
       }
       // Unwinding closes (stack.length - found) containers. depth also
       // counts frames that were never pushed because of the cap, so it is

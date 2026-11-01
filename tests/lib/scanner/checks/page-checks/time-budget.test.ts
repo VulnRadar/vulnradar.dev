@@ -118,11 +118,13 @@ const PATH_SHAPES = ["optPathRun", "homePathRun", "varPathRun", "usrLocalRun"];
  * docBlockRun failed about one CI run in two with page-stack-trace-disclosed
  * at 300 to 400 ms, and the check is not slow: it measures 10 to 20 ms on that
  * body, growing linearly with it. The time was the garbage collector's.
- * buildPageContext keeps about 400 MB live for a 256 KB run of unclosed
- * <code>, and a full collection of that heap costs about 260 ms on a
- * development machine. It lands on whichever check allocates first after the
- * context is built, which on that body is this one, because it is the first
- * to strip the code examples out.
+ * buildPageContext kept about 400 MB live for a 256 KB run of unclosed
+ * <code> (toElements now reads element text and ancestors lazily, which took
+ * that to about 16 MB), and a full collection of that heap cost about 260 ms
+ * on a development machine. It landed on whichever check allocated first
+ * after the context was built, which on that body is this one, because it is
+ * the first to strip the code examples out. Any large heap can still do the
+ * same to one run.
  *
  * A collection pause is a fact about the heap, not about the check, so the
  * fastest of three runs is what is compared. A backtracking pattern costs the

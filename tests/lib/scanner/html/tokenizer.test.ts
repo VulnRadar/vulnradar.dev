@@ -148,6 +148,47 @@ describe("toElements", () => {
     const els = toElements(tokenize(`</div><p>ok</p>`));
     expect(els.map((e) => e.tag)).toEqual(["p"]);
   });
+
+  it("gives each element only the text it encloses, after mis-nesting and closing", () => {
+    const els = toElements(
+      tokenize(`<div>a<p>b<i>c</p>d</i>e</div><span>f</span>`),
+    );
+    const text = (tag: string) => els.find((e) => e.tag === tag)!.text;
+    expect(text("div")).toBe("abcde");
+    expect(text("p")).toBe("bc");
+    expect(text("i")).toBe("c");
+    expect(text("span")).toBe("f");
+    expect(els.find((e) => e.tag === "span")!.ancestors).toEqual([]);
+  });
+
+  it("stops collecting text and ancestors past the depth cap", () => {
+    const els = toElements(tokenize("<div>x".repeat(300)));
+    expect(els[255].ancestors).toHaveLength(255);
+    expect(els[255].text).toBe("x".repeat(45));
+    expect(els[299].ancestors).toHaveLength(256);
+    expect(els[299].depth).toBe(299);
+    expect(els[299].text).toBe("");
+  });
+
+  it("keeps a full-size page of unclosed elements small and fast", () => {
+    // Every element used to carry its own copy of up to 256 ancestor tags,
+    // and every text token was appended to up to 256 open elements: about
+    // 1.4 GB live and 6 s for a 1 MB page, which any scanned site could
+    // send. Both are now read only for the elements that are asked.
+    const body = "<code>x".repeat(Math.floor(1_000_000 / 7));
+    const tokens = tokenize(body);
+    const heapBefore = process.memoryUsage().heapUsed;
+    const started = performance.now();
+    const els = toElements(tokens);
+    const ms = performance.now() - started;
+    const grewMb = (process.memoryUsage().heapUsed - heapBefore) / 1e6;
+
+    expect(els).toHaveLength(Math.floor(1_000_000 / 7));
+    expect(grewMb).toBeLessThan(300);
+    expect(ms).toBeLessThan(3000);
+    expect(els[10].ancestors).toHaveLength(10);
+    expect(els[10].text.length).toBe(128 * 1024);
+  });
 });
 
 describe("decodeEntities", () => {
