@@ -59,7 +59,7 @@ export type SafeFetchErrorCode =
  *
  * - `cross_host_redirect`: the target answered, but sent us to another host.
  *   `redirectHost` names it.
- * - `timeout`: the deadline fired, or undici's connect/headers timeout did.
+ * - `timeout`: the deadline fired, or the connect timed out.
  * - `tls`: the certificate or handshake was refused.
  * - `unreachable`: refused, reset, no route, or the name did not resolve.
  * - `blocked`: safeFetch refused to make the request at all (private address,
@@ -570,9 +570,17 @@ async function writeStreamedBody(
     for await (const chunk of body) {
       if (req.destroyed) return;
       if (!req.write(chunk)) {
+        // Whichever fires first, the other listener goes too. Left behind,
+        // one per wait piled up on the request until a long upload tripped
+        // MaxListenersExceededWarning.
         await new Promise<void>((resolve) => {
-          req.once("drain", resolve);
-          req.once("close", resolve);
+          const done = () => {
+            req.off("drain", done);
+            req.off("close", done);
+            resolve();
+          };
+          req.once("drain", done);
+          req.once("close", done);
         });
       }
     }
@@ -619,9 +627,10 @@ export class PinnedDispatcher {
     const secure = origin.protocol === "https:";
     const bareHost = origin.hostname.replace(/^\[(.*)\]$/, "$1");
     const headers = outgoingHeaders(opts.headers);
-    // A Host the caller set by hand is kept (a Host-header probe means it);
-    // otherwise it is the URL's, port included, never the address.
-    if (headers.host === undefined) headers.host = origin.host;
+    // Host is the URL's, port included, never the address. fetch drops a
+    // Host the caller set by hand before it gets here, so there is no
+    // caller value to keep.
+    headers.host = origin.host;
 
     const req = (secure ? httpsRequest : httpRequest)({
       host: this.address,

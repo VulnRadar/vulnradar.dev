@@ -146,6 +146,44 @@ describe("pinToResolvedIp sends the request to the approved address under its ow
     expect(res.headers.getSetCookie()).toEqual(["a=1; Path=/", "b=2; Path=/"]);
   });
 
+  it("streams a long upload without leaving a listener behind per wait for the socket", async () => {
+    // Every chunk is larger than the request's buffer, so each write waits
+    // for drain. Each wait used to leave its close listener on the request,
+    // and the eleventh tripped MaxListenersExceededWarning.
+    const warnings: string[] = [];
+    const onWarning = (w: Error) => warnings.push(w.name);
+    process.on("warning", onWarning);
+    const { port } = await httpServer((req, res) => {
+      let received = 0;
+      req.on("data", (c: Buffer) => (received += c.length));
+      req.on("end", () => res.end(String(received)));
+    });
+    const chunk = new Uint8Array(64 * 1024);
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent++ < 16) controller.enqueue(chunk);
+        else controller.close();
+      },
+    });
+
+    try {
+      const target = pinToResolvedIp(
+        `http://vhost.example:${port}/upload`,
+        "127.0.0.1",
+        { method: "POST", body, duplex: "half" } as RequestInit,
+      );
+      const res = await fetch(target.url, target.init);
+      expect(await res.text()).toBe(String(16 * 64 * 1024));
+      // emitWarning reports on a later tick.
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      process.off("warning", onWarning);
+    }
+
+    expect(warnings).not.toContain("MaxListenersExceededWarning");
+  });
+
   it("follows a same-host redirect on the pinned address when the caller asks fetch to", async () => {
     const { port, hits } = await httpServer((req, res) => {
       if (req.url === "/start") {
