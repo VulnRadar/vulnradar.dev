@@ -733,11 +733,6 @@ const SUPPORT_TICKET_MESSAGES_SQL = `
  *
  * ON DELETE CASCADE on both sides, unlike the column's ON DELETE SET NULL: a
  * row here is a membership fact and nothing else.
- *
- * The backfill is unconditional and idempotent by design, exactly as the boot
- * schema runs it: three write paths in lib/scanner/ still write only the
- * column, so this converges the two representations on every run rather than
- * migrating history once.
  */
 const SCAN_HISTORY_TEAMS_SQL = `
   CREATE TABLE IF NOT EXISTS scan_history_teams (
@@ -749,7 +744,22 @@ const SCAN_HISTORY_TEAMS_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_scan_history_teams_team
     ON scan_history_teams(team_id);
+`;
 
+/**
+ * The backfill is unconditional and idempotent by design, exactly as the boot
+ * schema runs it: three write paths in lib/scanner/ still write only the
+ * column, so this converges the two representations on every run rather than
+ * migrating history once.
+ *
+ * A dataUpdate, not part of SCAN_HISTORY_TEAMS_SQL (gap-migration-upgrade-
+ * path-1). It reads scan_history.team_id, which a v2.0.0 database does not
+ * have until addColumns runs, and addTables runs before addColumns whatever
+ * order this file lists them in. Inside addTables it failed every v1 and v2
+ * upgrade and rolled the whole plan back; _planner.mjs now refuses a plan
+ * shaped like that before running anything.
+ */
+const SCAN_HISTORY_TEAMS_BACKFILL_SQL = `
   INSERT INTO scan_history_teams (scan_id, team_id)
   SELECT id, team_id FROM scan_history WHERE team_id IS NOT NULL
   ON CONFLICT (scan_id, team_id) DO NOTHING;
@@ -2070,6 +2080,12 @@ export const upgrade = {
         "Backfill pre_staff_plan + plan='pro_supporter' for every existing " +
         "admin/moderator/support account on free/core/pro (idempotent, " +
         "guarded by pre_staff_plan IS NULL)",
+      destructive: false,
+    },
+    {
+      sql: SCAN_HISTORY_TEAMS_BACKFILL_SQL,
+      label:
+        "Backfill scan_history_teams from scan_history.team_id (idempotent, ON CONFLICT DO NOTHING)",
       destructive: false,
     },
     // scan_history.public_id (added above): belt-and-suspenders backfill for

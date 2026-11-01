@@ -18,6 +18,7 @@
 import { c, log, info, success, warn } from "../_lib/_lib.output.mjs";
 import { pathToFileURL } from "node:url";
 import { transitions, findVersionFile, isUpgrade } from "./_registry.mjs";
+import { splitStatements } from "../_lib/_lib.schema-parity.mjs";
 
 /**
  * Build a plan from `from` to `to` (or just `from` if same). If
@@ -60,6 +61,7 @@ export async function buildPlan(from, to, direction = null) {
       );
     }
     const planSteps = expandPlan(planExport, step);
+    assertStepOrdering(planSteps, step);
     allSteps.push(...planSteps);
   }
 
@@ -70,7 +72,7 @@ export async function buildPlan(from, to, direction = null) {
  * Turn a compact plan object ({ addTables, dropTables, ... }) into flat
  * step objects the runner can iterate.
  */
-function expandPlan(plan, step) {
+export function expandPlan(plan, step) {
   const steps = [];
 
   // Tables to add
@@ -197,6 +199,144 @@ function expandPlan(plan, step) {
 function extractTableName(sql) {
   const m = sql.match(/CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+(\w+)/i);
   return m ? m[1] : "?";
+}
+
+// ── Ordering guard ──────────────────────────────────────────────────────
+//
+// expandPlan runs every kind in a fixed order (tables, columns, indexes,
+// data), so where a statement sits in a version file says nothing about
+// when it executes. gap-migration-upgrade-path-1: 2.0.0-to-3.0.0 put the
+// scan_history_teams backfill inside its addTables SQL, where it read
+// scan_history.team_id some sixty steps before addColumns created it. The
+// runner wraps a plan in one transaction, so that single statement rolled
+// back every v1 and v2 upgrade, and nothing caught it because the unit tier
+// never executes the SQL. Checking the text here fails the plan before any
+// statement runs, on any machine, with or without a database.
+//
+// Only createTable and createIndex steps are checked: those are the kinds
+// whose position the planner decides. dataUpdates run last in the order the
+// file lists them, and some of them probe information_schema for a column
+// on purpose before a later entry adds it.
+
+const IDENTIFIER = /[a-z_][a-z0-9_]*/g;
+const ADD_COLUMN =
+  /\badd\s+(?!constraint\b|primary\b|unique\b|foreign\b|check\b|exclude\b)(?:column\s+)?(?:if\s+not\s+exists\s+)?([a-z_][a-z0-9_]*)/g;
+
+/**
+ * Strings blanked, quoted identifiers unquoted, comments dropped, lowercased.
+ * What is left is identifiers, keywords and punctuation, which is all the
+ * reference check reads. A string literal is never a column reference, and
+ * leaving one in would match a column name written in a RAISE message.
+ */
+function normalizeSql(stmt) {
+  return stmt
+    .replace(/'(?:[^']|'')*'/g, "''")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/--[^\n]*/g, " ")
+    .replace(/"([^"]+)"/g, "$1")
+    .toLowerCase();
+}
+
+/** "table.column" for every column an ALTER TABLE ... ADD in this SQL creates. */
+function columnsAddedBy(sql) {
+  const out = [];
+  for (const stmt of splitStatements(sql)) {
+    const text = normalizeSql(stmt);
+    const alter =
+      /^\s*alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?([a-z_][a-z0-9_]*)/.exec(
+        text,
+      );
+    if (!alter) continue;
+    for (const m of text.matchAll(ADD_COLUMN)) out.push(`${alter[1]}.${m[1]}`);
+  }
+  return out;
+}
+
+/**
+ * Every "table.column" one statement may read, erring towards too many.
+ *
+ * A CREATE TABLE reads another table only through a foreign key, which names
+ * the columns it points at; the rest of its body defines columns rather than
+ * reading them. A CREATE INDEX reads its own table's columns and predicate.
+ * Anything else (an INSERT ... SELECT, an UPDATE, a DO block) is read
+ * coarsely: every identifier in it is paired with every table it names, which
+ * over-reports, and an over-report here only ever asks for a step to move.
+ */
+function columnReferences(stmt) {
+  const text = normalizeSql(stmt);
+  const refs = new Set();
+  const pair = (table, body) => {
+    for (const id of body.match(IDENTIFIER) ?? []) refs.add(`${table}.${id}`);
+  };
+  for (const m of text.matchAll(
+    /\breferences\s+([a-z_][a-z0-9_]*)\s*\(([^)]*)\)/g,
+  )) {
+    pair(m[1], m[2]);
+  }
+  if (/^\s*create\s+(?:unlogged\s+)?table\b/.test(text)) return refs;
+
+  const index =
+    /^\s*create\s+(?:unique\s+)?index\b[\s\S]*?\bon\s+(?:only\s+)?([a-z_][a-z0-9_]*)([\s\S]*)$/.exec(
+      text,
+    );
+  if (index) {
+    pair(index[1], index[2]);
+    return refs;
+  }
+
+  for (const m of text.matchAll(
+    /\b(?:from|join|update|into|table|on)\s+(?:only\s+)?(?:if\s+(?:not\s+)?exists\s+)?([a-z_][a-z0-9_]*)/g,
+  )) {
+    pair(m[1], text);
+  }
+  return refs;
+}
+
+/**
+ * Every place a createTable or createIndex step reads a column that a LATER
+ * step of the same transition adds. A later ADD COLUMN IF NOT EXISTS is the
+ * version file saying the column may be missing until then, so an earlier
+ * read is a failure on exactly the databases that need the add, even when an
+ * earlier CREATE TABLE in the same plan happens to define it.
+ *
+ * @returns {{ step: { kind: string, label: string }, column: string, addedBy: { kind: string, label: string } }[]}
+ */
+export function findOrderingViolations(steps) {
+  const added = steps.map((s) => columnsAddedBy(s.sql));
+  const violations = [];
+  steps.forEach((step, at) => {
+    if (step.kind !== "createTable" && step.kind !== "createIndex") return;
+    const addedLater = new Map();
+    for (let j = steps.length - 1; j > at; j--) {
+      for (const column of added[j]) addedLater.set(column, steps[j]);
+    }
+    if (addedLater.size === 0) return;
+    const reported = new Set();
+    for (const stmt of splitStatements(step.sql)) {
+      for (const column of columnReferences(stmt)) {
+        const addedBy = addedLater.get(column);
+        if (!addedBy || reported.has(column)) continue;
+        reported.add(column);
+        violations.push({ step, column, addedBy });
+      }
+    }
+  });
+  return violations;
+}
+
+function assertStepOrdering(steps, transition) {
+  const violations = findOrderingViolations(steps);
+  if (violations.length === 0) return;
+  const lines = violations.map(
+    (v) =>
+      `  - "${v.step.label}" reads ${v.column}, which "${v.addedBy.label}" only adds later`,
+  );
+  throw new Error(
+    `Version file for ${transition.from} → ${transition.to} reads a column before the step that adds it:\n` +
+      `${lines.join("\n")}\n` +
+      "Steps run tables, then columns, then indexes, then dataUpdates, whatever order the file lists them in. " +
+      "Move the statement that reads the column into dataUpdates.",
+  );
 }
 
 /**
