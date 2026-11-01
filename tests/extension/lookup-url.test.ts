@@ -164,6 +164,19 @@ describe("carriesCredential", () => {
       "reset-token",
       "X-Amz-Signature",
       "TOKEN",
+      // Run-together and framework names a word split never sees.
+      "apikey",
+      "accesstoken",
+      "sessionid",
+      "PHPSESSID",
+      "jsessionid",
+      "jwt",
+      "auth",
+      "x-auth",
+      "authorization",
+      "ticket",
+      "secretkey",
+      "passwd",
     ]) {
       expect(
         carriesCredential(`https://example.com/p?${name}=value`),
@@ -185,6 +198,9 @@ describe("carriesCredential", () => {
       "https://example.com/p?keyword=shoes",
       "https://example.com/p?monkey=1",
       "https://example.com/p?lang=en",
+      "https://example.com/p?author=5",
+      "https://example.com/p?zipcode=90210",
+      "https://example.com/p?passage=3",
     ]) {
       expect(carriesCredential(url), url).toBe(false);
     }

@@ -70,22 +70,41 @@ export function lookupUrl(url: string): string | null {
 }
 
 /**
- * Words that mark a query parameter as carrying a credential. Matched against
- * the words of the parameter name rather than as a substring, so api_key,
- * accessToken and reset_token all count while "keyword" and "monkey" do not.
+ * Stems that mark a query parameter as carrying a credential wherever they
+ * appear in its name, so the run-together spellings (apikey, accesstoken,
+ * sessionid, PHPSESSID, jwt) count as well as api_key and accessToken. Each is
+ * specific enough that no ordinary parameter name contains it.
+ */
+const CREDENTIAL_STEMS: readonly string[] = [
+  "token",
+  "secret",
+  "session",
+  "sessid",
+  "passw",
+  "apikey",
+  "authkey",
+  "accesskey",
+  "privatekey",
+  "authoriz",
+  "jwt",
+  "ticket",
+  "credential",
+  "signature",
+  "bearer",
+];
+
+/**
+ * Short words that are credentials only on their own: matched against the
+ * words of the parameter name, so api_key, reset_code and x-auth count while
+ * "keyword", "monkey", "zipcode" and "author" do not.
  */
 const CREDENTIAL_WORDS: ReadonlySet<string> = new Set([
-  "token",
   "code",
   "key",
-  "secret",
   "sig",
-  "signature",
   "otp",
   "reset",
-  "session",
-  "password",
-  "credential",
+  "auth",
 ]);
 
 function nameWords(name: string): string[] {
@@ -111,6 +130,8 @@ export function carriesCredential(url: string): boolean {
   }
   if (u.username || u.password) return true;
   for (const name of u.searchParams.keys()) {
+    const squashed = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (CREDENTIAL_STEMS.some((stem) => squashed.includes(stem))) return true;
     if (nameWords(name).some((w) => CREDENTIAL_WORDS.has(w))) return true;
   }
   return false;
