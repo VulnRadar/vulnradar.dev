@@ -27,7 +27,7 @@ export const ADMIN_TAB_DESCRIPTIONS: Record<AdminTabKey, string> = {
   notifications:
     "Site notifications: the banners, modals, toasts and bell notifications users see, with start and end dates. Create and manage them here, and watch for ones about to lapse.",
   "security-alerts":
-    "Alerts raised by suspicious activity: a session or API key used from a new network, repeated failed sign-ins, a sign-in from a new device. Filter by severity and mark each one resolved.",
+    "Alerts raised by suspicious activity: a session or API key used from a new network, repeated failed sign-ins, a sign-in from a new device, a staff invite or staff SSO sign-in refused because the address was never verified. Filter by severity and mark each one resolved.",
   overview:
     "A worst-first health list: scanner queue, failed scans, background workers, backups, logged errors, failed emails, security alerts, tickets and pending staff invites. Each row links to the tab that owns it.",
   "error-logs":

@@ -442,12 +442,16 @@ export default function AdministrationPage() {
           What a sign-in can do is deliberately narrow. It signs into an account
           that already exists with the email the provider returned, only if that
           account already holds a staff role of support or above, only if the
-          provider says the email is verified, and not if the account is
-          disabled. It never creates an account and never changes a role, so a
-          misconfigured or compromised provider can at worst authenticate as an
-          account you already provisioned. An unknown email and an account that
-          is not staff get the same generic refusal, so the sign-in cannot be
-          used to find out which addresses are staff.
+          provider says the email is verified, only if the account has verified
+          that same address here too, and not if the account is disabled. It
+          never creates an account and never changes a role, so a misconfigured
+          or compromised provider can at worst authenticate as an account you
+          already provisioned. An unknown email, an account that is not staff
+          and a staff account that has not verified its address here all get the
+          same generic refusal, so the sign-in cannot be used to find out which
+          addresses are staff. The last of those also files a high-severity
+          security alert against the account: either someone set that address on
+          it without owning it, or its owner never verified it.
         </p>
         <DocsCallout
           variant="warning"
