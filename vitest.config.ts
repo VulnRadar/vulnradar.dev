@@ -673,13 +673,31 @@ export default defineConfig({
           functions: 100,
           branches: 90,
         },
-        // 91.66 / 91.66 / 83.33 / 80 from its own suite alone; the scanner
-        // suites that use it cover the rest in a full run.
+        // 90 / 90 / 80 / 85.71 from its own suite alone; the scanner suites
+        // that use it cover the rest in a full run. Its domain-or-subdomain
+        // check moved to lib/net/host-match.ts, below.
         "lib/scanner/checks/_url-hosts.ts": {
           lines: 88,
           statements: 88,
           functions: 80,
           branches: 75,
+        },
+        // The one domain-or-subdomain check the scanner's vendor patterns and
+        // webhook auto-detection share. 100% on every metric.
+        "lib/net/host-match.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        // Replacing a reset link under the per-account lock, so two requests
+        // at once cannot leave two live links. 100% on every metric, the
+        // rollback that fails itself included.
+        "lib/auth/password-reset-token.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
         },
         "lib/webhooks/detect-type.ts": {
           lines: 95,
