@@ -116,8 +116,8 @@ export async function POST(req: NextRequest) {
   }
   // Both reach the probe and the prompt as they are. A url that was only
   // truthy got coerced into a probe of "https://123" or "https://[object
-  // Object]", and a finding id that was not a string threw inside the prompt
-  // builder after the reservation had been taken.
+  // Object]", and a finding id that was not a string could throw inside the
+  // prompt builder, which answered 500.
   if (!isWebTarget(url)) {
     return NextResponse.json(
       { error: "url must be an http or https address." },
@@ -141,11 +141,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  if (!findings.every(hasUsableId)) {
+  if (!findings.every(hasStringIdOrIsNull)) {
     return NextResponse.json(
-      {
-        error: `Every finding needs a string id of at most ${MAX_FINDING_ID_LENGTH} characters.`,
-      },
+      { error: "Every finding other than null needs a string id." },
       { status: 400 },
     );
   }
@@ -169,10 +167,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ findings: enriched });
 }
 
-// Check ids run to about 60 characters; this leaves room without letting an
-// id stand in for a page of text in every prompt.
-const MAX_FINDING_ID_LENGTH = 200;
-
 // Mirrors the probe, which prefixes https:// to a bare host, so a bare host
 // stays accepted and only what cannot become a web address is refused.
 function isWebTarget(value: unknown): value is string {
@@ -187,12 +181,11 @@ function isWebTarget(value: unknown): value is string {
   }
 }
 
-function hasUsableId(finding: unknown): boolean {
-  if (typeof finding !== "object" || finding === null) return false;
-  const { id } = finding as { id?: unknown };
-  return (
-    typeof id === "string" &&
-    id.length > 0 &&
-    id.length <= MAX_FINDING_ID_LENGTH
-  );
+// v3 changes only by addition, so this refuses only what crashed the pass: a
+// finding whose id is not a string. A null element, an empty id and a long id
+// were always accepted and still are; lib/ai/verify-findings.ts carries a
+// null through untouched.
+function hasStringIdOrIsNull(finding: unknown): boolean {
+  if (finding === null) return true;
+  return typeof (finding as { id?: unknown } | undefined)?.id === "string";
 }

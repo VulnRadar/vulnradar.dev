@@ -443,8 +443,9 @@ export function admittedCallCeiling(
   settings: Pick<VerifySettings, "maxTokens">,
   probe: ProbeData,
 ): number {
-  // verify-batch takes its findings from the request body, so an element can
-  // be anything; a null one costs the bare template rather than throwing.
+  // verify-batch takes its findings from the request body. The route refuses
+  // a non-null element whose id is not a string, but a null element is
+  // accepted on v3, so it costs the bare template rather than throwing.
   const prompt = buildVerifyPrompt(finding ?? ({} as Vulnerability), probe);
   return (
     CALL_FRAMING_TOKENS +
@@ -662,8 +663,14 @@ async function verifyInChunks(
     }
     next += group.length;
 
+    // A null element (accepted by verify-batch on v3) has nothing to ask
+    // about, so it is passed over rather than sent.
     const settled = await Promise.allSettled(
-      group.map((f) => callVerify(url, f, endpoint, probe, settings)),
+      group.map((f) =>
+        f
+          ? callVerify(url, f, endpoint, probe, settings)
+          : Promise.resolve<CallVerifyResult>({ result: null, tokensUsed: 0 }),
+      ),
     );
 
     for (const [i, r] of settled.entries()) {
@@ -689,9 +696,11 @@ async function verifyInChunks(
     // errors, and made the limit last longer by adding to it.
     //
     // On verify-batch the URL and the findings array are the request body,
-    // so both go through logValue; the route only checks that findings is an
-    // array, and the count is escaped with the rest rather than trusted to be
-    // the number that check implies.
+    // so both go through logValue. The route checks that the url is an http
+    // or https address and that findings is an array within the batch cap
+    // whose elements are null or carry a string id; nothing else about an
+    // element is checked, and the count is escaped with the rest rather than
+    // trusted to be the number those checks imply.
     if (rateLimited) {
       console.error(
         `[AI-VERIFY] ${logValue(endpoint.baseUrl)} rate-limited the pass for ${logValue(url)}; stopped after ${verdictMap.size} of ${logValue(findings.length)} verdicts.`,
@@ -925,6 +934,8 @@ function applyVerdicts(
   verdictMap: Map<string, Omit<VerifyResult, "id">>,
 ): Vulnerability[] {
   return findings.map((f) => {
+    // verify-batch's null element comes back as it was sent.
+    if (!f) return f;
     const v = verdictMap.get(f.id);
     if (!v) return f;
     return {
@@ -1040,7 +1051,7 @@ export async function runAiVerification(
     // endpoint failure.
     if (verdictMap.size === 0 && !budgetExhausted) {
       console.error(
-        `[AI-VERIFY] All ${findings.length} findings returned null or timed out for ${logValue(url)} — check the configured AI endpoint/model`,
+        `[AI-VERIFY] All ${findings.length} findings returned null or timed out for ${logValue(url)}. Check the configured AI endpoint and model.`,
       );
     }
 

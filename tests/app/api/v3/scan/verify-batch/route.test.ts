@@ -320,15 +320,13 @@ describe("POST /api/v3/scan/verify-batch: request validation", () => {
   // A finding whose id was not a string reached buildVerifyPrompt and threw
   // there, which surfaced as a 500 after the reservation was taken.
   it.each([
-    [null],
     ["missing-csp"],
+    [7],
     [{ title: "no id" }],
     [{ id: 7 }],
     [{ id: { toString: 1 } }],
-    [{ id: "" }],
-    [{ id: "x".repeat(201) }],
   ])(
-    "rejects a finding without a usable string id (%j) before reserving anything",
+    "rejects a non-null finding without a string id (%j) before reserving anything",
     async (bad) => {
       const res = await POST(
         postRequest({
@@ -338,10 +336,30 @@ describe("POST /api/v3/scan/verify-batch: request validation", () => {
       );
       expect(res.status).toBe(400);
       expect((await res.json()).error).toBe(
-        "Every finding needs a string id of at most 200 characters.",
+        "Every finding other than null needs a string id.",
       );
       expect(mockReserveAiTokens).not.toHaveBeenCalled();
       expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+    },
+  );
+
+  // v3 changes only by addition: these were accepted before the id check
+  // existed and stay accepted here. The stricter rule is part of the v4
+  // contract.
+  it.each([[null], [{ id: "" }], [{ id: "x".repeat(201) }]])(
+    "still accepts %j",
+    async (element) => {
+      const body = [findings[0], element];
+      const res = await POST(
+        postRequest({ url: "https://example.com", findings: body }),
+      );
+      expect(res.status).toBe(200);
+      expect(mockVerifyFindingsBatch).toHaveBeenCalledWith(
+        "https://example.com",
+        body,
+        42,
+        RESERVATION,
+      );
     },
   );
 });

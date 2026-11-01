@@ -606,7 +606,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             },
             "400": {
               description:
-                "Missing url or findings[], a url that is not an http or https address, a finding without a string id, or more findings than the deployment's batch cap",
+                "Missing url or findings[], a url that is not an http or https address, a finding other than null without a string id, or more findings than the deployment's batch cap",
             },
             "401": { $ref: "#/components/responses/Unauthorized" },
             "403": {

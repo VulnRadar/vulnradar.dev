@@ -1221,6 +1221,31 @@ describe("verifyFindingsBatch: no endpoint configured", () => {
   });
 });
 
+describe("verifyFindingsBatch: a null element from verify-batch", () => {
+  // The v3 route has always accepted a null element, and it stays accepted
+  // there, so the pass has to carry it instead of throwing on it (a 500).
+  it("goes through the pass and comes back as it was sent", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("f1", 100, 50),
+    );
+    const findings = [makeFinding("f1"), null as unknown as Vulnerability];
+
+    const { findings: out, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      reservation({ budget: null }),
+    );
+
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({ id: "f1", aiVerdict: "confirmed" });
+    expect(out[1]).toBeNull();
+    expect(outcome).toMatchObject({ verdicts: 1, attempted: 2 });
+    // Nothing is sent for the null element: there is no finding to ask about.
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("verifyFindingsBatch: evidence handed to the AI reviewer", () => {
   it("includes the detector's own evidenceExcerpts in the prompt, not just the generic evidence summary", async () => {
     let sentPrompt = "";
