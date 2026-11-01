@@ -515,6 +515,15 @@ export const AUDIT_ACTIONS = {
     verb: "reset a system setting to its default",
     icon: "rotate-ccw",
   },
+  // A change the caller's role may not make (APP_URL below super admin). The
+  // attempt is the record, so it is logged even though nothing changed.
+  system_setting_refused: {
+    category: "system",
+    tone: "warning",
+    label: "Setting Change Refused",
+    verb: "was refused a change to a system setting",
+    icon: "shield-alert",
+  },
   access_rule_created: {
     category: "system",
     tone: "warning",

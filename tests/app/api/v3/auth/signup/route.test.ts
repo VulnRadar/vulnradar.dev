@@ -476,11 +476,14 @@ describe("POST /api/v3/auth/signup", () => {
   });
 
   // The build-time APP_URL constant was fixed when the route loaded; a
-  // self-hosted container sets its own URL afterwards, at runtime.
+  // self-hosted container sets its own URL afterwards, at runtime. The row an
+  // admin can save in the settings page is set to another domain throughout,
+  // and neither email may follow it.
   describe("links use the URL the running process was given", () => {
     const saved = process.env.APP_URL;
     beforeEach(() => {
       process.env.APP_URL = "https://scanner.example.org";
+      systemSettingsRows = [{ key: "APP_URL", value: "https://evil.example" }];
     });
     afterEach(() => {
       if (saved === undefined) delete process.env.APP_URL;
@@ -497,10 +500,14 @@ describe("POST /api/v3/auth/signup", () => {
       );
       await new Promise((resolve) => setImmediate(resolve));
 
-      const sent = mockSendEmail.mock.calls[0][0] as { text: string };
+      const sent = mockSendEmail.mock.calls[0][0] as {
+        text: string;
+        html: string;
+      };
       expect(sent.text).toContain(
         "https://scanner.example.org/verify-email?token=",
       );
+      expect(sent.text + sent.html).not.toContain("evil.example");
     });
 
     it("in the notice to an existing account", async () => {
@@ -518,11 +525,15 @@ describe("POST /api/v3/auth/signup", () => {
       );
       await new Promise((resolve) => setImmediate(resolve));
 
-      const sent = mockSendEmail.mock.calls[0][0] as { text: string };
+      const sent = mockSendEmail.mock.calls[0][0] as {
+        text: string;
+        html: string;
+      };
       expect(sent.text).toContain("https://scanner.example.org/login");
       expect(sent.text).toContain(
         "https://scanner.example.org/forgot-password",
       );
+      expect(sent.text + sent.html).not.toContain("evil.example");
     });
   });
 

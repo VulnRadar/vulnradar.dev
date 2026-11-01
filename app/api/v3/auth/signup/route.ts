@@ -23,7 +23,7 @@ import {
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { getSettings } from "@/lib/config/runtime-config";
-import { serverAppUrl } from "@/lib/config/server-app-url";
+import { secretLinkAppUrl } from "@/lib/config/server-app-url";
 import pool from "@/lib/database/db";
 import crypto from "crypto";
 import {
@@ -179,7 +179,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // forgot they already had an account (AUDIT-012#auth-09).
   const existing = await getUserByEmail(email);
   if (existing) {
-    const appUrl = await serverAppUrl();
+    // No token in these two, but each opens a page where the reader types a
+    // password, so they come from the same origin a reset link does.
+    const appUrl = secretLinkAppUrl();
     const loginLink = `${appUrl}${ROUTES.LOGIN}`;
     const resetLink = `${appUrl}${ROUTES.FORGOT_PASSWORD}`;
     const noticeContent = signupAttemptOnExistingAccountEmail(
@@ -276,7 +278,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
 
   // Send verification email in background (don't block the response)
-  const verifyLink = `${await serverAppUrl()}/verify-email?token=${token}`;
+  const verifyLink = `${secretLinkAppUrl()}/verify-email?token=${token}`;
   const emailContent = await emailVerificationEmail(
     name.trim(),
     verifyLink,

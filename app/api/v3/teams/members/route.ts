@@ -13,12 +13,12 @@ import {
   ERROR_MESSAGES,
   TEAM_ROLES,
   TEAM_ROLE_INVITE_LABELS,
-  APP_URL,
   hasTeamPermission,
   canAssignTeamRole,
 } from "@/lib/config/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getSetting } from "@/lib/config/runtime-config";
+import { secretLinkAppUrl } from "@/lib/config/server-app-url";
 import { getClientIp } from "@/lib/api/request-utils";
 import { logAction } from "@/lib/auth/authorization";
 import { createUserNotification } from "@/lib/notifications/user-notifications";
@@ -353,7 +353,7 @@ export const POST = withErrorHandling(async (request: Request) => {
   if (teamInfo.rows.length > 0 && inviterInfo.rows.length > 0) {
     const teamName = teamInfo.rows[0].name;
     const invitedBy = inviterInfo.rows[0].name;
-    const inviteLink = `${APP_URL}/teams/join?token=${token}`;
+    const inviteLink = `${secretLinkAppUrl()}/teams/join?token=${token}`;
     const emailPayload = teamInviteEmail(teamName, inviteLink, invitedBy);
 
     // Look up unsubscribe token for the invitee if they're an existing user

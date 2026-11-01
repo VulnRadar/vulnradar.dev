@@ -604,7 +604,9 @@ export const API_CURRENT_VERSION = CONFIG_API_CURRENT_VERSION;
 // needs the live, no-rebuild-required value (currently only the
 // OAuth/Discord/GitHub sign-in routes, which must get their redirect_uri
 // right on every request) should call resolveAppUrl(request) from
-// lib/config/runtime-config.ts instead.
+// lib/config/runtime-config.ts instead. A link that carries a token is built
+// from secretLinkAppUrl() in lib/config/server-app-url.ts, which reads the
+// environment at runtime and never the admin-saved value.
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || CONFIG_APP_URL;
 
 // Scan note with version info

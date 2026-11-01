@@ -39,8 +39,12 @@ vi.mock("@/lib/api/request-utils", () => ({
 // one of the queueUpToInsert() slots below: the route reads
 // TEAM_INVITE_EXPIRY_DAYS through this resolver before the INSERT.
 const mockGetSetting = vi.fn();
+// The APP_URL row an admin can save from the settings page, served as a
+// foreign domain so an invite link that read it would show it.
 vi.mock("@/lib/config/runtime-config", () => ({
   getSetting: (...args: unknown[]) => mockGetSetting(...args),
+  getStoredSetting: async (key: string) =>
+    key === "APP_URL" ? "https://evil.example" : undefined,
 }));
 
 const mockLogAction = vi.fn();
@@ -202,6 +206,34 @@ describe("POST /api/v3/teams/members", () => {
     expect(mockCreateUserNotification).not.toHaveBeenCalled();
     // The email invite still works even with no in-app notification.
     expect(mockTeamInviteEmail).toHaveBeenCalled();
+  });
+
+  // The token joins whoever redeems it to the team, so the link must not
+  // follow a URL that someone other than the operator can change.
+  it("builds the invite link from the environment, never the saved APP_URL", async () => {
+    const savedEnv = process.env.APP_URL;
+    process.env.APP_URL = "https://scanner.example.org";
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "APP_URL" ? "https://evil.example" : 7,
+    );
+    try {
+      queueUpToInsert({ existingUserId: null, inviteId: 8 });
+      mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] }); // teamInfo
+      mockQuery.mockResolvedValueOnce({ rows: [{ name: "Alice" }] }); // inviterInfo
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // inviteeRes
+
+      const res = await POST(
+        postRequest({ teamId: 1, email: "new@example.com", role: "viewer" }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockTeamInviteEmail.mock.calls[0][1]).toMatch(
+        /^https:\/\/scanner\.example\.org\/teams\/join\?token=[0-9a-f]{64}$/,
+      );
+    } finally {
+      if (savedEnv === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = savedEnv;
+    }
   });
 
   it("audit-logs the invite send with logAction", async () => {

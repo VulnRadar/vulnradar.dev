@@ -5,7 +5,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
-import { serverAppUrl } from "@/lib/config/server-app-url";
+import { secretLinkAppUrl } from "@/lib/config/server-app-url";
 import { sendEmail, passwordResetEmail } from "@/lib/email/email";
 import { hashAuthToken } from "@/lib/auth/token-hash";
 import {
@@ -97,7 +97,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
 
   // Send reset email via SMTP in the background
-  const resetLink = `${await serverAppUrl()}/reset-password?token=${token}`;
+  const resetLink = `${secretLinkAppUrl()}/reset-password?token=${token}`;
   const emailPayload = passwordResetEmail(resetLink);
 
   queueMicrotask(() => {

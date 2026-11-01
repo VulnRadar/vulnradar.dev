@@ -15,11 +15,8 @@ import {
   Validate,
   withErrorHandling,
 } from "@/lib/api/api-utils";
-import {
-  STAFF_ROLES,
-  STAFF_ROLE_LABELS,
-  APP_URL,
-} from "@/lib/config/constants";
+import { STAFF_ROLES, STAFF_ROLE_LABELS } from "@/lib/config/constants";
+import { secretLinkAppUrl } from "@/lib/config/server-app-url";
 import {
   generateStaffInviteToken,
   hashStaffInviteToken,
@@ -176,7 +173,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
   const invitedByName =
     inviterRes.rows[0]?.name || inviterRes.rows[0]?.email || "An administrator";
-  const inviteLink = `${APP_URL}/staff-invite/${token}`;
+  const inviteLink = `${secretLinkAppUrl()}/staff-invite/${token}`;
   const emailPayload = staffInviteEmail(
     STAFF_ROLE_LABELS[role] || role,
     inviteLink,

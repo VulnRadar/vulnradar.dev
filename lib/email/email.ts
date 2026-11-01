@@ -42,6 +42,7 @@ import {
 import { FROZEN } from "@/lib/api/frozen-paths";
 import { resolveEmailLogoSrc } from "@/lib/email/logo-src";
 import { getSetting } from "@/lib/config/runtime-config";
+import { secretLinkAppUrl } from "@/lib/config/server-app-url";
 import { logError } from "@/lib/logging/log";
 import { safeDisplayName } from "@/lib/email/safe-name";
 import type { NotificationColumn } from "@/lib/notifications/columns";
@@ -184,7 +185,8 @@ interface SecurityAlertDetails {
 }
 
 interface LayoutOptions {
-  unsubscribeToken?: string;
+  /** The footer's "Manage email preferences" link, on mail that has one. */
+  unsubscribeUrl?: string;
   preheader?: string;
   /** The subject, which becomes the document title. */
   title?: string;
@@ -211,12 +213,22 @@ interface LayoutOptions {
  * into mail that sits in inboxes for years, and a mail client POSTs to whatever
  * the header held on the day it was sent. It is exported so the permalink test
  * can assert the exact string every message carries.
+ *
+ * `origin` is secretLinkAppUrl(), passed in by sendEmail. The token works for
+ * whoever holds it, so the link follows the URL the operator gave the process,
+ * never the one an admin can save in the settings page.
  */
 export function unsubscribeApiUrl(
+  origin: string,
   token: string,
   column: NotificationColumn,
 ): string {
-  return `${APP_URL}${FROZEN.UNSUBSCRIBE}?token=${encodeURIComponent(token)}&type=${column}`;
+  return `${origin}${FROZEN.UNSUBSCRIBE}?token=${encodeURIComponent(token)}&type=${column}`;
+}
+
+/** The /unsubscribe page the footer's "Manage email preferences" opens. */
+function preferencesUrl(origin: string, token: string): string {
+  return `${origin}/unsubscribe?token=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -275,12 +287,11 @@ function derivePreheader(text: string): string {
  * duplicated by hand there and had drifted on the logo source, the mobile
  * media query, the preferences button and the support line, so what an admin
  * previewed before a broadcast was not what recipients received. This wrapper
- * keeps the server-only half: resolving the deployment's constants and turning
- * an unsubscribe token into a URL.
+ * keeps the server-only half: resolving the deployment's constants.
  */
 function layout(
   content: string,
-  { unsubscribeToken, preheader, title }: LayoutOptions = {},
+  { unsubscribeUrl, preheader, title }: LayoutOptions = {},
 ): string {
   return emailLayout({
     content,
@@ -288,9 +299,7 @@ function layout(
     appUrl: APP_URL,
     logoSrc: resolveEmailLogoSrc(LOGO_URL, APP_URL),
     supportEmail: SUPPORT_EMAIL,
-    unsubscribeUrl: unsubscribeToken
-      ? `${APP_URL}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
-      : null,
+    unsubscribeUrl: unsubscribeUrl ?? null,
     preheaderHtml: preheaderBlock(preheader ?? ""),
     title,
   });
@@ -691,9 +700,9 @@ function withoutAddresses(
  * HTML part has one for mail the recipient can opt out of, and a text part
  * that lacks it is a different message.
  */
-function textFooter(unsubscribeToken: string | undefined): string {
-  return unsubscribeToken
-    ? `\n\n--\nManage email preferences: ${APP_URL}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
+function textFooter(unsubscribeUrl: string | undefined): string {
+  return unsubscribeUrl
+    ? `\n\n--\nManage email preferences: ${unsubscribeUrl}`
     : "";
 }
 
@@ -709,6 +718,11 @@ export async function sendEmail({
   preheader,
   template,
 }: SendEmailOptions) {
+  const linkOrigin = secretLinkAppUrl();
+  const unsubscribeUrl = unsubscribeToken
+    ? preferencesUrl(linkOrigin, unsubscribeToken)
+    : undefined;
+
   // Built before the transporter check, not after, so the not-configured
   // branch logs the same rendered document it would have sent. On a
   // self-hosted instance with no SMTP, Admin > System > Email Logs is the only
@@ -716,7 +730,7 @@ export async function sendEmail({
   const finalHtml = skipLayout
     ? html
     : layout(html, {
-        unsubscribeToken,
+        unsubscribeUrl,
         preheader: preheader ?? derivePreheader(text),
         title: subject,
       });
@@ -791,7 +805,7 @@ export async function sendEmail({
   const headers =
     unsubscribeToken && unsubscribeColumn
       ? {
-          "List-Unsubscribe": `<${unsubscribeApiUrl(unsubscribeToken, unsubscribeColumn)}>`,
+          "List-Unsubscribe": `<${unsubscribeApiUrl(linkOrigin, unsubscribeToken, unsubscribeColumn)}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         }
       : undefined;
@@ -811,7 +825,7 @@ export async function sendEmail({
       from,
       to,
       subject,
-      text: skipLayout ? text : `${text}${textFooter(unsubscribeToken)}`,
+      text: skipLayout ? text : `${text}${textFooter(unsubscribeUrl)}`,
       html: finalHtml,
       replyTo,
       headers,

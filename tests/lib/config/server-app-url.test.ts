@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 /**
  * serverAppUrl(): the saved setting, then the environment the process is
- * running with, then the shipped default. The pg pool is mocked; the settings
- * cache and the registry's URL validation are the real code.
+ * running with, then the shipped default. secretLinkAppUrl(): the same without
+ * the saved setting. The pg pool is mocked; the settings cache and the
+ * registry's URL validation are the real code.
  */
 
 const mockQuery = vi.fn();
@@ -24,7 +25,7 @@ delete process.env.APP_URL;
 const { APP_URL: BUILD_TIME_APP_URL } =
   await import("@/lib/config/client-constants");
 const { CONFIG_APP_URL } = await import("@/lib/config/config-values");
-const { serverAppUrl, runtimeEnvAppUrl } =
+const { serverAppUrl, runtimeEnvAppUrl, secretLinkAppUrl } =
   await import("@/lib/config/server-app-url");
 const { resolveAppUrl, invalidateSettingsCache } =
   await import("@/lib/config/runtime-config");
@@ -110,6 +111,40 @@ describe("serverAppUrl", () => {
     process.env.NEXT_PUBLIC_APP_URL = "https://scanner.example.org";
 
     expect(await serverAppUrl()).toBe("https://scanner.example.org");
+  });
+});
+
+// Any admin can save the row; only whoever runs the process sets the
+// environment. A reset link that followed the row could be pointed at a domain
+// the admin owns and carry the super admin's token there.
+describe("secretLinkAppUrl", () => {
+  it("ignores a saved row and uses the environment", async () => {
+    process.env.APP_URL = "https://env.example.org";
+    mockQuery.mockResolvedValue(storedAppUrl("https://evil.example"));
+
+    expect(await serverAppUrl()).toBe("https://evil.example");
+    expect(secretLinkAppUrl()).toBe("https://env.example.org");
+  });
+
+  it("uses APP_URL, then NEXT_PUBLIC_APP_URL, as the process sees them", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://public.example.org";
+    expect(secretLinkAppUrl()).toBe("https://public.example.org");
+
+    process.env.APP_URL = "https://env.example.org/";
+    expect(secretLinkAppUrl()).toBe("https://env.example.org");
+  });
+
+  it("falls back to the shipped default, never to the saved row", () => {
+    mockQuery.mockResolvedValue(storedAppUrl("https://evil.example"));
+
+    expect(secretLinkAppUrl()).toBe(CONFIG_APP_URL);
+  });
+
+  it("does not read the settings table at all", () => {
+    process.env.APP_URL = "https://env.example.org";
+    secretLinkAppUrl();
+
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
 

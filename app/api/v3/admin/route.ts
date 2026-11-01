@@ -44,8 +44,8 @@ import {
   STAFF_ROLES,
   STAFF_ROLE_HIERARCHY,
   STAFF_ROLE_LABELS,
-  APP_URL,
 } from "@/lib/config/constants";
+import { secretLinkAppUrl } from "@/lib/config/server-app-url";
 import {
   sendEmail,
   adminNotificationEmail,
@@ -927,7 +927,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         ip,
       );
 
-      const resetLink = `${APP_URL}/reset-password?token=${resetToken}`;
+      const resetLink = `${secretLinkAppUrl()}/reset-password?token=${resetToken}`;
       const emailPayloadPwd = passwordResetEmail(resetLink);
       // No unsubscribe token, for the same reason as update_password above: a
       // password reset link is a security notice, not mail the user can opt out

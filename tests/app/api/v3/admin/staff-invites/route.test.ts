@@ -82,6 +82,19 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
   return { ...actual, sendEmail: (params: unknown) => mockSendEmail(params) };
 });
 
+// The APP_URL row an admin can save from the settings page, served as a
+// foreign domain so an invite link that read it would show it. Everything
+// else in the resolver stays real.
+vi.mock("@/lib/config/runtime-config", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/config/runtime-config")>();
+  return {
+    ...actual,
+    getStoredSetting: async (key: string) =>
+      key === "APP_URL" ? "https://evil.example" : undefined,
+  };
+});
+
 const { POST, GET, DELETE } =
   await import("@/app/api/v3/admin/staff-invites/route");
 const { hashStaffInviteToken } = await import("@/lib/admin/staff-invites");
@@ -396,6 +409,38 @@ describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
       'Invited new@example.com to staff role "support"',
       "127.0.0.1",
     );
+  });
+
+  // The invite token grants a staff role to whoever redeems it, so its link
+  // must not follow the APP_URL row an admin can save.
+  it("builds the invite link from the environment, never the saved APP_URL", async () => {
+    const savedEnv = process.env.APP_URL;
+    process.env.APP_URL = "https://scanner.example.org";
+    try {
+      queueRole("admin", 1);
+      queueAdminPassword();
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // existingUser
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // existingInvite
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 501 }] }); // INSERT
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // inviterRes
+
+      const res = await POST(
+        postRequest({ email: "new@example.com", role: "support" }),
+      );
+      expect(res.status).toBe(200);
+
+      const sent = mockSendEmail.mock.calls[0][0] as {
+        text: string;
+        html: string;
+      };
+      expect(sent.text).toMatch(
+        /https:\/\/scanner\.example\.org\/staff-invite\/[a-f0-9]{64}/,
+      );
+      expect(sent.text + sent.html).not.toContain("evil.example");
+    } finally {
+      if (savedEnv === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = savedEnv;
+    }
   });
 
   it("does not fail the request if the invite email fails to send", async () => {

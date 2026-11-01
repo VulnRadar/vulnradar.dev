@@ -334,8 +334,11 @@ import {
  * the admin API refuses to save one (see isWritableSetting). APP_URL is the
  * one exception: serverAppUrl() in lib/config/server-app-url.ts reads the
  * saved row live, and resolveAppUrl() goes through it, so an edit there does
- * take effect for the OAuth redirect_uri and for the links in verification,
- * password-reset and signup emails.
+ * take effect for the OAuth redirect_uri. Links that carry a token (reset,
+ * verification, invites, unsubscribe) deliberately do not read it: they use
+ * secretLinkAppUrl(), which reads only the environment, because any admin
+ * could otherwise point them at a domain they own. Only the super admin may
+ * save the row.
  *
  * Do not add a build-tier entry expecting an admin edit to reach the app.
  * If a value must be admin-editable, give it a getSetting() reader and mark
@@ -533,7 +536,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_URL,
     group: "General",
     label: "Public application URL",
-    help: "Origin used for canonical URLs, social cards, and email links. The GitHub, Google and Discord sign-in and connect redirects, staff SSO, and the links in verification, password-reset and signup emails read the value saved here live, no rebuild needed. Everything else reads NEXT_PUBLIC_APP_URL (or the compiled CONFIG_APP_URL), so set that env var and rebuild to change it. No trailing slash.",
+    help: "Origin used for canonical URLs, social cards, and email links. A value saved here is read live by the GitHub, Google and Discord sign-in and connect redirects and by staff SSO, and by nothing else. Only the super admin can save it, as an https origin with no path, query or credentials (http only for localhost or 127.0.0.1). The links in password-reset, verification and signup emails, staff and team invites, and every unsubscribe link never use the saved value: they read APP_URL, then NEXT_PUBLIC_APP_URL, from the server's environment at runtime. Everything else reads NEXT_PUBLIC_APP_URL as it was at build time (or the compiled CONFIG_APP_URL), so set that env var and rebuild to change it.",
   },
   APP_REPO: {
     tier: "build",
@@ -3623,8 +3626,8 @@ export function isSettingKey(key: string): key is SettingKey {
 
 /**
  * Whether an admin write to this key can change anything. Every runtime-tier
- * key, plus APP_URL, which serverAppUrl() reads live for OAuth redirects and
- * the verification, password-reset and signup email links.
+ * key, plus APP_URL, which serverAppUrl() reads live for the OAuth
+ * redirect_uri. The admin route also limits APP_URL to the super admin.
  * The rest of the build tier is compiled in; see SettingTier.
  */
 export function isWritableSetting(key: SettingKey): boolean {

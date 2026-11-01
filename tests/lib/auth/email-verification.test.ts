@@ -59,14 +59,14 @@ describe("sendEmailVerification", () => {
     );
   });
 
-  it("links to the URL saved in the admin settings ahead of the environment", async () => {
+  // Any admin can save the row, and the token in this link verifies an
+  // address, so it must not go wherever an admin points it.
+  it("ignores a URL saved in the admin settings", async () => {
     process.env.APP_URL = "https://scanner.example.org";
-    systemSettingsRows = [
-      { key: "APP_URL", value: "https://saved.example.org" },
-    ];
+    systemSettingsRows = [{ key: "APP_URL", value: "https://evil.example" }];
 
-    expect(await sentText()).toContain(
-      "https://saved.example.org/verify-email?token=",
-    );
+    const text = await sentText();
+    expect(text).toContain("https://scanner.example.org/verify-email?token=");
+    expect(text).not.toContain("evil.example");
   });
 });

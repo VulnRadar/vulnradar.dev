@@ -12,9 +12,10 @@ import ts from "typescript";
  * image is built with the upstream origin, so on a self-hosted instance every
  * server-side reader of either one sent links to https://vulnradar.dev: a
  * password-reset or verification email handed its live token to a domain the
- * operator does not own. Server code asks serverAppUrl()
- * (lib/config/server-app-url.ts) instead, which reads the saved setting and
- * the environment of the running process.
+ * operator does not own. Server code asks lib/config/server-app-url.ts
+ * instead, which reads the environment of the running process:
+ * secretLinkAppUrl() for a link that carries a token, serverAppUrl() (which
+ * prefers the admin-saved setting) for everything else.
  *
  * Covers lib/, app/api/ and instrumentation.ts. Pages and components are not
  * scanned: what they render is built for the browser, where the build value is
@@ -28,8 +29,13 @@ import ts from "typescript";
  * DEBT is every file that read it before this test, with how many reads. It is
  * keyed by file, so a read added to a file that is not listed fails even when
  * its neighbours are, and the count is exact, so moving one read of a file to
- * serverAppUrl() means lowering its number and the list only shrinks. Nothing
- * is added to it to make a new read pass.
+ * the runtime readers means lowering its number and the list only shrinks.
+ * Nothing is added to it to make a new read pass.
+ *
+ * The count is per import, not per use, so a file left in the list could
+ * still build a new token link from its build-time APP_URL. The second half of
+ * this file closes that: no link with a token in it, anywhere in the scanned
+ * code, takes its origin from the build-time value or from the saved setting.
  */
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -49,12 +55,9 @@ const HOMES: Record<string, string> = {
 /** Reads that predate this test, by file. Lower a count as reads move. */
 const DEBT: Record<string, number> = {
   "app/api/security-txt/route.ts": 1,
-  "app/api/v3/admin/route.ts": 1,
-  "app/api/v3/admin/staff-invites/route.ts": 1,
   "app/api/v3/openapi.json/route.ts": 1,
   "app/api/v3/scan/github-issue/route.ts": 1,
   "app/api/v3/stripe/setup-webhook/route.ts": 1,
-  "app/api/v3/teams/members/route.ts": 1,
   "app/api/v3/whoami-ip/route.ts": 1,
   "lib/ai/system-prompt.ts": 1,
   "lib/ai/transport.ts": 1,
@@ -99,20 +102,24 @@ function isConstantsSpecifier(node: ts.Node | undefined): boolean {
   );
 }
 
-/** Every read of the build-time app URL in `source`. */
-function buildTimeAppUrlReads(source: string, fileName: string): Read[] {
+function parseSource(source: string, fileName: string): ts.SourceFile {
   const kind = /\.(?:tsx|jsx)$/.test(fileName)
     ? ts.ScriptKind.TSX
     : /\.(?:js|mjs|cjs)$/.test(fileName)
       ? ts.ScriptKind.JS
       : ts.ScriptKind.TS;
-  const sf = ts.createSourceFile(
+  return ts.createSourceFile(
     fileName,
     source,
     ts.ScriptTarget.Latest,
     true,
     kind,
   );
+}
+
+/** Every read of the build-time app URL in `source`. */
+function buildTimeAppUrlReads(source: string, fileName: string): Read[] {
+  const sf = parseSource(source, fileName);
   const reads: Read[] = [];
   const namespaces = new Set<string>();
   const add = (node: ts.Node, what: string) =>
@@ -206,6 +213,86 @@ function importsConstants(node: ts.Expression): boolean {
     inner.expression.kind === ts.SyntaxKind.ImportKeyword &&
     isConstantsSpecifier(inner.arguments[0])
   );
+}
+
+/**
+ * Text that puts a secret in a link: a token parameter, or a path that takes
+ * one (reset, verification, staff and team invites, unsubscribe).
+ */
+const SECRET_LINK =
+  /[?&]token=|\/(?:reset-password|verify-email|staff-invite|teams\/join|unsubscribe)/;
+
+/** The helpers that prefer the APP_URL row any admin can save. */
+const SAVED_ROW_READERS = new Set(["serverAppUrl", "resolveAppUrl"]);
+
+function unwrapExpression(node: ts.Expression): ts.Expression {
+  let inner = node;
+  while (ts.isAwaitExpression(inner) || ts.isParenthesizedExpression(inner)) {
+    inner = inner.expression;
+  }
+  return inner;
+}
+
+function callsSavedRowReader(node: ts.Expression): boolean {
+  const inner = unwrapExpression(node);
+  return (
+    ts.isCallExpression(inner) &&
+    ts.isIdentifier(inner.expression) &&
+    SAVED_ROW_READERS.has(inner.expression.text)
+  );
+}
+
+/**
+ * Every origin in `source` that a link carrying a secret takes from somewhere
+ * other than the environment: a call to serverAppUrl() or resolveAppUrl(), a
+ * variable set from one, or the build-time APP_URL.
+ */
+function secretLinkOriginReads(source: string, fileName: string): Read[] {
+  const sf = parseSource(source, fileName);
+  const fromSavedRow = new Set<string>();
+  const reads: Read[] = [];
+
+  const collect = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      callsSavedRowReader(node.initializer)
+    ) {
+      fromSavedRow.add(node.name.text);
+    }
+    ts.forEachChild(node, collect);
+  };
+
+  const visit = (node: ts.Node) => {
+    if (ts.isTemplateExpression(node)) {
+      const text =
+        node.head.text + node.templateSpans.map((s) => s.literal.text).join("");
+      if (SECRET_LINK.test(text)) {
+        for (const span of node.templateSpans) {
+          const inner = unwrapExpression(span.expression);
+          const name = ts.isIdentifier(inner) ? inner.text : undefined;
+          if (
+            callsSavedRowReader(inner) ||
+            name === "APP_URL" ||
+            (name !== undefined && fromSavedRow.has(name))
+          ) {
+            reads.push({
+              line:
+                sf.getLineAndCharacterOfPosition(span.expression.getStart(sf))
+                  .line + 1,
+              what: span.expression.getText(sf),
+            });
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  collect(sf);
+  visit(sf);
+  return reads;
 }
 
 function walk(dir: string, out: string[]): void {
@@ -367,5 +454,79 @@ describe("no server code reads the build-time app URL", () => {
     const file = "lib/config/server-app-url.ts";
     const text = fs.readFileSync(path.join(ROOT, file), "utf8");
     expect(buildTimeAppUrlReads(text, file)).toEqual([]);
+  });
+});
+
+describe("secretLinkOriginReads", () => {
+  it("flags a token link built from a helper that prefers the saved row", () => {
+    expect(
+      secretLinkOriginReads(
+        [
+          "const a = `${await serverAppUrl()}/reset-password?token=${t}`;",
+          "const b = `${await resolveAppUrl(request)}/staff-invite/${t}`;",
+          "const base = await serverAppUrl();",
+          "const c = `${base}/verify-email?token=${t}`;",
+        ].join("\n"),
+        "a.ts",
+      ).map((r) => r.line),
+    ).toEqual([1, 2, 4]);
+  });
+
+  it("flags a token link built from the build-time constant", () => {
+    expect(
+      secretLinkOriginReads(
+        [
+          "const a = `${APP_URL}/teams/join?token=${t}`;",
+          "const b = `Manage email preferences: ${APP_URL}/unsubscribe?token=${t}`;",
+        ].join("\n"),
+        "a.ts",
+      ).map((r) => r.line),
+    ).toEqual([1, 2]);
+  });
+
+  it("leaves environment origins, passed-in origins and plain links alone", () => {
+    expect(
+      secretLinkOriginReads(
+        [
+          "const a = `${secretLinkAppUrl()}/reset-password?token=${t}`;",
+          "const b = `${origin}${FROZEN.UNSUBSCRIBE}?token=${t}&type=${c}`;",
+          "const c = `${await serverAppUrl()}/dashboard`;",
+          "const d = `${APP_URL}/history/${id}`;",
+          "const e = new URL(`/verify-email?token=${t}`, request.url);",
+          "// `${APP_URL}/reset-password?token=${t}` in a comment",
+        ].join("\n"),
+        "a.ts",
+      ),
+    ).toEqual([]);
+  });
+});
+
+/**
+ * A link that carries a secret takes its origin from the environment.
+ *
+ * serverAppUrl() and resolveAppUrl() prefer the APP_URL row saved in the
+ * settings page, which any admin could edit. A reset link built from either
+ * one would carry its token to whatever domain was saved there, so an admin
+ * could ask the public forgot-password endpoint for the super admin's address
+ * and collect the link. The build-time APP_URL sent the same tokens to
+ * https://vulnradar.dev on every pulled image. Token links use
+ * secretLinkAppUrl() instead, which reads only the environment.
+ */
+describe("no link that carries a secret follows the saved or build-time URL", () => {
+  const SLOW = { timeout: 30_000 };
+
+  it("anywhere in the scanned code", SLOW, () => {
+    const found: string[] = [];
+    for (const file of scan().files) {
+      const text = fs.readFileSync(path.join(ROOT, file), "utf8");
+      if (!SECRET_LINK.test(text)) continue;
+      for (const r of secretLinkOriginReads(text, file)) {
+        found.push(`${file}:${r.line}  ${r.what}`);
+      }
+    }
+    expect(
+      found,
+      "build the link from secretLinkAppUrl() (lib/config/server-app-url.ts)",
+    ).toEqual([]);
   });
 });

@@ -375,7 +375,7 @@ describe("POST /api/v3/admin/features — system_settings", () => {
   });
 
   it("still saves APP_URL, the one build-tier key read live", async () => {
-    queueRole("admin");
+    queueRole("super_admin");
     mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await POST(
@@ -388,6 +388,108 @@ describe("POST /api/v3/admin/features — system_settings", () => {
     );
     expect(res.status).toBe(200);
     expect(mockInvalidateSettingsCache).toHaveBeenCalledTimes(1);
+  });
+
+  // The saved APP_URL decides where every OAuth sign-in returns to. Links
+  // that carry a token no longer read it, but an admin still may not repoint
+  // the site's URL on their own, and the value has to be an origin.
+  describe("APP_URL", () => {
+    function saveAppUrl(value: string) {
+      return POST(
+        postRequest({
+          section: "system_settings",
+          action: "set",
+          key: "APP_URL",
+          value,
+        }),
+      );
+    }
+
+    function upserts() {
+      return mockQuery.mock.calls.filter(([sql]) =>
+        String(sql).includes("INSERT INTO system_settings"),
+      );
+    }
+
+    it("refuses an admin's save with 403 and audits the attempt", async () => {
+      queueRole("admin");
+      const res = await saveAppUrl("https://evil.example");
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toMatch(/super admin/i);
+      expect(upserts()).toEqual([]);
+      expect(mockInvalidateSettingsCache).not.toHaveBeenCalled();
+      expect(mockLogAction).toHaveBeenCalledTimes(1);
+      expect(mockLogAction).toHaveBeenCalledWith(
+        1,
+        null,
+        "system_setting_refused",
+        expect.stringContaining('"APP_URL"'),
+        "127.0.0.1",
+      );
+    });
+
+    it("refuses an admin's reset with 403 and audits it", async () => {
+      queueRole("admin");
+      const res = await POST(
+        postRequest({
+          section: "system_settings",
+          action: "reset",
+          key: "APP_URL",
+        }),
+      );
+      expect(res.status).toBe(403);
+      expect(
+        mockQuery.mock.calls.some(([sql]) =>
+          String(sql).includes("DELETE FROM system_settings"),
+        ),
+      ).toBe(false);
+      expect(mockLogAction).toHaveBeenCalledWith(
+        1,
+        null,
+        "system_setting_refused",
+        expect.stringContaining("reset"),
+        "127.0.0.1",
+      );
+    });
+
+    it.each([
+      ["a path", "https://x.example/path"],
+      ["a user name and password", "https://user:pw@x.example"],
+      ["a user name", "https://user@x.example"],
+      ["plain http on a public host", "http://x.example"],
+      ["a query", "https://x.example/?next=/admin"],
+      ["a fragment", "https://x.example/#top"],
+      ["another scheme", "ftp://x.example"],
+    ])("refuses a super admin's value with %s (400)", async (_label, value) => {
+      queueRole("super_admin");
+      const res = await saveAppUrl(value);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/APP_URL/);
+      expect(upserts()).toEqual([]);
+      expect(mockLogAction).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["https://x.example", "https://x.example"],
+      ["https://x.example/", "https://x.example"],
+      ["http://localhost:3000", "http://localhost:3000"],
+      ["http://127.0.0.1:3000", "http://127.0.0.1:3000"],
+    ])("saves a super admin's %s as %s", async (value, stored) => {
+      queueRole("super_admin");
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // oldResult
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // upsert
+      const res = await saveAppUrl(value);
+      expect(res.status).toBe(200);
+      expect(upserts()).toHaveLength(1);
+      expect((upserts()[0][1] as unknown[])[1]).toBe(stored);
+      expect(mockLogAction).toHaveBeenCalledWith(
+        1,
+        null,
+        "system_setting_changed",
+        expect.stringContaining(stored),
+        "127.0.0.1",
+      );
+    });
   });
 
   describe("credentials", () => {

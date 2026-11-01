@@ -207,14 +207,17 @@ describe("POST /api/v3/auth/forgot-password", () => {
       );
     });
 
-    it("is the URL saved in the admin settings when there is one", async () => {
+    // Any admin can save the row. If the link followed it, an admin could
+    // save a domain they own, ask this public endpoint for the super admin's
+    // address, and collect the token when the link was clicked.
+    it("ignores a URL saved in the admin settings", async () => {
       process.env.APP_URL = "https://scanner.example.org";
-      systemSettingsRows = [
-        { key: "APP_URL", value: "https://saved.example.org" },
-      ];
-      expect(await sentText()).toContain(
-        "https://saved.example.org/reset-password?token=",
+      systemSettingsRows = [{ key: "APP_URL", value: "https://evil.example" }];
+      const text = await sentText();
+      expect(text).toContain(
+        "https://scanner.example.org/reset-password?token=",
       );
+      expect(text).not.toContain("evil.example");
     });
   });
 

@@ -1108,7 +1108,7 @@ describe("the one-click unsubscribe URL", () => {
   it("is the permalink every sent message already carries, byte for byte", async () => {
     const { unsubscribeApiUrl } = await loadEmail();
 
-    expect(unsubscribeApiUrl("abc123", "email_scan_complete")).toBe(
+    expect(unsubscribeApiUrl(APP_URL, "abc123", "email_scan_complete")).toBe(
       `${APP_URL}/api/v3/account/unsubscribe?token=abc123&type=email_scan_complete`,
     );
   });
@@ -1128,7 +1128,7 @@ describe("the one-click unsubscribe URL", () => {
     try {
       const { unsubscribeApiUrl } = await loadEmail();
 
-      expect(unsubscribeApiUrl("t", "email_scan_complete")).toBe(
+      expect(unsubscribeApiUrl(APP_URL, "t", "email_scan_complete")).toBe(
         `${APP_URL}/probe/unsubscribe?token=t&type=email_scan_complete`,
       );
     } finally {
@@ -1139,9 +1139,9 @@ describe("the one-click unsubscribe URL", () => {
   it("encodes a token that is not URL safe", async () => {
     const { unsubscribeApiUrl } = await loadEmail();
 
-    expect(unsubscribeApiUrl("a+b/c d&e", "email_scan_complete")).toContain(
-      "token=a%2Bb%2Fc%20d%26e&type=",
-    );
+    expect(
+      unsubscribeApiUrl(APP_URL, "a+b/c d&e", "email_scan_complete"),
+    ).toContain("token=a%2Bb%2Fc%20d%26e&type=");
   });
 
   it("is what the List-Unsubscribe header carries", async () => {
@@ -1162,8 +1162,44 @@ describe("the one-click unsubscribe URL", () => {
       sendMailMock.mock.calls[0][0] as { headers: Record<string, string> }
     ).headers;
     expect(headers["List-Unsubscribe"]).toBe(
-      `<${unsubscribeApiUrl("abc123", "email_posture_digest")}>`,
+      `<${unsubscribeApiUrl(APP_URL, "abc123", "email_posture_digest")}>`,
     );
+  });
+
+  // The token unsubscribes whoever holds it. Every copy of the link follows
+  // the URL the operator gave the process, never the APP_URL row an admin can
+  // save in the settings page.
+  it("takes its origin from the environment, not the saved setting", async () => {
+    configureSmtp();
+    process.env.APP_URL = "https://scanner.example.org";
+    systemSettingsRows = [{ key: "APP_URL", value: "https://evil.example" }];
+    sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+    const { sendEmail } = await loadEmail();
+
+    await sendEmail({
+      to: "user@example.com",
+      subject: "Digest",
+      text: "digest",
+      html: "<p>digest</p>",
+      unsubscribeToken: "abc123",
+      unsubscribeColumn: "email_posture_digest",
+    });
+
+    const mail = sendMailMock.mock.calls[0][0] as {
+      text: string;
+      html: string;
+      headers: Record<string, string>;
+    };
+    expect(mail.headers["List-Unsubscribe"]).toBe(
+      "<https://scanner.example.org/api/v3/account/unsubscribe?token=abc123&type=email_posture_digest>",
+    );
+    expect(mail.html).toContain(
+      "https://scanner.example.org/unsubscribe?token=abc123",
+    );
+    expect(mail.text).toContain(
+      "Manage email preferences: https://scanner.example.org/unsubscribe?token=abc123",
+    );
+    expect(JSON.stringify(mail)).not.toContain("evil.example");
   });
 });
 

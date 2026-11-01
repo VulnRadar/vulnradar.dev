@@ -3,6 +3,7 @@ import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
 import {
   requireAdmin as _requireAdmin,
+  isSuperAdminRole,
   logAction,
 } from "@/lib/auth/authorization";
 import {
@@ -254,6 +255,60 @@ function dateShapeError(key: string, value: string): string | null {
 // R3/D1: requireAdmin moved to lib/auth/authorization.ts (single source).
 async function requireAdmin() {
   return _requireAdmin();
+}
+
+// APP_URL decides where every OAuth sign-in and connect flow returns to. Links
+// that carry a token never read the saved row (secretLinkAppUrl() in
+// lib/config/server-app-url.ts builds them from the environment), but the row
+// is still the site's identity rather than an admin preference, so saving or
+// resetting it is for the super admin. A refusal is audited too: an admin
+// trying to move the site's URL is a row an insider review looks for.
+async function refuseAppUrlChange(
+  user: { id: number; role: string },
+  ip: string,
+  attempt: "change" | "reset",
+): Promise<NextResponse | null> {
+  if (isSuperAdminRole(user.role)) return null;
+  await logAction(
+    user.id,
+    null,
+    "system_setting_refused",
+    `Refused to ${attempt} "APP_URL": only the super admin can change it`,
+    ip,
+  );
+  return NextResponse.json(
+    { error: "Only the super admin can change the public application URL." },
+    { status: 403 },
+  );
+}
+
+const LOCAL_HTTP_HOSTS = new Set(["localhost", "127.0.0.1"]);
+
+// The registry's url type accepts any scheme with any path. APP_URL is an
+// origin that paths are appended to, so a path, query or fragment would land
+// in the middle of every redirect_uri, and credentials in it would be handed
+// to every provider. Plain http is only for an instance on this machine.
+function appUrlShapeError(key: string, value: string): string | null {
+  if (key !== "APP_URL") return null;
+  const label = "Public application URL (APP_URL)";
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return `${label}: not a valid URL.`;
+  }
+  if (url.username || url.password || value.includes("@")) {
+    return `${label}: must not contain a user name or password.`;
+  }
+  const localHttp =
+    url.protocol === "http:" && LOCAL_HTTP_HOSTS.has(url.hostname);
+  if (url.protocol !== "https:" && !localHttp) {
+    return `${label}: must start with https:// (http:// only for localhost or 127.0.0.1).`;
+  }
+  if (url.pathname !== "/" || url.search || url.hash || /[?#]/.test(value)) {
+    return `${label}: must be an origin only, like https://scanner.example.com, with no path, query or fragment.`;
+  }
+  return null;
 }
 
 /**
@@ -587,6 +642,10 @@ export async function POST(req: NextRequest) {
             { status: 400 },
           );
         }
+        if (key === "APP_URL") {
+          const refused = await refuseAppUrlChange(user, ip, "change");
+          if (refused) return refused;
+        }
 
         // Keys the registry knows about are validated against their declared
         // type and bounds. Keys it does not (maintenance_mode and friends)
@@ -596,7 +655,7 @@ export async function POST(req: NextRequest) {
           // A build-tier value is compiled into the app and nothing reads the
           // saved row, so accepting the write would record a change that never
           // happens and show it back as "Customized". APP_URL is the one
-          // exception: OAuth redirect building reads it live.
+          // exception: the OAuth redirect_uri is built from it live.
           if (!isWritableSetting(key)) {
             return NextResponse.json(
               {
@@ -618,6 +677,11 @@ export async function POST(req: NextRequest) {
           if (dateError) {
             return NextResponse.json({ error: dateError }, { status: 400 });
           }
+          const appUrlError = appUrlShapeError(key, storedValue);
+          if (appUrlError) {
+            return NextResponse.json({ error: appUrlError }, { status: 400 });
+          }
+          if (key === "APP_URL") storedValue = new URL(storedValue).origin;
         }
 
         const oldResult = await pool.query(
@@ -698,6 +762,10 @@ export async function POST(req: NextRequest) {
             { error: "Unknown setting key" },
             { status: 400 },
           );
+        }
+        if (key === "APP_URL") {
+          const refused = await refuseAppUrlChange(user, ip, "reset");
+          if (refused) return refused;
         }
 
         const oldResult = await pool.query(

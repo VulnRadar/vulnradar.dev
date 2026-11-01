@@ -75,8 +75,14 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
 // engineering system_settings row shapes through the pool mock: add_note
 // and edit_note read MAX_DESCRIPTION_LENGTH through this resolver.
 const mockGetSetting = vi.fn();
+// The APP_URL row an admin can save from the settings page. Served as a
+// foreign domain so a link that read it would show it.
+const mockGetStoredSetting = vi.fn(async (key: string) =>
+  key === "APP_URL" ? "https://evil.example" : undefined,
+);
 vi.mock("@/lib/config/runtime-config", () => ({
   getSetting: (...args: unknown[]) => mockGetSetting(...args),
+  getStoredSetting: (key: string) => mockGetStoredSetting(key),
 }));
 
 vi.mock("@/lib/api/request-utils", () => ({
@@ -2843,6 +2849,44 @@ describe("PATCH /api/v3/admin — reset_password still refuses a 2FA-enabled tar
       expect.stringContaining("Sent a password reset link"),
       "127.0.0.1",
     );
+  }, 20000);
+
+  // The link carries a live reset token for someone else's account, and the
+  // saved APP_URL row is something any admin can change.
+  it("builds the reset link from the environment, never the saved APP_URL", async () => {
+    const savedEnv = process.env.APP_URL;
+    process.env.APP_URL = "https://scanner.example.org";
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "APP_URL" ? "https://evil.example" : 1000,
+    );
+    const { passwordResetEmail } = await import("@/lib/email/email");
+    vi.mocked(passwordResetEmail).mockClear();
+    try {
+      queueRole("admin");
+      queueTarget({
+        email: "t@example.com",
+        role: "user",
+        totp_enabled: false,
+        unsubscribe_token: null,
+      });
+      queueAdminPassword(adminHash);
+
+      const res = await PATCH(
+        patchRequest({
+          action: "reset_password",
+          userId: 5,
+          currentAdminPassword: ADMIN_PASSWORD,
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(vi.mocked(passwordResetEmail).mock.calls[0][0]).toMatch(
+        /^https:\/\/scanner\.example\.org\/reset-password\?token=[0-9a-f]{64}$/,
+      );
+    } finally {
+      if (savedEnv === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = savedEnv;
+    }
   }, 20000);
 });
 
