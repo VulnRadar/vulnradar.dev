@@ -1234,14 +1234,15 @@ export const CONFIG_BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW = 8_000_000;
 // probe per call, a code review sends whole file contents, so the token
 // budget per call needs to be much larger.
 //
-// Hard per-run ceiling, in estimated tokens (see
-// lib/scanner/github-repo-scan.ts's rough chars-per-token estimate). This
-// applies regardless of plan or remaining monthly quota, and regardless of
-// whether the user is using VulnRadar's own AI or their own key -- it is a
-// blunt guard against a single run trying to push an enormous repo through
-// one AI call and hanging or ballooning cost/latency. If a repo's estimated
-// content exceeds this, the scan is rejected upfront with a clear message
-// rather than silently truncated and reviewed as if nothing was missed.
+// Hard per-run ceiling on the prompt input one review sends, counted at one
+// token per UTF-8 byte (lib/ai/review-source.ts), the same worst case the
+// reservation uses. This applies regardless of plan or remaining allowance,
+// and regardless of whether the user is using VulnRadar's own AI or their own
+// key -- it is a blunt guard against a single run pushing an enormous repo
+// through the model and ballooning cost or latency. The review stops at the
+// batch that would cross it and reports aiReviewStoppedAtRunCap with its
+// coverage, rather than refusing the scan; the pattern scan still covers
+// every file.
 export const CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_RUN = 300_000;
 
 // Per-batch HTTP timeout for each AI code-review call in runGithubAiReview
