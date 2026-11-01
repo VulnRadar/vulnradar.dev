@@ -30,14 +30,18 @@ export async function runInitialCleanup(appName: string): Promise<void> {
 }
 
 export async function startBackgroundWorkers(appName: string): Promise<void> {
-  // Cleanup runs every 5 minutes. The shortest meaningful user-facing TTL is
-  // email_2fa_codes (10 min), so a 5-minute cadence keeps stale entries from
-  // lingering more than halfway through their next scheduled run.
+  // Cleanup runs every CONFIG_DB_CLEANUP_INTERVAL_MS, five minutes as shipped.
+  // The shortest meaningful user-facing TTL is email_2fa_codes (10 min), so a
+  // 5-minute cadence keeps stale entries from lingering more than halfway
+  // through their next scheduled run. The admin worker overview judges this
+  // pass against the same constant (lib/admin/worker-registry.ts), so the timer
+  // and the overview cannot be moved apart.
   try {
     const { schedulePeriodicCleanup } = await import("@/lib/database/cleanup");
-    schedulePeriodicCleanup(5 * 60 * 1000);
+    const { DB_CLEANUP_INTERVAL } = await import("@/lib/config/constants");
+    schedulePeriodicCleanup(DB_CLEANUP_INTERVAL);
     console.log(
-      `[${appName}] Scheduled periodic database cleanup (5min interval).`,
+      `[${appName}] Scheduled periodic database cleanup (${DB_CLEANUP_INTERVAL / 60_000}min interval).`,
     );
   } catch (scheduleError) {
     console.error(

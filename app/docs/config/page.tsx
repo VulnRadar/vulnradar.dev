@@ -313,14 +313,13 @@ export default function ConfigPage() {
             </li>
             <li>
               <InlineCode>CONFIG_DB_CLEANUP_INTERVAL_MS</InlineCode> (default:{" "}
-              <InlineCode>300000</InlineCode> = 5 minutes): the cadence the
-              admin health overview expects from the periodic database cleanup
-              pass, which deletes expired tokens, old sessions, stale caches and
-              rows past their retention window. The pass itself is scheduled at
-              boot with a fixed five minutes, so changing this constant moves
-              when the overview calls the worker late, not how often it runs.
-              Retention windows are settings you can change in the admin panel;
-              the cadence is not.
+              <InlineCode>300000</InlineCode> = 5 minutes): how often the
+              periodic database cleanup pass runs, which deletes expired tokens,
+              old sessions, stale caches and rows past their retention window.
+              It is also the cadence the admin health overview expects from the
+              pass, so the timer and the overview move together. Retention
+              windows are settings you can change in the admin panel; the
+              cadence is not.
             </li>
           </ul>
           <p className="max-w-[68ch] text-sm text-muted-foreground">

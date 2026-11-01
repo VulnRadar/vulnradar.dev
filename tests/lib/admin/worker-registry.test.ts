@@ -62,8 +62,9 @@ describe("BACKGROUND_WORKERS", () => {
     const byEvent = Object.fromEntries(
       BACKGROUND_WORKERS.map((w) => [w.event, w.intervalMs]),
     );
-    // The boot passes a literal five minutes to the cleanup timer; this is
-    // the number the Overview judges it by.
+    // The boot arms the cleanup timer with the same constant (see
+    // tests/lib/database/boot-workers.test.ts); this is the number the
+    // Overview judges it by.
     expect(byEvent.cleanup_worker_failing).toBe(5 * 60 * 1000);
     expect(byEvent.scheduled_scans_worker_failing).toBe(2 * 60 * 1000);
     expect(byEvent.scheduled_backup_worker_failing).toBe(24 * 60 * 60 * 1000);
