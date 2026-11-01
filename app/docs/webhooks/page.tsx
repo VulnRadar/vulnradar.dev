@@ -104,7 +104,7 @@ export default function WebhooksPage() {
             {
               platform: "Discord",
               pattern:
-                "discord.com/api/webhooks/* or discordapp.com/api/webhooks/*",
+                "/api/webhooks/* or /api/v<n>/webhooks/* on discord.com, discordapp.com, or a subdomain of either such as ptb. or canary.",
               payload: "Rich embeds with colour-coded severity",
             },
             {
