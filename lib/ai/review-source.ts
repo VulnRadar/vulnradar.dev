@@ -29,6 +29,8 @@ import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME } from "@/lib/config/constants";
 import { postChatCompletion } from "@/lib/ai/transport";
 import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
+import { CALL_FRAMING_TOKENS, maxInputTokens } from "@/lib/ai/token-ceiling";
+import { logValue } from "@/lib/logging/log-value";
 
 const REVIEW_SYSTEM_PROMPT_BASE = `You are a security code reviewer for ${APP_NAME}, a vulnerability scanner. You are given source files from a user's GitHub repository, each line prefixed with its line number. Review the code that is actually in front of you.
 
@@ -173,12 +175,17 @@ function batchBySize<T>(
   return batches;
 }
 
-/** Groups files into call-sized batches. A single file larger than the budget still gets its own batch. */
+/**
+ * Groups files into call-sized batches. A single file larger than the budget
+ * still gets its own batch. Measured in UTF-8 bytes, the unit the estimate's
+ * tree sizes come in, so a file of CJK text is cut where the estimate cut it
+ * rather than packed three times as densely into one call.
+ */
 function batchFiles(
   files: RepoFile[],
   charBudget: number = PER_CALL_CHAR_BUDGET,
 ): RepoFile[][] {
-  return batchBySize(files, (f) => f.content.length, charBudget);
+  return batchBySize(files, (f) => maxInputTokens(f.content), charBudget);
 }
 
 /**
@@ -190,14 +197,23 @@ function batchFiles(
 const PROMPT_FRAMING_ALLOWANCE = 0.25;
 
 /** The longer of the two system prompts, so a ceiling holds for either. */
-const SYSTEM_PROMPT_CHARS = Math.max(
-  buildReviewSystemPrompt(true).length,
-  buildReviewSystemPrompt(false).length,
+const SYSTEM_PROMPT_TOKENS = Math.max(
+  maxInputTokens(buildReviewSystemPrompt(true)),
+  maxInputTokens(buildReviewSystemPrompt(false)),
 );
 
-/** The most one review call over `promptChars` of prompt can cost. */
-function reviewCallCeiling(promptChars: number, maxTokensPerCall: number) {
-  return estimateTokens(SYSTEM_PROMPT_CHARS + promptChars) + maxTokensPerCall;
+/**
+ * The most one review call over `promptBytes` of prompt can cost, at one
+ * token per byte (see lib/ai/token-ceiling.ts). It used estimateTokens, four
+ * characters per token, on text the repository chooses: a file of CJK text
+ * or emoji tokenises near one token per character, so a call cost several
+ * times what was reserved for it and the overrun was charged afterwards with
+ * a floor at zero.
+ */
+function reviewCallCeiling(promptBytes: number, maxTokensPerCall: number) {
+  return (
+    CALL_FRAMING_TOKENS + SYSTEM_PROMPT_TOKENS + promptBytes + maxTokensPerCall
+  );
 }
 
 /**
@@ -220,11 +236,11 @@ export async function estimateGithubReviewTokens(
   ] as const);
   return batchBySize(fileSizes, (s) => s, perCallCharBudget).reduce(
     (sum, batch) => {
-      const chars = batch.reduce((n, s) => n + s, 0);
+      const bytes = batch.reduce((n, s) => n + s, 0);
       return (
         sum +
         reviewCallCeiling(
-          Math.ceil(chars * (1 + PROMPT_FRAMING_ALLOWANCE)),
+          Math.ceil(bytes * (1 + PROMPT_FRAMING_ALLOWANCE)),
           maxTokensPerCall,
         )
       );
@@ -351,7 +367,7 @@ async function callReviewModel(
 
     if (!res.ok) {
       console.error(
-        `[AI-REVIEW] HTTP ${res.status} from ${endpoint.baseUrl}: ${res.detail.slice(0, 300)}`,
+        `[AI-REVIEW] HTTP ${res.status} from ${logValue(endpoint.baseUrl)}: ${logValue(res.detail, 300)}`,
       );
       return { findings: [], totalTokens: 0 };
     }
@@ -377,7 +393,7 @@ async function callReviewModel(
   } catch (err) {
     console.error(
       "[AI-REVIEW] callReviewModel failed:",
-      err instanceof Error ? err.message : err,
+      logValue(err instanceof Error ? err.message : err, 300),
     );
     return { findings: [], totalTokens: 0, costUnknown: true };
   } finally {
@@ -474,8 +490,10 @@ export async function runGithubAiReview(
   for (const batch of batches) {
     let ceiling = 0;
     if (budgetTokens !== null) {
-      const promptChars = batch.map(buildFileBlock).join("\n\n").length;
-      ceiling = reviewCallCeiling(promptChars, maxTokensPerCall);
+      const promptBytes = maxInputTokens(
+        batch.map(buildFileBlock).join("\n\n"),
+      );
+      ceiling = reviewCallCeiling(promptBytes, maxTokensPerCall);
       if (held + ceiling > budgetTokens) {
         stoppedAtBudget = true;
         break;

@@ -1527,11 +1527,12 @@ describe("verifyFindingsBatch / runAiVerification: settling the route's reservat
 describe("verification is held to the reservation's budget", () => {
   /**
    * The gate reserves a worst case per finding, and the pass admits each
-   * finding at that worst case, so the run cannot spend past what was taken
-   * from the account even if every call comes back at its ceiling. What it
-   * cannot pay for is left unjudged and the outcome says so.
+   * finding at the worst case of the prompt it really built, so the run
+   * cannot spend past what was taken from the account even if every call
+   * comes back at its ceiling. What it cannot pay for is left unjudged and
+   * the outcome says so.
    */
-  async function ceilingOf(finding: Vulnerability): Promise<number> {
+  async function reservedCeilingOf(finding: Vulnerability): Promise<number> {
     const { verifyCallCeiling } = await import("@/lib/ai/verify-findings");
     const {
       CONFIG_AI_VERIFY_MAX_TOKENS,
@@ -1541,6 +1542,23 @@ describe("verification is held to the reservation's budget", () => {
       maxTokens: CONFIG_AI_VERIFY_MAX_TOKENS,
       probeBodySnippetChars: CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS,
     });
+  }
+
+  /** What a call is admitted at against the probe beforeEach mocks. */
+  async function ceilingOf(finding: Vulnerability): Promise<number> {
+    const { admittedCallCeiling } = await import("@/lib/ai/verify-findings");
+    const { CONFIG_AI_VERIFY_MAX_TOKENS } =
+      await import("@/lib/config/config-values");
+    return admittedCallCeiling(
+      finding,
+      { maxTokens: CONFIG_AI_VERIFY_MAX_TOKENS },
+      {
+        status_code: 200,
+        final_url: "https://example.com/",
+        response_headers: {},
+        body_snippet: "",
+      },
+    );
   }
 
   it("stops at the first finding the budget cannot cover and reports budgetExhausted", async () => {
@@ -1613,43 +1631,6 @@ describe("verification is held to the reservation's budget", () => {
     errors.mockRestore();
   });
 
-  it("admits a call at the prompt it really builds, so a page of control characters cannot outgrow its reservation", async () => {
-    // Every byte of this body is a control character, which the prompt's
-    // JSON encoding writes out as six characters. The reserved ceiling
-    // counted it as one, which let one call cost several reservations.
-    const { CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS } =
-      await import("@/lib/config/config-values");
-    const bytes = new Uint8Array(
-      CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS,
-    ).fill(1);
-    mockSafeFetch.mockResolvedValue({
-      status: 200,
-      url: "https://example.com/",
-      headers: new Headers(),
-      body: new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(bytes);
-          controller.close();
-        },
-      }),
-    });
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
-      confirmedResponseWithUsage("x", 100, 50),
-    );
-    const findings = [makeFinding("f1")];
-    const held = reservation({ budget: await ceilingOf(findings[0]) });
-
-    const { outcome } = await verifyFindingsBatchWithOutcome(
-      "https://example.com",
-      findings,
-      42,
-      held,
-    );
-
-    expect(global.fetch).not.toHaveBeenCalled();
-    expect(outcome).toMatchObject({ verdicts: 0, budgetExhausted: true });
-  });
-
   it("an uncapped reservation (own key, billing off) is not held to anything", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponseWithUsage("x", 100, 50),
@@ -1669,25 +1650,25 @@ describe("verification is held to the reservation's budget", () => {
   it("estimateVerifyTokens reserves every finding at its ceiling and needs at least the first one", async () => {
     const { estimateVerifyTokens } = await import("@/lib/ai/verify-findings");
     const findings = [makeFinding("f1"), makeFinding("f2")];
-    const one = await ceilingOf(findings[0]);
+    const one = await reservedCeilingOf(findings[0]);
 
     const { estimate, minimum } = await estimateVerifyTokens(findings);
 
     expect(minimum).toBe(one);
-    expect(estimate).toBe(one + (await ceilingOf(findings[1])));
+    expect(estimate).toBe(one + (await reservedCeilingOf(findings[1])));
     expect(await estimateVerifyTokens([])).toEqual({ estimate: 0, minimum: 0 });
   });
 
-  it("a ceiling covers the whole output allowance plus a full-size probe", async () => {
+  it("a ceiling covers the whole output allowance plus a full-size probe at one token per byte", async () => {
     const {
       CONFIG_AI_VERIFY_MAX_TOKENS,
       CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS,
     } = await import("@/lib/config/config-values");
-    const one = await ceilingOf(makeFinding("f1"));
+    const one = await reservedCeilingOf(makeFinding("f1"));
     expect(one).toBeGreaterThan(
-      CONFIG_AI_VERIFY_MAX_TOKENS +
-        CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS / 4,
+      CONFIG_AI_VERIFY_MAX_TOKENS + CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS,
     );
+    expect(one).toBeGreaterThan(await ceilingOf(makeFinding("f1")));
   });
 
   it("a null element in a caller-supplied batch costs the bare template instead of throwing", async () => {

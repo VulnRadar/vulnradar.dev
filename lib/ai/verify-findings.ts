@@ -8,8 +8,10 @@ import { VERIFY_SYSTEM_PROMPT } from "./verify-context";
 import { resolveAiBaseUrl, resolveAiDefaultModel } from "@/lib/ai/provider";
 import { postChatCompletion, type AiEndpoint } from "@/lib/ai/transport";
 import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
+import { CALL_FRAMING_TOKENS, maxInputTokens } from "@/lib/ai/token-ceiling";
 import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME } from "@/lib/config/constants";
+import { logValue } from "@/lib/logging/log-value";
 import {
   settleAiTokens,
   type AiTokenReservation,
@@ -160,6 +162,30 @@ export async function resolveUserEndpoint(
   }
 }
 
+/**
+ * The longest prefix of `text` that is at most `maxBytes` UTF-8 bytes once
+ * JSON-encoded, which is the form the prompt carries it in.
+ *
+ * The byte cap on the read bounds the body as it arrived, not as it is sent.
+ * A control character is one byte on the wire and six once escaped, and a
+ * byte that does not decode comes back as a three-byte replacement character,
+ * so a page made of either sent several times the snippet the reservation
+ * counted. Cutting the encoded form keeps a hostile page inside the
+ * reservation instead of refusing its verification outright.
+ */
+function fitEscapedBytes(text: string, maxBytes: number): string {
+  const escapedBytes = (s: string) => maxInputTokens(JSON.stringify(s)) - 2;
+  if (escapedBytes(text) <= maxBytes) return text;
+  let used = 0;
+  let end = 0;
+  for (const ch of text) {
+    used += escapedBytes(ch);
+    if (used > maxBytes) break;
+    end += ch.length;
+  }
+  return text.slice(0, end);
+}
+
 async function probeTarget(
   targetUrl: string,
   probeTimeoutMs: number,
@@ -228,10 +254,9 @@ async function probeTarget(
       // character of it was dropped. The cap is in bytes, so the snippet is
       // never longer than the slice this replaced kept, and on a page written
       // in a multi-byte script it is shorter.
-      bodySnippet = await safeReadBody(
-        res,
+      bodySnippet = fitEscapedBytes(
+        await safeReadBody(res, probeBodySnippetChars, probeTimeoutMs),
         probeBodySnippetChars,
-        probeTimeoutMs,
       );
     } catch {
       /* ignore body read failures */
@@ -369,19 +394,13 @@ Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-9
 }
 
 /**
- * Characters per token used for the worst-case ceiling below. Lower than the
- * 4 the repo review's estimate uses because most of a verify prompt is the
- * scanned page's HTML and its response headers, which tokenise denser than
- * prose, and an under-estimate here is what lets a run spend past its
- * reservation.
+ * Room for the probe's response headers in the reserved ceiling. Node's HTTP
+ * parser refuses a header block over 16 KB by default. The prompt carries the
+ * block as indented JSON, a few bytes longer per header, so a target near
+ * the limit can still outgrow this: admission measures the prompt it really
+ * built and refuses that call rather than letting it overrun.
  */
-const VERIFY_CHARS_PER_TOKEN_CEILING = 3;
-
-/**
- * Room for the probe's response headers in the ceiling. Node's HTTP parser
- * refuses a header block over 16 KB by default, so a probe cannot carry more.
- */
-const PROBE_HEADER_ALLOWANCE_CHARS = 16 * 1024;
+const PROBE_HEADER_ALLOWANCE_BYTES = 16 * 1024;
 
 const EMPTY_PROBE: ProbeData = {
   status_code: 0,
@@ -391,47 +410,47 @@ const EMPTY_PROBE: ProbeData = {
 };
 
 /**
- * The most one finding's verification call can cost: the system prompt, the
- * finding's own prompt, a full-size probe snippet and header block, and the
- * whole output allowance. Computed without the probe so the route can reserve
- * before the probe runs and the run admits findings against the same number.
+ * The most one finding's verification call can cost, before the probe has
+ * run: the system prompt, the finding's own prompt, a full-size probe snippet
+ * and header block, and the whole output allowance, each counted at one token
+ * per byte (see lib/ai/token-ceiling.ts). The route reserves this.
+ *
+ * It counted three characters per token, and the target chooses most of the
+ * prompt. A page of emoji, CJK text or symbol-heavy code tokenises far
+ * denser than that, so one call could cost several times what was reserved
+ * for it and the overrun was charged afterwards with a floor at zero.
  */
 export function verifyCallCeiling(
   finding: Vulnerability,
   settings: Pick<VerifySettings, "maxTokens" | "probeBodySnippetChars">,
 ): number {
-  // verify-batch takes its findings from the request body, so an element can
-  // be anything; a null one costs the bare template rather than throwing.
-  const promptChars =
-    VERIFY_SYSTEM_PROMPT.length +
-    buildVerifyPrompt(finding ?? ({} as Vulnerability), EMPTY_PROBE).length +
-    settings.probeBodySnippetChars +
-    PROBE_HEADER_ALLOWANCE_CHARS;
   return (
-    Math.ceil(promptChars / VERIFY_CHARS_PER_TOKEN_CEILING) + settings.maxTokens
+    admittedCallCeiling(finding, settings, EMPTY_PROBE) +
+    settings.probeBodySnippetChars +
+    PROBE_HEADER_ALLOWANCE_BYTES
   );
 }
 
 /**
- * What a call is admitted at once the probe has run: the larger of the
- * reserved ceiling above and the ceiling of the prompt actually built. The
- * reserved ceiling counts the probe's body and headers at their raw size, but
- * the prompt carries them JSON-encoded and the target chooses them: a body of
- * control characters is six characters a byte once escaped, so admitting on
- * the raw size let a hostile page make every call cost several times what was
- * reserved for it.
+ * What a call is admitted at once the probe has run: the same count over the
+ * prompt actually built. It is exact where the reserved ceiling had to
+ * assume, so a page with a small body or few headers leaves room for more
+ * findings, and a target whose headers outgrow the allowance is refused
+ * before the call instead of charged after it.
  */
-function admittedCallCeiling(
+export function admittedCallCeiling(
   finding: Vulnerability,
-  settings: VerifySettings,
+  settings: Pick<VerifySettings, "maxTokens">,
   probe: ProbeData,
 ): number {
-  const builtChars =
-    VERIFY_SYSTEM_PROMPT.length +
-    buildVerifyPrompt(finding ?? ({} as Vulnerability), probe).length;
-  return Math.max(
-    verifyCallCeiling(finding, settings),
-    Math.ceil(builtChars / VERIFY_CHARS_PER_TOKEN_CEILING) + settings.maxTokens,
+  // verify-batch takes its findings from the request body, so an element can
+  // be anything; a null one costs the bare template rather than throwing.
+  const prompt = buildVerifyPrompt(finding ?? ({} as Vulnerability), probe);
+  return (
+    CALL_FRAMING_TOKENS +
+    maxInputTokens(VERIFY_SYSTEM_PROMPT) +
+    maxInputTokens(prompt) +
+    settings.maxTokens
   );
 }
 
@@ -527,8 +546,11 @@ async function callVerify(
       if (FATAL_STATUSES.has(res.status)) {
         return { result: null, tokensUsed: 0, fatalStatus: res.status };
       }
+      // The finding id and URL come from the request body on verify-batch,
+      // the detail from the provider and the base URL from a user's own
+      // settings, and every console.error lands in Admin > Error Logs.
       console.error(
-        `[AI-VERIFY] HTTP ${res.status} from ${endpoint.baseUrl} for "${finding.id}": ${res.detail.slice(0, 300)}`,
+        `[AI-VERIFY] HTTP ${res.status} from ${logValue(endpoint.baseUrl)} for "${logValue(finding.id)}": ${logValue(res.detail, 300)}`,
       );
       return { result: null, tokensUsed: 0 };
     }
@@ -543,7 +565,7 @@ async function callVerify(
     // log (lib/database/error-log-capture.ts) records the raw arguments, so the
     // placeholder showed up there literally as `callVerify failed for "%s"`.
     console.error(
-      `[AI-VERIFY] callVerify failed for "${finding.id}": ${err instanceof Error ? err.message : String(err)}`,
+      `[AI-VERIFY] callVerify failed for "${logValue(finding.id)}": ${logValue(err instanceof Error ? err.message : err, 300)}`,
     );
     return { result: null, tokensUsed: 0, costUnknown: true };
   } finally {
@@ -665,15 +687,20 @@ async function verifyInChunks(
     // the same way. It used to carry on regardless: a scan with forty
     // findings sent forty requests into the same limit, logged forty identical
     // errors, and made the limit last longer by adding to it.
+    //
+    // On verify-batch the URL and the findings array are the request body,
+    // so both go through logValue; the route only checks that findings is an
+    // array, and the count is escaped with the rest rather than trusted to be
+    // the number that check implies.
     if (rateLimited) {
       console.error(
-        `[AI-VERIFY] ${endpoint.baseUrl} rate-limited the pass for ${url}; stopped after ${verdictMap.size} of ${findings.length} verdicts.`,
+        `[AI-VERIFY] ${logValue(endpoint.baseUrl)} rate-limited the pass for ${logValue(url)}; stopped after ${verdictMap.size} of ${logValue(findings.length)} verdicts.`,
       );
       break;
     }
     if (fatalStatus) {
       console.error(
-        `[AI-VERIFY] ${endpoint.baseUrl} returned ${fatalStatus} for model ${endpoint.model} verifying ${url}; stopped after ${verdictMap.size} of ${findings.length} verdicts. Check the AI key and model.`,
+        `[AI-VERIFY] ${logValue(endpoint.baseUrl)} returned ${fatalStatus} for model ${logValue(endpoint.model)} verifying ${logValue(url)}; stopped after ${verdictMap.size} of ${logValue(findings.length)} verdicts. Check the AI key and model.`,
       );
       break;
     }
@@ -1013,7 +1040,7 @@ export async function runAiVerification(
     // endpoint failure.
     if (verdictMap.size === 0 && !budgetExhausted) {
       console.error(
-        `[AI-VERIFY] All ${findings.length} findings returned null or timed out for ${url} — check the configured AI endpoint/model`,
+        `[AI-VERIFY] All ${findings.length} findings returned null or timed out for ${logValue(url)} — check the configured AI endpoint/model`,
       );
     }
 
