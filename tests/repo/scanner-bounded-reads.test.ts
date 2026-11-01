@@ -5,9 +5,9 @@ import ts from "typescript";
 
 /**
  * A scanned site's response body is read through safeReadBody, never with
- * `.text()` or `.json()`.
+ * `.text()`, `.json()` or another Body method that reads the whole stream.
  *
- * Both buffer the entire body before the caller gets to slice it, so
+ * They buffer the entire body before the caller gets to slice it, so
  * `(await res.text()).slice(0, 4096)` reads a 4 GB robots.txt (or a gzip bomb
  * that inflates to one) into the heap first. The site decides how big that
  * is, any visitor can point the anonymous demo scan at it, and the process
@@ -149,41 +149,95 @@ function enclosingFunction(node: ts.Node): string {
   return "<module>";
 }
 
+// Every Body method that buffers the whole stream, not only the two in use
+// today: `Buffer.from(await res.arrayBuffer())` is the same read as text().
+const WHOLE_BODY_READS = new Set([
+  "text",
+  "json",
+  "arrayBuffer",
+  "blob",
+  "formData",
+  "bytes",
+]);
+
+/** The method a zero-argument call names, as `res.text()` or `res["text"]()`. */
+function calledMethod(node: ts.CallExpression): string | null {
+  if (node.arguments.length !== 0) return null;
+  const callee = node.expression;
+  if (ts.isPropertyAccessExpression(callee)) return callee.name.text;
+  if (
+    ts.isElementAccessExpression(callee) &&
+    ts.isStringLiteralLike(callee.argumentExpression)
+  ) {
+    return callee.argumentExpression.text;
+  }
+  return null;
+}
+
+/** `file#function -> number of unbounded body reads` in one source file. */
+function readsIn(file: string, text: string): Map<string, number> {
+  const found = new Map<string, number>();
+  const source = ts.createSourceFile(
+    file,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node)) {
+      const method = calledMethod(node);
+      if (method && WHOLE_BODY_READS.has(method)) {
+        const key = `${file}#${enclosingFunction(node)}`;
+        found.set(key, (found.get(key) ?? 0) + 1);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
 /** `key -> number of unbounded body reads` across lib/scanner. */
 function unboundedReads(): Map<string, number> {
   const found = new Map<string, number>();
   for (const file of sourceFiles(SCANNER)) {
     if (file === READER) continue;
     const text = readFileSync(path.join(ROOT, file), "utf8");
-    const source = ts.createSourceFile(
-      file,
-      text,
-      ts.ScriptTarget.Latest,
-      true,
-      file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-    );
-    const visit = (node: ts.Node) => {
-      if (
-        ts.isCallExpression(node) &&
-        node.arguments.length === 0 &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        (node.expression.name.text === "text" ||
-          node.expression.name.text === "json")
-      ) {
-        const key = `${file}#${enclosingFunction(node)}`;
-        found.set(key, (found.get(key) ?? 0) + 1);
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
+    for (const [key, count] of readsIn(file, text)) found.set(key, count);
   }
   return found;
 }
 
+describe("the unbounded-read detector", () => {
+  it("sees every spelling of a whole-body read, keyed by the named function", () => {
+    const found = readsIn(
+      "lib/scanner/example.ts",
+      [
+        "export async function viaDot(res: Response) { return res.text(); }",
+        'export async function viaBracket(res: Response) { return res["json"](); }',
+        "export async function viaBuffer(res: Response) {",
+        "  return Buffer.from(await res.arrayBuffer());",
+        "}",
+        "export const viaThen = (p: Promise<Response>) => p.then((r) => r.blob());",
+        "export async function bounded(res: Response, max: number) {",
+        "  return safeReadBody(res, max, 5000);",
+        "}",
+      ].join("\n"),
+    );
+    expect(Object.fromEntries(found)).toEqual({
+      "lib/scanner/example.ts#viaDot": 1,
+      "lib/scanner/example.ts#viaBracket": 1,
+      "lib/scanner/example.ts#viaBuffer": 1,
+      "lib/scanner/example.ts#viaThen": 1,
+    });
+  });
+});
+
 describe("bounded reads of response bodies in lib/scanner", () => {
   const found = unboundedReads();
 
-  it("reads no body with .text() or .json() outside the listed exceptions", () => {
+  it("reads no whole body (.text(), .json() and the like) outside the listed exceptions", () => {
     const unlisted = [...found]
       .filter(([key, count]) => count > (ALLOWED[key]?.count ?? 0))
       .map(

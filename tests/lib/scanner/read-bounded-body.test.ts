@@ -65,9 +65,9 @@ describe("readBoundedBody", () => {
     expect(state.cancelled).toBe(true);
   });
 
-  it("keeps a multi-byte character that was split across the last two chunks", async () => {
-    // "é" is two bytes in UTF-8; the decoder holds the first until it is
-    // flushed at the end of the stream.
+  it("keeps a multi-byte character that was split across two chunks", async () => {
+    // "é" is two bytes in UTF-8; the streaming decoder holds the first until
+    // the second arrives.
     const e = bytes("é");
     const { response } = streamOf([
       new Uint8Array([...bytes("caf"), e[0]]),
@@ -75,6 +75,21 @@ describe("readBoundedBody", () => {
     ]);
     expect(await readBoundedBody(response, 1024)).toEqual({
       text: "café",
+      truncated: false,
+    });
+  });
+
+  it("ends a body cut partway through a character with U+FFFD, as res.text() does", async () => {
+    // Only the first byte of "é" ever arrives. Without the final flush the
+    // decoder kept it and the body silently lost its last character.
+    const e = bytes("é");
+    const { response } = streamOf([new Uint8Array([...bytes("caf"), e[0]])]);
+    const expected = await new Response(
+      new Uint8Array([...bytes("caf"), e[0]]),
+    ).text();
+    expect(expected).toBe("caf\uFFFD");
+    expect(await readBoundedBody(response, 1024)).toEqual({
+      text: expected,
       truncated: false,
     });
   });

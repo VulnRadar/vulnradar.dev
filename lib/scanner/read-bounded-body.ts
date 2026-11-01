@@ -74,8 +74,9 @@ export async function readBoundedBody(
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
-        // A multi-byte character split across the last two chunks is held
-        // by the streaming decoder until it is flushed.
+        // A body that ends partway through a multi-byte character leaves
+        // those bytes held in the streaming decoder. Flushing turns them into
+        // U+FFFD, as res.text() does, instead of dropping them silently.
         chunks.push(decoder.decode());
         truncated = timedOut;
         break;
