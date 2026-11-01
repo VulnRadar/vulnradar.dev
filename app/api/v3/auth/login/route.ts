@@ -83,7 +83,7 @@ export const POST = withErrorHandling(async (request: Request) => {
   // Validate input
   const error = Validate.multiple([
     Validate.required(email, "Email"),
-    Validate.email(email),
+    Validate.emailForLookup(email),
     Validate.required(password, "Password"),
   ]);
   if (error) return ApiResponse.badRequest(error);

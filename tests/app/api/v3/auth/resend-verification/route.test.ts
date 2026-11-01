@@ -168,6 +168,17 @@ describe("POST /api/v3/auth/resend-verification", () => {
     expect(tokenInsertCalls).toHaveLength(1);
   });
 
+  // An existing account's address, not a new one: it is held to the lookup
+  // rule, never the stricter rule for new input (see Validate.email).
+  it("serves an account whose stored address predates the new-address rule", async () => {
+    userRow = { id: 8, name: "Pending User", email_verified_at: null };
+
+    const res = await POST(resendRequest({ email: "admin@localhost" }));
+
+    expect(res.status).toBe(200);
+    expect(tokenInsertCalls).toHaveLength(1);
+  });
+
   it("regression: the raw token emailed to the user hashes (sha256) to exactly the token_hash stored in the DB", async () => {
     userRow = { id: 8, name: "Pending User", email_verified_at: null };
 

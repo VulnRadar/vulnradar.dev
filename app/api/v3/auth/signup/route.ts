@@ -49,7 +49,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     turnstileToken?: string;
   }>(request);
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
-  const { email, password, name, turnstileToken } = parsed.data;
+  const { password, name, turnstileToken } = parsed.data;
+  // The address is normalised once, into the form users.email is stored and
+  // compared in (createUser writes it this way, and the unique index is on
+  // LOWER(email)), and this one value is what the lookup, the account row,
+  // the verification mail and the token's bound address all use. The mail
+  // used to go to the raw body string while the token was bound to the
+  // normalised one.
+  const email =
+    typeof parsed.data.email === "string"
+      ? parsed.data.email.trim().toLowerCase()
+      : parsed.data.email;
 
   const ip = await getClientIp();
 
@@ -145,9 +155,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Named (not inline numbers) so an operator responding to a signup flood can
   // tighten the one bucket that actually stops it from the admin panel
   // (AUDIT-014#magic-08).
-  const normalizedEmailForRateLimit = email.trim().toLowerCase();
   const emailRl = await checkRateLimit({
-    key: `signup-email:${normalizedEmailForRateLimit}`,
+    key: `signup-email:${email}`,
     ...RATE_LIMITS.signupEmail,
   });
   if (!emailRl.allowed) {
@@ -228,10 +237,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Try to fetch Gravatar or other avatar services (non-blocking)
   setImmediate(async () => {
     try {
-      const emailHash = crypto
-        .createHash("md5")
-        .update(email.toLowerCase().trim())
-        .digest("hex");
+      const emailHash = crypto.createHash("md5").update(email).digest("hex");
       // Check if Gravatar exists (returns 404 if not)
       const gravatarUrl = `https://www.gravatar.com/avatar/${emailHash}?d=404&s=200`;
       const gravatarRes = await fetch(gravatarUrl, { method: "HEAD" });
@@ -265,7 +271,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // lib/auth/email-verification.ts for why verify-email needs it).
   await pool.query(
     "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at, email) VALUES ($1, $2, $3, $4)",
-    [user.id, tokenHash, expiresAt, email.trim().toLowerCase()],
+    [user.id, tokenHash, expiresAt, email],
   );
 
   // Create the preferences row and let the schema fill it in. Its column

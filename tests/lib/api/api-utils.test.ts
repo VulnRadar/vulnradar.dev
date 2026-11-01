@@ -191,15 +191,70 @@ describe("Validate", () => {
     });
   });
 
+  // For an address someone is giving us for the first time (signup, a staff
+  // invite, a profile change). It used to accept any string with an @ in it,
+  // so "a@b@c", "@", "a b@c.d" and a 300-character string all became
+  // accounts that no mail could ever reach.
   describe("email", () => {
     it("rejects a non-string or a string without @", () => {
       expect(Validate.email("not-an-email")).toMatch(/valid email/i);
       expect(Validate.email(123 as unknown as string)).toMatch(/valid email/i);
     });
 
-    it("accepts any string containing @", () => {
-      expect(Validate.email("a@b.com")).toBeNull();
+    it.each([
+      "a@b.com",
+      "first.last+tag@sub.example.co.uk",
+      "o'brien@example.ie",
+      "x@y.z",
+    ])("accepts a plausible address: %s", (address) => {
+      expect(Validate.email(address)).toBeNull();
     });
+
+    it.each([
+      ["two @ signs", "a@b@example.com"],
+      ["an empty local part", "@example.com"],
+      ["an empty domain", "user@"],
+      ["only an @", "@"],
+      ["no dot in the domain", "user@localhost"],
+      ["a space", "first last@example.com"],
+      ["a leading space", " user@example.com"],
+      ["a tab", "user@exa\tmple.com"],
+      ["a trailing newline", "user@example.com\n"],
+      ["a NUL", "user\u0000@example.com"],
+      ["a DEL", "user\u007f@example.com"],
+      ["a non-breaking space", "user\u00a0@example.com"],
+    ])("rejects %s", (_label, address) => {
+      expect(Validate.email(address)).toMatch(/valid email/i);
+    });
+
+    it("accepts 254 characters and refuses 255", () => {
+      const domain = "@example.com";
+      const at254 = "a".repeat(254 - domain.length) + domain;
+      expect(at254).toHaveLength(254);
+      expect(Validate.email(at254)).toBeNull();
+      expect(Validate.email("a" + at254)).toMatch(/valid email/i);
+    });
+  });
+
+  // For an address that identifies an account that already exists (sign-in,
+  // forgot-password, resend-verification). Those addresses were stored under
+  // the old one-@ rule, and a self-hosted first account is often
+  // admin@localhost, so holding them to the new-address rule would lock their
+  // owners out.
+  describe("emailForLookup", () => {
+    it("rejects a non-string or a string without @", () => {
+      expect(Validate.emailForLookup("not-an-email")).toMatch(/valid email/i);
+      expect(Validate.emailForLookup(null as unknown as string)).toMatch(
+        /valid email/i,
+      );
+    });
+
+    it.each(["admin@localhost", "a@b@example.com", "user@example.com"])(
+      "accepts an address an existing account may hold: %s",
+      (address) => {
+        expect(Validate.emailForLookup(address)).toBeNull();
+      },
+    );
   });
 
   describe("password", () => {

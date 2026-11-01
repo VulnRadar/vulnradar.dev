@@ -67,7 +67,10 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     nameUpdateCalls.push(params);
     return { rows: [] };
   }
-  if (s.startsWith("SELECT id FROM users WHERE email = $1 AND id != $2")) {
+  if (
+    s.startsWith("SELECT id FROM users WHERE") &&
+    s.endsWith("AND id != $2")
+  ) {
     return { rows: existingEmailOwnerRow ? [existingEmailOwnerRow] : [] };
   }
   if (s.startsWith("UPDATE users SET email = $1, email_verified_at = NULL")) {
@@ -354,6 +357,43 @@ describe("PATCH /api/v3/auth/update", () => {
         }),
       );
       expect(res.status).toBe(409);
+      expect(emailUpdateCalls).toHaveLength(0);
+    });
+
+    // users has a unique index on LOWER(email), so "Taken@Example.com" and
+    // "taken@example.com" are the same account. A case-sensitive pre-check
+    // let a stored mixed-case address through to the UPDATE, which then
+    // failed on the index as a 500 instead of answering 409.
+    it("checks whether the address is taken case-insensitively, like the unique index", async () => {
+      logIn();
+      const res = await PATCH(
+        updateRequest({
+          email: " Taken@Example.com ",
+          currentPassword: CURRENT_PASSWORD,
+        }),
+      );
+      expect(res.status).toBe(200);
+      const check = queries.find(
+        (q) =>
+          q.sql.startsWith("SELECT id FROM users WHERE") &&
+          q.sql.endsWith("AND id != $2"),
+      );
+      expect(check?.sql).toBe(
+        "SELECT id FROM users WHERE LOWER(email) = $1 AND id != $2",
+      );
+      expect(check?.params).toEqual(["taken@example.com", 7]);
+    });
+
+    it.each([
+      "two@signs@example.com",
+      "user@localhost",
+      "first last@example.com",
+    ])("refuses an implausible new address: %s", async (address) => {
+      logIn();
+      const res = await PATCH(
+        updateRequest({ email: address, currentPassword: CURRENT_PASSWORD }),
+      );
+      expect(res.status).toBe(400);
       expect(emailUpdateCalls).toHaveLength(0);
     });
 

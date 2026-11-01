@@ -21,6 +21,7 @@ import {
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { Validate } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import {
   AUTH_SESSION_COOKIE_NAME,
@@ -210,7 +211,7 @@ export async function PATCH(request: NextRequest) {
     }
     if (wantsEmailChange) {
       const trimmedEmail = email.toLowerCase().trim();
-      if (!trimmedEmail.includes("@")) {
+      if (Validate.email(trimmedEmail)) {
         return NextResponse.json(
           { error: "Please enter a valid email." },
           { status: 400 },
@@ -218,9 +219,12 @@ export async function PATCH(request: NextRequest) {
       }
 
       if (trimmedEmail !== currentEmail) {
-        // Check if email is already taken by another user
+        // Taken by another account, compared the way the unique index on
+        // LOWER(email) compares. A case-sensitive check let a stored
+        // mixed-case address through to the UPDATE, which then hit the index
+        // and failed as a 500 instead of this 409.
         const existing = await pool.query(
-          "SELECT id FROM users WHERE email = $1 AND id != $2",
+          "SELECT id FROM users WHERE LOWER(email) = $1 AND id != $2",
           [trimmedEmail, session.userId],
         );
         if (existing.rows.length > 0) {

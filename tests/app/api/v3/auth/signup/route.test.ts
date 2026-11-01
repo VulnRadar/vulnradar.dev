@@ -401,6 +401,51 @@ describe("POST /api/v3/auth/signup", () => {
     expect(insert?.params[3]).toBe("alex.morgan@example.com");
   });
 
+  // The address is normalised once and that one value is used everywhere.
+  // The link used to be mailed to the raw body string while the token was
+  // bound to its trimmed, lowercased form, so the account, the inbox and the
+  // binding could each name a different string for the same person.
+  it("uses one normalised address for the lookup, the account, the token and the mail", async () => {
+    const res = await POST(
+      postSignup({
+        name: "Alex Morgan",
+        email: "  Alex.Morgan@Example.COM ",
+        password: STRONG_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const lookup = queries.find(
+      (q) =>
+        q.sql.includes("WHERE email = $1") && q.sql.includes("password_hash"),
+    );
+    expect(lookup?.params[0]).toBe("alex.morgan@example.com");
+    expect(insertedUserCalls[0][0]).toBe("alex.morgan@example.com");
+    expect(verificationTokenInserts[0][3]).toBe("alex.morgan@example.com");
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect((mockSendEmail.mock.calls[0][0] as { to: string }).to).toBe(
+      "alex.morgan@example.com",
+    );
+  });
+
+  it.each([
+    "alex@morgan@example.com",
+    "alex morgan@example.com",
+    "alex@localhost",
+  ])("refuses an address no mail could reach: %s", async (address) => {
+    const res = await POST(
+      postSignup({
+        name: "Alex Morgan",
+        email: address,
+        password: STRONG_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(insertedUserCalls).toHaveLength(0);
+    expect(verificationTokenInserts).toHaveLength(0);
+  });
+
   describe("language", () => {
     const BODY = {
       name: "Alex Morgan",

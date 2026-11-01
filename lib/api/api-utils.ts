@@ -117,7 +117,46 @@ export const Validate = {
     return null;
   },
 
+  /**
+   * An address someone is giving us for the first time: signup, a staff
+   * invite, a profile change. It has to be one mail could reach, so exactly
+   * one @, a local part, a domain with a dot in it, nothing that is
+   * whitespace or a control character, and at most 254 characters (the
+   * longest path SMTP carries). Not a full RFC 5322 parser on purpose: the
+   * verification link is what proves the address, this only refuses strings
+   * that could never be one. Callers normalise (trim, lowercase) first.
+   */
   email: (email: string) => {
+    if (
+      typeof email !== "string" ||
+      email.length > 254 ||
+      // oxlint-disable-next-line no-control-regex -- refusing control characters is the point
+      /[\s\u0000-\u001f\u007f]/.test(email)
+    ) {
+      return "Please enter a valid email address";
+    }
+    const parts = email.split("@");
+    if (
+      parts.length !== 2 ||
+      !parts[0] ||
+      !parts[1] ||
+      !parts[1].includes(".") ||
+      parts[1].startsWith(".") ||
+      parts[1].endsWith(".")
+    ) {
+      return "Please enter a valid email address";
+    }
+    return null;
+  },
+
+  /**
+   * An address that names an account which already exists: sign-in,
+   * forgot-password, resend-verification. Those were stored under the old
+   * rule (any string with an @), and a self-hosted first account is often
+   * admin@localhost, so holding them to `email` above would lock their
+   * owners out. The lookup itself is what decides whether the account exists.
+   */
+  emailForLookup: (email: string) => {
     if (typeof email !== "string" || !email.includes("@")) {
       return "Please enter a valid email address";
     }

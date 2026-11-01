@@ -243,6 +243,22 @@ describe("POST /api/v3/auth/login", () => {
     expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBeTruthy();
   });
 
+  // Validate.email is the rule for a NEW address. Sign-in looks up one that
+  // already exists, stored under the old one-@ rule, and a self-hosted first
+  // account is often admin@localhost: refusing it here would lock its owner
+  // out of an account nothing is wrong with.
+  it("signs in an account whose stored address predates the new-address rule", async () => {
+    userRow = baseUser({ email: "admin@localhost" });
+    userInfoRow = baseUserInfo({ totp_enabled: false });
+
+    const res = await POST(
+      postLogin({ email: "admin@localhost", password: REAL_PASSWORD }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(sessionInsertCalls).toHaveLength(1);
+  });
+
   it("forgives the account's failed-login counter once the password is proved", async () => {
     userRow = baseUser();
     userInfoRow = baseUserInfo({ totp_enabled: false });

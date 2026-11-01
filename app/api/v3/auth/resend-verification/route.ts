@@ -28,7 +28,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
   const { email } = parsed.data;
 
-  const emailError = Validate.email(email);
+  const emailError = Validate.emailForLookup(email);
   if (emailError) return ApiResponse.badRequest(emailError);
 
   const normalizedEmail = email.toLowerCase().trim();
