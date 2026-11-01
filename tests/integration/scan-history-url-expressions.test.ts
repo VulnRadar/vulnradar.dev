@@ -1,6 +1,7 @@
 import { it, expect, afterAll } from "vitest";
 import pool from "@/lib/database/db";
 import {
+  hostOfUrlSql,
   PUBLIC_HOST_SQL,
   URL_ORIGIN_PATH_SQL,
 } from "@/lib/database/sql-fragments";
@@ -38,6 +39,27 @@ async function seedScan(
 function label(prefix: string): string {
   return unique(prefix).replace(/[^a-z0-9]/g, "");
 }
+
+function parseOrNull(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+/** The hostname a lookup would ask for, if this string can be one at all. */
+function asLookupHost(host: string): string | null {
+  return parseOrNull(`https://${host}/`)?.hostname ?? null;
+}
+
+/** The origin and path a lookup would ask for, if this string can be one. */
+function asLookupOriginPath(value: string): string | null {
+  const url = parseOrNull(value);
+  return url ? url.origin + url.pathname : null;
+}
+
+const BACKSLASH = "\\";
 
 describeIntegration("scan_history URL expressions", () => {
   afterAll(async () => {
@@ -110,6 +132,88 @@ describeIntegration("scan_history URL expressions", () => {
     const found = rows.map((r) => r.id).sort((a, b) => a - b);
     expect(found).toEqual([...expected].sort((a, b) => a - b));
     for (const id of notExpected) expect(found).not.toContain(id);
+  });
+
+  it("names the site the URL parser fetched, or one no lookup asks for", async () => {
+    // Postgres, not JavaScript, runs the patterns here. The stored strings are
+    // the shapes where a looser expression and the parser have disagreed; a
+    // disagreement is only acceptable as a miss. A backslash in the authority
+    // must read as no host at all: that is the row that let a scan of evil.com
+    // be listed and counted under victim.com.
+    const corpus = [
+      `https://evil.com${BACKSLASH}@victim.com/`,
+      `https://victim.com${BACKSLASH}@evil.com/`,
+      `https://evil.com${BACKSLASH}.victim.com/`,
+      `https://victim.com:80${BACKSLASH}@evil.com/`,
+      `ssh://victim.com${BACKSLASH}@evil.com/`,
+      "https://evil.com%5C@victim.com/",
+      "https://evil.com\t@victim.com/",
+      "https://vic\ttim.com/",
+      "https://evil.com\n.victim.com/",
+      "https://a:b@c@victim.com/",
+      "https://x.victim.com:pw@evil.com/",
+      "https://victim.com/a@evil.com?x=1#y",
+      "https://victim.com#a@evil.com",
+      "https://[::1]:8080/",
+      "https://victim.com./",
+      "https://WWW.Victim.com:8443/x",
+      "https://%76ictim.com/",
+      "https://victim.com/page?utm=1#top",
+    ];
+
+    const { rows } = await pool.query<{
+      url: string;
+      host: string | null;
+      public_host: string | null;
+      origin_path: string | null;
+    }>(
+      `SELECT url,
+              ${hostOfUrlSql("url")} AS host,
+              ${PUBLIC_HOST_SQL} AS public_host,
+              ${URL_ORIGIN_PATH_SQL} AS origin_path
+         FROM unnest($1::text[]) AS t(url)`,
+      [corpus],
+    );
+    expect(rows).toHaveLength(corpus.length);
+
+    for (const row of rows) {
+      const parsed = parseOrNull(row.url);
+      const parsedHost = parsed?.hostname ?? null;
+      if (row.host !== null && row.host !== parsedHost) {
+        expect(asLookupHost(row.host), row.url).not.toBe(row.host);
+      }
+      const parsedPublic = parsedHost?.replace(/^www[.]/, "") ?? null;
+      if (row.public_host !== null && row.public_host !== parsedPublic) {
+        expect(asLookupHost(row.public_host), row.url).not.toBe(
+          row.public_host,
+        );
+      }
+      // URL_ORIGIN_PATH_SQL normalises nothing, so it only has to agree when
+      // its answer is something a lookup would send.
+      if (
+        row.origin_path !== null &&
+        asLookupOriginPath(row.origin_path) === row.origin_path
+      ) {
+        expect(row.origin_path, row.url).toBe(
+          parsed ? parsed.origin + parsed.pathname : null,
+        );
+      }
+    }
+
+    const byUrl = new Map(rows.map((r) => [r.url, r]));
+    expect(byUrl.get(`https://evil.com${BACKSLASH}@victim.com/`)?.host).toBe(
+      null,
+    );
+    expect(byUrl.get(`ssh://victim.com${BACKSLASH}@evil.com/`)?.host).toBe(
+      null,
+    );
+    expect(byUrl.get("https://a:b@c@victim.com/")?.host).toBe("victim.com");
+    expect(byUrl.get("https://WWW.Victim.com:8443/x")?.public_host).toBe(
+      "victim.com",
+    );
+    expect(byUrl.get("https://victim.com/page?utm=1#top")?.origin_path).toBe(
+      "https://victim.com/page",
+    );
   });
 
   it("builds the indexes the lookups rely on", async () => {

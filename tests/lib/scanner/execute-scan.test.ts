@@ -114,7 +114,8 @@ vi.mock("@/lib/scanner/cve-enrichment", () => ({
   enrichFindingsWithExploitIntel: vi.fn(async (findings: unknown) => findings),
 }));
 
-const { executeScan } = await import("@/lib/scanner/execute-scan");
+const { executeScan, normalizeUrl } =
+  await import("@/lib/scanner/execute-scan");
 const { requestCancel, clearCancel } = await import("@/lib/scanner/scan-jobs");
 
 /** Route every pool.query call by statement shape so tests stay short. */
@@ -164,6 +165,38 @@ beforeEach(() => {
   mockScanPorts.mockResolvedValue(null);
   mockBuildRiskyPortFindings.mockReset();
   mockBuildRiskyPortFindings.mockReturnValue([]);
+});
+
+describe("normalizeUrl", () => {
+  const BACKSLASH = "\\";
+
+  it("prepends https:// to a bare host and keeps a URL that has a scheme as typed", () => {
+    expect(normalizeUrl("  example.com/path  ")).toBe(
+      "https://example.com/path",
+    );
+    expect(normalizeUrl("http://Example.com/A?b=1")).toBe(
+      "http://Example.com/A?b=1",
+    );
+    expect(normalizeUrl("")).toBe("");
+  });
+
+  it.each([
+    [
+      `https://evil.com${BACKSLASH}@victim.com/`,
+      "https://evil.com/@victim.com/",
+    ],
+    [`evil.com${BACKSLASH}@victim.com`, "https://evil.com/@victim.com"],
+    ["https://vic\ttim.com/", "https://victim.com/"],
+    ["https://example.com/a\nb", "https://example.com/ab"],
+  ])("stores %s as the URL the scanner fetches, %s", (input, stored) => {
+    expect(normalizeUrl(input)).toBe(stored);
+    expect(new URL(normalizeUrl(input)).href).toBe(stored);
+  });
+
+  it("leaves a string the URL parser refuses for the caller's validation", () => {
+    const input = `https://exa\u0001mple.com${BACKSLASH}x`;
+    expect(normalizeUrl(input)).toBe(input);
+  });
 });
 
 describe("executeScan", () => {

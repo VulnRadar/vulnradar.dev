@@ -11,12 +11,13 @@ import { SCHEMA_STEPS, stepQueries } from "@/lib/database/schema/index.mjs";
  *
  * What these tests can and cannot prove: Postgres is not available to the unit
  * tier, so the patterns are lifted out of the generated SQL and run through
- * JavaScript's regex engine. For these patterns (anchors, bracket classes, one
- * optional non-capturing group) the two engines agree, which makes this a real
- * check on the pattern and not on SQL syntax. Whether the server returns the
- * same thing is asserted against real rows in
- * tests/integration/blocked-domain-scans.test.ts and
- * tests/integration/domain-owner-control.test.ts.
+ * JavaScript's regex engine. For these patterns (anchors, bracket classes with
+ * an escaped backslash, optional non-capturing groups, one lookahead) the two
+ * engines agree, which makes this a real check on the pattern and not on SQL
+ * syntax. Whether the server returns the same thing is asserted against real
+ * rows in tests/integration/blocked-domain-scans.test.ts,
+ * tests/integration/domain-owner-control.test.ts and
+ * tests/integration/scan-history-url-expressions.test.ts.
  */
 
 function patternOf(sql: string): RegExp {
@@ -29,6 +30,46 @@ function hostOf(url: string): string | null {
   const m = patternOf(hostOfUrlSql("x")).exec(url);
   return m ? m[1].toLowerCase() : null;
 }
+
+const BACKSLASH = "\\";
+
+/** The hostname the scanner's URL parser fetches, or null when it refuses the URL. */
+function parsedHost(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
+/** The hostname a lookup would ask for, if this string can be one at all. */
+function asLookupHost(host: string): string | null {
+  return parsedHost(`https://${host}/`);
+}
+
+/** URLs where a looser expression and the parser have disagreed about the host. */
+const PARSER_CORPUS = [
+  `https://evil.com${BACKSLASH}@victim.com/`,
+  `https://victim.com${BACKSLASH}@evil.com/`,
+  `https://evil.com${BACKSLASH}.victim.com/`,
+  `https://victim.com:80${BACKSLASH}@evil.com/`,
+  `ssh://victim.com${BACKSLASH}@evil.com/`,
+  "https://evil.com%5C@victim.com/",
+  "https://evil.com\t@victim.com/",
+  "https://vic\ttim.com/",
+  "https://evil.com\n.victim.com/",
+  "https://a:b@c@victim.com/",
+  "https://x.victim.com:pw@evil.com/",
+  "https://victim.com:pw@evil.com:8443/x",
+  "https://victim.com/a@evil.com",
+  "https://victim.com?next=a@evil.com",
+  "https://victim.com#a@evil.com",
+  "https://[::1]:8080/",
+  "https://victim.com./",
+  "HTTPS://Victim.COM/Path",
+  "https://%76ictim.com/",
+  "https://victim.com:443/",
+];
 
 describe("hostOfUrlSql", () => {
   it("wraps the column it is given, so a caller can pass an alias", () => {
@@ -87,10 +128,31 @@ describe("hostOfUrlSql", () => {
     expect(hostOf("")).toBeNull();
   });
 
-  it("needs no backslash, so no escape has to survive a template literal", () => {
-    expect(hostOfUrlSql("url")).not.toContain("\\");
-    expect(PUBLIC_HOST_SQL).not.toContain("\\");
-    expect(URL_ORIGIN_PATH_SQL).not.toContain("\\");
+  it.each([
+    [`https://evil.com${BACKSLASH}@victim.com/`],
+    [`https://victim.com${BACKSLASH}@evil.com/`],
+    [`https://evil.com${BACKSLASH}.victim.com/`],
+    [`https://victim.com:80${BACKSLASH}@evil.com/`],
+    [`ssh://victim.com${BACKSLASH}@evil.com/`],
+  ])("reads no host at all when the authority holds a backslash: %s", (url) => {
+    expect(hostOf(url)).toBeNull();
+  });
+
+  it("never names a host the URL parser would not have fetched", () => {
+    for (const url of PARSER_CORPUS) {
+      const host = hostOf(url);
+      if (host === null || host === parsedHost(url)) continue;
+      // Disagreeing is only safe as a miss: an answer no lookup asks for.
+      expect(asLookupHost(host), url).not.toBe(host);
+    }
+  });
+
+  it("sends the backslash escape to the server as two characters", () => {
+    expect(hostOfUrlSql("url")).toContain(`[^/?#${BACKSLASH}${BACKSLASH}]*@`);
+    expect(hostOfUrlSql("url")).toContain(
+      `([^/:?#@${BACKSLASH}${BACKSLASH}]+)`,
+    );
+    expect(URL_ORIGIN_PATH_SQL).not.toContain(BACKSLASH);
   });
 });
 

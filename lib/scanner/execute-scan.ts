@@ -121,8 +121,23 @@ export const SUPPORTED_PROTOCOLS = [
 export function normalizeUrl(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return trimmed;
-  if (/^[a-z]+:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+  const url = /^[a-z]+:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  // The parser that fetches the target reads a backslash in an http(s)
+  // authority as a slash and drops tabs and newlines wherever they are, so a
+  // string holding one of those is not the address that gets scanned. Storing
+  // it raw let every later reader of scan_history.url (the host expressions in
+  // lib/database/sql-fragments.ts, reputation, history) disagree with the scan
+  // about which site it was. Anything the parser refuses is left for the
+  // caller's validation to reject.
+  // oxlint-disable-next-line no-control-regex -- finding them is the point
+  if (/[\\\u0000-\u001f\u007f]/.test(url)) {
+    try {
+      return new URL(url).href;
+    } catch {
+      return url;
+    }
+  }
+  return url;
 }
 
 export function isRawIpv4(input: string): boolean {
