@@ -440,8 +440,6 @@ The largest release since 3.0, and a pass over the whole product rather than one
   One list now records which API paths are public, which never move (OAuth callbacks, the Stripe webhook, unsubscribe links, health, avatars and badges) and which will be aliased when routes move under /api/internal and /api/v4. No URL changes yet.
 - [KeyRound] **[FIXED]** **API Keys Accept Any Capitalisation of the Bearer Scheme**
   An Authorization header written as bearer, BEARER or with more than one space after the scheme now works on every endpoint that takes an API key. The HTTP standard says the scheme is case-insensitive, but the API used to treat a lowercase one as if no key had been sent and answer 401 for a valid key. All endpoints, and the request filter in front of them, now read the header through one shared parser, so a lowercase scheme is no longer refused as cross-site or redirected to the sign-in page either.
-- [Key] **[API]** **A Bearer Header With No Key Counts as No Key**
-  An Authorization header that says Bearer but has nothing after it is no longer reported as an invalid API key. It is handled like a request with no API key, so it gets the usual unauthenticated 401, or uses the session cookie if the caller has one.
 - [ShieldCheck] **[SECURITY]** **API Paths Ending in an Image Extension Get Every Request Check**
   A request to an API path ending in .svg, .png, .jpg, .jpeg, .gif or .webp used to skip the Origin check, the 1 MiB body limit, the sign-in redirect and maintenance mode. Every API path now goes through the same checks, whatever its last segment looks like. Static files such as images and icons are unaffected, and no real API URL ends in an image extension, so existing clients keep working.
 - [LifeBuoy] **[FIXED]** **Support Ticket IDs Must Be Plain Numbers**
@@ -512,8 +510,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The chat widget, the dashboard and the scan menu now share one request that asks whether AI is available, instead of making two or three. Switching AI off in your profile shows in the scan menu and the dashboard at once.
 - [Trash2] **[FIXED]** **Cleanup Keeps Going When One Table Fails**
   The scheduled database cleanup no longer stops at the first table it cannot prune, so one stuck table cannot leave rate limits, error logs, email logs and webhook deliveries to grow forever. Old scan history is now removed in batches with a time limit per run, so a large backlog drains over a few runs instead of failing every time.
-- [Gauge] **[PERFORMANCE]** **Faster Host Pages, Share Lists and Extension Lookups**
-  Public host pages and their score trends, the shares list, per-URL scan history and the webhook delivery cleanup now use indexes instead of reading whole tables. New indexes also prepare the browser extension's page lookup to match a scan stored with a query string or fragment. The indexes are built on the first start after upgrading.
+- [Gauge] **[PERFORMANCE]** **Faster Share Lists and Scan History**
+  The shares list, per-URL scan history and the webhook delivery cleanup now use indexes instead of reading whole tables. New indexes on the host and page inside each stored URL prepare public host pages and the browser extension's page lookup, including a scan stored with a query string or fragment. The indexes are built on the first start after upgrading.
 - [ServerCrash] **[FIXED]** **Outages No Longer Look Like Wrong Passwords**
   When the database is failing, sign-in, sign-up and staff invites now answer with a server error instead of saying the password is wrong, treating the address as new, or saying an existing account does not exist.
 - [Search] **[FIXED]** **Domain Matching and Re-Verification Fixes**
@@ -539,7 +537,9 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [ScanSearch] **[FIXED]** **Login Forms With Escaped Values Scan Correctly**
   Authenticated scans and active probes now decode numeric HTML entities in hidden form fields, form actions and CSRF meta tags. A token the site's template had escaped, such as a plus sign written as an entity, used to be sent back as literal entity text and rejected.
 - [Timer] **[PERFORMANCE]** **Stalled Responses No Longer Hold a Scan Open**
-  A site that answers an authenticated scan's login or verification request and then stalls the body is now cut off at the verification timeout instead of holding the scan open. DNS checks also stop leaving a pending timer behind every lookup.
+  A site that answers an authenticated scan's login or verification request and then stalls the body is now cut off at that request's own timeout instead of holding the scan open. DNS checks also stop leaving a pending timer behind every lookup.
+- [Timer] **[SELFHOST]** **Database Cleanup Runs on the Interval You Set**
+  Changing the database cleanup interval had no effect: the cleanup always ran every five minutes, while the admin worker overview judged it against the interval you had set, so a healthy worker could be reported late. The cleanup now runs on the configured interval and the boot log says which one.
 
 ---
 

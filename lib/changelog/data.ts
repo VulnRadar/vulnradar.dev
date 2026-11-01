@@ -1481,12 +1481,6 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
-        icon: Key,
-        label: "A Bearer Header With No Key Counts as No Key",
-        desc: "An Authorization header that says Bearer but has nothing after it is no longer reported as an invalid API key. It is handled like a request with no API key, so it gets the usual unauthenticated 401, or uses the session cookie if the caller has one.",
-        category: "api",
-      },
-      {
         icon: ShieldCheck,
         label: "API Paths Ending in an Image Extension Get Every Request Check",
         desc: "A request to an API path ending in .svg, .png, .jpg, .jpeg, .gif or .webp used to skip the Origin check, the 1 MiB body limit, the sign-in redirect and maintenance mode. Every API path now goes through the same checks, whatever its last segment looks like. Static files such as images and icons are unaffected, and no real API URL ends in an image extension, so existing clients keep working.",
@@ -1699,8 +1693,8 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Gauge,
-        label: "Faster Host Pages, Share Lists and Extension Lookups",
-        desc: "Public host pages and their score trends, the shares list, per-URL scan history and the webhook delivery cleanup now use indexes instead of reading whole tables. New indexes also prepare the browser extension's page lookup to match a scan stored with a query string or fragment. The indexes are built on the first start after upgrading.",
+        label: "Faster Share Lists and Scan History",
+        desc: "The shares list, per-URL scan history and the webhook delivery cleanup now use indexes instead of reading whole tables. New indexes on the host and page inside each stored URL prepare public host pages and the browser extension's page lookup, including a scan stored with a query string or fragment. The indexes are built on the first start after upgrading.",
         category: "performance",
       },
       {
@@ -1780,8 +1774,14 @@ const CHANGELOG: Release[] = [
       {
         icon: Timer,
         label: "Stalled Responses No Longer Hold a Scan Open",
-        desc: "A site that answers an authenticated scan's login or verification request and then stalls the body is now cut off at the verification timeout instead of holding the scan open. DNS checks also stop leaving a pending timer behind every lookup.",
+        desc: "A site that answers an authenticated scan's login or verification request and then stalls the body is now cut off at that request's own timeout instead of holding the scan open. DNS checks also stop leaving a pending timer behind every lookup.",
         category: "performance",
+      },
+      {
+        icon: Timer,
+        label: "Database Cleanup Runs on the Interval You Set",
+        desc: "Changing the database cleanup interval had no effect: the cleanup always ran every five minutes, while the admin worker overview judged it against the interval you had set, so a healthy worker could be reported late. The cleanup now runs on the configured interval and the boot log says which one.",
+        category: "selfhost",
       },
     ],
   },
