@@ -43,6 +43,17 @@ services:
       args:
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     container_name: vulnradar-app-dev
+    # Same shape as docker-compose.yml: env_file forwards the whole .env
+    # (SMTP, Turnstile, OAuth, support address and the rest), and the map
+    # below only sets what compose derives itself or defaults, taking
+    # precedence where both define a key. The map used to list a
+    # `NAME: ${NAME:-}` line per optional variable instead, which forwarded
+    # only those few and turned every unset one into an empty string. For the
+    # CAPTCHA, set real dev keys in .env or keep the .env.example test keys,
+    # which always pass.
+    env_file:
+      - path: .env
+        required: false
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-vulnradar}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vulnradar}
@@ -51,17 +62,7 @@ services:
       # Required, same as production: an empty value crash-loops the container
       # on the startup env validation instead of failing here with a name.
       API_KEY_ENCRYPTION_KEY: ${API_KEY_ENCRYPTION_KEY:?Set API_KEY_ENCRYPTION_KEY in .env to 64 hex chars. Generate one with the node command at the top of docker-compose.yml.}
-      SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      SMTP_EHLO_NAME: ${SMTP_EHLO_NAME:-}
-      CONTACT_EMAIL: ${CONTACT_EMAIL:-}
-      # Turnstile: set real dev keys in .env to exercise the CAPTCHA, or
-      # leave the .env.example test keys in place to always pass it.
-      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
-      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
     volumes:
       # Mirrors docker-compose.yml's avatar_data / backup_data volumes: keeps
       # uploaded profile pictures and database backups out of the

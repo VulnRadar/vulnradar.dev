@@ -90,6 +90,12 @@ services:
     # true. env_file forwards the whole file; the map below then adds the
     # values that are derived from compose itself (the in-network Postgres URL)
     # or need a default, and takes precedence where both define a key.
+    #
+    # So the map does not repeat a `NAME: ${NAME:-}` line for variables .env
+    # already supplies. Those lines turned "not set" into "set to an empty
+    # string", and an empty CONTACT_EMAIL or SUPPORT_EMAIL failed the startup
+    # email check, so the quick start crash-looped. A variable left out of
+    # .env now stays unset in the container.
     env_file:
       - path: .env
         required: false
@@ -107,24 +113,13 @@ services:
       # unreachable database. `:?` fails at compose parse time instead, and
       # names the variable and the command that generates one.
       API_KEY_ENCRYPTION_KEY: ${API_KEY_ENCRYPTION_KEY:?Set API_KEY_ENCRYPTION_KEY in .env to 64 hex chars. Generate one with the node command at the top of this file.}
-      # SMTP (optional, for emails)
-      SMTP_HOST: ${SMTP_HOST:-}
+      # SMTP (optional, for emails). The host, credentials, sender and EHLO
+      # name come from .env through env_file.
       SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      # The name given in EHLO. Empty falls back to the host of NEXT_PUBLIC_APP_URL.
-      SMTP_EHLO_NAME: ${SMTP_EHLO_NAME:-}
-      # Contact form
-      CONTACT_EMAIL: ${CONTACT_EMAIL:-}
-      # Server-side half of the support address (outgoing email). The
-      # client-side half is the NEXT_PUBLIC_SUPPORT_EMAIL build arg above:
+      # SUPPORT_EMAIL reaches the server (outgoing email) through env_file,
+      # and the client through the NEXT_PUBLIC_SUPPORT_EMAIL build arg above:
       # both read the same SUPPORT_EMAIL from your .env, so setting it once
       # covers emails and the UI.
-      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
-      # Turnstile CAPTCHA (optional)
-      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
-      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
     volumes:
       # Both of these are on the container's throwaway writable layer without
       # a mount, and the documented upgrade (`docker compose pull && docker

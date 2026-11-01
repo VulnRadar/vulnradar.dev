@@ -37,27 +37,38 @@ const BoolString = z
   .union([z.literal("true"), z.literal("false")])
   .transform((v) => v === "true");
 
+// An empty value means "not set". docker compose and most .env files spell an
+// unset optional as `NAME=`, which reaches process.env as "", and every
+// consumer already reads these with `||` or a strict compare, so "" behaves as
+// unset at runtime. Validation has to agree: running the format checks on ""
+// rejected an empty CONTACT_EMAIL as an invalid email and crash-looped the
+// documented docker compose quick start.
+function optional<T extends z.ZodType>(schema: T) {
+  return z.preprocess((v) => (v === "" ? undefined : v), schema.optional());
+}
+
 const OptionalSchema = z.object({
   // The HMAC key for the OAuth and Discord state tokens (lib/auth/signed-envelope.ts)
   // when set. API_KEY_ENCRYPTION_KEY is the fallback; either one is sufficient.
-  AUTH_SECRET: z
-    .string()
-    .min(
-      32,
-      "AUTH_SECRET must be at least 32 chars (HMAC key; shorter is brute-forceable)",
-    )
-    .optional(),
+  AUTH_SECRET: optional(
+    z
+      .string()
+      .min(
+        32,
+        "AUTH_SECRET must be at least 32 chars (HMAC key; shorter is brute-forceable)",
+      ),
+  ),
 
   // SMTP
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.string().optional(),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().optional(),
-  SMTP_EHLO_NAME: z.string().optional(),
+  SMTP_HOST: optional(z.string()),
+  SMTP_PORT: optional(z.string()),
+  SMTP_USER: optional(z.string()),
+  SMTP_PASS: optional(z.string()),
+  SMTP_FROM: optional(z.string()),
+  SMTP_EHLO_NAME: optional(z.string()),
 
   // Stripe
-  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_SECRET_KEY: optional(z.string()),
   // Accepted, never read. The publishable key only matters client-side and
   // Next.js will only inline the NEXT_PUBLIC_ form below, so nothing
   // consumes the bare name. It stays in the schema (and in the CI and
@@ -65,41 +76,41 @@ const OptionalSchema = z.object({
   // sets it does not have to change; same treatment as CONTACT_EMAIL
   // further down. Do not add a consumer for it: add one for the
   // NEXT_PUBLIC_ variant.
-  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
-  STRIPE_WEBHOOK_SECRET: z.string().optional(),
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  STRIPE_PUBLISHABLE_KEY: optional(z.string()),
+  STRIPE_WEBHOOK_SECRET: optional(z.string()),
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: optional(z.string()),
 
   // Discord OAuth (also used by app/api/v3/auth/oauth/discord/ -- the
   // sign-up/sign-in flow shares this same Discord application with the
   // account-linking flow above; one Discord app can register multiple
   // OAuth2 redirect URIs, so no second set of credentials is needed).
-  DISCORD_CLIENT_ID: z.string().optional(),
-  DISCORD_CLIENT_SECRET: z.string().optional(),
-  DISCORD_BOT_TOKEN: z.string().optional(),
-  DISCORD_GUILD_ID: z.string().optional(),
+  DISCORD_CLIENT_ID: optional(z.string()),
+  DISCORD_CLIENT_SECRET: optional(z.string()),
+  DISCORD_BOT_TOKEN: optional(z.string()),
+  DISCORD_GUILD_ID: optional(z.string()),
 
   // Google OAuth sign-up/sign-in (app/api/v3/auth/oauth/google/). Optional --
   // the "Sign in with Google" button only renders once both are set (see
   // lib/auth/oauth-providers.ts).
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CLIENT_ID: optional(z.string()),
+  GOOGLE_CLIENT_SECRET: optional(z.string()),
 
   // GitHub OAuth sign-up/sign-in (app/api/v3/auth/oauth/github/). Optional --
   // same "inert until configured" shape as Google/Discord above.
-  GITHUB_CLIENT_ID: z.string().optional(),
-  GITHUB_CLIENT_SECRET: z.string().optional(),
+  GITHUB_CLIENT_ID: optional(z.string()),
+  GITHUB_CLIENT_SECRET: optional(z.string()),
 
   // Contact. CONTACT_EMAIL is accepted and validated but read by nothing:
   // the contact form delivers to SMTP_FROM, then SMTP_USER, then the
   // NOREPLY_EMAIL setting. Kept so an existing .env does not fail
   // validation, and documented as a no-op on /docs/config rather than
   // quietly left to look like a bug.
-  CONTACT_EMAIL: z.string().email().optional(),
-  SUPPORT_EMAIL: z.string().email().optional(),
+  CONTACT_EMAIL: optional(z.string().email()),
+  SUPPORT_EMAIL: optional(z.string().email()),
 
   // Turnstile
-  TURNSTILE_SECRET_KEY: z.string().optional(),
-  NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().optional(),
+  TURNSTILE_SECRET_KEY: optional(z.string()),
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY: optional(z.string()),
 
   // BrowserBase: live session viewer, browser-driven login and the opt-in
   // page screenshot all run through it (lib/browserbase/client.ts,
@@ -108,24 +119,24 @@ const OptionalSchema = z.object({
   // several releases ago and would have sent the next reader looking for a
   // fallback that no longer exists. Optional: unset, the View Page button
   // hides and captures are skipped.
-  BROWSERBASE_API_KEY: z.string().optional(),
-  BROWSERBASE_PROJECT_ID: z.string().optional(),
+  BROWSERBASE_API_KEY: optional(z.string()),
+  BROWSERBASE_PROJECT_ID: optional(z.string()),
 
   // Database: strict bool so "1" / "yes" can't slip through and
   // leave production running without SSL.
-  DATABASE_SSL: BoolString.optional(),
+  DATABASE_SSL: optional(BoolString),
 
   // Proxy / IP trust: must be a valid CIDR or a comma-separated list of
   // CIDRs. Used by lib/api/request-utils.ts to walk X-Forwarded-For
   // right-to-left. A typo here silently disables IP trust.
-  TRUSTED_PROXY_CIDR: z.string().optional(),
+  TRUSTED_PROXY_CIDR: optional(z.string()),
 
   // headers: when DISABLE_CSP is "1" the application strips every
   // CSP / COOP / CORP / X-Frame-Options / Permissions-Policy header.
   // Useful only for debugging third-party embed compatibility in
   // development. Must NOT be enabled in production. See
   // assertProductionSafe below.
-  DISABLE_CSP: z.string().optional(),
+  DISABLE_CSP: optional(z.string()),
 
   // security: when set to "1", mutating API requests skip the CSRF Origin
   // check in middleware.ts's enforceCsrf() and nothing else: the public-path
@@ -136,7 +147,7 @@ const OptionalSchema = z.object({
   // the env-schema declaration here makes the flag visible at startup
   // validation so typos in the var name are caught immediately
   // (AUDIT-004#misc-01).
-  SECURITY_ALLOW_NON_BROWSER_API: z.string().optional(),
+  SECURITY_ALLOW_NON_BROWSER_API: optional(z.string()),
 });
 
 /**
