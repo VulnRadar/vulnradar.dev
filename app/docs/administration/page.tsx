@@ -247,7 +247,9 @@ export default function AdministrationPage() {
             Changing one means editing{" "}
             <InlineCode>lib/config/config-values.ts</InlineCode> and rebuilding.{" "}
             <InlineCode>APP_URL</InlineCode> is the one exception: it is saved,
-            and used live when the app builds an OAuth redirect URI.
+            and used live when the app builds an OAuth redirect URI. Only the
+            super admin can save or reset it, and links that carry a token, such
+            as password resets and invites, never use the saved value.
           </p>
           <p className="text-sm leading-relaxed text-muted-foreground">
             Resetting a setting deletes its row rather than writing the current

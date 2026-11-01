@@ -667,11 +667,45 @@ export default function ConfigPage() {
               <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> environment variables
               as the running container sees them. It builds the OAuth{" "}
               <InlineCode>redirect_uri</InlineCode> for the GitHub, Google, and
-              Discord sign-in and connect routes and staff SSO, and the links in
-              verification, password-reset, and signup emails, so an edit there
-              takes effect for those with no rebuild. Canonical URLs, social
+              Discord sign-in and connect routes and staff SSO, so an edit there
+              takes effect for those with no rebuild. Only the super admin can
+              save it, and only as an https origin with no path, query or
+              credentials (http is accepted for localhost and 127.0.0.1).
+            </p>
+            <p>
+              Links that carry a token never read the saved row: the links in
+              password-reset, verification, and signup emails, staff and team
+              invites, and every unsubscribe link.{" "}
+              <InlineCode>secretLinkAppUrl()</InlineCode> builds them from the{" "}
+              <InlineCode>APP_URL</InlineCode> and{" "}
+              <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> environment variables
+              alone, then <InlineCode>CONFIG_APP_URL</InlineCode>, so an admin
+              cannot point them at a domain they control. Canonical URLs, social
               cards, and the links in other emails still read the compiled
               value.
+            </p>
+          </DocsCallout>
+          <DocsCallout
+            variant="warning"
+            title="Set the URL in the container's environment"
+          >
+            <p>
+              The published image is built with{" "}
+              <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> set to
+              upstream&rsquo;s own domain, and the image deliberately does not
+              copy that build value into the running container&rsquo;s
+              environment: if it did, a pulled image would send your
+              users&rsquo; reset links to upstream. So a pulled image and one
+              you built yourself both need <InlineCode>APP_URL</InlineCode> or{" "}
+              <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> set when the
+              container starts. Both compose files pass{" "}
+              <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> from{" "}
+              <InlineCode>.env</InlineCode>. With a plain{" "}
+              <InlineCode>docker run</InlineCode> or a Kubernetes manifest, set
+              one of them yourself. Without either, reset, verification, invite
+              and unsubscribe links fall back to{" "}
+              <InlineCode>CONFIG_APP_URL</InlineCode>, and the OAuth redirects
+              to the origin of the request.
             </p>
           </DocsCallout>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
@@ -680,7 +714,8 @@ export default function ConfigPage() {
             <InlineCode>getSetting()</InlineCode> reader and a{" "}
             <InlineCode>runtime</InlineCode> tier, not a build-tier row.
             <InlineCode>APP_URL</InlineCode> is the one build-tier key the panel
-            still saves, for the redirects and email links described above.
+            still saves, for the OAuth redirects described above, and only the
+            super admin can save it.
           </p>
         </DocsSubSection>
 
@@ -708,8 +743,8 @@ export default function ConfigPage() {
             <InlineCode>NEXT_PUBLIC_*</InlineCode> environment override, and
             nothing else. The one place the chain does run for a build key is{" "}
             <InlineCode>serverAppUrl()</InlineCode> reading{" "}
-            <InlineCode>APP_URL</InlineCode> for OAuth redirects and account
-            email links, described above.
+            <InlineCode>APP_URL</InlineCode> for OAuth redirects, described
+            above.
           </p>
           <DocsCallout variant="info" title="~30 second propagation">
             The resolver caches the whole table for 30 seconds so a value read
@@ -1012,8 +1047,9 @@ export default function ConfigPage() {
             </strong>{" "}
             For every flow above the app builds the address in this order: the{" "}
             <InlineCode>APP_URL</InlineCode> row in Admin, Settings if one is
-            saved, then <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode>, then the
-            origin of the request it is answering. The shipped{" "}
+            saved, then the <InlineCode>APP_URL</InlineCode> or{" "}
+            <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> environment variable,
+            then the origin of the request it is answering. The shipped{" "}
             <InlineCode>CONFIG_APP_URL</InlineCode> is not consulted, on
             purpose: redirecting a misconfigured deployment to a domain it does
             not own is worse than trusting the request. The result has to match

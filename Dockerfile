@@ -211,6 +211,12 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+# NEXT_PUBLIC_APP_URL is deliberately not carried over from the builder. The
+# published image is built with the upstream origin, and the server builds
+# reset, verification, invite and unsubscribe links from the runtime
+# environment (lib/config/server-app-url.ts), so baking it in here would send
+# every pulled image's tokens upstream. Set APP_URL or NEXT_PUBLIC_APP_URL when
+# the container starts; the compose files pass it from .env.
 
 # infra: this image updates by being replaced, not by rewriting itself. The
 # updater cannot see that on its own: it can tell whether /app is writable,
