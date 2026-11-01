@@ -90,6 +90,28 @@ describe("Discord Webhook (hardcoded-secrets-client-exposed) is keyed on Discord
     });
   }
 
+  for (const version of ["v6", "v9", "v10"]) {
+    it(`fires on the versioned /api/${version}/webhooks/ path`, () => {
+      const path = DISCORD_PATH.replace("/api/", `/api/${version}/`);
+      expect(
+        run(
+          "hardcoded-secrets-client-exposed",
+          `<script>fetch("https://discord.com${path}")</script>`,
+        ),
+      ).toContain("Discord Webhook");
+    });
+  }
+
+  it("does not fire on a versioned path under another host", () => {
+    const path = DISCORD_PATH.replace("/api/", "/api/v10/");
+    expect(
+      run(
+        "hardcoded-secrets-client-exposed",
+        `<script>fetch("https://evildiscord.com${path}")</script>`,
+      ) ?? "",
+    ).not.toContain("Discord Webhook");
+  });
+
   it("does not fire on a host that only ends in discord.com", () => {
     for (const host of ["evildiscord.com", "notdiscordapp.com"]) {
       expect(

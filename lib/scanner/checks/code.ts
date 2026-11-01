@@ -235,10 +235,13 @@ const DISCORD_HOSTS: HostRule[] = [
 const CLIENT_EXPOSED_SECRET_PATTERNS: SecretPattern[] = [
   // Discord webhooks are meant to be POSTed to from server code, but a
   // leaked URL lets anyone post as the webhook (spam/impersonation in
-  // the target channel) — real abuse, bounded impact.
+  // the target channel) — real abuse, bounded impact. Discord serves them on
+  // the versioned path (/api/v10/webhooks/...) too, which its own docs and
+  // client libraries write.
   {
     name: "Discord Webhook",
-    pattern: /(?<![\w.-])[a-z0-9.-]+\/api\/webhooks\/\d{17,20}\/[\w-]{60,68}/g,
+    pattern:
+      /(?<![\w.-])[a-z0-9.-]+\/api\/(?:v\d+\/)?webhooks\/\d{17,20}\/[\w-]{60,68}/g,
     accept: (match) =>
       DISCORD_HOSTS.some((r) => hostMatches(leadingHost(match), r)),
   },
