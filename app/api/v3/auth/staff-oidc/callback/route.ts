@@ -24,6 +24,7 @@ import {
   verifyStaffOidcIdToken,
 } from "@/lib/auth/staff-oidc";
 import { verifyOAuthState } from "@/lib/auth/oauth-state";
+import { recordUnverifiedStaffSsoRefusal } from "@/lib/auth/staff-invite-refusal";
 
 export async function GET(request: Request) {
   const baseUrl = await resolveAppUrl(request);
@@ -99,10 +100,11 @@ export async function GET(request: Request) {
     // address belongs to staff, and it comes before the disabled check so an
     // unproven claim learns nothing else about the row.
     if (!user.email_verified_at) {
-      await recordUnverifiedStaffSsoRefusal(
-        user.id,
-        new URL(config.issuerUrl).hostname,
-      );
+      await recordUnverifiedStaffSsoRefusal({
+        userId: user.id,
+        issuerHost: new URL(config.issuerUrl).hostname,
+        reason: "account_unverified",
+      });
       return fail("oauth_no_account");
     }
     if (user.disabled_at) {
@@ -126,45 +128,4 @@ export async function GET(request: Request) {
     console.error("[staff-oidc] callback error:", err);
     return fail("oauth_failed");
   }
-}
-
-/**
- * Record that staff SSO refused an account because it never verified the
- * address the IdP matched it on. Either someone pointed that staff account at
- * an address they do not own, or its owner never verified it. An admin needs
- * to know about both, and the refusal alone tells nobody anything.
- *
- * A security alert rather than an admin_audit_log row because no admin acted.
- * No IP address or user agent: the request is the IdP user's, not the
- * account's, and the data export hands an account its own alerts, so they
- * would reach whoever set the address. One open alert per account, since the
- * same person will retry.
- *
- * Never throws. The refusal is the control; this only reports it.
- */
-async function recordUnverifiedStaffSsoRefusal(
-  userId: number,
-  issuerHost: string,
-): Promise<void> {
-  await pool
-    .query(
-      `INSERT INTO security_alerts
-         (user_id, alert_type, severity, description, details)
-       SELECT $1::int, $2::text, 'high', $3::text, $4::jsonb
-       WHERE NOT EXISTS (
-         SELECT 1 FROM security_alerts
-          WHERE user_id = $1::int
-            AND alert_type = $2::text
-            AND resolved_at IS NULL
-       )`,
-      [
-        userId,
-        "staff_sso_unverified_email",
-        "A staff SSO sign-in to this account was refused because the account has not verified its email address. Either the address was set on this account by someone who does not own it, or the account's owner never verified it.",
-        JSON.stringify({ issuer: issuerHost }),
-      ],
-    )
-    .catch((err) => {
-      console.error("[staff-oidc] Failed to record refused sign-in:", err);
-    });
 }
