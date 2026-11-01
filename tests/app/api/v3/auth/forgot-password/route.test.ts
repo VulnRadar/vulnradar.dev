@@ -53,9 +53,25 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   return { rows: [] };
 });
 
+// Statements run on a connected client, tagged with which client, so a test
+// can see which of them ran together in one transaction.
+const clientStatements: { client: number; sql: string; params: unknown[] }[] =
+  [];
+let clientCount = 0;
 vi.mock("@/lib/database/db", () => ({
   default: {
     query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+    connect: async () => {
+      clientCount += 1;
+      const client = clientCount;
+      return {
+        query: (sql: string, params: unknown[] = []) => {
+          clientStatements.push({ client, sql: sql.trim(), params });
+          return mockQuery(sql, params);
+        },
+        release: () => {},
+      };
+    },
   },
 }));
 
@@ -96,6 +112,7 @@ beforeEach(async () => {
   mockQuery.mockClear();
   mockSendEmail.mockClear();
   queries.length = 0;
+  clientStatements.length = 0;
   rateLimitCounts.clear();
   headerState.clear();
   headerState.set("x-forwarded-for", "203.0.113.11");
@@ -162,6 +179,47 @@ describe("POST /api/v3/auth/forgot-password", () => {
     await POST(forgotRequest({ email: "account-owner@example.com" }));
 
     expect(tokenDeleteCalls).toEqual([[55]]);
+  });
+
+  // Two requests for the same account used to interleave their DELETE and
+  // INSERT as separate autocommit statements, leaving two live reset links.
+  // Replacing the token is one transaction, serialised per account, so the
+  // second request's DELETE sees the first one's row.
+  it("replaces the account's reset token in one transaction serialised per account", async () => {
+    knownUsers.set("account-owner@example.com", {
+      id: 55,
+      totp_enabled: false,
+    });
+
+    await POST(forgotRequest({ email: "account-owner@example.com" }));
+
+    expect(
+      queries.filter((q) => /password_reset_tokens/.test(q.sql)),
+    ).toHaveLength(2);
+    const tokenStatement = clientStatements.find((q) =>
+      /password_reset_tokens/.test(q.sql),
+    );
+    expect(tokenStatement).toBeDefined();
+    const tx = clientStatements.filter(
+      (q) => q.client === tokenStatement?.client,
+    );
+    expect(tx.map((q) => q.sql)).toEqual([
+      "BEGIN",
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      "DELETE FROM password_reset_tokens WHERE user_id = $1",
+      "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+      "COMMIT",
+    ]);
+    expect(tx[1].params).toEqual(["password-reset-token:55"]);
+  });
+
+  it("serves an account whose stored address predates the new-address rule", async () => {
+    knownUsers.set("admin@localhost", { id: 56, totp_enabled: false });
+
+    const res = await POST(forgotRequest({ email: "admin@localhost" }));
+
+    expect(res.status).toBe(200);
+    expect(tokenInsertCalls).toHaveLength(1);
   });
 
   it("queues the reset email for a known account", async () => {

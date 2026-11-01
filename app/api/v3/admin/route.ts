@@ -13,7 +13,7 @@ import {
   canPerformAction as hasActionPermission,
 } from "@/lib/auth/permissions-client";
 import { hashPassword } from "@/lib/auth/auth";
-import { hashAuthToken } from "@/lib/auth/token-hash";
+import { issuePasswordResetToken } from "@/lib/auth/password-reset-token";
 import { verifyReauthPassword } from "@/lib/auth/reauth";
 import { analyzePassword } from "@/lib/auth/password-strength";
 import { startImpersonation } from "@/lib/auth/impersonation";
@@ -903,22 +903,12 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       // here and shown in the admin UI would mean an admin (and anyone who
       // later reads that browser's network log or the admin's screen)
       // could log in as the user before they ever see the email.
-      await pool.query("DELETE FROM password_reset_tokens WHERE user_id = $1", [
-        userId,
-      ]);
-      const resetToken = randomBytes(32).toString("hex");
-      // The keyed digest every other minting site stores. A bare sha256
-      // here only resolved through the reset route's legacy fallback, so
-      // these links would have stopped working when that is retired.
-      const resetTokenHash = hashAuthToken(resetToken);
-      const passwordResetHours = await getSetting("PASSWORD_RESET_HOURS");
-      const resetExpiresAt = new Date(
-        Date.now() + passwordResetHours * 60 * 60 * 1000,
-      );
-      await pool.query(
-        "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-        [userId, resetTokenHash, resetExpiresAt],
-      );
+      //
+      // Minted by the same function forgot-password uses: it stores the
+      // keyed digest and replaces the account's old token in one transaction
+      // serialised per account, so this and a self-service request racing
+      // it (or a second admin) still leave one live link.
+      const resetToken = await issuePasswordResetToken(userId);
 
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
       await logAction(

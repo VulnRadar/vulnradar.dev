@@ -1,13 +1,11 @@
 import { NextRequest } from "next/server";
-import { randomBytes } from "node:crypto";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
-import { getSetting } from "@/lib/config/runtime-config";
 import { secretLinkAppUrl } from "@/lib/config/server-app-url";
 import { sendEmail, passwordResetEmail } from "@/lib/email/email";
-import { hashAuthToken } from "@/lib/auth/token-hash";
+import { issuePasswordResetToken } from "@/lib/auth/password-reset-token";
 import {
   ApiResponse,
   parseBody,
@@ -15,11 +13,11 @@ import {
   Validate,
 } from "@/lib/api/api-utils";
 
-// auth: hash the token before storage so a DB dump doesn't yield working
-// reset tokens. Now HMAC-SHA256 keyed with the server secret, via the one
-// shared hasher in lib/auth/token-hash.ts rather than a local copy of the
-// same sha256 line that lived in five files (AUDIT-002#secrets-03). The
-// verify route matches against the same function's candidate list.
+// auth: the token is minted by lib/auth/password-reset-token.ts, which stores
+// only its keyed digest so a DB dump doesn't yield working reset tokens
+// (AUDIT-002#secrets-03), and replaces the account's old token in one
+// transaction serialised per account. The admin "send reset link" action
+// mints through the same function.
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
@@ -80,21 +78,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   const user = userRes.rows[0];
 
-  // Delete any existing tokens for this user
-  await pool.query("DELETE FROM password_reset_tokens WHERE user_id = $1", [
-    user.id,
-  ]);
-
-  // Generate a secure token (raw token is emailed; we store the hash)
-  const token = randomBytes(32).toString("hex");
-  const tokenHash = hashAuthToken(token);
-  const passwordResetHours = await getSetting("PASSWORD_RESET_HOURS");
-  const expiresAt = new Date(Date.now() + passwordResetHours * 60 * 60 * 1000);
-
-  await pool.query(
-    "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-    [user.id, tokenHash, expiresAt],
-  );
+  // Replaces any token the account already has, so two requests at once
+  // still leave one live link.
+  const token = await issuePasswordResetToken(user.id);
 
   // Send reset email via SMTP in the background
   const resetLink = `${secretLinkAppUrl()}/reset-password?token=${token}`;

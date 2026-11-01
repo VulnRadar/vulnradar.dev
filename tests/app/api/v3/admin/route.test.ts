@@ -2880,7 +2880,7 @@ describe("PATCH /api/v3/admin — reset_password still refuses a 2FA-enabled tar
     expect(json).not.toHaveProperty("tempPassword");
     expect(JSON.stringify(json)).not.toMatch(/password/i);
 
-    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+    const insertCall = mockClientQuery.mock.calls.find(([sql]) =>
       String(sql).includes("INSERT INTO password_reset_tokens"),
     );
     expect(insertCall).toBeDefined();
@@ -2987,7 +2987,7 @@ describe("PATCH /api/v3/admin, reset_password stores the keyed token digest", ()
 
     const link = String(vi.mocked(passwordResetEmail).mock.calls[0][0]);
     const token = new URL(link).searchParams.get("token") ?? "";
-    const insert = mockQuery.mock.calls.find(([sql]) =>
+    const insert = mockClientQuery.mock.calls.find(([sql]) =>
       String(sql).includes("INSERT INTO password_reset_tokens"),
     );
     expect(insert).toBeDefined();
@@ -3052,6 +3052,50 @@ describe("PATCH /api/v3/admin, reset_password stores the keyed token digest", ()
       "UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1",
       [77],
     );
+  }, 20000);
+});
+
+// The action deleted the account's old reset tokens and inserted the new one
+// as two autocommit statements, the same shape forgot-password had, so two
+// requests for one account (two admins, or an admin and the account holder)
+// could interleave and leave two live reset links. It now replaces the token
+// through the one shared helper: one transaction, serialised per account.
+describe("PATCH /api/v3/admin, reset_password replaces the token atomically", () => {
+  it("deletes and inserts on one client, inside a transaction that holds the account's lock", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      totp_enabled: false,
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+
+    const res = await PATCH(
+      patchRequest({
+        action: "reset_password",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("password_reset_tokens"),
+      ),
+    ).toBe(false);
+    expect(mockClientQuery.mock.calls.map(([sql]) => String(sql))).toEqual([
+      "BEGIN",
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      "DELETE FROM password_reset_tokens WHERE user_id = $1",
+      "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+      "COMMIT",
+    ]);
+    expect(mockClientQuery.mock.calls[1][1]).toEqual([
+      "password-reset-token:5",
+    ]);
+    expect(mockClientRelease).toHaveBeenCalledTimes(1);
   }, 20000);
 });
 
