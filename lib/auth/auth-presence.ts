@@ -28,14 +28,15 @@ export type AuthPresenceInput =
  * class the same way), the rules live in globals.css where they can be read,
  * and nothing is inserted into the document before React looks at it.
  *
- * The load-bearing case is logged-out: /me returns ApiResponse.unauthorized()
- * (a JSON body with no userId) once a session is gone, and a failed fetch
- * leaves `me` null/undefined. BOTH must return the cleared state, or a
- * session revoked elsewhere ("Sign out everywhere", an admin force-logout,
- * another device, or plain expiry) leaves this browser reading a stale
- * vr_auth_cache and showing a signed-in shell for an account that is no
- * longer signed in. Kept JSX-free (its own module) so it is unit-testable in
- * the backend-only vitest environment.
+ * The load-bearing case is logged-out: /me answers 401 once a session is
+ * gone, which the fetcher turns into null, and that must return the cleared
+ * state, or a session revoked elsewhere ("Sign out everywhere", an admin
+ * force-logout, another device, or plain expiry) leaves this browser reading
+ * a stale vr_auth_cache and showing a signed-in shell for an account that is
+ * no longer signed in. A read that failed for another reason (a 429, a 502,
+ * maintenance) is not an answer at all; authPresenceSettled keeps it from
+ * reaching here. Kept JSX-free (its own module) so it is unit-testable in the
+ * backend-only vitest environment.
  */
 export function computeAuthPresence(me: AuthPresenceInput): {
   cache: string | null;
@@ -50,4 +51,17 @@ export function computeAuthPresence(me: AuthPresenceInput): {
     auth: true,
     staff: isStaffRole(me.role ?? null),
   };
+}
+
+/**
+ * Whether the /me read has an answer the shell may act on: a user, or null
+ * for a 401. `undefined` means no answer yet, either in flight or every try so
+ * far failed, and acting on it would sign the shell out of an account that is
+ * still signed in.
+ */
+export function authPresenceSettled(
+  me: AuthPresenceInput,
+  isLoading: boolean,
+): boolean {
+  return !isLoading && me !== undefined;
 }

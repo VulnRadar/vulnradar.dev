@@ -17,7 +17,10 @@ import {
   getStaffPermissions,
   type StaffPermission,
 } from "@/lib/auth/permissions-client";
-import { computeAuthPresence } from "@/lib/auth/auth-presence";
+import {
+  authPresenceSettled,
+  computeAuthPresence,
+} from "@/lib/auth/auth-presence";
 
 export interface MeResponse {
   userId: number;
@@ -130,11 +133,16 @@ export const AUTH_SWR_OPTIONS = {
 } as const;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: me, isLoading } = useSWR<MeResponse | null>(
-    API.AUTH.ME,
-    authFetcher,
-    AUTH_SWR_OPTIONS,
-  );
+  const {
+    data: me,
+    error,
+    isLoading: requesting,
+  } = useSWR<MeResponse | null>(API.AUTH.ME, authFetcher, AUTH_SWR_OPTIONS);
+  // SWR reports loading again on every retry of a failed first read, because
+  // there is still no data. Consumers that already settled on "no answer"
+  // would flip back to their skeletons up to errorRetryCount times, so a
+  // failure stays settled until a retry brings an answer.
+  const isLoading = requesting && error === undefined;
 
   // Compute permissions based on role
   const userRole = me?.role || null;
@@ -158,9 +166,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // leaves this browser reading a stale vr_auth_cache on the next visit and
   // showing a logged-in shell for an account that is no longer signed in.
   useEffect(() => {
-    // `me` is undefined only while the very first fetch is in flight; don't
-    // clobber the cache mid-load, wait for the real result.
-    if (isLoading) return;
+    // Only a real answer moves the cache: a user, or null for a 401. A first
+    // read still in flight, or one that failed with a 429, a 502 or a
+    // maintenance 503, leaves `me` undefined, and clearing on that signed a
+    // signed-in visitor's shell out until the next good read.
+    if (!authPresenceSettled(me, isLoading)) return;
 
     const { cache, auth, staff } = computeAuthPresence(me);
     try {

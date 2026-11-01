@@ -1,17 +1,38 @@
 /**
  * computeAuthPresence decides what the browser should cache for a given
  * /api/v3/auth/me result. The regression this guards: a logged-out result
- * (a 401 body with no userId, or a null/undefined me from a failed fetch)
- * MUST clear the cache + injected CSS, so a session revoked elsewhere
- * ("Sign out everywhere", an admin force-logout, another device, or plain
- * expiry) cannot leave this browser showing a signed-in shell on the next
- * visit. Pure function, so no DOM/jsdom is needed.
+ * (a 401, which the fetcher turns into null, or a body with no userId) MUST
+ * clear the cache + injected CSS, so a session revoked elsewhere ("Sign out
+ * everywhere", an admin force-logout, another device, or plain expiry)
+ * cannot leave this browser showing a signed-in shell on the next visit.
+ * authPresenceSettled keeps a read that failed for another reason from
+ * counting as logged out. Pure functions, so no DOM/jsdom is needed.
  */
 import { describe, it, expect } from "vitest";
 import {
+  authPresenceSettled,
   computeAuthPresence,
   type AuthPresenceInput,
 } from "@/lib/auth/auth-presence";
+
+describe("authPresenceSettled", () => {
+  it("acts on a user or on null, the fetcher's answer for a 401", () => {
+    expect(authPresenceSettled({ userId: 7, role: "user" }, false)).toBe(true);
+    expect(authPresenceSettled(null, false)).toBe(true);
+  });
+
+  it("does not act on a read still in flight", () => {
+    expect(authPresenceSettled(undefined, true)).toBe(false);
+    expect(authPresenceSettled(null, true)).toBe(false);
+  });
+
+  it("does not act on a first read that failed, which leaves me undefined", () => {
+    // A 429, a 502 or a maintenance 503 on a fresh page load: the fetcher
+    // throws, SWR has no earlier data to keep, and signing the shell out on
+    // that showed Start free to someone who was signed in.
+    expect(authPresenceSettled(undefined, false)).toBe(false);
+  });
+});
 
 // The shape /me actually returns when the session is gone: ApiResponse
 // .unauthorized() => a JSON body with no userId. The SWR fetcher parses it
@@ -30,7 +51,7 @@ describe("computeAuthPresence", () => {
     });
   });
 
-  it("clears the cache and both flags when /me is null/undefined (fetch failed)", () => {
+  it("clears the cache and both flags when /me is null (a 401) or undefined", () => {
     const cleared = { cache: null, auth: false, staff: false };
     expect(computeAuthPresence(null)).toEqual(cleared);
     expect(computeAuthPresence(undefined)).toEqual(cleared);
