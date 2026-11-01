@@ -93,6 +93,7 @@ import * as crypto from "crypto";
 import { generateId } from "@/lib/scanner/_helpers";
 import { SCANNER_UA, SCANNER_UA_PRODUCT } from "@/lib/scanner/user-agent";
 import { userAgentOf } from "./_user-agent-of";
+import { PinnedDispatcher } from "@/lib/scanner/safe-fetch";
 import {
   checkSPF,
   checkSPFChain,
@@ -2170,6 +2171,29 @@ describe("checkLiveFetch", () => {
 
       const findings = await checkLiveFetch("https://example.com", "page");
       expect(findings.some((f) => /security\.txt/i.test(f.title))).toBe(false);
+    });
+
+    it("connects every host probe to the approved address without rewriting the URL", async () => {
+      vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        new Response("", { status: 404 }),
+      );
+
+      await checkLiveFetch("http://example.com", "host");
+
+      const calls = vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mock
+        .calls;
+      expect(calls.length).toBeGreaterThan(3);
+      for (const [input, init] of calls) {
+        const href = typeof input === "string" ? input : String(input);
+        expect(new URL(href).hostname).toBe("example.com");
+        const dispatcher = (init as { dispatcher?: unknown }).dispatcher;
+        expect(dispatcher).toBeInstanceOf(PinnedDispatcher);
+        expect((dispatcher as PinnedDispatcher).address).toBe("93.184.216.34");
+        expect((dispatcher as PinnedDispatcher).hostname).toBe("example.com");
+        expect(new Headers((init as RequestInit).headers).has("host")).toBe(
+          false,
+        );
+      }
     });
   });
 });

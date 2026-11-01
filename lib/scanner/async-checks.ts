@@ -13,7 +13,7 @@
 
 import * as dns from "dns/promises";
 import * as crypto from "crypto";
-import { isIP, createConnection } from "net";
+import { createConnection } from "net";
 import type { Vulnerability, Category, ScanProgressHook } from "./types";
 import {
   ASYNC_CHECKS as A,
@@ -23,6 +23,7 @@ import {
 import {
   isPrivateHostname,
   isPrivateIP,
+  pinToResolvedIp,
   validateScanTarget,
   safeFetch,
 } from "@/lib/scanner/safe-fetch";
@@ -3131,42 +3132,21 @@ async function validateAndPinOrigin(
 }
 
 /**
- * Rewrite `url` to target `pinned`'s DNS-resolved IP instead of its
- * hostname, mirroring the substitution lib/scanner/safe-fetch.ts's
- * safeFetch performs on the request it pins: HTTP requests go straight to
- * the resolved IP (with the real hostname preserved in a Host header) so a
- * DNS change between validateAndPinOrigin and this fetch can't matter.
- * HTTPS requests keep the original hostname unchanged — swapping it would
- * break TLS certificate/SNI validation — so for HTTPS the protection is the
- * DNS re-resolution happening immediately before the request, not IP
- * substitution, same limitation safeFetch itself documents.
+ * Pin a request for `url` to `pinned`'s resolved address, through the same
+ * dispatcher safeFetch uses: the socket opens to that address for http and
+ * https alike, with the hostname kept in Host and SNI, so a DNS change
+ * between validateAndPinOrigin and this fetch cannot matter and nothing
+ * resolves the name a second time. The URL itself is never rewritten.
  */
 function applyPinnedTarget(
   url: string,
   pinned: PinnedTarget,
   init: RequestInit,
 ): { url: string; init: RequestInit } {
-  if (!pinned.resolvedIp) return { url, init };
-
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return { url, init };
-  }
-  if (parsed.protocol !== "http:") return { url, init };
-
-  const originalHostname = parsed.hostname;
-  const originalPort = parsed.port;
-  parsed.hostname =
-    isIP(pinned.resolvedIp) === 6
-      ? `[${pinned.resolvedIp}]`
-      : pinned.resolvedIp;
-  if (originalPort) parsed.port = originalPort;
-
-  const headers = new Headers(init.headers);
-  headers.set("Host", originalHostname);
-  return { url: parsed.href, init: { ...init, headers } };
+  return {
+    url,
+    init: pinToResolvedIp(url, pinned.resolvedIp, init).init ?? init,
+  };
 }
 
 /**
@@ -3205,7 +3185,6 @@ async function fetchFollowingSameHostRedirect(
   maxHops = 3,
 ): Promise<Response> {
   let currentUrl = url;
-  let currentLogicalUrl = url;
   let currentPinned = pinned;
 
   for (let hop = 0; hop <= maxHops; hop++) {
@@ -3222,14 +3201,14 @@ async function fetchFollowingSameHostRedirect(
 
     let nextUrl: URL;
     try {
-      nextUrl = new URL(location, currentLogicalUrl);
+      nextUrl = new URL(location, currentUrl);
     } catch {
       return res;
     }
     if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:")
       return res;
 
-    const currentHostname = new URL(currentLogicalUrl).hostname.toLowerCase();
+    const currentHostname = new URL(currentUrl).hostname.toLowerCase();
     const nextHostname = nextUrl.hostname.toLowerCase();
     const sameRegisteredHost =
       nextHostname === currentHostname ||
@@ -3243,7 +3222,6 @@ async function fetchFollowingSameHostRedirect(
     // This hop's body is never read; release its connection now.
     void res.body?.cancel().catch(() => {});
     currentUrl = nextUrl.href;
-    currentLogicalUrl = nextUrl.href;
     currentPinned = nextPinned;
   }
   /* istanbul ignore next -- unreachable: the loop above always returns by
@@ -4139,8 +4117,8 @@ export async function checkActiveCORS(
     const testOrigin = "https://cors-probe.vulnradar.test";
     // Pin to the IP validateScanTarget just resolved so the OS can't
     // re-resolve the hostname to a rebound private/metadata IP at connect
-    // time (HTTP is IP-pinned with a Host header; HTTPS relies on the
-    // immediate DNS re-resolution, same as safeFetch's siblings).
+    // time. Both schemes connect to that address, with the hostname in Host
+    // and SNI.
     const { url: fetchUrl, init: fetchInit } = applyPinnedTarget(url, safety, {
       ...FETCH_OPTS,
       signal: activeProbeSignal(cancelSignal),
@@ -4216,8 +4194,7 @@ export async function checkActiveHttpMethods(
     if (!safety.safe) return [];
 
     // Pin to the IP validateScanTarget just resolved so a DNS rebind can't
-    // redirect the connect to a private/metadata IP (HTTP pinned + Host
-    // header; HTTPS relies on the immediate re-resolution).
+    // redirect the connect to a private/metadata IP, for http and https.
     const optionsTarget = applyPinnedTarget(origin, safety, {
       method: "OPTIONS",
       ...FETCH_OPTS,
@@ -4323,8 +4300,7 @@ export async function checkXForwardedHostInjection(
     const testHost = "vulnradar-host-probe.invalid";
 
     // Pin to the IP validateScanTarget just resolved so a DNS rebind can't
-    // point the connect at a private/metadata IP (HTTP pinned + Host header;
-    // HTTPS relies on the immediate re-resolution).
+    // point the connect at a private/metadata IP, for http and https.
     const hostProbeTarget = applyPinnedTarget(url, safety, {
       ...FETCH_OPTS,
       headers: {
