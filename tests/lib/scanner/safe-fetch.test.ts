@@ -10,6 +10,7 @@ vi.mock("dns/promises", () => ({
 
 const { isPrivateIP, validateScanTarget, safeFetch, SafeFetchError } =
   await import("@/lib/scanner/safe-fetch");
+type PinnedDispatcher = import("@/lib/scanner/safe-fetch").PinnedDispatcher;
 
 /** dns/promises lookup(host, {all:true}) shape. */
 function resolvesTo(...ips: string[]) {
@@ -126,6 +127,23 @@ describe("isPrivateIP IPv6 canonicalization", () => {
     expect(isPrivateIP(ip)).toBe(ip === "ff00::1");
   });
 
+  // Azure's WireServer (and the HostGAPlugin behind it on :32526) answers on a
+  // public-looking address that is reachable only from inside an Azure VM.
+  // Nothing in RFC 1918 or RFC 6598 covers it, so it needs its own entry.
+  it.each(["168.63.129.16", "::ffff:168.63.129.16", "::ffff:a83f:8110"])(
+    "blocks Azure's WireServer address %s",
+    (ip) => {
+      expect(isPrivateIP(ip)).toBe(true);
+    },
+  );
+
+  it.each(["168.63.129.15", "168.63.129.17", "168.63.1.16"])(
+    "blocks only the WireServer address itself, not its neighbour %s",
+    (ip) => {
+      expect(isPrivateIP(ip)).toBe(false);
+    },
+  );
+
   it.each([
     "100.63.255.255", // just below 100.64.0.0/10
     "100.128.0.1", // just above it
@@ -172,6 +190,12 @@ describe("validateScanTarget (DNS-resolving guard)", () => {
       "http://169.254.169.254/latest/meta-data/",
     );
     expect(r.safe).toBe(false);
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+
+  it("blocks the Azure HostGAPlugin URL by its literal address", async () => {
+    const r = await validateScanTarget("http://168.63.129.16:32526/vmSettings");
+    expect(r).toMatchObject({ safe: false, code: "blocked" });
     expect(mockLookup).not.toHaveBeenCalled();
   });
 
@@ -363,23 +387,30 @@ describe("safeFetch (SSRF-guarded redirect loop)", () => {
     ).resolves.toMatchObject({ status: 200 });
   });
 
-  it("STILL lets a www-apex redirect leave the allowedHostnames list (known gap, fails once fixed)", async () => {
-    // The allow-list is checked on the entry URL only. The redirect loop
-    // separately permits a www <-> apex hop on the same registered domain, so
-    // a probe pinned to `example.com` follows a 302 to `www.example.com`,
-    // which is a host it was never allowed to touch. Narrow (same registered
-    // domain, and every hop still passes the full SSRF guard) but it is not
-    // the containment the parameter's contract describes.
-    //
-    // Written as an assertion of the CURRENT behaviour on purpose: closing the
-    // gap makes this test fail and tells you to invert it, so the gap cannot
-    // quietly persist or quietly disappear. The fix belongs in
-    // lib/scanner/safe-fetch.ts's redirect loop (re-apply the allow-list to
-    // nextUrlObj.hostname), which is outside the file ownership of the pass
-    // that added this test. ref: AUDIT-012#ssrf-09
+  it("does not let a www-apex redirect leave the allowedHostnames list", async () => {
+    // The redirect loop permits a www <-> apex hop on the same registered
+    // domain, and the allow-list used to be checked on the entry URL only, so
+    // a probe confined to `example.com` followed a 302 to `www.example.com`
+    // and sent its payload to a host it was never allowed to touch. Every hop
+    // is held to the list now. ref: AUDIT-012#ssrf-09
     resolvesTo("93.184.216.34");
     fetchMock
       .mockResolvedValueOnce(redirect(302, "https://www.example.com/final"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    await expect(
+      safeFetch("https://example.com/start", undefined, ["example.com"]),
+    ).rejects.toMatchObject({
+      code: "blocked",
+      message: "Hostname www.example.com is not in the allowed list",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("still follows a redirect that stays on an allowed host", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock
+      .mockResolvedValueOnce(redirect(302, "https://example.com/final"))
       .mockResolvedValueOnce(new Response("ok", { status: 200 }));
 
     const res = await safeFetch("https://example.com/start", undefined, [
@@ -387,13 +418,70 @@ describe("safeFetch (SSRF-guarded redirect loop)", () => {
     ]);
 
     expect(res.status).toBe(200);
-    const hostsFetched = fetchMock.mock.calls.map(
-      (c) => new URL(String(c[0])).hostname,
-    );
-    expect(
-      hostsFetched,
-      "safeFetch now re-checks allowedHostnames on redirect hops. Invert this test: it should expect a rejection and a single fetch.",
-    ).toEqual(["example.com", "www.example.com"]);
+    expect(res.url).toBe("https://example.com/final");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("follows a www-apex redirect when both names are on the list", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock
+      .mockResolvedValueOnce(redirect(301, "https://www.example.com/"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const res = await safeFetch("https://example.com/", undefined, [
+      "example.com",
+      "www.example.com",
+    ]);
+
+    expect(res.url).toBe("https://www.example.com/");
+  });
+
+  // ── redirect: "error" ────────────────────────────────────────────────────
+  //
+  // RFC 8461 says an MTA-STS policy fetch must not follow redirects, and the
+  // checks that fetch one say so with redirect: "error". safeFetch used to
+  // overwrite that with its own loop and follow anyway, so a policy served
+  // only behind a redirect read as present.
+
+  it.each([301, 302, 303, 307, 308])(
+    'refuses a %i when the caller set redirect: "error", without following it',
+    async (status) => {
+      resolvesTo("93.184.216.34");
+      fetchMock
+        .mockResolvedValueOnce(redirect(status, "https://example.com/moved"))
+        .mockResolvedValueOnce(new Response("policy", { status: 200 }));
+
+      await expect(
+        safeFetch("https://example.com/policy", { redirect: "error" }),
+      ).rejects.toMatchObject({
+        code: "redirect",
+        redirectHost: "example.com",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('returns a non-redirect answer unchanged under redirect: "error"', async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 304 }));
+
+    const res = await safeFetch("https://example.com/policy", {
+      redirect: "error",
+    });
+
+    expect(res.status).toBe(304);
+  });
+
+  it("follows by default, as it always has", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock
+      .mockResolvedValueOnce(redirect(302, "https://example.com/moved"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const res = await safeFetch("https://example.com/policy");
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   // ── session credential handling ──────────────────────────────────────────
@@ -510,7 +598,7 @@ function hangsUntilAborted(
   return seen;
 }
 
-describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)", () => {
+describe("safeFetch (every hop is fetched by name on a socket pinned to its approved address)", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -522,13 +610,23 @@ describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)"
     vi.unstubAllGlobals();
   });
 
-  const hostHeaderOf = (call: unknown[]) =>
-    new Headers((call[1] as RequestInit).headers as HeadersInit).get("host");
+  /** The URL fetch was given and where its dispatcher will connect. The
+   *  socket itself is covered by safe-fetch-pinning.test.ts. */
+  const dialOf = (call: unknown[]) => {
+    const dispatcher = (call[1] as { dispatcher?: PinnedDispatcher })
+      .dispatcher;
+    return {
+      url: String(call[0]),
+      hostname: dispatcher?.hostname,
+      address: dispatcher?.address,
+    };
+  };
 
-  // The audit's repro. The Location was resolved against the pinned-IP URL, so
-  // "/next" became http://93.184.216.34/next, the cross-host test read the IP as
-  // a different host, and a site that answered normally failed the whole scan.
-  it("follows a relative redirect on an http target instead of calling the IP a different host", async () => {
+  // The URL used to be rewritten to the IP. undici then sent the IP as Host,
+  // and the Location was resolved against the IP URL, so "/next" became
+  // http://93.184.216.34/next and the cross-host test read the IP as a
+  // different host.
+  it("fetches a plain-HTTP target by name, pinned to the address it was approved at", async () => {
     resolvesTo("93.184.216.34");
     fetchMock
       .mockResolvedValueOnce(redirectTo(302, "/next"))
@@ -537,16 +635,55 @@ describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)"
     const res = await safeFetch("http://example.com/start");
 
     expect(res.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(String(fetchMock.mock.calls[0][0])).toBe(
-      "http://93.184.216.34/start",
-    );
-    expect(String(fetchMock.mock.calls[1][0])).toBe(
-      "http://93.184.216.34/next",
-    );
-    // Same host both times: the second hop still names it in Host.
-    expect(hostHeaderOf(fetchMock.mock.calls[0])).toBe("example.com");
-    expect(hostHeaderOf(fetchMock.mock.calls[1])).toBe("example.com");
+    expect(fetchMock.mock.calls.map(dialOf)).toEqual([
+      {
+        url: "http://example.com/start",
+        hostname: "example.com",
+        address: "93.184.216.34",
+      },
+      {
+        url: "http://example.com/next",
+        hostname: "example.com",
+        address: "93.184.216.34",
+      },
+    ]);
+  });
+
+  it("pins an https target the same way", async () => {
+    resolvesTo("93.184.216.34");
+    fetchMock.mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    await safeFetch("https://example.com/");
+
+    expect(dialOf(fetchMock.mock.calls[0])).toEqual({
+      url: "https://example.com/",
+      hostname: "example.com",
+      address: "93.184.216.34",
+    });
+  });
+
+  it("pins each hop to the address re-validated for that hop", async () => {
+    mockLookup
+      .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }])
+      .mockResolvedValueOnce([{ address: "93.184.216.35", family: 4 }]);
+    fetchMock
+      .mockResolvedValueOnce(redirectTo(301, "https://www.example.com/"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    await safeFetch("https://example.com/");
+
+    expect(fetchMock.mock.calls.map(dialOf)).toEqual([
+      {
+        url: "https://example.com/",
+        hostname: "example.com",
+        address: "93.184.216.34",
+      },
+      {
+        url: "https://www.example.com/",
+        hostname: "www.example.com",
+        address: "93.184.216.35",
+      },
+    ]);
   });
 
   it.each(["/docs/", "docs/", "?page=2", "#frag"])(
@@ -572,12 +709,10 @@ describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)"
 
     const res = await safeFetch("http://example.com:8080/start");
 
-    expect(String(fetchMock.mock.calls[0][0])).toBe(
-      "http://93.184.216.34:8080/start",
-    );
-    expect(String(fetchMock.mock.calls[1][0])).toBe(
-      "http://93.184.216.34:8080/next",
-    );
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toEqual([
+      "http://example.com:8080/start",
+      "http://example.com:8080/next",
+    ]);
     expect(res.url).toBe("http://example.com:8080/next");
   });
 
@@ -591,7 +726,7 @@ describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)"
 
     const res = await safeFetch("http://example.com:8080/start");
 
-    expect(String(fetchMock.mock.calls[1][0])).toBe("http://93.184.216.34/x");
+    expect(String(fetchMock.mock.calls[1][0])).toBe("http://example.com/x");
     expect(res.url).toBe("http://example.com/x");
   });
 
@@ -610,7 +745,8 @@ describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)"
 
   it("reports the hostname URL as response.url when nothing redirected", async () => {
     resolvesTo("93.184.216.34");
-    // undici reports the URL it dialled, which for http is the pinned IP.
+    // Whatever the Response says it came from, response.url is the URL asked
+    // for (the IP is what undici reported when the URL was rewritten to it).
     const upstream = new Response("ok", { status: 200 });
     Object.defineProperty(upstream, "url", {
       value: "http://93.184.216.34/page?a=1",
@@ -643,7 +779,7 @@ describe("safeFetch (plain-HTTP targets are fetched by IP but reported by name)"
     const res = await safeFetch("http://example.com/");
 
     expect(res.url).toBe("http://www.example.com/");
-    expect(hostHeaderOf(fetchMock.mock.calls[1])).toBe("www.example.com");
+    expect(dialOf(fetchMock.mock.calls[1]).hostname).toBe("www.example.com");
   });
 
   it("reports the hostname for https targets too", async () => {

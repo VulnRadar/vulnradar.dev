@@ -6,6 +6,12 @@
  */
 
 import { lookup } from "dns/promises";
+import {
+  request as httpRequest,
+  type IncomingMessage,
+  type OutgoingHttpHeaders,
+} from "node:http";
+import { request as httpsRequest } from "node:https";
 import { isIP } from "net";
 import { blockedForAuthenticatedRequest } from "./auth/logout-guard";
 import type { ScanSessionBinding } from "./auth/types";
@@ -32,7 +38,12 @@ const DEFAULT_FETCH_TIMEOUT_MS = CONFIG_SCAN_FETCH_TIMEOUT_MS;
 const CALLER_GOVERNED_BACKSTOP_MS = SETTINGS_REGISTRY.SCAN_FETCH_TIMEOUT_MS.max;
 
 export type SafeFetchErrorCode =
-  "cross_host_redirect" | "timeout" | "tls" | "unreachable" | "blocked";
+  | "cross_host_redirect"
+  | "timeout"
+  | "tls"
+  | "unreachable"
+  | "blocked"
+  | "redirect";
 
 /**
  * What safeFetch throws when it knows why a request did not happen.
@@ -53,6 +64,8 @@ export type SafeFetchErrorCode =
  * - `unreachable`: refused, reset, no route, or the name did not resolve.
  * - `blocked`: safeFetch refused to make the request at all (private address,
  *   internal hostname, bad scheme, outside the allow-list, sign-out URL).
+ * - `redirect`: the caller passed `redirect: "error"` and the target answered
+ *   with a redirect. `redirectHost` names where it pointed, when it said.
  *
  * The message is whatever the underlying failure already said. Wrapping must
  * not reword it: stored error text and the sanitizer in
@@ -150,6 +163,11 @@ function classifyFetchFailure(
   err: unknown,
   signal: AbortSignal,
 ): SafeFetchError | null {
+  // A refusal from the pinned dispatcher reaches us wrapped in undici's
+  // "fetch failed". It is already the answer.
+  const cause = (err as { cause?: unknown } | null)?.cause;
+  if (cause instanceof SafeFetchError) return cause;
+
   const message = err instanceof Error ? err.message : String(err);
 
   if (
@@ -185,11 +203,11 @@ function refusalFrom(
 }
 
 /**
- * Make `response.url` the URL the target was asked for, not the address safeFetch
- * dialled. For plain HTTP the request goes to the pinned IP with the real host
- * in a Host header, so undici reports `http://93.184.216.34/` even when nothing
- * redirected. Every caller that compares `response.url` to the URL it asked
- * for read that as a redirect and persisted the IP as the scanned URL.
+ * Make `response.url` the URL of the hop that answered. fetch already reports
+ * it now that the URL keeps its hostname, but the contract is older than that
+ * (plain HTTP used to be fetched by IP, and every caller comparing
+ * `response.url` to the URL it asked for read the IP as a redirect), and a
+ * Response that did not come from undici carries no url at all.
  * `url` is a getter on Response.prototype; an own property shadows it.
  */
 function withLogicalUrl(response: Response, logicalUrl: string): Response {
@@ -274,6 +292,14 @@ const PRIVATE_IPV4_PATTERNS = [
   // IPv4-mapped/NAT64 IPv6 path too, so this also closes
   // http://[::ffff:100.100.100.200]/. ref: AUDIT-012#ssrf-03
   /^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\./, // 100.64.0.0/10
+  // ssrf: Azure's WireServer. 168.63.129.16 is a public address Microsoft
+  // owns, and from inside an Azure VM it answers as the host: WireServer on
+  // :80 and the HostGAPlugin on :32526 (/vmSettings, /machine?comp=goalstate)
+  // hand out VM configuration, extension settings and certificates. No
+  // private range covers it, so an Azure-hosted instance read it for anyone
+  // who scanned it. One address, not a range: the rest of 168.63.0.0/16 is
+  // ordinary Microsoft space. The IPv4-mapped path below inherits it.
+  /^168\.63\.129\.16$/,
   /^198\.1[89]\./, // Benchmarking (198.18.0.0/15), routed internally on many networks
   /^192\.0\.0\./, // IETF protocol assignments (192.0.0.0/24)
   /^192\.0\.2\./, // TEST-NET-1
@@ -461,52 +487,236 @@ function toCanonicalIPv6(ip: string): string {
   return groups.map((g) => g.padStart(4, "0")).join(":");
 }
 
+// ── Pinning the socket ──────────────────────────────────────────────────────
+//
+// ssrf: validateScanTarget approves an address, and the request has to go to
+// THAT address. Pinning used to mean rewriting the URL to the IP, which was
+// wrong both ways. On plain HTTP undici sent the IP as the Host header (it
+// derives Host from the URL and drops one set by hand), so a target behind a
+// CDN or a name-based vhost answered as some other site and its findings were
+// stored as the target's. On HTTPS the URL kept its name because the
+// certificate needs it, and undici resolved that name again at connect time,
+// so a nameserver answering TTL-0 could hand validateScanTarget a public
+// address and the socket an internal one: the private-range list was advisory
+// and every user had a port-state oracle on the hosting network.
+//
+// Now the URL keeps its hostname and fetch is handed a dispatcher that opens
+// the socket itself with node:http/https: `host` is the approved address, so
+// nothing resolves the name again, the Host header is the URL's host and port,
+// and on HTTPS `servername` carries the name for SNI and the certificate
+// check. That is the same split checks/tls.ts and tls-handshake.ts already
+// make (host: safeIp plus servername). A `dispatcher` on the init is how
+// fetch takes a custom connection without the `undici` package as a
+// dependency. ref: AUDIT-012#ssrf-02, sec-outbound-1, sec-outbound-3
+
 /**
- * Helper function to set the Host header while preserving existing headers
+ * The part of undici's Dispatcher contract fetch drives (docs/api/Dispatcher.md
+ * in undici 6, the version Node 22 bundles). Spelled out here because its
+ * types ship with the `undici` package, which this repo does not depend on.
+ * tests/lib/scanner/safe-fetch-pinning.test.ts runs the real fetch through it,
+ * so a runtime whose fetch speaks a different contract fails there first.
  */
-function setHostHeader(
-  init: RequestInit | undefined,
-  hostname: string,
-): RequestInit {
-  const existingInit = init || {};
-  const existingHeaders = existingInit.headers;
-  let headers: HeadersInit;
+interface DispatchOptions {
+  origin?: string | URL;
+  path: string;
+  method?: string;
+  headers?: Record<string, string | string[] | undefined> | string[] | null;
+  body?: string | Uint8Array | AsyncIterable<Uint8Array> | null;
+}
 
-  if (existingHeaders) {
-    if (Array.isArray(existingHeaders)) {
-      headers = [...existingHeaders, ["Host", hostname]];
-    } else if (existingHeaders instanceof Headers) {
-      const newHeaders = new Headers(existingHeaders);
-      newHeaders.set("Host", hostname);
-      headers = newHeaders;
-    } else {
-      headers = { ...existingHeaders, Host: hostname };
-    }
+interface DispatchHandler {
+  onConnect?(abort: (reason?: unknown) => void): void;
+  onResponseStarted?(): void;
+  onHeaders?(
+    statusCode: number,
+    rawHeaders: Buffer[],
+    resume: () => void,
+    statusText: string,
+  ): boolean | void;
+  onData?(chunk: Buffer): boolean | void;
+  onComplete?(trailers: Buffer[] | null): void;
+  onError?(err: Error): void;
+}
+
+function asError(reason: unknown): Error {
+  if (reason instanceof Error) return reason;
+  return new DOMException("The operation was aborted.", "AbortError");
+}
+
+function outgoingHeaders(raw: DispatchOptions["headers"]): OutgoingHttpHeaders {
+  const out: OutgoingHttpHeaders = {};
+  if (!raw) return out;
+  const add = (name: string, value: string | string[]) => {
+    const key = name.toLowerCase();
+    const prev = out[key];
+    out[key] =
+      prev === undefined ? value : ([] as string[]).concat(String(prev), value);
+  };
+  if (Array.isArray(raw)) {
+    for (let i = 0; i + 1 < raw.length; i += 2) add(raw[i], raw[i + 1]);
   } else {
-    headers = { Host: hostname };
+    for (const [name, value] of Object.entries(raw)) {
+      if (value !== undefined) add(name, value);
+    }
   }
+  return out;
+}
 
-  return { ...existingInit, headers };
+async function writeStreamedBody(
+  req: ReturnType<typeof httpRequest>,
+  body: AsyncIterable<Uint8Array>,
+): Promise<void> {
+  try {
+    for await (const chunk of body) {
+      if (req.destroyed) return;
+      if (!req.write(chunk)) {
+        await new Promise<void>((resolve) => {
+          req.once("drain", resolve);
+          req.once("close", resolve);
+        });
+      }
+    }
+    if (!req.destroyed) req.end();
+  } catch (err) {
+    req.destroy(asError(err));
+  }
 }
 
 /**
- * Rewrite an HTTP url to target the IP a prior validateScanTarget already
- * resolved (with the real host preserved in a Host header), so the OS cannot
- * re-resolve the hostname to a rebound private/metadata IP at connect time.
- * HTTPS is returned unchanged: swapping the hostname would break TLS/SNI.
- * That leaves a real, un-closed gap on the HTTPS path, and it should not be
- * read as a protection. An attacker serving a TTL-0 A record can answer
- * validateScanTarget's lookup with a public IP and undici's connect-time
- * lookup with an internal one, so on HTTPS the private-range block list is
- * advisory. Certificate validation still stops a response body coming back,
- * but the TCP connect and ClientHello do happen. Closing it properly needs a
- * per-request undici Agent whose `connect.lookup` returns the address already
- * validated (keeping the hostname for SNI), which needs `undici` as a direct
- * dependency this repo does not have yet. ref: AUDIT-012#ssrf-02
- * Unlike safeFetch this does NOT
- * touch redirect handling, so a probe that needs to inspect a raw cross-host
- * 3xx (e.g. the open-redirect canary) keeps working. Pass the `resolvedIp`
- * from the SafetyCheckResult you already validated the url with.
+ * A fetch dispatcher whose every socket goes to one approved address, for one
+ * hostname. A request for any other host is refused rather than sent there:
+ * the address was approved for this name only, and a fetch told to follow
+ * redirects would otherwise carry it over to wherever the target pointed.
+ */
+export class PinnedDispatcher {
+  constructor(
+    readonly hostname: string,
+    readonly address: string,
+  ) {}
+
+  dispatch(opts: DispatchOptions, handler: DispatchHandler): boolean {
+    try {
+      this.send(opts, handler);
+    } catch (err) {
+      queueMicrotask(() => handler.onError?.(asError(err)));
+    }
+    return true;
+  }
+
+  private send(opts: DispatchOptions, handler: DispatchHandler): void {
+    const origin = new URL(String(opts.origin));
+    if (
+      origin.hostname !== this.hostname ||
+      !ALLOWED_PROTOCOLS.has(origin.protocol)
+    ) {
+      throw new SafeFetchError(
+        `Redirect to a different host (${origin.hostname}) is not allowed.`,
+        "cross_host_redirect",
+        { redirectHost: origin.hostname },
+      );
+    }
+
+    const secure = origin.protocol === "https:";
+    const bareHost = origin.hostname.replace(/^\[(.*)\]$/, "$1");
+    const headers = outgoingHeaders(opts.headers);
+    // A Host the caller set by hand is kept (a Host-header probe means it);
+    // otherwise it is the URL's, port included, never the address.
+    if (headers.host === undefined) headers.host = origin.host;
+
+    const req = (secure ? httpsRequest : httpRequest)({
+      host: this.address,
+      port: origin.port ? Number(origin.port) : secure ? 443 : 80,
+      path: opts.path,
+      method: opts.method ?? "GET",
+      headers,
+      // SNI and the certificate check name the host. An IP-literal URL has no
+      // name to send and is checked against the certificate's IP entries.
+      ...(secure && isIP(bareHost) === 0 ? { servername: bareHost } : {}),
+    });
+
+    let settled = false;
+    let response: IncomingMessage | undefined;
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      handler.onError?.(err);
+    };
+
+    req.on("error", fail);
+    req.on("response", (res) => {
+      response = res;
+      handler.onResponseStarted?.();
+      const rawHeaders = res.rawHeaders.map((v) => Buffer.from(v, "latin1"));
+      const flowing = handler.onHeaders?.(
+        res.statusCode ?? 0,
+        rawHeaders,
+        () => res.resume(),
+        res.statusMessage ?? "",
+      );
+      if (flowing === false) res.pause();
+      res.on("data", (chunk: Buffer) => {
+        if (handler.onData?.(chunk) === false) res.pause();
+      });
+      res.on("end", () => {
+        if (settled) return;
+        settled = true;
+        handler.onComplete?.(
+          res.rawTrailers.map((v) => Buffer.from(v, "latin1")),
+        );
+      });
+      res.on("error", fail);
+      res.on("close", () => {
+        if (!res.complete) {
+          fail(
+            Object.assign(new Error("other side closed"), {
+              code: "UND_ERR_SOCKET",
+            }),
+          );
+        }
+      });
+    });
+
+    handler.onConnect?.((reason) => {
+      const err = asError(reason);
+      response?.destroy(err);
+      req.destroy(err);
+      fail(err);
+    });
+    if (req.destroyed) return;
+
+    const body = opts.body;
+    if (body == null) {
+      req.end();
+    } else if (typeof body === "string" || body instanceof Uint8Array) {
+      req.end(body);
+    } else {
+      void writeStreamedBody(req, body);
+    }
+  }
+}
+
+/** A RequestInit fetch will send through a PinnedDispatcher. */
+export type PinnedRequestInit = RequestInit & { dispatcher: PinnedDispatcher };
+
+function pinnedInit(
+  init: RequestInit | undefined,
+  hostname: string,
+  address: string,
+): PinnedRequestInit {
+  return { ...init, dispatcher: new PinnedDispatcher(hostname, address) };
+}
+
+/**
+ * Pin a request for `url` to the address a prior validateScanTarget approved,
+ * for a caller that calls fetch itself. The URL comes back unchanged and the
+ * init carries the dispatcher, so `fetch(target.url, target.init)` connects to
+ * `resolvedIp` and nowhere else, with the hostname in Host and SNI. Pass the
+ * `resolvedIp` from the SafetyCheckResult the url was validated with.
+ *
+ * Unlike safeFetch this does NOT touch redirect handling, so a probe that
+ * needs to inspect a raw cross-host 3xx (the open-redirect canary) keeps
+ * working. A fetch told to follow keeps every hop on this host and address,
+ * and fails a hop to any other host instead of resolving it.
  */
 export function pinToResolvedIp(
   url: string,
@@ -520,14 +730,30 @@ export function pinToResolvedIp(
   } catch {
     return { url, init };
   }
-  if (parsed.protocol !== "http:") return { url, init };
-
-  const originalHostname = parsed.hostname;
-  const originalPort = parsed.port;
-  parsed.hostname = isIP(resolvedIp) === 6 ? `[${resolvedIp}]` : resolvedIp;
-  if (originalPort) parsed.port = originalPort;
-  return { url: parsed.href, init: setHostHeader(init, originalHostname) };
+  if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) return { url, init };
+  return { url, init: pinnedInit(init, parsed.hostname, resolvedIp) };
 }
+
+/**
+ * The allow-list check, for the entry URL and every redirect hop alike. The
+ * message is stored and shown as is (ux-copy-14), so it does not change.
+ */
+function assertAllowedHostname(
+  hostname: string,
+  allowedHostnames: string[] | undefined,
+): void {
+  if (!allowedHostnames || allowedHostnames.length === 0) return;
+  const requested = hostname.toLowerCase();
+  if (!allowedHostnames.some((a) => a.toLowerCase() === requested)) {
+    throw new SafeFetchError(
+      `Hostname ${requested} is not in the allowed list`,
+      "blocked",
+    );
+  }
+}
+
+/** The statuses fetch itself treats as a redirect (Fetch standard). */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 /**
  * Merge extra headers onto an init, with the extras winning. Returns a new
@@ -833,10 +1059,20 @@ function assertSafePublicHttpUrl(rawUrl: string): URL {
  *                  never written back into the caller's init, so they cannot
  *                  survive into a later request.
  *
- * The returned Response's `url` is the final hop's hostname URL, never the IP
- * a plain-HTTP request was pinned to. Every refusal and network failure is a
- * SafeFetchError carrying a `code`; an abort the caller asked for (a cancelled
- * scan) and anything unrecognised are rethrown as they came.
+ * Every hop is fetched by its hostname on a socket pinned to the address
+ * validateScanTarget approved for that hop (see PinnedDispatcher), so DNS is
+ * never consulted again between the check and the connect. The returned
+ * Response's `url` is the final hop's URL. Every refusal and network failure
+ * is a SafeFetchError carrying a `code`; an abort the caller asked for (a
+ * cancelled scan) and anything unrecognised are rethrown as they came.
+ *
+ * Redirects: safeFetch follows them itself, re-validating every hop, and
+ * `allowedHostnames` applies to every hop, not only the first. `init.redirect`
+ * is honoured for one value: `"error"` makes the first redirect (301, 302,
+ * 303, 307 or 308) throw a SafeFetchError with code `redirect` instead of
+ * being followed, which is what a caller that must not follow one (an
+ * MTA-STS policy fetch, RFC 8461) asks for. `"follow"` and `"manual"` both
+ * get the guarded loop.
  *
  * Deadline: with `init.signal` the caller's deadline governs (the internal
  * timer is only a backstop, see CALLER_GOVERNED_BACKSTOP_MS). Without one the
@@ -862,70 +1098,18 @@ export async function safeFetch(
     if (blocked) throw new SafeFetchError(blocked, "blocked");
   }
 
-  // If allowedHostnames is provided, enforce that the hostname matches
-  if (allowedHostnames && allowedHostnames.length > 0) {
-    const requestHostname = prevalidatedUrlObj.hostname.toLowerCase();
-    const isAllowed = allowedHostnames.some(
-      (allowed) => allowed.toLowerCase() === requestHostname,
-    );
-    if (!isAllowed) {
-      throw new SafeFetchError(
-        `Hostname ${requestHostname} is not in the allowed list`,
-        "blocked",
-      );
-    }
-  }
+  assertAllowedHostname(prevalidatedUrlObj.hostname, allowedHostnames);
 
   const safety = await validateScanTarget(normalizedUrl);
 
-  if (!safety.safe) {
+  // validateScanTarget names the address on every approval. Without one there
+  // is nothing to pin the socket to, and an unpinned socket resolves the name
+  // again, so that is a refusal too.
+  if (!safety.safe || !safety.resolvedIp) {
     throw refusalFrom(safety, "URL blocked for security reasons");
   }
 
-  // We already parsed and normalized the URL in assertSafePublicHttpUrl above.
-  const urlObj = prevalidatedUrlObj;
-
-  // For HTTPS/WSS, we MUST keep the original hostname to avoid SSL/TLS certificate validation errors.
-  // For HTTP/WS, we can use the resolved IP to prevent DNS rebinding attacks.
-  //
-  // ssrf: on the HTTPS path this leaves the rebinding window open, and the
-  // branch below does NOT close it. undici re-resolves the hostname at
-  // connect time, so a nameserver serving a TTL-0 record can return a public
-  // address to validateScanTarget and an internal one to the socket. See
-  // pinToResolvedIp's comment for the fix this needs (a per-request undici
-  // Agent with a pinned connect.lookup) and why it is not here yet.
-  // ref: AUDIT-012#ssrf-02
-  let finalUrl = normalizedUrl;
-  let finalInit: RequestInit | undefined = init;
-
-  const isSecureProtocol =
-    urlObj.protocol === "https:" || urlObj.protocol === "wss:";
-
-  if (safety.resolvedIp && !isSecureProtocol) {
-    // Only use resolved IP for HTTP (not HTTPS) to avoid cert validation issues
-    const originalHostname = urlObj.hostname;
-    const originalPort = urlObj.port;
-    const hadExplicitPort = originalPort !== "";
-    // Use URL constructor to safely build the URL with the resolved IP
-    const urlWithIp = new URL(urlObj.href);
-    const resolvedHostForUrl =
-      isIP(safety.resolvedIp) === 6
-        ? `[${safety.resolvedIp}]`
-        : safety.resolvedIp;
-    urlWithIp.hostname = resolvedHostForUrl;
-    // After changing hostname, ensure the port matches the original URL's explicit port (if any)
-    if (hadExplicitPort) {
-      urlWithIp.port = originalPort;
-    }
-    finalUrl = urlWithIp.href;
-
-    // Ensure the original hostname is sent in the Host header for virtual hosting
-    finalInit = setHostHeader(init, originalHostname);
-  } else if (isSecureProtocol && safety.resolvedIp) {
-    // For HTTPS, just ensure Host header is set but keep original URL.
-    // This is virtual-hosting hygiene, not an SSRF control.
-    finalInit = setHostHeader(init, urlObj.hostname);
-  }
+  const refuseRedirects = init?.redirect === "error";
 
   // ssrf: manual redirect loop with per-hop re-validation. We
   // deliberately set `redirect: "manual"` and walk each Location:
@@ -977,13 +1161,12 @@ export async function safeFetch(
   let handedResponseToCaller = false;
 
   try {
-    let currentUrl = finalUrl;
-    let currentInit = finalInit;
-    // The URL as the target sees it. For plain HTTP, currentUrl may hold a
-    // resolved IP with the real host moved into the Host header, and an
-    // origin comparison against that would be meaningless. Every session
-    // decision is made against this logical URL instead.
+    let currentInit = init;
+    // The URL of this hop, by name. It is what fetch is given, what the
+    // session decides scope against and what Location resolves against.
     let currentLogicalUrl = normalizedUrl;
+    // The address validateScanTarget approved for this hop's host.
+    let currentAddress = safety.resolvedIp;
 
     for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
       const { signal: combinedSignal, cleanup: cleanupCombinedSignal } =
@@ -991,35 +1174,31 @@ export async function safeFetch(
           controller.signal,
           currentInit?.signal ?? undefined,
         );
-      let requestInit: RequestInit = {
-        ...currentInit,
+      // Attach the session, if any, for this hop only. authHeadersFor
+      // returns null off-origin, which is what drops the credentials on a
+      // redirect that leaves the target.
+      const sessionHeaders = session?.authHeadersFor(currentLogicalUrl);
+      const requestInit: PinnedRequestInit = {
+        ...pinnedInit(
+          sessionHeaders
+            ? withExtraHeaders(currentInit, sessionHeaders)
+            : currentInit,
+          new URL(currentLogicalUrl).hostname,
+          currentAddress,
+        ),
         // SECURITY: never let the underlying fetch follow redirects itself.
         // We do that ourselves so we can re-validate each destination.
         redirect: "manual",
         signal: combinedSignal,
       };
 
-      // Attach the session, if any, for this hop only. authHeadersFor
-      // returns null off-origin, which is what drops the credentials on a
-      // redirect that leaves the target.
-      if (session) {
-        const sessionHeaders = session.authHeadersFor(currentLogicalUrl);
-        if (sessionHeaders) {
-          requestInit = {
-            ...withExtraHeaders(currentInit, sessionHeaders),
-            redirect: "manual",
-            signal: combinedSignal,
-          };
-        }
-      }
-
-      // Safe: currentUrl is re-validated by validateScanTarget on every
-      // iteration of this loop. The manual redirect loop exists precisely
-      // to enforce that re-validation hop-by-hop.
+      // Safe: currentLogicalUrl is re-validated by validateScanTarget on
+      // every iteration of this loop, and the dispatcher connects to the
+      // address that validation approved and to nothing else.
       let response: Response;
       try {
         // codeql[js/request-forgery]
-        response = await fetch(currentUrl, requestInit);
+        response = await fetch(currentLogicalUrl, requestInit);
       } catch (err) {
         throw classifyFetchFailure(err, combinedSignal) ?? err;
       }
@@ -1028,6 +1207,25 @@ export async function safeFetch(
       // It ignores anything off its own origin.
       if (session) {
         session.observe(currentLogicalUrl, response.status, response.headers);
+      }
+
+      // The caller said not to follow redirects: the first one is the answer.
+      if (refuseRedirects && REDIRECT_STATUSES.has(response.status)) {
+        const location = response.headers.get("location");
+        let redirectHost: string | undefined;
+        try {
+          if (location) {
+            redirectHost = new URL(location, currentLogicalUrl).hostname;
+          }
+        } catch {
+          // An unparseable Location still refuses; it just names no host.
+        }
+        await response.body?.cancel().catch(() => {});
+        throw new SafeFetchError(
+          `The target answered HTTP ${response.status}, and this request does not follow redirects.`,
+          "redirect",
+          redirectHost ? { redirectHost } : undefined,
+        );
       }
 
       // Non-3xx: return as-is. The caller handles success/error semantics.
@@ -1053,10 +1251,9 @@ export async function safeFetch(
 
       // Resolve the Location URL against the URL the target sees (handles
       // relative redirects). Then run the full SSRF guard on the resolved
-      // absolute URL. NOT against currentUrl: for plain HTTP that holds the
-      // pinned IP, so `Location: /next` resolved to `http://<ip>/next`, the
-      // cross-host test below read the IP as a different host, and a site
-      // that answered normally failed the scan.
+      // absolute URL. (When plain HTTP was fetched by IP, resolving against
+      // the dialled URL turned `Location: /next` into `http://<ip>/next` and
+      // the cross-host test below read the IP as a different host.)
       let nextUrlObj: URL;
       try {
         nextUrlObj = new URL(location, currentLogicalUrl);
@@ -1103,12 +1300,17 @@ export async function safeFetch(
         );
       }
 
+      // The www <-> apex hop above is a courtesy for ordinary scans. A caller
+      // that confined the request to a list of hosts (every active probe)
+      // meant the list, on every hop. ref: AUDIT-012#ssrf-09
+      assertAllowedHostname(nextUrlObj.hostname, allowedHostnames);
+
       // Same-host: re-validate the destination. This re-runs the
       // private-IP / loopback / cloud-metadata checks and the DNS
       // resolution. If the destination is now private (e.g. DNS
       // rebinding inside the same hostname), reject.
       const nextSafety = await validateScanTarget(nextUrlObj.href);
-      if (!nextSafety.safe) {
+      if (!nextSafety.safe || !nextSafety.resolvedIp) {
         throw refusalFrom(
           nextSafety,
           `Redirect target ${nextUrlObj.hostname} blocked for security reasons`,
@@ -1134,7 +1336,11 @@ export async function safeFetch(
         currentInit = downgradeToGet(currentInit);
       }
 
+      // The next hop is fetched by its own URL (port included, so a Location
+      // that names no port goes to the scheme's default) on a socket pinned
+      // to the address just approved for it.
       currentLogicalUrl = nextUrlObj.href;
+      currentAddress = nextSafety.resolvedIp;
 
       // This hop's response is being discarded for the next one, so its
       // combined signal has no stream left to guard: detach here, on the only
@@ -1142,31 +1348,6 @@ export async function safeFetch(
       // paths above that return the Response, see the timer comment.)
       if (typeof cleanupCombinedSignal === "function") {
         cleanupCombinedSignal();
-      }
-
-      // For HTTP we can keep the resolved-IP substitution; for HTTPS
-      // we must keep the original hostname for cert validation.
-      const isSecure =
-        nextUrlObj.protocol === "https:" || nextUrlObj.protocol === "wss:";
-      if (nextSafety.resolvedIp && !isSecure) {
-        const urlWithIp = new URL(nextUrlObj.href);
-        const host =
-          isIP(nextSafety.resolvedIp) === 6
-            ? `[${nextSafety.resolvedIp}]`
-            : nextSafety.resolvedIp;
-        // Setting `hostname` keeps the port, so the dialled URL has exactly the
-        // port the logical URL does. This used to copy the previous hop's port
-        // onto a Location that named none, which sent
-        // `http://example.com:8080/` -> `http://example.com/x` back to :8080
-        // while response.url reported port 80.
-        urlWithIp.hostname = host;
-        currentUrl = urlWithIp.href;
-        currentInit = setHostHeader(currentInit, nextUrlObj.hostname);
-      } else {
-        currentUrl = nextUrlObj.href;
-        if (isSecure) {
-          currentInit = setHostHeader(currentInit, nextUrlObj.hostname);
-        }
       }
     }
 
