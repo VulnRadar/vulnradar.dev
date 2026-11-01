@@ -28,6 +28,7 @@
 
 import { findAllForms } from "../auth/form-parser";
 import { safeFetch, validateScanTarget } from "../safe-fetch";
+import { safeReadBody } from "../read-bounded-body";
 import { generateId } from "../_helpers";
 import { getCheckDef } from "../registry";
 import type { Vulnerability, Category } from "../types";
@@ -35,6 +36,19 @@ import { SCANNER_UA_ACTIVE_PROBE } from "../user-agent";
 import { CONFIG_SCANNER_ACTIVE_PROBE_MAX_FORMS } from "@/lib/config/config-values";
 
 export const REQUEST_TIMEOUT_MS = 6000;
+
+/**
+ * How much of a target's response a probe reads: the same 1 MB the page
+ * fetch reads, so a marker reflected anywhere a scan would see it is still
+ * found, while an endless or decompression-bomb body stops at the cap
+ * instead of being buffered whole in the scan worker.
+ */
+export const PROBE_BODY_MAX_BYTES = 1_000_000;
+
+/** A probe response's body, read with the size cap and the request timeout. */
+export function readProbeBody(res: Response): Promise<string> {
+  return safeReadBody(res, PROBE_BODY_MAX_BYTES, REQUEST_TIMEOUT_MS);
+}
 /** Caps total requests a form-submitting probe makes per scan (1 page fetch
  *  + up to this many form submissions), so a page with dozens of forms
  *  can't blow the scan's time budget or hammer the target. NOT
@@ -178,7 +192,7 @@ export async function discoverProbableForms(
       [hostname],
     );
     if (!res.ok) return null;
-    html = await res.text();
+    html = await readProbeBody(res);
   } catch {
     return null;
   }

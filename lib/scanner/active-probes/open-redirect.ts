@@ -6,7 +6,7 @@ import {
 import { generateId } from "../_helpers";
 import { getCheckDef } from "../registry";
 import type { Vulnerability, Category } from "../types";
-import { probeSignal, USER_AGENT } from "./shared";
+import { probeSignal, readProbeBody, USER_AGENT } from "./shared";
 
 // Query-parameter names real applications commonly use for a post-action
 // redirect target (post-login continuation, logout, SSO/OAuth callbacks,
@@ -197,7 +197,7 @@ export async function checkOpenRedirectProbe(
     // IPs rejected); verified-owned domain. codeql[js/request-forgery]
     const res = await fetch(pageTarget.url, pageTarget.init);
     if (!res.ok) return [];
-    html = await res.text();
+    html = await readProbeBody(res);
   } catch {
     return [];
   }

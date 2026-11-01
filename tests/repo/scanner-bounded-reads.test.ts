@@ -32,8 +32,6 @@ const THIRD_PARTY_API =
   "Answer from a fixed third-party API, not from the scanned site.";
 const NULL_BODY_FALLBACK =
   "Only reached when the response has no body stream (a 204 or a test double), so there is nothing to buffer.";
-const LATER_WAVE =
-  "Target-facing and still uncapped: the active probes move to safeReadBody with the rest of the scanner-body-caps work.";
 
 const ALLOWED: Record<string, Allowance> = {
   // DNS-over-HTTPS lookups against dns.google and cloudflare-dns.com.
@@ -78,30 +76,6 @@ const ALLOWED: Record<string, Allowance> = {
   "lib/scanner/subdomain-discovery-engine.ts#readPassiveText": {
     count: 1,
     why: NULL_BODY_FALLBACK,
-  },
-  "lib/scanner/active-probes/command-injection.ts#checkCommandInjectionProbe": {
-    count: 1,
-    why: LATER_WAVE,
-  },
-  "lib/scanner/active-probes/open-redirect.ts#checkOpenRedirectProbe": {
-    count: 1,
-    why: LATER_WAVE,
-  },
-  "lib/scanner/active-probes/shared.ts#discoverProbableForms": {
-    count: 1,
-    why: LATER_WAVE,
-  },
-  "lib/scanner/active-probes/sqli-error-based.ts#checkSqlInjectionProbe": {
-    count: 1,
-    why: LATER_WAVE,
-  },
-  "lib/scanner/active-probes/ssti.ts#checkSstiProbe": {
-    count: 1,
-    why: LATER_WAVE,
-  },
-  "lib/scanner/active-probes/xss-canary.ts#checkActiveProbes": {
-    count: 1,
-    why: LATER_WAVE,
   },
 };
 

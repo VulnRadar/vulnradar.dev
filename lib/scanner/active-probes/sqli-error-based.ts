@@ -5,6 +5,7 @@ import {
   buildFinding,
   buildProbeRequest,
   discoverProbableForms,
+  readProbeBody,
 } from "./shared";
 
 // Common, distinctive error-message fragments a database engine emits when
@@ -76,7 +77,7 @@ export async function checkSqlInjectionProbe(
         cancelSignal,
       );
       const res = await safeFetch(probeUrl, init, [hostname]);
-      const responseText = await res.text();
+      const responseText = await readProbeBody(res);
       if (liveSignatures.some((sig) => sig.test(responseText))) {
         const distinguisher = `${form.action}#${formIndex}:${form.testableFields.join(",")}`;
         const finding = buildFinding(

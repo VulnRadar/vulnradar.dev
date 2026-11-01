@@ -5,6 +5,7 @@ import {
   buildFinding,
   buildProbeRequest,
   discoverProbableForms,
+  readProbeBody,
 } from "./shared";
 
 // Two literal syntaxes covering the two broad SSTI engine families: Jinja2 /
@@ -83,7 +84,7 @@ export async function checkSstiProbe(
         cancelSignal,
       );
       const res = await safeFetch(probeUrl, init, [hostname]);
-      const responseText = await res.text();
+      const responseText = await readProbeBody(res);
       if (
         sstiEvaluatedForms(hex).some((evaluated) =>
           responseText.includes(evaluated),

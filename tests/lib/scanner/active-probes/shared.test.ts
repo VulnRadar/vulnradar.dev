@@ -14,6 +14,7 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
 
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
 import {
+  PROBE_BODY_MAX_BYTES,
   USER_AGENT,
   buildProbeRequest,
   discoverProbableForms,
@@ -135,5 +136,32 @@ describe("discoverProbableForms", () => {
   it("returns null when the page answers with an error", async () => {
     safeFetchMock.mockResolvedValue(new Response("nope", { status: 500 }));
     expect(await discoverProbableForms("https://example.com/")).toBeNull();
+  });
+
+  it("stops reading an endless page at the probe cap and hangs up", async () => {
+    const chunk = new TextEncoder().encode(PAGE.padEnd(256 * 1024, " "));
+    let pulls = 0;
+    let cancelled = false;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++;
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    safeFetchMock.mockResolvedValue(new Response(endless, { status: 200 }));
+
+    const found = await discoverProbableForms("https://example.com/");
+
+    expect(found?.forms.length).toBeGreaterThan(0);
+    expect(found?.baselineHtml.length).toBeLessThanOrEqual(
+      PROBE_BODY_MAX_BYTES,
+    );
+    expect(pulls).toBeLessThanOrEqual(
+      Math.ceil(PROBE_BODY_MAX_BYTES / chunk.length) + 2,
+    );
+    expect(cancelled).toBe(true);
   });
 });

@@ -59,7 +59,7 @@ describe("checkOpenRedirectProbe", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      text: () => Promise.resolve(PAGE_WITH_NO_REDIRECT_PARAM),
+      body: new Response(PAGE_WITH_NO_REDIRECT_PARAM).body,
     });
     const findings = await checkOpenRedirectProbe("https://example.com");
     expect(findings).toEqual([]);
@@ -71,7 +71,7 @@ describe("checkOpenRedirectProbe", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      text: () => Promise.resolve(PAGE_WITH_CROSS_HOST_REDIRECT_PARAM),
+      body: new Response(PAGE_WITH_CROSS_HOST_REDIRECT_PARAM).body,
     });
     const findings = await checkOpenRedirectProbe("https://example.com");
     expect(findings).toEqual([]);
@@ -87,7 +87,7 @@ describe("checkOpenRedirectProbe", () => {
           return {
             ok: true,
             status: 200,
-            text: () => Promise.resolve(PAGE_WITH_LOGIN_REDIRECT),
+            body: new Response(PAGE_WITH_LOGIN_REDIRECT).body,
           };
         }
         // The probe request: redirect param replaced with the canary target.
@@ -120,7 +120,7 @@ describe("checkOpenRedirectProbe", () => {
           return {
             ok: true,
             status: 200,
-            text: () => Promise.resolve(PAGE_WITH_LOGIN_REDIRECT),
+            body: new Response(PAGE_WITH_LOGIN_REDIRECT).body,
           };
         }
         return {
@@ -147,7 +147,7 @@ describe("checkOpenRedirectProbe", () => {
           return {
             ok: true,
             status: 200,
-            text: () => Promise.resolve(PAGE_WITH_LOGIN_REDIRECT),
+            body: new Response(PAGE_WITH_LOGIN_REDIRECT).body,
           };
         }
         return {
@@ -175,7 +175,7 @@ describe("checkOpenRedirectProbe", () => {
           return {
             ok: true,
             status: 200,
-            text: () => Promise.resolve(PAGE_WITH_MULTIPLE_REDIRECT_PARAMS),
+            body: new Response(PAGE_WITH_MULTIPLE_REDIRECT_PARAMS).body,
           };
         }
         return {
@@ -214,7 +214,7 @@ describe("checkOpenRedirectProbe", () => {
           return {
             ok: true,
             status: 200,
-            text: () => Promise.resolve(PAGE_WITH_MULTIPLE_REDIRECT_PARAMS),
+            body: new Response(PAGE_WITH_MULTIPLE_REDIRECT_PARAMS).body,
           };
         }
         probeCall++;
@@ -248,7 +248,7 @@ describe("checkOpenRedirectProbe", () => {
           return {
             ok: true,
             status: 200,
-            text: () => Promise.resolve(PAGE_WITH_LOGIN_REDIRECT),
+            body: new Response(PAGE_WITH_LOGIN_REDIRECT).body,
           };
         }
         const value = new URL(url).searchParams.get("redirect") ?? "";
@@ -288,7 +288,7 @@ describe("checkOpenRedirectProbe", () => {
           return {
             ok: true,
             status: 200,
-            text: () => Promise.resolve(PAGE_WITH_LOGIN_REDIRECT),
+            body: new Response(PAGE_WITH_LOGIN_REDIRECT).body,
           };
         }
         return {

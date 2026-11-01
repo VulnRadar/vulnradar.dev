@@ -5,6 +5,7 @@ import {
   buildFinding,
   buildProbeRequest,
   discoverProbableForms,
+  readProbeBody,
 } from "./shared";
 
 // Same "evaluated vs. literal" trick as ssti.ts's polyglot expression, aimed
@@ -67,7 +68,7 @@ export async function checkCommandInjectionProbe(
         cancelSignal,
       );
       const res = await safeFetch(probeUrl, init, [hostname]);
-      const responseText = await res.text();
+      const responseText = await readProbeBody(res);
       if (responseText.includes(cmdiEvaluatedForm(hex))) {
         const distinguisher = `${form.action}#${formIndex}:${form.testableFields.join(",")}`;
         const finding = buildFinding(

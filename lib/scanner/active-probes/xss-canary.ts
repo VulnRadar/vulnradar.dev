@@ -6,6 +6,7 @@ import {
   buildFinding,
   buildProbeRequest,
   discoverProbableForms,
+  readProbeBody,
 } from "./shared";
 
 /**
@@ -112,7 +113,7 @@ export async function checkActiveProbes(
       if (contentType && !/^text\/html/i.test(contentType)) {
         continue;
       }
-      const responseText = await res.text();
+      const responseText = await readProbeBody(res);
       // No Content-Type at all is a real, common backend misconfiguration
       // (not hypothetical) -- trusting that as "possibly HTML" let a JSON
       // API omitting the header (e.g. {"error":"invalid value for field:
