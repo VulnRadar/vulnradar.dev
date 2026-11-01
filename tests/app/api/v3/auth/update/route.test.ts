@@ -114,8 +114,29 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
 vi.mock("@/lib/database/db", () => ({
   default: {
     query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+    connect: async () => ({
+      query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+      release: () => {},
+    }),
   },
 }));
+
+// Issuing the new verification link is the real code unless a test makes it
+// fail, which is the case the email change has to stay safe under.
+let issueVerificationError: Error | null = null;
+vi.mock("@/lib/auth/email-verification", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/auth/email-verification")>();
+  return {
+    ...actual,
+    sendEmailVerification: async (
+      ...args: Parameters<typeof actual.sendEmailVerification>
+    ) => {
+      if (issueVerificationError) throw issueVerificationError;
+      return actual.sendEmailVerification(...args);
+    },
+  };
+});
 
 const { store: cookieStore, state: cookieState } = makeCookieStore();
 const { store: headerStore, state: headerState } = makeHeaderStore();
@@ -195,6 +216,7 @@ beforeEach(async () => {
   passwordUpdateCalls = [];
   sessionDeleteCalls = [];
   sessionInsertCalls = [];
+  issueVerificationError = null;
   invalidateSettingsCache();
 });
 
@@ -230,6 +252,21 @@ describe("PATCH /api/v3/auth/update", () => {
   it("requires the current password for an email change", async () => {
     logIn();
     const res = await PATCH(updateRequest({ email: "new@example.com" }));
+    expect(res.status).toBe(403);
+    expect(emailUpdateCalls).toHaveLength(0);
+  });
+
+  // The re-auth gate fails closed. A session whose users row is gone used to
+  // read as "no password set" (the OAuth-only rule) and skip the check.
+  it("refuses an email change when the account's row cannot be read", async () => {
+    logIn();
+    passwordHashRow = null;
+    const res = await PATCH(
+      updateRequest({
+        email: "new@example.com",
+        currentPassword: CURRENT_PASSWORD,
+      }),
+    );
     expect(res.status).toBe(403);
     expect(emailUpdateCalls).toHaveLength(0);
   });
@@ -379,6 +416,70 @@ describe("PATCH /api/v3/auth/update", () => {
       // The caller is not signed out: a fresh session replaces the cookie.
       expect(sessionInsertCalls).toHaveLength(1);
       expect(res.cookies.get(AUTH_SESSION_COOKIE_NAME)?.value).toBeTruthy();
+    });
+
+    // Changing the address and killing the links mailed to the old one are one
+    // step. As two, a link clicked in between (or one that survived because
+    // issuing the new link threw) verified the NEW address for someone who
+    // only ever controlled the old one.
+    it("clears the old verification links in the same transaction as the address change", async () => {
+      logIn();
+      const res = await PATCH(
+        updateRequest({
+          email: "new-address@example.com",
+          currentPassword: CURRENT_PASSWORD,
+        }),
+      );
+      expect(res.status).toBe(200);
+
+      const sqls = queries.map((q) => q.sql);
+      const begin = sqls.indexOf("BEGIN");
+      const update = sqls.findIndex((q) =>
+        q.startsWith("UPDATE users SET email = $1, email_verified_at = NULL"),
+      );
+      const clear = sqls.findIndex((q) =>
+        q.startsWith(
+          "DELETE FROM email_verification_tokens WHERE user_id = $1",
+        ),
+      );
+      const commit = sqls.indexOf("COMMIT");
+      const issue = sqls.findIndex((q) =>
+        q.startsWith("INSERT INTO email_verification_tokens"),
+      );
+      expect(begin).toBeGreaterThanOrEqual(0);
+      expect(clear).toBeGreaterThan(begin);
+      expect(update).toBeGreaterThan(clear);
+      expect(commit).toBeGreaterThan(update);
+      expect(issue).toBeGreaterThan(commit);
+      expect(queries[clear].params).toEqual([7]);
+    });
+
+    it("leaves no old verification link live when issuing the new one fails", async () => {
+      logIn();
+      issueVerificationError = new Error("settings unavailable");
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const res = await PATCH(
+        updateRequest({
+          email: "new-address@example.com",
+          currentPassword: CURRENT_PASSWORD,
+        }),
+      );
+
+      const sqls = queries.map((q) => q.sql);
+      const clear = sqls.findIndex((q) =>
+        q.startsWith(
+          "DELETE FROM email_verification_tokens WHERE user_id = $1",
+        ),
+      );
+      expect(clear).toBeGreaterThanOrEqual(0);
+      expect(sqls.indexOf("COMMIT")).toBeGreaterThan(clear);
+      // The address did change, so the rotation that goes with it still runs
+      // and the caller is told the truth instead of a 500.
+      expect(res.status).toBe(200);
+      expect(sessionDeleteCalls).toEqual([[7]]);
+      expect(logged).toHaveBeenCalled();
+      logged.mockRestore();
     });
 
     it("does not rotate sessions when the submitted email is unchanged", async () => {

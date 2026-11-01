@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getSession,
   hashPassword,
-  verifyPassword,
   deleteAllSessions,
   createSession,
 } from "@/lib/auth";
+import { verifyReauthPassword } from "@/lib/auth/reauth";
 import {
   analyzePassword,
   checkPasswordRequirements,
@@ -30,6 +30,45 @@ import { getSetting } from "@/lib/config/runtime-config";
 import { sendEmailVerification } from "@/lib/auth/email-verification";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
+
+/**
+ * The current-password check an email or password change has to pass, or the
+ * response that refuses it.
+ *
+ * The strict login bucket (5 / 15 min) gates it rather than the broad
+ * profile-update `api` bucket (100/hr), or a stolen session cookie gets about
+ * 20x more online guesses against this exact check. An account with no
+ * password (OAuth-only, see createOAuthUser) passes on the session alone,
+ * which also lets it set its first password; a users row that cannot be read
+ * fails closed.
+ */
+async function confirmCurrentPassword(
+  userId: number,
+  clientIp: string,
+  currentPassword: unknown,
+): Promise<NextResponse | null> {
+  const rl = await checkRateLimit({
+    key: `profile-reauth:${userId}:${clientIp}`,
+    ...RATE_LIMITS.login,
+  });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      {
+        error: `Too many attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+      },
+      { status: 429 },
+    );
+  }
+
+  const reauth = await verifyReauthPassword(userId, currentPassword, {
+    missing: "Current password is required to change profile details.",
+    wrong: "Current password is incorrect.",
+  });
+  if (!reauth.ok) {
+    return NextResponse.json({ error: reauth.error }, { status: 403 });
+  }
+  return null;
+}
 
 export async function PATCH(request: NextRequest) {
   const session = await getSession();
@@ -86,61 +125,19 @@ export async function PATCH(request: NextRequest) {
     // require it -- and no UI in the general profile tab collects a
     // password for them, unlike the dedicated change-password form, which
     // has its own current-password field wired up.
-    const sensitiveChangeRequested =
-      (typeof email === "string" && email.trim()) || Boolean(newPassword);
-    if (sensitiveChangeRequested) {
-      // A sensitive change (email/password) verifies currentPassword below, so
-      // gate it with the strict login bucket (5 / 15 min), not the broad
-      // profile-update `api` bucket (100/hr) -- otherwise a stolen session
-      // cookie gets ~20x more online guesses against this exact re-auth check.
-      const sensitiveRl = await checkRateLimit({
-        key: `profile-reauth:${session.userId}:${clientIp}`,
-        ...RATE_LIMITS.login,
-      });
-      if (!sensitiveRl.allowed) {
-        return NextResponse.json(
-          {
-            error: `Too many attempts. Try again in ${Math.ceil(sensitiveRl.retryAfterSeconds / 60)} minute(s).`,
-          },
-          { status: 429 },
-        );
-      }
-
-      const pwResult = await pool.query(
-        "SELECT password_hash FROM users WHERE id = $1",
-        [session.userId],
+    //
+    // These two predicates are the gate AND the only way into the email and
+    // password writes below, so no request can skip the check and still
+    // reach a write.
+    const wantsEmailChange = typeof email === "string" && email.trim() !== "";
+    const wantsPasswordChange = Boolean(newPassword);
+    if (wantsEmailChange || wantsPasswordChange) {
+      const refused = await confirmCurrentPassword(
+        session.userId,
+        clientIp,
+        currentPassword,
       );
-      const hasPassword = Boolean(pwResult.rows[0]?.password_hash);
-
-      if (hasPassword) {
-        if (typeof currentPassword !== "string" || !currentPassword) {
-          return NextResponse.json(
-            {
-              error: "Current password is required to change profile details.",
-            },
-            { status: 403 },
-          );
-        }
-        if (
-          pwResult.rows.length === 0 ||
-          !(await verifyPassword(
-            currentPassword,
-            pwResult.rows[0].password_hash,
-          ))
-        ) {
-          return NextResponse.json(
-            { error: "Current password is incorrect." },
-            { status: 403 },
-          );
-        }
-      }
-      // else: an OAuth-only account (see lib/auth/auth.ts's
-      // createOAuthUser) has no password to re-enter as proof of intent.
-      // The signed-in session itself is the re-auth signal for these
-      // accounts -- same trust boundary getSession() already enforces for
-      // every other authenticated route. This also lets such an account
-      // set its first password below (newPassword branch) without a
-      // chicken-and-egg "enter the password you don't have yet."
+      if (refused) return refused;
     }
 
     // Get IP and user agent for security emails
@@ -203,10 +200,17 @@ export async function PATCH(request: NextRequest) {
     // rotation and returns early).
     let emailChanged = false;
 
-    // Update email
-    if (typeof email === "string") {
+    // Update email. A blank string is a malformed email (400), not a request
+    // that skipped the re-auth above.
+    if (typeof email === "string" && !wantsEmailChange) {
+      return NextResponse.json(
+        { error: "Please enter a valid email." },
+        { status: 400 },
+      );
+    }
+    if (wantsEmailChange) {
       const trimmedEmail = email.toLowerCase().trim();
-      if (!trimmedEmail || !trimmedEmail.includes("@")) {
+      if (!trimmedEmail.includes("@")) {
         return NextResponse.json(
           { error: "Please enter a valid email." },
           { status: 400 },
@@ -232,17 +236,53 @@ export async function PATCH(request: NextRequest) {
         // an attacker who knows the current password can change the email
         // to attacker@evil.com and then trigger forgot-password (which
         // only requires the email) to take over the account.
-        await pool.query(
-          "UPDATE users SET email = $1, email_verified_at = NULL, updated_at = NOW() WHERE id = $2",
-          [trimmedEmail, session.userId],
-        );
+        //
+        // The links already mailed to the old address die in the same
+        // transaction. As separate steps, a link clicked between them, or one
+        // left behind because issuing the new link threw, verified the NEW
+        // address for someone who only ever read the old inbox. The DELETE
+        // goes first so this locks the token rows and then the user row, the
+        // order verify-email locks them in, and a racing click waits instead
+        // of deadlocking.
+        const tx = await pool.connect();
+        try {
+          await tx.query("BEGIN");
+          await tx.query(
+            "DELETE FROM email_verification_tokens WHERE user_id = $1",
+            [session.userId],
+          );
+          await tx.query(
+            "UPDATE users SET email = $1, email_verified_at = NULL, updated_at = NOW() WHERE id = $2",
+            [trimmedEmail, session.userId],
+          );
+          await tx.query("COMMIT");
+        } catch (err) {
+          await tx.query("ROLLBACK");
+          throw err;
+        } finally {
+          tx.release();
+        }
         emailChanged = true;
 
         // Send a verification link to the new address immediately. Without
         // this the account was left with email_verified_at NULL and no token
         // ever issued, so the user was stranded (locked out at next login)
-        // until they manually found and hit resend-verification.
-        await sendEmailVerification(session.userId, currentName, trimmedEmail);
+        // until they manually found and hit resend-verification. A failure
+        // here is logged, not thrown: the address has already changed, and
+        // the session rotation below must run for it either way. Resend
+        // covers the missing link.
+        try {
+          await sendEmailVerification(
+            session.userId,
+            currentName,
+            trimmedEmail,
+          );
+        } catch (err) {
+          console.error(
+            "Failed to issue the verification link after an email change:",
+            err,
+          );
+        }
 
         // Send account changes email to BOTH old and new email addresses (non-blocking)
         const emailContent = profileEmailChangedEmail(
@@ -322,7 +362,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Update password
-    if (newPassword) {
+    if (wantsPasswordChange) {
       // auth: current password already verified above (sensitive-change branch).
       // Advisory strength gate first (common/low-entropy passwords), matching
       // signup and reset-password -- the profile change was the one path that

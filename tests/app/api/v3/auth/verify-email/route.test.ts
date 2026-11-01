@@ -15,6 +15,7 @@ let tokenRow: {
   id: number;
   user_id: number;
   expires_at: string;
+  token_email: string | null;
   email: string;
   name: string | null;
   email_verified_at: string | null;
@@ -24,6 +25,7 @@ let usedTokenRow: { id: number; used_at: string | null } | null = null;
 let deletedTokenIds: unknown[][] = [];
 let verifiedUserCalls: unknown[][] = [];
 let tokenUsedCalls: unknown[][] = [];
+let verifiedUserRowCount = 1;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -48,7 +50,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
   if (s.startsWith("UPDATE users SET email_verified_at = NOW()")) {
     verifiedUserCalls.push(params);
-    return { rows: [] };
+    return { rows: [], rowCount: verifiedUserRowCount };
   }
   if (s.startsWith("UPDATE email_verification_tokens SET used_at = NOW()")) {
     tokenUsedCalls.push(params);
@@ -82,6 +84,7 @@ function validToken(overrides: Partial<NonNullable<typeof tokenRow>> = {}) {
     id: 3,
     user_id: 10,
     expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    token_email: "new-user@example.com",
     email: "new-user@example.com",
     name: "New User",
     email_verified_at: null,
@@ -97,6 +100,7 @@ beforeEach(() => {
   deletedTokenIds = [];
   verifiedUserCalls = [];
   tokenUsedCalls = [];
+  verifiedUserRowCount = 1;
 });
 
 describe("POST /api/v3/auth/verify-email", () => {
@@ -172,8 +176,69 @@ describe("POST /api/v3/auth/verify-email", () => {
       email: "new-user@example.com",
       name: "New User",
     });
-    expect(verifiedUserCalls).toEqual([[10]]);
+    expect(verifiedUserCalls).toEqual([[10, "new-user@example.com"]]);
     expect(tokenUsedCalls).toEqual([[3]]);
+  });
+
+  // A token proves control of the address it was mailed to, nothing else.
+  // Sign up as attacker@x, change the account to victim@y, then click the
+  // link from attacker@x's inbox: without the binding that set
+  // email_verified_at on victim@y, and a verified address is what OAuth
+  // sign-in and staff invites trust to pick the account.
+  it("refuses a token mailed to an address the account no longer has", async () => {
+    tokenRow = validToken({
+      token_email: "attacker@example.com",
+      email: "victim@example.com",
+    });
+
+    const res = await POST(verifyPostRequest({ token: "old-address-token" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/request a new one/i);
+    expect(verifiedUserCalls).toHaveLength(0);
+    expect(tokenUsedCalls).toHaveLength(0);
+    expect(deletedTokenIds).toEqual([[3]]);
+  });
+
+  it("refuses a token issued before tokens recorded their address", async () => {
+    tokenRow = validToken({ token_email: null });
+
+    const res = await POST(verifyPostRequest({ token: "unbound-token" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/request a new one/i);
+    expect(verifiedUserCalls).toHaveLength(0);
+    expect(tokenUsedCalls).toHaveLength(0);
+  });
+
+  it("matches the account's address case-insensitively", async () => {
+    tokenRow = validToken({ email: "New-User@Example.com" });
+
+    const res = await POST(verifyPostRequest({ token: "valid-token" }));
+
+    expect(res.status).toBe(200);
+    expect(verifiedUserCalls).toEqual([[10, "new-user@example.com"]]);
+  });
+
+  // The UPDATE carries the address too, so the flag can only land on the
+  // address the token was mailed to even if the row changed after the lookup.
+  it("sets the flag only where the account still holds the token's address", async () => {
+    tokenRow = validToken();
+    verifiedUserRowCount = 0;
+
+    const res = await POST(verifyPostRequest({ token: "valid-token" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/request a new one/i);
+    const update = queries.find((q) =>
+      q.sql.startsWith("UPDATE users SET email_verified_at = NOW()"),
+    );
+    expect(update?.sql).toMatch(/WHERE id = \$1 AND LOWER\(email\) = \$2/);
+    expect(tokenUsedCalls).toHaveLength(0);
+    expect(queries.map((q) => q.sql)).toContain("ROLLBACK");
   });
 
   // AUDIT-002#secrets-03: the digest is now HMAC-SHA256 keyed with the

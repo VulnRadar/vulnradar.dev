@@ -6,12 +6,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
  */
 
 let systemSettingsRows: { key: string; value: string }[] = [];
-const mockQuery = vi.fn(async (sql: string) => {
+const mockQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
   if (sql.includes("FROM system_settings")) return { rows: systemSettingsRows };
   return { rows: [] };
 });
 vi.mock("@/lib/database/db", () => ({
-  default: { query: (sql: string) => mockQuery(sql) },
+  default: {
+    query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+  },
 }));
 
 const mockSendEmail = vi.fn(async (_params: unknown) => {});
@@ -30,6 +32,7 @@ const savedAppUrl = process.env.APP_URL;
 
 beforeEach(() => {
   systemSettingsRows = [];
+  mockQuery.mockClear();
   mockSendEmail.mockClear();
   invalidateSettingsCache();
 });
@@ -68,5 +71,19 @@ describe("sendEmailVerification", () => {
     const text = await sentText();
     expect(text).toContain("https://scanner.example.org/verify-email?token=");
     expect(text).not.toContain("evil.example");
+  });
+
+  // verify-email only sets email_verified_at while the account still holds
+  // the address the token records, so the row must carry the address the link
+  // was actually mailed to, normalised the same way users.email is.
+  it("binds the token to the address it mails", async () => {
+    await sendEmailVerification(7, "Alex", " Alex@Example.com ");
+
+    const insert = mockQuery.mock.calls.find(([sql]) =>
+      sql.startsWith("INSERT INTO email_verification_tokens"),
+    );
+    expect(insert?.[0]).toMatch(/\(user_id, token_hash, expires_at, email\)/);
+    expect(insert?.[1]?.[0]).toBe(7);
+    expect(insert?.[1]?.[3]).toBe("alex@example.com");
   });
 });

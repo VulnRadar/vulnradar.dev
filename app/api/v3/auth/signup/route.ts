@@ -261,10 +261,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     user.id,
   ]);
 
-  // Store hashed token
+  // Store hashed token, bound to the address the link is mailed to (see
+  // lib/auth/email-verification.ts for why verify-email needs it).
   await pool.query(
-    "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-    [user.id, tokenHash, expiresAt],
+    "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at, email) VALUES ($1, $2, $3, $4)",
+    [user.id, tokenHash, expiresAt, email.trim().toLowerCase()],
   );
 
   // Create the preferences row and let the schema fill it in. Its column

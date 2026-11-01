@@ -1502,6 +1502,13 @@ export const upgrade = {
     // When the domain re-verification worker last tried a domain, answered
     // or not, so domains that never answer rotate to the back of its batch.
     { table: "domains", column: "last_attempt_at", definition: "TIMESTAMPTZ" },
+    // The address a verification link was mailed to, so verify-email can
+    // refuse a link from an inbox the account no longer uses.
+    {
+      table: "email_verification_tokens",
+      column: "email",
+      definition: "VARCHAR(255)",
+    },
   ],
 
   // AUDIT-011#drift-17: five columns a v2.0.0 database has that nothing ever
@@ -2476,6 +2483,7 @@ export const downgrade = {
     // wholesale above (system_error_logs, email_logs, worker_failure_state,
     // support_tickets), so only this one needs its own drop.
     { table: "scan_history", column: "failure_kind" },
+    { table: "email_verification_tokens", column: "email" },
   ],
 
   // AUDIT-011#drift-17: the five dead columns the upgrade drops existed at

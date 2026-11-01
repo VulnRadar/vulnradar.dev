@@ -10,6 +10,9 @@ import { sendEmail, emailVerifiedEmail } from "@/lib/email/email";
 // digest plus the pre-HMAC sha256 one, so a verification link already sent
 // when the switch to HMAC shipped still works (AUDIT-002#secrets-03).
 
+const RELINK_MESSAGE =
+  "This verification link has expired. Please request a new one.";
+
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const parsed = await parseBody<{ token: string }>(request);
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
@@ -24,9 +27,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   try {
     await client.query("BEGIN");
 
-    // Find valid token
+    // Find valid token. FOR UPDATE locks the token row and then the user row,
+    // the same order auth/update takes them in when it changes the address,
+    // so a click racing a change waits for it instead of deadlocking.
     const tokenRes = await client.query(
-      `SELECT evt.id, evt.user_id, evt.expires_at, u.email, u.name, u.email_verified_at
+      `SELECT evt.id, evt.user_id, evt.expires_at, evt.email AS token_email,
+              u.email, u.name, u.email_verified_at
        FROM email_verification_tokens evt
        JOIN users u ON evt.user_id = u.id
        WHERE evt.token_hash = ANY($1::text[]) AND evt.used_at IS NULL
@@ -50,6 +56,25 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     }
 
     const verificationToken = tokenRes.rows[0];
+    const boundEmail: string | null = verificationToken.token_email;
+
+    // A link proves control of the inbox it was mailed to, and only while the
+    // account still uses that address. Without this, signing up as one
+    // address and switching the account to someone else's before clicking
+    // marked the new address verified, which is what OAuth sign-in and staff
+    // invites trust to pick an account. A token from before tokens recorded
+    // their address (NULL) cannot be checked, so it is refused the same way.
+    if (
+      !boundEmail ||
+      boundEmail !== String(verificationToken.email).toLowerCase()
+    ) {
+      await client.query(
+        "DELETE FROM email_verification_tokens WHERE id = $1",
+        [verificationToken.id],
+      );
+      await client.query("COMMIT");
+      return ApiResponse.badRequest(RELINK_MESSAGE);
+    }
 
     // Check if already verified
     if (verificationToken.email_verified_at) {
@@ -67,16 +92,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         [verificationToken.id],
       );
       await client.query("COMMIT");
-      return ApiResponse.badRequest(
-        "This verification link has expired. Please request a new one.",
-      );
+      return ApiResponse.badRequest(RELINK_MESSAGE);
     }
 
-    // Mark email as verified
-    await client.query(
-      "UPDATE users SET email_verified_at = NOW() WHERE id = $1",
-      [verificationToken.user_id],
+    // The address is matched again in the write itself, so the flag can only
+    // land on the address the token was mailed to.
+    const verified = await client.query(
+      "UPDATE users SET email_verified_at = NOW() WHERE id = $1 AND LOWER(email) = $2",
+      [verificationToken.user_id, boundEmail],
     );
+    if (verified.rowCount !== 1) {
+      await client.query("ROLLBACK");
+      return ApiResponse.badRequest(RELINK_MESSAGE);
+    }
 
     // Mark token as used
     await client.query(

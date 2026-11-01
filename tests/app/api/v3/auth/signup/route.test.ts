@@ -382,6 +382,25 @@ describe("POST /api/v3/auth/signup", () => {
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
   });
 
+  // verify-email refuses a token whose address the account no longer holds,
+  // so a signup token that recorded no address could never verify anything.
+  it("binds the verification token to the address it was mailed to", async () => {
+    const res = await POST(
+      postSignup({
+        name: "Alex Morgan",
+        email: " Alex.Morgan@Example.com ",
+        password: STRONG_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const insert = queries.find((q) =>
+      q.sql.startsWith("INSERT INTO email_verification_tokens"),
+    );
+    expect(insert?.sql).toMatch(/\(user_id, token_hash, expires_at, email\)/);
+    expect(insert?.params[3]).toBe("alex.morgan@example.com");
+  });
+
   describe("language", () => {
     const BODY = {
       name: "Alex Morgan",

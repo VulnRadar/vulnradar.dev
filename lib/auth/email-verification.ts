@@ -19,6 +19,11 @@ import { hashAuthToken } from "@/lib/auth/token-hash";
  * this, so changing your email left email_verified_at NULL with no link ever
  * sent, stranding the account until the user manually hit resend.
  *
+ * The row records the address the link goes to. verify-email sets
+ * email_verified_at only while the account still holds that address, so the
+ * link proves control of one inbox and cannot vouch for an address the
+ * account was moved to after it was sent.
+ *
  * Pass `client` to run the token write inside a caller's transaction (e.g.
  * the same statement that flips email_verified_at to NULL); omit it to use
  * the shared pool.
@@ -30,6 +35,7 @@ export async function sendEmailVerification(
   client?: PoolClient,
 ): Promise<void> {
   const db = client ?? pool;
+  const to = email.toLowerCase().trim();
   const token = randomBytes(32).toString("hex");
   const tokenHash = hashAuthToken(token);
   const emailVerificationHours = await getSetting("EMAIL_VERIFICATION_HOURS");
@@ -41,8 +47,8 @@ export async function sendEmailVerification(
     userId,
   ]);
   await db.query(
-    "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-    [userId, tokenHash, expiresAt],
+    "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at, email) VALUES ($1, $2, $3, $4)",
+    [userId, tokenHash, expiresAt, to],
   );
 
   const verifyLink = `${secretLinkAppUrl()}/verify-email?token=${token}`;
@@ -51,7 +57,6 @@ export async function sendEmailVerification(
     verifyLink,
     await getUserLocale(userId),
   );
-  const to = email.toLowerCase().trim();
   setImmediate(() => {
     sendEmail({
       to,
