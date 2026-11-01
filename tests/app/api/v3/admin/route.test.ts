@@ -1401,6 +1401,41 @@ describe("PATCH /api/v3/admin — update_email is admin-only (AUDIT-002#auth-01)
     expect(String(update?.[0])).toContain("email_verified_at = NULL");
     expect(update?.[1]).toEqual(["new@example.com", 5]);
   }, 20000);
+
+  it.each([
+    ["a space inside the address", "new user@example.com"],
+    ["a C1 control character", "new\u0085@example.com"],
+    ["an address past 254 characters", `${"a".repeat(250)}@example.com`],
+    ["a domain with no dot", "admin@localhost"],
+  ])(
+    "refuses %s with the rule every other new address follows",
+    async (_label, email) => {
+      queueRole("admin");
+      queueTarget({
+        email: "old@example.com",
+        role: "user",
+        unsubscribe_token: null,
+      });
+      queueAdminPassword(adminHash);
+      const res = await PATCH(
+        patchRequest({
+          action: "update_email",
+          userId: 5,
+          email,
+          currentAdminPassword: ADMIN_PASSWORD,
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe("Invalid email format");
+      expect(
+        mockQuery.mock.calls.some((c) =>
+          String(c[0]).includes("UPDATE users SET email"),
+        ),
+      ).toBe(false);
+      expect(mockLogAction).not.toHaveBeenCalled();
+    },
+    20000,
+  );
 });
 
 describe("PATCH /api/v3/admin — the delete handler answers to one name", () => {

@@ -5,7 +5,7 @@ import {
   logAction,
   checkStaff2FALockout,
 } from "@/lib/auth/authorization";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { Validate, withErrorHandling } from "@/lib/api/api-utils";
 import {
   hasGodMode,
   hasStaffPermission,
@@ -2197,14 +2197,11 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       const newEmail = email.trim().toLowerCase();
       const oldEmail = targetUser.email;
 
-      // Validate email format - simple check without ReDoS vulnerability
-      const emailParts = newEmail.split("@");
-      if (
-        emailParts.length !== 2 ||
-        !emailParts[0] ||
-        !emailParts[1] ||
-        !emailParts[1].includes(".")
-      ) {
+      // The same rule as signup, a staff invite and the profile change. The
+      // hand-rolled split it replaced let whitespace, control characters and
+      // an address past SMTP's 254 characters through, into the account row
+      // and the audit line below.
+      if (Validate.email(newEmail)) {
         return NextResponse.json(
           { error: "Invalid email format" },
           { status: 400 },
