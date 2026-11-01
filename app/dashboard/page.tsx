@@ -345,7 +345,7 @@ function DashboardContent() {
   const handleVerdictChanged = useCallback(async () => {
     if (!scanHistoryId) return;
     try {
-      const res = await fetch(`${API.HISTORY}/${scanHistoryId}`);
+      const res = await fetch(API.HISTORY_ITEM(scanHistoryId));
       if (!res.ok) return;
       const data = await res.json();
       const mapped = mapHistoryDetailResponse(data);
@@ -370,7 +370,7 @@ function DashboardContent() {
   async function handleSaveNotes(notes: string): Promise<string | null> {
     if (!scanHistoryId) return "This scan is not saved yet.";
     try {
-      const res = await fetch(`${API.HISTORY}/${scanHistoryId}`, {
+      const res = await fetch(API.HISTORY_ITEM(scanHistoryId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes }),

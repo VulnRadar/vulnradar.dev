@@ -208,7 +208,7 @@ export default function SharesPage() {
   async function changeShareExpiry(share: Share, days: number | null) {
     setUpdatingExpiry(true);
     try {
-      const res = await fetch(`${API.HISTORY}/${share.id}/share`, {
+      const res = await fetch(`${API.HISTORY_ITEM(share.id)}/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expiresInDays: days }),
@@ -253,7 +253,7 @@ export default function SharesPage() {
     setConfirmRevoke(null);
     setRevoking(scanId);
     try {
-      const res = await fetch(`${API.HISTORY}/${scanId}/share`, {
+      const res = await fetch(`${API.HISTORY_ITEM(scanId)}/share`, {
         method: "DELETE",
       });
       if (res.ok) {

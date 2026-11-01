@@ -1313,7 +1313,7 @@ export function EngineFeedbackManager() {
                               {c.examples.map((ex) => (
                                 <a
                                   key={ex.scanId}
-                                  href={`${API.HISTORY}/${ex.scanId}`}
+                                  href={API.HISTORY_ITEM(ex.scanId)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-xs text-primary hover:underline inline-flex items-center gap-1 w-fit"
@@ -1364,7 +1364,7 @@ export function EngineFeedbackManager() {
                       {c.examples.map((ex) => (
                         <a
                           key={ex.scanId}
-                          href={`${API.HISTORY}/${ex.scanId}`}
+                          href={API.HISTORY_ITEM(ex.scanId)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-primary hover:underline inline-flex items-center gap-1"

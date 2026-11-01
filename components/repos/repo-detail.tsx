@@ -137,7 +137,7 @@ export function RepoDetail({
     setSelectedIssue(null);
     setDetailLoading(true);
     try {
-      const res = await fetch(`${API.HISTORY}/${id}`);
+      const res = await fetch(API.HISTORY_ITEM(id));
       if (!res.ok) {
         setScanDetail(null);
         return;
