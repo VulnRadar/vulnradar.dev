@@ -71,6 +71,21 @@ vulnradar_scan:
       if [ -z "${VR_URL:-}" ]; then
         echo "VR_URL is empty. Set it to the URL you want scanned."; exit 2
       fi
+      # Checked before the scan is started and charged. A threshold that is
+      # not a number made the comparisons below error out, and an errored
+      # test inside `if` is just false, so the gate passed.
+      for pair in "VR_MAX_CRITICAL:${VR_MAX_CRITICAL:-}" "VR_MAX_HIGH:${VR_MAX_HIGH:-}"; do
+        case "${pair#*:}" in
+          ''|*[!0-9]*) echo "${pair%%:*} must be 0 or more, got '${pair#*:}'."; exit 2 ;;
+        esac
+      done
+      # An empty VR_MAX_MEDIUM means "no medium check", like the default. Any
+      # negative number disables it, as it does in the CLI: only a value that
+      # is not a number is refused.
+      if [ -z "${VR_MAX_MEDIUM:-}" ]; then VR_MAX_MEDIUM=-1; fi
+      case "${VR_MAX_MEDIUM#-}" in
+        ''|*[!0-9]*) echo "VR_MAX_MEDIUM must be a number (a negative one disables the check), got '$VR_MAX_MEDIUM'."; exit 2 ;;
+      esac
       case "$VR_INCLUDE_SUPPRESSED" in
         true|false) ;;
         *) echo "VR_INCLUDE_SUPPRESSED must be true or false, got '$VR_INCLUDE_SUPPRESSED'."; exit 2 ;;

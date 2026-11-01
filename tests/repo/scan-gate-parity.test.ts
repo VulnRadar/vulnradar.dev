@@ -16,7 +16,14 @@
  */
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { INCOMPLETE_LABELS as APP_INCOMPLETE_LABELS } from "@/lib/scanner/incomplete-labels";
@@ -144,6 +151,174 @@ describe.each([
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+/**
+ * Every `run:` script in a file: block scalars dedented, inline values as
+ * they are. Keys are matched at any indent, so a step list of any depth is
+ * covered.
+ */
+function runScripts(source: string): string[] {
+  const lines = source.split("\n");
+  const scripts: string[] = [];
+  lines.forEach((line, i) => {
+    const match = /^(\s*)(?:- )?run:\s*(.*)$/.exec(line);
+    if (!match) return;
+    const inline = match[2].trim();
+    if (!/^[|>][-+]?\s*$/.test(inline)) {
+      scripts.push(inline);
+      return;
+    }
+    const body: string[] = [];
+    for (const next of lines.slice(i + 1)) {
+      if (next.trim() === "") {
+        body.push("");
+        continue;
+      }
+      if ((next.match(/^ */) as RegExpMatchArray)[0].length <= match[1].length)
+        break;
+      body.push(next);
+    }
+    scripts.push(body.join("\n"));
+  });
+  return scripts;
+}
+
+function actionFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return actionFiles(full);
+    return /\.ya?ml$/.test(entry.name) ? [full] : [];
+  });
+}
+
+/**
+ * Run a gate script up to the point it would start a scan. curl and jq are
+ * shell functions that record the call, so a script that gets past its input
+ * checks shows up as a recorded request instead of a network call.
+ */
+function runGateInputs(
+  script: string,
+  shell: "bash" | "sh",
+  env: Record<string, string>,
+) {
+  const dir = mkdtempSync(path.join(tmpdir(), "scan-gate-input-"));
+  try {
+    const calls = path.join(dir, "calls.log").replace(/\\/g, "/");
+    const file = path.join(dir, "gate.sh").replace(/\\/g, "/");
+    writeFileSync(
+      file,
+      [
+        `curl() { echo "curl $*" >> '${calls}'; return 7; }`,
+        `jq() { echo "jq $*" >> '${calls}'; echo '{}'; }`,
+        script,
+      ].join("\n"),
+    );
+    const result = spawnSync(shell, [file], {
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+    });
+    const called = existsSync(calls) ? readFileSync(calls, "utf8") : "";
+    return {
+      status: result.status,
+      out: `${result.stdout}${result.stderr}`,
+      startedScan: called.includes("curl"),
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const shellAvailable = spawnSync("bash", ["--version"]).status === 0;
+
+const GATE_DEFAULTS = {
+  VR_URL: "https://example.com",
+  VR_API_BASE: "http://127.0.0.1:9/api/v3",
+  VR_CRAWL: "false",
+  VR_MAX_CRITICAL: "0",
+  VR_MAX_HIGH: "0",
+  VR_MAX_MEDIUM: "-1",
+  VR_INCLUDE_SUPPRESSED: "false",
+  VR_FAIL_ON_INCOMPLETE: "never",
+  VR_TIMEOUT: "",
+  VR_POLL_INTERVAL: "5",
+  VR_SARIF_FILE: "",
+  VR_API_KEY: "vr_test",
+  VULNRADAR_TOKEN: "vr_test",
+};
+
+describe("the composite actions' scripts", () => {
+  const files = actionFiles(path.join(process.cwd(), ".github/actions"));
+
+  it("are found", () => {
+    expect(files.length).toBeGreaterThan(0);
+    expect(runScripts(ACTION)).toHaveLength(1);
+  });
+
+  it.each(files.map((file) => [path.relative(process.cwd(), file), file]))(
+    "%s never puts an expression into a run script",
+    (_name, file) => {
+      // The runner expands `${{ }}` anywhere in a run script before the shell
+      // sees it, and a backslash in front does not stop it. A value that
+      // reaches the script that way is pasted into its source, so it goes
+      // through `env:` instead and is read back as a quoted variable.
+      for (const script of runScripts(readFileSync(file, "utf8"))) {
+        expect(script).not.toContain("${{");
+      }
+    },
+  );
+
+  it.skipIf(!shellAvailable)(
+    "still shows the secret to pass when the key is empty",
+    () => {
+      const run = runGateInputs(ACTION_SH, "bash", {
+        ...GATE_DEFAULTS,
+        VR_API_KEY: "",
+      });
+      expect(run.status).toBe(EXIT.ERROR);
+      expect(run.startedScan).toBe(false);
+      expect(run.out).toContain(
+        "::error::api-key is empty. Pass it from a repo secret, e.g. ${{ secrets.VULNRADAR_TOKEN }}.",
+      );
+    },
+  );
+});
+
+describe.skipIf(!shellAvailable).each([
+  ["action.yml", ACTION_SH, "bash" as const],
+  ["the GitLab template", GITLAB_SH, "sh" as const],
+])("%s refuses a threshold it cannot compare", (_name, script, shell) => {
+  // `[ 3 -gt "abc" ]` is an error, and an error inside `if` is just false, so
+  // a threshold that is not a number used to pass every scan. It is refused
+  // with exit 2 before the scan is started and charged.
+  it.each([
+    ["VR_MAX_CRITICAL", "abc"],
+    ["VR_MAX_CRITICAL", ""],
+    ["VR_MAX_CRITICAL", "1.5"],
+    ["VR_MAX_CRITICAL", "-1"],
+    ["VR_MAX_HIGH", "ten"],
+    ["VR_MAX_HIGH", ""],
+    ["VR_MAX_HIGH", "2 "],
+    ["VR_MAX_MEDIUM", "abc"],
+    ["VR_MAX_MEDIUM", "-x"],
+  ])("%s=%j exits 2 without starting a scan", (name, value) => {
+    const run = runGateInputs(script, shell, {
+      ...GATE_DEFAULTS,
+      [name]: value,
+    });
+    expect(run.startedScan, run.out).toBe(false);
+    expect(run.status, run.out).toBe(EXIT.ERROR);
+  });
+
+  it.each([
+    ["the defaults", {}],
+    ["numbers", { VR_MAX_CRITICAL: "2", VR_MAX_HIGH: "10" }],
+    ["an empty medium threshold", { VR_MAX_MEDIUM: "" }],
+    ["a negative medium threshold", { VR_MAX_MEDIUM: "-5" }],
+  ])("accepts %s and goes on to start the scan", (_label, extra) => {
+    const run = runGateInputs(script, shell, { ...GATE_DEFAULTS, ...extra });
+    expect(run.startedScan, run.out).toBe(true);
   });
 });
 

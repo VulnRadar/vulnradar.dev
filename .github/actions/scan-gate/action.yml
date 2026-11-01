@@ -106,7 +106,11 @@ runs:
         # fetched). A failed gate wins over 3.
 
         if [ -z "$VR_API_KEY" ]; then
-          echo "::error::api-key is empty. Pass it from a repo secret, e.g. \${{ secrets.VULNRADAR_TOKEN }}."
+          # The dollar sign comes in through printf: the runner expands an
+          # expression anywhere in this script before bash runs it, a
+          # backslash does not stop it, and a composite action has no secrets
+          # context to expand it from.
+          printf '::error::api-key is empty. Pass it from a repo secret, e.g. %s{{ secrets.VULNRADAR_TOKEN }}.\n' '$'
           exit 2
         fi
 
