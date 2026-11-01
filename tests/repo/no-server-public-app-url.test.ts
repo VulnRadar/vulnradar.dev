@@ -15,7 +15,7 @@ import ts from "typescript";
  * operator does not own. Server code asks lib/config/server-app-url.ts
  * instead, which reads the environment of the running process:
  * secretLinkAppUrl() for a link that carries a token, serverAppUrl() (which
- * prefers the admin-saved setting) for everything else.
+ * prefers the setting only the super admin can save) for everything else.
  *
  * Covers lib/, app/api/ and instrumentation.ts. Pages and components are not
  * scanned: what they render is built for the browser, where the build value is
@@ -222,7 +222,10 @@ function importsConstants(node: ts.Expression): boolean {
 const SECRET_LINK =
   /[?&]token=|\/(?:reset-password|verify-email|staff-invite|teams\/join|unsubscribe)/;
 
-/** The helpers that prefer the APP_URL row any admin can save. */
+/**
+ * The helpers that prefer the saved APP_URL row. Only the super admin can
+ * save it, and it feeds only the OAuth and staff sign-in redirects.
+ */
 const SAVED_ROW_READERS = new Set(["serverAppUrl", "resolveAppUrl"]);
 
 function unwrapExpression(node: ts.Expression): ts.Expression {
@@ -505,12 +508,13 @@ describe("secretLinkOriginReads", () => {
  * A link that carries a secret takes its origin from the environment.
  *
  * serverAppUrl() and resolveAppUrl() prefer the APP_URL row saved in the
- * settings page, which any admin could edit. A reset link built from either
- * one would carry its token to whatever domain was saved there, so an admin
- * could ask the public forgot-password endpoint for the super admin's address
- * and collect the link. The build-time APP_URL sent the same tokens to
- * https://vulnradar.dev on every pulled image. Token links use
- * secretLinkAppUrl() instead, which reads only the environment.
+ * settings page. Only the super admin can save it, and it feeds only the OAuth
+ * and staff sign-in redirects. A reset link built from either one would carry
+ * its token to whatever domain was saved there, so one browser session could
+ * save a domain it owns, ask the public forgot-password endpoint for any
+ * address and collect the link. The build-time APP_URL sent the same tokens
+ * to https://vulnradar.dev on every pulled image. Token links use
+ * secretLinkAppUrl() instead, which reads only the process environment.
  */
 describe("no link that carries a secret follows the saved or build-time URL", () => {
   const SLOW = { timeout: 30_000 };

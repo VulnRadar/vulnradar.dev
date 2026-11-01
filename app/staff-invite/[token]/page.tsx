@@ -34,8 +34,9 @@ import { AUTH_HEADING_CLASS } from "@/components/auth/auth-shell";
 /**
  * Acceptance page for a staff invite (AUDIT-012#authz-10).
  *
- * app/api/v3/admin/staff-invites/route.ts has always emailed
- * `${APP_URL}/staff-invite/${token}`, and the accept endpoints behind it
+ * app/api/v3/admin/staff-invites/route.ts has always emailed a link to
+ * /staff-invite/<token> (its origin now comes from secretLinkAppUrl(), which
+ * reads only the process environment), and the accept endpoints behind it
  * (app/api/v3/auth/staff-invite/[token]/route.ts, GET to validate and POST to
  * accept) have always been implemented, but no page ever existed at that URL:
  * every invite an admin sent was a 404 and the only way to add staff was for

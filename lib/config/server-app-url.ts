@@ -13,15 +13,16 @@
 // does not own. Reading the variable by a name held in an array is something
 // the build cannot rewrite, so both readers see the container's environment.
 //
-// There are two because the saved row and the environment are changed by
-// different people. Any admin can save the row from the settings page; only
-// whoever runs the process can set the environment. A link that carries a
-// secret takes its origin from secretLinkAppUrl(): if it followed the saved
-// row, an admin could save a domain they own, ask the public forgot-password
-// endpoint for the super admin's address, and read the token off the request
-// when the link is clicked. serverAppUrl() is for the OAuth redirect_uri,
-// which the provider checks against the URIs registered with it, and for
-// links with nothing in them worth stealing.
+// There are two because the saved row and the environment are changed in
+// different places. Only the super admin can save the row, from the settings
+// page in a browser session; only whoever runs the process can set the
+// environment. The row feeds serverAppUrl(), and through resolveAppUrl() the
+// GitHub, Google and Discord sign-in and connect redirects and staff SSO,
+// where the provider checks the redirect_uri against the URIs registered with
+// it. A link that carries a secret reads only the environment, through
+// secretLinkAppUrl(): if it followed the row, one browser session could save
+// a domain it owns, ask the public forgot-password endpoint for any address,
+// and read the token off the request when the link is clicked.
 //
 // Server only: serverAppUrl() reads the settings table through runtime-config.
 
@@ -55,16 +56,18 @@ export function runtimeEnvAppUrl(): string | undefined {
  * unsubscribe, and the sign-in page a duplicate-signup notice points at.
  *
  * The environment the process was started with, then the shipped default.
- * Never the saved setting, which any admin can edit.
+ * Never the saved setting: only the super admin can save it, from a browser,
+ * and it feeds only the OAuth and staff sign-in redirects.
  */
 export function secretLinkAppUrl(): string {
   return runtimeEnvAppUrl() ?? withoutTrailingSlash(CONFIG_APP_URL);
 }
 
 /**
- * This deployment's public origin for the OAuth redirect_uri and for links
- * that carry no secret. `fallback` is used only when neither the settings
- * table nor the environment has one. A link with a token in it uses
+ * This deployment's public origin for a link that carries no secret. Today
+ * that is only the OAuth and staff sign-in redirect_uri, through
+ * resolveAppUrl(). `fallback` is used only when neither the settings table
+ * nor the environment has one. A link with a token in it uses
  * secretLinkAppUrl() instead.
  */
 export async function serverAppUrl(

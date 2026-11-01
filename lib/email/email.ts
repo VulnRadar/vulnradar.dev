@@ -216,7 +216,8 @@ interface LayoutOptions {
  *
  * `origin` is secretLinkAppUrl(), passed in by sendEmail. The token works for
  * whoever holds it, so the link follows the URL the operator gave the process,
- * never the one an admin can save in the settings page.
+ * never the row the super admin can save in the settings page, which feeds
+ * only the OAuth and staff sign-in redirects.
  */
 export function unsubscribeApiUrl(
   origin: string,
@@ -1029,8 +1030,9 @@ export function signupAttemptOnExistingAccountEmail(
   const safeName = escapeHtml(name);
   const greeting = name ? `Hi ${name}, ` : "";
   const safeGreeting = safeName ? `Hi ${safeName}, ` : "";
-  // Same scheme guard teamInviteEmail uses. Both links are built from APP_URL
-  // here, but a template that renders an href must never assume its caller.
+  // Same scheme guard teamInviteEmail uses. The signup route builds both links
+  // from secretLinkAppUrl(), which reads only the process environment, but a
+  // template that renders an href must never assume its caller.
   const safeLoginLink = /^https?:\/\//i.test(loginLink)
     ? loginLink
     : "#invalid";
