@@ -22,8 +22,13 @@ import { redactSecret, shannonEntropy } from "../../_helpers";
 const ASSIGNMENT =
   /\b([a-zA-Z_$][a-zA-Z0-9_$]{0,40})\s*[:=]\s*["']([A-Za-z0-9_\-+/=]{20,120})["']/g;
 
+// Two patterns because they anchor differently: these names count anywhere in
+// the identifier, a bare "token" only as its suffix (csrfToken, not
+// tokenizerModel). As one alternation the trailing $ read as anchoring all of
+// it.
 const SECRET_NAME =
-  /(?:api|secret|private|access|auth|client)[_-]?(?:key|token|secret)|password|passwd|token$/i;
+  /(?:api|secret|private|access|auth|client)[_-]?(?:key|token|secret)|password|passwd/i;
+const TOKEN_SUFFIX = /token$/i;
 
 // Real placeholders are usually phrases ("your_api_key_goes_here",
 // "REPLACE_WITH_YOUR_KEY"), not single words, so this matches on the
@@ -69,7 +74,7 @@ export const leakedSecretChecks: PageCheck[] = [
       ASSIGNMENT.lastIndex = 0;
       while ((m = ASSIGNMENT.exec(ctx.inlineScript))) {
         const [full, name, value] = m;
-        if (!SECRET_NAME.test(name)) continue;
+        if (!SECRET_NAME.test(name) && !TOKEN_SUFFIX.test(name)) continue;
         if (looksLikePlaceholder(value)) continue;
         if (shannonEntropy(value) < 3.5) continue;
         const key = `${name}:${value}`;
