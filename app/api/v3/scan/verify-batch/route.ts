@@ -181,10 +181,10 @@ function isWebTarget(value: unknown): value is string {
   }
 }
 
-// v3 changes only by addition, so this refuses only what crashed the pass: a
-// finding whose id is not a string. A null element, an empty id and a long id
-// were always accepted and still are; lib/ai/verify-findings.ts carries a
-// null through untouched.
+// v3 changes only by addition. An id that could not be turned into text took
+// the pass down with a 500, so a non-null finding whose id is not a string is
+// refused; a null element, an empty id and a long id were always accepted and
+// still are, and lib/ai/verify-findings.ts carries a null through untouched.
 function hasStringIdOrIsNull(finding: unknown): boolean {
   if (finding === null) return true;
   return typeof (finding as { id?: unknown } | undefined)?.id === "string";
