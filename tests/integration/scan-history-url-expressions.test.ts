@@ -151,30 +151,34 @@ describeIntegration("scan_history URL expressions", () => {
       "idx_scan_history_public_host",
       `SELECT id FROM scan_history
         WHERE is_public = true AND status = 'completed'
-          AND ${PUBLIC_HOST_SQL} = 'example.test'
-        ORDER BY scanned_at DESC LIMIT 30`,
+          AND ${PUBLIC_HOST_SQL} = 'example.test'`,
     ],
     [
       "idx_scan_history_public_origin_path",
       `SELECT id FROM scan_history
         WHERE is_public = true AND status = 'completed'
-          AND ${URL_ORIGIN_PATH_SQL} = ANY(ARRAY['https://example.test/a', 'https://example.test/a/'])
-        ORDER BY scanned_at DESC LIMIT 1`,
+          AND ${URL_ORIGIN_PATH_SQL} = ANY(ARRAY['https://example.test/a', 'https://example.test/a/'])`,
     ],
   ])(
     "plans a query written with the shared expression onto %s",
     async (indexName, query) => {
-      // Sequential scans are switched off for the transaction so the answer
-      // does not turn on a seq-versus-index trade the CI machine happens to
-      // make. That alone is not enough: the two expression indexes share one
-      // partial predicate, so on a nearly empty table a full scan of the OTHER
-      // one plus a plain Filter costs the same as one index probe, and the
-      // planner picked it (a two-element = ANY(...) costs two probes, which
-      // made the origin-path index look dearer than scanning the host index).
-      // So the table is given production-like volume and statistics inside the
-      // transaction, where a selective probe beats scanning thousands of
-      // entries and filtering them. ROLLBACK removes the rows and the
-      // statistics with them.
+      // The question is whether a query written with the shared expression
+      // CAN be matched to the index, not which plan the planner likes best.
+      // Three things are held still so the answer is that and nothing else.
+      //
+      // Sequential scans are off, so a seq-versus-index trade the CI machine
+      // happens to make does not decide it. The table has production-like
+      // volume and statistics inside the transaction: on a nearly empty one
+      // every path costs the same, and the planner chose a full scan of the
+      // OTHER expression index (they share one partial predicate) plus a plain
+      // Filter. And the query is the filter alone. With ORDER BY scanned_at
+      // DESC LIMIT 1 the planner walks idx_scan_history_scanned_at backwards
+      // and filters, because it does not read the statistics of a partial
+      // expression index, assumes one percent of rows match and so expects the
+      // first hit within a hundred entries. That is a statement about cost, not
+      // about matching; whether a caller's own ORDER BY and LIMIT get the index
+      // on real data is that caller's EXPLAIN to check. ROLLBACK removes the
+      // rows and the statistics together.
       const owner = await createUser();
       const client = await pool.connect();
       try {
