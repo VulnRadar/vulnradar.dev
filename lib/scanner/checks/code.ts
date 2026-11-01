@@ -1638,7 +1638,17 @@ const rawDetectors: Record<string, DetectFn> = {
   // ── Timing-safe compare (code-timing-*) ──────────────────────────────────
 
   "code-timing-hmac-equality": (_url, _headers, body) => {
-    if (/hmac\s*\([^)]+\)\s*===/.test(body) || /HMAC[^=]*===/.test(body)) {
+    // Both patterns used to rescan to the end of the body from every copy of
+    // their start word, so a page of repeated "hmac(" or "HMAC" held this
+    // detector for minutes. The first now starts at the ")" and looks back
+    // for the call only where a === follows it; the second may not cross
+    // another "HMAC", so only the last one before a === is tried. Both
+    // match exactly what they matched before, the second still across
+    // lines as [^=] always did.
+    if (
+      /\)(?=\s*===)(?<=hmac\s*\([^)]+\))/.test(body) ||
+      /HMAC(?:(?!HMAC)[^=])*===/.test(body)
+    ) {
       return "HMAC comparison via === - byte-by-byte timing leak.";
     }
     return null;

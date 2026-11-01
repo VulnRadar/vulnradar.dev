@@ -455,8 +455,9 @@ const REPEATED_KEYWORD_SHAPES: Record<string, string> = {
   tracebackRepeated: "Traceback".repeat(BODY_BYTES / 9),
   // laravel-debug-page
   whoopsRepeated: "Whoops".repeat(BODY_BYTES / 6),
-  // code-timing-hmac-equality
+  // code-timing-hmac-equality, both of its patterns
   hmacRepeated: "HMAC".repeat(BODY_BYTES / 4),
+  hmacCallRepeated: "hmac(".repeat(BODY_BYTES / 5),
 };
 
 describe("detector time budget on blank-line runs", () => {
@@ -475,30 +476,12 @@ describe("detector time budget on blank-line runs", () => {
   }
 });
 
-/**
- * The detector these shapes were written for that is still quadratic on
- * them. Its pattern lives in code.ts, outside the change that added the
- * shapes, so it is named here rather than the shape being left out of the
- * corpus. The pattern alone, at 24 KB and at 64 KB of its shape:
- *
- *   code-timing-hmac-equality   HMAC[^=]*===                    275 ms   1.8 s
- *
- * Unlike KNOWN_QUADRATIC_DETECTORS this list is one-way: an entry that comes
- * in under budget does not fail the run, because machine load alone moves a
- * pattern this close to the 200 ms line across it in both directions. Every
- * OTHER detector is still held to the budget on these shapes. Delete an
- * entry when its bridge is bounded.
- */
-const KNOWN_SLOW_ON_REPEATED_KEYWORDS: string[] = ["code-timing-hmac-equality"];
-
 describe("detector time budget on a repeated keyword", () => {
   for (const [name, body] of Object.entries(REPEATED_KEYWORD_SHAPES)) {
     it(
       `keeps every detector inside budget on ${name}`,
       () => {
-        const over = detectorsOverBudget(body, MARKUP_CONTEXT).filter(
-          (o) => !KNOWN_SLOW_ON_REPEATED_KEYWORDS.includes(o.id),
-        );
+        const over = detectorsOverBudget(body, MARKUP_CONTEXT);
         expect(
           over.map((o) => `${o.id}=${o.ms}ms`),
           `Over ${PER_DETECTOR_BUDGET_MS}ms on a ${BODY_BYTES}-byte body. A keyword followed by an unbounded .* or [^=]* rescans to the end of the body from every repetition of the keyword. Bound the bridge to .{0,200} or [^=\\n]{0,200}, or find the keyword with indexOf and match a bounded slice.`,

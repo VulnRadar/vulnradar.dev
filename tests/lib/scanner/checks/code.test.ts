@@ -533,6 +533,35 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+  // Both patterns were rewritten to stay linear on a page of repeated start
+  // words. These pin that they still match what they matched before.
+  "code-timing-hmac-equality": [
+    {
+      description: "an hmac() call compared with ===",
+      body: "<script>if (hmac(secret, payload) === signature) ok();</script>",
+      expect: "fire",
+    },
+    {
+      description: "an hmac() call nested in an earlier one",
+      body: "<script>if (hmac(hmac(key, a) === b) ok();</script>",
+      expect: "fire",
+    },
+    {
+      description: "HMAC twice before a === on a later line",
+      body: "<script>// HMAC check, HMAC digest\nif (digest === expected) ok();</script>",
+      expect: "fire",
+    },
+    {
+      description: "regression: an empty hmac() call",
+      body: "<script>if (hmac() === x) ok();</script>",
+      expect: "skip",
+    },
+    {
+      description: "regression: an = between HMAC and the comparison",
+      body: "<script>const HMAC = compute(); if (a === b) ok();</script>",
+      expect: "skip",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);
