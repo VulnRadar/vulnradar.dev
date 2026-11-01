@@ -11,6 +11,7 @@
 // client component or from middleware.
 
 import pool from "@/lib/database/db";
+import { serverAppUrl } from "@/lib/config/server-app-url";
 
 import {
   SETTINGS_REGISTRY,
@@ -27,8 +28,35 @@ type Snapshot = {
   loadedAt: number;
 };
 
-let snapshot: Snapshot | null = null;
-let inFlight: Promise<Snapshot> | null = null;
+type CacheState = {
+  snapshot: Snapshot | null;
+  inFlight: Promise<Snapshot> | null;
+};
+
+/**
+ * One value per process, whichever bundle copy asks. Next compiles this
+ * module into more than one server bundle, and a plain module-level `let` is
+ * then a separate cache per copy: an admin write invalidated one copy while
+ * the others kept serving the old value for the rest of the TTL, and each copy
+ * issued its own query. Keyed on globalThis so every copy shares one.
+ *
+ * Local until lib/runtime/global-singleton.ts lands; same signature.
+ */
+function globalSingleton<T>(key: string, init: () => T): T {
+  const store = globalThis as unknown as Record<symbol, T | undefined>;
+  const slot = Symbol.for(key);
+  let value = store[slot];
+  if (value === undefined) {
+    value = init();
+    store[slot] = value;
+  }
+  return value;
+}
+
+const cache = globalSingleton<CacheState>("vulnradar.runtimeConfig", () => ({
+  snapshot: null,
+  inFlight: null,
+}));
 
 /**
  * Drop the cached snapshot so the next resolve re-reads the table. Called by
@@ -36,8 +64,8 @@ let inFlight: Promise<Snapshot> | null = null;
  * rather than waiting out the TTL. Other server processes converge via TTL.
  */
 export function invalidateSettingsCache(): void {
-  snapshot = null;
-  inFlight = null;
+  cache.snapshot = null;
+  cache.inFlight = null;
 }
 
 async function query(): Promise<Snapshot> {
@@ -61,21 +89,22 @@ async function query(): Promise<Snapshot> {
 }
 
 async function load(): Promise<Snapshot> {
+  const { snapshot } = cache;
   if (snapshot && Date.now() - snapshot.loadedAt < TTL_MS) return snapshot;
   // Callers that arrive while a load is in progress share its result, so a
   // request that resolves ten settings still issues one query.
-  if (inFlight) return inFlight;
+  if (cache.inFlight) return cache.inFlight;
 
-  inFlight = query()
+  cache.inFlight = query()
     .then((loaded) => {
-      snapshot = loaded;
+      cache.snapshot = loaded;
       return loaded;
     })
     .finally(() => {
-      inFlight = null;
+      cache.inFlight = null;
     });
 
-  return inFlight;
+  return cache.inFlight;
 }
 
 function resolve<K extends SettingKey>(
@@ -115,33 +144,26 @@ export async function getSettings<K extends SettingKey>(
 }
 
 /**
- * Resolve the application's public URL for building a redirect_uri:
- *
- *   database override (system_settings.APP_URL) ?? NEXT_PUBLIC_APP_URL ??
- *   this request's own origin
- *
- * Every OAuth/Discord/GitHub-connect route that has to build a
- * redirect_uri calls this instead of the generic `getSetting("APP_URL")`:
- * the generic resolver's env-override step keys off the bare setting name
- * (`process.env.APP_URL`), but the variable self-hosters are actually told
- * to set is NEXT_PUBLIC_APP_URL (see .env.example, the Dockerfile build
- * ARG, and lib/config/env.ts's required-env validation) -- reading that
- * same variable here means one env var configures both the client bundle
- * and this server-side resolution, not two.
- *
- * Deliberately falls back to the request's own origin, not the shipped
- * CONFIG_APP_URL default ("https://vulnradar.dev"), when neither the
- * database nor the environment has a value: redirecting a misconfigured
- * deployment to a domain it does not own is worse than trusting the Host
- * header the request actually arrived on. See
- * lib/config/constants.ts's synchronous APP_URL export for the equivalent
- * (CONFIG_APP_URL-falling-back) resolution used by code with no request to
- * fall back to.
+ * The value saved in system_settings for `key`, or undefined when there is no
+ * valid row. Unlike getSetting it does not fall through to the environment or
+ * the shipped default, for a caller with its own fallback order
+ * (lib/config/server-app-url.ts).
+ */
+export async function getStoredSetting<K extends SettingKey>(
+  key: K,
+): Promise<SettingValue<K> | undefined> {
+  const { values } = await load();
+  return values.get(key) as SettingValue<K> | undefined;
+}
+
+/**
+ * The application's public URL for building a redirect_uri. Same order as
+ * serverAppUrl() (the saved setting, then APP_URL or NEXT_PUBLIC_APP_URL as
+ * the running process sees them), except that the last resort is this
+ * request's own origin rather than the shipped CONFIG_APP_URL: redirecting a
+ * misconfigured deployment to a domain it does not own is worse than trusting
+ * the Host header the request actually arrived on.
  */
 export async function resolveAppUrl(request: Request): Promise<string> {
-  const { values } = await load();
-  const stored = values.get("APP_URL");
-  if (typeof stored === "string" && stored) return stored;
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  return new URL(request.url).origin;
+  return serverAppUrl(new URL(request.url).origin);
 }

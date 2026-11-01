@@ -11,7 +11,7 @@ vi.mock("@/lib/database/db", () => ({
 }));
 
 const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
-const { getSetting, getSettings, invalidateSettingsCache } =
+const { getSetting, getSettings, getStoredSetting, invalidateSettingsCache } =
   await import("@/lib/config/runtime-config");
 
 type Row = { key: string; value: string };
@@ -203,6 +203,79 @@ describe("caching", () => {
 
     expect(await getSetting("RATE_LIMIT_LOGIN_ATTEMPTS")).toBe(8);
     expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  // Next bundles this module more than once per server process. Each copy is
+  // a fresh module evaluation, which vi.resetModules() reproduces here.
+  describe("across copies of the module", () => {
+    async function freshCopy() {
+      vi.resetModules();
+      return import("@/lib/config/runtime-config");
+    }
+
+    it("serves a second copy from the snapshot the first one loaded", async () => {
+      mockQuery.mockResolvedValue(
+        rows({ key: "RATE_LIMIT_LOGIN_ATTEMPTS", value: "7" }),
+      );
+      expect(await getSetting("RATE_LIMIT_LOGIN_ATTEMPTS")).toBe(7);
+
+      const other = await freshCopy();
+      expect(await other.getSetting("RATE_LIMIT_LOGIN_ATTEMPTS")).toBe(7);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it("drops the snapshot for every copy when one invalidates", async () => {
+      mockQuery.mockResolvedValueOnce(
+        rows({ key: "RATE_LIMIT_LOGIN_ATTEMPTS", value: "7" }),
+      );
+      expect(await getSetting("RATE_LIMIT_LOGIN_ATTEMPTS")).toBe(7);
+
+      const other = await freshCopy();
+      mockQuery.mockResolvedValueOnce(
+        rows({ key: "RATE_LIMIT_LOGIN_ATTEMPTS", value: "8" }),
+      );
+      other.invalidateSettingsCache();
+
+      expect(await getSetting("RATE_LIMIT_LOGIN_ATTEMPTS")).toBe(8);
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+    });
+
+    it("shares one in-flight query between copies", async () => {
+      let release!: (value: unknown) => void;
+      mockQuery.mockReturnValueOnce(
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+      );
+      const first = getSetting("RATE_LIMIT_LOGIN_ATTEMPTS");
+      const other = await freshCopy();
+      const second = other.getSetting("RATE_LIMIT_LOGIN_ATTEMPTS");
+      release(rows({ key: "RATE_LIMIT_LOGIN_ATTEMPTS", value: "7" }));
+
+      expect(await Promise.all([first, second])).toEqual([7, 7]);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+describe("getStoredSetting", () => {
+  it("returns only the saved value, never the environment or the default", async () => {
+    process.env.RATE_LIMIT_LOGIN_ATTEMPTS = "9";
+    mockQuery.mockResolvedValue(rows());
+    expect(await getStoredSetting("RATE_LIMIT_LOGIN_ATTEMPTS")).toBeUndefined();
+
+    mockQuery.mockResolvedValue(
+      rows({ key: "RATE_LIMIT_LOGIN_ATTEMPTS", value: "3" }),
+    );
+    invalidateSettingsCache();
+    expect(await getStoredSetting("RATE_LIMIT_LOGIN_ATTEMPTS")).toBe(3);
+  });
+
+  it("returns undefined for a saved row that fails validation", async () => {
+    mockQuery.mockResolvedValue(
+      rows({ key: "RATE_LIMIT_LOGIN_ATTEMPTS", value: "0" }),
+    );
+    expect(await getStoredSetting("RATE_LIMIT_LOGIN_ATTEMPTS")).toBeUndefined();
   });
 });
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { makeHeaderStore } from "../_test-harness";
 
@@ -177,6 +177,44 @@ describe("POST /api/v3/auth/forgot-password", () => {
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
     expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
       to: "account-owner@example.com",
+    });
+  });
+
+  describe("the link's origin", () => {
+    const saved = process.env.APP_URL;
+    afterEach(() => {
+      if (saved === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = saved;
+    });
+
+    async function sentText(): Promise<string> {
+      knownUsers.set("account-owner@example.com", {
+        id: 55,
+        totp_enabled: false,
+      });
+      await POST(forgotRequest({ email: "account-owner@example.com" }));
+      await Promise.resolve();
+      await new Promise((resolve) => setImmediate(resolve));
+      return (mockSendEmail.mock.calls[0][0] as { text: string }).text;
+    }
+
+    // The build-time APP_URL constant was fixed when this module loaded; a
+    // self-hosted container sets its own URL afterwards, at runtime.
+    it("is the URL the running process was given, not the build-time one", async () => {
+      process.env.APP_URL = "https://scanner.example.org";
+      expect(await sentText()).toContain(
+        "https://scanner.example.org/reset-password?token=",
+      );
+    });
+
+    it("is the URL saved in the admin settings when there is one", async () => {
+      process.env.APP_URL = "https://scanner.example.org";
+      systemSettingsRows = [
+        { key: "APP_URL", value: "https://saved.example.org" },
+      ];
+      expect(await sentText()).toContain(
+        "https://saved.example.org/reset-password?token=",
+      );
     });
   });
 

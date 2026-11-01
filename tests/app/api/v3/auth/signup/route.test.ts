@@ -475,6 +475,57 @@ describe("POST /api/v3/auth/signup", () => {
     expect(sent.text).toContain("/verify-email?token=");
   });
 
+  // The build-time APP_URL constant was fixed when the route loaded; a
+  // self-hosted container sets its own URL afterwards, at runtime.
+  describe("links use the URL the running process was given", () => {
+    const saved = process.env.APP_URL;
+    beforeEach(() => {
+      process.env.APP_URL = "https://scanner.example.org";
+    });
+    afterEach(() => {
+      if (saved === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = saved;
+    });
+
+    it("in the verification email", async () => {
+      await POST(
+        postSignup({
+          name: "Alex Morgan",
+          email: "alex.morgan@example.com",
+          password: STRONG_PASSWORD,
+        }),
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      const sent = mockSendEmail.mock.calls[0][0] as { text: string };
+      expect(sent.text).toContain(
+        "https://scanner.example.org/verify-email?token=",
+      );
+    });
+
+    it("in the notice to an existing account", async () => {
+      existingUserRow = {
+        id: 1,
+        email: "alex.morgan@example.com",
+        name: "Alex Morgan",
+      };
+      await POST(
+        postSignup({
+          name: "Someone Else",
+          email: "alex.morgan@example.com",
+          password: STRONG_PASSWORD,
+        }),
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      const sent = mockSendEmail.mock.calls[0][0] as { text: string };
+      expect(sent.text).toContain("https://scanner.example.org/login");
+      expect(sent.text).toContain(
+        "https://scanner.example.org/forgot-password",
+      );
+    });
+  });
+
   it("rate limits repeated signups from the same IP", async () => {
     rateLimitCounts.set("signup:203.0.113.7", 3); // maxAttempts is 3 -> next call is denied
 

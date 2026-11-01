@@ -860,6 +860,9 @@ describe("runAiVerification: incremental persistence", () => {
 
   it("keeps verdicts from chunks that finished before the deadline, instead of discarding everything", async () => {
     vi.resetModules();
+    // The settings snapshot outlives the module reload; drop it so the row
+    // below is the one this test reads.
+    (await import("@/lib/config/runtime-config")).invalidateSettingsCache();
 
     // AI_VERIFY_TOTAL_TIMEOUT_MS is now resolved through the DB-backed
     // settings resolver (lib/config/runtime-config.ts) instead of read as a

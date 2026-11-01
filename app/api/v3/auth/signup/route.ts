@@ -23,10 +23,10 @@ import {
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { getSettings } from "@/lib/config/runtime-config";
+import { serverAppUrl } from "@/lib/config/server-app-url";
 import pool from "@/lib/database/db";
 import crypto from "crypto";
 import {
-  APP_URL,
   ERROR_MESSAGES,
   ROUTES,
   SUCCESS_MESSAGES,
@@ -179,8 +179,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // forgot they already had an account (AUDIT-012#auth-09).
   const existing = await getUserByEmail(email);
   if (existing) {
-    const loginLink = `${APP_URL}${ROUTES.LOGIN}`;
-    const resetLink = `${APP_URL}${ROUTES.FORGOT_PASSWORD}`;
+    const appUrl = await serverAppUrl();
+    const loginLink = `${appUrl}${ROUTES.LOGIN}`;
+    const resetLink = `${appUrl}${ROUTES.FORGOT_PASSWORD}`;
     const noticeContent = signupAttemptOnExistingAccountEmail(
       (existing.name ?? "").trim(),
       loginLink,
@@ -275,7 +276,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
 
   // Send verification email in background (don't block the response)
-  const verifyLink = `${APP_URL}/verify-email?token=${token}`;
+  const verifyLink = `${await serverAppUrl()}/verify-email?token=${token}`;
   const emailContent = await emailVerificationEmail(
     name.trim(),
     verifyLink,

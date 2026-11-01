@@ -3,8 +3,8 @@ import { getUserLocale } from "@/lib/i18n/translate";
 import type { PoolClient } from "pg";
 import pool from "@/lib/database/db";
 import { sendEmail, emailVerificationEmail } from "@/lib/email/email";
-import { APP_URL } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import { serverAppUrl } from "@/lib/config/server-app-url";
 import { hashAuthToken } from "@/lib/auth/token-hash";
 
 /**
@@ -45,7 +45,7 @@ export async function sendEmailVerification(
     [userId, tokenHash, expiresAt],
   );
 
-  const verifyLink = `${APP_URL}/verify-email?token=${token}`;
+  const verifyLink = `${await serverAppUrl()}/verify-email?token=${token}`;
   const emailContent = await emailVerificationEmail(
     name || "there",
     verifyLink,

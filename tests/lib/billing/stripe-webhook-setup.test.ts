@@ -66,9 +66,10 @@ afterAll(() => {
 
 async function loadWithBillingEnabled(billingEnabled: boolean) {
   settingsRows = [{ key: "BILLING_ENABLED", value: String(billingEnabled) }];
-  // resetModules gives the settings resolver's module-level cache a fresh
-  // start too, so each call here sees exactly the rows just set above.
+  // The settings snapshot is process-wide and outlives resetModules, so it is
+  // dropped explicitly and each call here sees exactly the rows set above.
   vi.resetModules();
+  (await import("@/lib/config/runtime-config")).invalidateSettingsCache();
   return import("@/lib/billing/stripe-webhook-setup");
 }
 

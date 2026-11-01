@@ -101,8 +101,11 @@ function configureSmtp(
   if (overrides.SMTP_FROM) process.env.SMTP_FROM = overrides.SMTP_FROM;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetModules();
+  // The settings snapshot is process-wide and outlives a module reload, so a
+  // test that changes systemSettingsRows needs it dropped as well.
+  (await import("@/lib/config/runtime-config")).invalidateSettingsCache();
   transportConfigCalls = [];
   sendMailMock.mockReset();
   createTransportMock.mockClear();

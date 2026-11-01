@@ -356,11 +356,12 @@ describe("generateScanSummary: AI_SUMMARY_MAX_TOKENS budget", () => {
   it("reads max_tokens from an admin-configured system_settings override rather than a hardcoded constant", async () => {
     // AI_SUMMARY_MAX_TOKENS is resolved through the DB-backed settings
     // resolver (lib/config/runtime-config.ts), which caches its snapshot
-    // for 30s across calls within the same module instance -- reset
-    // modules so this test gets a fresh, uncached resolver instead of
-    // reusing whatever an earlier test in this file already resolved and
-    // cached. Same approach as tests/lib/ai/verify-findings.test.ts.
+    // for 30s across every copy of the module in the process -- drop it so
+    // this test gets a fresh, uncached resolver instead of reusing whatever
+    // an earlier test in this file already resolved and cached. Same
+    // approach as tests/lib/ai/verify-findings.test.ts.
     vi.resetModules();
+    (await import("@/lib/config/runtime-config")).invalidateSettingsCache();
     const { generateScanSummary: generateWithOverride } =
       await import("@/lib/ai/scan-summary");
 
