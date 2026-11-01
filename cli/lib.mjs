@@ -157,12 +157,16 @@ export const DEFAULTS = {
  * asked for, because the server's defaults are the ones the dashboard shows,
  * and an export that quietly disagrees with the dashboard is the bug this
  * endpoint's own comment was written about.
+ *
+ * The scan id is the API's reply, encoded as one path segment: read raw, an id
+ * like "../../keys/5" was resolved as a path and the request carried the
+ * Bearer key somewhere other than the scan endpoints.
  */
 export function reportRequestUrl(apiBase, scanId, opts) {
   const params = new URLSearchParams({ format: opts.report });
   if (opts.includeSuppressed) params.set("includeSuppressed", "true");
   if (opts.applyTriage) params.set("applyTriage", "true");
-  return `${apiBase}/history/${scanId}/report?${params}`;
+  return `${apiBase}/history/${encodeURIComponent(scanId)}/report?${params}`;
 }
 
 /** Whether a URL hostname is this machine, where plain http is not a leak. */
@@ -573,11 +577,15 @@ export async function cancelScan(
   timeoutMs = CANCEL_TIMEOUT_MS,
 ) {
   try {
-    const res = await fetch(`${apiBase}/scan/status/${scanId}`, {
-      method: "DELETE",
-      headers,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    // Encoded for the reason reportRequestUrl gives: this one is a DELETE.
+    const res = await fetch(
+      `${apiBase}/scan/status/${encodeURIComponent(scanId)}`,
+      {
+        method: "DELETE",
+        headers,
+        signal: AbortSignal.timeout(timeoutMs),
+      },
+    );
     if (res.ok) {
       return { settled: true, message: `Cancelled scan ${scanId}.` };
     }

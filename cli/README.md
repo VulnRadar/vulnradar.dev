@@ -116,7 +116,8 @@ cancelling the job), the CLI asks the server to cancel the scan it started,
 waiting at most three seconds, and exits `130` or `143`. Otherwise the scan
 would keep running and hold your only scan slot, and the re-run would be
 refused until it finished. A scan that has not been created yet cannot be
-cancelled.
+cancelled. Once the `Started scan <id>` line is printed, a signal cancels that
+scan, so a wrapper can wait for the line and then stop the run.
 
 When `--timeout` runs out the scan is left running by default, because it will
 finish and appear in your history. `--cancel-on-timeout` cancels it instead.
@@ -153,7 +154,9 @@ thing as `--json`, the raw scan result.
 
 With no `--out` the report is the only thing on stdout: the progress lines go
 to stderr, so `vulnradar scan $URL --report sarif > results.sarif` is a valid
-file. `--out` creates the folder it points into before the scan starts.
+file. `--out` creates the folder it points into before the scan starts. The
+report is written to the path you give and nowhere else: a file name suggested
+by the server's reply is ignored.
 
 ### What the gate counts
 

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { execFile, spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   existsSync,
   mkdtempSync,
@@ -1132,7 +1132,7 @@ test("cli: a scan that could not fetch the page exits EXIT.INCOMPLETE and says w
     stderr,
     /Page unreachable: The site redirects to another host\./,
   );
-  assert.match(stderr, /app\.example\.com/);
+  assert.match(stderr, /^It redirects to another host: app\.example\.com$/m);
   assert.match(stderr, /--allow-incomplete/);
 });
 
@@ -2163,3 +2163,214 @@ test(
     assert.equal(doc.scanId, "s1");
   },
 );
+
+// ── A signal on the "Started scan" line, and what the CLI sends where ────
+
+/**
+ * Run the CLI with a preload that delivers `signal` to the process the moment
+ * the "Started scan" line is written, which is the earliest a caller watching
+ * the output can react to it.
+ *
+ * The line used to be printed before the SIGINT and SIGTERM handlers were
+ * installed, so a signal in that window took the default action: the process
+ * died and the scan kept the account's concurrency slot. The POSIX signal
+ * tests above caught it about one run in two, depending on the scheduler.
+ * Emitting the signal event from inside the write makes the window exact and
+ * deterministic, and it runs on Windows too, where a real signal cannot be
+ * delivered to a child.
+ */
+function runCliSignalledOnStart(args, handler, signal) {
+  const dir = mkdtempSync(path.join(tmpdir(), "vulnradar-cli-preload-"));
+  const preload = path.join(dir, "signal-on-start.mjs");
+  writeFileSync(
+    preload,
+    `let fired = false;
+for (const stream of [process.stdout, process.stderr]) {
+  const write = stream.write.bind(stream);
+  stream.write = (chunk, ...rest) => {
+    const done = write(chunk, ...rest);
+    if (!fired && String(chunk).includes("Started scan ")) {
+      fired = true;
+      process.emit(${JSON.stringify(signal)}, ${JSON.stringify(signal)});
+    }
+    return done;
+  };
+}
+`,
+  );
+  return new Promise((resolve, reject) => {
+    const server = createServer(handler);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      const childEnv = { ...process.env };
+      delete childEnv.VULNRADAR_TOKEN;
+      delete childEnv.VULNRADAR_API_BASE;
+      execFile(
+        process.execPath,
+        [
+          "--import",
+          pathToFileURL(preload).href,
+          CLI,
+          ...args,
+          "--api-base",
+          `http://127.0.0.1:${port}`,
+        ],
+        { env: childEnv },
+        (err, stdout, stderr) => {
+          server.closeAllConnections?.();
+          server.close();
+          rmSync(dir, { recursive: true, force: true });
+          if (err && typeof err.code !== "number") return reject(err);
+          resolve({ code: err ? err.code : 0, stdout, stderr });
+        },
+      );
+    });
+  });
+}
+
+for (const [signal, code] of [
+  ["SIGTERM", EXIT.SIGTERM],
+  ["SIGINT", EXIT.SIGINT],
+]) {
+  test(`cli: a ${signal} that lands on the "Started scan" line still cancels the scan`, async () => {
+    const deletes = [];
+    const result = await runCliSignalledOnStart(
+      [...SCAN_ARGS, "--poll-interval", "1", "--timeout", "4"],
+      (req, res) => {
+        if (req.method === "DELETE") {
+          deletes.push(req.url);
+          res.writeHead(200, JSON_HEADERS);
+          res.end('{"status":"failed","cancelled":true}');
+          return;
+        }
+        pollingHandler([{ body: { status: "running" } }])(req, res);
+      },
+      signal,
+    );
+    assert.equal(result.code, code, result.stderr);
+    assert.deepEqual(deletes, ["/scan/status/s1"]);
+    assert.match(result.stderr, /Cancelled scan s1/);
+  });
+}
+
+// The only file the CLI ever read was its own package.json, for the version
+// in the User-Agent header, and that read is what made every request look to
+// a code scanner like "network request depends on file data". The version now
+// arrives as a JSON module import, so nothing read from disk at run time can
+// reach a request. A readFileSync coming back would bring the alerts with it.
+test("the CLI reads no file at run time, so nothing from disk reaches a request", () => {
+  const source = readFileSync(CLI, "utf8");
+  assert.doesNotMatch(source, /\breadFileSync\b|\breadFile\b|createReadStream/);
+  const lib = readFileSync(path.join(path.dirname(CLI), "lib.mjs"), "utf8");
+  assert.doesNotMatch(lib, /\bnode:fs\b|\breadFileSync\b|\breadFile\b/);
+});
+
+test("--version and the User-Agent carry the version in cli/package.json", async () => {
+  const { version } = JSON.parse(
+    readFileSync(path.join(path.dirname(CLI), "package.json"), "utf8"),
+  );
+  const printed = await runCli(["--version"]);
+  assert.equal(printed.stdout.trim(), version);
+  const { requests } = await runCli(SCAN_ARGS, {
+    routes: routesFor(completedWith({})),
+  });
+  assert.ok(requests.length > 0);
+  for (const r of requests) {
+    assert.equal(r.headers["user-agent"], `vulnradar-cli/${version}`);
+  }
+});
+
+// The scan id comes from the API's reply and is put into the next URL. Read
+// raw, an id with a "/" or ".." in it was resolved as a path, so a reply of
+// "../../keys/5" sent the status polls, the report download and the cancel
+// DELETE, all with the Bearer key, to a path outside the scan endpoints. The
+// id is one path segment, and it is encoded as one.
+test("cli: a scan id from the API stays one path segment in every request it makes", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vulnradar-cli-"));
+  const out = path.join(dir, "report.md");
+  try {
+    const { code, requests } = await runCli(
+      [...SCAN_ARGS, "--report", "md", "--out", out],
+      {
+        routes: {
+          "/scan/status/": { body: completedWith({}) },
+          "/scan": { body: { scanId: "../../keys/5" } },
+          "/history/": { body: "# Scan report" },
+        },
+      },
+    );
+    const urls = requests.map((r) => r.url);
+    assert.equal(code, EXIT.OK, urls.join(", "));
+    assert.ok(
+      urls.includes("/scan/status/..%2F..%2Fkeys%2F5"),
+      urls.join(", "),
+    );
+    assert.ok(
+      urls.includes("/history/..%2F..%2Fkeys%2F5/report?format=md"),
+      urls.join(", "),
+    );
+    assert.ok(!urls.some((u) => u.startsWith("/keys")), urls.join(", "));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("reportRequestUrl and cancelScan encode the scan id as one path segment", async () => {
+  assert.equal(
+    reportRequestUrl("https://api.example/api/v3", "../../keys/5", {
+      report: "sarif",
+    }),
+    "https://api.example/api/v3/history/..%2F..%2Fkeys%2F5/report?format=sarif",
+  );
+  const seen = [];
+  const server = createServer((req, res) => {
+    seen.push([req.method, req.url]);
+    res.writeHead(200, JSON_HEADERS);
+    res.end("{}");
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    await cancelScan(
+      `http://127.0.0.1:${server.address().port}`,
+      "../../keys/5",
+      {},
+    );
+    assert.deepEqual(seen, [["DELETE", "/scan/status/..%2F..%2Fkeys%2F5"]]);
+  } finally {
+    server.close();
+  }
+});
+
+// The report is written to the path the user named with --out and nowhere
+// else. A file name in the reply (Content-Disposition, as the web download
+// uses) is the server's suggestion for a browser, and following it would let
+// the reply choose where on the CI runner's disk a file lands.
+test("cli: the report goes to --out, never to a file name the reply suggests", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vulnradar-cli-"));
+  const out = path.join(dir, "named-by-user.md");
+  try {
+    const { code } = await runCli(
+      [...SCAN_ARGS, "--report", "md", "--out", out],
+      {
+        routes: routesFor(completedWith({}), {
+          "/history/": {
+            body: "# Scan report",
+            headers: {
+              "Content-Disposition":
+                'attachment; filename="../suggested-by-server.md"',
+            },
+          },
+        }),
+      },
+    );
+    assert.equal(code, EXIT.OK);
+    assert.equal(readFileSync(out, "utf8"), "# Scan report");
+    assert.equal(existsSync(path.join(dir, "suggested-by-server.md")), false);
+    assert.equal(
+      existsSync(path.join(path.dirname(dir), "suggested-by-server.md")),
+      false,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

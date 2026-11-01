@@ -5,8 +5,9 @@
 // of the project. It used to advertise Node 18, which went end of life in
 // April 2025 and is exercised by nothing here.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import pkg from "./package.json" with { type: "json" };
 import {
   parseArgs,
   evaluateGate,
@@ -25,10 +26,13 @@ import {
   EXIT,
 } from "./lib.mjs";
 
-/** package.json ships with every npm package, so this always resolves. */
-const VERSION = JSON.parse(
-  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
-).version;
+/**
+ * package.json ships with every npm package, so this always resolves. Imported
+ * as a module rather than read from disk at run time: the version goes into the
+ * User-Agent of every request, and a file read at run time feeding a request
+ * header is what code scanning reports as a request built from file data.
+ */
+const VERSION = pkg.version;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -394,11 +398,15 @@ async function main() {
   const scanId = created?.scanId;
   if (!scanId) fail("No scanId in the response.");
   activeScanId = scanId;
-  say(`Started scan ${scanId} for ${opts.url}`);
+  // The handlers go in before the line is printed, because the line is the
+  // promise that a signal from here on cancels the scan. Printed first, a
+  // SIGINT or SIGTERM sent by whoever was watching for it took the default
+  // action, and the abandoned scan held the account's concurrency slot.
   cancelOnSignal(scanId, opts.apiBase, headers);
+  say(`Started scan ${scanId} for ${opts.url}`);
 
   // 2. Poll until it completes.
-  const statusUrl = `${opts.apiBase}/scan/status/${scanId}`;
+  const statusUrl = `${opts.apiBase}/scan/status/${encodeURIComponent(scanId)}`;
   let result = null;
   let completed = false;
   let consecutiveFailures = 0;
