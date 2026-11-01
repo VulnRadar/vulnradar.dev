@@ -141,3 +141,7 @@ id_ed25519
 CLAUDE.md
 /DESIGN.md
 /apple/
+
+# Result files of scripts/spike/run.mjs: one JSON file per target, written to
+# the repository root by default and only ever read by summarise.mjs.
+/spike-results/
