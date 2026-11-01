@@ -227,12 +227,17 @@ const ADD_COLUMN =
  * What is left is identifiers, keywords and punctuation, which is all the
  * reference check reads. A string literal is never a column reference, and
  * leaving one in would match a column name written in a RAISE message.
+ *
+ * Strings and comments go in one left-to-right pass: splitStatements keeps
+ * the comments inside a $$ body, and blanking strings first would read the
+ * apostrophe in "-- the owner's team" as an opening quote and swallow the
+ * real SQL up to the next one.
  */
 function normalizeSql(stmt) {
   return stmt
-    .replace(/'(?:[^']|'')*'/g, "''")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/--[^\n]*/g, " ")
+    .replace(/'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\//g, (m) =>
+      m[0] === "'" ? "''" : " ",
+    )
     .replace(/"([^"]+)"/g, "$1")
     .toLowerCase();
 }

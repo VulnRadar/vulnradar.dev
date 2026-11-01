@@ -164,6 +164,28 @@ describe("findOrderingViolations", () => {
     expect(violations).toEqual([]);
   });
 
+  it("still sees a read after a comment with an apostrophe inside a $$ body", () => {
+    // splitStatements keeps comments inside a dollar-quoted body. Read as an
+    // opening quote, the apostrophe would hide the INSERT up to 'done'.
+    const violations = violationsOf({
+      addTables: [
+        {
+          name: "scan_history_teams",
+          sql: `CREATE TABLE IF NOT EXISTS scan_history_teams (scan_id INTEGER, team_id INTEGER);
+                DO $$ BEGIN
+                  -- copy each scan's team
+                  INSERT INTO scan_history_teams (scan_id, team_id) SELECT id, team_id FROM scan_history;
+                  RAISE NOTICE 'done';
+                END $$`,
+        },
+      ],
+      addColumns: [
+        { table: "scan_history", column: "team_id", definition: "INTEGER" },
+      ],
+    });
+    expect(violations.map((v) => v.column)).toEqual(["scan_history.team_id"]);
+  });
+
   it("ignores a column name that only appears inside a string literal", () => {
     const violations = violationsOf({
       addTables: [
