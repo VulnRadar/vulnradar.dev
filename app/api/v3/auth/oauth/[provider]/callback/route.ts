@@ -106,6 +106,15 @@ export async function GET(
     return NextResponse.redirect(`${baseUrl}/login?error=${reason}`);
   }
 
+  // The start routes issue exactly three purposes: none (sign-in or sign-up),
+  // "link" and "github-connect". A state carrying anything else is one this
+  // server never meant to issue, and it used to fall through to sign-in, the
+  // one flow that creates a session, so it is refused instead.
+  const purpose = statePurpose(verified.payload.purpose);
+  if (purpose === null) {
+    return NextResponse.redirect(`${baseUrl}/login?error=oauth_invalid_state`);
+  }
+
   // Account-linking (Connections tab "Connect" button) branches off into
   // its own handler entirely: different success/failure destination
   // (/profile, not /login or /dashboard), different DB write (attach an
@@ -115,7 +124,7 @@ export async function GET(
   // email-collision handling above). Keeping it a separate function means
   // every test below this line -- all of which sign a state with no
   // `purpose` -- exercises the exact same code path as before.
-  if (verified.payload.purpose === "link") {
+  if (purpose === "link") {
     return handleOAuthLink(provider, verified.payload, code, baseUrl);
   }
 
@@ -125,7 +134,7 @@ export async function GET(
   // its own dedicated /api/v3/account/github/connect/callback path on the
   // same app. See the comment on OAuthStatePayload.purpose in
   // lib/auth/oauth-state.ts.
-  if (verified.payload.purpose === "github-connect") {
+  if (purpose === "github-connect") {
     return handleGithubConnect(verified.payload, code, baseUrl);
   }
 
@@ -382,6 +391,19 @@ export async function GET(
     console.error(`[OAuth:${provider}] callback error:`, err);
     return NextResponse.redirect(`${baseUrl}/login?error=oauth_failed`);
   }
+}
+
+// Map the signed state's purpose onto the closed set the start routes issue.
+// Each arm returns its own literal rather than the input, so what the caller
+// branches on is this server's value, never a string read out of the request.
+// Exact match only: "LINK" or "linked" is not a purpose, it is a bad state.
+function statePurpose(
+  value: unknown,
+): "sign-in" | "link" | "github-connect" | null {
+  if (value === undefined) return "sign-in";
+  if (value === "link") return "link";
+  if (value === "github-connect") return "github-connect";
+  return null;
 }
 
 // Persist the GitHub @handle (login) captured by fetchOAuthUserInfo onto the

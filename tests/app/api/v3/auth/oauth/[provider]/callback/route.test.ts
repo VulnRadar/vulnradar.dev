@@ -1403,4 +1403,41 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       expect(githubConnectionInsertCalls).toHaveLength(0);
     });
   });
+
+  // The state's purpose picks which of three flows runs. Only the start
+  // routes mint it, with one of two values or none, so a value outside that
+  // set is a state this server never meant to issue. It used to fall through
+  // to sign-in, which is the one flow that creates a session.
+  describe("state purpose outside the issued set", () => {
+    it.each(["linked", "github_connect", "", "LINK"])(
+      "refuses purpose %j before exchanging the code, instead of signing in",
+      async (purpose) => {
+        userByEmailRow = { id: 42, auth_provider: "google", disabled_at: null };
+        twoFARow = {
+          totp_enabled: false,
+          two_factor_method: "app",
+          email: "u@example.com",
+        };
+        const nonce = "test-oauth-nonce";
+        cookieState.set(OAUTH_NONCE_COOKIE, nonce);
+        const state = signOAuthState("google", {
+          purpose: purpose as unknown as "link",
+          intent: "login",
+          nonce,
+        });
+
+        const res = await GET(
+          callbackRequest("google", { code: "somecode", state }),
+          ctx("google"),
+        );
+
+        expect(locationOf(res).pathname).toBe("/login");
+        expect(locationOf(res).searchParams.get("error")).toBe(
+          "oauth_invalid_state",
+        );
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(sessionInsertCalls).toHaveLength(0);
+      },
+    );
+  });
 });

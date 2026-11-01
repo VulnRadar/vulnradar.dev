@@ -105,7 +105,34 @@ export async function GET(request: Request) {
         : "discord_invalid_state";
     return NextResponse.redirect(`${baseUrl}/login?error=${reason}`);
   }
-  const action = verified.payload.action || "connect";
+  // The start route issues two actions, "connect" and "login". Anything else
+  // is a state this server never meant to issue: it used to fall through to
+  // the sign-in branch, so it is refused before Discord is called.
+  const action = stateAction(verified.payload.action);
+  if (action === null) {
+    return NextResponse.redirect(
+      `${baseUrl}/login?error=discord_invalid_state`,
+    );
+  }
+
+  // auth: a connect attaches this Discord identity to an account, and the
+  // identity can sign into that account from then on, so the state has to
+  // name the account. verifyDiscordState only compares the userId when the
+  // state carries one; a connect state without it would attach the identity
+  // to whichever signed-in browser it reached.
+  if (action === "connect") {
+    if (!session) {
+      return NextResponse.redirect(`${baseUrl}/login?error=session_expired`);
+    }
+    if (verified.payload.userId !== session.userId) {
+      console.error(
+        `[discord-oauth] connect state names no user; session user ${session.userId}`,
+      );
+      return NextResponse.redirect(
+        `${baseUrl}/login?error=discord_invalid_state`,
+      );
+    }
+  }
 
   // auth: sign-in must also be bound to the browser that STARTED the flow.
   // The userId binding above is skipped whenever the state carries no userId,
@@ -204,8 +231,9 @@ export async function GET(request: Request) {
     }
 
     if (action === "connect") {
-      // Connect Discord to existing account
-      const session = await getSession();
+      // Connect Discord to the account the state was issued for, which the
+      // check above already matched to this session. Repeated only so the
+      // type narrows here.
       if (!session) {
         return NextResponse.redirect(`${baseUrl}/login?error=session_expired`);
       }
@@ -384,4 +412,13 @@ export async function GET(request: Request) {
     console.error("[Discord] OAuth callback error:", error);
     return NextResponse.redirect(`${baseUrl}/login?error=discord_failed`);
   }
+}
+
+// Map the signed state's action onto the two the start route issues. Each arm
+// returns its own literal rather than the input, so what the callback branches
+// on is this server's value, never a string read out of the request.
+function stateAction(value: string): "connect" | "login" | null {
+  if (value === "connect") return "connect";
+  if (value === "login") return "login";
+  return null;
 }

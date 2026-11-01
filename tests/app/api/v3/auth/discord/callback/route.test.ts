@@ -435,6 +435,51 @@ describe("GET /api/v3/auth/discord/callback", () => {
       expect(cookieState.get(DISCORD_NONCE_COOKIE)).toBeUndefined();
     });
 
+    it("refuses a connect state that names no user, instead of linking it to whoever is signed in", async () => {
+      // The start route always signs the session's userId into a connect
+      // state, and the userId check in verifyDiscordState only runs when the
+      // state carries one. A connect state without it was linked to any
+      // signed-in browser it reached, which would let the Discord identity in
+      // it sign into that account afterwards.
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      sessionRow = defaultSessionRow({ user_id: 42 });
+      existingConnectionUserId = null;
+      const state = signDiscordState({ action: "connect" });
+
+      const res = await GET(callbackRequest({ code: "somecode", state }));
+
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "discord_invalid_state",
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(connectionUpsertCalls).toHaveLength(0);
+      expect(discordIdUpdateCalls).toHaveLength(0);
+    });
+
+    it.each(["Login", "logout", "", "connect "])(
+      "refuses action %j, which the start route never issues, before calling Discord",
+      async (action) => {
+        existingConnectionUserId = 42;
+        twoFAConfigRow = {
+          totp_enabled: false,
+          two_factor_method: "app",
+          email: "u@example.com",
+        };
+        const nonce = "test-discord-nonce";
+        cookieState.set(DISCORD_NONCE_COOKIE, nonce);
+        const state = signDiscordState({ action, nonce });
+
+        const res = await GET(callbackRequest({ code: "somecode", state }));
+
+        expect(locationOf(res).searchParams.get("error")).toBe(
+          "discord_invalid_state",
+        );
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(sessionInsertCalls).toHaveLength(0);
+        expect(connectionUpsertCalls).toHaveLength(0);
+      },
+    );
+
     it("still binds action=connect by session userId, with no nonce cookie required", async () => {
       // The connect flow carries a real userId in the signed state, so it is
       // already bound to the session and must keep working unchanged.
