@@ -59,8 +59,7 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
   };
 });
 
-const { issuePasswordResetToken } =
-  await import("@/lib/auth/password-reset-token");
+const { issueResetLinkToken } = await import("@/lib/auth/password-reset-token");
 const { hashAuthToken } = await import("@/lib/auth/token-hash");
 const { POST: forgotPassword } =
   await import("@/app/api/v3/auth/forgot-password/route");
@@ -155,7 +154,7 @@ describeIntegration("a reset token is replaced atomically", () => {
     const user = await createUser();
 
     const tokens = await Promise.all(
-      Array.from({ length: 8 }, () => issuePasswordResetToken(user.id)),
+      Array.from({ length: 8 }, () => issueResetLinkToken(user.id)),
     );
 
     const live = await liveTokenHashes(user.id);
@@ -173,10 +172,7 @@ describeIntegration("a reset token is replaced atomically", () => {
   it("leaves another account's live token alone", async () => {
     const [a, b] = await Promise.all([createUser(), createUser()]);
 
-    await Promise.all([
-      issuePasswordResetToken(a.id),
-      issuePasswordResetToken(b.id),
-    ]);
+    await Promise.all([issueResetLinkToken(a.id), issueResetLinkToken(b.id)]);
 
     expect(await liveTokenHashes(a.id)).toHaveLength(1);
     expect(await liveTokenHashes(b.id)).toHaveLength(1);
@@ -188,11 +184,11 @@ describeIntegration("a reset token is replaced atomically", () => {
   it("a new request racing a link being used neither deadlocks nor leaves two live links", async () => {
     for (let round = 0; round < 6; round += 1) {
       const user = await createUser();
-      const first = await issuePasswordResetToken(user.id);
+      const first = await issueResetLinkToken(user.id);
 
       const [used, second] = await Promise.all([
         followResetLink(first),
-        issuePasswordResetToken(user.id),
+        issueResetLinkToken(user.id),
       ]);
 
       expect([200, 400]).toContain(used.status);

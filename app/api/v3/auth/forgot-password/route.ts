@@ -5,7 +5,7 @@ import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { secretLinkAppUrl } from "@/lib/config/server-app-url";
 import { sendEmail, passwordResetEmail } from "@/lib/email/email";
-import { issuePasswordResetToken } from "@/lib/auth/password-reset-token";
+import { issueResetLinkToken } from "@/lib/auth/password-reset-token";
 import {
   ApiResponse,
   parseBody,
@@ -80,7 +80,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Replaces any token the account already has, so two requests at once
   // still leave one live link.
-  const token = await issuePasswordResetToken(user.id);
+  const token = await issueResetLinkToken(user.id);
 
   // Send reset email via SMTP in the background
   const resetLink = `${secretLinkAppUrl()}/reset-password?token=${token}`;

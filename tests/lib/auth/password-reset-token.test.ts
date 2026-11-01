@@ -39,8 +39,7 @@ vi.mock("@/lib/config/runtime-config", () => ({
     key === "PASSWORD_RESET_HOURS" ? 2 : undefined,
 }));
 
-const { issuePasswordResetToken } =
-  await import("@/lib/auth/password-reset-token");
+const { issueResetLinkToken } = await import("@/lib/auth/password-reset-token");
 
 beforeEach(() => {
   statements.length = 0;
@@ -50,9 +49,9 @@ beforeEach(() => {
   poolQuery.mockClear();
 });
 
-describe("issuePasswordResetToken", () => {
+describe("issueResetLinkToken", () => {
   it("replaces the account's token in one transaction behind a per-account lock", async () => {
-    await issuePasswordResetToken(42);
+    await issueResetLinkToken(42);
 
     expect(connect).toHaveBeenCalledTimes(1);
     expect(poolQuery).not.toHaveBeenCalled();
@@ -70,7 +69,7 @@ describe("issuePasswordResetToken", () => {
 
   it("returns the raw token and stores only its keyed digest, expiring after the configured hours", async () => {
     const before = Date.now();
-    const token = await issuePasswordResetToken(42);
+    const token = await issueResetLinkToken(42);
 
     expect(token).toMatch(/^[0-9a-f]{64}$/);
     const [userId, storedHash, expiresAt] = statements[3].params as [
@@ -89,8 +88,8 @@ describe("issuePasswordResetToken", () => {
   });
 
   it("mints a different token every call", async () => {
-    const a = await issuePasswordResetToken(42);
-    const b = await issuePasswordResetToken(42);
+    const a = await issueResetLinkToken(42);
+    const b = await issueResetLinkToken(42);
     expect(a).not.toBe(b);
   });
 
@@ -99,7 +98,7 @@ describe("issuePasswordResetToken", () => {
   it("rolls back, releases the client and rethrows when a statement fails", async () => {
     failOn = "INSERT INTO password_reset_tokens";
 
-    await expect(issuePasswordResetToken(42)).rejects.toThrow("insert failed");
+    await expect(issueResetLinkToken(42)).rejects.toThrow("insert failed");
 
     const sql = statements.map((s) => s.sql);
     expect(sql).toContain("ROLLBACK");
@@ -118,7 +117,7 @@ describe("issuePasswordResetToken", () => {
       release,
     }));
 
-    await expect(issuePasswordResetToken(42)).rejects.toThrow("insert failed");
+    await expect(issueResetLinkToken(42)).rejects.toThrow("insert failed");
     expect(release).toHaveBeenCalledTimes(1);
   });
 });

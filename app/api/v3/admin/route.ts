@@ -13,7 +13,7 @@ import {
   canPerformAction as hasActionPermission,
 } from "@/lib/auth/permissions-client";
 import { hashPassword } from "@/lib/auth/auth";
-import { issuePasswordResetToken } from "@/lib/auth/password-reset-token";
+import { issueResetLinkToken } from "@/lib/auth/password-reset-token";
 import { verifyReauthPassword } from "@/lib/auth/reauth";
 import { analyzePassword } from "@/lib/auth/password-strength";
 import { startImpersonation } from "@/lib/auth/impersonation";
@@ -908,7 +908,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       // keyed digest and replaces the account's old token in one transaction
       // serialised per account, so this and a self-service request racing
       // it (or a second admin) still leave one live link.
-      const resetToken = await issuePasswordResetToken(userId);
+      const resetToken = await issueResetLinkToken(userId);
 
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
       await logAction(

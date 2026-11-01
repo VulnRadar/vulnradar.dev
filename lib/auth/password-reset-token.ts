@@ -21,7 +21,7 @@ import { hashAuthToken } from "@/lib/auth/token-hash";
  * row first here would be the opposite order and the two could deadlock.
  * The advisory lock is not a row lock, so it cannot form that cycle.
  */
-export async function issuePasswordResetToken(userId: number): Promise<string> {
+export async function issueResetLinkToken(userId: number): Promise<string> {
   const token = randomBytes(32).toString("hex");
   const tokenHash = hashAuthToken(token);
   const passwordResetHours = await getSetting("PASSWORD_RESET_HOURS");
