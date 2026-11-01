@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth";
 import { resolveAppUrl } from "@/lib/config/runtime-config";
 import {
   signDiscordState,
+  parseDiscordAction,
   DISCORD_NONCE_COOKIE,
   DISCORD_STATE_TTL_MS,
 } from "@/lib/auth/discord-state";
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
   // callback refuses any other action, so a state signed for one could never
   // complete; refusing here saves the visitor a trip through Discord's
   // consent screen that ends in an error.
-  const action = startAction(searchParams.get("action") || "connect");
+  const action = parseDiscordAction(searchParams.get("action") || "connect");
   if (action === null) {
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   }
@@ -86,10 +87,4 @@ export async function GET(request: Request) {
     });
   }
   return response;
-}
-
-function startAction(value: string): "connect" | "login" | null {
-  if (value === "connect") return "connect";
-  if (value === "login") return "login";
-  return null;
 }

@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import {
   signDiscordState,
   verifyDiscordState,
+  parseDiscordAction,
   DISCORD_STATE_TTL_MS,
 } from "@/lib/auth/discord-state";
 
@@ -184,4 +185,20 @@ describe("signing without a secret throws (fail-closed)", () => {
       if (prevKey !== undefined) process.env.API_KEY_ENCRYPTION_KEY = prevKey;
     }
   });
+});
+
+// The start route and the callback both map a string onto the two actions the
+// flow knows. They used to carry a private copy each, so the closed set lived
+// in two places that could drift.
+describe("parseDiscordAction", () => {
+  it.each(["connect", "login"] as const)("accepts %s", (action) => {
+    expect(parseDiscordAction(action)).toBe(action);
+  });
+
+  it.each(["link", "", "Login", "connect ", "__proto__", "admin"])(
+    "refuses %j",
+    (value) => {
+      expect(parseDiscordAction(value)).toBeNull();
+    },
+  );
 });

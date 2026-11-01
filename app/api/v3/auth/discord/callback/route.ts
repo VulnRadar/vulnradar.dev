@@ -15,6 +15,7 @@ import {
 import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
 import {
   verifyDiscordState,
+  parseDiscordAction,
   DISCORD_NONCE_COOKIE,
 } from "@/lib/auth/discord-state";
 import { timingSafeEqual } from "node:crypto";
@@ -108,7 +109,7 @@ export async function GET(request: Request) {
   // The start route issues two actions, "connect" and "login". Anything else
   // is a state this server never meant to issue: it used to fall through to
   // the sign-in branch, so it is refused before Discord is called.
-  const action = stateAction(verified.payload.action);
+  const action = parseDiscordAction(verified.payload.action);
   if (action === null) {
     return NextResponse.redirect(
       `${baseUrl}/login?error=discord_invalid_state`,
@@ -412,13 +413,4 @@ export async function GET(request: Request) {
     console.error("[Discord] OAuth callback error:", error);
     return NextResponse.redirect(`${baseUrl}/login?error=discord_failed`);
   }
-}
-
-// Map the signed state's action onto the two the start route issues. Each arm
-// returns its own literal rather than the input, so what the callback branches
-// on is this server's value, never a string read out of the request.
-function stateAction(value: string): "connect" | "login" | null {
-  if (value === "connect") return "connect";
-  if (value === "login") return "login";
-  return null;
 }

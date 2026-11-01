@@ -101,6 +101,20 @@ export function verifyDiscordState(
 export const DISCORD_STATE_TTL_MS = STATE_TTL_MS;
 
 /**
+ * Map a string onto the two actions the Discord flow has: "connect" attaches
+ * Discord to the signed-in account, "login" signs in with it. The start route
+ * applies it to the query string and the callback to the signed state, so the
+ * closed set lives here once. Each arm returns its own literal rather than the
+ * input, so what a route branches on is this server's value, never a string
+ * read out of the request.
+ */
+export function parseDiscordAction(value: string): "connect" | "login" | null {
+  if (value === "connect") return "connect";
+  if (value === "login") return "login";
+  return null;
+}
+
+/**
  * Name of the short-lived httpOnly cookie that binds a Discord SIGN-IN
  * (`action=login`) to the browser that started it, the twin of
  * OAUTH_NONCE_COOKIE in lib/auth/oauth-state.ts.
