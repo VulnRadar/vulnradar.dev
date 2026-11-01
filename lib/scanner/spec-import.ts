@@ -125,12 +125,16 @@ function declaredParamValue(
 
 /** Every `{name}` in a path or server URL that the document declares a value
  *  for. Path-item level is read first so an operation-level override does not
- *  displace it; either is equally fine for a URL we only mean to fetch. */
+ *  displace it; either is equally fine for a URL we only mean to fetch.
+ *  A Map, because the names come from an uploaded file: on a plain object a
+ *  parameter called `__proto__` or `constructor` resolved to an Object member,
+ *  which skipped the declared value and could fill the path with
+ *  "[object Object]" instead of dropping it. */
 function declaredPathValues(
   spec: Record<string, unknown>,
   pathItem: unknown,
-): Record<string, string> {
-  const out: Record<string, string> = {};
+): Map<string, string> {
+  const out = new Map<string, string>();
   if (!pathItem || typeof pathItem !== "object") return out;
 
   const consider = (list: unknown): void => {
@@ -144,9 +148,9 @@ function declaredPathValues(
       if (!p || typeof p !== "object") continue;
       const po = p as Record<string, unknown>;
       if (po.in !== "path" || typeof po.name !== "string") continue;
-      if (out[po.name] !== undefined) continue;
+      if (out.has(po.name)) continue;
       const v = declaredParamValue(po);
-      if (v !== undefined) out[po.name] = v;
+      if (v !== undefined) out.set(po.name, v);
     }
   };
 
@@ -174,11 +178,11 @@ function declaredPathValues(
  *  has no declared value, so the caller drops the path exactly as it used to. */
 function fillTemplate(
   template: string,
-  values: Record<string, string>,
+  values: ReadonlyMap<string, string>,
 ): string | undefined {
   let unresolved = false;
   const filled = template.replace(/\{([^{}]*)\}/g, (whole, name: string) => {
-    const v = values[name.trim()];
+    const v = values.get(name.trim());
     if (v === undefined) {
       unresolved = true;
       return whole;
@@ -206,7 +210,7 @@ function resolveServerUrl(server: Record<string, unknown>): string | undefined {
     server.variables && typeof server.variables === "object"
       ? (server.variables as Record<string, unknown>)
       : {};
-  const values: Record<string, string> = {};
+  const values = new Map<string, string>();
   for (const [name, raw] of Object.entries(vars)) {
     if (!raw || typeof raw !== "object") continue;
     const v = raw as { default?: unknown; enum?: unknown };
@@ -214,7 +218,7 @@ function resolveServerUrl(server: Record<string, unknown>): string | undefined {
       scalarValue(v.default) ??
       (Array.isArray(v.enum) ? scalarValue(v.enum[0]) : undefined);
     // No "@" (userinfo would swap the host), no "?", "#", "\" or whitespace.
-    if (picked && /^[A-Za-z0-9._~:/-]+$/.test(picked)) values[name] = picked;
+    if (picked && /^[A-Za-z0-9._~:/-]+$/.test(picked)) values.set(name, picked);
   }
   return fillTemplate(url, values);
 }
