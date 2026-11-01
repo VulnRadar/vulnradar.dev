@@ -230,7 +230,10 @@ export default async function RootLayout({
             // Stamps two data attributes on <html> from the cached session so
             // the signed-in chrome is correct on the first paint instead of
             // flashing in after /auth/me resolves. The matching rules are in
-            // app/globals.css.
+            // app/globals.css. The public nav (components/landing/landing-nav.tsx)
+            // renders both its signed-in and its signed-out buttons and lets
+            // data-vr-auth hide the wrong pair (.vr-anon-only, .vr-auth-cta),
+            // so it never has to wait for auth state to pick one.
             //
             // It sets attributes and nothing else. The previous version built
             // a <style> element and appended it to document.head, which runs
