@@ -216,16 +216,15 @@ export default [
   {
     // lib/config/client-constants.ts declares API_VERSION as "the" switch for
     // the versioned API path and builds every entry of the API route map from
-    // it. 62 fetch call sites across 28 files spell `/api/v3/...` out instead,
-    // so bumping that one constant would move about three quarters of the
-    // client and leave the rest asking a version the server no longer serves,
-    // with no type error and no failing test to say so (AUDIT-014#hc-10).
+    // it. A fetch call that spells `/api/v3/...` out instead does not move
+    // when that constant does, and is left asking a version the server no
+    // longer serves, with no type error and no failing test to say so
+    // (AUDIT-014#hc-10).
     //
-    // "warn", not "error", for the same reason as the react-hooks and
-    // import/no-unresolved rules above: all 62 predate the rule. `npm run
-    // lint` now names every one of them, which is the worklist for migrating
-    // them onto the API map; promote this to "error" once that list is empty,
-    // otherwise the 63rd lands as silently as the first 62 did.
+    // An error. The 62 call sites that predated the rule are all on the API
+    // map now, and tests/repo/no-api-version-literals.test.ts holds the wider
+    // claim that no string literal names an API path outside the map and the
+    // registry, so a new one fails here at its line.
     //
     // Deliberately scoped to the argument of a `fetch()` call. A version
     // string in prose, in a docs code sample, in an OpenAPI path or in an
@@ -235,7 +234,7 @@ export default [
     ignores: ["app/docs/**", "app/api/**", "lib/api/bearer.ts"],
     rules: {
       "no-restricted-syntax": [
-        "warn",
+        "error",
         ...bearerSelectors,
         {
           selector:
