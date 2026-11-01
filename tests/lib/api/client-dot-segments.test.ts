@@ -41,6 +41,34 @@ describe("apiClient and a path with a dot segment", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  // The URL parser drops a tab, LF or CR anywhere and C0 controls or spaces at
+  // either end before it looks at segments, so these resolve to the same
+  // /api/v3/keys/5/revoke (or /api/v3/) as the plain spellings above. Built
+  // from char codes so the test source carries no raw control characters.
+  const TAB = String.fromCharCode(9);
+  const LF = String.fromCharCode(10);
+  const CR = String.fromCharCode(13);
+  const NUL = String.fromCharCode(0);
+  it.each([
+    ["a tab inside ..", `/api/v3/history/.${TAB}./keys/5/revoke`],
+    ["a newline inside ..", `/api/v3/history/.${LF}./keys/5/revoke`],
+    ["a CR after ..", `/api/v3/history/..${CR}/keys/5/revoke`],
+    ["a tab inside %2e", `/api/v3/history/%2${TAB}e%2e/keys`],
+    ["a trailing space", "/api/v3/history/.. "],
+    ["a trailing NUL", `/api/v3/history/..${NUL}`],
+    ["leading spaces", "  ../keys/5/revoke"],
+    ["a leading NUL", `${NUL}../keys/5/revoke`],
+  ])(
+    "refuses a dot segment the parser only sees after cleanup (%s)",
+    async (_label, url) => {
+      expect(new URL(url, "https://vulnradar.test/history").pathname).toMatch(
+        /^\/(?:api\/v3\/)?(?:keys(?:\/5\/revoke)?)?$/,
+      );
+      await expect(apiClient(url)).rejects.toBeInstanceOf(ApiError);
+      expect(mockFetch).not.toHaveBeenCalled();
+    },
+  );
+
   it("refuses through every verb helper", async () => {
     const bad = "/api/v3/history/../keys/5/revoke";
     await expect(apiGet(bad)).rejects.toBeInstanceOf(ApiError);

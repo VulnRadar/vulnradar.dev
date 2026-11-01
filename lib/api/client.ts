@@ -26,6 +26,25 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
 const DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
 
 /**
+ * The string the URL parser actually parses: it first drops C0 controls and
+ * spaces at either end and every tab, LF and CR in between. Checked as given,
+ * ".<tab>." and a trailing ".. " both passed for ordinary segments and were
+ * then resolved as "..".
+ */
+function asTheUrlParserReadsIt(url: string): string {
+  let start = 0;
+  let end = url.length;
+  while (start < end && url.charCodeAt(start) <= 0x20) start++;
+  while (end > start && url.charCodeAt(end - 1) <= 0x20) end--;
+  let out = "";
+  for (let i = start; i < end; i++) {
+    const code = url.charCodeAt(i);
+    if (code !== 0x09 && code !== 0x0a && code !== 0x0d) out += url[i];
+  }
+  return out;
+}
+
+/**
  * Whether the path part of a URL has a dot segment. The browser resolves those
  * before the request leaves, so "/api/v3/history/../keys/5/revoke" is a
  * request for /api/v3/keys/5/revoke with the user's cookie and a same-origin
@@ -34,7 +53,7 @@ const DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
  * backslash counts as a separator because the URL parser treats it as one.
  */
 function hasDotSegment(url: string): boolean {
-  const path = url.split(/[?#]/, 1)[0];
+  const path = asTheUrlParserReadsIt(url).split(/[?#]/, 1)[0];
   return path.split(/[/\\]/).some((segment) => DOT_SEGMENT.test(segment));
 }
 
