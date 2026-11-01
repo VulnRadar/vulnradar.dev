@@ -606,10 +606,15 @@ export default function AdministrationPage() {
 
       <DocsSection id="broadcasts" title="Broadcast email">
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Broadcasts go to verified accounts only, never to unverified ones. You
+          Broadcasts go to verified accounts only, never to unverified ones, and
+          never to a disabled account, even one named as the single address. You
           can target everyone, a specific plan, all paid users, or a single
-          address, and optionally narrow further to people who have a given
-          notification preference switched on.
+          address. Each broadcast also has a category, and only people who have
+          that notification preference switched on receive it. General
+          announcement uses Product Updates, so unsubscribing from one
+          announcement stops the next. The one exception is a single address
+          sent as a General announcement, which reaches that person whatever
+          their preferences.
         </p>
         <p className="text-sm leading-relaxed text-muted-foreground">
           Delivery walks the user list in pages with a small number of sends in
