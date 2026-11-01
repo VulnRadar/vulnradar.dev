@@ -82,8 +82,12 @@ const STATUS_LABELS: Record<string, string> = {
   sent: "Sent",
 };
 
+// "none" still sends no preference_col, but it is not "no filter": the server
+// gates every audience except a single named address on Product Updates, the
+// column a broadcast's Unsubscribe link turns off. The label used to read
+// "everyone in segment", which is the bug it described.
 const CATEGORY_OPTIONS: { value: string; label: string }[] = [
-  { value: "none", label: "No filter (everyone in segment)" },
+  { value: "none", label: "General announcement (Product Updates opt-ins)" },
   { value: "email_product_updates", label: "Product Updates" },
   { value: "email_tips_guides", label: "Tips & Guides" },
   { value: "email_scan_complete", label: "Scan Completed" },
@@ -95,6 +99,18 @@ const CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: "email_team_invite", label: "Team Invites" },
   { value: "email_team_changes", label: "Team Changes" },
 ];
+
+/** The line under "Sends to:" saying which preference decides who gets it. */
+export function audienceFilterNote(segment: string, category: string): string {
+  if (category !== "none") {
+    const label = CATEGORY_OPTIONS.find((c) => c.value === category)?.label;
+    return `Only users opted into ${label ?? category}.`;
+  }
+  if (segment === "specific") {
+    return "Sent whatever this address's email preferences are. A disabled account is still skipped.";
+  }
+  return "Only users who have not turned off Product Updates.";
+}
 
 export function MassEmailManager() {
   const [messages, setMessages] = useState<Broadcast[]>([]);
@@ -629,15 +645,12 @@ export function MassEmailManager() {
               </p>
               {segment === "all" && (
                 <p className="text-xs text-[hsl(var(--warning))] mt-0.5">
-                  Every registered account, free and paid.
+                  Every verified, active account, free and paid.
                 </p>
               )}
-              {category !== "none" && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Only users opted into{" "}
-                  {CATEGORY_OPTIONS.find((c) => c.value === category)?.label}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {audienceFilterNote(segment, category)}
+              </p>
             </div>
           </div>
 

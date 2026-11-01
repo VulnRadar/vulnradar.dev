@@ -23,6 +23,7 @@ import {
   isNotificationColumn,
   isSecurityColumn,
   optedInCondition,
+  type NotificationColumn,
 } from "@/lib/notifications/columns";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
@@ -77,8 +78,16 @@ async function deliverBroadcast(messageId: number): Promise<void> {
   // recipient: it is the same message for everyone.
   const broadcastText = htmlToText(message.content);
 
-  const conditions: string[] = ["u.email_verified_at IS NOT NULL"];
+  // A disabled account is never mailed, whatever the segment. disabled_at was
+  // checked by nothing here, so an account staff had shut down kept receiving
+  // every broadcast.
+  const conditions: string[] = [
+    "u.email_verified_at IS NOT NULL",
+    "u.disabled_at IS NULL",
+  ];
   const queryParams: unknown[] = [];
+  const isSpecificAddress =
+    typeof segment === "string" && segment.startsWith("email:");
 
   if (segment && segment !== "all") {
     if (segment === "premium") {
@@ -91,17 +100,26 @@ async function deliverBroadcast(messageId: number): Promise<void> {
     ) {
       queryParams.push(segment);
       conditions.push(`u.plan = $${queryParams.length}`);
-    } else if (typeof segment === "string" && segment.startsWith("email:")) {
+    } else if (isSpecificAddress) {
       queryParams.push(segment.replace("email:", ""));
       conditions.push(`u.email = $${queryParams.length}`);
     }
   }
-  if (safeCol) {
-    // A user with no preferences row has not chosen, so they get the schema
-    // default for this column. "No row" used to mean "opted in" for every
-    // column, which put people who never saved a preference into an audience
-    // filtered on Tips & Guides, an opt-in category.
-    conditions.push(optedInCondition(safeCol));
+  // Every audience is gated on a preference. With no category chosen the
+  // filter used to be skipped entirely, so the Unsubscribe link in one
+  // broadcast did not stop the next: the default is now the announcements
+  // column, which is also the one that link turns off. A single named address
+  // is the one way past it, and only when no category was picked, because an
+  // admin writing to one person is not sending bulk mail.
+  //
+  // A user with no preferences row has not chosen, so they get the schema
+  // default for the column. "No row" used to mean "opted in" for every
+  // column, which put people who never saved a preference into an audience
+  // filtered on Tips & Guides, an opt-in category.
+  const audienceCol: NotificationColumn | null =
+    safeCol ?? (isSpecificAddress ? null : BROADCAST_FALLBACK_COLUMN);
+  if (audienceCol) {
+    conditions.push(optedInCondition(audienceCol));
   }
 
   // Keyset, not OFFSET: the page query re-runs after each batch and OFFSET
@@ -115,7 +133,7 @@ async function deliverBroadcast(messageId: number): Promise<void> {
       unsubscribe_token: string | null;
     }>(
       `SELECT u.id, u.email, u.unsubscribe_token FROM users u
-       ${safeCol ? "LEFT JOIN notification_preferences np ON np.user_id = u.id" : ""}
+       ${audienceCol ? "LEFT JOIN notification_preferences np ON np.user_id = u.id" : ""}
        WHERE ${conditions.join(" AND ")} AND u.id > $${queryParams.length + 1}
        ORDER BY u.id
        LIMIT $${queryParams.length + 2}`,

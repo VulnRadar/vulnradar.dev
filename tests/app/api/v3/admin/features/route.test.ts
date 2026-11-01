@@ -1046,12 +1046,102 @@ describe("POST /api/v3/admin/features — broadcast", () => {
         );
         await vi.advanceTimersByTimeAsync(200);
 
+        // Not interpolated, and not a way out of the preference check either:
+        // it is treated as no category, which is the announcements column.
         const page = sqlCalls().find((s) => s.includes("FROM users u"));
         expect(page).not.toContain("DROP");
-        expect(page).not.toContain("COALESCE(np.");
+        expect(page).toContain(
+          "COALESCE(np.email_product_updates, true) = true",
+        );
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    // bug-messaging-1: a broadcast with no category ("No filter") skipped the
+    // preferences JOIN and had no disabled_at condition, so the unsubscribe
+    // link in a marketing mail did not stop the next one, and accounts staff
+    // had disabled kept receiving it.
+    describe("who a broadcast reaches", () => {
+      async function pageSqlFor(segmentFilter: unknown) {
+        vi.useFakeTimers();
+        try {
+          queueRole("admin");
+          stubDelivery({ claimed: [], segmentFilter });
+          await POST(
+            postRequest({ section: "broadcast", action: "send", id: 5 }),
+          );
+          await vi.advanceTimersByTimeAsync(200);
+          const call = mockQuery.mock.calls.find((c) =>
+            String(c[0]).includes("FROM users u"),
+          );
+          return {
+            sql: String(call?.[0] ?? ""),
+            params: (call?.[1] ?? []) as unknown[],
+          };
+        } finally {
+          vi.useRealTimers();
+        }
+      }
+
+      it("honours the announcements opt-out and skips disabled accounts for {segment:'all'}", async () => {
+        const { sql } = await pageSqlFor({ segment: "all" });
+        expect(sql).toContain(
+          "LEFT JOIN notification_preferences np ON np.user_id = u.id",
+        );
+        expect(sql).toContain(
+          "COALESCE(np.email_product_updates, true) = true",
+        );
+        expect(sql).toContain("u.disabled_at IS NULL");
+        expect(sql).toContain("u.email_verified_at IS NOT NULL");
+      });
+
+      it("treats a draft saved with no segment filter at all the same way", async () => {
+        const { sql } = await pageSqlFor(null);
+        expect(sql).toContain(
+          "COALESCE(np.email_product_updates, true) = true",
+        );
+        expect(sql).toContain("u.disabled_at IS NULL");
+      });
+
+      it("applies the chosen category instead of the announcements column, and still skips disabled accounts", async () => {
+        const { sql } = await pageSqlFor({
+          segment: "premium",
+          preference_col: "email_tips_guides",
+        });
+        expect(sql).toContain("COALESCE(np.email_tips_guides, false) = true");
+        expect(sql).not.toContain("email_product_updates");
+        expect(sql).toContain("u.disabled_at IS NULL");
+        expect(sql).toContain("u.plan != 'free'");
+      });
+
+      it("lets a specific address past the preference check, and only that", async () => {
+        const { sql, params } = await pageSqlFor({
+          segment: "email:someone@example.com",
+        });
+        expect(sql).not.toContain("COALESCE(np.");
+        expect(sql).toContain("u.email = $1");
+        expect(params[0]).toBe("someone@example.com");
+        // A disabled account is not mailed even when named.
+        expect(sql).toContain("u.disabled_at IS NULL");
+      });
+
+      it("still applies a category an admin chose for a specific address", async () => {
+        const { sql } = await pageSqlFor({
+          segment: "email:someone@example.com",
+          preference_col: "email_tips_guides",
+        });
+        expect(sql).toContain("COALESCE(np.email_tips_guides, false) = true");
+        expect(sql).toContain("u.disabled_at IS NULL");
+      });
+
+      it("treats an unrecognised segment as everyone, under the same two conditions", async () => {
+        const { sql } = await pageSqlFor({ segment: "everyone-please" });
+        expect(sql).toContain(
+          "COALESCE(np.email_product_updates, true) = true",
+        );
+        expect(sql).toContain("u.disabled_at IS NULL");
+      });
     });
 
     it("releases the claim to 'failed' when the send throws, so a resend retries", async () => {
