@@ -101,6 +101,8 @@ const HOMES: Record<string, string> = {
   "lib/ai/model-catalog.ts": "OpenRouter's API, not ours",
   "lib/ai/provider.ts": "OpenRouter's API, not ours",
   "lib/scanner/subdomain-discovery-engine.ts": "OTX and urlscan APIs, not ours",
+  "scripts/spike/":
+    "the routing spike drives a fixture app with the exact paths it proves",
 };
 
 /** Literals that predate this test. Delete a line when its file is clean. */
@@ -142,7 +144,6 @@ const DEBT: Record<string, string> = {
   "lib/billing/stripe-webhook-setup.ts": "the registered webhook URL",
   "lib/config/registry.ts": "setting help text that names routes",
   "lib/database/schema/01-core.mjs": "SQL comments that name route files",
-  "lib/email/email.ts": "the unsubscribe link printed into mail",
   "lib/uploads/avatar-migration.ts": "stored avatar paths",
   "lib/uploads/avatar-storage.ts": "stored avatar paths",
   "lib/uploads/team-avatar-storage.ts": "stored team avatar paths",
