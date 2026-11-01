@@ -6,6 +6,7 @@ import {
   APP_REPO,
   APP_SLUG,
   APP_URL,
+  APP_VERSION,
   BILLING_HISTORY_RETENTION,
   RELEASES_URL,
 } from "@/lib/config/constants";
@@ -555,7 +556,7 @@ until status is "completed" before reading severity counts. Point people at
 the ready-made composite action instead of hand-rolling that poll loop:
 
 \`\`\`yaml
-- uses: ${APP_REPO}/.github/actions/scan-gate@main
+- uses: ${APP_REPO}/.github/actions/scan-gate@v${APP_VERSION}
   with:
     url: https://your-staging-url.com
     api-key: \${{ secrets.VULNRADAR_TOKEN }}
