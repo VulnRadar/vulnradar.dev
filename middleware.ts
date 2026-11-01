@@ -3,6 +3,7 @@ import { PUBLIC_PATHS } from "./lib/config/public-paths";
 import { AUTH_SESSION_COOKIE_NAME, ROUTES, API } from "./lib/config/constants";
 import { SOCIAL_REDIRECTS } from "./lib/config/client-constants";
 import { RETIRED_CHECK_REDIRECTS } from "./lib/seo/retired-checks";
+import { parseBearer } from "./lib/api/bearer";
 import {
   MAX_REQUEST_BODY_BYTES,
   BODY_CARRYING_METHODS,
@@ -577,8 +578,10 @@ export function middleware(request: NextRequest) {
     return pathname.startsWith(p);
   });
 
+  // The same reader the route handlers use, so middleware and a handler never
+  // disagree about whether this is a key call: `bearer <key>` is one to both.
   const hasBearerToken =
-    request.headers.get("authorization")?.startsWith("Bearer ") ?? false;
+    parseBearer(request.headers.get("authorization")) !== null;
 
   // csrf: enforce CSRF for state-changing requests to the API
   // surface. We require that the request carries an Origin /

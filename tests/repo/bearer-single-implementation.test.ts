@@ -83,11 +83,7 @@ describe("Authorization: Bearer parsing", () => {
   });
 
   it("has no importer of BEARER_PREFIX and no hand-rolled test outside lib/api/bearer.ts", () => {
-    // middleware.ts still matches the scheme itself: it is converted, with the
-    // rest of the middleware hardening, after the handlers above, so that the
-    // two never disagree about who is authenticated. Drop it from this list
-    // when that lands.
-    const allowed = new Set(["lib/api/bearer.ts", "middleware.ts"]);
+    const allowed = new Set(["lib/api/bearer.ts"]);
     const files = [
       ...sourceFiles("app"),
       ...sourceFiles("components"),

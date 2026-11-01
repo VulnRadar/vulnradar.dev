@@ -66,8 +66,9 @@ const __dirname = dirname(__filename);
 //
 // A flat-config rule is replaced, never merged, so these selectors are spread
 // into every `no-restricted-syntax` block below and the blocks that share a
-// file keep the union. "warn" until middleware.ts, the last site, is converted
-// by the middleware hardening work; that change flips these to "error".
+// file keep the union. "error": every site reads the header through
+// parseBearer(), middleware.ts included, so a new hand-rolled test is a
+// regression and not a migration still in progress.
 const bearerSelectors = [
   {
     selector: "ImportSpecifier[imported.name='BEARER_PREFIX']",
@@ -209,7 +210,7 @@ export default [
     files: bearerSourceFiles,
     ignores: ["lib/api/bearer.ts"],
     rules: {
-      "no-restricted-syntax": ["warn", ...bearerSelectors],
+      "no-restricted-syntax": ["error", ...bearerSelectors],
     },
   },
   {

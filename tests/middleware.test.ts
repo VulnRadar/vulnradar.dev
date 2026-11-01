@@ -443,6 +443,49 @@ describe("middleware: CSRF enforcement on /api/v3/**", () => {
     expect(res.status).not.toBe(403);
   });
 
+  // RFC 9110 makes the scheme case-insensitive, and the handlers read the
+  // header through parseBearer(). Middleware used to test for the exact string
+  // "Bearer ", so a client that wrote `bearer <key>` was handed a CSRF 403 on
+  // a write and a redirect to /login on a read before its key was ever looked
+  // at.
+  it.each(["Bearer vr_k", "bearer vr_k", "BEARER vr_k", "Bearer   vr_k"])(
+    "treats %j as a key call: no CSRF 403 without an Origin",
+    (authorization) => {
+      const res = middleware(
+        makeRequest("/api/v3/history", {
+          method: "POST",
+          headers: { authorization },
+        }),
+      );
+      expect(res.status).not.toBe(403);
+    },
+  );
+
+  it.each(["Bearer vr_k", "bearer vr_k", "BEARER vr_k"])(
+    "lets %j through to the handler with no session cookie instead of redirecting to /login",
+    (authorization) => {
+      const res = middleware(
+        makeRequest("/api/v3/history", { headers: { authorization } }),
+      );
+      expect(res.headers.get("location")).toBeNull();
+      expect(res.status).not.toBe(307);
+    },
+  );
+
+  it.each(["Basic dXNlcjpwdw==", "Bearerx vr_k", "Bearer"])(
+    "does not treat %j as a key call: a write without an Origin is still a CSRF 403",
+    (authorization) => {
+      const res = middleware(
+        makeRequest("/api/v3/history", {
+          method: "POST",
+          cookie: "vulnradar_session=abc123",
+          headers: { authorization },
+        }),
+      );
+      expect(res.status).toBe(403);
+    },
+  );
+
   // The published ghcr.io/vulnradar/vulnradar image is built by
   // .github/workflows/docker-publish.yml with no
   // `--build-arg NEXT_PUBLIC_APP_URL`, so NEXT_PUBLIC_APP_URL -- a
