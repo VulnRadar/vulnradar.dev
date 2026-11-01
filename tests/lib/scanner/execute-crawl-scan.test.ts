@@ -1082,6 +1082,38 @@ describe("executeCrawlScan: pages that could not be read", () => {
     expect(meta.incomplete).toContain("osv-libraries");
   });
 
+  it("reports a challenge on one page among read pages without the blocking bot-challenge marker", async () => {
+    mockSafeFetch.mockImplementation(async (url: string) =>
+      url.endsWith("/about")
+        ? new Response("<title>Just a moment...</title>", {
+            status: 403,
+            headers: {
+              "content-type": "text/html",
+              "cf-mitigated": "challenge",
+            },
+          })
+        : new Response("<html></html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          }),
+    );
+
+    await executeCrawlScan(baseParams({ scanId: 77 }));
+
+    const meta = completedMeta(77);
+    // A CI gate fails on bot-challenge as "nothing was looked at"; one page
+    // of two was read, so the crawl says which pages it lost instead.
+    expect(meta.incomplete).toContain("crawl-pages-challenged");
+    expect(meta.incomplete).not.toContain("bot-challenge");
+    expect(meta.crawl.pagesScanned).toBe(1);
+    expect(meta.crawl.pagesUnreachable).toEqual([
+      {
+        url: "https://example.com/about",
+        reason: "Blocked by a bot challenge",
+      },
+    ]);
+  });
+
   it("writes an empty pagesUnreachable list when every page was read", async () => {
     await executeCrawlScan(baseParams({ scanId: 76 }));
     expect(completedMeta(76).crawl.pagesUnreachable).toEqual([]);

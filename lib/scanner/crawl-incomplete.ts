@@ -22,6 +22,14 @@ export const CRAWL_TIME_LIMIT_INCOMPLETE = "crawl-time-limit";
 export const CRAWL_QUOTA_LIMIT_INCOMPLETE = "crawl-quota-limit";
 
 /**
+ * Some crawled pages answered with a bot challenge while others were read.
+ * Kept apart from "bot-challenge", which a CI gate treats as "nothing was
+ * looked at" and fails on: that is true of a challenged main page or a crawl
+ * where every page was challenged, not of one challenged page among many.
+ */
+export const CRAWL_PAGES_CHALLENGED_INCOMPLETE = "crawl-pages-challenged";
+
+/**
  * Plain-language names, in the shape lib/scanner/incomplete-labels.ts uses.
  * Spread into INCOMPLETE_LABELS there; an unlabelled slug is shown as itself.
  */
@@ -30,4 +38,6 @@ export const CRAWL_INCOMPLETE_LABELS: Record<string, string> = {
     "Some crawled pages (the crawl ran out of time)",
   [CRAWL_QUOTA_LIMIT_INCOMPLETE]:
     "Some crawled pages (your daily scan limit ran out)",
+  [CRAWL_PAGES_CHALLENGED_INCOMPLETE]:
+    "Some crawled pages (the site showed the scanner a bot challenge on them)",
 };

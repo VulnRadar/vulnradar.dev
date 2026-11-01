@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   CRAWL_INCOMPLETE_LABELS,
+  CRAWL_PAGES_CHALLENGED_INCOMPLETE,
   CRAWL_QUOTA_LIMIT_INCOMPLETE,
   CRAWL_TIME_LIMIT_INCOMPLETE,
 } from "@/lib/scanner/crawl-incomplete";
@@ -18,10 +19,12 @@ describe("crawl incomplete markers", () => {
   it("keeps the slugs stored results already carry", () => {
     expect(CRAWL_TIME_LIMIT_INCOMPLETE).toBe("crawl-time-limit");
     expect(CRAWL_QUOTA_LIMIT_INCOMPLETE).toBe("crawl-quota-limit");
+    expect(CRAWL_PAGES_CHALLENGED_INCOMPLETE).toBe("crawl-pages-challenged");
   });
 
-  it("labels both markers in words, without an em dash", () => {
+  it("labels every marker in words, without an em dash", () => {
     expect(Object.keys(CRAWL_INCOMPLETE_LABELS).sort()).toEqual([
+      CRAWL_PAGES_CHALLENGED_INCOMPLETE,
       CRAWL_QUOTA_LIMIT_INCOMPLETE,
       CRAWL_TIME_LIMIT_INCOMPLETE,
     ]);

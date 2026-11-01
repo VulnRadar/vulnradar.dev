@@ -59,6 +59,7 @@ import { safeReadBody } from "./read-bounded-body";
 import { discoverPages, landedPageUrl } from "./crawl-discovery";
 import { insertCrawlPageRows } from "./crawl-page-rows";
 import {
+  CRAWL_PAGES_CHALLENGED_INCOMPLETE,
   CRAWL_QUOTA_LIMIT_INCOMPLETE,
   CRAWL_TIME_LIMIT_INCOMPLETE,
 } from "./crawl-incomplete";
@@ -899,10 +900,18 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     // to reflect: a crawl that quietly reported "97% confidence, nothing
     // exploitable found" after dropping its whole TLS branch was the single
     // worst failure mode this executor had. ref: AUDIT-014#state-03
+    // A challenge on some pages while others were read is not a challenge on
+    // the site, and a CI gate fails on "bot-challenge" as "nothing was looked
+    // at" (BLOCKING_INCOMPLETE in cli/lib.mjs). That stays true only of a
+    // challenged main page (hostChallenged below) or a crawl that read nothing.
+    const pageIncomplete = (slug: string) =>
+      slug === BOT_CHALLENGE_INCOMPLETE && readPages.length > 0
+        ? CRAWL_PAGES_CHALLENGED_INCOMPLETE
+        : slug;
     const incomplete = [
       ...new Set([
         ...hostAsync.incomplete,
-        ...pageResults.flatMap((pr) => pr.incomplete),
+        ...pageResults.flatMap((pr) => pr.incomplete.map(pageIncomplete)),
         // A login that dropped mid-crawl belongs here too, and did not: the
         // single-page authenticated route records "authenticated-session"
         // (app/api/v3/scan/authenticated/route.ts) and this executor only

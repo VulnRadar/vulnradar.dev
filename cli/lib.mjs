@@ -71,6 +71,8 @@ export const INCOMPLETE_LABELS = {
   "active-probes": "Active probes",
   "crawl-time-limit": "Some crawled pages (the crawl ran out of time)",
   "crawl-quota-limit": "Some crawled pages (your daily scan limit ran out)",
+  "crawl-pages-challenged":
+    "Some crawled pages (the site showed the scanner a bot challenge on them)",
   "authenticated-session": "The signed-in view of this page",
   "page-checks": "Some page checks",
   "bot-challenge":
