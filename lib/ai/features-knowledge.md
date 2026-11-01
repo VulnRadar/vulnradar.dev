@@ -453,4 +453,4 @@ Route: /admin/scans/[id]
 Access: signed in (or a share token)
 Page title: Scan inspector
 
-The stored row, including the raw error the owner is never shown. Each read is recorded in the audit log.
+This page exists at /admin/scans/[id]. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.

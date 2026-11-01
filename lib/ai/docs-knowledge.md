@@ -105,6 +105,7 @@ cookie are then unencrypted.
 - 3. Promote to admin
 - 4. Generate an API key
 - 5. Run a scan
+- Health check
 - {item.title}
 - Vercel
 - Self-hosted (Linux)
@@ -114,14 +115,13 @@ cookie are then unencrypted.
 - Step 3: Configure .env
 - Step 4: Start
 - Step 5: Verify
-- Common operations
 
 ### Notes
 - Before you begin, ensure you have the following installed:
 - .npmrc sets engine-strict=true, so an install under a Node outside engines ( >=22.0.0 <23.0.0) fails instead of warning. It holds no install-script allow-list: npm has no such mechanism, and the Docker build installs with --ignore-scripts because nothing in the production tree needs one (sharp and the Next SWC binaries ship prebuilt as optional dependencies).
 - Make the user the database's owner rather than granting it privileges on the database. Since PostgreSQL 15 nobody but the owner may create tables in the public schema, and GRANT ALL PRIVILEGES ON DATABASE does not change that, so would stop at its first CREATE TABLE with "permission denied for schema public".
 - The included docker-compose.yml provisions Postgres as user vulnradar and database vulnradar by default. POSTGRES_PASSWORD has no default: compose refuses to start until you set it in .env. The database port is not published to the host at all, so it is reachable only from inside the compose network, at postgres:5432. See the Docker section below.
-- instrumentation.ts runs CREATE TABLE IF NOT EXISTS for every table on first server boot. No manual migration is required for a fresh database. For databases upgraded from an older schema, see Schema Migration .
+- On first server boot instrumentation.ts calls apply-boot-schema, which runs the idempotent CREATE ... IF NOT EXISTS statements in lib/database/schema/ for every table. No manual migration is required for a fresh database. For databases upgraded from an older schema, see Schema Migration .
 - Secrets and per-deployment overrides go in .env (or .env.local for local-only overrides; Next.js loads .env.local with higher precedence than .env ).
 - Open .env and fill in at minimum:
 - Optional: SMTP, Stripe, Discord, Turnstile. Full reference on the Configuration page.
@@ -224,13 +224,13 @@ is a development path and not the way to install the extension.
 - The extension is a thin client over the same scan engine and the same account as the web app: it doesn't store findings locally beyond a small recent-history cache, and it doesn't run its own copy of the checks. Two things it can do that the web app can't from a URL bar alone: react to the page you're currently on (the on-page reputation card, auto-scan on navigation) and read a page the way you're actually seeing it, cookies and all, when you ask for that explicitly.
 - One click from the store. Updates itself from here on, no manual re-download.
 - One click from Firefox Add-ons. Updates itself from here on, no manual re-download.
+- Needs Chrome 120 or newer (Edge, Brave and other Chromium browsers at the same version work too), Firefox 140 or newer, or Firefox for Android 142 or newer. Ctrl+Shift+U opens the popup (Command+Shift+U on Chrome for macOS).
 - Working on the extension, or want to run an unreleased build? In Chrome, chrome://extensions &rarr; Developer mode &rarr; Load unpacked, and pick the built folder. In Firefox, about:debugging#/runtime/this-firefox &rarr; Load Temporary Add-on &rarr; select any file inside it. A temporary add-on is removed when Firefox restarts, which is why this is a development path and not the way to install the extension.
 - Need an API key first? Generate one from ?tab=developer&dtab=api-keys while logged in.
-- Click the toolbar icon on any page and hit Scan. Quick and Deep mirror the same two modes on the web app's scan form: Quick runs the fast header/TLS/content family checks, Deep also crawls linked pages on the same host. Which check families run is controlled from the extension's own Settings, independent of your web app defaults, so you can keep the popup fast day-to-day and still reach every check when you want it.
+- Click the toolbar icon on any page and hit Scan. Quick scans the one address you are on. Deep also follows links from it to other pages on the same site, so it takes minutes, not seconds. Both run the check families you have switched on in the extension's own Settings, independent of your web app defaults, so you can keep the popup fast day-to-day and still reach every check when you want it.
 - A scan started from the popup counts against the same daily limit as any other scan on your account and shows up in your regular scan history: there's no separate extension-only history to lose track of.
 - The popup is not a summary you then go elsewhere to act on. Three things happen without leaving it:
 - Right-click any link, anywhere, and choose Scan this link with . The scan runs against the link target without navigating to it, which is the point: you can check a search result, a forum post, or an emailed link before deciding whether to open it. It uses the same settings and the same daily limit as a popup scan, and finishes with the same desktop notification.
-- When enabled, a small card can appear in the corner of a page reporting one of two things: this host has been scanned before (and what its last result was), or it hasn't and you can scan it now. Site alerts are entirely separate from auto-scan below: this is about surfacing information, not triggering a scan on its own.
 
 ## Self-Hosting
 Route: /docs/self-hosting
@@ -249,6 +249,7 @@ Route: /docs/self-hosting
 - **Configure Stripe Webhook (If Billing)** (`#stripe`)
 - **Backups** (`#backups`)
 - **Updates** (`#updates`)
+- **Network egress** (`#network-egress`)
 - **Renaming a fork** (`#renaming`)
 - **Troubleshooting** (`#troubleshooting`)
 - **Security Checklist** (`#security`)
@@ -265,6 +266,33 @@ chat message. As a floor, use a model with around
 context. A small local model, e.g. Ollama&rsquo;s default
 llama3.2, does not have that headroom and
 will degrade or break outright once enough context is loaded.
+
+> **INFO: /api/version is not a probe**
+> It asks GitHub for the newest release and caches the answer for an
+hour, and it never touches the database. It answers 200 with the
+database up, down or half migrated, so it cannot tell you whether
+the app works. Use /api/v3/health for
+anything that restarts or reroutes.
+
+> **WARNING: A restart re-promotes the lowest-id account**
+> On every boot, if no account at all holds
+super_admin, the app promotes the account
+with the lowest id that still exists. That is the first one ever
+registered, until it is deleted. It is the way back for a first
+account you demoted by mistake, and it is also why you cannot retire
+the last super admin by editing the role: the next restart hands the
+role to whoever has the lowest id then. While any account holds
+super_admin the check does nothing.
+
+> **INFO: When the event list gets backfilled onto a live endpoint**
+> That route is the only code that compares the endpoint&rsquo;s
+events with the list above and adds what is missing, and it only
+gets that far while STRIPE_WEBHOOK_SECRET
+is still unset. Once the secret is in .env
+it answers configured: true without calling
+Stripe, and nothing runs it at boot, so a restart never re-checks
+anything. When a release adds an event to the list, add it to the
+existing endpoint in the Stripe dashboard yourself.
 
 > **INFO: postgresql-client is preferred, not required**
 > The scripts use pg_dump and
@@ -311,16 +339,60 @@ file is restored using the same key resolution, and needs its
 next to it. Rehearse a restore against a throwaway database before
 you rely on it.
 
+> **INFO: Migrations take their own backup**
+> npm run db:migrate writes a dump before it
+runs any DDL, whenever the plan has steps to run, so you do not have
+to remember step 1 of the upgrade for the migration itself. It uses
+the same format and the same key as a normal backup (the built-in
+dumper when pg_dump is missing), lands in
+<BACKUP_DIR>/pre-migration, and is
+pruned after
+MIGRATION_BACKUP_RETENTION_DAYS rather than
+BACKUP_RETENTION_DAYS. Because that folder
+sits inside BACKUP_DIR, the volume you
+mounted for backups already covers it. The in-app updater runs the
+same migrator, so it takes the same dump.
+
+> **WARNING: Keep the old key longer than you expect**
+> There is no command that re-encrypts everything. API keys move to
+the new key the first time each one is used after the rotation, so
+remove PREVIOUS_API_KEY_ENCRYPTION_KEY
+only after every API key in use has been presented at least once.
+The rest move only when something rewrites them: a user
+re-enrolling two-factor, reconnecting Discord or GitHub, saving
+their AI key again, or rotating a webhook secret. Until then those
+rows are readable only through the old key, and dropping it makes
+each one undecryptable: an unused API key answers 401, a
+two-factor seed locks its owner out (see Locked out of your own
+instance under Troubleshooting), and a webhook is delivered
+unsigned. A backup taken before the rotation needs the old key to
+restore: set it as BACKUP_ENCRYPTION_KEY
+for that restore. Keep the old key until every backup that needs
+it has been retired.
+
+> **WARNING: Do not run db:repair mid-rotation**
+> npm run db:diagnose and
+npm run db:diagnose-2fa read only
+API_KEY_ENCRYPTION_KEY, so while
+PREVIOUS_API_KEY_ENCRYPTION_KEY is
+covering for rows that still sit under the old key, they report
+those rows as undecryptable. The repairs for them,
+npm run db:repair and
+npm run db:repair-2fa, clear the value,
+delete the row, revoke the key or reset two-factor, which is
+exactly the loss the rotation was set up to avoid. Read a report
+if you like; do not apply the repair.
+
 > **WARNING: Why step 4 uses the new image**
 > Two things make the ordering matter.
-instrumentation.ts applies its schema block
-at process boot, which is after the new container is already the
-running one, so leaving it to boot means there is no moment where
-the schema is advanced while the old code is still live. And the
-migrator that knows about the new schema version ships inside the
-new image, so running
-docker compose exec app would run the old
-version&rsquo;s migrator and find nothing to do.
+instrumentation.ts applies the schema
+through apply-boot-schema at process boot,
+which is after the new container is already the running one, so
+leaving it to boot means there is no moment where the schema is
+advanced while the old code is still live. And the migrator that
+knows about the new schema version ships inside the new image, so
+running docker compose exec app would run
+the old version&rsquo;s migrator and find nothing to do.
 docker compose run --rm app gets you the
 new migrator without giving the new code any traffic. Skip step 4
 and the new container boots, sees a database older than
@@ -358,12 +430,12 @@ the SQL above.
 - Edit lib/config/config-values.ts to set:
 - If you don't want billing features, set:
 - Full reference on the Configuration page.
+- Google, GitHub and Discord sign-in only work once the provider has this instance&rsquo;s callback URL registered, character for character. The addresses to register, and how the app decides what its own address is behind a proxy, are in Configuration, OAuth redirect URIs .
 - Chat, finding verification, and audit summaries are off unless you point them at an AI endpoint. Add to .env: AI_BASE_URL (or the AI_PROVIDER shorthand), AI_MODEL, and AI_API_KEY. Full variable reference and a real per-model context-window / max-output-token table are on Configuration → AI Providers & Models .
 - These features load actual scan output into the prompt, not a short chat message. As a floor, use a model with around 300,000 tokens of context. A small local model, e.g. Ollama&rsquo;s default llama3.2, does not have that headroom and will degrade or break outright once enough context is loaded.
 - The default docker-compose.yml provisions Postgres and the app container, each with a healthcheck, and the app waits for Postgres to report healthy before it starts. The app reads .env via env_file, so every variable in that file reaches the container; the values compose derives itself, such as the in-network database URL, are set on the service and take precedence.
 - Because compose sets DATABASE_URL itself, putting your provider&rsquo;s URL in .env does nothing on its own: the app keeps talking to the bundled database. The repository ships docker-compose.managed-db.yml for this. It hands the app your DATABASE_URL, turns SSL on by default, and moves the bundled Postgres behind a profile so it does not start. Add to .env:
 - Keep the POSTGRES_* lines from .env.example, since the base file still names them. This needs Docker Compose 2.24 or newer. Check what compose will actually run with docker compose config --services, which should list app and not postgres.
-- --build matters on a source checkout. The compose file names both the published image and a build context, and when both are present a plain docker compose up pulls the published image rather than building yours. That image was built from upstream&rsquo;s config-values.ts and with NEXT_PUBLIC_APP_URL baked in as upstream&rsquo;s own domain, so the edits from the previous steps would silently not be there.
 
 ### Code examples
 ```typescript
@@ -409,9 +481,26 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-```sql
+```bash
 docker compose up -d --build
 docker compose logs -f app   # watch startup
+```
+
+```sql
+{
+  "status": "ok",
+  "version": "<value>",
+  "uptime_s": 86412,
+  "database": {
+    "connected": true,
+    "latency_ms": 4,
+    "schema_version": "<value>",
+    "schema_required": "<value>",
+    "schema_ok": true,
+    "missing_tables": [],
+    "pool": { "total": 2, "idle": 2, "waiting": 0, "max": 10 }
+  }
+}
 ```
 
 ```bash
@@ -442,19 +531,6 @@ docker compose run --rm app npm run db:restore -- \\
   --file=./backups/<the dump from step 1> --yes --force
 git checkout <previous-tag>
 docker compose build app && docker compose up -d
-```
-
-```text
-export const CONFIG_APP_NAME = "YourBrand Scanner";
-export const CONFIG_APP_URL = "https://scanner.yourdomain.com";
-export const CONFIG_APP_REPO = "yourname/your-repo";
-export const CONFIG_DISCORD_INVITE_URL = ""; // optional
-
-export const CONFIG_SUPPORT_EMAIL = "support@yourdomain.com";
-export const CONFIG_LEGAL_EMAIL = "legal@yourdomain.com";
-export const CONFIG_SECURITY_EMAIL = "security@yourdomain.com";
-export const CONFIG_ENTERPRISE_EMAIL = "enterprise@yourdomain.com";
-export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";
 ```
 
 ## Configuration
@@ -511,6 +587,18 @@ picks it up the next time its own 30 second cache expires.
 Build-tier keys have no propagation story at all: they change when
 you ship a new build.
 
+> **WARNING: Behind a proxy, set NEXT_PUBLIC_APP_URL**
+> With nothing saved and the variable unset, the address falls back
+to the request&rsquo;s own origin, which behind a reverse proxy
+can be an internal address, or the right host over plain HTTP
+because that is how the proxy talks to the app. The provider then
+sees a redirect URI you never registered. Set
+NEXT_PUBLIC_APP_URL to the public address
+and the problem goes away. A value saved for
+APP_URL in the admin panel overrides it,
+so check there too if the address you registered is not the one
+the provider reports.
+
 > **WARNING: AI features need real context**
 > Verifying findings or summarizing a full scan means loading a lot of
 scan output into the prompt. As a floor, look for a model with
@@ -526,6 +614,7 @@ before pointing AI features at a local model.
 ### Notes
 - has a two-layer configuration model designed to keep secrets out of source code while making non-secret deployment settings easy to customize for self-hosters.
 - Edit lib/config/config-values.ts to change the shipped default for any of these. What that edit costs you depends on the setting&rsquo;s tier. General, Social, Branding, and SEO values are build tier: editing the constant (or the NEXT_PUBLIC_* env var named in the field&rsquo;s help text) and rebuilding is the only way to change them. Most of the rest (rate limits, feature flags, billing, scan timeouts, auth windows, and more) are runtime tier and can also be overridden without touching source, from the Admin Settings Page below.
+- Both are compiled constants with no admin-panel field and no environment override: edit config-values.ts and rebuild.
 - All values are per-IP unless noted. The window is in minutes. Internally lib/config/constants.ts multiplies by 60 for the per-second window.
 - The /demo page lets unauthenticated visitors run scans. Rate-limited per IP.
 - Disable demo mode entirely with CONFIG_FEATURE_DEMO_MODE = false.
@@ -533,7 +622,6 @@ before pointing AI features at a local model.
 - of the values above also have a row in the system_settings database table and a control on /admin &rsquo;s Settings tab, sign in as an admin to reach it. The tab list there () and every field on it is generated from the same registry that generates the reference tables below, so the two cannot drift apart. Read the next subsection before you rely on a value you saved there: a control existing on that page does not mean the running app reads it.
 - Every setting on the page is one of two tiers:
 - APP_URL is the single exception. resolveAppUrl() in lib/config/runtime-config.ts reads the saved row live when it builds the OAuth redirect_uri for the GitHub, Google, and Discord sign-in routes, so an edit there does take effect for that one use with no rebuild. Canonical URLs, social cards, and email links still read the compiled value.
-- A build-tier registry entry is therefore a reference record of a compiled value. If a value has to be admin-editable, it needs a getSetting() reader and a runtime tier, not a build-tier row. APP_URL is the one build-tier key the panel still saves, for the OAuth redirect described above.
 
 ### Code examples
 ```text
@@ -1925,7 +2013,7 @@ files.
 - See the Configuration page for full details. Flow:
 - The detection engine is split across per-category files:
 - Categories (lib/scanner/types.ts): the Category union has members. of them are in ALL_CATEGORIES and run by default: . The remaining one, active-probes, is deliberately left out of that list because it writes to the target, so it runs only when a request names it explicitly. Severities: info, low, medium, high, critical.
-- REST v3 is the only API this build serves. There is no /api/v1 or /api/v2 route tree. Each v3 route handler:
+- REST v3 is the only API this build serves. There is no /api/v1 or /api/v2 route tree. A route handler typically:
 - Nine roles, defined as STAFF_ROLE_HIERARCHY in lib/config/client-constants.ts. The numbers below are read from that table, not typed out here:
 - The gaps of 10 leave room to insert a role without renumbering, and every comparison goes through a named key rather than a literal. Two things the shape does not show on its own:
 - All four checks (lint, typecheck, test, build) run on Node 22 LTS in CI. See .github/workflows/.
@@ -1948,7 +2036,6 @@ vulnradar.dev/
 │   ├── pricing/                  # Pricing + Stripe checkout
 │   ├── profile/                  # User profile
 │   ├── shared/[token]/           # Public shared-scan viewer
-│   ├── staff/                    # Public staff list
 │   └── teams/                    # Team management
 │
 ├── components/                   # React components (mostly client)
@@ -1974,7 +2061,6 @@ vulnradar.dev/
 │   ├── rate-limiting/            # Generic + plan-based rate limits
 │   ├── reports/                  # SARIF, Markdown, compliance, PDF reports
 │   ├── scanner/                  # Detection engine
-│   ├── types/                    # Shared TypeScript types
 │   └── uploads/                  # Avatar validation
 │
 ├── instrumentation.ts            # Next.js startup hooks (DB init, schema check)
@@ -2016,25 +2102,25 @@ Route handler (app/api/v3/<resource>/route.ts)
   2. Auth check (getSession OR validateApiKey)
   3. Rate limit check (lib/rate-limiting/rate-limit.ts)
   4. Daily quota check (lib/rate-limiting/daily-limits.ts, API-key + session)
-  5. Input validation (Zod via Validate)
+  5. Input parsing and validation (parseBody + Validate)
   6. Authorization (requireStaff / requireAdmin / verifyOwnership)
   7. Business logic
   8. Database query (lib/database/db.ts)
-  9. ApiResponse.json(...)
+  9. ApiResponse.success(...) / ApiResponse.error(...)
   │
   ▼
 instrumentation.ts (server startup only)
   - Validate env, install error-log capture
   - Read vulnradar_schema_meta; refuse to start if version < required
   - Take a boot advisory lock, then, inside it:
-      apply lib/database/schema/ -> backfills -> cleanup + workers
-      -> safety nets. A failure in any of them exits rather than
-      serving traffic against a half-built database.
+      apply-boot-schema applies lib/database/schema/ -> backfills
+      -> cleanup + workers -> safety nets. A failure in any of them
+      exits rather than serving traffic against a half-built database.
 ```
 
 ```text
 On push to main / PR
-  ├── Lint (ESLint 9, flat config in eslint.config.mjs)
+  ├── Lint (Oxlint, then ESLint 10 with the flat config in eslint.config.mjs)
   ├── Typecheck (tsc --noEmit, hard gate)
   ├── Test (vitest run)
   ├── Format check (prettier --check)
@@ -2082,7 +2168,7 @@ license, type-safe models, real tests against a live instance.
 package.json is
 { "node": ">=22.0.0 . There
 is no fallback to Node 20 and no jump to 24 either: the Dockerfile
-builds and runs on node:22.23.3-alpine, and
+builds and runs on node:22.23.4-alpine, and
 CI runs the full lint, typecheck, test, and build matrix on Node 22
 only. Match that locally.
 
@@ -2151,7 +2237,7 @@ curl <value>/api/v3/finding-types
 
 ```bash
 # nvm / fnm / volta / asdf will all auto-pick this from the repo root
-nvm use          # reads .nvmrc (which pins 22.23.3)
+nvm use          # reads .nvmrc (which pins 22.23.4)
 
 # or install + use explicitly
 nvm install 22
@@ -2185,8 +2271,8 @@ npm run dev
 ```
 
 ```text
-npm run lint        # check
-npm run lint:fix    # auto-fix
+npm run lint        # oxlint, then eslint
+npm run lint:fix    # oxlint --fix, then eslint --fix
 ```
 
 ## account-security
@@ -2245,8 +2331,10 @@ Route: /docs/administration
 - **Staff roles** (`#roles`)
 - **What each tab does** (`#tabs`)
 - **The settings registry** (`#settings`)
+- **Incident switches** (`#incident-switches`)
 - **Audit log** (`#audit`)
 - **Impersonation** (`#impersonation`)
+- **Staff SSO** (`#staff-sso`)
 - **Access rules and blocked data** (`#access-rules`)
 - **Backups and restore** (`#backups`)
 - **Broadcast email** (`#broadcasts`)
@@ -2278,12 +2366,31 @@ than a preference. Several keys were also removed from the registry
 because nothing read them, on the principle that an editable field
 that does nothing is worse than no field at all.
 
+> **WARNING: Staff are exempt only from some**
+> The login pause and the maintenance page spare staff. The scanning
+and signup pauses do not, and maintenance turns both on, so during
+maintenance a staff member can use the panel and the rest of the app
+but a scan is still refused for them. Pausing logins does not sign
+anyone out. Revoke sessions from the user panel if that is what you
+mean.
+
 > **SUCCESS: Rows are archived, not just deleted**
 > Audit rows are purged after their retention window, but the cleanup
 copies the about-to-be-deleted rows into an archive table in the
 same transaction as the delete. A purge cannot run without the rows
 landing in the archive first, so the retention setting bounds what
 is queryable rather than destroying the record.
+
+> **WARNING: SSO skips the two-factor prompt, and ENFORCE_STAFF_2FA still applies**
+> Signing in this way does not ask for this app&rsquo;s second factor:
+your provider&rsquo;s own MFA is the control. But
+ENFORCE_STAFF_2FA looks at whether the
+account has two-factor enabled here, not at how it signed in. With
+it on, a staff member who only ever uses SSO and never enrolled a
+second factor lands on /admin and is refused until they turn it on
+under Profile, Security. They can reach that page, so it is a detour
+rather than a lockout, but plan for it before you switch SSO and the
+enforcement on together.
 
 > **WARNING: Keep the sidecar file**
 > An encrypted backup is written alongside a small
@@ -2299,7 +2406,7 @@ when you do, but the send does not resume on its own. Avoid starting
 a large broadcast immediately before a deploy.
 
 ### Notes
-- The very first account created on a fresh instance becomes the super admin. That role cannot be granted through the panel afterwards, which is what stops an escalation path existing at all: there is exactly one way to become super admin, and it is being first.
+- The very first account created on a fresh instance becomes the super admin. That role cannot be granted through the panel afterwards, which is what stops an escalation path existing at all: there is exactly one way to become super admin, and it is being first. The one safety net is on boot: if no account holds the role at all, the server promotes the lowest-id account that still exists. That is how a first account demoted by mistake comes back, and it means a restart, not a screen, is what restores the role.
 - Everyone else is invited. An admin sends a staff invite for a specific email and a specific role; the link expires in seven days, the token is stored hashed rather than in plain text, and a pending invite can be revoked by deleting it. Sending an invite requires re-entering your password, as do the other destructive admin actions.
 - ENFORCE_STAFF_2FA is off by default so that enabling the feature does not instantly lock out existing staff. Turn it on once your staff have set up 2FA. It gates every admin-panel route, not just the login. Someone locked out can still reach the 2FA setup endpoint to enrol and get back in, so it is a recoverable setting rather than a one-way door.
 - Roles are not a single ladder. Four of them sit at the same rank as each other and differ only in what they are for, so you can give someone billing access without giving them session and 2FA controls.
@@ -2455,6 +2562,9 @@ Route: /docs/cli
 - **Usage** (`#usage`)
 - **Options** (`#options`)
 - **Exit codes** (`#exit-codes`)
+- **Incomplete scans** (`#incomplete`)
+- **JSON output** (`#json`)
+- **Rate limits and stopping** (`#limits`)
 - **CI example** (`#ci`)
 
 ### Callouts
@@ -2470,20 +2580,27 @@ with a raw request. Authentication is the same Bearer API key.
 - It needs Node 22 or newer, the same floor as the rest of the project ( cli/package.json declares engines.node >=22.0.0), and has no dependencies of its own.
 - Only needed to work on the CLI itself, or to run a change that is not released yet:
 - Or run the entrypoint directly with node cli/vulnradar.mjs scan <url>, no install at all.
-- Pass your key with --api-key or the VULNRADAR_TOKEN environment variable. Prefer the variable in CI so the key never lands in shell history or logs. --api-base has the same env form, VULNRADAR_API_BASE, so a self-hosted CI does not repeat the flag on every invocation. An explicit flag beats the variable in both cases.
-- 1 and 2 were both 1 before, so a pipeline could not tell "we found a critical, block the merge" from "VulnRadar was briefly unreachable". A script testing for any non-zero exit behaves exactly as it did; one that wants the gate result specifically can now ask for it.
-- Once the CLI is on the runner (see Install), a GitHub Actions step fails the build on any new critical or high:
-- A report is downloaded before the thresholds are judged, so the run that fails the build still leaves the file behind for the step that uploads it:
+- Pass your key with --api-key or the VULNRADAR_TOKEN environment variable. Create the key under Profile > Developer > API Keys. Prefer the variable in CI so the key never lands in shell history or logs. --api-base has the same env form, VULNRADAR_API_BASE, so a self-hosted CI does not repeat the flag on every invocation. An explicit flag beats the variable in both cases.
+- A report that cannot be fetched or written fails the run with 2, but never hides a failed gate: that still exits 1. An incomplete scan ( 3) outranks a failed report.
+- The thresholds judge the scan's findings, leaving out the ones you marked a false positive. The dashboard and every report hide them, so a run that failed on one would fail with nothing visible to fix. The CLI prints how many it left out, and --include-suppressed counts them. Accepted-risk and won't-fix findings are always counted. A completed scan whose result has no summary is an error ( 2), not zero findings.
+- A scan can finish without ever reading the site: it showed the scanner a bot challenge, or the page could not be fetched because of a bad certificate, an unreachable host or a redirect to another host. It has no findings, and a gate that passed it would pass a site nobody looked at. So the CLI always prints what was not checked, to stderr:
 
 ### Code examples
 ```bash
 npx vulnradar scan https://example.com --max-high 0
 ```
 
-```yaml
+```json
 git clone https://github.com/<value>.git
 cd vulnradar.dev/cli
 npm install -g .
+```
+
+```yaml
+- name: VulnRadar scan
+  env:
+    VULNRADAR_TOKEN: \<value>}
+  run: vulnradar scan https://staging.example.com --max-critical 0 --max-high 0
 ```
 
 ```text
@@ -2496,10 +2613,17 @@ vulnradar scan <url> [options]
 ```
 
 ```text
-- name: VulnRadar scan
-  env:
-    VULNRADAR_TOKEN: \<value>}
-  run: vulnradar scan https://staging.example.com --max-critical 0 --max-high 0
+Not checked: The page itself: the scanner could not fetch it, so only the checks that never read a page ran
+Page unreachable: <the reason>
+```
+
+```text
+{
+  "ok": false,
+  "error": "Scan failed: Could not reach the target. [target_unreachable]",
+  "scanId": 4821,
+  "failureKind": "target_unreachable"
+}
 ```
 
 ```text
@@ -3002,7 +3126,7 @@ individual URLs instead.
 - If the page itself will not load (the connection is refused, the request times out, the certificate is rejected, or the site redirects to another host) the scan still completes. DNS, the TLS handshake and reputation never read the page, so they run and report. The result lists the page as not checked and drops the engine confidence figure, so a short report here means the page was out of reach and not that it was clean.
 - The scanning screen&rsquo;s Try again keeps every option you chose (mode, check families, screenshot, port scan) and re-runs the same scan. Rescanning from your history is a plain rescan of the URL with default options, so if you need the same configuration, start it from the scan form instead.
 - A watchdog gives every scan a hard ceiling, so a target that stalls cannot hold a slot open indefinitely. When it fires, in-flight requests are aborted and the scan is marked failed. The ceilings below are shipped defaults; on a self-hosted instance they are admin settings.
-- Separately, each individual request has its own much shorter timeout: seconds for a page fetch and seconds for a crawled page. A request hitting that limit does not fail the scan: the affected group of checks is reported as incomplete and the rest of the scan continues. That includes the page fetch itself, which is then reported as not checked while the checks that never read a page run.
+- Separately, each individual request has its own much shorter timeout. The defaults are seconds for a page fetch and seconds for a crawled page, and both are admin settings: an instance can raise them, up to and seconds, for slow targets. A request hitting the limit does not fail the scan: the affected group of checks is reported as incomplete and the rest of the scan continues. That includes the page fetch itself, which is then reported as not checked while the checks that never read a page run.
 - The checks run in parallel, so a typical scan finishes in seconds. Hitting a five-minute ceiling almost always means individual requests to the target are each taking many seconds, which is worth knowing about the site in its own right. Try a Quick scan first to confirm the host responds at all.
 - Some URLs are rejected before a scan starts. These come back immediately rather than after a wait, and they cost no daily quota.
 - will not scan anything that resolves inside a private network. That covers literal private and loopback addresses, localhost and anything under .local, .internal or .lan, cloud metadata ranges, and any public hostname whose DNS answer points at a private address. The check is re-run on every redirect hop, so a public URL cannot redirect the scanner onto an internal one.
@@ -3014,21 +3138,21 @@ individual URLs instead.
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
 | `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
-| `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 30 | 30 |
-| `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 14 | 2 |
-| `/docs/self-hosting` | - | 16 | 9 | 0 | 16 | 0 | 0 | 33 | 3 |
-| `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 32 | 0 |
+| `/docs/setup` | - | 12 | 4 | 0 | 23 | 0 | 0 | 31 | 31 |
+| `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 16 | 2 |
+| `/docs/self-hosting` | - | 17 | 15 | 0 | 18 | 0 | 0 | 50 | 3 |
+| `/docs/config` | - | 9 | 5 | 0 | 2 | 0 | 0 | 39 | 0 |
 | `/docs/api` | - | 8 | 5 | 0 | 6 | 42 | 0 | 18 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |
 | `/docs/webhooks` | ✓ | 7 | 0 | 0 | 4 | 0 | 0 | 13 | 6 |
 | `/docs/rate-limits` | - | 6 | 6 | 0 | 4 | 0 | 0 | 11 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 3 | 0 | 0 | 8 | 0 |
-| `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 19 | 9 |
+| `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 18 | 9 |
 | `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 22 | 0 |
-| `/docs/administration` | - | 10 | 6 | 0 | 0 | 0 | 0 | 31 | 0 |
+| `/docs/administration` | - | 12 | 8 | 0 | 0 | 0 | 0 | 39 | 0 |
 | `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 21 | 0 |
 | `/docs/billing` | - | 8 | 7 | 0 | 0 | 0 | 0 | 21 | 0 |
-| `/docs/cli` | - | 6 | 1 | 0 | 6 | 0 | 0 | 11 | 0 |
+| `/docs/cli` | - | 9 | 1 | 0 | 8 | 0 | 0 | 18 | 0 |
 | `/docs/github` | ✓ | 8 | 4 | 0 | 1 | 0 | 0 | 24 | 0 |
 | `/docs/reports` | - | 7 | 3 | 0 | 4 | 0 | 0 | 15 | 0 |
 | `/docs/scheduled-scans` | - | 9 | 6 | 0 | 0 | 0 | 0 | 22 | 0 |

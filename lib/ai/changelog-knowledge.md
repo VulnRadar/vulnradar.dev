@@ -432,6 +432,114 @@ The largest release since 3.0, and a pass over the whole product rather than one
   After an update, a page opened earlier could ask for files the update had replaced and land on an error screen. It now reloads once into the new version instead.
 - [Heart] **[ADDED]** **Footer Credits Who Hosts the Site**
   The footer now names the company whose servers run this site. A self-hosted install names its own host, or removes the line, in its configuration before building.
+- [AlertTriangle] **[API]** **Shared Error Codes for API v4**
+  Errors from the new API carry a stable code from a closed list, the request id, and a Retry-After header on every 429 and 503. This release adds the list and the shared error shape; API v4 itself is not switched on yet, and v3 error bodies are unchanged. v4-only change.
+- [CalendarClock] **[API]** **API v3 Retirement Headers Prepared**
+  The headers that announce API v3's retirement (Deprecation, Sunset and a link to the migration guide) and the optional switch that makes an instance answer 410 after the Sunset date are built and tested, but stay off until the release date is set. Self-hosted instances are never cut off unless the operator opts in. v3 deprecation groundwork.
+- [Link2] **[IMPROVED]** **One Route Registry and Permanent URLs**
+  One list now records which API paths are public, which never move (OAuth callbacks, the Stripe webhook, unsubscribe links, health, avatars and badges) and which will be aliased when routes move under /api/internal and /api/v4. No URL changes yet.
+- [KeyRound] **[FIXED]** **API Keys Accept Any Capitalisation of the Bearer Scheme**
+  An Authorization header written as bearer, BEARER or with more than one space after the scheme now works on every endpoint that takes an API key. The HTTP standard says the scheme is case-insensitive, but the API used to treat a lowercase one as if no key had been sent and answer 401 for a valid key. All endpoints, and the request filter in front of them, now read the header through one shared parser, so a lowercase scheme is no longer refused as cross-site or redirected to the sign-in page either.
+- [Key] **[API]** **A Bearer Header With No Key Counts as No Key**
+  An Authorization header that says Bearer but has nothing after it is no longer reported as an invalid API key. It is handled like a request with no API key, so it gets the usual unauthenticated 401, or uses the session cookie if the caller has one.
+- [ShieldCheck] **[SECURITY]** **API Paths Ending in an Image Extension Get Every Request Check**
+  A request to an API path ending in .svg, .png, .jpg, .jpeg, .gif or .webp used to skip the Origin check, the 1 MiB body limit, the sign-in redirect and maintenance mode. Every API path now goes through the same checks, whatever its last segment looks like. Static files such as images and icons are unaffected, and no real API URL ends in an image extension, so existing clients keep working.
+- [LifeBuoy] **[FIXED]** **Support Ticket IDs Must Be Plain Numbers**
+  Opening, replying to, sharing or translating a support ticket with an id such as 12.png, 12abc, 1.5 or 012 used to be read as ticket 12. These are now refused as an invalid ticket id, the same way any other bad id is, and so are numbers larger than a ticket id can be.
+- [UserCheck] **[FIXED]** **Signed-In State Survives a Hiccup**
+  A rate limit, a gateway error or a maintenance page while the app checks your session no longer drops you into the signed-out layout. Only a real sign-out does, and repeated failed checks now stop after three retries.
+- [CreditCard] **[FIXED]** **Pricing Page Button for Signed-Out Visitors**
+  The button at the bottom of the pricing page now offers Create an account to visitors who are not signed in, instead of Go to Scanner.
+- [Lock] **[SECURITY]** **Site Alerts No Longer Sends Query Strings**
+  The extension now looks a page up using only its address without the query string or fragment, so reset links, login links and tokens in a URL no longer leave the browser when a page loads. Nothing is looked up in private windows or for localhost, IP addresses and internal hostnames. Until the server matches stored scans on the address without a query string, a page whose public scan was stored with one shows the host-level result.
+- [Timer] **[EXTENSION]** **Safer Auto-Scan With a Same-Site Cooldown**
+  Auto-scan now skips private windows, private addresses and addresses that carry a token or key, drops the part after the hash, and never runs active probing or the port sweep. It also waits 6 hours before scanning the same site again, adjustable in the extension settings, on top of the limit between any two scans.
+- [ShieldAlert] **[SECURITY]** **The On-Page Card Cannot Be Driven by the Page**
+  The Site Alerts card can no longer be clicked by the page it appears on, and Scan this site scans the address the extension offered rather than one the page supplies. The extension also checks who sent each internal message before acting on it.
+- [Puzzle] **[EXTENSION]** **Extension 0.2.3**
+  The API key field is hidden and cleared once saved, settings changes no longer overwrite a refreshed key, and the extension now needs Chrome 120 or newer, runs only on http and https pages, and loads on Firefox for Android. The extension README and docs page now match what the extension does.
+- [Code] **[BREAKING]** **CLI, Action and GitLab Gate Fail When the Scan Never Read the Page**
+  The CLI and the GitHub Action now exit 3 when the site showed the scanner a bot challenge or the page could not be fetched, instead of passing with zero findings, and always say what was not checked. Pass --allow-incomplete (CLI) or fail-on-incomplete: never (Action) to accept a partial scan, or --fail-on-incomplete to also fail on any other skipped area. Pipelines that follow the main branch of the Action get this on their next run. The GitLab template adds VR_FAIL_ON_INCOMPLETE, which is off by default for this release so existing pipelines do not start failing; set it to blocking to opt in. Turning it on by default later will be a breaking change.
+- [Filter] **[FIXED]** **CI Gates Ignore Findings You Marked as False Positives**
+  The CLI, the GitHub Action and the GitLab template now count findings, leaving out the ones you marked as false positives, so a run no longer fails on something the dashboard and the reports hide. They print how many were left out. Use --include-suppressed, include-suppressed or VR_INCLUDE_SUPPRESSED to count them. A completed scan with no summary is now an error instead of zero findings.
+- [CircleSlash] **[CLI]** **CLI Cancels Its Scan When Interrupted**
+  Stopping the CLI with Ctrl-C or a CI cancel now cancels the scan it started and exits 130 or 143, so the re-run is not refused while the old scan holds your only scan slot. --cancel-on-timeout does the same when the timeout runs out. A busy scan slot is now waited out with a capped backoff that does not use up --timeout, and a spent daily quota is reported instead of retried.
+- [FileText] **[CLI]** **CLI Output, Reports and Arguments**
+  With --json or a report on stdout, progress goes to stderr so the output is one valid document. A report that cannot be downloaded or written no longer hides a failed gate, failed scans carry their failure kind in the message and the JSON failure document, polling shows progress and makes a last check at the deadline, a negative --max-critical or --max-high is rejected, --out creates its folder before the scan is charged, and a plain http:// API base to another host needs --allow-insecure.
+- [Database] **[SELFHOST]** **Pre-Migration Backup Now Works in the Docker Image**
+  The database dump that npm run db:migrate takes before changing the schema now goes to the pre-migration folder inside your backup directory (BACKUP_DIR, default ./backups). That is a directory the Docker image can write to and docker-compose already keeps as a volume, so migrating inside the container no longer fails before it starts. If the dump cannot be written, the migration stops without changing anything and says why. A new --skip-backup flag lets you migrate when the dump itself is the problem.
+- [RefreshCw] **[SELFHOST]** **Restore Backups Taken Before a Key Rotation**
+  npm run db:restore now falls back to PREVIOUS_API_KEY_ENCRYPTION_KEY when the current key does not open an encrypted backup, so backups taken before you rotated API_KEY_ENCRYPTION_KEY can still be restored.
+- [Container] **[IMPROVED]** **One Node Version for the Repo, CI and the Image**
+  The Node patch version is now read from .nvmrc by every CI and release job, and CI fails if the Dockerfile, .nvmrc, .node-version or the runner disagree. All of them move to Node 22.23.4.
+- [Package] **[CLI]** **CLI Published to npm by the Release Workflow**
+  Stable releases now publish the vulnradar CLI to npm with provenance, using npm trusted publishing instead of a stored token, when its version is not on the registry yet.
+- [Network] **[SELFHOST]** **Self-Hosting Guide Lists Every Outbound Call**
+  The self-hosting guide has a Network egress section naming each host the server contacts, what is sent to it, whether it needs a key, and what you see when a firewall blocks it. Blocked lookups show as unavailable, never as clean.
+- [BookOpen] **[SELFHOST]** **Key Rotation, Health Check and Updater Documented**
+  Added a step-by-step encryption key rotation runbook, a health check reference, an explanation of the in-app updater, the automatic pre-migration backup, and a note that a restart re-promotes the lowest-id account when no super admin exists. The configuration page now covers the OAuth redirect URIs to register (they never move), how the app URL is resolved behind a proxy, and the maintenance and debug environment variables.
+- [Settings] **[ADMIN]** **Administration Guide Covers Incident Switches and Staff SSO**
+  The administration docs now explain the four incident switches and who each one exempts, how to use maintenance mode when the database is down, how to set up staff SSO, and what every admin tab is for.
+- [Wrench] **[FIXED]** **Stripe Event List and Updater Message Corrected**
+  The environment template now lists all nine Stripe webhook events the app needs (it listed five), and the docs no longer claim the list is re-checked on every boot. When the in-app updater is disabled in the Docker image, it now tells you to change the image tag before pulling.
+- [BookOpen] **[IMPROVED]** **Contributor Docs Match the Code**
+  The README now says exactly what a self-hosted instance contacts, builds the image from your checkout so your config edits take effect, and describes API key encryption and the required encryption key accurately. The architecture and developer pages lost directories that never existed, show the real request handling and Stripe event list, and gained steps for adding a docs page, translating, and the development-only switches.
+- [Shield] **[SECURITY]** **Security Policy Covers 4.0.x**
+  The supported-versions table now lists 4.0.x as supported, and a test fails the build if a minor release ships without moving the table.
+- [Mail] **[FIXED]** **Staff Alert Emails Open the Support Inbox**
+  The contact form alert now opens the contact messages view of the support inbox, and the support ticket alert opens the ticket queue. Before, both landed on the admin Overview page. Links in alerts that were already sent now find the right place too.
+- [MailOpen] **[FIXED]** **Broadcast Preview Shows the Real Email Logo**
+  The email preview in the admin broadcast composer now shows the same header logo recipients get. It used to show the SVG favicon, which Gmail and Outlook do not display.
+- [Volume2] **[ACCESSIBILITY]** **Quieter Billing Notices for Screen Readers**
+  The limit and cancellation notices on the billing tab are no longer read out as urgent alerts the moment the tab opens. They read as ordinary page content, and real errors elsewhere still interrupt as before.
+- [Keyboard] **[ACCESSIBILITY]** **Focus Stays Where You Are**
+  Closing a side sheet returns keyboard focus to the control that opened it. Loading the last batch on the changelog moves focus to the first new release instead of dropping it, and the Load more button keeps focus while it loads. The cookie notice hides itself while a dialog is open instead of sitting on top of it unclickable.
+- [Target] **[ACCESSIBILITY]** **Bigger Targets on Public Pages**
+  Back links, breadcrumbs, legal clause numbers, the changelog version chip and the links on the tools and comparison pages now meet the 24 pixel minimum tap size, and the Visit site buttons on shared and host pages are a single link instead of a button nested in one.
+- [List] **[IMPROVED]** **One Heading Per Page in Repo Findings**
+  Opening a finding on a repository scan no longer leaves two top-level headings on the page, and the troubleshooting docs now describe the per-request timeouts as adjustable defaults.
+- [Languages] **[IMPROVED]** **Translation Files Split per Section**
+  Each language's translation file is now split into one file per section of the interface, so several translations can be worked on at once. The words shown to readers are unchanged. A new check fails if any language is missing a string English has.
+- [Globe] **[ADDED]** **Locale-Aware Dates, Numbers and Severity Words**
+  Pages that are translated can now show dates, relative times, numbers and the Critical, High, Medium, Low and Info labels in the reader's own language. Pages move over to them one at a time, so nothing looks different yet.
+- [Zap] **[PERFORMANCE]** **Lighter Report Pages**
+  Pages that show a scan report no longer download the PDF, SARIF, Markdown, CSV and compliance report writers or the share and AI dialogs until you use them. The language menu, the product tour's step text and the docs step lists also stay out of the pages that never need them.
+- [Activity] **[PERFORMANCE]** **Calmer Live Browser Viewer**
+  The live browser viewer no longer redraws itself every second. The countdown and the network list update on their own, and the session ends at its exact deadline.
+- [Sun] **[FIXED]** **Top Bar and Theme Switch Load Correctly**
+  The top bar shows the right sign-in or Dashboard button on the first paint instead of a grey placeholder, and the theme switch matches the stored theme on first load for light-theme visitors.
+- [Bot] **[IMPROVED]** **One AI Availability Request**
+  The chat widget, the dashboard and the scan menu now share one request that asks whether AI is available, instead of making two or three. Switching AI off in your profile shows in the scan menu and the dashboard at once.
+- [Trash2] **[FIXED]** **Cleanup Keeps Going When One Table Fails**
+  The scheduled database cleanup no longer stops at the first table it cannot prune, so one stuck table cannot leave rate limits, error logs, email logs and webhook deliveries to grow forever. Old scan history is now removed in batches with a time limit per run, so a large backlog drains over a few runs instead of failing every time.
+- [Gauge] **[PERFORMANCE]** **Faster Host Pages, Share Lists and Extension Lookups**
+  Public host pages and their score trends, the shares list, per-URL scan history and the webhook delivery cleanup now use indexes instead of reading whole tables. New indexes also prepare the browser extension's page lookup to match a scan stored with a query string or fragment. The indexes are built on the first start after upgrading.
+- [ServerCrash] **[FIXED]** **Outages No Longer Look Like Wrong Passwords**
+  When the database is failing, sign-in, sign-up and staff invites now answer with a server error instead of saying the password is wrong, treating the address as new, or saying an existing account does not exist.
+- [Search] **[FIXED]** **Domain Matching and Re-Verification Fixes**
+  Blocked-domain purges and the domain owner controls now read the host of a scan the same way, so a port, a query string or credentials in a URL can no longer hide a scan from a purge or make another site's scan look like the owner's. Domain re-verification now rotates past domains whose DNS never answers, so the domains behind them are still re-checked, and the live browser session limit stays exact when an admin changes it while sessions are open.
+- [KeyRound] **[FIXED]** **Sign-In With Google, GitHub or Discord No Longer Hangs on a Stalled Provider**
+  The code exchange and profile lookups now give up after 10 seconds and send you back to the login page with the usual error, and a provider that answers with something that is not valid data is handled the same way instead of failing the request.
+- [ShieldCheck] **[SECURITY]** **Stricter Sign-In and Verification Tokens**
+  The signed tokens used for OAuth sign-in, Discord linking, the two-factor step and IP detection now accept only one spelling of their signature. Tokens already issued keep working. GitHub emails are also only treated as verified when GitHub says so explicitly.
+- [UserCog] **[FIXED]** **Stopping an Impersonation Keeps the Admin Signed In for a Normal Session Length**
+  Returning from an impersonated account used to restore the admin session as a cookie that disappeared when the browser closed. It now lasts as long as an ordinary login, never longer than the admin session itself. A stale session cookie also no longer breaks the credits pages.
+- [Gauge] **[PERFORMANCE]** **Password Hashing Is Limited to Two at a Time**
+  A burst of logins or signups can no longer run four memory-heavy password hashes at once and hold up DNS lookups and file reads behind them. Extra requests wait their turn in order.
+- [Tag] **[FIXED]** **AI Tag Suggestions Survive Strict AI Providers**
+  Tag suggestions are no longer lost when an AI provider rejects the reasoning option. The request is now sent again without it, the same way finding verification and scan summaries already worked.
+- [KeyRound] **[SELFHOST]** **Unreadable Personal AI Keys Are Reported**
+  When a saved personal AI key can no longer be decrypted, usually after the encryption key was rotated without setting PREVIOUS_API_KEY_ENCRYPTION_KEY, the server log now names the affected account and says how to recover, once per account. Before, the instance's own AI quietly answered in its place with no trace. A failed lookup of a user's AI settings is logged too.
+- [Sparkles] **[IMPROVED]** **One Shared Request Path for AI Features**
+  Finding verification, scan summaries, tag suggestions, repository review and translations now send their requests through one shared path, so a provider quirk or a new gateway header is fixed once for all of them. Failures from Anthropic-style providers now appear in the server log in the same format as every other provider.
+- [RefreshCw] **[FIXED]** **Release Candidates Are Offered the Final Release**
+  An install running a release candidate such as 4.0.0-rc.1 is now told that 4.0.0 is an update. The version check, the admin updater and the startup banner used to read the release candidate as the same version as the release and report it as up to date.
+- [Radar] **[ENGINE]** **Scan Requests Name VulnRadar/1.0 Everywhere**
+  Every request a scan sends to your site now carries VulnRadar/1.0 in its User-Agent, including the source map, MTA-STS policy and subdomain reachability requests that used to send none, so one rule on that token recognises all scan traffic.
+- [ScanSearch] **[FIXED]** **Login Forms With Escaped Values Scan Correctly**
+  Authenticated scans and active probes now decode numeric HTML entities in hidden form fields, form actions and CSRF meta tags. A token the site's template had escaped, such as a plus sign written as an entity, used to be sent back as literal entity text and rejected.
+- [Timer] **[PERFORMANCE]** **Stalled Responses No Longer Hold a Scan Open**
+  A site that answers an authenticated scan's login or verification request and then stalls the body is now cut off at the verification timeout instead of holding the scan open. DNS checks also stop leaving a pending timer behind every lookup.
 
 ---
 
@@ -2740,6 +2848,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1062
+- **Total changes documented:** 1116
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
