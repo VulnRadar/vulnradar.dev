@@ -52,6 +52,7 @@ import {
   requireDatabaseUrl,
 } from "../_lib/_lib.mjs";
 import { repairAllSequences } from "../migrate/_runner.mjs";
+import { VERSIONS } from "../migrate/_registry.mjs";
 import {
   readSchemaStatements,
   bootSchemaStatements,
@@ -663,11 +664,9 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   {
     const KNOWN = KNOWN_VERSIONS;
     const LATEST = LATEST_VERSION;
-    const LABELS = {
-      "1.0.0": "v1 baseline (19 tables, pre-MVP)",
-      "2.0.0": "v2 / production schema (34 tables)",
-      "3.0.0": "v3.0 / production schema (46 tables)",
-    };
+    // The registry owns the labels, table counts included: a count typed here
+    // went on saying 46 for the 3.0.0 schema after it grew to 71.
+    const LABELS = Object.fromEntries(VERSIONS.map((v) => [v.name, v.label]));
     log("");
     log(
       `  ${c.bold}Which schema version should the NEW database start at?${c.reset}`,
