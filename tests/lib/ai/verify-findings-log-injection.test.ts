@@ -62,6 +62,17 @@ function loggedLines(): string[] {
   );
 }
 
+/** The one Error logged, which must keep frames under an escaped head. */
+function expectLoggedErrorWithFrames() {
+  const err = errors.mock.calls.flat().find((a) => a instanceof Error) as
+    Error | undefined;
+  expect(err, "the thrown error is logged as an Error").toBeDefined();
+  const [head, ...frames] = String(err?.stack).split("\n");
+  expect(head).toContain("[AI-VERIFY] Admin password reset approved");
+  expect(frames.length).toBeGreaterThan(0);
+  for (const frame of frames) expect(frame).toMatch(/^\s+at /);
+}
+
 /** No logged line breaks or control characters, and nothing unbounded. */
 function expectNoForgedLines() {
   const lines = loggedLines();
@@ -129,6 +140,7 @@ describe("verification logs carry no raw request, target or provider text", () =
     );
 
     expectNoForgedLines();
+    expectLoggedErrorWithFrames();
   });
 
   it("the rate-limit line (#237) escapes the URL being verified", async () => {
@@ -202,5 +214,6 @@ describe("repo review logs carry no raw provider text", () => {
     await runGithubAiReview(FILES, 1, false, null);
 
     expectNoForgedLines();
+    expectLoggedErrorWithFrames();
   });
 });

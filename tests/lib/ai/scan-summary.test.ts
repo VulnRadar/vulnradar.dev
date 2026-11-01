@@ -191,6 +191,35 @@ describe("generateScanSummary: AI call fails or times out", () => {
     for (const line of lines) expect(line).not.toMatch(/[\r\n]/);
   });
 
+  it("logs a reply that is not JSON with the stack, and its body escaped", async () => {
+    // A 200 whose body is not JSON makes res.json() throw a SyntaxError that
+    // quotes the body. Logged raw, its line breaks wrote rows of their own;
+    // logged as the message alone, the stack was lost.
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError(
+          "Unexpected token '<', \"<html>\r\n[AI-SCAN-SUMMARY] Admin password reset approved\" is not valid JSON",
+        );
+      },
+    });
+
+    await generateScanSummary(makeResult([makeFinding("f1")]), 1);
+
+    const logged = errors.mock.calls.flat();
+    errors.mockRestore();
+    const err = logged.find((a): a is Error => a instanceof Error);
+    expect(err).toBeInstanceOf(Error);
+    expect(err?.name).toBe("SyntaxError");
+    expect(err?.message).not.toMatch(/[\r\n]/);
+    const [head, ...frames] = String(err?.stack).split("\n");
+    expect(head).toContain("Admin password reset approved");
+    expect(frames.length).toBeGreaterThan(0);
+    for (const frame of frames) expect(frame).toMatch(/^\s+at /);
+  });
+
   it("returns null (not a throw) when the provider responds with a non-OK status", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: false,

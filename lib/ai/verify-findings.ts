@@ -11,7 +11,7 @@ import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
 import { CALL_FRAMING_TOKENS, maxInputTokens } from "@/lib/ai/token-ceiling";
 import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME } from "@/lib/config/constants";
-import { logValue } from "@/lib/logging/log-value";
+import { logSafeError, logValue } from "@/lib/logging/log-value";
 import {
   settleAiTokens,
   type AiTokenReservation,
@@ -570,11 +570,15 @@ async function callVerify(
       ...(res.tokensUsed > 0 ? {} : { costUnknown: true }),
     };
   } catch (err) {
-    // A template string, not console.error's "%s" placeholder: the admin error
-    // log (lib/database/error-log-capture.ts) records the raw arguments, so the
-    // placeholder showed up there literally as `callVerify failed for "%s"`.
+    // No "%s" placeholder: the admin error log (lib/database/error-log-capture.ts)
+    // records the raw arguments, so it showed up there literally as
+    // `callVerify failed for "%s"`. The first argument is a constant for the
+    // same reason in reverse: console.error reads format specifiers from it,
+    // and a finding id is request text that could carry one.
     console.error(
-      `[AI-VERIFY] callVerify failed for "${logValue(finding.id)}": ${logValue(err instanceof Error ? err.message : err, 300)}`,
+      "[AI-VERIFY] callVerify failed for",
+      `"${logValue(finding.id)}":`,
+      logSafeError(err, 300),
     );
     return { result: null, tokensUsed: 0, costUnknown: true };
   } finally {

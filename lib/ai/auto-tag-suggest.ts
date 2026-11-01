@@ -56,7 +56,7 @@ import {
   type AiEndpoint,
 } from "./verify-findings";
 import { postChatCompletion } from "@/lib/ai/transport";
-import { logValue } from "@/lib/logging/log-value";
+import { logSafeError, logValue } from "@/lib/logging/log-value";
 import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
 import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
@@ -373,9 +373,11 @@ export async function generateAutoTagSuggestions(
       clearTimeout(timer);
     }
   } catch (err) {
+    // The endpoint can be a user's own, and a 200 that is not JSON throws a
+    // SyntaxError quoting its body.
     console.error(
       "[AI-AUTO-TAG-SUGGEST] generateAutoTagSuggestions failed (non-fatal):",
-      err instanceof Error ? err.message : err,
+      logSafeError(err, 300),
     );
     return [];
   }

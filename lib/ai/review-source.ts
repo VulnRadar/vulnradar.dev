@@ -30,7 +30,7 @@ import { APP_NAME } from "@/lib/config/constants";
 import { postChatCompletion } from "@/lib/ai/transport";
 import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
 import { CALL_FRAMING_TOKENS, maxInputTokens } from "@/lib/ai/token-ceiling";
-import { logValue } from "@/lib/logging/log-value";
+import { logSafeError, logValue } from "@/lib/logging/log-value";
 
 const REVIEW_SYSTEM_PROMPT_BASE = `You are a security code reviewer for ${APP_NAME}, a vulnerability scanner. You are given source files from a user's GitHub repository, each line prefixed with its line number. Review the code that is actually in front of you.
 
@@ -425,7 +425,7 @@ async function callReviewModel(
   } catch (err) {
     console.error(
       "[AI-REVIEW] callReviewModel failed:",
-      logValue(err instanceof Error ? err.message : err, 300),
+      logSafeError(err, 300),
     );
     return { findings: [], totalTokens: 0, costUnknown: true, failed: true };
   } finally {

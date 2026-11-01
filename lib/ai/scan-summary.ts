@@ -37,7 +37,7 @@ import {
   type AiEndpoint,
 } from "./verify-findings";
 import { postChatCompletion } from "@/lib/ai/transport";
-import { logValue } from "@/lib/logging/log-value";
+import { logSafeError, logValue } from "@/lib/logging/log-value";
 import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
@@ -192,9 +192,11 @@ export async function generateScanSummary(
     }
     return text;
   } catch (err) {
+    // The endpoint can be a user's own, and a 200 that is not JSON throws a
+    // SyntaxError quoting its body.
     console.error(
       "[AI-SCAN-SUMMARY] generateScanSummary failed:",
-      err instanceof Error ? err.message : err,
+      logSafeError(err, 300),
     );
     return null;
   } finally {

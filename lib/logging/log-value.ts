@@ -47,3 +47,38 @@ export function logValue(
     .slice(1, -1)
     .replace(UNESCAPED_BY_JSON, escapeCodePoint);
 }
+
+/**
+ * What to pass to console.error for a caught failure whose text someone
+ * outside the server wrote, such as the SyntaxError `res.json()` throws when a
+ * user's own AI endpoint answers a 200 that is not JSON: its message quotes
+ * that body, line breaks and all.
+ *
+ * Passing the error raw writes the body into Admin > Error Logs as lines of
+ * its own, and passing `logValue(err.message)` keeps the row honest but drops
+ * the stack STYLE.md asks for. An Error comes back as a new Error whose name
+ * and message have been through logValue, with the original's frames under
+ * them, since those are the server's own code. Anything else that was thrown
+ * has no stack to keep and comes back as its logValue string.
+ */
+export function logSafeError(
+  err: unknown,
+  maxChars: number = LOG_VALUE_MAX_CHARS,
+): Error | string {
+  if (!(err instanceof Error)) return logValue(err, maxChars);
+  const name = logValue(err.name, 100);
+  const safe = new Error(logValue(err.message, maxChars));
+  safe.name = name;
+  const stack = err.stack ?? "";
+  // V8 writes "name: message", or the name alone for an empty message, and
+  // then one "    at" line per frame. A stack in any other shape cannot be
+  // split from the message it quotes, so its frames are left out rather than
+  // copied with that message inside them.
+  const heads = err.message
+    ? [`${err.name}: ${err.message}`]
+    : [`${err.name}: `, err.name];
+  const head = heads.find((candidate) => stack.startsWith(candidate));
+  const frames = head === undefined ? "" : stack.slice(head.length);
+  safe.stack = `${name}: ${safe.message}${frames}`;
+  return safe;
+}

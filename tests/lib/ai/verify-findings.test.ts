@@ -506,7 +506,7 @@ describe("runAiVerification: what is logged for a failure that does not stop the
 
     expect(outcome.verdicts).toBe(0);
     const line = errors.mock.calls
-      .map((c) => String(c[0]))
+      .map((c) => c.map(String).join(" "))
       .find((l) => l.includes("callVerify failed"));
     expect(line).toContain('"f1"');
     expect(line).toContain("fetch failed");
