@@ -51,8 +51,10 @@ interface InviteDetails {
   email: string;
   role: string;
   roleLabel: string;
-  /** True when this email already has an account, so accepting is a
-   *  promotion and no password is collected. */
+  /** True when this email already has an account that verified it, so
+   *  accepting is a promotion and no password is collected. An account that
+   *  lists the address without having verified it never reaches this page:
+   *  the GET refuses the invite instead. */
   hasAccount: boolean;
 }
 
@@ -238,7 +240,7 @@ export default function StaffInvitePage() {
               <Link href={ROUTES.LOGIN}>Go to sign in</Link>
             </Button>
           }
-          footnote="Invites expire, and each one can be accepted only once. Ask whoever sent it to issue a fresh one."
+          footnote="Invites expire, and each one can be accepted only once. An account that lists this email address without having verified it cannot accept one either. Ask whoever sent it to issue a fresh one, or to check the address."
         >
           <p>{loadError}</p>
         </AuthOutcome>
