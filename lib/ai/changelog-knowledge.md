@@ -545,13 +545,13 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [ScanSearch] **[SECURITY]** **Schema, Compose and Cargo Detectors Handle Blank Lines in Linear Time**
   A response with a long run of blank lines after a GraphQL type, a compose version line or a Cargo package header made three detectors take seconds per scan, and minutes at the full body size. Each line is now matched on its own.
 - [ScanSearch] **[SECURITY]** **Debug-Page and Timing Detectors No Longer Stall on Repeated Words**
-  A page made of one word repeated, such as Traceback, Whoops, HMAC or a run of WebSocket names, could hold the Django and Laravel debug-page checks, the cross-site WebSocket check and the HMAC timing check for minutes on a full-size page. Each now finishes in milliseconds and reports exactly what it reported before.
+  A page made of one word repeated many times could hold the Django and Laravel debug-page checks, the cross-site WebSocket check and the HMAC timing check for minutes on a full-size page. Each now finishes in milliseconds and reports exactly what it reported before.
 - [Gauge] **[SECURITY]** **Pages of Unclosed Tags No Longer Exhaust Server Memory**
   A page made of tags that are never closed, which any scanned site can send, made the scanner hold about 1.4 GB of memory for six seconds while it read a full-size page, so a few such scans at once could take the server down. The same page now takes well under a second and about 60 MB.
 - [Network] **[SECURITY]** **Scans Connect Only to the Address That Passed the Safety Check**
   The scanner now opens every connection, including the active probes and the subdomain discovery sources, to the exact address the safety check approved, for both http and https, and never looks the name up again. A domain that switches its DNS answer to an internal address mid-scan can no longer steer the scanner there, and plain-HTTP sites behind a CDN or a shared host are now scanned as themselves instead of being asked for by IP.
 - [ShieldAlert] **[SECURITY]** **Azure Host Endpoint Refused as a Scan Target**
-  168.63.129.16, the address Azure virtual machines use to reach their host's configuration service, is now refused like other internal addresses, so a self-hosted instance on Azure cannot be made to read it.
+  The address Azure virtual machines use to reach their host's configuration service, known as WireServer, is now refused like other internal addresses, so a self-hosted instance on Azure cannot be made to read it.
 - [Shield] **[SECURITY]** **Internal Addresses Refused in Every IPv6 Form**
   The scanner's address check now also recognises internal IPv4 addresses written in the older IPv4-compatible IPv6 form and in the 6to4 form, so a domain whose DNS answers with one of those can no longer pass as public. The same forms of a public address are still scanned.
 - [Crosshair] **[FIXED]** **Probes and Policy Checks Respect Redirect Limits**

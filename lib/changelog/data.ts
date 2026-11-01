@@ -1800,7 +1800,7 @@ const CHANGELOG: Release[] = [
         icon: ScanSearch,
         label:
           "Debug-Page and Timing Detectors No Longer Stall on Repeated Words",
-        desc: "A page made of one word repeated, such as Traceback, Whoops, HMAC or a run of WebSocket names, could hold the Django and Laravel debug-page checks, the cross-site WebSocket check and the HMAC timing check for minutes on a full-size page. Each now finishes in milliseconds and reports exactly what it reported before.",
+        desc: "A page made of one word repeated many times could hold the Django and Laravel debug-page checks, the cross-site WebSocket check and the HMAC timing check for minutes on a full-size page. Each now finishes in milliseconds and reports exactly what it reported before.",
         category: "security",
       },
       {
@@ -1818,7 +1818,7 @@ const CHANGELOG: Release[] = [
       {
         icon: ShieldAlert,
         label: "Azure Host Endpoint Refused as a Scan Target",
-        desc: "168.63.129.16, the address Azure virtual machines use to reach their host's configuration service, is now refused like other internal addresses, so a self-hosted instance on Azure cannot be made to read it.",
+        desc: "The address Azure virtual machines use to reach their host's configuration service, known as WireServer, is now refused like other internal addresses, so a self-hosted instance on Azure cannot be made to read it.",
         category: "security",
       },
       {
