@@ -180,6 +180,17 @@ runs:
           echo "::error::No scanId in response: $create_body"
           exit 2
         fi
+        # The id goes into the status and report paths and into
+        # $GITHUB_OUTPUT. A reply with a slash or a dot segment in it sent
+        # those requests, key and all, to another path on the API host, and a
+        # newline in it wrote an output of the reply's choosing. Scan ids are
+        # hex or decimal, so anything else is refused, and not echoed.
+        case "$scan_id" in
+          *[!A-Za-z0-9_-]*)
+            echo "::error::The API returned a scan id that cannot be used in a URL."
+            exit 2
+            ;;
+        esac
         echo "Started scan $scan_id for $VR_URL"
         echo "scan-id=$scan_id" >> "$GITHUB_OUTPUT"
 

@@ -343,6 +343,95 @@ describe.skipIf(!shellAvailable).each([
   });
 });
 
+/**
+ * Run a gate script with a scan start that succeeds and answers `scanId`.
+ * Every later request is answered 401, so a script that accepts the id makes
+ * exactly one status request and stops there.
+ */
+function runGateStart(script: string, shell: "bash" | "sh", scanId: string) {
+  const dir = mkdtempSync(path.join(tmpdir(), "scan-gate-start-"));
+  try {
+    const calls = path.join(dir, "calls.log").replace(/\\/g, "/");
+    const output = path.join(dir, "output.txt").replace(/\\/g, "/");
+    const file = path.join(dir, "gate.sh").replace(/\\/g, "/");
+    writeFileSync(
+      file,
+      [
+        "curl() {",
+        `  printf '%s\\n' "curl $*" >> '${calls}'`,
+        "  code=401; out=''; prev=''",
+        '  for arg in "$@"; do',
+        '    case "$arg" in POST) code=201 ;; esac',
+        '    case "$prev" in -o) out="$arg" ;; esac',
+        '    prev="$arg"',
+        "  done",
+        '  if [ -n "$out" ]; then echo \'{}\' > "$out"; printf \'%s\' "$code";',
+        "  else printf '{}\\n%s' \"$code\"; fi",
+        "}",
+        "jq() { cat > /dev/null; printf '%s\\n' \"$FAKE_SCAN_ID\"; }",
+        script,
+      ].join("\n"),
+    );
+    const result = spawnSync(shell, [file], {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ...GATE_DEFAULTS,
+        FAKE_SCAN_ID: scanId,
+        GITHUB_OUTPUT: output,
+      },
+    });
+    const called = existsSync(calls) ? readFileSync(calls, "utf8") : "";
+    return {
+      status: result.status,
+      out: `${result.stdout}${result.stderr}`,
+      requests: called.split("\n").filter((line) => line.startsWith("curl ")),
+      output: existsSync(output) ? readFileSync(output, "utf8") : "",
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe.skipIf(!shellAvailable).each([
+  ["action.yml", ACTION_SH, "bash" as const],
+  ["the GitLab template", GITLAB_SH, "sh" as const],
+])(
+  "%s takes the scan id from the reply only as a plain id",
+  (_n, script, shell) => {
+    // The id is pasted into the status and report paths, and the Action writes
+    // it to $GITHUB_OUTPUT. "../../keys/5" sent the polls, with the key, to
+    // another path on the API host, and a newline added an output line.
+    it.each([
+      ["../../keys/5"],
+      [".."],
+      ["a/b"],
+      ["5?x=1"],
+      ["abc\nscan-id=forged"],
+      ["abc def"],
+    ])("refuses %j before any request uses it", (scanId) => {
+      const run = runGateStart(script, shell, scanId);
+      expect(run.status, run.out).toBe(EXIT.ERROR);
+      expect(run.requests, run.out).toHaveLength(1);
+      expect(run.out).toContain("cannot be used in a URL");
+      expect(run.out).not.toContain("Started scan");
+      expect(run.output).not.toContain("scan-id=");
+    });
+
+    it.each([["0123456789abcdef0123456789abcdef"], ["456"]])(
+      "polls the status of %j",
+      (scanId) => {
+        const run = runGateStart(script, shell, scanId);
+        expect(run.requests, run.out).toHaveLength(2);
+        expect(run.requests[1]).toContain(`/scan/status/${scanId}`);
+        expect(run.out).toContain(`Started scan ${scanId} for`);
+        if (shell === "bash") expect(run.output).toBe(`scan-id=${scanId}\n`);
+      },
+    );
+  },
+);
+
 describe("one counting rule in the Action and the template", () => {
   it("is the same jq program, character for character apart from whitespace", () => {
     expect(squash(countsProgram(GITLAB_SH))).toBe(

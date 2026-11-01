@@ -120,6 +120,13 @@ vulnradar_scan:
       if [ -z "$scan_id" ] || [ "$scan_id" = "null" ]; then
         echo "No scanId in response: $(cat resp.json)"; exit 2
       fi
+      # The id goes into the status path. A reply with a slash or a dot
+      # segment in it sent the polls, token and all, to another path on the
+      # API host. Scan ids are hex or decimal, so anything else is refused,
+      # and not echoed.
+      case "$scan_id" in
+        *[!A-Za-z0-9_-]*) echo "The API returned a scan id that cannot be used in a URL."; exit 2 ;;
+      esac
       echo "Started scan $scan_id for $VR_URL"
 
       # Poll until it completes.
