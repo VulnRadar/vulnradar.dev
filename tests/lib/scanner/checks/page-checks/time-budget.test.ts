@@ -127,6 +127,13 @@ const PATH_SHAPES = ["optPathRun", "homePathRun", "varPathRun", "usrLocalRun"];
  * A collection pause is a fact about the heap, not about the check, so the
  * fastest of three runs is what is compared. A backtracking pattern costs the
  * same on every run and still fails; a pause lands on one run and does not.
+ *
+ * Work a check memoises on the body is the exception: disclosure.ts strips
+ * the code examples once per body, so a re-run reads the memo and only the
+ * first run pays for the strip. A strip that went superlinear would pass
+ * here. It is held instead by the "response-body strippers" budget in
+ * tests/lib/scanner/_perf-budget.test.ts, which times stripTagElements on the
+ * same unclosed-<code> shape without a memo in front of it.
  */
 const REMEASURE_RUNS = 3;
 
@@ -197,10 +204,16 @@ describe("page checks stay linear on a hostile page", () => {
 /**
  * The path shapes against a fixed line as well as against their peers.
  *
- * The ratio above needs a median to compare with, and a check that never
- * returns gives it nothing: on optPathRun the old /opt/ pattern did not finish,
- * so the run hung rather than failed. Two seconds is far above what a linear
- * pass over 256 KB costs and far below what any of the four old patterns did.
+ * The ratio above only reports a check that is slow next to the others on
+ * the same body. This holds the one check these shapes were written for to
+ * an absolute line, whatever the median does. Two seconds is far above what
+ * the linear patterns cost on 256 KB (about 6 ms) and far below what the old
+ * /home, /var/www and /usr/local patterns did (17 to 26 s each).
+ *
+ * Neither group can turn a hang into a failure. The old /opt/ pattern was
+ * cubic and does not return at this size, and a synchronous check that does
+ * not return cannot be interrupted by vitest's timeout, so reintroducing it
+ * stalls this file at optPathRun in the ratio group above.
  */
 describe("internal-path patterns on path-shaped runs", () => {
   const check = pageChecks.find((c) => c.id === "page-internal-path-disclosed");
