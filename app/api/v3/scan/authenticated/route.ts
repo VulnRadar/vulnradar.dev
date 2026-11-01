@@ -451,7 +451,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         [new URL(url).hostname],
         session,
       );
-      responseBody = await readCappedBody(response, MAX_BODY_SIZE);
+      // The same deadline as the request: the shared reader's own default is
+      // shorter than SCAN_FETCH_TIMEOUT_MS, and a slow page that the fetch
+      // signal would still have allowed was being cut short.
+      responseBody = await readCappedBody(
+        response,
+        MAX_BODY_SIZE,
+        fetchTimeoutMs,
+      );
       headers = response.headers;
       // The login got through, and the page behind it can still be a bot
       // challenge (lib/scanner/bot-challenge.ts). Graded as the signed-in
