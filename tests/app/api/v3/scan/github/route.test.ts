@@ -243,9 +243,9 @@ describe("POST /api/v3/scan/github", () => {
     mockCheckGithubReviewQuota.mockResolvedValue({
       allowed: false,
       usingOwnAi: false,
-      usedTokens: 200_000,
-      limitTokens: 200_000,
-      message: "You've used all your GitHub review AI tokens for this month.",
+      usedTokens: 0,
+      limitTokens: 0,
+      message: "You've used today's free GitHub AI review.",
     });
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
     expect(res.status).toBe(403);
@@ -333,7 +333,25 @@ describe("POST /api/v3/scan/github", () => {
     expect(json.aiReviewStoppedAtBudget).toBe(false);
   });
 
-  it("blocks the whole trigger with the quota's message when over the monthly cap", async () => {
+  it("refuses the whole trigger on a plan with no GitHub review once its free trial is used", async () => {
+    mockCheckGithubReviewQuota.mockResolvedValue({
+      allowed: false,
+      usingOwnAi: false,
+      usedTokens: 0,
+      limitTokens: 0,
+      message: "You've used today's free GitHub AI review.",
+    });
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toMatch(/used today's free GitHub AI review/);
+    expect(mockFetchSelectedFiles).not.toHaveBeenCalled();
+  });
+
+  it("still pattern-scans every file when the plan's window is used up, and says why the AI review did not run", async () => {
+    // D13: the pattern scan runs whatever the AI allowance. This answered 403
+    // with no scan at all, while the same account with one token left got the
+    // full pattern scan.
     mockCheckGithubReviewQuota.mockResolvedValue({
       allowed: false,
       usingOwnAi: false,
@@ -341,11 +359,27 @@ describe("POST /api/v3/scan/github", () => {
       limitTokens: 200_000,
       message: "You've used all your GitHub review AI tokens for this month.",
     });
+    mockRunGithubAiReview.mockResolvedValue(
+      aiRun({ stoppedAtBudget: true, filesReviewed: 0, batchesReviewed: 0 }),
+    );
+
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
-    expect(res.status).toBe(403);
+
+    expect(res.status).toBe(200);
+    expect(mockRunPatternSecretsScan).toHaveBeenCalledTimes(1);
+    expect(mockReserveGithubReviewTokens).not.toHaveBeenCalled();
+    expect(mockRunGithubAiReview).toHaveBeenCalledWith(
+      expect.anything(),
+      5,
+      true,
+      0,
+    );
+    expect(mockSettleGithubReviewTokens).not.toHaveBeenCalled();
     const json = await res.json();
-    expect(json.error).toMatch(/used all your GitHub review AI tokens/);
-    expect(mockFetchSelectedFiles).not.toHaveBeenCalled();
+    expect(json.aiReviewStoppedAtBudget).toBe(true);
+    expect(json.aiReviewAllowanceMessage).toMatch(
+      /used all your GitHub review AI tokens/,
+    );
   });
 
   it("runs the pattern scan and AI review, saves scan_history with scan_type='github', and returns the result", async () => {

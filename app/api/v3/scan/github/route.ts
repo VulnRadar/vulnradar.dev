@@ -121,10 +121,21 @@ export async function POST(request: Request) {
     // to call getRepoInfo/listRepoTree first and only check quota once both
     // had already spent real GitHub API calls on a request that might get
     // rejected anyway) (AUDIT-010, production-readiness #5).
+    //
+    // Only a plan with no GitHub review of its own is refused here: the free
+    // plan once its trial is used and no credits are left, where the scan is
+    // the trial. A plan whose window is used up still gets the pattern scan,
+    // the same answer as an account with one token left, and the response
+    // says why the AI review did not run. It used to get a 403 with no scan
+    // at all, the one case left where the AI allowance decided whether the
+    // pattern scan ran.
     const preQuota = await checkGithubReviewQuota(userId);
-    if (!preQuota.allowed) {
+    if (!preQuota.allowed && preQuota.limitTokens === 0) {
       return NextResponse.json({ error: preQuota.message }, { status: 403 });
     }
+    const allowanceSpent = preQuota.allowed
+      ? null
+      : (preQuota.message ?? "Your GitHub review allowance is used up.");
 
     const repoInfo = await getRepoInfo(token, owner, repo);
     const ref = body.ref?.trim() || repoInfo.defaultBranch;
@@ -170,8 +181,8 @@ export async function POST(request: Request) {
     // it with the real count. When not even the first batch fits under the
     // ceiling there is nothing to reserve.
     let reservation: GithubReviewReservation | null = null;
-    let allowanceMessage: string | null = null;
-    if (plan.batchesWithinCap > 0) {
+    let allowanceMessage: string | null = allowanceSpent;
+    if (plan.batchesWithinCap > 0 && allowanceSpent === null) {
       const gate = await reserveGithubReviewTokens(
         userId,
         plan.estimate,
