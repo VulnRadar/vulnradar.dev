@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { API } from "@/lib/config/client-constants";
 import {
   historyItemPath,
@@ -98,6 +98,33 @@ describe("historyItemPath", () => {
 
   it("defaults to the scan itself", () => {
     expect(historyItemPath(id)).toBe(API.HISTORY_ITEM(id));
+  });
+
+  // Every entry sits under the scan's own path today, so a suffix appended to
+  // HISTORY_ITEM gives the same strings as the entries and the cases above
+  // cannot tell the two apart. Entries that share no prefix can.
+  describe("when the entries no longer share the scan's prefix", () => {
+    afterEach(() => {
+      vi.doUnmock("@/lib/config/client-constants");
+      vi.resetModules();
+    });
+
+    it("still reaches each route through its own entry", async () => {
+      vi.resetModules();
+      vi.doMock("@/lib/config/client-constants", () => ({
+        API: {
+          HISTORY_ITEM: (v: string) => `/api/v4/history/${v}`,
+          HISTORY_SHARE: (v: string) => `/api/internal/shares/${v}`,
+          HISTORY_SUMMARY: (v: string) => `/api/v4/summaries/${v}`,
+          HISTORY_DELETE: (v: string) => `/api/internal/deletions/${v}`,
+        },
+      }));
+      const split = (await import("@/lib/history/scan-id")).historyItemPath;
+      expect(split(id)).toBe(`/api/v4/history/${id}`);
+      expect(split(id, "share")).toBe(`/api/internal/shares/${id}`);
+      expect(split(id, "summary")).toBe(`/api/v4/summaries/${id}`);
+      expect(split(id, "delete")).toBe(`/api/internal/deletions/${id}`);
+    });
   });
 
   it("encodes the id, so a slash in a value that skipped validation stays inside one segment", () => {
