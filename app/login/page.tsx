@@ -6,6 +6,7 @@ import { LoginForm, Login2FAForm } from "@/components/auth";
 import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { AuthHeading, AuthSteps } from "@/components/auth/auth-shell";
 import { Skeleton } from "@/components/ui/skeleton";
+import { safeRedirect } from "@/lib/auth/safe-redirect";
 import { APP_NAME, ROUTES } from "@/lib/config/client-constants";
 
 export default function LoginPage() {
@@ -41,29 +42,16 @@ function AuthFormSkeleton() {
   );
 }
 
-/**
- * Restrict post-login redirects to a safe same-origin path. Anything
- * with a scheme/host (e.g. `https://evil.com`, `//evil.com`, `\\evil.com`,
- * `javascript:...`) is stripped to the dashboard default. Without
- * this, an attacker can phish credentials by sending a victim
- * `/login?redirect=https://evil.com` and capturing the post-login
- * bounce (the victim briefly sees the real domain, then is sent to
- * the attacker page styled as a "session expired" prompt).
- */
-function safeRedirect(value: string | null): string {
-  const fallback = ROUTES.DASHBOARD;
-  if (!value) return fallback;
-  const v = value.trim();
-  if (!v || v.length > 512) return fallback;
-  if (!v.startsWith("/") || v.startsWith("//") || v.startsWith("/\\"))
-    return fallback;
-  return v;
-}
-
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = safeRedirect(searchParams.get("redirect"));
+  // Both forms router.push this after sign-in. Without the check, a link to
+  // /login?redirect=<attacker page> bounces a freshly signed-in victim to a
+  // fake "session expired" prompt on another origin.
+  const redirectTo = safeRedirect(
+    searchParams.get("redirect"),
+    ROUTES.DASHBOARD,
+  );
   const authError = searchParams.get("error");
   const authErrorMessage = searchParams.get("message");
   const discord2FA = searchParams.get("discord_2fa");
