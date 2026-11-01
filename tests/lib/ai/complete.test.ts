@@ -196,33 +196,60 @@ describe("completeShortText: an Anthropic-shaped endpoint", () => {
 });
 
 describe("completeShortText: when it cannot answer", () => {
-  // The model is whatever a user saved and the detail is whatever their
-  // endpoint answered. console.error is stored in Admin > Error Logs, so a
-  // line break in either wrote a forged entry there.
-  it("logs a refusal and a failed request on one line each", async () => {
+  // The model and the refusal text come from the provider configuration, not
+  // from this code. console.error is stored in Admin > Error Logs, so a line
+  // break in either wrote what read as a separate entry there.
+  it("logs a refusal on one line", async () => {
     const hostile: AiEndpoint = {
       ...OPENAI,
       model: "plain-model\r\n[AI-SHORT-TEXT] Admin password reset approved",
     };
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response("bad\r\n[AI-SHORT-TEXT] forged", { status: 401 }),
-      )
-      .mockRejectedValueOnce(new Error("socket hang up\r\n[AI] forged"))
-      // Not every rejection is an Error; a thrown string is logged as itself.
-      .mockRejectedValueOnce("aborted\r\n[AI] forged");
+    fetchMock.mockResolvedValueOnce(
+      new Response("bad\r\n[AI-SHORT-TEXT] forged", { status: 401 }),
+    );
 
     expect(await completeShortText(hostile, input)).toBeNull();
-    expect(await completeShortText(hostile, input)).toBeNull();
+
+    expect(errors).toHaveBeenCalledTimes(1);
+    const args = errors.mock.calls[0] as unknown[];
+    expect(args).toHaveLength(1);
+    expect(args[0]).toContain("plain-model");
+    expect(args[0]).not.toMatch(/[\r\n]/);
+  });
+
+  // Admin > Error Logs keeps a stack only when an argument IS an Error
+  // (lib/database/error-log-capture.ts), so the failure is passed through as
+  // thrown, after a message line that carries the escaped model.
+  it("passes a thrown Error through as itself, after a one-line message", async () => {
+    const hostile: AiEndpoint = {
+      ...OPENAI,
+      model: "plain-model\r\n[AI-SHORT-TEXT] Admin password reset approved",
+    };
+    const thrown = new Error("socket hang up");
+    fetchMock.mockRejectedValueOnce(thrown);
+
     expect(await completeShortText(hostile, input)).toBeNull();
 
-    const lines = loggedLines();
-    expect(lines).toHaveLength(3);
-    expect(lines[2]).toContain("aborted");
-    for (const line of lines) {
-      expect(line).toContain("plain-model");
-      expect(line).not.toMatch(/[\r\n]/);
+    expect(errors).toHaveBeenCalledTimes(1);
+    const args = errors.mock.calls[0] as unknown[];
+    expect(typeof args[0]).toBe("string");
+    expect(args[0]).toContain("plain-model");
+    expect(args[0]).not.toMatch(/[\r\n]/);
+    expect(args[args.length - 1]).toBe(thrown);
+  });
+
+  it("logs a thrown value that is not an Error as escaped text on one line", async () => {
+    fetchMock.mockRejectedValueOnce("aborted\r\n[AI] forged");
+
+    expect(await completeShortText(OPENAI, input)).toBeNull();
+
+    expect(errors).toHaveBeenCalledTimes(1);
+    const args = errors.mock.calls[0] as unknown[];
+    for (const arg of args) {
+      expect(typeof arg).toBe("string");
+      expect(arg).not.toMatch(/[\r\n]/);
     }
+    expect(args[args.length - 1]).toContain("aborted");
   });
 
   it("returns null and logs the status, the host and the model, never the key", async () => {

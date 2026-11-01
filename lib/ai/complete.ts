@@ -48,9 +48,12 @@ export async function completeShortText(
     }
     return visibleText(res.text) || null;
   } catch (err) {
+    // The Error itself, not its message: Admin > Error Logs keeps a stack only
+    // when an argument is an Error (STYLE.md, "Logging"). Only a thrown
+    // non-Error, which has no stack to lose, is escaped into text.
     console.error(
       `[AI-SHORT-TEXT] request to ${hostOf(endpoint.baseUrl)} (${logValue(endpoint.model)}) failed:`,
-      logValue(err instanceof Error ? err.message : err, 300),
+      err instanceof Error ? err : logValue(err, 300),
     );
     return null;
   } finally {
