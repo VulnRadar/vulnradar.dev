@@ -37,6 +37,7 @@ import {
   type AiEndpoint,
 } from "./verify-findings";
 import { postChatCompletion } from "@/lib/ai/transport";
+import { logValue } from "@/lib/logging/log-value";
 import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
@@ -122,7 +123,7 @@ async function callSummaryModel(
 
   if (!res.ok) {
     console.error(
-      `[AI-SCAN-SUMMARY] HTTP ${res.status} from ${endpoint.baseUrl}: ${res.detail.slice(0, 300)}`,
+      `[AI-SCAN-SUMMARY] HTTP ${res.status} from ${logValue(endpoint.baseUrl)}: ${logValue(res.detail, 300)}`,
     );
     return { text: null, tokensUsed: 0 };
   }

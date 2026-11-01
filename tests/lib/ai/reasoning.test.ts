@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { isAnthropicProvider } from "@/lib/ai/provider";
 import { anthropicUsesAdaptiveThinking } from "@/lib/ai/anthropic";
 import { AI_MODEL_CATALOG } from "@/lib/ai/model-catalog";
@@ -8,6 +8,7 @@ import {
   resolveOpenAiReasoningEffort,
   callWillReason,
   resolveAiCallTimeoutMs,
+  noteReasoningRefusal,
 } from "@/lib/ai/reasoning";
 
 describe("resolveOpenAiCompatReasoningExtras", () => {
@@ -62,6 +63,24 @@ describe("resolveOpenAiCompatReasoningExtras", () => {
         "llama-3.3-70b-versatile",
       ),
     ).toEqual({});
+  });
+});
+
+describe("noteReasoningRefusal", () => {
+  // The model id is whatever a user saved as their own AI model, and
+  // console.error is stored in Admin > Error Logs, so a line break in it
+  // wrote a forged entry there.
+  it("logs a saved model id on one line", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    noteReasoningRefusal(
+      "AI-TEST",
+      "gpt-5.4-hostile\r\n[AI-VERIFY] Admin password reset approved",
+    );
+    const lines = errors.mock.calls.map((c) => c.map(String).join(" "));
+    errors.mockRestore();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("gpt-5.4-hostile");
+    expect(lines[0]).not.toMatch(/[\r\n]/);
   });
 });
 

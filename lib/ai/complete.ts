@@ -1,5 +1,6 @@
 import { postChatCompletion, type AiEndpoint } from "@/lib/ai/transport";
 import { visibleText } from "@/lib/ai/think-parser";
+import { logValue } from "@/lib/logging/log-value";
 
 /**
  * One short answer from the configured model, as plain text.
@@ -41,15 +42,15 @@ export async function completeShortText(
     });
     if (!res.ok) {
       console.error(
-        `[AI-SHORT-TEXT] HTTP ${res.status} from ${hostOf(endpoint.baseUrl)} (${endpoint.model}): ${res.detail.slice(0, 200)}`,
+        `[AI-SHORT-TEXT] HTTP ${res.status} from ${hostOf(endpoint.baseUrl)} (${logValue(endpoint.model)}): ${logValue(res.detail)}`,
       );
       return null;
     }
     return visibleText(res.text) || null;
   } catch (err) {
     console.error(
-      `[AI-SHORT-TEXT] request to ${hostOf(endpoint.baseUrl)} (${endpoint.model}) failed:`,
-      err,
+      `[AI-SHORT-TEXT] request to ${hostOf(endpoint.baseUrl)} (${logValue(endpoint.model)}) failed:`,
+      logValue(err instanceof Error ? err.message : err, 300),
     );
     return null;
   } finally {

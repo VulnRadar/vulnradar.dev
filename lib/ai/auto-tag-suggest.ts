@@ -56,6 +56,7 @@ import {
   type AiEndpoint,
 } from "./verify-findings";
 import { postChatCompletion } from "@/lib/ai/transport";
+import { logValue } from "@/lib/logging/log-value";
 import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
 import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
@@ -277,7 +278,7 @@ async function callSuggestionModel(
 
   if (!res.ok) {
     console.error(
-      `[AI-AUTO-TAG-SUGGEST] HTTP ${res.status} from ${endpoint.baseUrl}: ${res.detail.slice(0, 300)}`,
+      `[AI-AUTO-TAG-SUGGEST] HTTP ${res.status} from ${logValue(endpoint.baseUrl)}: ${logValue(res.detail, 300)}`,
     );
     return { suggestions: [], tokensUsed: 0 };
   }

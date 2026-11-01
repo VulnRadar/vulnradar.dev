@@ -323,6 +323,26 @@ describe("generateAutoTagSuggestions: successful generation", () => {
 });
 
 describe("generateAutoTagSuggestions: failure modes never surface to the caller", () => {
+  // The base URL can be a user's own saved endpoint and the detail is
+  // whatever that endpoint answered. console.error is stored in Admin >
+  // Error Logs, so a line break in either wrote a forged entry there.
+  it("logs a failure on one line, whatever the endpoint answered", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: async () =>
+        "internal error\r\n[AI-AUTO-TAG-SUGGEST] Admin password reset approved",
+    });
+
+    await generateAutoTagSuggestions([makeFinding()], 1);
+
+    const lines = errors.mock.calls.map((c) => c.map(String).join(" "));
+    errors.mockRestore();
+    expect(lines.some((l) => l.includes("HTTP 500"))).toBe(true);
+    for (const line of lines) expect(line).not.toMatch(/[\r\n]/);
+  });
+
   it("returns [] (not a throw) on a non-OK provider response", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: false,

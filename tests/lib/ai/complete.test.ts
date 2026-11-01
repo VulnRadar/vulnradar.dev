@@ -196,6 +196,31 @@ describe("completeShortText: an Anthropic-shaped endpoint", () => {
 });
 
 describe("completeShortText: when it cannot answer", () => {
+  // The model is whatever a user saved and the detail is whatever their
+  // endpoint answered. console.error is stored in Admin > Error Logs, so a
+  // line break in either wrote a forged entry there.
+  it("logs a refusal and a failed request on one line each", async () => {
+    const hostile: AiEndpoint = {
+      ...OPENAI,
+      model: "plain-model\r\n[AI-SHORT-TEXT] Admin password reset approved",
+    };
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response("bad\r\n[AI-SHORT-TEXT] forged", { status: 401 }),
+      )
+      .mockRejectedValueOnce(new Error("socket hang up\r\n[AI] forged"));
+
+    expect(await completeShortText(hostile, input)).toBeNull();
+    expect(await completeShortText(hostile, input)).toBeNull();
+
+    const lines = loggedLines();
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line).toContain("plain-model");
+      expect(line).not.toMatch(/[\r\n]/);
+    }
+  });
+
   it("returns null and logs the status, the host and the model, never the key", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response("invalid api key", { status: 401 }),

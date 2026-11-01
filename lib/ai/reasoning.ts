@@ -1,4 +1,5 @@
 import { resolveProviderName, isAnthropicProvider } from "./provider";
+import { logValue } from "@/lib/logging/log-value";
 
 /**
  * Per-provider "native reasoning" wiring. Models like MiniMax-M2.x,
@@ -183,6 +184,6 @@ export function noteReasoningRefusal(scope: string, model: string): void {
   if (reasoningRefusals.has(model)) return;
   reasoningRefusals.add(model);
   console.error(
-    `[${scope}] ${model} refused reasoning_effort; retrying without it (logged once per process).`,
+    `[${scope}] ${logValue(model)} refused reasoning_effort; retrying without it (logged once per process).`,
   );
 }
