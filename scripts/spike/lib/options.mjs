@@ -54,3 +54,25 @@ export function removeScratchRoot(root) {
   }
   rmSync(root, { recursive: true, force: true, maxRetries: 3 });
 }
+
+/**
+ * Run `run`, then remove the scratch root if this run made it. A delete that
+ * still fails after rmSync's retries is logged and nothing more: thrown from
+ * a finally it would replace the run's own result, so a passing run would
+ * exit 1 and a failing one would report the cleanup instead of what broke.
+ */
+export async function runInScratchRoot(opts, run, remove = removeScratchRoot) {
+  try {
+    return await run();
+  } finally {
+    if (opts.ownsWorkdir) {
+      try {
+        remove(opts.workdir);
+      } catch (error) {
+        console.error(
+          `Could not remove the scratch directory ${opts.workdir}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   existsSync,
   mkdirSync,
@@ -14,6 +14,7 @@ import path from "node:path";
 import {
   parseRunArgs,
   removeScratchRoot,
+  runInScratchRoot,
 } from "../../../scripts/spike/lib/options.mjs";
 
 /**
@@ -102,7 +103,107 @@ describe("spike scratch directory", () => {
   });
 });
 
+describe("cleaning up after a run", () => {
+  // The cleanup used to run in a bare finally, so a delete that failed (a
+  // file still held open on Windows, a permissions error) threw over the
+  // run's own result: a run that passed exited 1, and a run that failed
+  // reported the cleanup error instead of what broke.
+  const failingRemove = () => {
+    throw new Error("EBUSY: resource busy or locked");
+  };
+  let logged: string[] = [];
+  let exitCodeBefore: typeof process.exitCode;
+
+  beforeEach(() => {
+    logged = [];
+    exitCodeBefore = process.exitCode;
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(" "));
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    process.exitCode = exitCodeBefore;
+  });
+
+  it("keeps a passing run's result when the delete throws", async () => {
+    const opts = parsed([]);
+    const result = await runInScratchRoot(
+      opts,
+      async () => "passed",
+      failingRemove,
+    );
+    expect(result).toBe("passed");
+    expect(process.exitCode).toBe(exitCodeBefore);
+    expect(logged.join("\n")).toContain(opts.workdir);
+    expect(logged.join("\n")).toContain("EBUSY");
+  });
+
+  it("keeps a failing run's own error when the delete throws", async () => {
+    const opts = parsed([]);
+    await expect(
+      runInScratchRoot(
+        opts,
+        async () => {
+          throw new Error("unknown target nope");
+        },
+        failingRemove,
+      ),
+    ).rejects.toThrow("unknown target nope");
+    expect(logged.join("\n")).toContain("EBUSY");
+  });
+
+  it("keeps the exit code the run set", async () => {
+    const opts = parsed([]);
+    await runInScratchRoot(
+      opts,
+      async () => {
+        process.exitCode = 1;
+      },
+      failingRemove,
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("removes a directory it made and leaves one it was given", async () => {
+    const own = parsed([]);
+    await runInScratchRoot(own, async () => undefined);
+    expect(existsSync(own.workdir)).toBe(false);
+
+    const given = parsed([]).workdir;
+    const opts = parsed(["--workdir", given]);
+    const remove = vi.fn();
+    await runInScratchRoot(opts, async () => undefined, remove);
+    expect(remove).not.toHaveBeenCalled();
+    expect(existsSync(given)).toBe(true);
+  });
+});
+
 describe("spike scripts", () => {
+  it("run.mjs cleans up through runInScratchRoot", () => {
+    const src = readFileSync("scripts/spike/run.mjs", "utf8");
+    expect(src).toMatch(/runInScratchRoot\(/);
+    expect(src).not.toMatch(/removeScratchRoot/);
+  });
+
+  it("the workflow shares one scratch root between its two runs", () => {
+    // RUNNER_TEMP is per job, so the mutation run finds the first run's
+    // npm install in it instead of installing the same packages again.
+    const workflow = readFileSync(
+      ".github/workflows/spike-api-rewrite.yml",
+      "utf8",
+    );
+    // One match per command, continuation lines included.
+    const runs = workflow.match(
+      /node scripts\/spike\/run\.mjs(?:[^\n]*\\\r?\n)*[^\n]*/g,
+    );
+    expect(runs).toHaveLength(2);
+    for (const run of runs ?? []) {
+      expect(run).toContain('--workdir "$RUNNER_TEMP/spike"');
+    }
+  });
+
   function scripts(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
       const full = path.join(dir, entry.name);

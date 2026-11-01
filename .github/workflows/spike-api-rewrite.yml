@@ -72,6 +72,8 @@ jobs:
 
       - name: Run the checks
         # The input goes through the environment, never into the script text.
+        # Both runs share one scratch root under RUNNER_TEMP, which is private
+        # to this job, so the mutation run reuses this run's npm install.
         env:
           SPIKE_TARGETS: ${{ inputs.targets || 'all' }}
         run: |
@@ -80,6 +82,7 @@ jobs:
             --target "$SPIKE_TARGETS" \
             --install \
             --require-docker \
+            --workdir "$RUNNER_TEMP/spike" \
             --out spike-results
 
       - name: Prove the harness can fail
@@ -87,7 +90,7 @@ jobs:
         # 1 to 6, and requires the checks to notice each. A table that has only
         # ever said PASS has not shown it can say anything else.
         if: ${{ always() && (inputs.targets == '' || inputs.targets == 'all') }}
-        run: node scripts/spike/run.mjs --mutate all --install --out spike-results/mutations
+        run: node scripts/spike/run.mjs --mutate all --install --workdir "$RUNNER_TEMP/spike" --out spike-results/mutations
 
       - name: Benchmark parse and stringify
         if: ${{ always() && (inputs.targets == '' || inputs.targets == 'all') }}

@@ -47,7 +47,7 @@ import {
   repositoryNodeModules,
 } from "./lib/fixture.mjs";
 import { rawRequest } from "./lib/http.mjs";
-import { parseRunArgs, removeScratchRoot } from "./lib/options.mjs";
+import { parseRunArgs, runInScratchRoot } from "./lib/options.mjs";
 import { startRecorder } from "./lib/recorder.mjs";
 import { createReport } from "./lib/report.mjs";
 import {
@@ -313,11 +313,7 @@ async function runMutations(opts) {
 
 async function main() {
   const opts = parseRunArgs();
-  try {
-    await runAll(opts);
-  } finally {
-    if (opts.ownsWorkdir) removeScratchRoot(opts.workdir);
-  }
+  await runInScratchRoot(opts, () => runAll(opts));
 }
 
 async function runAll(opts) {
