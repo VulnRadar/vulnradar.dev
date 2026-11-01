@@ -4,10 +4,11 @@
 // Deliberately narrow: this NEVER creates an account and NEVER changes a
 // role. A successful callback only creates a session for an account that
 // (a) already exists with the IdP's returned email, verified on this side
-// too, and (b) is already staff-tier or above. Anything else is rejected with a generic error --
-// specifically not "no account with that email" vs "account exists but
-// isn't staff", since leaking that distinction would let anyone with IdP
-// access enumerate which emails happen to be staff on this instance.
+// too, and (b) is already staff-tier or above. Anything else is rejected
+// with a generic error -- specifically not "no account with that email" vs
+// "account exists but isn't staff", since leaking that distinction would
+// let anyone with IdP access enumerate which emails happen to be staff on
+// this instance.
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import pool from "@/lib/database/db";
