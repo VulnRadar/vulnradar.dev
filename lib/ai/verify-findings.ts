@@ -1015,7 +1015,7 @@ export async function runAiVerification(
 
     if (!endpoint) {
       console.error(
-        "[AI-VERIFY] No endpoint resolved — check AI_BASE_URL/AI_PROVIDER env vars or user AI config",
+        "[AI-VERIFY] No endpoint resolved. Check AI_BASE_URL and AI_PROVIDER, or the user's own AI settings.",
       );
       return { configured: false, verdicts: 0, attempted: findings.length };
     }
