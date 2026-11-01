@@ -25,7 +25,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
       title: `${APP_NAME} API`,
       version: APP_VERSION,
       description:
-        "Run vulnerability scans and read their results over HTTP. The same engine as the web app. Authenticate with a Bearer API key (Settings > API Keys).",
+        "Run vulnerability scans and read their results over HTTP. The same engine as the web app. Authenticate with a Bearer API key (Profile > Developer > API Keys).",
       license: { name: "GPL-3.0" },
     },
     // servers[0] is deliberately a relative reference. OpenAPI 3.1 resolves a
@@ -1579,7 +1579,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           type: "http",
           scheme: "bearer",
           description:
-            "A VulnRadar API key from Settings > API Keys, sent as `Authorization: Bearer <key>`. Keys carry scopes: scan:write, scan:read, scan:delete.",
+            "A VulnRadar API key from Profile > Developer > API Keys, sent as `Authorization: Bearer <key>`. Keys carry scopes: scan:write, scan:read, scan:delete.",
         },
         // Several documented operations (remediation, keys, domains,
         // schedules, teams) are gated on getSession() and never call
