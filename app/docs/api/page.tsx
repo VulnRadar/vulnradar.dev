@@ -338,7 +338,7 @@ const endpoints: Endpoint[] = [
       {
         code: 400,
         description:
-          "Unparseable body, missing url or findings[], or more findings than AI_VERIFY_BATCH_MAX_FINDINGS",
+          "Unparseable body, missing url or findings[], a url that is not an http or https address, a finding without a string id of at most 200 characters, or more findings than AI_VERIFY_BATCH_MAX_FINDINGS",
       },
       { code: 401, description: "Unauthorized, or invalid API key" },
       {

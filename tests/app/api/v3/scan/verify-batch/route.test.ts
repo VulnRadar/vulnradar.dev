@@ -276,6 +276,74 @@ describe("POST /api/v3/scan/verify-batch: request validation", () => {
     expect(res.status).toBe(400);
     expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
   });
+
+  // The url was only checked for being truthy, so a number or an object was
+  // coerced into a probe of "https://123" or "https://[object Object]".
+  it.each([123, true, { href: "https://example.com" }, ["https://a.example"]])(
+    "rejects a url that is not a string (%j) before reserving anything",
+    async (url) => {
+      const res = await POST(postRequest({ url, findings }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe(
+        "url must be an http or https address.",
+      );
+      expect(mockReserveAiTokens).not.toHaveBeenCalled();
+      expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["https://", "http://exa mple.com", "javascript:alert(1)"])(
+    "rejects a url that does not parse as a web address (%s)",
+    async (url) => {
+      const res = await POST(postRequest({ url, findings }));
+      expect(res.status).toBe(400);
+      expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+    },
+  );
+
+  // The probe has always prefixed https:// to a bare host, so that stays
+  // accepted; only what cannot become a web address is refused.
+  it.each(["example.com", "HTTP://example.com/path", "https://example.com"])(
+    "still accepts %s",
+    async (url) => {
+      const res = await POST(postRequest({ url, findings }));
+      expect(res.status).toBe(200);
+      expect(mockVerifyFindingsBatch).toHaveBeenCalledWith(
+        url,
+        findings,
+        42,
+        RESERVATION,
+      );
+    },
+  );
+
+  // A finding whose id was not a string reached buildVerifyPrompt and threw
+  // there, which surfaced as a 500 after the reservation was taken.
+  it.each([
+    [null],
+    ["missing-csp"],
+    [{ title: "no id" }],
+    [{ id: 7 }],
+    [{ id: { toString: 1 } }],
+    [{ id: "" }],
+    [{ id: "x".repeat(201) }],
+  ])(
+    "rejects a finding without a usable string id (%j) before reserving anything",
+    async (bad) => {
+      const res = await POST(
+        postRequest({
+          url: "https://example.com",
+          findings: [findings[0], bad],
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe(
+        "Every finding needs a string id of at most 200 characters.",
+      );
+      expect(mockReserveAiTokens).not.toHaveBeenCalled();
+      expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("POST /api/v3/scan/verify-batch: findings cap", () => {

@@ -114,6 +114,16 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  // Both reach the probe and the prompt as they are. A url that was only
+  // truthy got coerced into a probe of "https://123" or "https://[object
+  // Object]", and a finding id that was not a string threw inside the prompt
+  // builder after the reservation had been taken.
+  if (!isWebTarget(url)) {
+    return NextResponse.json(
+      { error: "url must be an http or https address." },
+      { status: 400 },
+    );
+  }
 
   // Hard cap on findings[]: unlike verify/route.ts (which only ever
   // processes findings already stored on one of the caller's own scans),
@@ -127,6 +137,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: `Too many findings: this endpoint accepts at most ${AI_VERIFY_BATCH_MAX_FINDINGS} findings per request.`,
+      },
+      { status: 400 },
+    );
+  }
+  if (!findings.every(hasUsableId)) {
+    return NextResponse.json(
+      {
+        error: `Every finding needs a string id of at most ${MAX_FINDING_ID_LENGTH} characters.`,
       },
       { status: 400 },
     );
@@ -149,4 +167,32 @@ export async function POST(req: NextRequest) {
   );
 
   return NextResponse.json({ findings: enriched });
+}
+
+// Check ids run to about 60 characters; this leaves room without letting an
+// id stand in for a page of text in every prompt.
+const MAX_FINDING_ID_LENGTH = 200;
+
+// Mirrors the probe, which prefixes https:// to a bare host, so a bare host
+// stays accepted and only what cannot become a web address is refused.
+function isWebTarget(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const { protocol } = new URL(
+      /^https?:\/\//i.test(value) ? value : `https://${value}`,
+    );
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function hasUsableId(finding: unknown): boolean {
+  if (typeof finding !== "object" || finding === null) return false;
+  const { id } = finding as { id?: unknown };
+  return (
+    typeof id === "string" &&
+    id.length > 0 &&
+    id.length <= MAX_FINDING_ID_LENGTH
+  );
 }
