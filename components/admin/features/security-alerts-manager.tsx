@@ -54,6 +54,7 @@ const ALERT_TYPE_LABELS: Record<string, string> = {
   brute_force: "Repeated failed sign-ins",
   new_device_login: "Sign-in from a new device",
   staff_invite_unverified_email: "Staff invite refused: address not verified",
+  staff_sso_unverified_email: "Staff SSO refused: address not verified",
 };
 
 function alertTypeLabel(type: string): string {
