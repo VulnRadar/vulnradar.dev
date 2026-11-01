@@ -208,13 +208,17 @@ describe("completeShortText: when it cannot answer", () => {
       .mockResolvedValueOnce(
         new Response("bad\r\n[AI-SHORT-TEXT] forged", { status: 401 }),
       )
-      .mockRejectedValueOnce(new Error("socket hang up\r\n[AI] forged"));
+      .mockRejectedValueOnce(new Error("socket hang up\r\n[AI] forged"))
+      // Not every rejection is an Error; a thrown string is logged as itself.
+      .mockRejectedValueOnce("aborted\r\n[AI] forged");
 
+    expect(await completeShortText(hostile, input)).toBeNull();
     expect(await completeShortText(hostile, input)).toBeNull();
     expect(await completeShortText(hostile, input)).toBeNull();
 
     const lines = loggedLines();
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toContain("aborted");
     for (const line of lines) {
       expect(line).toContain("plain-model");
       expect(line).not.toMatch(/[\r\n]/);
