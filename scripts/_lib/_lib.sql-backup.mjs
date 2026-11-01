@@ -51,8 +51,8 @@
  * otherwise)
  * ----------------------------------------------------------------------
  * Only the `public` schema, and within it: extensions, sequences, tables,
- * columns, defaults, constraints, indexes, functions, triggers, views and
- * table data. It does NOT capture roles, ownership, GRANTs, row-level
+ * columns, defaults, constraints, indexes, extended statistics, functions,
+ * triggers, views and table data. It does NOT capture roles, ownership, GRANTs, row-level
  * security policies, materialized views, partitioned tables, table
  * inheritance, foreign tables, custom types (enum/domain/range), large
  * objects, tablespaces, comments, publications/subscriptions, or any other
@@ -109,11 +109,12 @@ export const MARKER_PREFIX = "--#VR:";
 export const DUMP_LIMITS_NOTICE = [
   "This dump was written by VulnRadar's built-in dumper, not by pg_dump.",
   "It contains the public schema only: extensions, sequences, tables,",
-  "columns, defaults, constraints, indexes, functions, triggers, views and",
-  "all table data. It does NOT contain roles, ownership, GRANTs, row-level",
-  "security policies, materialized views, partitioned tables, foreign tables,",
-  "custom types, large objects, tablespaces or any other schema. pg_dump",
-  "captures those; use it instead wherever it is installed.",
+  "columns, defaults, constraints, indexes, extended statistics, functions,",
+  "triggers, views and all table data. It does NOT contain roles, ownership,",
+  "GRANTs, row-level security policies, materialized views, partitioned",
+  "tables, foreign tables, custom types, large objects, tablespaces or any",
+  "other schema. pg_dump captures those; use it instead wherever it is",
+  "installed.",
 ];
 
 /**
@@ -693,6 +694,24 @@ export async function getIndexes(client) {
   }));
 }
 
+/**
+ * Extended statistics objects (CREATE STATISTICS). The schema keeps them on
+ * expressions the planner cannot otherwise estimate, such as the host inside
+ * scan_history.url; a restore without them silently loses those estimates,
+ * and the lookups they protect go back to reading the whole table until the
+ * next boot recreates them.
+ */
+export async function getStatistics(client) {
+  const res = await client.query(`
+    SELECT s.stxname AS name, pg_get_statisticsobjdef(s.oid) AS def
+      FROM pg_statistic_ext s
+      JOIN pg_namespace n ON n.oid = s.stxnamespace
+     WHERE n.nspname = 'public'
+     ORDER BY s.stxname
+  `);
+  return res.rows.map((r) => ({ name: r.name, def: r.def }));
+}
+
 /** Functions and procedures in public, excluding anything an extension owns. */
 export async function getFunctions(client) {
   const res = await client.query(`
@@ -895,6 +914,7 @@ export async function* generateSqlDump({
       sequences,
       constraints,
       indexes,
+      statistics,
       functions,
       triggers,
       views,
@@ -909,6 +929,7 @@ export async function* generateSqlDump({
       getSequences(client),
       getConstraints(client),
       getIndexes(client),
+      getStatistics(client),
       getFunctions(client),
       getTriggers(client),
       getViews(client),
@@ -1134,6 +1155,10 @@ export async function* generateSqlDump({
 
     for (const idx of indexes) {
       yield `${marker("STMT")}\n${idx.def.replace(/;?\s*$/, "")};\n`;
+    }
+
+    for (const stat of statistics) {
+      yield `${marker("STMT")}\n${stat.def.replace(/;?\s*$/, "")};\n`;
     }
 
     // Last, exactly as pg_dump does it: whatever order the data arrived in,

@@ -210,6 +210,14 @@ function fakeDumpClient() {
           },
         ]);
       }
+      if (text.includes("pg_get_statisticsobjdef")) {
+        return rows([
+          {
+            name: "users_email_lower_stat",
+            def: "CREATE STATISTICS public.users_email_lower_stat ON lower(email) FROM public.users",
+          },
+        ]);
+      }
       if (text.includes("pg_get_functiondef")) {
         return rows([
           {
@@ -332,6 +340,12 @@ describe("the emitted file", () => {
     expect(at("CREATE UNIQUE INDEX")).toBeLessThan(
       at('ADD CONSTRAINT "notes_user_fk"'),
     );
+    // Statistics after the data and beside the indexes, ending with the one
+    // semicolon pg_get_statisticsobjdef leaves off.
+    expect(at("COPY public.")).toBeLessThan(at("CREATE STATISTICS"));
+    expect(sql).toContain(
+      "CREATE STATISTICS public.users_email_lower_stat ON lower(email) FROM public.users;\n",
+    );
     expect(at('ADD CONSTRAINT "notes_user_fk"')).toBeLessThan(
       at("SELECT pg_catalog.setval("),
     );
@@ -395,8 +409,9 @@ describe("the emitted file", () => {
     const markers = sql.split("\n").filter((l) => l.startsWith("--#VR:"));
     expect(markers.filter((l) => l.startsWith("--#VR:STMT")).length).toBe(
       // 10 preamble SETs + 1 function + 1 sequence + 2 tables + 1 OWNED BY
-      // + 1 SET DEFAULT + 1 PK + 1 index + 1 FK + 1 trigger + 1 setval
-      21,
+      // + 1 SET DEFAULT + 1 PK + 1 index + 1 statistics object + 1 FK
+      // + 1 trigger + 1 setval
+      22,
     );
   });
 });

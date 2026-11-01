@@ -500,6 +500,18 @@ describeIntegration("pure-JavaScript SQL dump and restore", () => {
     );
     expect(indexes.rows[0].n).toBeGreaterThan(40);
 
+    // The statistics on the scan_history URL expressions: without them the
+    // host and page lookups read the whole table until the next boot.
+    const statistics = await pool.query<{ stxname: string }>(
+      `SELECT stxname FROM pg_statistic_ext ORDER BY stxname`,
+    );
+    expect(statistics.rows.map((r) => r.stxname)).toEqual(
+      expect.arrayContaining([
+        "stat_scan_history_origin_path",
+        "stat_scan_history_public_host",
+      ]),
+    );
+
     const pk = await pool.query<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM pg_constraint con
          JOIN pg_class c ON c.oid = con.conrelid
