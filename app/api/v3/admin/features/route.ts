@@ -261,10 +261,13 @@ async function requireAdmin() {
 // A registry key marked superAdminOnly is saved and reset by the super admin
 // alone. APP_URL decides where every OAuth sign-in and connect flow returns to
 // (links that carry a token never read the saved row: secretLinkAppUrl() in
-// lib/config/server-app-url.ts builds them from the environment), and
-// STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED decides whether staff SSO trusts an
-// address the provider never vouched for. A refusal is audited too: an admin
-// trying to change either is a row an insider review looks for.
+// lib/config/server-app-url.ts builds them from the environment). The four
+// STAFF_OIDC_* keys decide which identity provider staff SSO trusts and
+// whether it trusts an address the provider never vouched for: an admin who
+// could point the issuer at a provider of their own could mint an ID token
+// for the super admin's address and sign in as them, past this app's second
+// factor. A refusal is audited too: an admin trying to change any of them is
+// a row an insider review looks for.
 async function refuseSuperAdminOnlyChange(
   user: { id: number; role: string },
   ip: string,

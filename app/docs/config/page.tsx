@@ -776,9 +776,15 @@ export default function ConfigPage() {
 
         <DocsSubSection title="Super admin only">
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            Two settings can be saved or reset by the super admin alone.{" "}
+            Five settings can be saved or reset by the super admin alone.{" "}
             <InlineCode>APP_URL</InlineCode> decides where every sign-in and
             connect flow returns to.{" "}
+            <InlineCode>STAFF_OIDC_ISSUER_URL</InlineCode>,{" "}
+            <InlineCode>STAFF_OIDC_CLIENT_ID</InlineCode> and{" "}
+            <InlineCode>STAFF_OIDC_CLIENT_SECRET</InlineCode> decide which
+            identity provider staff SSO trusts, and whoever picks the provider
+            decides which staff account its ID tokens sign into, the super
+            admin&rsquo;s included.{" "}
             <InlineCode>STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED</InlineCode>{" "}
             decides whether staff SSO trusts an ID token that has no{" "}
             <InlineCode>email_verified</InlineCode> claim, which Microsoft Entra

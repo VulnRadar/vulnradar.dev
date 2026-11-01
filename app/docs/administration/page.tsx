@@ -429,7 +429,7 @@ export default function AdministrationPage() {
             {
               step: "Enter three settings",
               detail:
-                "In Settings, Advanced: the issuer URL, the client ID and the client secret (STAFF_OIDC_ISSUER_URL, STAFF_OIDC_CLIENT_ID, STAFF_OIDC_CLIENT_SECRET). All three are needed, and any empty one leaves SSO off. The secret is write-only, so it is not shown again once saved. The app asks for the openid, email and profile scopes.",
+                "In Settings, Advanced: the issuer URL, the client ID and the client secret (STAFF_OIDC_ISSUER_URL, STAFF_OIDC_CLIENT_ID, STAFF_OIDC_CLIENT_SECRET). All three are needed, and any empty one leaves SSO off. Only the super admin can save them. The secret is write-only, so it is not shown again once saved. The app asks for the openid, email and profile scopes.",
             },
             {
               step: "Check the email_verified claim",
@@ -469,10 +469,13 @@ export default function AdministrationPage() {
           account has one open alert of this kind at a time.
         </p>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Only the super admin can change{" "}
+          Only the super admin can change the four staff SSO settings, the three
+          connection settings and{" "}
           <InlineCode>STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED</InlineCode>, and
           each change is written to the audit log, as is an attempt by anyone
-          else.
+          else. Whoever chooses the provider decides which staff account its ID
+          tokens sign into, so an admin who could set the issuer could sign in
+          as the super admin.
         </p>
         <DocsCallout
           variant="warning"

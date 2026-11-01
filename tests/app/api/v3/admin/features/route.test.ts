@@ -492,6 +492,53 @@ describe("POST /api/v3/admin/features — system_settings", () => {
     });
   });
 
+  // The provider staff SSO trusts decides which staff account an ID token
+  // signs into. An admin who could point the issuer at a provider of their
+  // own could mint a token for the super admin's address and sign in as them.
+  describe.each([
+    "STAFF_OIDC_ISSUER_URL",
+    "STAFF_OIDC_CLIENT_ID",
+    "STAFF_OIDC_CLIENT_SECRET",
+  ])("%s", (key) => {
+    it("refuses a save by an admin with 403 and audits the attempt", async () => {
+      queueRole("admin");
+      const res = await POST(
+        postRequest({
+          section: "system_settings",
+          action: "set",
+          key,
+          value: "https://idp.attacker.example",
+        }),
+      );
+      expect(res.status).toBe(403);
+      expect(
+        mockQuery.mock.calls.some(([sql]) =>
+          String(sql).includes("INSERT INTO system_settings"),
+        ),
+      ).toBe(false);
+      expect(mockLogAction).toHaveBeenCalledWith(
+        1,
+        null,
+        "system_setting_refused",
+        expect.stringContaining(`"${key}"`),
+        "127.0.0.1",
+      );
+    });
+
+    it("refuses a reset by an admin with 403", async () => {
+      queueRole("admin");
+      const res = await POST(
+        postRequest({ section: "system_settings", action: "reset", key }),
+      );
+      expect(res.status).toBe(403);
+      expect(
+        mockQuery.mock.calls.some(([sql]) =>
+          String(sql).includes("DELETE FROM system_settings"),
+        ),
+      ).toBe(false);
+    });
+  });
+
   // Turning this on lets staff SSO trust an address the provider never said
   // was verified, so an ordinary admin account taken over must not be enough.
   describe("STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED", () => {
@@ -645,7 +692,7 @@ describe("POST /api/v3/admin/features — system_settings", () => {
     });
 
     it("setting a secret stores it but keeps both values out of the audit log", async () => {
-      queueRole("admin");
+      queueRole("super_admin");
       mockQuery.mockResolvedValueOnce({ rows: [{ value: "old-secret-0001" }] });
       mockQuery.mockResolvedValueOnce({ rows: [] });
       const res = await POST(

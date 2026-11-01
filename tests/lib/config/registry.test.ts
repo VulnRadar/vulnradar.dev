@@ -321,12 +321,15 @@ describe("scan timeout help text", () => {
 });
 
 // Settings an ordinary admin account must not be able to change: where the
-// sign-in flows return to, and whether staff SSO trusts an address the
-// provider never vouched for. The admin API reads the flag through
+// sign-in flows return to, which identity provider staff SSO trusts, and
+// whether it trusts an address the provider never vouched for. The admin API reads the flag through
 // isSuperAdminOnlySetting.
 describe("super-admin-only settings", () => {
   const SUPER_ADMIN_ONLY: SettingKey[] = [
     "APP_URL",
+    "STAFF_OIDC_ISSUER_URL",
+    "STAFF_OIDC_CLIENT_ID",
+    "STAFF_OIDC_CLIENT_SECRET",
     "STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED",
   ];
 
@@ -338,7 +341,7 @@ describe("super-admin-only settings", () => {
   });
 
   it("is false for an ordinary setting and for an unknown key", () => {
-    expect(isSuperAdminOnlySetting("STAFF_OIDC_ISSUER_URL")).toBe(false);
+    expect(isSuperAdminOnlySetting("ENFORCE_STAFF_2FA")).toBe(false);
     expect(isSuperAdminOnlySetting("not-a-setting")).toBe(false);
   });
 
@@ -348,8 +351,8 @@ describe("super-admin-only settings", () => {
       page.indexOf('title="Super admin only"'),
       page.indexOf('title="Export"'),
     );
-    expect(section).toContain("Two settings");
-    expect(SUPER_ADMIN_ONLY).toHaveLength(2);
+    expect(section).toContain("Five settings");
+    expect(SUPER_ADMIN_ONLY).toHaveLength(5);
     for (const key of SUPER_ADMIN_ONLY) {
       expect(section, key).toContain(`<InlineCode>${key}</InlineCode>`);
     }

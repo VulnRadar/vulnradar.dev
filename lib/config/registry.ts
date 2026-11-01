@@ -3272,8 +3272,9 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_STAFF_OIDC_ISSUER_URL,
     group: "Advanced",
     label: "Staff SSO: OIDC issuer URL",
-    help: "Base URL of your OIDC identity provider (e.g. https://your-org.okta.com, https://login.microsoftonline.com/<tenant>/v2.0). Must serve a standard /.well-known/openid-configuration discovery document. Leave empty to disable staff SSO -- privileged accounts sign in with password/OAuth like everyone else.",
+    help: "Base URL of your OIDC identity provider (e.g. https://your-org.okta.com, https://login.microsoftonline.com/<tenant>/v2.0). Must serve a standard /.well-known/openid-configuration discovery document. Leave empty to disable staff SSO -- privileged accounts sign in with password/OAuth like everyone else. Only the super admin can change this: whoever chooses the provider decides which staff account an ID token signs into, the super admin's included.",
     max: 512,
+    superAdminOnly: true,
   },
   STAFF_OIDC_CLIENT_ID: {
     tier: "runtime",
@@ -3281,8 +3282,9 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_STAFF_OIDC_CLIENT_ID,
     group: "Advanced",
     label: "Staff SSO: OIDC client ID",
-    help: "The client/application ID your IdP issued when you registered this app. Required alongside the issuer URL and client secret for staff SSO to activate.",
+    help: "The client/application ID your IdP issued when you registered this app. Required alongside the issuer URL and client secret for staff SSO to activate. Only the super admin can change this.",
     max: 256,
+    superAdminOnly: true,
   },
   STAFF_OIDC_CLIENT_SECRET: {
     tier: "runtime",
@@ -3290,9 +3292,10 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_STAFF_OIDC_CLIENT_SECRET,
     group: "Advanced",
     label: "Staff SSO: OIDC client secret",
-    help: "The client secret your IdP issued alongside the client ID. Register this app's redirect URI with your IdP as: <your app URL>/api/v3/auth/staff-oidc/callback",
+    help: "The client secret your IdP issued alongside the client ID. Register this app's redirect URI with your IdP as: <your app URL>/api/v3/auth/staff-oidc/callback. Only the super admin can change this.",
     max: 512,
     secret: true,
+    superAdminOnly: true,
   },
   STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED: {
     tier: "runtime",
