@@ -43,13 +43,16 @@ export function legacyHashAuthToken(token: string): string {
 /**
  * Every digest a presented token could legitimately match, newest first.
  *
- * Lookups pass this to `WHERE token_hash = ANY($1::text[])` rather than
- * matching a single value, so a reset or verification link that was already
- * sitting in someone's inbox when this deployed still works. Both entries
- * are derived from the SAME presented token, so this widens nothing: a
- * caller still has to hold the raw token to produce either digest. Drop
- * `legacyHashAuthToken` from the list once the longest token lifetime
- * (EMAIL_VERIFICATION_HOURS) has elapsed since the deploy.
+ * The reset-password route passes this to `WHERE token_hash = ANY($1::text[])`
+ * rather than matching a single value, so a reset link already sitting in
+ * someone's inbox when the keyed digest shipped still works. verify-email
+ * matches the keyed digest alone: every verification row the unkeyed one
+ * could match predates the address binding and is refused anyway. Both
+ * entries are derived from the SAME presented token, so this widens nothing:
+ * a caller still has to hold the raw token to produce either digest. Drop
+ * `legacyHashAuthToken` from the list once PASSWORD_RESET_HOURS has passed
+ * since 4.0.0 was deployed: until that release the admin "send reset link"
+ * action still stored the unkeyed digest.
  */
 export function authTokenHashCandidates(token: string): string[] {
   const current = hashAuthToken(token);
