@@ -5,8 +5,8 @@ import pool from "@/lib/database/db";
 import { describeIntegration, createUser, unique } from "./_db";
 
 /**
- * Email verification is bound to the address it was mailed to (wave-1b
- * follow-up 1), against the real schema.
+ * Email verification is bound to the address it was mailed to, against the
+ * real schema.
  *
  * OAuth sign-in and staff invites trust users.email_verified_at to say the
  * account holder controls users.email. The attack this closes: sign up as
