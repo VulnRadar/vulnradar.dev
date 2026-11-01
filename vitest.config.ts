@@ -639,6 +639,54 @@ export default defineConfig({
           functions: 100,
           branches: 90,
         },
+        // The helpers wave 1c's security fixes route through. Each one is
+        // the single place a check lives (a scan id's shape, a same-site
+        // redirect, a log value's escaping, a token ceiling, a URL's real
+        // host, a webhook's provider), so a regression in it is a regression
+        // everywhere at once. 100 / 100 / 100 / 100 actual unless noted.
+        "lib/history/scan-id.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 90,
+        },
+        // 93.33 / 95.23 / 100 / 100 actual (lines, statements, functions,
+        // branches): the uncovered line is the catch for a value the URL
+        // parser refuses, which the character checks before it turn away.
+        "lib/auth/safe-redirect.ts": {
+          lines: 90,
+          statements: 92,
+          functions: 100,
+          branches: 95,
+        },
+        // 77.77% of branches, the gaps being the defensive fallbacks in
+        // escapeCodePoint.
+        "lib/logging/log-value.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 75,
+        },
+        "lib/ai/token-ceiling.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 90,
+        },
+        // 91.66 / 91.66 / 83.33 / 80 from its own suite alone; the scanner
+        // suites that use it cover the rest in a full run.
+        "lib/scanner/checks/_url-hosts.ts": {
+          lines: 88,
+          statements: 88,
+          functions: 80,
+          branches: 75,
+        },
+        "lib/webhooks/detect-type.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 90,
+        },
         "lib/ai/chat/model.ts": {
           lines: 95,
           statements: 95,
