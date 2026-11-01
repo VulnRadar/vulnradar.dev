@@ -1320,8 +1320,9 @@ async function checkMTASTSPolicyFile(
   // when the redirect ends at a valid file. Reporting that as fine (or as a
   // connection failure) told the operator the opposite of what senders see.
   // The fetch passes `redirect: "error"`, so safeFetch throws code `redirect`
-  // on any 3xx (or `cross_host_redirect` for one off the host) instead of
-  // following it, and the catch below turns either into this finding.
+  // for a redirect to any host instead of following it, and the catch below
+  // turns that into this finding. Any other 3xx comes back unfollowed and is
+  // reported by its status.
   const redirectedVuln = (where: string) =>
     makeVuln(
       url,

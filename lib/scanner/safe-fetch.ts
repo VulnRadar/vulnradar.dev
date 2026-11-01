@@ -1092,8 +1092,9 @@ function assertSafePublicHttpUrl(rawUrl: string): URL {
  * is honoured for one value: `"error"` makes the first redirect (301, 302,
  * 303, 307 or 308) throw a SafeFetchError with code `redirect` instead of
  * being followed, which is what a caller that must not follow one (an
- * MTA-STS policy fetch, RFC 8461) asks for. `"follow"` and `"manual"` both
- * get the guarded loop.
+ * MTA-STS policy fetch, RFC 8461) asks for. Any other 3xx comes back as the
+ * answer and is never followed in that mode, even when it names a Location.
+ * `"follow"` and `"manual"` both get the guarded loop.
  *
  * Deadline: with `init.signal` the caller's deadline governs (the internal
  * timer is only a backstop, see CALLER_GOVERNED_BACKSTOP_MS). Without one the
@@ -1250,7 +1251,12 @@ export async function safeFetch(
       }
 
       // Non-3xx: return as-is. The caller handles success/error semantics.
-      if (response.status < 300 || response.status >= 400) {
+      // Under redirect: "error" the 3xx statuses fetch does not count as a
+      // redirect (a 300, a 304) are returned as-is too, as fetch returns
+      // them. The loop below follows any 3xx that names a Location, so
+      // without this a same-host 300 was followed for a caller that asked
+      // for no redirects at all.
+      if (refuseRedirects || response.status < 300 || response.status >= 400) {
         handedResponseToCaller = true;
         return withLogicalUrl(response, currentLogicalUrl);
       }

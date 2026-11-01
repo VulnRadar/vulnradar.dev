@@ -723,10 +723,13 @@ export async function checkMxIpLiteral(
  * A redirect safeFetch refused rather than followed.
  *
  * RFC 8461 section 3.3 has senders fetch the MTA-STS policy without following
- * redirects, so both policy fetches pass `redirect: "error"`, and safeFetch
- * answers any 3xx to that with a SafeFetchError of code `redirect`. A
- * `cross_host_redirect` is the same refusal reached by its other rule. Read by
- * code, as SafeFetchError's contract asks, so neither is a connection failure.
+ * redirects, so both policy fetches pass `redirect: "error"`. safeFetch
+ * answers a redirect (301, 302, 303, 307 or 308) to that with a
+ * SafeFetchError of code `redirect`, wherever it points, and returns any other
+ * 3xx unfollowed, which the callers read as a status that is not OK. A
+ * `cross_host_redirect` counts as the same refusal, so a redirect is never
+ * reported as a connection failure whichever rule refused it. Read by code,
+ * as SafeFetchError's contract asks.
  */
 export function isRefusedRedirect(err: unknown): boolean {
   const code =

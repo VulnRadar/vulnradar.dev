@@ -485,6 +485,27 @@ describe("safeFetch (SSRF-guarded redirect loop)", () => {
     expect(res.status).toBe(304);
   });
 
+  it.each([300, 304])(
+    'returns a %i that names a Location under redirect: "error" without following it',
+    async (status) => {
+      // fetch does not count these as redirects, so redirect: "error" hands
+      // them back. safeFetch's own loop follows any 3xx with a Location, and
+      // used to follow these for a caller that asked for no redirects.
+      resolvesTo("93.184.216.34");
+      fetchMock
+        .mockResolvedValueOnce(redirect(status, "https://example.com/moved"))
+        .mockResolvedValueOnce(new Response("policy", { status: 200 }));
+
+      const res = await safeFetch("https://example.com/policy", {
+        redirect: "error",
+      });
+
+      expect(res.status).toBe(status);
+      expect(res.url).toBe("https://example.com/policy");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("follows by default, as it always has", async () => {
     resolvesTo("93.184.216.34");
     fetchMock
