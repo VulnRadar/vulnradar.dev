@@ -172,16 +172,92 @@ describe("GET /api/v3/auth/staff-oidc/callback", () => {
     expect(mockExchangeStaffOidcCode).not.toHaveBeenCalled();
   });
 
-  it("rejects when the ID token's email is unverified", async () => {
-    mockVerifyStaffOidcIdToken.mockResolvedValue({
-      email: "admin@example.com",
-      emailVerified: false,
-      name: "Admin",
-      sub: "idp-1",
+  // The provider's own word on the address. verifyStaffOidcIdToken decides
+  // what counts as verified (tests/lib/auth/staff-oidc.test.ts has the claim
+  // matrix); this is what the route does with a "no".
+  describe("an address the provider does not vouch for", () => {
+    beforeEach(() => {
+      mockVerifyStaffOidcIdToken.mockResolvedValue({
+        email: "admin@example.com",
+        emailVerified: false,
+        name: "Admin",
+        sub: "idp-1",
+      });
     });
-    userByEmailRow = { id: 5, role: "admin", disabled_at: null };
-    const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
-    expect(res.headers.get("location")).toContain("oauth_email_unverified");
+
+    function securityAlertInserts() {
+      return queries.filter((q) =>
+        q.sql.trim().startsWith("INSERT INTO security_alerts"),
+      );
+    }
+
+    it("is refused without a session", async () => {
+      userByEmailRow = { id: 5, role: "admin", disabled_at: null };
+      const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+      expect(res.headers.get("location")).toBe(
+        "https://vulnradar.dev/login?error=oauth_email_unverified",
+      );
+      expect(
+        queries.some((q) => q.sql.trim().startsWith("INSERT INTO sessions")),
+      ).toBe(false);
+      expect(
+        queries.some((q) =>
+          q.sql.trim().startsWith("INSERT INTO admin_audit_log"),
+        ),
+      ).toBe(false);
+    });
+
+    // Someone at the provider holding a staff member's address without having
+    // proved it is the case this refusal exists for, and an admin should hear
+    // about it the same way as a staff row that never verified its address.
+    it("files the staff_sso_unverified_email alert against the staff account it matched", async () => {
+      userByEmailRow = { id: 5, role: "support", disabled_at: null };
+      await GET(makeRequest(`?code=abc&state=${validState()}`));
+
+      const inserts = securityAlertInserts();
+      expect(inserts).toHaveLength(1);
+      const params = inserts[0]!.params;
+      expect(params[0]).toBe(5);
+      expect(params[1]).toBe("staff_sso_unverified_email");
+      expect(JSON.parse(String(params[3]))).toEqual({
+        issuer: "idp.example.com",
+        reason: "provider_unverified",
+      });
+      expect(JSON.stringify(params)).not.toContain("203.0.113.5");
+      expect(inserts[0]!.sql).toContain("NOT EXISTS");
+    });
+
+    it.each([
+      ["no account holds the address", undefined],
+      ["the account is not staff", { id: 6, role: "user", disabled_at: null }],
+    ])(
+      "gives the same answer and files nothing when %s",
+      async (_label, row) => {
+        userByEmailRow = row;
+        const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+        expect(res.headers.get("location")).toBe(
+          "https://vulnradar.dev/login?error=oauth_email_unverified",
+        );
+        expect(securityAlertInserts()).toHaveLength(0);
+      },
+    );
+
+    it("still refuses, with the same answer, when the alert cannot be written", async () => {
+      userByEmailRow = { id: 5, role: "admin", disabled_at: null };
+      securityAlertInsertFails = true;
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+        expect(res.headers.get("location")).toBe(
+          "https://vulnradar.dev/login?error=oauth_email_unverified",
+        );
+      } finally {
+        errorSpy.mockRestore();
+      }
+      expect(
+        queries.some((q) => q.sql.trim().startsWith("INSERT INTO sessions")),
+      ).toBe(false);
+    });
   });
 
   it("NEVER creates an account: rejects with a generic error when no account matches the email", async () => {
@@ -309,7 +385,9 @@ describe("GET /api/v3/auth/staff-oidc/callback", () => {
       expect(params[0]).toBe(5);
       expect(params[1]).toBe("staff_sso_unverified_email");
       expect(JSON.stringify(params)).not.toContain("203.0.113.5");
-      expect(JSON.stringify(params)).toContain("idp.example.com");
+      expect(JSON.parse(String(params[3]))).toEqual({
+        issuer: "idp.example.com",
+      });
       // One open alert per account: a repeated attempt must not stack rows.
       expect(inserts[0]!.sql).toContain("NOT EXISTS");
     });

@@ -89,6 +89,8 @@ export async function recordUnverifiedInviteRefusal(opts: {
 const STAFF_SSO_REFUSAL_DESCRIPTIONS = {
   account_unverified:
     "A staff SSO sign-in to this account was refused because the account has not verified its email address. Either the address was set on this account by someone who does not own it, or the account's owner never verified it.",
+  provider_unverified:
+    "A staff SSO sign-in to this account was refused because the identity provider did not confirm that the address is verified. Either someone holds this address at the provider without having proved it, or the provider does not send that confirmation.",
 } as const;
 
 /**
@@ -96,9 +98,15 @@ const STAFF_SSO_REFUSAL_DESCRIPTIONS = {
  *
  * "account_unverified": the account never verified the address here, so
  * someone may have pointed it at an address they do not own, or its owner
- * never verified it.
+ * never verified it. "provider_unverified": the identity provider did not say
+ * the address is verified, so someone at the provider may hold it without
+ * having proved it, or the provider never sends the claim (see
+ * STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED).
  *
- * One open alert per account, since the same person will retry.
+ * One open alert per account whatever the reason, since the same person will
+ * retry; the first reason's row stands until an admin resolves it. The
+ * account_unverified row keeps the details it always had, the issuer alone,
+ * and the other carries its reason.
  */
 export async function recordUnverifiedStaffSsoRefusal(opts: {
   userId: number;
@@ -109,7 +117,10 @@ export async function recordUnverifiedStaffSsoRefusal(opts: {
     userId: opts.userId,
     alertType: "staff_sso_unverified_email",
     description: STAFF_SSO_REFUSAL_DESCRIPTIONS[opts.reason],
-    details: { issuer: opts.issuerHost },
+    details:
+      opts.reason === "account_unverified"
+        ? { issuer: opts.issuerHost }
+        : { issuer: opts.issuerHost, reason: opts.reason },
     dedupeOn: null,
     logMessage: "[staff-oidc] Failed to record refused sign-in:",
   });

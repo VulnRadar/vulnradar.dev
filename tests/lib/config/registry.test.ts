@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 
 import * as configValues from "@/lib/config/config-values";
 import {
@@ -7,6 +8,7 @@ import {
   coerceSettingValue,
   isSecretSetting,
   isSettingKey,
+  isSuperAdminOnlySetting,
   validateSettingValue,
   type SettingKey,
 } from "@/lib/config/registry";
@@ -315,5 +317,67 @@ describe("scan timeout help text", () => {
     ] as const) {
       expect(help(key), key).not.toContain("—");
     }
+  });
+});
+
+// Settings an ordinary admin account must not be able to change: where the
+// sign-in flows return to, and whether staff SSO trusts an address the
+// provider never vouched for. The admin API reads the flag through
+// isSuperAdminOnlySetting.
+describe("super-admin-only settings", () => {
+  const SUPER_ADMIN_ONLY: SettingKey[] = [
+    "APP_URL",
+    "STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED",
+  ];
+
+  it("is exactly these keys, so a new one has to be added here on purpose", () => {
+    const flagged = (Object.keys(SETTINGS_REGISTRY) as SettingKey[]).filter(
+      isSuperAdminOnlySetting,
+    );
+    expect(flagged.sort()).toEqual([...SUPER_ADMIN_ONLY].sort());
+  });
+
+  it("is false for an ordinary setting and for an unknown key", () => {
+    expect(isSuperAdminOnlySetting("STAFF_OIDC_ISSUER_URL")).toBe(false);
+    expect(isSuperAdminOnlySetting("not-a-setting")).toBe(false);
+  });
+
+  it("is the set the configuration docs name, and as many as they count", () => {
+    const page = readFileSync("app/docs/config/page.tsx", "utf8");
+    const section = page.slice(
+      page.indexOf('title="Super admin only"'),
+      page.indexOf('title="Export"'),
+    );
+    expect(section).toContain("Two settings");
+    expect(SUPER_ADMIN_ONLY).toHaveLength(2);
+    for (const key of SUPER_ADMIN_ONLY) {
+      expect(section, key).toContain(`<InlineCode>${key}</InlineCode>`);
+    }
+  });
+});
+
+describe("STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED", () => {
+  const def = SETTINGS_REGISTRY.STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED;
+
+  it("is a runtime boolean, off unless an operator turns it on", () => {
+    expect(def.tier).toBe("runtime");
+    expect(def.type).toBe("bool");
+    expect(def.default).toBe(false);
+  });
+
+  it("sits with the other staff SSO settings", () => {
+    expect(def.group).toBe(SETTINGS_REGISTRY.STAFF_OIDC_ISSUER_URL.group);
+  });
+
+  it("is not a credential, so its changes are audited with their values", () => {
+    expect(isSecretSetting("STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED")).toBe(
+      false,
+    );
+  });
+
+  it("says an explicit false is refused even when it is on, and uses no em dash", () => {
+    expect(def.help).toMatch(/false is refused either way/);
+    expect(def.help).toMatch(/Microsoft Entra ID/);
+    expect(def.help).not.toContain("—");
   });
 });

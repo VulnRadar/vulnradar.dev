@@ -22,26 +22,55 @@
  * authenticate as an account an admin already provisioned.
  */
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
-import { getSettings } from "@/lib/config/runtime-config";
+import { getSetting, getSettings } from "@/lib/config/runtime-config";
 
 export interface StaffOidcConfig {
   issuerUrl: string;
   clientId: string;
   clientSecret: string;
+  /** STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED. See emailVerifiedFromClaim. */
+  acceptMissingEmailVerified: boolean;
 }
 
-/** All three must be set for staff SSO to be active. */
+/** The first three must be set for staff SSO to be active. */
 export async function getStaffOidcConfig(): Promise<StaffOidcConfig | null> {
-  const settings = await getSettings([
-    "STAFF_OIDC_ISSUER_URL",
-    "STAFF_OIDC_CLIENT_ID",
-    "STAFF_OIDC_CLIENT_SECRET",
+  const [settings, acceptMissingEmailVerified] = await Promise.all([
+    getSettings([
+      "STAFF_OIDC_ISSUER_URL",
+      "STAFF_OIDC_CLIENT_ID",
+      "STAFF_OIDC_CLIENT_SECRET",
+    ]),
+    getSetting("STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED"),
   ]);
   const issuerUrl = settings.STAFF_OIDC_ISSUER_URL?.trim();
   const clientId = settings.STAFF_OIDC_CLIENT_ID?.trim();
   const clientSecret = settings.STAFF_OIDC_CLIENT_SECRET?.trim();
   if (!issuerUrl || !clientId || !clientSecret) return null;
-  return { issuerUrl, clientId, clientSecret };
+  return {
+    issuerUrl,
+    clientId,
+    clientSecret,
+    acceptMissingEmailVerified: acceptMissingEmailVerified === true,
+  };
+}
+
+/**
+ * Whether the provider vouches for the address. Only boolean true, or the
+ * string "true" that some providers send, counts. The check used to be
+ * `!== false`, so a token with no claim at all, or with the string "false",
+ * signed a staff member in on an address nobody had proved.
+ *
+ * A provider that never sends the claim (Microsoft Entra ID by default) can be
+ * let in with STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED. That only covers an
+ * absent claim: a token that says false, in any form, or carries some other
+ * value, is refused whatever the setting says.
+ */
+function emailVerifiedFromClaim(
+  claim: unknown,
+  acceptMissing: boolean,
+): boolean {
+  if (claim === true || claim === "true") return true;
+  return claim === undefined && acceptMissing;
 }
 
 interface DiscoveryDocument {
@@ -147,7 +176,7 @@ export async function verifyStaffOidcIdToken(
 
   const claims = payload as JWTPayload & {
     email?: string;
-    email_verified?: boolean;
+    email_verified?: unknown;
     name?: string;
     nonce?: string;
   };
@@ -164,7 +193,10 @@ export async function verifyStaffOidcIdToken(
 
   return {
     email: claims.email.toLowerCase().trim(),
-    emailVerified: claims.email_verified !== false,
+    emailVerified: emailVerifiedFromClaim(
+      claims.email_verified,
+      config.acceptMissingEmailVerified,
+    ),
     name: claims.name ?? null,
     sub: claims.sub,
   };

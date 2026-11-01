@@ -492,6 +492,99 @@ describe("POST /api/v3/admin/features — system_settings", () => {
     });
   });
 
+  // Turning this on lets staff SSO trust an address the provider never said
+  // was verified, so an ordinary admin account taken over must not be enough.
+  describe("STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED", () => {
+    const KEY = "STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED";
+
+    function upserts() {
+      return mockQuery.mock.calls.filter(([sql]) =>
+        String(sql).includes("INSERT INTO system_settings"),
+      );
+    }
+
+    it("refuses a save by an admin with 403 and audits the attempt", async () => {
+      queueRole("admin");
+      const res = await POST(
+        postRequest({
+          section: "system_settings",
+          action: "set",
+          key: KEY,
+          value: true,
+        }),
+      );
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toMatch(/super admin/i);
+      expect(upserts()).toEqual([]);
+      expect(mockInvalidateSettingsCache).not.toHaveBeenCalled();
+      expect(mockLogAction).toHaveBeenCalledWith(
+        1,
+        null,
+        "system_setting_refused",
+        expect.stringContaining(`"${KEY}"`),
+        "127.0.0.1",
+      );
+    });
+
+    it("refuses a reset by an admin with 403 and audits it", async () => {
+      queueRole("admin");
+      const res = await POST(
+        postRequest({ section: "system_settings", action: "reset", key: KEY }),
+      );
+      expect(res.status).toBe(403);
+      expect(
+        mockQuery.mock.calls.some(([sql]) =>
+          String(sql).includes("DELETE FROM system_settings"),
+        ),
+      ).toBe(false);
+      expect(mockLogAction).toHaveBeenCalledWith(
+        1,
+        null,
+        "system_setting_refused",
+        expect.stringContaining("reset"),
+        "127.0.0.1",
+      );
+    });
+
+    it("saves a super admin's change and audits it with both values", async () => {
+      queueRole("super_admin");
+      mockQuery.mockResolvedValueOnce({ rows: [{ value: "false" }] }); // old
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // upsert
+      const res = await POST(
+        postRequest({
+          section: "system_settings",
+          action: "set",
+          key: KEY,
+          value: true,
+        }),
+      );
+      expect(res.status).toBe(200);
+      expect((upserts()[0][1] as unknown[])[1]).toBe("true");
+      expect(mockLogAction).toHaveBeenCalledWith(
+        1,
+        null,
+        "system_setting_changed",
+        `Changed "${KEY}" from "false" to "true"`,
+        "127.0.0.1",
+      );
+    });
+
+    it("leaves an ordinary runtime setting to any admin", async () => {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      const res = await POST(
+        postRequest({
+          section: "system_settings",
+          action: "set",
+          key: "ENFORCE_STAFF_2FA",
+          value: true,
+        }),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
   describe("credentials", () => {
     const SECRET = "oidc-client-secret-value-7f3a";
 

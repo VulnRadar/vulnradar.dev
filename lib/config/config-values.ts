@@ -610,6 +610,10 @@ export const CONFIG_ENFORCE_STAFF_2FA = false;
 export const CONFIG_STAFF_OIDC_ISSUER_URL = "";
 export const CONFIG_STAFF_OIDC_CLIENT_ID = "";
 export const CONFIG_STAFF_OIDC_CLIENT_SECRET = "";
+// Off: staff SSO trusts an address only when the ID token's email_verified
+// claim says so. On lets a provider that never sends the claim in, and still
+// refuses one that says false. See lib/auth/staff-oidc.ts.
+export const CONFIG_STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED = false;
 
 // RATE LIMITING - UPDATE IF NEEDED
 

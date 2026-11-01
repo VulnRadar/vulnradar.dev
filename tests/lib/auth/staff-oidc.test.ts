@@ -10,8 +10,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { generateKeyPair, SignJWT, exportJWK } from "jose";
 
 const mockGetSettings = vi.fn();
+const mockGetSetting = vi.fn();
 vi.mock("@/lib/config/runtime-config", () => ({
   getSettings: (...args: unknown[]) => mockGetSettings(...args),
+  getSetting: (...args: unknown[]) => mockGetSetting(...args),
 }));
 
 const {
@@ -50,6 +52,8 @@ async function makeSigner() {
 
 beforeEach(() => {
   mockGetSettings.mockReset();
+  mockGetSetting.mockReset();
+  mockGetSetting.mockResolvedValue(false);
   vi.unstubAllGlobals();
 });
 
@@ -121,7 +125,22 @@ describe("getStaffOidcConfig", () => {
       issuerUrl: issuer,
       clientId: "id",
       clientSecret: "secret",
+      acceptMissingEmailVerified: false,
     });
+  });
+
+  it("reads STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED into the config", async () => {
+    mockGetSettings.mockResolvedValue({
+      STAFF_OIDC_ISSUER_URL: uniqueIssuer(),
+      STAFF_OIDC_CLIENT_ID: "id",
+      STAFF_OIDC_CLIENT_SECRET: "secret",
+    });
+    mockGetSetting.mockResolvedValue(true);
+    const config = await getStaffOidcConfig();
+    expect(mockGetSetting).toHaveBeenCalledWith(
+      "STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED",
+    );
+    expect(config?.acceptMissingEmailVerified).toBe(true);
   });
 });
 
@@ -181,6 +200,7 @@ describe("verifyStaffOidcIdToken", () => {
       issuerUrl: issuer,
       clientId: CLIENT_ID,
       clientSecret: "s",
+      acceptMissingEmailVerified: false,
     };
     const doc = discoveryDoc(issuer);
     const sign = (
@@ -295,23 +315,68 @@ describe("verifyStaffOidcIdToken", () => {
     ).rejects.toThrow();
   });
 
-  it("treats email_verified: false as unverified (emailVerified: false)", async () => {
-    const { config, doc, sign } = await setup();
-    const token = await sign({
-      email: "a@example.com",
-      email_verified: false,
-      sub: "u1",
-      nonce: "n",
-    });
-    const claims = await verifyStaffOidcIdToken(token, config, doc, "n");
-    expect(claims.emailVerified).toBe(false);
-  });
+  // The admin docs promise SSO signs in only when the provider says the
+  // address is verified. A missing claim used to count as verified, and so did
+  // the string "false", because the check was `!== false`. Only an explicit
+  // true (or "true", which some providers send) is trusted now. A provider
+  // that never sends the claim can be let back in with
+  // STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED, and that setting never turns an
+  // explicit "no" into a yes.
+  describe("email_verified", () => {
+    const ABSENT = Symbol("absent");
+    async function verifiedFor(
+      claim: unknown,
+      acceptMissingEmailVerified: boolean,
+    ) {
+      const { config, doc, sign } = await setup();
+      const claims: Record<string, unknown> = {
+        email: "a@example.com",
+        sub: "u1",
+        nonce: "n",
+      };
+      if (claim !== ABSENT) claims.email_verified = claim;
+      const token = await sign(claims);
+      const verified = await verifyStaffOidcIdToken(
+        token,
+        { ...config, acceptMissingEmailVerified },
+        doc,
+        "n",
+      );
+      return verified.emailVerified;
+    }
 
-  it("treats a missing email_verified claim as verified (some IdPs omit it when true)", async () => {
-    const { config, doc, sign } = await setup();
-    const token = await sign({ email: "a@example.com", sub: "u1", nonce: "n" });
-    const claims = await verifyStaffOidcIdToken(token, config, doc, "n");
-    expect(claims.emailVerified).toBe(true);
+    it.each([
+      ["boolean true is trusted", true, false, true],
+      ['the string "true" is trusted', "true", false, true],
+      ["boolean true is trusted with the setting on", true, true, true],
+      ["a missing claim is refused with the setting off", ABSENT, false, false],
+      ["a missing claim is trusted with the setting on", ABSENT, true, true],
+      ["boolean false is refused with the setting off", false, false, false],
+      ["boolean false is refused even with the setting on", false, true, false],
+      [
+        'the string "false" is refused with the setting off',
+        "false",
+        false,
+        false,
+      ],
+      [
+        'the string "false" is refused even with the setting on',
+        "false",
+        true,
+        false,
+      ],
+      ["null is refused even with the setting on", null, true, false],
+      ["the number 1 is refused even with the setting on", 1, true, false],
+      ['the string "TRUE" is refused', "TRUE", false, false],
+      [
+        'the string "yes" is refused even with the setting on',
+        "yes",
+        true,
+        false,
+      ],
+    ])("%s", async (_label, claim, accept, expected) => {
+      expect(await verifiedFor(claim, accept)).toBe(expected);
+    });
   });
 });
 
@@ -320,7 +385,12 @@ describe("exchangeStaffOidcCode", () => {
     const issuer = uniqueIssuer();
     return {
       doc: discoveryDoc(issuer),
-      config: { issuerUrl: issuer, clientId: CLIENT_ID, clientSecret: "s" },
+      config: {
+        issuerUrl: issuer,
+        clientId: CLIENT_ID,
+        clientSecret: "s",
+        acceptMissingEmailVerified: false,
+      },
     };
   }
 

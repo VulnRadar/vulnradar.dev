@@ -30,6 +30,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   isSettingKey,
   isSecretSetting,
+  isSuperAdminOnlySetting,
   isWritableSetting,
   validateSettingValue,
   SETTINGS_REGISTRY,
@@ -257,27 +258,31 @@ async function requireAdmin() {
   return _requireAdmin();
 }
 
-// APP_URL decides where every OAuth sign-in and connect flow returns to. Links
-// that carry a token never read the saved row (secretLinkAppUrl() in
-// lib/config/server-app-url.ts builds them from the environment), but the row
-// is still the site's identity rather than an admin preference, so saving or
-// resetting it is for the super admin. A refusal is audited too: an admin
-// trying to move the site's URL is a row an insider review looks for.
-async function refuseAppUrlChange(
+// A registry key marked superAdminOnly is saved and reset by the super admin
+// alone. APP_URL decides where every OAuth sign-in and connect flow returns to
+// (links that carry a token never read the saved row: secretLinkAppUrl() in
+// lib/config/server-app-url.ts builds them from the environment), and
+// STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED decides whether staff SSO trusts an
+// address the provider never vouched for. A refusal is audited too: an admin
+// trying to change either is a row an insider review looks for.
+async function refuseSuperAdminOnlyChange(
   user: { id: number; role: string },
   ip: string,
+  key: string,
   attempt: "change" | "reset",
 ): Promise<NextResponse | null> {
-  if (isSuperAdminRole(user.role)) return null;
+  if (!isSuperAdminOnlySetting(key) || isSuperAdminRole(user.role)) {
+    return null;
+  }
   await logAction(
     user.id,
     null,
     "system_setting_refused",
-    `Refused to ${attempt} "APP_URL": only the super admin can change it`,
+    `Refused to ${attempt} "${key}": only the super admin can change it`,
     ip,
   );
   return NextResponse.json(
-    { error: "Only the super admin can change the public application URL." },
+    { error: `Only the super admin can change ${key}.` },
     { status: 403 },
   );
 }
@@ -642,10 +647,13 @@ export async function POST(req: NextRequest) {
             { status: 400 },
           );
         }
-        if (key === "APP_URL") {
-          const refused = await refuseAppUrlChange(user, ip, "change");
-          if (refused) return refused;
-        }
+        const refused = await refuseSuperAdminOnlyChange(
+          user,
+          ip,
+          key,
+          "change",
+        );
+        if (refused) return refused;
 
         // Keys the registry knows about are validated against their declared
         // type and bounds. Keys it does not (maintenance_mode and friends)
@@ -763,10 +771,13 @@ export async function POST(req: NextRequest) {
             { status: 400 },
           );
         }
-        if (key === "APP_URL") {
-          const refused = await refuseAppUrlChange(user, ip, "reset");
-          if (refused) return refused;
-        }
+        const refused = await refuseSuperAdminOnlyChange(
+          user,
+          ip,
+          key,
+          "reset",
+        );
+        if (refused) return refused;
 
         const oldResult = await pool.query(
           `SELECT value FROM system_settings WHERE key = $1`,

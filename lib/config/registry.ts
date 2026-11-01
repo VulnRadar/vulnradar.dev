@@ -216,6 +216,7 @@ import {
   CONFIG_STAFF_OIDC_ISSUER_URL,
   CONFIG_STAFF_OIDC_CLIENT_ID,
   CONFIG_STAFF_OIDC_CLIENT_SECRET,
+  CONFIG_STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED,
   CONFIG_CONTACT_MESSAGE_MAX_LENGTH,
   CONFIG_DASHBOARD_WIDGET_LIMIT,
   CONFIG_MAX_AVATAR_UPLOAD_BYTES,
@@ -394,6 +395,13 @@ export interface SettingDefinition {
    * still set, replace or clear it.
    */
   secret?: true;
+  /**
+   * Only the super admin may save or reset it; the admin API refuses anyone
+   * else and audits the refusal. For a value that decides who can reach staff
+   * access or where sign-in flows return, where an ordinary admin account
+   * taken over should not be enough to change it.
+   */
+  superAdminOnly?: true;
 }
 
 /**
@@ -537,6 +545,7 @@ export const SETTINGS_REGISTRY = {
     group: "General",
     label: "Public application URL",
     help: "Origin used for canonical URLs, social cards, and email links. A value saved here is read live by the GitHub, Google and Discord sign-in and connect redirects and by staff SSO, and by nothing else. Only the super admin can save it, as an https origin with no path, query or credentials (http only for localhost or 127.0.0.1). The links in password-reset, verification and signup emails, staff and team invites, and every unsubscribe link never use the saved value: they read APP_URL, then NEXT_PUBLIC_APP_URL, from the server's environment at runtime. Everything else reads NEXT_PUBLIC_APP_URL as it was at build time (or the compiled CONFIG_APP_URL), so set that env var and rebuild to change it.",
+    superAdminOnly: true,
   },
   APP_REPO: {
     tier: "build",
@@ -3285,6 +3294,15 @@ export const SETTINGS_REGISTRY = {
     max: 512,
     secret: true,
   },
+  STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED: {
+    tier: "runtime",
+    type: "bool",
+    default: CONFIG_STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED,
+    group: "Advanced",
+    label: "Staff SSO: accept a missing email_verified claim",
+    help: 'Off by default: staff SSO signs in only when the ID token\'s email_verified claim is true (or the string "true"). Turn this on only if your provider never sends the claim, which is the case for Microsoft Entra ID unless you configure it; a token without the claim then counts as verified. A token that says false is refused either way. Only the super admin can change this, and every change is written to the audit log.',
+    superAdminOnly: true,
+  },
   CONTACT_MESSAGE_MAX_LENGTH: {
     tier: "runtime",
     type: "int",
@@ -3627,11 +3645,20 @@ export function isSettingKey(key: string): key is SettingKey {
 /**
  * Whether an admin write to this key can change anything. Every runtime-tier
  * key, plus APP_URL, which serverAppUrl() reads live for the OAuth
- * redirect_uri. The admin route also limits APP_URL to the super admin.
+ * redirect_uri. The admin route also limits APP_URL to the super admin
+ * (see isSuperAdminOnlySetting).
  * The rest of the build tier is compiled in; see SettingTier.
  */
 export function isWritableSetting(key: SettingKey): boolean {
   return SETTINGS_REGISTRY[key].tier === "runtime" || key === "APP_URL";
+}
+
+/** True for a key only the super admin may save. See SettingDefinition.superAdminOnly. */
+export function isSuperAdminOnlySetting(key: string): boolean {
+  return (
+    isSettingKey(key) &&
+    (SETTINGS_REGISTRY[key] as SettingDefinition).superAdminOnly === true
+  );
 }
 
 /** True for a registry key holding a credential. See SettingDefinition.secret. */

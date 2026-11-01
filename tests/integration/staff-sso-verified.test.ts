@@ -34,6 +34,7 @@ vi.mock("@/lib/api/request-utils", async (importOriginal) => {
 });
 
 let idpEmail = "";
+let idpEmailVerified = true;
 vi.mock("@/lib/auth/staff-oidc", () => ({
   getStaffOidcConfig: async () => ({
     issuerUrl: "https://idp.example.test",
@@ -49,7 +50,7 @@ vi.mock("@/lib/auth/staff-oidc", () => ({
   exchangeStaffOidcCode: async () => ({ idToken: "token" }),
   verifyStaffOidcIdToken: async () => ({
     email: idpEmail,
-    emailVerified: true,
+    emailVerified: idpEmailVerified,
     name: null,
     sub: "idp-subject",
   }),
@@ -61,6 +62,7 @@ const { signOAuthState } = await import("@/lib/auth/oauth-state");
 beforeEach(() => {
   cookieState.clear();
   cookieState.set("staff_oidc_nonce", "the-nonce");
+  idpEmailVerified = true;
 });
 
 function callback() {
@@ -82,7 +84,7 @@ async function sessionCount(userId: number): Promise<number> {
 
 async function alertsFor(userId: number) {
   const { rows } = await pool.query<{
-    details: { issuer: string };
+    details: { issuer: string; reason?: string };
     ip_address: string | null;
     severity: string;
   }>(
@@ -153,3 +155,48 @@ describeIntegration("staff SSO signs into a verified staff row only", () => {
     expect(await alertsFor(staff.id)).toHaveLength(0);
   });
 });
+
+describeIntegration(
+  "staff SSO refuses an address the provider did not vouch for",
+  () => {
+    it("refuses a verified staff account: no session, one alert naming the reason", async () => {
+      const staff = await createUser({ role: "admin" });
+      await pool.query(
+        "UPDATE users SET email_verified_at = NOW() WHERE id = $1",
+        [staff.id],
+      );
+      idpEmail = staff.email;
+      idpEmailVerified = false;
+
+      const res = await callback();
+      cookieState.set("staff_oidc_nonce", "the-nonce");
+      await callback();
+
+      expect(
+        new URL(res.headers.get("location")!).searchParams.get("error"),
+      ).toBe("oauth_email_unverified");
+      expect(await sessionCount(staff.id)).toBe(0);
+      const alerts = await alertsFor(staff.id);
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].details).toEqual({
+        issuer: "idp.example.test",
+        reason: "provider_unverified",
+      });
+      expect(alerts[0].ip_address).toBeNull();
+    });
+
+    it("shares the one open alert with an account that never verified the address", async () => {
+      const staff = await createUser({ role: "support" });
+      idpEmail = staff.email;
+
+      await callback();
+      idpEmailVerified = false;
+      cookieState.set("staff_oidc_nonce", "the-nonce");
+      await callback();
+
+      const alerts = await alertsFor(staff.id);
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].details).toEqual({ issuer: "idp.example.test" });
+    });
+  },
+);

@@ -64,8 +64,7 @@ export async function GET(request: Request) {
       redirectUri,
     );
     const claims = await verifyStaffOidcIdToken(idToken, config, doc, nonce);
-
-    if (!claims.emailVerified) return fail("oauth_email_unverified");
+    const issuerHost = new URL(config.issuerUrl).hostname;
 
     const result = await pool.query<{
       id: number;
@@ -81,6 +80,22 @@ export async function GET(request: Request) {
     const role = user?.role || "user";
     const isStaff =
       (STAFF_ROLE_HIERARCHY[role] ?? 0) >= STAFF_ROLE_HIERARCHY.support;
+
+    // The provider did not vouch for the address (verifyStaffOidcIdToken says
+    // what counts). The answer is the same whether or not the address is a
+    // staff account's, so it says nothing about the row. When it is one,
+    // someone at the provider may hold a staff member's address without
+    // having proved it, which an admin needs to hear about.
+    if (!claims.emailVerified) {
+      if (user && isStaff) {
+        await recordUnverifiedStaffSsoRefusal({
+          userId: user.id,
+          issuerHost,
+          reason: "provider_unverified",
+        });
+      }
+      return fail("oauth_email_unverified");
+    }
 
     // Same generic rejection for "no account", "account isn't staff", and
     // "account disabled" -- see this file's header comment for why the
@@ -102,7 +117,7 @@ export async function GET(request: Request) {
     if (!user.email_verified_at) {
       await recordUnverifiedStaffSsoRefusal({
         userId: user.id,
-        issuerHost: new URL(config.issuerUrl).hostname,
+        issuerHost,
         reason: "account_unverified",
       });
       return fail("oauth_no_account");
@@ -119,7 +134,7 @@ export async function GET(request: Request) {
       user.id,
       user.id,
       "staff_oidc_login",
-      `Signed in via staff SSO (${new URL(config.issuerUrl).hostname}).`,
+      `Signed in via staff SSO (${issuerHost}).`,
       ip,
     );
 
