@@ -910,6 +910,14 @@ npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc -
             mounted for backups already covers it. The in-app updater runs the
             same migrator, so it takes the same dump.
           </p>
+          <p>
+            If the dump cannot be written (a full volume, a folder the app
+            cannot write to), the migration stops before it changes anything and
+            says why.{" "}
+            <InlineCode>npm run db:migrate -- --skip-backup</InlineCode> is the
+            explicit way past it, for when you already hold a backup of your
+            own.
+          </p>
         </DocsCallout>
 
         <p className="text-sm text-muted-foreground">

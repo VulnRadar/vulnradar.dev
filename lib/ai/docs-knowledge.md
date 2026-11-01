@@ -353,6 +353,13 @@ sits inside BACKUP_DIR, the volume you
 mounted for backups already covers it. The in-app updater runs the
 same migrator, so it takes the same dump.
 
+If the dump cannot be written (a full volume, a folder the app
+cannot write to), the migration stops before it changes anything and
+says why.
+npm run db:migrate -- --skip-backup is the
+explicit way past it, for when you already hold a backup of your
+own.
+
 > **WARNING: Keep the old key longer than you expect**
 > There is no command that re-encrypts everything. API keys move to
 the new key the first time each one is used after the rotation, so
@@ -3140,7 +3147,7 @@ individual URLs instead.
 | `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
 | `/docs/setup` | - | 12 | 4 | 0 | 23 | 0 | 0 | 31 | 31 |
 | `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 16 | 2 |
-| `/docs/self-hosting` | - | 17 | 15 | 0 | 18 | 0 | 0 | 50 | 3 |
+| `/docs/self-hosting` | - | 17 | 15 | 0 | 18 | 0 | 0 | 51 | 3 |
 | `/docs/config` | - | 9 | 5 | 0 | 2 | 0 | 0 | 39 | 0 |
 | `/docs/api` | - | 8 | 5 | 0 | 6 | 42 | 0 | 18 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |
