@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { clearAiInfoCache } from "@/components/shared/ai-info";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -114,6 +115,9 @@ export function ProfileAiSettingsTab({
         return;
       }
       setAiDisabled(next);
+      // The scan menu and the dashboard share a 10 second copy of /ai/info,
+      // opt-out included; drop it so the change shows on the next read.
+      clearAiInfoCache();
       setSuccess(next ? "AI features disabled." : "AI features enabled.");
     } catch {
       setError("Failed to update AI setting.");
