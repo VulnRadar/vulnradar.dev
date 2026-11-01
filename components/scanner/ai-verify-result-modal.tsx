@@ -89,6 +89,12 @@ export function AiVerifyResultModal({
 
   // The pass did not happen. Reported before anything is counted, because a
   // count of zero verdicts is exactly what a successful all-clear looks like.
+  //
+  // A pass starts once the account can cover one finding against an empty
+  // page, so an account with less left than this page needs is let in and
+  // then stops before the first call. That is the allowance, not an outage,
+  // and "try again in a minute" would send it straight back into the same
+  // stop.
   const didNotRun =
     outcome != null &&
     outcome.attempted > 0 &&
@@ -101,15 +107,21 @@ export function AiVerifyResultModal({
       ? "No AI provider is configured for this instance, so nothing was checked. Add your own provider in Profile > AI settings, or ask the operator to configure one."
       : outcome.rateLimited
         ? "The AI provider is refusing requests because a usage limit has been reached, so nothing here has been checked. Your findings are unchanged. That limit belongs to the provider's plan and resets on their schedule, so waiting a few minutes may not be enough."
-        : "The AI service did not answer for any finding, so nothing here has been checked by it. Your findings are unchanged. Try again in a minute.";
+        : outcome.budgetExhausted
+          ? "Your AI allowance ran out before a finding could be checked against this page, so nothing here has been checked. Your findings are unchanged. Upgrade your plan, wait for the window to reset, connect your own AI provider key in Profile > AI settings, or buy AI credits in Profile > Billing."
+          : "The AI service did not answer for any finding, so nothing here has been checked by it. Your findings are unchanged. Try again in a minute.";
   }
 
-  // Some findings were judged before the provider started refusing. The
-  // result above is real, but it covers only part of the scan, and saying
-  // nothing would let the unchecked rest read as cleared.
+  // Some findings were judged before the provider started refusing or the
+  // allowance ran out. The result above is real, but it covers only part of
+  // the scan, and saying nothing would let the unchecked rest read as cleared.
   const partialNote =
-    outcome?.rateLimited && !didNotRun
-      ? `${outcome.verdicts} of ${outcome.attempted} findings were checked before the AI provider started refusing requests. The rest have no AI verdict.`
+    outcome && !didNotRun
+      ? outcome.rateLimited
+        ? `${outcome.verdicts} of ${outcome.attempted} findings were checked before the AI provider started refusing requests. The rest have no AI verdict.`
+        : outcome.budgetExhausted
+          ? `${outcome.verdicts} of ${outcome.attempted} findings were checked before your AI allowance ran out. The rest have no AI verdict.`
+          : null
       : null;
 
   if (didNotRun) {
