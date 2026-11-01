@@ -433,9 +433,13 @@ describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
         text: string;
         html: string;
       };
-      expect(sent.text).toMatch(
-        /https:\/\/scanner\.example\.org\/staff-invite\/[a-f0-9]{64}/,
-      );
+      const link = sent.text
+        .split(/\s+/)
+        .find((word) => word.includes("/staff-invite/"));
+      expect(link).toBeDefined();
+      const inviteUrl = new URL(link!);
+      expect(inviteUrl.origin).toBe("https://scanner.example.org");
+      expect(inviteUrl.pathname).toMatch(/^\/staff-invite\/[a-f0-9]{64}$/);
       expect(sent.text + sent.html).not.toContain("evil.example");
     } finally {
       if (savedEnv === undefined) delete process.env.APP_URL;
