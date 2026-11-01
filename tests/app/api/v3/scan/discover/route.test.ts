@@ -48,10 +48,17 @@ vi.mock("@/lib/api/api-keys", () => ({
 
 const mockSafeFetch = vi.fn();
 const mockValidateScanTarget = vi.fn();
-vi.mock("@/lib/scanner/safe-fetch", () => ({
-  safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
-  validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
-}));
+// pinToResolvedIp stays real: the passive-source fetches go through it, and
+// a stub would hide whether they still carry the pinned dispatcher.
+vi.mock("@/lib/scanner/safe-fetch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/scanner/safe-fetch")>();
+  return {
+    safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
+    validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
+    pinToResolvedIp: actual.pinToResolvedIp,
+  };
+});
 
 // Discovery now honours the admin blocklist and, on a forced refresh, charges
 // the daily quota: a forced refresh skips the cache and runs the full engine
