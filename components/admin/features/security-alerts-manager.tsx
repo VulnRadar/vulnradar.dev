@@ -53,6 +53,7 @@ const ALERT_TYPE_LABELS: Record<string, string> = {
   api_key_ip_mismatch: "API key used from a new network",
   brute_force: "Repeated failed sign-ins",
   new_device_login: "Sign-in from a new device",
+  staff_invite_unverified_email: "Staff invite refused: address not verified",
 };
 
 function alertTypeLabel(type: string): string {
