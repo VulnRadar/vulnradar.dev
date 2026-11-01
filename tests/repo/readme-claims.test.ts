@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { REQUIRED_EVENTS } from "@/lib/billing/stripe-webhook-events";
 import { LOCALES } from "@/lib/i18n/config";
+import { escapeRegExp } from "@/lib/scanner/_helpers";
 import { VERSIONS } from "../../scripts/migrate/_registry.mjs";
 
 /**
@@ -390,7 +391,7 @@ describe("scripts/README.md", () => {
     expect(top.size).toBeGreaterThan(5);
     for (const name of top) {
       expect(tree, `${name} is missing from the layout`).toMatch(
-        new RegExp(`(?:├──|└──) ${name.replace(/\./g, "\\.")}/?(?:\\s|$)`),
+        new RegExp(`(?:├──|└──) ${escapeRegExp(name)}/?(?:\\s|$)`),
       );
     }
   });

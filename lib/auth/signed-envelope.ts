@@ -57,12 +57,15 @@ function mac(
   payloadB64: string,
   domain: string | undefined,
 ): Buffer {
-  // HMAC-SHA256 keyed with a server secret, signing a short-lived TOKEN (a
-  // state nonce, a pending-2FA user id, an observed IPv4) -- a MAC, not a
-  // password hash. HMAC-SHA256 is the correct primitive for keyed token
-  // signing; a slow password KDF would be wrong here. Real password hashing
-  // lives in lib/auth/password-hash.ts.
-  // codeql[js/insufficient-password-hash]
+  // A MAC, not a password hash. The key is a server secret (AUTH_SECRET, at
+  // least 32 characters, or API_KEY_ENCRYPTION_KEY) and the input is the
+  // token's own payload, which the token already carries in the clear: an
+  // OAuth state's random nonce, provider or action, user id and timestamp, a
+  // pending-2FA user id, email, 2FA method and timestamp, or an observed IPv4.
+  // A slow KDF exists to stop offline guessing of a low-entropy secret; the
+  // only secret here is the key, and the check runs on every request that
+  // presents a token, so a fast keyed hash is the right primitive. Passwords
+  // are hashed in lib/auth/password-hash.ts.
   return createHmac("sha256", key)
     .update(domain ? `${domain}.${payloadB64}` : payloadB64)
     .digest();

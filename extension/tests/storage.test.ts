@@ -221,14 +221,16 @@ describe("patchSettings", () => {
 
   it("does not undo a change another writer made in between", async () => {
     storageData.settings = { ...DEFAULT_SETTINGS };
-    // The background turns both alerts off while the options page, which read
-    // its copy earlier, saves an unrelated toggle.
+    // The options page reads its copy, the background then turns both alerts
+    // off, and the options page saves an unrelated toggle.
+    const optionsCopy = (await loadAll()).settings;
     storageData.settings = {
       ...DEFAULT_SETTINGS,
       showScanResults: false,
       showScanPrompts: false,
     };
     const next = await patchSettings({ compactMode: true });
+    expect(optionsCopy.showScanResults).toBe(true);
     expect(next.showScanResults).toBe(false);
     expect(next.showScanPrompts).toBe(false);
     expect(next.compactMode).toBe(true);

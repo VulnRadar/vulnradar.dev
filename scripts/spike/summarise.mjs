@@ -37,6 +37,20 @@ function cell(result, item) {
   return itemVerdict(result.checks.filter((c) => c.spike === item));
 }
 
+/**
+ * Free text made safe for one cell of a Markdown table. Backslashes are
+ * doubled before pipes are escaped: Markdown reads a backslash before
+ * punctuation as an escape, so without that a detail quoting a regex showed
+ * `\.` as `.`, and `\|` in the text came out as a bare pipe. Line breaks, CR
+ * included, would end the row.
+ */
+function tableCell(value) {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\r\n?|\n/g, " ");
+}
+
 function overall(cells) {
   const ran = cells.filter((c) => c !== "not run");
   const real = ran.filter((c) => c !== "SKIP" && c !== "n/a");
@@ -177,11 +191,8 @@ export function buildSummary(results, bench, mutations = []) {
     );
     lines.push("| Check | Status | Detail |", "|---|---|---|");
     for (const c of r.checks) {
-      const detail = String(c.detail ?? "")
-        .replace(/\|/g, "\\|")
-        .replace(/\n/g, " ");
       lines.push(
-        `| ${c.id} ${c.title} | ${c.status.toUpperCase()} | ${detail} |`,
+        `| ${c.id} ${c.title} | ${c.status.toUpperCase()} | ${tableCell(c.detail)} |`,
       );
     }
     lines.push("", "</details>", "");

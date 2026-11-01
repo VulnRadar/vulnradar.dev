@@ -10,6 +10,7 @@ import {
 import { NON_PUBLIC_SUFFIXES } from "../../extension/src/lib/lookup-url";
 import { DEFAULT_SETTINGS } from "../../extension/src/lib/types";
 import { PLANS } from "@/lib/billing/catalog";
+import { escapeRegExp } from "@/lib/scanner/_helpers";
 
 /**
  * The docs page, the README and the extension's own copy all state numbers
@@ -79,7 +80,7 @@ describe("docs/extension states the extension's real numbers", () => {
     for (const suffix of NON_PUBLIC_SUFFIXES) {
       // ".local" must not be satisfied by ".localhost", so the suffix has to end
       // where a word does.
-      const named = new RegExp(`${suffix.replace(/\./g, "\\.")}(?![a-z])`);
+      const named = new RegExp(`${escapeRegExp(suffix)}(?![a-z])`);
       expect(named.test(DOCS), `docs page: ${suffix}`).toBe(true);
       // The README writes them as code spans, with the leading dot.
       expect(README.includes(`\`${suffix}\``), `README: ${suffix}`).toBe(true);

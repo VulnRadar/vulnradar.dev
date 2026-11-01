@@ -160,6 +160,41 @@ test("buildSummary reports a failing item with its fallback and exits non-zero u
   assert.match(broken.text, /native serialiser/i);
 });
 
+test("buildSummary writes a check's detail into its table cell as it was recorded", () => {
+  const detail = "got C:\\tmp\\|x, wanted ^\\d+\\.\\d+$\r\nthen | again";
+  const { text } = buildSummary(
+    {
+      start: {
+        next: "15.5.28",
+        node: "v22",
+        platform: "linux-x64",
+        checks: [
+          { id: "4a", spike: 4, title: "headers", status: "fail", detail },
+        ],
+        facts: {},
+        error: null,
+      },
+    },
+    null,
+  );
+  const prefix = "| 4a headers | FAIL | ";
+  const row = text.split("\n").find((line) => line.startsWith(prefix));
+  assert.ok(row, "the detail row is missing or was split across lines");
+  assert.ok(!row.includes("\r"), "a CR in the detail would end the row");
+  assert.equal(
+    row.match(/(?<!\\)\|/g).length,
+    4,
+    "a pipe in the detail opened a new cell",
+  );
+  // What GitHub shows for the cell: the table turns \| into |, then Markdown
+  // turns a backslash before ASCII punctuation into that character.
+  const shown = row
+    .slice(prefix.length, -" |".length)
+    .replace(/\\\|/g, "|")
+    .replace(/\\([!-/:-@[-`{-~])/g, "$1");
+  assert.equal(shown, detail.replace(/\r\n/g, " "));
+});
+
 function declaredChecks() {
   const dir = path.join(REPO_ROOT, "scripts/spike/checks");
   const seen = new Map();
