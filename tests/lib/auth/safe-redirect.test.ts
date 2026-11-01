@@ -27,7 +27,7 @@ describe("safeRedirect", () => {
     ["a DEL", "/\u007f/evil.com"],
     ["a leading space", " //evil.com"],
     ["a space inside", "/a b"],
-    ["a no-break space", "/ /evil.com"],
+    ["a no-break space", "/\u00a0/evil.com"],
     ["a path that does not start with a slash", "dashboard"],
     ["an empty string", ""],
   ])("refuses %s", (_label, value) => {
