@@ -169,6 +169,23 @@ export function reportRequestUrl(apiBase, scanId, opts) {
   return `${apiBase}/history/${encodeURIComponent(scanId)}/report?${params}`;
 }
 
+/**
+ * Whether a scan id from the API's reply can go into a request URL as one
+ * path segment once it is encoded.
+ *
+ * encodeURIComponent leaves "." alone, and a URL resolves a "." or ".."
+ * segment against the path around it, so an id of ".." still sent the status
+ * polls and the cancel DELETE to the scan collection and the report download
+ * one level above /history. Those two are refused rather than encoded, and so
+ * is anything that is not a string or a number, which no scan id has ever
+ * been.
+ */
+export function isScanIdSegment(scanId) {
+  if (typeof scanId !== "string" && typeof scanId !== "number") return false;
+  const segment = String(scanId);
+  return segment !== "" && segment !== "." && segment !== "..";
+}
+
 /** Whether a URL hostname is this machine, where plain http is not a leak. */
 function isLoopbackHost(hostname) {
   const host = hostname.toLowerCase();

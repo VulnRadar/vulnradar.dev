@@ -26,6 +26,7 @@ import {
   classifyRateLimit,
   createRetryPlan,
   cancelScan,
+  isScanIdSegment,
   insecureApiBase,
   BLOCKING_INCOMPLETE,
   INCOMPLETE_LABELS,
@@ -2340,6 +2341,42 @@ test("reportRequestUrl and cancelScan encode the scan id as one path segment", a
     server.close();
   }
 });
+
+// Encoding leaves "." alone, and the URL parser resolves a "." or ".." segment
+// before the request is sent, so those two ids are refused outright.
+test("isScanIdSegment refuses the ids encoding cannot keep in their segment", () => {
+  for (const id of [
+    "s1",
+    "0123456789abcdef0123456789abcdef",
+    42,
+    "../../keys/5",
+  ]) {
+    assert.equal(isScanIdSegment(id), true, JSON.stringify(id));
+  }
+  for (const id of [".", "..", "", null, undefined, true, {}, ["s1"]]) {
+    assert.equal(isScanIdSegment(id), false, JSON.stringify(id));
+  }
+});
+
+for (const scanId of ["..", "."]) {
+  test(`cli: a scan id of "${scanId}" is refused before any request uses it`, async () => {
+    const { code, stderr, requests } = await runCli(
+      [...SCAN_ARGS, "--timeout", "3"],
+      {
+        routes: {
+          "/scan/status/": { body: completedWith({}) },
+          "/scan": { body: { scanId } },
+        },
+      },
+    );
+    assert.equal(code, EXIT.ERROR, stderr);
+    assert.match(stderr, /scan id that cannot be used in a URL/);
+    assert.deepEqual(
+      requests.map((r) => `${r.method} ${r.url}`),
+      ["POST /scan"],
+    );
+  });
+}
 
 // The report is written to the path the user named with --out and nowhere
 // else. A file name in the reply (Content-Disposition, as the web download

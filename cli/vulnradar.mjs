@@ -22,6 +22,7 @@ import {
   retryAfterSeconds,
   reportRequestUrl,
   cancelScan,
+  isScanIdSegment,
   USAGE,
   EXIT,
 } from "./lib.mjs";
@@ -397,6 +398,11 @@ async function main() {
   const created = await readJson(createRes, endpoint);
   const scanId = created?.scanId;
   if (!scanId) fail("No scanId in the response.");
+  if (!isScanIdSegment(scanId)) {
+    fail(
+      `The API returned a scan id that cannot be used in a URL: ${snippetOf(JSON.stringify(scanId))}`,
+    );
+  }
   activeScanId = scanId;
   // The handlers go in before the line is printed, because the line is the
   // promise that a signal from here on cancels the scan. Printed first, a
