@@ -432,6 +432,11 @@ export default function AdministrationPage() {
                 "In Settings, Advanced: the issuer URL, the client ID and the client secret (STAFF_OIDC_ISSUER_URL, STAFF_OIDC_CLIENT_ID, STAFF_OIDC_CLIENT_SECRET). All three are needed, and any empty one leaves SSO off. The secret is write-only, so it is not shown again once saved. The app asks for the openid, email and profile scopes.",
             },
             {
+              step: "Check the email_verified claim",
+              detail:
+                'Sign-in needs the ID token to say email_verified: true (the string "true" also counts). Microsoft Entra ID leaves the claim out unless you configure it, and without it every SSO sign-in is refused. Add the claim at your provider, or have the super admin turn on STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED in the same tab, which lets a token without the claim count as verified. A token that says false is refused either way.',
+            },
+            {
               step: "Sign in",
               detail:
                 "The login page offers the SSO link. A successful sign-in lands on /admin.",
@@ -443,15 +448,31 @@ export default function AdministrationPage() {
           that already exists with the email the provider returned, only if that
           account already holds a staff role of support or above, only if the
           provider says the email is verified, only if the account has verified
-          that same address here too, and not if the account is disabled. It
-          never creates an account and never changes a role, so a misconfigured
-          or compromised provider can at worst authenticate as an account you
+          that same address here too, and not if the account is disabled. The
+          provider counts as saying so only when the ID token&rsquo;s{" "}
+          <InlineCode>email_verified</InlineCode> claim is true; a missing claim
+          is a no unless{" "}
+          <InlineCode>STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED</InlineCode> is
+          on, and a false one is a no whatever that setting says. It never
+          creates an account and never changes a role, so a misconfigured or
+          compromised provider can at worst authenticate as an account you
           already provisioned. An unknown email, an account that is not staff
           and a staff account that has not verified its address here all get the
           same generic refusal, so the sign-in cannot be used to find out which
           addresses are staff. The last of those also files a high-severity
           security alert against the account: either someone set that address on
-          it without owning it, or its owner never verified it.
+          it without owning it, or its owner never verified it. An address the
+          provider does not vouch for gets its own refusal, the same for every
+          account, and files the same alert when the address belongs to staff:
+          either someone holds a staff member&rsquo;s address at the provider
+          without having proved it, or the provider does not send the claim. An
+          account has one open alert of this kind at a time.
+        </p>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Only the super admin can change{" "}
+          <InlineCode>STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED</InlineCode>, and
+          each change is written to the audit log, as is an attempt by anyone
+          else.
         </p>
         <DocsCallout
           variant="warning"

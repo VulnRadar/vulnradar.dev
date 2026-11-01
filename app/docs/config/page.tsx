@@ -774,6 +774,20 @@ export default function ConfigPage() {
           </p>
         </DocsSubSection>
 
+        <DocsSubSection title="Super admin only">
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Two settings can be saved or reset by the super admin alone.{" "}
+            <InlineCode>APP_URL</InlineCode> decides where every sign-in and
+            connect flow returns to.{" "}
+            <InlineCode>STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED</InlineCode>{" "}
+            decides whether staff SSO trusts an ID token that has no{" "}
+            <InlineCode>email_verified</InlineCode> claim, which Microsoft Entra
+            ID leaves out unless you configure it; a token that says false is
+            refused either way. Any other admin who tries gets a 403, and the
+            attempt is written to the audit log like every change.
+          </p>
+        </DocsSubSection>
+
         <DocsSubSection title="Export">
           <p className="max-w-[68ch] text-sm text-muted-foreground">
             The Export button downloads every setting that currently has a
