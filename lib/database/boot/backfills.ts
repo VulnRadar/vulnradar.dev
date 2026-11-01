@@ -22,6 +22,7 @@
 import type { Pool } from "pg";
 import { DEFAULT_BADGES_SQL } from "@/lib/database/schema/seeds.mjs";
 import { logError } from "@/lib/logging/log";
+import { parsedFormOf } from "@/lib/scanner/canonical-url";
 import {
   FREQUENCIES,
   SCHEDULE_FREQUENCIES,
@@ -40,6 +41,55 @@ export async function runBootBackfills(
   await seedDefaultBadges(pool, appName);
   await backfillWebhookSecrets(appName);
   await backfillSubDailyScheduleSlots(pool, appName);
+  await canonicalizeStoredScanUrls(pool);
+}
+
+/** Rows per page of the scan URL rewrite; it walks the table by id. */
+const SCAN_URL_PAGE = 500;
+
+/**
+ * Rewrite the scan_history URLs stored before normalizeUrl stored the parsed
+ * form, so each row names the address the scanner actually fetched.
+ *
+ * Until then a row whose authority holds a backslash reads as having no host
+ * in the SQL host expressions (lib/database/schema/sql-fragments.mjs), which
+ * is the safe answer for a public listing but leaves the row outside a domain
+ * block's purge and outside the domain owner's controls. Idempotent: a
+ * rewritten row no longer matches, and one the parser refuses is left as it
+ * is because nothing was ever fetched from it.
+ */
+export async function canonicalizeStoredScanUrls(pool: Pool): Promise<void> {
+  try {
+    let afterId = 0;
+    for (;;) {
+      const { rows } = await pool.query<{ id: number; url: string }>(
+        `SELECT id, url FROM scan_history
+          WHERE id > $1
+            AND (strpos(url, chr(92)) > 0 OR url ~ '[[:cntrl:]]')
+          ORDER BY id
+          LIMIT $2`,
+        [afterId, SCAN_URL_PAGE],
+      );
+      for (const row of rows) {
+        const href = parsedFormOf(row.url);
+        if (href === row.url) continue;
+        // Re-checked in the WHERE so a row changed since the SELECT is not
+        // overwritten with an answer computed from its old value.
+        await pool.query(
+          `UPDATE scan_history SET url = $2 WHERE id = $1 AND url = $3`,
+          [row.id, href, row.url],
+        );
+      }
+      if (rows.length < SCAN_URL_PAGE) return;
+      afterId = rows[rows.length - 1].id;
+    }
+  } catch (err) {
+    logError(
+      "scan",
+      "Failed to rewrite stored scan URLs to their parsed form (non-fatal)",
+      err,
+    );
+  }
 }
 
 /**

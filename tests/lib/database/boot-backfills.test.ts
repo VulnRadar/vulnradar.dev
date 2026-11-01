@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Pool } from "pg";
-import { backfillSubDailyScheduleSlots } from "@/lib/database/boot/backfills";
+import {
+  backfillSubDailyScheduleSlots,
+  canonicalizeStoredScanUrls,
+} from "@/lib/database/boot/backfills";
 import { computeNextRunAt } from "@/lib/scanner/schedule-timing";
 
 /**
@@ -175,6 +178,57 @@ describe("backfillSubDailyScheduleSlots", () => {
     await expect(
       backfillSubDailyScheduleSlots(pool, "App"),
     ).resolves.toBeUndefined();
+    expect(console.error).toHaveBeenCalled();
+  });
+});
+
+describe("canonicalizeStoredScanUrls", () => {
+  const BACKSLASH = "\\";
+
+  it("updates only the rows whose parsed form differs, guarded by the old value", async () => {
+    const rows = [
+      { id: 3, url: `https://evil.example${BACKSLASH}@victim.example/` },
+      { id: 7, url: "https://exa\u0001mple.test/" },
+    ];
+    const query = vi.fn(async (sql: string) =>
+      sql.trimStart().startsWith("SELECT") ? { rows } : { rows: [] },
+    );
+    await canonicalizeStoredScanUrls({ query } as unknown as Pool);
+
+    const updates = query.mock.calls.filter(([sql]) =>
+      String(sql).trimStart().startsWith("UPDATE"),
+    );
+    expect(updates).toEqual([
+      [
+        "UPDATE scan_history SET url = $2 WHERE id = $1 AND url = $3",
+        [3, "https://evil.example/@victim.example/", rows[0].url],
+      ],
+    ]);
+  });
+
+  it("asks for the next page after a full one, starting past its last id", async () => {
+    const full = Array.from({ length: 500 }, (_, i) => ({
+      id: i + 1,
+      url: "https://example.test/",
+    }));
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: full })
+      .mockResolvedValueOnce({ rows: [] });
+    await canonicalizeStoredScanUrls({ query } as unknown as Pool);
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[1][1]).toEqual([500, 500]);
+  });
+
+  it("does not throw when the query fails, so a boot is never stopped", async () => {
+    const pool = {
+      query: vi.fn(async () => {
+        throw new Error("relation does not exist");
+      }),
+    } as unknown as Pool;
+
+    await expect(canonicalizeStoredScanUrls(pool)).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalled();
   });
 });
