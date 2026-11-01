@@ -34,13 +34,22 @@ vi.mock("@/lib/config/runtime-config", () => ({
   ),
 }));
 
-vi.mock("@/lib/scanner/safe-fetch", () => ({
-  safeFetch: vi.fn(),
-  validateScanTarget: vi.fn(async () => ({ safe: true })),
-}));
+vi.mock("@/lib/scanner/safe-fetch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/scanner/safe-fetch")>();
+  return {
+    safeFetch: vi.fn(),
+    validateScanTarget: vi.fn(async () => ({
+      safe: true,
+      resolvedIp: "93.184.216.34",
+    })),
+    pinToResolvedIp: actual.pinToResolvedIp,
+    PinnedDispatcher: actual.PinnedDispatcher,
+  };
+});
 
 import dns from "dns/promises";
-import { safeFetch } from "@/lib/scanner/safe-fetch";
+import { PinnedDispatcher, safeFetch } from "@/lib/scanner/safe-fetch";
 import { discoverSubdomainsForRoot } from "@/lib/scanner/subdomain-discovery-engine";
 import {
   SCANNER_UA,
@@ -155,6 +164,22 @@ describe("discoverSubdomainsForRoot", () => {
       expect(userAgentOf(init)).toBe(SCANNER_UA_DISCOVERY);
     }
     expect(SCANNER_UA_DISCOVERY).toContain(SCANNER_UA_PRODUCT);
+  });
+
+  it("connects each passive source to the address its check approved", async () => {
+    safeFetchMock.mockResolvedValue(new Response(null, { status: 200 }));
+
+    await discoverSubdomainsForRoot("example.com");
+
+    expect(fetchMock).toHaveBeenCalled();
+    for (const [url, init] of fetchMock.mock.calls) {
+      const dispatcher = (init as { dispatcher?: unknown }).dispatcher;
+      expect(dispatcher).toBeInstanceOf(PinnedDispatcher);
+      expect((dispatcher as PinnedDispatcher).address).toBe("93.184.216.34");
+      expect((dispatcher as PinnedDispatcher).hostname).toBe(
+        new URL(String(url)).hostname,
+      );
+    }
   });
 
   it("does not probe a name that has no DNS record", async () => {

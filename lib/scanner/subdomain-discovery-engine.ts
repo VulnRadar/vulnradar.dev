@@ -22,7 +22,11 @@
 
 import dns from "dns/promises";
 import pool from "@/lib/database/db";
-import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
+import {
+  pinToResolvedIp,
+  safeFetch,
+  validateScanTarget,
+} from "@/lib/scanner/safe-fetch";
 import { safeReadBody } from "@/lib/scanner/read-bounded-body";
 import { getSetting } from "@/lib/config/runtime-config";
 import { setDiscoveryStage } from "@/lib/scanner/discovery-progress";
@@ -453,7 +457,8 @@ const PASSIVE_SOURCE_MAX_REDIRECT_HOPS = 3;
  * free endpoints move hosts without notice. What it will not do is follow a
  * hop to something validateScanTarget refuses: a private, loopback,
  * link-local or cloud-metadata address, or (since AUDIT-012#ssrf-07) a
- * non-http(s) scheme. Returns null when the initial URL or a hop is refused;
+ * non-http(s) scheme, and each hop connects only to the address its check
+ * approved. Returns null when the initial URL or a hop is refused;
  * callers treat that exactly like an unreachable source.
  */
 async function fetchPassiveSource(
@@ -469,11 +474,16 @@ async function fetchPassiveSource(
     const safety = await validateScanTarget(currentUrl);
     if (!safety.safe) return null;
 
-    const res = await fetch(currentUrl, {
+    // Connect to the address that was just approved rather than letting
+    // fetch resolve the name again, so a source whose DNS flips to an
+    // internal address between the check and the connect cannot steer the
+    // request there.
+    const target = pinToResolvedIp(currentUrl, safety.resolvedIp, {
       signal,
       headers,
       redirect: "manual",
     });
+    const res = await fetch(target.url, target.init);
     if (!(res.status >= 300 && res.status < 400)) return res;
 
     const location = res.headers.get("location");
