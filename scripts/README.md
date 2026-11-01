@@ -30,7 +30,7 @@ scripts/
 │   ├── _lib.target.mjs            # listDatabases, chooseDatabase, formatDbTarget, formatDbHost
 │   ├── _lib.meta.mjs              # getProjectMeta, formatBytes, formatDuration
 │   ├── _lib.intro.mjs             # confirmIntro
-│   ├── _lib.backup.mjs            # Dump/restore plumbing for backup-db + restore-db
+│   ├── _lib.backup.mjs            # The pg_dump migrate.mjs takes into BACKUP_DIR/pre-migration before any DDL
 │   ├── _lib.corruption-orchestrator.mjs  # Drives every check-*.mjs below
 │   ├── _lib.check-*.mjs           # cross-column, encrypted-columns, enums, fk-orphans,
 │   │                              # json-shape, timestamps
@@ -48,7 +48,9 @@ scripts/
 │   ├── db-repair-2fa.mjs          # Fix only the rows db-diagnose-2fa proved corrupt
 │   ├── db-repair-sequences.mjs    # Reset identity sequences after a restore
 │   ├── migrate-avatars-to-files.mjs  # One-off: base64 avatars in the DB -> files on disk
-│   └── find-duplicate-ids.mjs     # Repo check: duplicate check IDs (run by hand)
+│   ├── find-duplicate-ids.mjs     # Repo check: duplicate check IDs (run by hand)
+│   ├── snapshot-api-routes.mjs    # Freeze the route inventory the 4.0 move is proved against (refuses to overwrite)
+│   └── snapshot-openapi-v3.mjs    # Freeze the v3 OpenAPI document before the move (run once, by hand)
 │
 ├── knowledge/                     # Build the AI knowledge files (predev + prebuild)
 │   ├── compile-docs-knowledge.mjs # app/docs/**  -> lib/ai/docs-knowledge.md
@@ -70,6 +72,15 @@ scripts/
 │
 ├── ai/
 │   └── run-verify-eval.mjs        # npm run eval:verify: the AI verification eval, against .env.local
+│
+├── spike/                         # Routing spike for the v4 alias design (.github/workflows/spike-api-rewrite.yml, or by hand)
+│   ├── run.mjs                    # Builds tests/spike/fixture and runs the checks of SPIKE 1 to 6 against dev, start and the image
+│   ├── summarise.mjs              # Merges the result files into one pass or fail table per SPIKE item
+│   ├── bench-serialise.mjs        # SPIKE 7: what versioned() costs on a large JSON body
+│   ├── selftest.mjs               # Checks the harness itself, no server needed
+│   ├── mutations.mjs              # Deliberate breakages that prove the checks can fail
+│   ├── checks/                    # One module per SPIKE item
+│   └── lib/                       # HTTP, fixture, server and report helpers
 │
 ├── backup-db.mjs                  # Full dump. Path pinned by lib/backup/run-backup.ts
 ├── restore-db.mjs                 # Restore a dump written by backup-db
