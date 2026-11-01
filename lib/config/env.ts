@@ -38,8 +38,8 @@ const BoolString = z
   .transform((v) => v === "true");
 
 const OptionalSchema = z.object({
-  // Used by lib/auth/discord-state.ts when AUTH_SECRET is set. API_KEY_ENCRYPTION_KEY
-  // is the fallback for HMAC signing; either one is sufficient.
+  // The HMAC key for the OAuth and Discord state tokens (lib/auth/signed-envelope.ts)
+  // when set. API_KEY_ENCRYPTION_KEY is the fallback; either one is sufficient.
   AUTH_SECRET: z
     .string()
     .min(
@@ -127,11 +127,11 @@ const OptionalSchema = z.object({
   // assertProductionSafe below.
   DISABLE_CSP: z.string().optional(),
 
-  // security: when set to "1", API requests from non-browser clients
-  // (those without a valid Origin / Cookie pair) bypass the CSRF check
-  // and the middleware public-path gate. Intended for local development
-  // with API clients (curl, Postman, etc.) that cannot send cookies.
-  // MUST NOT be set in production: middleware.ts's enforceCsrf()
+  // security: when set to "1", mutating API requests skip the CSRF Origin
+  // check in middleware.ts's enforceCsrf() and nothing else: the public-path
+  // list and the auth gate still apply. Intended for local development with
+  // API clients (curl, Postman, etc.) that cannot send an Origin header.
+  // MUST NOT be set in production: enforceCsrf()
   // checks NODE_ENV === "production" as a secondary guard, but
   // the env-schema declaration here makes the flag visible at startup
   // validation so typos in the var name are caught immediately

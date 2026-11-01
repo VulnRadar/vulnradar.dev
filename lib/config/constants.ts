@@ -343,12 +343,12 @@ export const SUCCESS_MESSAGES = {
 
 // REGEX PATTERNS
 //
-// LEGACY DEFAULT ONLY -- zero importers. Validation is done with zod schemas
-// at each route boundary, which is where it belongs; these were the
-// pre-zod shapes. Do not reach for PATTERNS.EMAIL over z.string().email():
-// the regex here accepts addresses zod rejects, so a route validating with
-// this one would let through what the rest of the app will not
-// (AUDIT-011#drift-24).
+// LEGACY DEFAULT ONLY -- zero importers. A route reads its body with
+// parseBody and checks fields with Validate (lib/api/api-utils.ts), and a few
+// use zod schemas; these were the older shapes. Do not reach for
+// PATTERNS.EMAIL over z.string().email(): the regex here accepts addresses
+// zod rejects, so a route validating with this one would let through what the
+// zod routes will not (AUDIT-011#drift-24).
 export const PATTERNS = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   URL: /^https?:\/\/.+/i,
