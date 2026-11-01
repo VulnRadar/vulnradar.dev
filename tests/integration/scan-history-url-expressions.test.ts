@@ -248,6 +248,17 @@ describeIntegration("scan_history URL expressions", () => {
     expect(byName.get("idx_scan_history_user_shared")).toContain(
       "share_token IS NOT NULL",
     );
+    // The planner does not read a partial expression index's statistics,
+    // so the expressions carry their own.
+    const stats = await pool.query<{ stxname: string }>(
+      `SELECT stxname FROM pg_statistic_ext
+        WHERE stxname = ANY($1::text[]) ORDER BY stxname`,
+      [["stat_scan_history_origin_path", "stat_scan_history_public_host"]],
+    );
+    expect(stats.rows.map((r) => r.stxname)).toEqual([
+      "stat_scan_history_origin_path",
+      "stat_scan_history_public_host",
+    ]);
   });
 
   it.each([
@@ -255,34 +266,32 @@ describeIntegration("scan_history URL expressions", () => {
       "idx_scan_history_public_host",
       `SELECT id FROM scan_history
         WHERE is_public = true AND status = 'completed'
-          AND ${PUBLIC_HOST_SQL} = 'example.test'`,
+          AND ${PUBLIC_HOST_SQL} = 'example.test'
+        ORDER BY scanned_at DESC LIMIT 30`,
     ],
     [
       "idx_scan_history_public_origin_path",
       `SELECT id FROM scan_history
         WHERE is_public = true AND status = 'completed'
-          AND ${URL_ORIGIN_PATH_SQL} = ANY(ARRAY['https://example.test/a', 'https://example.test/a/'])`,
+          AND ${URL_ORIGIN_PATH_SQL} = ANY(ARRAY['https://example.test/a', 'https://example.test/a/'])
+        ORDER BY scanned_at DESC LIMIT 1`,
     ],
   ])(
     "plans a query written with the shared expression onto %s",
     async (indexName, query) => {
-      // The question is whether a query written with the shared expression
-      // CAN be matched to the index, not which plan the planner likes best.
-      // Three things are held still so the answer is that and nothing else.
+      // The query is the one the readers send: newest public scans of one host
+      // or page, for a value no row has, which is the usual answer and the
+      // case that goes wrong. Without the statistics the boot schema creates
+      // on these expressions, the planner cannot read the selectivity of a
+      // partial expression index, guesses that a fixed fraction of rows match
+      // and walks idx_scan_history_scanned_at backwards with a Filter, which
+      // for a miss reads the whole table.
       //
       // Sequential scans are off, so a seq-versus-index trade the CI machine
-      // happens to make does not decide it. The table has production-like
-      // volume and statistics inside the transaction: on a nearly empty one
-      // every path costs the same, and the planner chose a full scan of the
-      // OTHER expression index (they share one partial predicate) plus a plain
-      // Filter. And the query is the filter alone. With ORDER BY scanned_at
-      // DESC LIMIT 1 the planner walks idx_scan_history_scanned_at backwards
-      // and filters, because it does not read the statistics of a partial
-      // expression index, assumes one percent of rows match and so expects the
-      // first hit within a hundred entries. That is a statement about cost, not
-      // about matching; whether a caller's own ORDER BY and LIMIT get the index
-      // on real data is that caller's EXPLAIN to check. ROLLBACK removes the
-      // rows and the statistics together.
+      // happens to make does not decide it, and the table has production-like
+      // volume and statistics inside the transaction, because on a nearly
+      // empty one every path costs the same. ROLLBACK removes the rows and the
+      // statistics together.
       const owner = await createUser();
       const client = await pool.connect();
       try {

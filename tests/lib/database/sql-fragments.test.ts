@@ -214,4 +214,13 @@ describe("the boot schema builds its expression indexes from these exact strings
       `CREATE INDEX IF NOT EXISTS idx_scan_history_public_origin_path\n          ON scan_history ((${URL_ORIGIN_PATH_SQL}), scanned_at DESC)\n          WHERE is_public = true AND status = 'completed'`,
     );
   });
+
+  it("keeps statistics on both expressions, which the planner cannot read from a partial index", () => {
+    expect(sql).toContain(
+      `CREATE STATISTICS IF NOT EXISTS stat_scan_history_public_host\n          ON (${PUBLIC_HOST_SQL}) FROM scan_history;`,
+    );
+    expect(sql).toContain(
+      `CREATE STATISTICS IF NOT EXISTS stat_scan_history_origin_path\n          ON (${URL_ORIGIN_PATH_SQL}) FROM scan_history;`,
+    );
+  });
 });
