@@ -135,6 +135,16 @@ const httpMock = vi.mocked(http);
 // overload at every call site.
 const dnsLookupMock = dns.lookup as unknown as ReturnType<typeof vi.fn>;
 
+/**
+ * A body as a fresh stream on every access, the way each real fetch gets its
+ * own. The checks read target bodies through safeReadBody, which reads the
+ * stream and never calls text(), so a double that only had text() read as an
+ * empty body.
+ */
+function streamOf(text: string): ReadableStream<Uint8Array> | null {
+  return new Response(text).body;
+}
+
 function dnsError(code: string) {
   return Object.assign(new Error(code), { code });
 }
@@ -1772,10 +1782,11 @@ describe("checkRobotsTxt", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      text: () =>
-        Promise.resolve(
+      get body() {
+        return streamOf(
           "User-agent: *\nDisallow: /admin\nDisallow: /backup\nDisallow: /.env",
-        ),
+        );
+      },
     });
     const findings = await checkRobotsTxt("https://example.com");
     expect(findings.length).toBeGreaterThan(0);
@@ -1786,10 +1797,11 @@ describe("checkRobotsTxt", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      text: () =>
-        Promise.resolve(
+      get body() {
+        return streamOf(
           "User-agent: *\nDisallow: /admin\n\nUser-agent: GPTBot\nDisallow: /admin\n",
-        ),
+        );
+      },
     });
     const findings = await checkRobotsTxt("https://example.com");
     expect(findings.length).toBe(1);
@@ -1803,8 +1815,9 @@ describe("checkRobotsTxt", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      text: () =>
-        Promise.resolve("User-agent: *\nDisallow: /search?q=*\nAllow: /"),
+      get body() {
+        return streamOf("User-agent: *\nDisallow: /search?q=*\nAllow: /");
+      },
     });
     const findings = await checkRobotsTxt("https://example.com");
     expect(findings).toEqual([]);
@@ -1834,10 +1847,11 @@ describe("checkRobotsTxt", () => {
           return {
             ok: true,
             status: 200,
-            text: () =>
-              Promise.resolve(
+            get body() {
+              return streamOf(
                 "User-agent: *\nDisallow: /admin\nDisallow: /backup",
-              ),
+              );
+            },
           };
         }
         return { ok: false, status: 404 };
@@ -1866,7 +1880,9 @@ describe("checkSecurityTxt", () => {
       ok: true,
       status: 200,
       url: "https://example.com/.well-known/security.txt",
-      text: () => Promise.resolve(body),
+      get body() {
+        return streamOf(body);
+      },
       headers: { get: () => null },
     });
   }
@@ -1943,10 +1959,11 @@ describe("checkSecurityTxt", () => {
           return {
             ok: true,
             status: 200,
-            text: () =>
-              Promise.resolve(
+            get body() {
+              return streamOf(
                 "Contact: https://corporate.walmart.com/article/responsible-disclosure-policy\nPreferred-Languages: en\nCanonical: https://walmart.com/.well-known/security.txt\nPolicy: https://corporate.walmart.com/privacy-security\nHiring: https://careers.walmart.com",
-              ),
+              );
+            },
           };
         }
         // Only .well-known serves it; bare /security.txt on www is still 404.
@@ -1989,17 +2006,20 @@ describe("checkLiveFetch", () => {
           return {
             ok: true,
             status: 200,
-            text: () =>
-              Promise.resolve(
+            get body() {
+              return streamOf(
                 "User-agent: *\nDisallow: /admin\nDisallow: /backup",
-              ),
+              );
+            },
           };
         }
         if (url.includes("security.txt")) {
           return {
             ok: true,
             status: 200,
-            text: () => Promise.resolve("Contact: mailto:security@example.com"),
+            get body() {
+              return streamOf("Contact: mailto:security@example.com");
+            },
             headers: {
               get: (name: string) =>
                 name.toLowerCase() === "expires" ? futureDate : null,
@@ -2023,7 +2043,9 @@ describe("checkLiveFetch", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      text: () => Promise.resolve("reflects vulnradar-host-probe.invalid"),
+      get body() {
+        return streamOf("reflects vulnradar-host-probe.invalid");
+      },
       headers: {
         get: (name: string) => {
           const key = name.toLowerCase();
@@ -2160,22 +2182,12 @@ describe("checkLiveFetch: service exposure probes", () => {
         const href = typeof input === "string" ? input : String(input);
         const u = new URL(href);
         if (`${u.pathname}${u.search}` === path) {
-          return {
-            ok: status < 400,
+          return new Response(body, {
             status,
-            text: async () => body,
-            headers: {
-              get: (name: string) =>
-                name.toLowerCase() === "content-type" ? ct : null,
-            },
-          };
+            headers: { "content-type": ct },
+          });
         }
-        return {
-          ok: false,
-          status: 404,
-          text: async () => "",
-          headers: { get: () => null },
-        };
+        return new Response("", { status: 404 });
       },
     );
   }
@@ -2381,8 +2393,9 @@ describe("checkActiveHttpMethods", () => {
           return {
             ok: true,
             status: 200,
-            text: () =>
-              Promise.resolve("TRACE / HTTP/1.1\r\nUser-Agent: test\r\n"),
+            get body() {
+              return streamOf("TRACE / HTTP/1.1\r\nUser-Agent: test\r\n");
+            },
           };
         }
         return {
@@ -2450,10 +2463,11 @@ describe("checkXForwardedHostInjection", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      text: () =>
-        Promise.resolve(
+      get body() {
+        return streamOf(
           '<link rel="canonical" href="https://vulnradar-host-probe.invalid/">',
-        ),
+        );
+      },
       headers: { get: () => null },
     });
     const findings = await checkXForwardedHostInjection("https://example.com");
@@ -2465,7 +2479,9 @@ describe("checkXForwardedHostInjection", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 302,
-      text: () => Promise.resolve(""),
+      get body() {
+        return streamOf("");
+      },
       headers: {
         get: (name: string) =>
           name.toLowerCase() === "location"
@@ -2482,7 +2498,9 @@ describe("checkXForwardedHostInjection", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      text: () => Promise.resolve("<html>ordinary page</html>"),
+      get body() {
+        return streamOf("<html>ordinary page</html>");
+      },
       headers: { get: () => null },
     });
     const findings = await checkXForwardedHostInjection("https://example.com");
@@ -2502,23 +2520,31 @@ describe("checkBucketListing", () => {
           return {
             ok: true,
             status: 200,
-            text: () =>
-              Promise.resolve(
+            get body() {
+              return streamOf(
                 '<html><body><a href="https://leaky-bucket.s3.amazonaws.com/backup.zip">backup</a></body></html>',
-              ),
+              );
+            },
           };
         }
         if (url === "https://leaky-bucket.s3.amazonaws.com/") {
           return {
             ok: true,
             status: 200,
-            text: () =>
-              Promise.resolve(
+            get body() {
+              return streamOf(
                 '<?xml version="1.0"?><ListBucketResult><Name>leaky-bucket</Name><Contents><Key>backup.zip</Key></Contents></ListBucketResult>',
-              ),
+              );
+            },
           };
         }
-        return { ok: false, status: 404, text: () => Promise.resolve("") };
+        return {
+          ok: false,
+          status: 404,
+          get body() {
+            return streamOf("");
+          },
+        };
       },
     );
 
@@ -2539,23 +2565,31 @@ describe("checkBucketListing", () => {
           return {
             ok: true,
             status: 200,
-            text: () =>
-              Promise.resolve(
+            get body() {
+              return streamOf(
                 '<html><body><img src="https://private-bucket.s3.amazonaws.com/logo.png"></body></html>',
-              ),
+              );
+            },
           };
         }
         if (url === "https://private-bucket.s3.amazonaws.com/") {
           return {
             ok: false,
             status: 403,
-            text: () =>
-              Promise.resolve(
+            get body() {
+              return streamOf(
                 '<?xml version="1.0"?><Error><Code>AccessDenied</Code></Error>',
-              ),
+              );
+            },
           };
         }
-        return { ok: false, status: 404, text: () => Promise.resolve("") };
+        return {
+          ok: false,
+          status: 404,
+          get body() {
+            return streamOf("");
+          },
+        };
       },
     );
 
@@ -2567,7 +2601,9 @@ describe("checkBucketListing", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
-      text: () => Promise.resolve("<html><body>nothing here</body></html>"),
+      get body() {
+        return streamOf("<html><body>nothing here</body></html>");
+      },
     });
 
     const findings = await checkBucketListing("https://example.com");
@@ -2592,20 +2628,22 @@ describe("checkBucketListing", () => {
           return {
             ok: true,
             status: 200,
-            text: () =>
-              Promise.resolve(
+            get body() {
+              return streamOf(
                 '<html><body><a href="https://internal-bucket.s3.amazonaws.com/x">x</a></body></html>',
-              ),
+              );
+            },
           };
         }
         // Would only be reached if the SSRF guard failed to block the probe.
         return {
           ok: true,
           status: 200,
-          text: () =>
-            Promise.resolve(
+          get body() {
+            return streamOf(
               "<ListBucketResult><Name>internal-bucket</Name></ListBucketResult>",
-            ),
+            );
+          },
         };
       },
     );
@@ -2632,15 +2670,18 @@ describe("checkBucketListing", () => {
           return {
             ok: true,
             status: 200,
-            text: () =>
-              Promise.resolve(`<html><body>${bucketRefs}</body></html>`),
+            get body() {
+              return streamOf(`<html><body>${bucketRefs}</body></html>`);
+            },
           };
         }
         probedHosts.push(new URL(url).hostname);
         return {
           ok: false,
           status: 403,
-          text: () => Promise.resolve(""),
+          get body() {
+            return streamOf("");
+          },
         };
       },
     );

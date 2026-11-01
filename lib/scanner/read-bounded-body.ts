@@ -18,6 +18,16 @@
  * ref: AUDIT-013#dup-01
  */
 
+/** What a bounded read returns when the caller needs to know it was cut. */
+export interface BoundedBody {
+  text: string;
+  /**
+   * True when the read stopped before the body ended: the byte cap was
+   * crossed, the timeout fired or the stream failed. `text` is then a prefix.
+   */
+  truncated: boolean;
+}
+
 /**
  * Read a response body with a size limit and a hard read timeout.
  *
@@ -25,30 +35,51 @@
  * ref AUDIT-012#ssrf-01), but that deadline is the whole-request one; this
  * reader is the caller-side bound, and it is what guarantees a slow stream
  * cannot outlive the caller regardless of how the response was obtained. The
- * timeout calls `reader.cancel()`, which makes the pending `reader.read()`
- * reject with an AbortError, caught below so the caller still gets whatever
- * arrived before the cut-off rather than an exception.
+ * timeout calls `reader.cancel()`, which settles the pending `reader.read()`
+ * (as `done`, or as a rejection on some stream implementations, caught below),
+ * so the caller still gets whatever arrived before the cut-off rather than an
+ * exception.
  */
 export async function safeReadBody(
   response: Response,
   maxBytes: number,
   timeoutMs = 10_000,
 ): Promise<string> {
+  return (await readBoundedBody(response, maxBytes, timeoutMs)).text;
+}
+
+/** safeReadBody, plus whether the body was cut short. */
+export async function readBoundedBody(
+  response: Response,
+  maxBytes: number,
+  timeoutMs = 10_000,
+): Promise<BoundedBody> {
   const reader = response.body?.getReader();
-  if (!reader) return "";
+  if (!reader) return { text: "", truncated: false };
 
   const decoder = new TextDecoder("utf-8", { fatal: false });
   const chunks: string[] = [];
   let totalBytes = 0;
+  let truncated = true;
+  // A cancel resolves the pending read as `done`, which looks exactly like
+  // the body ending, so the timer has to say that it was the one that fired.
+  let timedOut = false;
 
   const cancelTimer = setTimeout(() => {
+    timedOut = true;
     reader.cancel().catch(() => {});
   }, timeoutMs);
 
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        // A multi-byte character split across the last two chunks is held
+        // by the streaming decoder until it is flushed.
+        chunks.push(decoder.decode());
+        truncated = timedOut;
+        break;
+      }
 
       totalBytes += value.byteLength;
       if (totalBytes > maxBytes) {
@@ -73,5 +104,5 @@ export async function safeReadBody(
     void reader.cancel().catch(() => {});
   }
 
-  return chunks.join("");
+  return { text: chunks.join(""), truncated };
 }

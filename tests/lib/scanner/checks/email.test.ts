@@ -397,12 +397,42 @@ describe("checkMxIpLiteral", () => {
 
 // ── MTA-STS policy content ──────────────────────────────────────────────
 
-function policyResponse(text: string, ok = true) {
-  return {
-    ok,
-    status: ok ? 200 : 404,
-    text: async () => text,
-  } as unknown as Response;
+const POLICY_URL = "https://mta-sts.example.com/.well-known/mta-sts.txt";
+
+/**
+ * A real Response, so the body goes through the same stream a live policy
+ * fetch does. `finalUrl` is where safeFetch's redirect loop ended up, which it
+ * reports as `res.url`.
+ */
+function policyResponse(text: string, ok = true, finalUrl = POLICY_URL) {
+  const res = new Response(text, { status: ok ? 200 : 404 });
+  Object.defineProperty(res, "url", { value: finalUrl });
+  return res;
+}
+
+const MB = 1024 * 1024;
+
+/** A body that hands out 1 MB chunks until it is cancelled (or 24 MB). */
+function endlessPolicy() {
+  const state = { pulls: 0, cancelled: false };
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        if (state.pulls >= 24) return new Promise<void>(() => {});
+        state.pulls++;
+        controller.enqueue(
+          new TextEncoder().encode(
+            "version: STSv1\nmode: enforce\nmax_age: 86400\n".padEnd(MB, "#"),
+          ),
+        );
+      },
+      cancel() {
+        state.cancelled = true;
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  return { state, response: new Response(stream, { status: 200 }) };
 }
 
 describe("checkMtaStsPolicyContent", () => {
@@ -504,5 +534,69 @@ describe("checkMtaStsPolicyContent", () => {
     expect(
       await checkMtaStsPolicyContent("example.com", URL_UNDER_TEST),
     ).toEqual([]);
+  });
+
+  // RFC 8461 section 3.3: senders do not follow redirects for the policy, so a
+  // policy that is only reachable through one is no policy to them. Grading
+  // its content would report on a file no sender ever reads; the missing
+  // policy is checkMTASTSPolicyFile's finding.
+  it("asks safeFetch not to follow redirects for the policy", async () => {
+    txtByName({ "_mta-sts.example.com": ["v=STSv1; id=20260101000000Z"] });
+    dnsMock.resolveMx.mockResolvedValue([]);
+    safeFetchMock.mockResolvedValue(policyResponse("version: STSv1\n"));
+    await checkMtaStsPolicyContent("example.com", URL_UNDER_TEST);
+    expect(safeFetchMock.mock.calls[0][0]).toBe(POLICY_URL);
+    expect(safeFetchMock.mock.calls[0][1]?.redirect).toBe("error");
+  });
+
+  it("does not grade a policy that was reached through a redirect", async () => {
+    txtByName({ "_mta-sts.example.com": ["v=STSv1; id=20260101000000Z"] });
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mail.example.com", priority: 10 },
+    ]);
+    safeFetchMock.mockResolvedValue(
+      policyResponse(
+        "version: STSv1\nmode: enforce\nmx: mail.example.com\nmax_age: 86400\n",
+        true,
+        `${POLICY_URL}/`,
+      ),
+    );
+    expect(
+      await checkMtaStsPolicyContent("example.com", URL_UNDER_TEST),
+    ).toEqual([]);
+  });
+
+  it("reports nothing when safeFetch refuses the redirect", async () => {
+    txtByName({ "_mta-sts.example.com": ["v=STSv1; id=20260101000000Z"] });
+    safeFetchMock.mockRejectedValue(
+      Object.assign(new Error("redirect refused"), { code: "redirect" }),
+    );
+    expect(
+      await checkMtaStsPolicyContent("example.com", URL_UNDER_TEST),
+    ).toEqual([]);
+  });
+
+  it("reads an endless policy body up to its cap and hangs up", async () => {
+    txtByName({ "_mta-sts.example.com": ["v=STSv1; id=20260101000000Z"] });
+    dnsMock.resolveMx.mockResolvedValue([]);
+    const endless = endlessPolicy();
+    safeFetchMock.mockResolvedValue(endless.response);
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const result = await Promise.race([
+      checkMtaStsPolicyContent("example.com", URL_UNDER_TEST),
+      new Promise<"hung">((resolve) => {
+        timer = setTimeout(() => resolve("hung"), 3000);
+      }),
+    ]);
+    clearTimeout(timer);
+
+    expect(result).not.toBe("hung");
+    // The capped head is still graded: max_age 86400 is under a week.
+    expect(ids(result as { id: string }[])).toContain(
+      "email-mta-sts-max-age-short",
+    );
+    expect(endless.state.pulls).toBeLessThanOrEqual(2);
+    expect(endless.state.cancelled).toBe(true);
   });
 });

@@ -75,7 +75,10 @@ import {
   checkBimiVmc,
   checkMxIpLiteral,
   checkMtaStsPolicyContent,
+  policyFetchRedirected,
+  isRefusedRedirect,
 } from "@/lib/scanner/checks/email";
+import { safeReadBody } from "@/lib/scanner/read-bounded-body";
 import {
   checkHttpUpgradeToHttps,
   checkTlsCertChainCompleteness,
@@ -1312,6 +1315,24 @@ async function checkMTASTSPolicyFile(
   }
 
   const policyUrl = `https://mta-sts.${domain}/.well-known/mta-sts.txt`;
+  // RFC 8461 section 3.3: senders fetch the policy without following
+  // redirects, so a policy URL that answers 3xx has no policy to them, even
+  // when the redirect ends at a valid file. Reporting that as fine (or as a
+  // connection failure) told the operator the opposite of what senders see.
+  const redirectedVuln = (where: string) =>
+    makeVuln(
+      url,
+      A.mtaStsPolicyFileMissing,
+      `The MTA-STS DNS record for ${domain} exists, but ${policyUrl} answers with a redirect, which sending servers do not follow.`,
+      `GET ${policyUrl} -> redirect${where ? ` to ${where}` : ""}`,
+      "Sending servers that support MTA-STS cannot fetch the policy, so they fall back to opportunistic STARTTLS with no downgrade protection, even though the DNS record advertises MTA-STS support.",
+      "MTA-STS requires the policy file to be served over HTTPS at a fixed well-known path in addition to the DNS TXT record. RFC 8461 clients do not follow redirects when fetching it.",
+      [
+        `Serve the policy file directly at ${policyUrl}, with a 200 response and no redirect.`,
+      ],
+      [],
+      70,
+    );
   try {
     const res = await safeFetch(policyUrl, {
       method: "GET",
@@ -1319,7 +1340,12 @@ async function checkMTASTSPolicyFile(
       headers: FETCH_OPTS.headers,
       signal: AbortSignal.timeout(5000),
     });
+    if (policyFetchRedirected(res, policyUrl)) {
+      void res.body?.cancel().catch(() => {});
+      return [redirectedVuln(res.url)];
+    }
     if (!res.ok) {
+      void res.body?.cancel().catch(() => {});
       return [
         makeVuln(
           url,
@@ -1334,7 +1360,7 @@ async function checkMTASTSPolicyFile(
         ),
       ];
     }
-    const text = (await res.text()).slice(0, 4096);
+    const text = await safeReadBody(res, 4096, 5000);
     if (
       !/version:\s*STSv1/i.test(text) ||
       !/mode:\s*(enforce|testing|none)/i.test(text)
@@ -1378,7 +1404,12 @@ async function checkMTASTSPolicyFile(
       ];
     }
     return [];
-  } catch {
+  } catch (err) {
+    if (isRefusedRedirect(err)) {
+      return [
+        redirectedVuln((err as { redirectHost?: string }).redirectHost ?? ""),
+      ];
+    }
     return [
       makeVuln(
         url,
@@ -3209,6 +3240,8 @@ async function fetchFollowingSameHostRedirect(
     const nextPinned = await validateAndPinOrigin(nextUrl.href);
     if (!nextPinned.safe) return res;
 
+    // This hop's body is never read; release its connection now.
+    void res.body?.cancel().catch(() => {});
     currentUrl = nextUrl.href;
     currentLogicalUrl = nextUrl.href;
     currentPinned = nextPinned;
@@ -4016,7 +4049,7 @@ async function checkExposedFiles(
       },
       pinned,
     );
-    const body = (await res.text()).slice(0, 8192);
+    const body = await safeReadBody(res, 8192, 5000);
     const ct = res.headers.get("content-type") ?? "";
     const evidence = probe.verify(res.status, body, ct);
     if (!evidence) return null;
@@ -4211,7 +4244,9 @@ export async function checkActiveHttpMethods(
         // Safe: same origin as the OPTIONS probe, pinned to the validated IP;
         // verified-owned domain. codeql[js/request-forgery]
         const traceRes = await fetch(traceTarget.url, traceTarget.init);
-        const traceBody = await traceRes.text();
+        // An echo of this request is a few hundred bytes; the cap only
+        // stops a server that answers TRACE with something endless.
+        const traceBody = await safeReadBody(traceRes, 8192, 5000);
         confirmed =
           traceRes.status === 200 &&
           /^TRACE\s|^User-Agent:|Via:/im.test(traceBody);
@@ -4302,7 +4337,7 @@ export async function checkXForwardedHostInjection(
     // verified-owned domain (route gate). codeql[js/request-forgery]
     const res = await fetch(hostProbeTarget.url, hostProbeTarget.init);
 
-    const body = (await res.text()).slice(0, 8192);
+    const body = await safeReadBody(res, 8192, 5000);
     const locationHeader = res.headers.get("location") ?? "";
 
     if (!body.includes(testHost) && !locationHeader.includes(testHost)) {
@@ -4394,7 +4429,7 @@ async function checkGraphQLIntrospection(
         )
           continue;
 
-        const body = (await res.text()).slice(0, 16384);
+        const body = await safeReadBody(res, 16384, 6000);
         if (!body.includes("__schema") || !body.includes("types")) continue;
 
         let typeCount = 0;
@@ -4624,7 +4659,7 @@ async function probeBucketCandidate(
       headers: FETCH_OPTS.headers,
       signal: AbortSignal.timeout(BUCKET_PROBE_TIMEOUT_MS),
     });
-    const text = (await res.text()).slice(0, 4096);
+    const text = await safeReadBody(res, 4096, BUCKET_PROBE_TIMEOUT_MS);
     let publiclyListable = false;
     if (res.status === 200) {
       if (candidate.provider === "s3") {
@@ -4747,9 +4782,12 @@ export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
       },
       pinned,
     );
-    if (!res.ok) return findings;
+    if (!res.ok) {
+      void res.body?.cancel().catch(() => {});
+      return findings;
+    }
 
-    const body = (await res.text()).slice(0, 65536);
+    const body = await safeReadBody(res, 65536, 5000);
     if (
       !body.includes("User-agent") &&
       !body.includes("Disallow") &&
@@ -4890,14 +4928,16 @@ export async function checkSecurityTxt(
       : root.status === "fulfilled" && root.value.ok
         ? root.value
         : null;
+  // Only one of the two bodies is ever read; the other is released rather
+  // than left holding its connection until it is garbage collected.
+  for (const settled of [wellKnown, root]) {
+    if (settled.status === "fulfilled" && settled.value !== hit) {
+      void settled.value.body?.cancel().catch(() => {});
+    }
+  }
   if (!hit) return [];
 
-  let body: string;
-  try {
-    body = (await hit.text()).slice(0, 16384);
-  } catch {
-    return [];
-  }
+  const body = await safeReadBody(hit, 16384, 5000);
 
   // Anchored at the start of a line: every RFC 9116 comment begins with #, so
   // "# Expires: see our policy page" is prose about the field, not the field.
@@ -5011,8 +5051,9 @@ export async function checkCspNonceReuse(
       headers: FETCH_OPTS.headers,
       signal: AbortSignal.timeout(5000),
     });
-    // Drain the body so the connection is released; only the header matters.
-    await res.text().catch(() => "");
+    // Only the header matters. Cancelling releases the connection without
+    // reading a body the site controls; draining it read all of it.
+    void res.body?.cancel().catch(() => {});
     const second = res.ok ? noncesIn(res.headers) : null;
     if (!second) return [];
     const repeated = [...first].filter((n) => second.has(n));

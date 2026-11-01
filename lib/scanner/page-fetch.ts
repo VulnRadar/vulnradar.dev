@@ -11,18 +11,26 @@
  * request) makes its own.
  */
 
+import { readBoundedBody } from "./read-bounded-body";
 import { safeFetch } from "./safe-fetch";
 import { SCANNER_UA } from "./user-agent";
 
 const PAGE_FETCH_TIMEOUT_MS = 8000;
-/** The same ceiling the scan applies to the body it checks. */
-const MAX_BODY_CHARS = 1_000_000;
+/**
+ * The same ceiling the scan applies to the body it checks. It is a byte cap
+ * on the read, not a slice afterwards: the page belongs to the site being
+ * scanned, and `res.text()` buffered all of it before slicing, so an endless
+ * body grew the heap until the fetch deadline.
+ */
+const MAX_BODY_BYTES = 1_000_000;
 
 export interface FetchedPage {
   status: number;
   ok: boolean;
   headers: Headers;
   body: string;
+  /** The page was longer than MAX_BODY_BYTES (or stalled) and `body` is its head. */
+  truncated: boolean;
 }
 
 const inFlight = new Map<string, Promise<FetchedPage | null>>();
@@ -43,8 +51,18 @@ async function fetchPage(url: string): Promise<FetchedPage | null> {
       headers: { "User-Agent": SCANNER_UA },
       signal: AbortSignal.timeout(PAGE_FETCH_TIMEOUT_MS),
     });
-    const body = (await res.text()).slice(0, MAX_BODY_CHARS);
-    return { status: res.status, ok: res.ok, headers: res.headers, body };
+    const { text: body, truncated } = await readBoundedBody(
+      res,
+      MAX_BODY_BYTES,
+      PAGE_FETCH_TIMEOUT_MS,
+    );
+    return {
+      status: res.status,
+      ok: res.ok,
+      headers: res.headers,
+      body,
+      truncated,
+    };
   } catch {
     return null;
   }

@@ -72,6 +72,7 @@ import type { Vulnerability, Severity } from "../types";
 import { generateId, withDeadline } from "../_helpers";
 import { resolveTxtOnce, resolveMxOnce } from "../dns-memo";
 import { safeFetch } from "../safe-fetch";
+import { safeReadBody } from "../read-bounded-body";
 import { SCANNER_UA } from "../user-agent";
 
 const DNS_TIMEOUT_MS = 4000;
@@ -719,6 +720,32 @@ export async function checkMxIpLiteral(
 // ── MTA-STS policy content ──────────────────────────────────────────────
 
 /**
+ * Whether safeFetch reached the MTA-STS policy through a redirect.
+ *
+ * RFC 8461 section 3.3 has senders fetch the policy without following
+ * redirects, and both policy fetches pass `redirect: "error"` for that. Until
+ * safeFetch honours it, its own loop still follows a same-host 3xx and only
+ * reports it through `res.url`, the address the loop ended at. An empty url
+ * is a response nobody fetched (a test double) and says nothing.
+ */
+export function policyFetchRedirected(res: Response, policyUrl: string) {
+  return !!res.url && res.url !== new URL(policyUrl).href;
+}
+
+/**
+ * A redirect safeFetch refused rather than followed: one to another host
+ * today, and any 3xx once it honours `redirect: "error"`. Read by code, as
+ * SafeFetchError's contract asks, so neither case is a connection failure.
+ */
+export function isRefusedRedirect(err: unknown): boolean {
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? (err as { code: unknown }).code
+      : undefined;
+  return code === "redirect" || code === "cross_host_redirect";
+}
+
+/**
  * Fetches the MTA-STS policy file and checks the two things its content can
  * be wrong about beyond mode: a max_age too short to be useful, and an mx
  * list that does not cover the domain's actual MX hosts. Only runs when the
@@ -741,8 +768,13 @@ export async function checkMtaStsPolicyContent(
       headers: { "User-Agent": SCANNER_UA },
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return []; // unreachable/errored is checkMTASTSPolicyFile's job
-    text = (await res.text()).slice(0, 8192);
+    // Unreachable, errored or redirected is checkMTASTSPolicyFile's finding.
+    // A redirected policy is never graded: no sender reads that file.
+    if (!res.ok || policyFetchRedirected(res, policyUrl)) {
+      void res.body?.cancel().catch(() => {});
+      return [];
+    }
+    text = await safeReadBody(res, 8192, 5000);
   } catch {
     return [];
   }

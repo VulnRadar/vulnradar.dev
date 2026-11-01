@@ -56,10 +56,18 @@ describe("readPage", () => {
     expect(page).toMatchObject({ status: 503, ok: false, body: "nope" });
   });
 
-  it("keeps at most a million characters of the body", async () => {
+  it("keeps at most a million bytes of the body and says it cut it", async () => {
     safeFetchMock.mockResolvedValue(new Response("a".repeat(1_000_100)));
     const page = await readPage("https://example.com/");
     expect(page?.body).toHaveLength(1_000_000);
+    expect(page?.truncated).toBe(true);
+  });
+
+  it("reports a body that fits as not truncated", async () => {
+    safeFetchMock.mockResolvedValue(new Response("a".repeat(1_000_000)));
+    const page = await readPage("https://example.com/");
+    expect(page?.body).toHaveLength(1_000_000);
+    expect(page?.truncated).toBe(false);
   });
 
   it("answers null when the page cannot be fetched at all", async () => {
