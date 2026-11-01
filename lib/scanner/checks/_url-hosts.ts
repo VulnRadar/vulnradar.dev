@@ -17,6 +17,10 @@
  * settings blobs) are read as plain ones.
  */
 
+import { hostMatches, type HostSpec } from "@/lib/net/host-match";
+
+export { hostMatches };
+
 export interface UrlRef {
   /** Lower-cased hostname, without port. */
   host: string;
@@ -24,11 +28,9 @@ export interface UrlRef {
   path: string;
 }
 
-export interface HostRule {
-  host: string;
-  /** Also accept any subdomain of `host`, for a vendor that serves the same
-   *  file from several (www.google-analytics.com, ssl.google-analytics.com). */
-  subdomains?: boolean;
+/** `subdomains` is for a vendor that serves the same file from several
+ *  (www.google-analytics.com, ssl.google-analytics.com). */
+export interface HostRule extends HostSpec {
   /** Tested against UrlRef.path, so it is written with a leading ^. */
   path?: RegExp;
 }
@@ -59,14 +61,6 @@ export function urlRefs(body: string): UrlRef[] {
     refs.push({ host: m[1].toLowerCase(), path: m[2] ?? "" });
   }
   return refs;
-}
-
-/** True when `host` is the rule's host, or a subdomain of it if allowed. */
-export function hostMatches(host: string, rule: HostRule): boolean {
-  const h = host.toLowerCase();
-  return (
-    h === rule.host || (rule.subdomains === true && h.endsWith(`.${rule.host}`))
-  );
 }
 
 /** True when any of `refs` satisfies any of `rules`. */

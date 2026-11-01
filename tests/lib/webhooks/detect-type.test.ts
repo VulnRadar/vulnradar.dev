@@ -96,6 +96,45 @@ describe("detectWebhookType", () => {
     ]);
   });
 
+  // Discord documents its API with a version in the path, and a webhook URL
+  // copied from its docs or a library can carry one. Read as /api/webhooks/
+  // only, every such URL was saved as generic and the channel got flat JSON
+  // instead of an embed.
+  it("detects Discord's versioned webhook paths on every Discord host", () => {
+    for (const host of [
+      "discord.com",
+      "discordapp.com",
+      "ptb.discord.com",
+      "canary.discordapp.com",
+    ]) {
+      for (const version of ["v6", "v9", "v10", "V10"]) {
+        const url = `https://${host}/api/${version}/webhooks/123/abc`;
+        expect(detectWebhookType(url), url).toBe("discord");
+      }
+    }
+  });
+
+  it("does not take a lookalike host as Discord because its path is versioned", () => {
+    allGeneric([
+      "https://discord.com.evil.example/api/v10/webhooks/1/x",
+      "https://notdiscord.com/api/v10/webhooks/1/x",
+      "https://discordapp.com@evil.example/api/v10/webhooks/1/x",
+      "https://evil.example/?u=discord.com/api/v10/webhooks/1/x",
+      "https://evil.example/api/v10/webhooks/1/x",
+    ]);
+  });
+
+  it("does not stretch the version segment to other paths on a Discord host", () => {
+    allGeneric([
+      "https://discord.com/api/v/webhooks/1/x",
+      "https://discord.com/api/vten/webhooks/1/x",
+      "https://discord.com/api/v10x/webhooks/1/x",
+      "https://discord.com/api/v10/v10/webhooks/1/x",
+      "https://discord.com/api/v10/channels/1/messages",
+      "https://discord.com/x/api/v10/webhooks/1/x",
+    ]);
+  });
+
   it("treats a string that is not a URL as generic", () => {
     expect(detectWebhookType("hooks.slack.com/services/T/B/X")).toBe("generic");
     expect(detectWebhookType("not a url")).toBe("generic");

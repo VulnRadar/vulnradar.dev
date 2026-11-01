@@ -5,6 +5,8 @@
  * instead of two copies drifting apart.
  */
 
+import { hostMatches, type HostSpec } from "@/lib/net/host-match";
+
 /**
  * The three values that can be stored.
  *
@@ -21,9 +23,15 @@ export function isWebhookType(value: unknown): value is WebhookType {
   );
 }
 
-function isHostOrSubdomain(hostname: string, domain: string): boolean {
-  return hostname === domain || hostname.endsWith(`.${domain}`);
-}
+// ptb. and canary. are Discord's own client hosts and serve the same API.
+const DISCORD_HOSTS: HostSpec[] = [
+  { host: "discord.com", subdomains: true },
+  { host: "discordapp.com", subdomains: true },
+];
+
+// Discord accepts webhooks on the unversioned path and on every versioned one
+// (/api/v10/webhooks/...), and its docs and client libraries write the latter.
+const DISCORD_WEBHOOK_PATH = /^\/api\/(?:v\d+\/)?webhooks\//i;
 
 /**
  * Auto-detects a webhook's platform type from its URL.
@@ -42,11 +50,9 @@ export function detectWebhookType(url: string): WebhookType {
     return "generic";
   }
   const host = parsed.hostname.toLowerCase();
-  // ptb. and canary. are Discord's own client hosts and serve the same API.
   if (
-    (isHostOrSubdomain(host, "discord.com") ||
-      isHostOrSubdomain(host, "discordapp.com")) &&
-    parsed.pathname.toLowerCase().startsWith("/api/webhooks/")
+    DISCORD_HOSTS.some((spec) => hostMatches(host, spec)) &&
+    DISCORD_WEBHOOK_PATH.test(parsed.pathname)
   )
     return "discord";
   if (host === "hooks.slack.com") return "slack";
