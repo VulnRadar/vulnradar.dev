@@ -173,8 +173,14 @@ updates:
   # the pins drifted a year behind published CVE fixes on their own. Patch
   # and minor bumps land as PRs like any other dependency; majors are held
   # so a Node or Postgres line change is a decision, not a merge.
+  #
+  # tests/spike/Dockerfile models the production image for the routing spike
+  # and must carry the same node pin: scripts/spike/selftest.mjs fails when it
+  # does not. Listing both directories makes Dependabot move them in one PR.
   - package-ecosystem: "docker"
-    directory: "/"
+    directories:
+      - "/"
+      - "/tests/spike"
     schedule:
       interval: "weekly"
       day: "monday"
