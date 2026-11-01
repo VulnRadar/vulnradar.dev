@@ -153,6 +153,76 @@ describe("reserveGithubReviewTokens on a plan with a review allowance", () => {
     if (!gate.allowed) expect(gate.busy).toBe(false);
   });
 
+  it("full fit: reserves the whole estimate when the account covers it, whatever the minimum", async () => {
+    plan(200_000);
+    fake = createFakeLedgerDb({ githubBalance: 10_000 });
+
+    const gate = await reserveGithubReviewTokens(USER, 150_000, 40_000);
+
+    if (!gate.allowed) throw new Error("expected the gate to allow");
+    expect(gate.reservation.budget).toBe(150_000);
+    expect(gate.reservation.windowPortion).toBe(150_000);
+    expect(gate.reservation.creditPortion).toBe(0);
+    expect(fake.state.balances.github_credit_balance).toBe(10_000);
+    await settleGithubReviewTokens(gate.reservation, 0);
+  });
+
+  it("partial fit: a repo larger than what is left reserves everything left, as long as the first batch fits", async () => {
+    // Wave 1c sized the reservation from a true worst case and required all
+    // of it, so on a 200k plan a repo of about 137 KB to 450 KB, which 3.9.1
+    // reviewed, was refused outright, pattern scan included.
+    plan(200_000);
+    const windowStart = currentWindowStart(new Date(), 5);
+    fake = createFakeLedgerDb({
+      githubBalance: 5_000,
+      githubUsed: { windowStart, tokens: 150_000 },
+    });
+
+    const gate = await reserveGithubReviewTokens(USER, 213_520, 53_000);
+
+    if (!gate.allowed) throw new Error("expected a partial reservation");
+    expect(gate.reservation.budget).toBe(55_000);
+    expect(gate.reservation.windowPortion).toBe(50_000);
+    expect(gate.reservation.creditPortion).toBe(5_000);
+    expect(fake.state.balances.github_credit_balance).toBe(0);
+    // The counter carries the whole reservation, credit part included, as
+    // it does for a full one.
+    expect(
+      fake.state.usage.github_review_usage.get(windowStart.toISOString()),
+    ).toBe(205_000);
+
+    // Unused reservation goes back exactly as before: 50000 of window and
+    // 1000 of credit were used, so 4000 of each comes back.
+    await settleGithubReviewTokens(gate.reservation, 51_000);
+    expect(fake.state.balances.github_credit_balance).toBe(4_000);
+    expect(
+      fake.state.usage.github_review_usage.get(windowStart.toISOString()),
+    ).toBe(201_000);
+  });
+
+  it("no fit: refuses without touching the account when not even the first batch fits", async () => {
+    plan(200_000);
+    const windowStart = currentWindowStart(new Date(), 5);
+    fake = createFakeLedgerDb({
+      githubBalance: 1_000,
+      githubUsed: { windowStart, tokens: 190_000 },
+    });
+
+    const gate = await reserveGithubReviewTokens(USER, 213_520, 53_000);
+
+    expect(gate.allowed).toBe(false);
+    if (gate.allowed) return;
+    expect(gate.busy).toBe(false);
+    // What the message quotes is the first batch, the least the review
+    // needs to start, not the whole repo.
+    expect(gate.message).toMatch(/53,000/);
+    expect(gate.message).toMatch(/11,000/);
+    expect(fake.state.balances.github_credit_balance).toBe(1_000);
+    expect(
+      fake.state.usage.github_review_usage.get(windowStart.toISOString()),
+    ).toBe(190_000);
+  });
+
   it("a second review for the same user is refused as busy until the first settles", async () => {
     plan(1_000_000);
     const first = await reserveGithubReviewTokens(USER, 10_000);

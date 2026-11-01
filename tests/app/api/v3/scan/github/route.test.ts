@@ -42,12 +42,40 @@ vi.mock("@/lib/scanner/github-repo-scan", () => ({
 }));
 
 const mockRunGithubAiReview = vi.fn();
-const mockEstimateGithubReviewTokens = vi.fn();
+const mockPlanGithubReview = vi.fn();
 vi.mock("@/lib/ai/review-source", () => ({
   runGithubAiReview: (...args: unknown[]) => mockRunGithubAiReview(...args),
-  estimateGithubReviewTokens: (...args: unknown[]) =>
-    mockEstimateGithubReviewTokens(...args),
+  planGithubReview: (...args: unknown[]) => mockPlanGithubReview(...args),
 }));
+
+/** What runGithubAiReview hands back; a whole review of one file by default. */
+function aiRun(overrides: Record<string, unknown> = {}) {
+  return {
+    findings: [],
+    totalTokensUsed: 0,
+    noEndpoint: false,
+    rejectedOverCap: false,
+    stoppedAtBudget: false,
+    stoppedAtRunCap: false,
+    filesReviewed: 1,
+    filesTotal: 1,
+    batchesReviewed: 1,
+    batchesTotal: 1,
+    ...overrides,
+  };
+}
+
+/** What planGithubReview hands back for the tree. */
+function reviewPlan(overrides: Record<string, unknown> = {}) {
+  return {
+    estimate: 40_000,
+    firstBatch: 40_000,
+    inputWithinCap: 30_000,
+    batchesWithinCap: 1,
+    batchesTotal: 1,
+    ...overrides,
+  };
+}
 
 const mockCheckGithubReviewQuota = vi.fn();
 const mockReserveGithubReviewTokens = vi.fn();
@@ -157,15 +185,9 @@ beforeEach(() => {
   mockRunPatternSecretsScan.mockReset();
   mockRunPatternSecretsScan.mockReturnValue([]);
   mockRunGithubAiReview.mockReset();
-  mockRunGithubAiReview.mockResolvedValue({
-    findings: [],
-    totalTokensUsed: 0,
-    noEndpoint: false,
-    rejectedOverCap: false,
-    stoppedAtBudget: false,
-  });
-  mockEstimateGithubReviewTokens.mockReset();
-  mockEstimateGithubReviewTokens.mockResolvedValue(40_000);
+  mockRunGithubAiReview.mockResolvedValue(aiRun());
+  mockPlanGithubReview.mockReset();
+  mockPlanGithubReview.mockResolvedValue(reviewPlan());
   mockReserveGithubReviewTokens.mockReset();
   mockReserveGithubReviewTokens.mockResolvedValue({
     allowed: true,
@@ -242,28 +264,73 @@ describe("POST /api/v3/scan/github", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects when the estimated content exceeds the per-run token ceiling, even with quota available", async () => {
-    // Many files, each safely under the per-file byte cap (300_000) and
-    // the total still under the total-byte cap (5_000_000), but whose sum
-    // (1.5MB -> ~375k estimated tokens) exceeds the 300k token ceiling. A
-    // single oversized file would instead be dropped by the per-file cap
-    // before ever reaching the token estimate — this exercises the
-    // token-ceiling rejection specifically.
-    mockListRepoTree.mockResolvedValue({
-      entries: Array.from({ length: 6 }, (_, i) =>
-        treeEntry(`file${i}.ts`, 250_000),
-      ),
-      truncated: false,
-    });
+  it("a repo over the per-run token ceiling is partly reviewed and pattern scanned whole, instead of a 413", async () => {
+    // Six files under the per-file cap whose sum is over the 300k ceiling.
+    // This used to answer 413 and scan nothing; the AI review now stops at
+    // the ceiling and the pattern scan still covers every file.
+    const entries = Array.from({ length: 6 }, (_, i) =>
+      treeEntry(`file${i}.ts`, 250_000),
+    );
+    mockListRepoTree.mockResolvedValue({ entries, truncated: false });
+    const fetched = entries.map((e) => ({ path: e.path, content: "x" }));
+    mockFetchSelectedFiles.mockResolvedValue(fetched);
+    mockPlanGithubReview.mockResolvedValue(
+      reviewPlan({ batchesWithinCap: 1, batchesTotal: 6 }),
+    );
+    mockRunGithubAiReview.mockResolvedValue(
+      aiRun({
+        stoppedAtRunCap: true,
+        filesReviewed: 1,
+        filesTotal: 6,
+        batchesTotal: 6,
+      }),
+    );
+
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
-    expect(res.status).toBe(413);
-    // The upfront quota pre-check (before any GitHub API call) already
-    // passed -- the token ceiling is what blocks this, not quota. The
-    // reservation is never reached because the 413 short-circuits first,
-    // so nothing is taken from the account for a review that will not run.
-    expect(mockCheckGithubReviewQuota).toHaveBeenCalledTimes(1);
+
+    expect(res.status).toBe(200);
+    expect(mockRunPatternSecretsScan).toHaveBeenCalledWith(fetched);
+    const json = await res.json();
+    expect(json.filesScanned).toBe(6);
+    expect(json.aiReviewStoppedAtRunCap).toBe(true);
+    expect(json.aiReviewStoppedAtBudget).toBe(false);
+    expect(json.aiReviewCoverage).toEqual({
+      filesReviewed: 1,
+      filesTotal: 6,
+      batchesReviewed: 1,
+      batchesTotal: 6,
+    });
+  });
+
+  it("when not even the first batch fits under the per-run ceiling, reserves nothing and still runs the pattern scan", async () => {
+    mockPlanGithubReview.mockResolvedValue(
+      reviewPlan({
+        estimate: 0,
+        firstBatch: 0,
+        inputWithinCap: 0,
+        batchesWithinCap: 0,
+      }),
+    );
+    // The plan works from tree sizes; content that turns out smaller can
+    // fit the ceiling after all, and then the zero budget is what stops it.
+    mockRunGithubAiReview.mockResolvedValue(
+      aiRun({ stoppedAtBudget: true, filesReviewed: 0, batchesReviewed: 0 }),
+    );
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(200);
     expect(mockReserveGithubReviewTokens).not.toHaveBeenCalled();
-    expect(mockFetchSelectedFiles).not.toHaveBeenCalled();
+    expect(mockRunGithubAiReview).toHaveBeenCalledWith(
+      expect.anything(),
+      5,
+      true,
+      0,
+    );
+    expect(mockSettleGithubReviewTokens).not.toHaveBeenCalled();
+    const json = await res.json();
+    expect(json.aiReviewStoppedAtRunCap).toBe(true);
+    expect(json.aiReviewStoppedAtBudget).toBe(false);
   });
 
   it("blocks the whole trigger with the quota's message when over the monthly cap", async () => {
@@ -297,12 +364,7 @@ describe("POST /api/v3/scan/github", () => {
         location: { file: "src/index.ts" },
       },
     ]);
-    mockRunGithubAiReview.mockResolvedValue({
-      findings: [],
-      totalTokensUsed: 1200,
-      noEndpoint: false,
-      rejectedOverCap: false,
-    });
+    mockRunGithubAiReview.mockResolvedValue(aiRun({ totalTokensUsed: 1200 }));
 
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
     expect(res.status).toBe(200);
@@ -354,38 +416,113 @@ describe("POST /api/v3/scan/github", () => {
 });
 
 describe("POST /api/v3/scan/github - credit reservation", () => {
-  it("reserves the tree's estimate before fetching any content, from the selected files' sizes", async () => {
+  it("reserves the tree's estimate before fetching any content, needing only the first batch's ceiling", async () => {
     mockListRepoTree.mockResolvedValue({
       entries: [treeEntry("src/a.ts", 1200), treeEntry("src/b.ts", 800)],
       truncated: false,
     });
+    mockPlanGithubReview.mockResolvedValue(
+      reviewPlan({ estimate: 90_000, firstBatch: 45_000, batchesWithinCap: 2 }),
+    );
 
     await POST(postReq({ repoFullName: "octocat/hello-world" }));
 
-    expect(mockEstimateGithubReviewTokens).toHaveBeenCalledWith([1200, 800]);
-    expect(mockReserveGithubReviewTokens).toHaveBeenCalledWith(5, 40_000);
+    expect(mockPlanGithubReview).toHaveBeenCalledWith([1200, 800]);
+    expect(mockReserveGithubReviewTokens).toHaveBeenCalledWith(
+      5,
+      90_000,
+      45_000,
+    );
     expect(
       mockReserveGithubReviewTokens.mock.invocationCallOrder[0],
     ).toBeLessThan(mockFetchSelectedFiles.mock.invocationCallOrder[0]);
   });
 
-  it("refuses with the reservation's message, before any content is fetched or any AI call made, when the account cannot cover the estimate", async () => {
-    // The read-only pre-check passes (the balance is positive), which is
-    // exactly the case the old gate let through.
+  it("partial fit: runs the AI review on what was reserved and says where it stopped", async () => {
+    mockReserveGithubReviewTokens.mockResolvedValue({
+      allowed: true,
+      reservation: reservation({ budget: 50_000 }),
+    });
+    mockRunGithubAiReview.mockResolvedValue(
+      aiRun({
+        totalTokensUsed: 44_000,
+        stoppedAtBudget: true,
+        filesReviewed: 12,
+        filesTotal: 40,
+        batchesReviewed: 1,
+        batchesTotal: 4,
+      }),
+    );
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(200);
+    expect(mockRunGithubAiReview).toHaveBeenCalledWith(
+      expect.anything(),
+      5,
+      true,
+      50_000,
+    );
+    const json = await res.json();
+    expect(json.aiReviewStoppedAtBudget).toBe(true);
+    expect(json.aiReviewCoverage).toEqual({
+      filesReviewed: 12,
+      filesTotal: 40,
+      batchesReviewed: 1,
+      batchesTotal: 4,
+    });
+    expect(json.aiReviewAllowanceMessage).toBeNull();
+    expect(mockSettleGithubReviewTokens).toHaveBeenCalledWith(
+      expect.objectContaining({ budget: 50_000 }),
+      44_000,
+    );
+  });
+
+  it("no fit: when the account cannot cover the first batch, the pattern scan still runs and the response says why the AI review did not", async () => {
+    // Wave 1c's whole-estimate reservation answered 403 here, pattern scan
+    // included, for repos 3.9.1 reviewed.
     mockReserveGithubReviewTokens.mockResolvedValue({
       allowed: false,
       busy: false,
       message:
-        "This repo needs up to 40,000 GitHub review tokens and your credit balance is 1.",
+        "The AI review needs at least 40,000 GitHub review tokens to start and your account has 1 left.",
     });
+    mockRunPatternSecretsScan.mockReturnValue([
+      {
+        id: "secret-x--1",
+        title: "Hardcoded secret",
+        severity: "critical",
+        category: "secrets-extended",
+        description: "d",
+        evidence: "e",
+        riskImpact: "r",
+        explanation: "x",
+        fixSteps: [],
+        codeExamples: [],
+        location: { file: "src/index.ts" },
+      },
+    ]);
+    mockRunGithubAiReview.mockResolvedValue(
+      aiRun({ stoppedAtBudget: true, filesReviewed: 0, batchesReviewed: 0 }),
+    );
 
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
 
-    expect(res.status).toBe(403);
-    expect((await res.json()).error).toMatch(/needs up to 40,000/);
-    expect(mockFetchSelectedFiles).not.toHaveBeenCalled();
-    expect(mockRunGithubAiReview).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mockRunPatternSecretsScan).toHaveBeenCalledTimes(1);
+    // Handed nothing, so it cannot send a single batch.
+    expect(mockRunGithubAiReview).toHaveBeenCalledWith(
+      expect.anything(),
+      5,
+      true,
+      0,
+    );
     expect(mockSettleGithubReviewTokens).not.toHaveBeenCalled();
+    const json = await res.json();
+    expect(json.summary.critical).toBe(1);
+    expect(json.aiReviewStoppedAtBudget).toBe(true);
+    expect(json.aiReviewCoverage.filesReviewed).toBe(0);
+    expect(json.aiReviewAllowanceMessage).toMatch(/needs at least 40,000/);
   });
 
   it("answers 429 while another review of the same account is running", async () => {
@@ -407,13 +544,7 @@ describe("POST /api/v3/scan/github - credit reservation", () => {
       allowed: true,
       reservation: held,
     });
-    mockRunGithubAiReview.mockResolvedValue({
-      findings: [],
-      totalTokensUsed: 12_345,
-      noEndpoint: false,
-      rejectedOverCap: false,
-      stoppedAtBudget: false,
-    });
+    mockRunGithubAiReview.mockResolvedValue(aiRun({ totalTokensUsed: 12_345 }));
 
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
 
@@ -448,13 +579,9 @@ describe("POST /api/v3/scan/github - credit reservation", () => {
   });
 
   it("says when the budget stopped the review before every file", async () => {
-    mockRunGithubAiReview.mockResolvedValue({
-      findings: [],
-      totalTokensUsed: 39_000,
-      noEndpoint: false,
-      rejectedOverCap: false,
-      stoppedAtBudget: true,
-    });
+    mockRunGithubAiReview.mockResolvedValue(
+      aiRun({ totalTokensUsed: 39_000, stoppedAtBudget: true }),
+    );
 
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
 

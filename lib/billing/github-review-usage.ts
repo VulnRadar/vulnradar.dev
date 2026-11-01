@@ -304,19 +304,29 @@ export type GithubReviewGate =
 /**
  * The gate for a GitHub repo review: takes the review's estimate (input plus
  * the per-call output ceiling, see lib/ai/review-source.ts's
- * estimateGithubReviewTokens) out of the window allowance and the purchased
- * balance before the review runs, and refuses when the two together fall
- * short. checkGithubReviewQuota, which the scan route used for this, let a
+ * planGithubReview) out of the window allowance and the purchased balance
+ * before the review runs, and refuses when the two together fall short of the
+ * minimum. checkGithubReviewQuota, which the scan route used for this, let a
  * review in on any positive balance and charged afterwards with a floor at
  * zero, so one credit bought a review of up to GITHUB_REVIEW_MAX_TOKENS_PER_RUN.
  *
+ * `minimum` is the first batch's worst case (planGithubReview's firstBatch).
+ * The gate reserves as much of the estimate as the window and the balance
+ * hold, provided that is at least the minimum, and the run reviews batch by
+ * batch until the reservation is used. Requiring the whole estimate refused a
+ * repo outright, pattern scan included, the moment its worst case passed what
+ * was left, which on a 200k plan was any repo over about 137 KB. A refusal now
+ * means not even one batch fits; the route still runs the pattern scan then
+ * and shows this message as why the AI review did not run.
+ *
  * A plan with no review allowance (githubReviewTokensPerWindow 0) first tries
  * the free trial, claimed atomically by claimFreeGithubReviewTrial; with the
- * trial spent, the whole estimate has to come out of the balance.
+ * trial spent, the reservation comes out of the balance alone.
  */
 export async function reserveGithubReviewTokens(
   userId: number,
   estimate: number,
+  minimum: number = estimate,
 ): Promise<GithubReviewGate> {
   const { windowStart, windowHours } = await resolveCurrentWindow();
   const flags = { isFreeTrial: false, creditCovered: false };
@@ -360,7 +370,7 @@ export async function reserveGithubReviewTokens(
     windowStart,
     Math.max(0, limitTokens),
     estimate,
-    estimate,
+    minimum,
   );
   if (result.ok) {
     return {
@@ -396,8 +406,8 @@ export async function reserveGithubReviewTokens(
     busy: false,
     message:
       limitTokens === 0
-        ? `This repo needs up to ${result.needed.toLocaleString()} GitHub review tokens and your credit balance is ${result.balance.toLocaleString()}. Buy GitHub review credits in Profile > Billing, upgrade your plan, or connect your own AI provider key in Profile > AI settings.`
-        : `This repo needs up to ${result.needed.toLocaleString()} GitHub review tokens and your account has ${available.toLocaleString()} left: ${result.windowRemaining.toLocaleString()} in this ${windowHours}-hour window and ${result.balance.toLocaleString()} in credits. Upgrade your plan, wait for the window to reset, connect your own AI provider key in Profile > AI settings, or buy GitHub review credits in Profile > Billing.`,
+        ? `The AI review needs at least ${result.needed.toLocaleString()} GitHub review tokens to start on this repo and your credit balance is ${result.balance.toLocaleString()}. Buy GitHub review credits in Profile > Billing, upgrade your plan, or connect your own AI provider key in Profile > AI settings.`
+        : `The AI review needs at least ${result.needed.toLocaleString()} GitHub review tokens to start on this repo and your account has ${available.toLocaleString()} left: ${result.windowRemaining.toLocaleString()} in this ${windowHours}-hour window and ${result.balance.toLocaleString()} in credits. Upgrade your plan, wait for the window to reset, connect your own AI provider key in Profile > AI settings, or buy GitHub review credits in Profile > Billing.`,
   };
 }
 
@@ -473,9 +483,9 @@ export interface GithubReviewQuotaCheck {
  * (those calls cost VulnRadar nothing). Otherwise compares the current
  * window's REAL usage so far against the plan's githubReviewTokensPerWindow
  * cap — this is deliberately not a check against the per-run token
- * estimate, which is a separate, always-enforced ceiling checked by the
- * caller (see lib/config/registry.ts's GITHUB_REVIEW_MAX_TOKENS_PER_RUN and
- * lib/scanner/github-repo-scan.ts's estimateTokens).
+ * estimate, which is a separate, always-enforced ceiling the review run
+ * stops at (see lib/config/registry.ts's GITHUB_REVIEW_MAX_TOKENS_PER_RUN and
+ * lib/ai/review-source.ts's runGithubAiReview).
  */
 export async function checkGithubReviewQuota(
   userId: number,

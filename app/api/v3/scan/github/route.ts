@@ -19,14 +19,10 @@ import {
   type RepoFilterCaps,
 } from "@/lib/github/repo-filter";
 import {
-  estimateTokens,
   fetchSelectedFiles,
   runPatternSecretsScan,
 } from "@/lib/scanner/github-repo-scan";
-import {
-  estimateGithubReviewTokens,
-  runGithubAiReview,
-} from "@/lib/ai/review-source";
+import { planGithubReview, runGithubAiReview } from "@/lib/ai/review-source";
 import {
   resolveNewScanTeamIds,
   attachNewScanTeams,
@@ -37,6 +33,7 @@ import {
   releaseFreeGithubReviewTrial,
   reserveGithubReviewTokens,
   settleGithubReviewTokens,
+  type GithubReviewReservation,
 } from "@/lib/billing/github-review-usage";
 import {
   checkRateLimit as checkGlobalRateLimit,
@@ -154,42 +151,40 @@ export async function POST(request: Request) {
       );
     }
 
-    // Cheap upfront token estimate from tree metadata (byte size), before
-    // fetching a single byte of content or spending an AI call. Applies
-    // regardless of plan or AI-key ownership — see the doc comment on
-    // GITHUB_REVIEW_MAX_TOKENS_PER_RUN in lib/config/registry.ts.
-    const estimatedBytes = selected.reduce((sum, e) => sum + (e.size ?? 0), 0);
-    const maxTokensPerRun = await getSetting(
-      "GITHUB_REVIEW_MAX_TOKENS_PER_RUN",
-    );
-    if (estimateTokens(estimatedBytes) > maxTokensPerRun) {
-      return NextResponse.json(
-        {
-          error:
-            "This repo is too large for automated AI review right now. Try a smaller repo, or ask an admin to raise the per-run token ceiling.",
-        },
-        { status: 413 },
-      );
-    }
+    // Planned from tree metadata (byte sizes), before fetching a single byte
+    // of content or spending an AI call: the batches that fit under
+    // GITHUB_REVIEW_MAX_TOKENS_PER_RUN and what they can cost at worst.
+    //
+    // A repo past the per-run ceiling used to be refused here with a 413, and
+    // a repo past what the account had left was refused at the reservation
+    // with a 403, pattern scan included both times. Neither limit is about the
+    // pattern scan, which is cheap and deterministic, so it now covers every
+    // selected file whatever the AI allowance, and the AI review covers what
+    // the two limits admit and says where it stopped.
+    const plan = await planGithubReview(selected.map((e) => e.size ?? 0));
 
-    // The read-only check above can be passed by two requests at once, and
-    // used to be followed by a run that charged afterwards with a floor at
-    // zero, so one credit bought a whole review. This takes the review's
-    // estimate out of the window and the credit balance (or claims the free
-    // trial, atomically) before any content is fetched or any AI call made,
-    // and refuses when they do not cover it. The run is held to what was
-    // reserved and the finally below settles it with the real count.
-    const gate = await reserveGithubReviewTokens(
-      userId,
-      await estimateGithubReviewTokens(selected.map((e) => e.size ?? 0)),
-    );
-    if (!gate.allowed) {
-      return NextResponse.json(
-        { error: gate.message },
-        { status: gate.busy ? 429 : 403 },
+    // The reservation takes the plan's estimate out of the window and the
+    // credit balance (or claims the free trial, atomically) before any content
+    // is fetched or any AI call made, needing only the first batch's worst
+    // case. The run is held to whatever it got and the finally below settles
+    // it with the real count. When not even the first batch fits under the
+    // ceiling there is nothing to reserve.
+    let reservation: GithubReviewReservation | null = null;
+    let allowanceMessage: string | null = null;
+    if (plan.batchesWithinCap > 0) {
+      const gate = await reserveGithubReviewTokens(
+        userId,
+        plan.estimate,
+        plan.firstBatch,
       );
+      if (gate.allowed) {
+        reservation = gate.reservation;
+      } else if (gate.busy) {
+        return NextResponse.json({ error: gate.message }, { status: 429 });
+      } else {
+        allowanceMessage = gate.message;
+      }
     }
-    const reservation = gate.reservation;
 
     const startTime = Date.now();
 
@@ -200,11 +195,13 @@ export async function POST(request: Request) {
     try {
       files = await fetchSelectedFiles(token, owner, repo, selected);
       secretFindings = runPatternSecretsScan(files);
+      // No reservation means a budget of zero, not null: null is "nothing
+      // caps this run" and would send every batch the ceiling admits.
       aiResult = await runGithubAiReview(
         files,
         userId,
         repoInfo.private,
-        reservation.budget,
+        reservation ? reservation.budget : 0,
       );
       tokensSpent = aiResult.totalTokensUsed;
     } catch (err) {
@@ -212,18 +209,20 @@ export async function POST(request: Request) {
       // not cost the user their one daily free trial. The claim has to
       // happen before the run to close the race; this release is what
       // keeps the net effect the same as recording strictly after success.
-      if (reservation.isFreeTrial) {
+      if (reservation?.isFreeTrial) {
         await releaseFreeGithubReviewTrial(userId).catch(() => {});
       }
       throw err;
     } finally {
-      try {
-        await settleGithubReviewTokens(reservation, tokensSpent);
-      } catch (err) {
-        console.error(
-          `[${APP_NAME}] Failed to settle GitHub review tokens (non-fatal):`,
-          err instanceof Error ? err.message : err,
-        );
+      if (reservation) {
+        try {
+          await settleGithubReviewTokens(reservation, tokensSpent);
+        } catch (err) {
+          console.error(
+            `[${APP_NAME}] Failed to settle GitHub review tokens (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        }
       }
     }
 
@@ -232,7 +231,7 @@ export async function POST(request: Request) {
     // per-run token ceiling, or zero tokens were actually spent. Otherwise the
     // user burns their one free review for an empty result.
     if (
-      reservation.isFreeTrial &&
+      reservation?.isFreeTrial &&
       (aiResult.noEndpoint ||
         aiResult.rejectedOverCap ||
         aiResult.totalTokensUsed === 0)
@@ -315,8 +314,9 @@ export async function POST(request: Request) {
     // No `incomplete` list: this pipeline has no timed-out-branch concept to
     // report. A file it could not fetch or decode is skipped by
     // fetchSelectedFiles and surfaces as filesScanned being lower than what
-    // was selected, and an AI review that did not run surfaces as
-    // aiReviewSkipped. Both are in the response, neither is an
+    // was selected, and an AI review that did not run or stopped early
+    // surfaces as aiReviewSkipped, aiReviewStoppedAtBudget,
+    // aiReviewStoppedAtRunCap and aiReviewCoverage. Both are in the response, neither is an
     // ScanResult.incomplete area, so inventing one here would be a claim the
     // scan cannot back.
     if (scanHistoryId !== null) {
@@ -331,6 +331,14 @@ export async function POST(request: Request) {
       });
     }
 
+    // The plan works from tree sizes and the run from the content it built,
+    // so when the plan found no batch under the ceiling but the content turned
+    // out smaller, the zero budget is what stopped the run. The reason is
+    // still the ceiling: more allowance would not have changed it.
+    const ceilingBlocked = plan.batchesWithinCap === 0;
+    const stoppedAtRunCap =
+      aiResult.stoppedAtRunCap || (ceilingBlocked && aiResult.stoppedAtBudget);
+
     return NextResponse.json({
       ...result,
       scanHistoryId,
@@ -340,8 +348,19 @@ export async function POST(request: Request) {
       aiTokensUsed: aiResult.totalTokensUsed,
       aiReviewSkipped: aiResult.noEndpoint,
       // True when the account's allowance and credits ran out before every
-      // file was reviewed; the findings cover the files before that point.
-      aiReviewStoppedAtBudget: aiResult.stoppedAtBudget,
+      // file was reviewed, including before the first one; the AI findings
+      // cover the files before that point and the pattern scan covers all.
+      aiReviewStoppedAtBudget: aiResult.stoppedAtBudget && !ceilingBlocked,
+      // True when GITHUB_REVIEW_MAX_TOKENS_PER_RUN stopped it instead.
+      aiReviewStoppedAtRunCap: stoppedAtRunCap,
+      aiReviewCoverage: {
+        filesReviewed: aiResult.filesReviewed,
+        filesTotal: aiResult.filesTotal,
+        batchesReviewed: aiResult.batchesReviewed,
+        batchesTotal: aiResult.batchesTotal,
+      },
+      // Why the account could not cover even the first batch, and what would.
+      aiReviewAllowanceMessage: allowanceMessage,
     });
   } catch (error) {
     console.error(

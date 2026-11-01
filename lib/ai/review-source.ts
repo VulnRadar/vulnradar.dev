@@ -8,18 +8,18 @@
  * injection risks, insecure crypto usage, auth/authorization logic flaws,
  * unsafe deserialization — rather than verifying existing findings.
  *
- * Token accounting: the route reserves estimateGithubReviewTokens out of the
- * window and the credit balance before the run (lib/billing/
- * github-review-usage.ts's reserveGithubReviewTokens), the run is held to
- * that reservation, and the route settles it with the REAL usage the
- * provider reported in its `usage` fields. The input-only estimate
- * (lib/scanner/github-repo-scan.ts's estimateTokens) is still the separate,
- * always-enforced per-run ceiling.
+ * Token accounting: the route reserves what planGithubReview estimates out of
+ * the window and the credit balance before the run (lib/billing/
+ * github-review-usage.ts's reserveGithubReviewTokens), needing only the first
+ * batch's worst case, so a repo larger than what is left is partly reviewed.
+ * The run is held to that reservation batch by batch, and the route settles
+ * it with the REAL usage the provider reported in its `usage` fields.
+ * GITHUB_REVIEW_MAX_TOKENS_PER_RUN is the separate, always-enforced ceiling on
+ * the input one run sends, counted the same conservative way.
  */
 
 import type { Category, Severity, Vulnerability } from "@/lib/scanner/types";
 import type { RepoFile } from "@/lib/scanner/github-repo-scan";
-import { estimateTokens } from "@/lib/scanner/github-repo-scan";
 import {
   resolveServerEndpoint,
   resolveUserEndpoint,
@@ -203,50 +203,79 @@ const SYSTEM_PROMPT_TOKENS = Math.max(
 );
 
 /**
- * The most one review call over `promptBytes` of prompt can cost, at one
- * token per byte (see lib/ai/token-ceiling.ts). It used estimateTokens, four
- * characters per token, on text the repository chooses: a file of CJK text
- * or emoji tokenises near one token per character, so a call cost several
- * times what was reserved for it and the overrun was charged afterwards with
- * a floor at zero.
+ * The most input one review call over `promptBytes` of prompt can be billed
+ * for, at one token per byte (see lib/ai/token-ceiling.ts). It used
+ * estimateTokens, four characters per token, on text the repository chooses:
+ * a file of CJK text or emoji tokenises near one token per character, so a
+ * call cost several times what was reserved for it and the overrun was
+ * charged afterwards with a floor at zero. The per-run cap is counted in this
+ * unit as well, for the same reason.
  */
+function reviewCallInput(promptBytes: number) {
+  return CALL_FRAMING_TOKENS + SYSTEM_PROMPT_TOKENS + promptBytes;
+}
+
+/** The most one review call can cost: its input plus its whole output allowance. */
 function reviewCallCeiling(promptBytes: number, maxTokensPerCall: number) {
-  return (
-    CALL_FRAMING_TOKENS + SYSTEM_PROMPT_TOKENS + promptBytes + maxTokensPerCall
-  );
+  return reviewCallInput(promptBytes) + maxTokensPerCall;
+}
+
+export interface GithubReviewPlan {
+  /** The worst case of every batch the per-run cap admits, summed: what the
+   *  route asks the account to reserve. */
+  estimate: number;
+  /** The worst case of the first batch alone: the least a reservation has to
+   *  hold for the review to start. Zero when not even that batch fits the
+   *  per-run cap. */
+  firstBatch: number;
+  /** The input the admitted batches can send, counted the way the cap is. */
+  inputWithinCap: number;
+  batchesWithinCap: number;
+  batchesTotal: number;
 }
 
 /**
- * What a review of files with these byte sizes should reserve, from the tree
- * metadata alone, before any content is fetched: each call's input plus its
- * whole output allowance, batched the way runGithubAiReview will batch them.
- * The input-only GITHUB_REVIEW_MAX_TOKENS_PER_RUN check stays the ceiling on
- * what is sent; this is what the account is asked to cover.
+ * What a review of files with these byte sizes would send and cost, from the
+ * tree metadata alone, before any content is fetched: batched the way
+ * runGithubAiReview will batch them, each call counted at its input plus its
+ * whole output allowance, and stopped at the batch whose input would cross
+ * GITHUB_REVIEW_MAX_TOKENS_PER_RUN. The run makes the same cut on the content
+ * it actually built, so this is a plan, not a promise.
  */
-export async function estimateGithubReviewTokens(
+export async function planGithubReview(
   fileSizes: number[],
-): Promise<number> {
-  if (fileSizes.length === 0) return 0;
+): Promise<GithubReviewPlan> {
+  const plan: GithubReviewPlan = {
+    estimate: 0,
+    firstBatch: 0,
+    inputWithinCap: 0,
+    batchesWithinCap: 0,
+    batchesTotal: 0,
+  };
+  if (fileSizes.length === 0) return plan;
   const {
+    GITHUB_REVIEW_MAX_TOKENS_PER_RUN: maxTokensPerRun,
     GITHUB_REVIEW_MAX_TOKENS_PER_CALL: maxTokensPerCall,
     GITHUB_REVIEW_PER_CALL_CHAR_BUDGET: perCallCharBudget,
   } = await getSettings([
+    "GITHUB_REVIEW_MAX_TOKENS_PER_RUN",
     "GITHUB_REVIEW_MAX_TOKENS_PER_CALL",
     "GITHUB_REVIEW_PER_CALL_CHAR_BUDGET",
   ] as const);
-  return batchBySize(fileSizes, (s) => s, perCallCharBudget).reduce(
-    (sum, batch) => {
-      const bytes = batch.reduce((n, s) => n + s, 0);
-      return (
-        sum +
-        reviewCallCeiling(
-          Math.ceil(bytes * (1 + PROMPT_FRAMING_ALLOWANCE)),
-          maxTokensPerCall,
-        )
-      );
-    },
-    0,
-  );
+  const batches = batchBySize(fileSizes, (s) => s, perCallCharBudget);
+  plan.batchesTotal = batches.length;
+  for (const batch of batches) {
+    const bytes = batch.reduce((n, s) => n + s, 0);
+    const promptBytes = Math.ceil(bytes * (1 + PROMPT_FRAMING_ALLOWANCE));
+    const input = reviewCallInput(promptBytes);
+    if (plan.inputWithinCap + input > maxTokensPerRun) break;
+    const ceiling = reviewCallCeiling(promptBytes, maxTokensPerCall);
+    if (plan.batchesWithinCap === 0) plan.firstBatch = ceiling;
+    plan.estimate += ceiling;
+    plan.inputWithinCap += input;
+    plan.batchesWithinCap++;
+  }
+  return plan;
 }
 
 function parseFindings(text: string, files: RepoFile[]): Vulnerability[] {
@@ -333,6 +362,9 @@ interface CallResult {
   /** The request went out and no usage figure came back (a timeout, a
    *  dropped connection, a provider that omits usage). */
   costUnknown?: boolean;
+  /** No answer came back (an HTTP error, a timeout), so the batch's files
+   *  were not reviewed. An answer that cannot be parsed was still a review. */
+  failed?: boolean;
 }
 
 async function callReviewModel(
@@ -369,7 +401,7 @@ async function callReviewModel(
       console.error(
         `[AI-REVIEW] HTTP ${res.status} from ${logValue(endpoint.baseUrl)}: ${logValue(res.detail, 300)}`,
       );
-      return { findings: [], totalTokens: 0 };
+      return { findings: [], totalTokens: 0, failed: true };
     }
 
     // The provider has billed this call whatever its answer says, so a
@@ -395,7 +427,7 @@ async function callReviewModel(
       "[AI-REVIEW] callReviewModel failed:",
       logValue(err instanceof Error ? err.message : err, 300),
     );
-    return { findings: [], totalTokens: 0, costUnknown: true };
+    return { findings: [], totalTokens: 0, costUnknown: true, failed: true };
   } finally {
     clearTimeout(timer);
   }
@@ -407,18 +439,35 @@ export interface GithubAiReviewResult {
   totalTokensUsed: number;
   /** True if no AI endpoint could be resolved (server not configured, no user key) — findings will be empty. */
   noEndpoint: boolean;
-  /** True if the estimated content size exceeded the per-run ceiling and the review was skipped entirely. */
+  /** True if not even the first batch fit under GITHUB_REVIEW_MAX_TOKENS_PER_RUN, so nothing was sent. */
   rejectedOverCap: boolean;
   /** True if the reservation could not cover the next batch, so the files from there on were not reviewed. */
   stoppedAtBudget: boolean;
+  /** True if the next batch would have taken the input sent past
+   *  GITHUB_REVIEW_MAX_TOKENS_PER_RUN, so the files from there on were not reviewed. */
+  stoppedAtRunCap: boolean;
+  /** Files in a batch the model answered, of filesTotal handed to the run.
+   *  The difference is what the AI review did not cover: batches past a stop,
+   *  and batches whose call failed. */
+  filesReviewed: number;
+  filesTotal: number;
+  batchesReviewed: number;
+  batchesTotal: number;
 }
 
 /**
  * Runs the AI code review pass over `files` and returns findings shaped
- * like the existing Vulnerability type. Enforces the per-run token
- * ceiling defensively (the primary enforcement point is the caller, which
- * can estimate from GitHub tree metadata before ever fetching content —
- * see app/api/v3/scan/github/route.ts).
+ * like the existing Vulnerability type.
+ *
+ * Batches go out in order until one would cross a limit, and the run stops
+ * there, at a batch boundary, saying which limit it was and how much it
+ * covered. The two limits:
+ *
+ * GITHUB_REVIEW_MAX_TOKENS_PER_RUN bounds the input one run sends, on every
+ * run, counted at one token per byte of the prompt actually built. It was
+ * four characters per token, and a run no reservation caps (own key, billing
+ * off, the free trial) has nothing else between the repository's text and
+ * the provider, so CJK text or emoji sent several times the cap.
  *
  * `budgetTokens` is what the route's reserveGithubReviewTokens gate took for
  * this run, or null when nothing caps it (own key, billing off, the free
@@ -440,14 +489,14 @@ export async function runGithubAiReview(
     noEndpoint: false,
     rejectedOverCap: false,
     stoppedAtBudget: false,
+    stoppedAtRunCap: false,
+    filesReviewed: 0,
+    filesTotal: files.length,
+    batchesReviewed: 0,
+    batchesTotal: 0,
   };
   if (files.length === 0) return nothing;
 
-  const endpoint =
-    (await resolveUserEndpoint(userId)) ?? resolveServerEndpoint();
-  if (!endpoint) return { ...nothing, noEndpoint: true };
-
-  const totalChars = files.reduce((sum, f) => sum + f.content.length, 0);
   const {
     GITHUB_REVIEW_MAX_TOKENS_PER_RUN: maxTokensPerRun,
     GITHUB_REVIEW_CALL_TIMEOUT_MS: baseCallTimeoutMs,
@@ -461,6 +510,14 @@ export async function runGithubAiReview(
     "GITHUB_REVIEW_MAX_TOKENS_PER_CALL",
     "GITHUB_REVIEW_PER_CALL_CHAR_BUDGET",
   ] as const);
+  const batches = batchFiles(files, perCallCharBudget);
+
+  const endpoint =
+    (await resolveUserEndpoint(userId)) ?? resolveServerEndpoint();
+  if (!endpoint) {
+    return { ...nothing, noEndpoint: true, batchesTotal: batches.length };
+  }
+
   // A repo review sends tens of thousands of characters per call and asks for
   // reasoning on top, so it is the single slowest AI call the app makes. On
   // the flat timeout it was the first to be cut off, and a cut-off batch
@@ -472,11 +529,6 @@ export async function runGithubAiReview(
     baseCallTimeoutMs,
     reasoningTimeoutMultiplier,
   );
-  if (estimateTokens(totalChars) > maxTokensPerRun) {
-    return { ...nothing, rejectedOverCap: true };
-  }
-
-  const batches = batchFiles(files, perCallCharBudget);
 
   const findings: Vulnerability[] = [];
   let totalTokensUsed = 0;
@@ -485,19 +537,24 @@ export async function runGithubAiReview(
   // zero, but the provider may still have billed it, and counting it at zero
   // let a run whose calls all timed out send every batch.
   let held = 0;
+  let inputSent = 0;
+  let batchesSent = 0;
+  let batchesReviewed = 0;
+  let filesReviewed = 0;
   let stoppedAtBudget = false;
+  let stoppedAtRunCap = false;
 
   for (const batch of batches) {
-    let ceiling = 0;
-    if (budgetTokens !== null) {
-      const promptBytes = maxInputTokens(
-        batch.map(buildFileBlock).join("\n\n"),
-      );
-      ceiling = reviewCallCeiling(promptBytes, maxTokensPerCall);
-      if (held + ceiling > budgetTokens) {
-        stoppedAtBudget = true;
-        break;
-      }
+    const promptBytes = maxInputTokens(batch.map(buildFileBlock).join("\n\n"));
+    const input = reviewCallInput(promptBytes);
+    if (inputSent + input > maxTokensPerRun) {
+      stoppedAtRunCap = true;
+      break;
+    }
+    const ceiling = reviewCallCeiling(promptBytes, maxTokensPerCall);
+    if (budgetTokens !== null && held + ceiling > budgetTokens) {
+      stoppedAtBudget = true;
+      break;
     }
     const result = await callReviewModel(
       endpoint,
@@ -506,16 +563,27 @@ export async function runGithubAiReview(
       callTimeoutMs,
       isPrivate,
     );
+    inputSent += input;
+    batchesSent++;
     findings.push(...result.findings);
     totalTokensUsed += result.totalTokens;
     held += result.costUnknown ? ceiling : result.totalTokens;
+    if (!result.failed) {
+      batchesReviewed++;
+      filesReviewed += batch.length;
+    }
   }
 
   return {
     findings,
     totalTokensUsed,
     noEndpoint: false,
-    rejectedOverCap: false,
+    rejectedOverCap: stoppedAtRunCap && batchesSent === 0,
     stoppedAtBudget,
+    stoppedAtRunCap,
+    filesReviewed,
+    filesTotal: files.length,
+    batchesReviewed,
+    batchesTotal: batches.length,
   };
 }

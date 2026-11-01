@@ -28,8 +28,13 @@ vi.mock("@/lib/billing/github-review-usage", () => ({
     mockRecordGithubReviewTokens(...args),
 }));
 
-const { runGithubAiReview, estimateGithubReviewTokens } =
+const { runGithubAiReview, planGithubReview } =
   await import("@/lib/ai/review-source");
+
+/** What the route reserves for files of these sizes, inside the per-run cap. */
+async function estimateGithubReviewTokens(sizes: number[]): Promise<number> {
+  return (await planGithubReview(sizes)).estimate;
+}
 
 const FILES: RepoFile[] = [
   {
