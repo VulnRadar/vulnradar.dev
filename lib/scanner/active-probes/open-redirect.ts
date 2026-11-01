@@ -185,9 +185,9 @@ export async function checkOpenRedirectProbe(
   let html: string;
   try {
     // Pin to the IP validateScanTarget just resolved so a DNS rebind can't
-    // point the connect at a private/metadata IP (HTTP pinned + Host header;
-    // HTTPS relies on the immediate re-resolution). Does not alter redirect
-    // handling, so `redirect: "error"` still behaves as before.
+    // point the connect at a private/metadata IP. Both schemes connect to
+    // that address with the hostname in Host and SNI. Does not alter
+    // redirect handling, so `redirect: "error"` still behaves as before.
     const pageTarget = pinToResolvedIp(url, safety.resolvedIp, {
       headers: { "User-Agent": USER_AGENT },
       redirect: "error",
