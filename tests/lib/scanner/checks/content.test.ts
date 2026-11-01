@@ -1199,6 +1199,57 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+  // The three below had a bridge that rescanned the rest of the line from
+  // every copy of its start word. The tempered bridge that replaced it only
+  // ever matches from the last copy before the end word, so these pin that
+  // an earlier copy on the same line does not hide the match.
+  "cross-site-websocket": [
+    {
+      description: "a socket opened with no origin check",
+      body: '<script>const s = new WebSocket("wss://example.com/live");</script>',
+      expect: "fire",
+    },
+    {
+      description: "a check after several socket names on one line",
+      body: "<script>const ws = new WebSocket(u); ws.send(1); ws.check(t);</script>",
+      expect: "skip",
+    },
+    {
+      description: "a long run of ws with no check is still a finding",
+      body: "<script>new WebSocket(" + "ws".repeat(5000) + "</script>",
+      expect: "fire",
+    },
+  ],
+  "django-debug-page": [
+    {
+      description: "the technical_500 page, with a repeated Traceback",
+      body: "<pre>Traceback Traceback (most recent call last):</pre><p>Environment:</p><p>Request Method: GET</p><p>INSTALLED_APPS</p>",
+      expect: "fire",
+    },
+    {
+      description: "regression: Traceback and the call line on different lines",
+      body: "<pre>Traceback\n(most recent call last)</pre><p>Environment:</p><p>Request Method: GET</p><p>INSTALLED_APPS</p>",
+      expect: "skip",
+    },
+  ],
+  "laravel-debug-page": [
+    {
+      description: "Whoops twice before Laravel on one line",
+      body: "<title>Whoops! Whoops, looks like something went wrong.</title><span>Laravel</span>",
+      expect: "fire",
+    },
+    {
+      description: "regression: Whoops and Laravel on different lines",
+      body: "<title>Whoops!</title>\n<p>Built with Laravel</p>",
+      expect: "skip",
+    },
+    {
+      description:
+        "an Illuminate exception class after another, with the stack trace",
+      body: "<h1>Illuminate\\Foo then Illuminate\\Database\\QueryException</h1><p>Stack trace</p>",
+      expect: "fire",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

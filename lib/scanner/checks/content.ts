@@ -938,9 +938,14 @@ const rawDetectors: Record<string, DetectFn> = {
   "cross-site-websocket": (_url, _headers, body) => {
     const wsConnections = body.match(/new\s+WebSocket\s*\(/gi) || [];
     if (wsConnections.length === 0) return null;
-    const hasOriginCheck = /origin|(?:ws|socket).*(?:verify|check|valid)/i.test(
-      body,
-    );
+    // The bridge may not cross another "ws" or "socket": the last one before a
+    // verify/check/valid on the same line is the only start that can match,
+    // so every other start stops at the next one instead of rescanning the
+    // rest of the line, and a long run of "ws" stays linear.
+    const hasOriginCheck =
+      /origin|(?:ws|socket)(?:(?!ws|socket).)*(?:verify|check|valid)/i.test(
+        body,
+      );
     if (hasOriginCheck) return null;
     return `Found ${wsConnections.length} WebSocket connection(s) without apparent origin validation.`;
   },
@@ -1209,7 +1214,11 @@ const rawDetectors: Record<string, DetectFn> = {
     // technical_500 template always renders alongside them ("Environment:"
     // and "Request Method:") so plain educational content doesn't match.
     if (
-      /Django Version:|Traceback.*most recent call/i.test(body) &&
+      // The bridge stops at the next "Traceback", for the reason given on
+      // cross-site-websocket above.
+      /Django Version:|Traceback(?:(?!Traceback).)*most recent call/i.test(
+        body,
+      ) &&
       /settings\.py|INSTALLED_APPS/i.test(body) &&
       /Environment:/i.test(body) &&
       /Request Method:/i.test(body)
@@ -1220,7 +1229,9 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "laravel-debug-page": (_url, _headers, body) => {
-    if (/Whoops.*Laravel/i.test(body)) {
+    // Each bridge stops at the next copy of its own start word, for the
+    // reason given on cross-site-websocket above.
+    if (/Whoops(?:(?!Whoops).)*Laravel/i.test(body)) {
       return "Laravel debug page (Whoops) detected with framework details.";
     }
     // A bare "Illuminate\...Exception" class name is also how troubleshooting
@@ -1228,7 +1239,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // with no live application involved. Require it to co-occur with a
     // structural marker of the actual Whoops/Ignition HTML template.
     if (
-      /Illuminate\\.*Exception/i.test(body) &&
+      /Illuminate\\(?:(?!Illuminate\\).)*Exception/i.test(body) &&
       /whoops-container|Stack trace/i.test(body)
     ) {
       return "Laravel debug page (Whoops) detected with framework details.";

@@ -476,29 +476,20 @@ describe("detector time budget on blank-line runs", () => {
 });
 
 /**
- * The four detectors these shapes were written for, which are still
- * quadratic on them. Their patterns live in content.ts and code.ts, outside
- * the change that added the shapes, so they are named here rather than the
- * shapes being left out of the corpus. Each pattern alone, at 24 KB and at
- * 64 KB of its shape:
+ * The detector these shapes were written for that is still quadratic on
+ * them. Its pattern lives in code.ts, outside the change that added the
+ * shapes, so it is named here rather than the shape being left out of the
+ * corpus. The pattern alone, at 24 KB and at 64 KB of its shape:
  *
- *   cross-site-websocket        (?:ws|socket).*(?:verify|...)   597 ms   4.5 s
- *   django-debug-page           Traceback.*most recent call     125 ms   1.0 s
- *   laravel-debug-page          Whoops.*Laravel                 200 ms   1.5 s
  *   code-timing-hmac-equality   HMAC[^=]*===                    275 ms   1.8 s
  *
  * Unlike KNOWN_QUADRATIC_DETECTORS this list is one-way: an entry that comes
- * in under budget does not fail the run, because three of the four sit close
- * enough to the 200 ms line that machine load alone moves them across it in
- * both directions. Every OTHER detector is still held to the budget on these
- * shapes. Delete an entry when its bridge is bounded.
+ * in under budget does not fail the run, because machine load alone moves a
+ * pattern this close to the 200 ms line across it in both directions. Every
+ * OTHER detector is still held to the budget on these shapes. Delete an
+ * entry when its bridge is bounded.
  */
-const KNOWN_SLOW_ON_REPEATED_KEYWORDS: string[] = [
-  "cross-site-websocket",
-  "django-debug-page",
-  "laravel-debug-page",
-  "code-timing-hmac-equality",
-];
+const KNOWN_SLOW_ON_REPEATED_KEYWORDS: string[] = ["code-timing-hmac-equality"];
 
 describe("detector time budget on a repeated keyword", () => {
   for (const [name, body] of Object.entries(REPEATED_KEYWORD_SHAPES)) {
