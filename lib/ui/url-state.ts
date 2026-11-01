@@ -105,13 +105,20 @@ export function getQueryParamInt(name: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * Every query-string key, on an object with no prototype. The keys are typed
+ * by whoever wrote the link, so on a plain `{}` they shared a namespace with
+ * Object.prototype: ?__proto__= was dropped and a missing `toString` read back
+ * as a function. Object.fromEntries defines each key as an own property (it
+ * never runs the __proto__ setter), and a repeated key keeps its last value.
+ */
 export function getAllQueryParams(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const out: Record<string, string> = {};
-  new URLSearchParams(window.location.search).forEach((value, key) => {
-    out[key] = value;
-  });
-  return out;
+  const out: Record<string, string> = Object.create(null);
+  if (typeof window === "undefined") return out;
+  return Object.assign(
+    out,
+    Object.fromEntries(new URLSearchParams(window.location.search)),
+  );
 }
 
 type WriteOpts = {
