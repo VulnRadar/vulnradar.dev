@@ -90,8 +90,11 @@ cd vulnradar.dev
 
 # 2. Configure
 cp .env.example .env
-# Set DATABASE_URL and API_KEY_ENCRYPTION_KEY in .env. App name, URL, emails
-# and branding are build-tier: edit lib/config/config-values.ts and rebuild.
+# Set POSTGRES_PASSWORD and API_KEY_ENCRYPTION_KEY in .env. Compose builds
+# DATABASE_URL for its bundled Postgres from POSTGRES_*, so DATABASE_URL is
+# only for an external database (docker-compose.managed-db.yml). App name,
+# URL, emails and branding are build-tier: edit lib/config/config-values.ts
+# and rebuild.
 # Rate limits, feature flags and billing limits are runtime-tier: change them
 # in Admin -> Settings after the first sign-in, no rebuild needed.
 
