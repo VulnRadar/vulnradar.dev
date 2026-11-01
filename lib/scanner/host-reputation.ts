@@ -40,6 +40,22 @@ export interface SeverityCounts {
   info: number;
 }
 
+export function countSeverities(findings: Vulnerability[]): SeverityCounts {
+  const counts: SeverityCounts = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    info: 0,
+  };
+  for (const f of findings) {
+    if (Object.hasOwn(counts, f.severity)) {
+      counts[f.severity as keyof SeverityCounts] += 1;
+    }
+  }
+  return counts;
+}
+
 /**
  * Normalize a raw host or full URL string into the exact-hostname key
  * host_reputation is keyed by: strip protocol/path/port, lowercase, and
@@ -263,10 +279,9 @@ export async function getExactUrlReputation(
       id: number;
       url: string;
       findings: unknown;
-      summary: Partial<SeverityCounts> | null;
       scanned_at: string | Date;
     }>(
-      `SELECT id, url, findings, summary, scanned_at
+      `SELECT id, url, findings, scanned_at
        FROM scan_history
        WHERE url = $1 AND is_public = true AND status = 'completed'
        ORDER BY scanned_at DESC
@@ -284,20 +299,17 @@ export async function getExactUrlReputation(
     const findings: Vulnerability[] = Array.isArray(rawFindings)
       ? rawFindings
       : [];
-    const summary = row.summary ?? {};
-    const severityCounts: SeverityCounts = {
-      critical: summary.critical ?? 0,
-      high: summary.high ?? 0,
-      medium: summary.medium ?? 0,
-      low: summary.low ?? 0,
-      info: summary.info ?? 0,
-    };
 
+    // Counted from the findings, not read from scan_history.summary: the
+    // summary is the scan owner's private view, with the findings they marked
+    // false positive left out (lib/scanner/recompute-scan-score.ts). This is
+    // a public lookup, so it reports what the scan recorded, from the same
+    // array the verdict and danger score come from.
     return {
       url: row.url,
       dangerScore: getDangerScore(findings),
       verdict: getSafetyRating(findings),
-      severityCounts,
+      severityCounts: countSeverities(findings),
       lastScannedAt:
         row.scanned_at instanceof Date
           ? row.scanned_at.toISOString()

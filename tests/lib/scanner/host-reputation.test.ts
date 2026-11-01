@@ -230,11 +230,15 @@ describe("getExactUrlReputation", () => {
     expect(sql).toContain("status = 'completed'");
   });
 
+  function f(severity: string): Vulnerability {
+    return { severity, title: `A ${severity} finding` } as Vulnerability;
+  }
+
   it("returns the most recent matching scan as a reputation result", async () => {
     mockQuery.mockResolvedValue({
       rows: [
         rowFor({
-          summary: { critical: 1, high: 2, medium: 0, low: 3, info: 0 },
+          findings: [f("critical"), f("high"), f("high"), f("low")],
         }),
       ],
       rowCount: 1,
@@ -246,10 +250,37 @@ describe("getExactUrlReputation", () => {
       url: "https://example.com/",
       scanId: 42,
       lastScannedAt: "2026-01-01T00:00:00.000Z",
-      severityCounts: { critical: 1, high: 2, medium: 0, low: 3, info: 0 },
+      severityCounts: { critical: 1, high: 2, medium: 0, low: 1, info: 0 },
     });
     const [sql] = mockQuery.mock.calls[0];
     expect(sql).toContain("ORDER BY scanned_at DESC");
+  });
+
+  // gap-ai-trust-boundary-2: scan_history.summary is the scan owner's own
+  // view, with the findings they privately marked false positive left out of
+  // the tally. This is a public lookup, so its counts come from the findings
+  // the scan actually recorded, the same array its verdict and danger score
+  // are computed from, and a stranger's private feedback cannot shrink them.
+  it("counts severities from the stored findings, not the owner's feedback-trimmed summary", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [
+        rowFor({
+          findings: [f("critical"), f("high")],
+          summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+        }),
+      ],
+      rowCount: 1,
+    });
+
+    const result = await getExactUrlReputation("https://example.com/");
+
+    expect(result?.severityCounts).toEqual({
+      critical: 1,
+      high: 1,
+      medium: 0,
+      low: 0,
+      info: 0,
+    });
   });
 
   it("normalizes the lookup URL the same way a stored scan URL was normalized", async () => {

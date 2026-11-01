@@ -38,7 +38,8 @@ export async function POST(req: NextRequest) {
   try {
     // scanHistoryId only ever exists to (a) record which scan a piece of
     // feedback came from and (b) trigger recomputeScanScore against that
-    // scan's own severity tally/danger score and host_reputation cascade --
+    // scan's own severity tally/danger score (and, for a verified owner of
+    // the host, the host_reputation cascade) --
     // both of which must stay scoped to the caller's own scans. Without
     // this, any authenticated user could attach feedback to (and force a
     // recompute cascade against) any scan in the system just by guessing
@@ -76,9 +77,11 @@ export async function POST(req: NextRequest) {
     // leaving the displayed risk stale until the next real scan. Fire and
     // forget: recomputeScanScore never throws, and its own success/failure
     // shouldn't gate this response, since the feedback itself already
-    // saved successfully either way.
+    // saved successfully either way. The caller's id goes with it: the
+    // recompute only rewrites the caller's own row, and touches the public
+    // host_reputation row only if the caller has verified the host's domain.
     if (scanHistoryId) {
-      recomputeScanScore(scanHistoryId).catch(() => {});
+      recomputeScanScore(scanHistoryId, session.userId).catch(() => {});
     }
 
     return NextResponse.json({ ok: true, feedback: row.rows[0] });

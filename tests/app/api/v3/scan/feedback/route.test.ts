@@ -138,7 +138,10 @@ describe("POST /api/v3/scan/feedback", () => {
     await POST(postRequest(validPayload({ verdict: "false_positive" })));
 
     expect(mockRecomputeScanScore).toHaveBeenCalledTimes(1);
-    expect(mockRecomputeScanScore).toHaveBeenCalledWith(123);
+    // The caller's id travels with the scan id: the recompute is scoped to
+    // the caller's own row and decides from it whether the public
+    // host_reputation row may follow (only for a verified owner of the host).
+    expect(mockRecomputeScanScore).toHaveBeenCalledWith(123, 42);
   });
 
   it("does not attempt to recompute when scanHistoryId is omitted", async () => {
