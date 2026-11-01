@@ -13,7 +13,9 @@
 //     provider (or by password signup): reject. Never auto-links, never
 //     creates a second account for the same email.
 //   - An account already exists, created by this SAME provider: log in
-//     normally, honoring 2FA exactly like a password login would.
+//     normally, honoring 2FA exactly like a password login would, but only
+//     when that account has verified the address and is not already linked
+//     to a different identity at this provider.
 
 import { NextResponse } from "next/server";
 import { randomInt, randomBytes, createHash } from "node:crypto";
@@ -211,8 +213,10 @@ export async function GET(
       }
     }
 
+    // idColumn comes from the fixed OAUTH_IDENTITY_COLUMNS map, never from
+    // the request, so interpolating it is safe.
     const existing = await pool.query(
-      "SELECT id, auth_provider, disabled_at FROM users WHERE email = $1",
+      `SELECT id, auth_provider, disabled_at, email_verified_at${idColumn ? `, ${idColumn}` : ""} FROM users WHERE email = $1`,
       [normalizedEmail],
     );
 
@@ -294,6 +298,33 @@ export async function GET(
       );
     }
 
+    // An email match only says the row CLAIMS this address. PATCH
+    // /api/v3/auth/update lets an account move to any address no other
+    // account holds (clearing email_verified_at), so an unverified row can
+    // belong to someone who typed the provider's verified address into their
+    // profile. Signing the address's real owner into it handed that person an
+    // account the victim was now using. Checked before the disabled and
+    // signup branches so an unproven claim learns nothing else about the row.
+    const label = OAUTH_PROVIDERS[provider].label;
+    if (!row.email_verified_at) {
+      const message = `An account lists this email address but never verified it, so ${label} sign-in cannot open it. If the address is yours, contact support.`;
+      return NextResponse.redirect(
+        `${baseUrl}/login?error=oauth_email_in_use&message=${encodeURIComponent(message)}`,
+      );
+    }
+    // A row already linked to a different identity of this provider: the
+    // provider-id lookup above missed, so this response is someone else's
+    // account at the same provider. Replacing the stored id would move the
+    // account's sign-in from that identity to this one.
+    const linkedId: string | null =
+      idColumn && row[idColumn] != null ? String(row[idColumn]) : null;
+    if (linkedId !== null && linkedId !== userInfo.id) {
+      const message = `This email's account is connected to a different ${label} account. Sign in with that one.`;
+      return NextResponse.redirect(
+        `${baseUrl}/login?error=oauth_email_in_use&message=${encodeURIComponent(message)}`,
+      );
+    }
+
     if (row.disabled_at) {
       return NextResponse.redirect(
         `${baseUrl}/login?error=oauth_account_disabled`,
@@ -305,7 +336,6 @@ export async function GET(
     // before that column was populated) -- same "tell them to sign in
     // instead of silently signing in" rule applies.
     if (intent === "signup") {
-      const label = OAUTH_PROVIDERS[provider].label;
       const message = `A VulnRadar account already uses this ${label} account. Sign in with ${label} instead.`;
       return NextResponse.redirect(
         `${baseUrl}/signup?error=oauth_already_exists&message=${encodeURIComponent(message)}`,
@@ -315,23 +345,35 @@ export async function GET(
     // Same provider that created the account, but the provider-id lookup
     // above found nothing -- a legacy account from before this column was
     // populated at sign-up. Backfill it now so the NEXT sign-in matches on
-    // identity directly instead of relying on email again.
-    if (idColumn && userInfo.id) {
-      await pool
-        .query(`UPDATE users SET ${idColumn} = $1 WHERE id = $2`, [
-          userInfo.id,
-          row.id,
-        ])
-        .catch((err) => {
-          // Non-fatal: a UNIQUE violation here would mean this identity is
-          // already claimed by a different account, which the provider-id
-          // lookup above should already have caught -- backfilling is a
-          // nice-to-have, not the login itself, so don't block signing in.
-          console.error(
-            `[OAuth:${provider}] identity backfill failed (non-fatal):`,
-            err,
-          );
-        });
+    // identity directly instead of relying on email again. The IS NULL guard
+    // makes "fill an empty column, never replace one" hold in the statement
+    // itself: an id that landed after the read above leaves no row returned,
+    // and that is the same different-identity case refused above.
+    if (idColumn && userInfo.id && linkedId === null) {
+      let filled: boolean;
+      try {
+        const backfill = await pool.query(
+          `UPDATE users SET ${idColumn} = $1 WHERE id = $2 AND ${idColumn} IS NULL RETURNING id`,
+          [userInfo.id, row.id],
+        );
+        filled = backfill.rows.length > 0;
+      } catch (err) {
+        // Non-fatal: a UNIQUE violation here would mean this identity is
+        // already claimed by a different account, which the provider-id
+        // lookup above should already have caught -- backfilling is a
+        // nice-to-have, not the login itself, so don't block signing in.
+        console.error(
+          `[OAuth:${provider}] identity backfill failed (non-fatal):`,
+          err,
+        );
+        filled = true;
+      }
+      if (!filled) {
+        const message = `This email's account is connected to a different ${label} account. Sign in with that one.`;
+        return NextResponse.redirect(
+          `${baseUrl}/login?error=oauth_email_in_use&message=${encodeURIComponent(message)}`,
+        );
+      }
     }
 
     await persistGithubLogin(provider, row.id, userInfo.login);

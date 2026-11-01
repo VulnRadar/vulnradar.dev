@@ -29,11 +29,19 @@ process.env.GITHUB_CLIENT_SECRET = "github-client-secret";
 process.env.API_KEY_ENCRYPTION_KEY = "f".repeat(64);
 
 const queries: { sql: string; params: unknown[] }[] = [];
+// email_verified_at and the provider-id columns are optional here and filled
+// in by the mock below (verified, nothing linked), so every fixture that is
+// not about them reads as the ordinary returning account it always was.
 let userByEmailRow: {
   id: number;
   auth_provider: string | null;
   disabled_at: string | null;
+  email_verified_at?: string | null;
+  google_id?: string | null;
+  github_id?: string | null;
+  discord_id?: string | null;
 } | null = null;
+const VERIFIED_AT = "2026-01-01T00:00:00.000Z";
 let twoFARow: {
   totp_enabled: boolean;
   two_factor_method: string;
@@ -78,9 +86,22 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("SELECT key, value FROM system_settings"))
     return { rows: [] };
   if (
-    s.startsWith("SELECT id, auth_provider, disabled_at FROM users WHERE email")
+    s.startsWith("SELECT id, auth_provider, disabled_at") &&
+    s.endsWith("FROM users WHERE email = $1")
   ) {
-    return { rows: userByEmailRow ? [userByEmailRow] : [] };
+    return {
+      rows: userByEmailRow
+        ? [
+            {
+              email_verified_at: VERIFIED_AT,
+              google_id: null,
+              github_id: null,
+              discord_id: null,
+              ...userByEmailRow,
+            },
+          ]
+        : [],
+    };
   }
   // More specific than -- and checked before -- the link flow's own
   // "UPDATE users SET google_id" 4-column update below: this is the
@@ -94,12 +115,12 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: byProviderIdRow ? [byProviderIdRow] : [] };
   }
   if (
-    /^UPDATE users SET (google_id|github_id|discord_id) = \$1 WHERE id = \$2$/.test(
+    /^UPDATE users SET (google_id|github_id|discord_id) = \$1 WHERE id = \$2( AND \1 IS NULL RETURNING id)?$/.test(
       s,
     )
   ) {
     backfillIdentityCalls.push({ sql: s, params });
-    return { rows: [] };
+    return { rows: [{ id: params[1] }] };
   }
   if (s.startsWith("INSERT INTO users")) {
     // createOAuthUser's INSERT ... RETURNING
@@ -736,6 +757,9 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         googleUserFixture.sub,
         55,
       ]);
+      // Fills an empty column only: the statement itself refuses to replace
+      // an id that landed between the read and the write.
+      expect(backfillIdentityCalls[0].sql).toContain("AND google_id IS NULL");
     });
 
     it("intent=signup refuses to silently sign in a legacy same-provider account matched only by email", async () => {
@@ -913,6 +937,144 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
       expect(sessionInsertCalls).toHaveLength(1);
       expect(locationOf(res).pathname).toBe("/dashboard");
+    });
+  });
+
+  // An email match is only a claim about who owns the address. PATCH
+  // /api/v3/auth/update lets any account move to an address no other account
+  // holds, clearing email_verified_at, so an unverified row may belong to
+  // someone who merely typed the victim's address. Signing the address's real
+  // owner into that row, and rewriting its provider id to theirs, handed the
+  // squatter a live account the victim was now using.
+  describe("email match only trusts a verified address (sec-auth-1)", () => {
+    function identityWrites() {
+      return queries.filter((q) =>
+        /^UPDATE users SET (google_id|github_id|discord_id)\b/.test(q.sql),
+      );
+    }
+
+    it("refuses an unverified row that holds a different provider id, and writes nothing", async () => {
+      userByEmailRow = {
+        id: 66,
+        auth_provider: "google",
+        disabled_at: null,
+        email_verified_at: null,
+        google_id: "other-sub",
+      };
+      twoFARow = {
+        totp_enabled: false,
+        two_factor_method: "app",
+        email: "owner@example.com",
+      };
+      const state = signLoginState("google", { intent: "login" });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/login");
+      expect(location.searchParams.get("error")).toBe("oauth_email_in_use");
+      expect(identityWrites()).toHaveLength(0);
+      expect(sessionInsertCalls).toHaveLength(0);
+      expect(cookieState.get("oauth_pending_login")).toBeUndefined();
+    });
+
+    it("refuses an unverified row even when its provider id is empty, without backfilling it", async () => {
+      userByEmailRow = {
+        id: 66,
+        auth_provider: "google",
+        disabled_at: null,
+        email_verified_at: null,
+        google_id: null,
+      };
+      const state = signLoginState("google", { intent: "login" });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "oauth_email_in_use",
+      );
+      expect(identityWrites()).toHaveLength(0);
+      expect(sessionInsertCalls).toHaveLength(0);
+    });
+
+    it("refuses a verified row already linked to a different identity of the same provider", async () => {
+      // The row owns the address, but a different Google account is the one
+      // linked to it. Rewriting google_id would move the account's sign-in
+      // from that identity to this one.
+      userByEmailRow = {
+        id: 66,
+        auth_provider: "google",
+        disabled_at: null,
+        google_id: "other-sub",
+      };
+      const state = signLoginState("google", { intent: "login" });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      const location = locationOf(res);
+      expect(location.searchParams.get("error")).toBe("oauth_email_in_use");
+      expect(
+        decodeURIComponent(location.searchParams.get("message") || ""),
+      ).toContain("different Google account");
+      expect(identityWrites()).toHaveLength(0);
+      expect(sessionInsertCalls).toHaveLength(0);
+    });
+
+    it("refuses when the empty provider id was filled between the read and the write", async () => {
+      userByEmailRow = { id: 55, auth_provider: "google", disabled_at: null };
+      const backfill = /^UPDATE users SET google_id = \$1 WHERE id = \$2/;
+      const original = mockQuery.getMockImplementation()!;
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (backfill.test(sql.trim())) {
+          queries.push({ sql: sql.trim(), params: params ?? [] });
+          return { rows: [] };
+        }
+        return original(sql, params);
+      });
+      const state = signLoginState("google", { intent: "login" });
+
+      try {
+        const res = await GET(
+          callbackRequest("google", { code: "somecode", state }),
+          ctx("google"),
+        );
+        expect(locationOf(res).searchParams.get("error")).toBe(
+          "oauth_email_in_use",
+        );
+        expect(sessionInsertCalls).toHaveLength(0);
+      } finally {
+        mockQuery.mockImplementation(original);
+      }
+    });
+
+    it("refuses an unverified row on the sign-up button too, rather than pointing at it", async () => {
+      userByEmailRow = {
+        id: 66,
+        auth_provider: "google",
+        disabled_at: null,
+        email_verified_at: null,
+      };
+      const state = signLoginState("google", { intent: "signup" });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "oauth_email_in_use",
+      );
+      expect(insertUserCalls).toHaveLength(0);
+      expect(sessionInsertCalls).toHaveLength(0);
     });
   });
 
