@@ -33,13 +33,23 @@ export interface HostRule {
   path?: RegExp;
 }
 
-// The lookbehind stops a URL from starting inside a word, a hostname or a
-// query string, which is what kept evil.example/?//cdn.example from counting.
-// The host is one character class per label and everything after it is
-// optional, so a failed attempt costs at most the length of one host and the
-// whole scan stays linear in the body.
+// The lookbehind stops a URL from starting inside a word, a hostname, a query
+// string or after a backslash (which a browser reads as a slash), which is
+// what kept evil.example/?//cdn.example from counting.
+// The lookahead is what makes the captured run the host: the authority has to
+// end right after it and its port. Otherwise the run is user info
+// (https://cdn.example@evil.example/) or the start of a longer name spelled
+// with a percent-escape or a full-width stop, and the browser loads from some
+// other host. A quote, a space or the end of the body count as that end
+// because attribute values end there. Which quote opened an attribute is not
+// known here, so markup contrived to disagree with the browser can still be
+// misread, but a page can name any URL it likes in a comment anyway.
+// A backslash does not end a path: in a JSON string it starts an escape, such
+// as the one Next.js writes for every ampersand in a query.
+// The host is one character class per label, so a failed attempt costs at
+// most the length of one host and the whole scan stays linear in the body.
 const URL_CANDIDATE =
-  /(?<![\w.:/?&#%+-])(?:https?:)?\/\/([a-z0-9-]+(?:\.[a-z0-9-]+)+)(?::\d{1,5})?([/?#][^\s"'`<>\\()]*)?/gi;
+  /(?<![\w.:/?&#%+\\-])(?:https?:)?\/\/([a-z0-9-]+(?:\.[a-z0-9-]+)+)\.?(?::\d{1,5})?(?=[/?#\s"'`<>]|\\["']|&(?:quot|apos|#0*3[49]|#x0*2[27]);|$)([/?#][^\s"'`<>()]*)?/gi;
 
 /** Every absolute or protocol-relative http(s) URL in `body`. */
 export function urlRefs(body: string): UrlRef[] {

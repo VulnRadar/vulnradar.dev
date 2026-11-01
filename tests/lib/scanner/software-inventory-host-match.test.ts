@@ -203,6 +203,14 @@ describe("software inventory: a vendor is read from the URL's host, not from tex
       ).not.toContain(c.name);
     });
 
+    it(`${label}: the vendor's host as user info before another host is not listed`, () => {
+      expect(
+        names(
+          `<link rel="preload" as="script" href="https://${c.host}@evil.example${c.path}">`,
+        ),
+      ).not.toContain(c.name);
+    });
+
     it(`${label}: the name in another URL's query string is not listed`, () => {
       expect(
         names(`<a href="https://evil.example/?${c.host}${c.path}">x</a>`),
@@ -254,6 +262,10 @@ describe("software inventory: reading every URL on the page stays linear", () =>
     slashRun: "/".repeat(1_000_000),
     shortUrls: "//a.b ".repeat(170_000),
     escapedSlashes: "https:\\/\\/a.b\\/".repeat(70_000),
+    // The authority-end lookahead fails on each of these and gives the host
+    // back one label at a time.
+    labelRunThenUserInfo: "//" + "a.".repeat(500_000) + "@",
+    shortUserInfoUrls: "//a.b@".repeat(170_000),
   };
   for (const [shape, body] of Object.entries(SHAPES)) {
     it(`is not slowed by: ${shape}`, () => {
