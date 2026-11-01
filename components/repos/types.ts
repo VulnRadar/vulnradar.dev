@@ -36,4 +36,21 @@ export interface GithubScanOutcome {
   filesSkippedByCaps: number;
   aiTokensUsed: number;
   aiReviewSkipped: boolean;
+  /** The account's AI review allowance ran out before every file, or before
+   *  the first one. */
+  aiReviewStoppedAtBudget: boolean;
+  /** The server's per-run AI review limit stopped it before every file. */
+  aiReviewStoppedAtRunCap: boolean;
+  /** How much of the repo the AI review covered. Null from a server that
+   *  predates the field. */
+  aiReviewCoverage: AiReviewCoverage | null;
+  /** Why the account could not cover even the first batch, when it could not. */
+  aiReviewAllowanceMessage: string | null;
+}
+
+export interface AiReviewCoverage {
+  filesReviewed: number;
+  filesTotal: number;
+  batchesReviewed: number;
+  batchesTotal: number;
 }

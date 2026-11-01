@@ -34,7 +34,7 @@ import type {
   GithubScanOutcome,
   RepoScanSummary,
 } from "@/components/repos/types";
-import type { ScanResult } from "@/lib/scanner/types";
+import { parseGithubScanResponse } from "@/components/repos/scan-outcome";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 
 interface GithubStatus {
@@ -241,22 +241,14 @@ export default function ReposPage() {
           setScanModalError(message);
           return null;
         }
-        const {
-          scanHistoryId,
-          ref,
-          filesScanned,
-          filesSkippedByCaps,
-          aiTokensUsed,
-          aiReviewSkipped,
-          ...result
-        } = data;
-        const scanResult = result as ScanResult;
+        const outcome = parseGithubScanResponse(data);
+        const scanResult = outcome.result;
         setSummaries((prev) => ({
           ...prev,
           [repoFullName]: {
             repo: repoFullName,
             lastScan: {
-              id: scanHistoryId ?? -1,
+              id: outcome.scanHistoryId ?? -1,
               summary: scanResult.summary,
               findingsCount: scanResult.summary.total,
               duration: scanResult.duration,
@@ -265,15 +257,6 @@ export default function ReposPage() {
             scanCount: (prev[repoFullName]?.scanCount ?? 0) + 1,
           },
         }));
-        const outcome: GithubScanOutcome = {
-          result: scanResult,
-          scanHistoryId: scanHistoryId ?? null,
-          ref: ref ?? "",
-          filesScanned: filesScanned ?? 0,
-          filesSkippedByCaps: filesSkippedByCaps ?? 0,
-          aiTokensUsed: aiTokensUsed ?? 0,
-          aiReviewSkipped: Boolean(aiReviewSkipped),
-        };
         setScanModalOutcome(outcome);
         return outcome;
       } catch (err) {
