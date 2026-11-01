@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { readWorkflow, workflowSteps, stepNamed } from "./_workflow-steps";
 
@@ -76,7 +76,21 @@ describe("the support policy", () => {
   });
 });
 
-describe.each(["ci.yml", "release.yml"])("%s", (file) => {
+// Every workflow that sets up Node, found rather than listed: the spike
+// workflow was missing from a written-out list and kept running the previous
+// patch after every other pin moved.
+const NODE_WORKFLOWS = readdirSync(path.join(ROOT, ".github", "workflows"))
+  .filter((file) => /\.ya?ml$/.test(file))
+  .filter((file) => /uses:\s*actions\/setup-node@/.test(readWorkflow(file)))
+  .sort();
+
+it("finds the workflows that set up Node", () => {
+  expect(NODE_WORKFLOWS).toEqual(
+    expect.arrayContaining(["ci.yml", "release.yml", "spike-api-rewrite.yml"]),
+  );
+});
+
+describe.each(NODE_WORKFLOWS)("%s", (file) => {
   const workflow = readWorkflow(file);
   const setupNodeSteps = workflowSteps(workflow).filter((s) =>
     /uses:\s*actions\/setup-node@/.test(s.code),

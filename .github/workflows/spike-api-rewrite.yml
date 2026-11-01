@@ -61,9 +61,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
-          # The same patch ci.yml runs. The image target uses the Dockerfile's
-          # own node:22.23.4-alpine inside the container.
-          node-version: "22.23.3"
+          # .nvmrc, like ci.yml, so dev and start run the patch the image
+          # does. The image target uses the Dockerfile's own node stage.
+          node-version-file: .nvmrc
 
       - name: Self-test the harness
         # Fails before any server starts if a helper, a verdict rule or the
