@@ -318,4 +318,38 @@ describe("safeFetch dials only the address validateScanTarget approved", () => {
 
     expect(dials.map((d) => d.host)).toEqual(["93.184.216.34"]);
   });
+
+  it("closes a followed redirect's connection even when its body never ends", async () => {
+    // The approved address is public, so the dial is pointed at the local
+    // server here, below validateScanTarget. It is not the address the tests
+    // above use, so the agent's pool keyed on it is this test's alone.
+    mockLookup.mockResolvedValue([{ address: "93.184.216.35", family: 4 }]);
+    let redirectSocketClosed!: Promise<void>;
+    const { port, hits } = await httpServer((req, res) => {
+      if (req.url === "/") {
+        redirectSocketClosed = new Promise((resolve) =>
+          req.socket.once("close", () => resolve()),
+        );
+        res.writeHead(302, { location: "/next", "content-type": "text/plain" });
+        res.write("a redirect body that never finishes");
+        return;
+      }
+      res.end("arrived");
+    });
+    vi.spyOn(http.globalAgent, "createConnection").mockImplementation((() =>
+      net.connect({ port, host: "127.0.0.1" })) as never);
+
+    const res = await safeFetch("http://redirect.example/");
+
+    expect(await res.text()).toBe("arrived");
+    expect(hits.map((h) => h.split(" host=")[0])).toEqual([
+      "GET /",
+      "GET /next",
+    ]);
+    const outcome = await Promise.race([
+      redirectSocketClosed.then(() => "closed"),
+      new Promise((resolve) => setTimeout(() => resolve("still open"), 2_000)),
+    ]);
+    expect(outcome).toBe("closed");
+  });
 });

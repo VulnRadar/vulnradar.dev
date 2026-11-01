@@ -1284,6 +1284,14 @@ export async function safeFetch(
         return withLogicalUrl(response, currentLogicalUrl);
       }
 
+      // From here this hop's Response is either followed or refused, never
+      // returned, so nobody will read its body. Release the connection now:
+      // the pinned dispatcher runs on node:http, which has no body timeout,
+      // and a target answering 3xx with a body that never ends would
+      // otherwise hold one socket per hop open until the Response is
+      // collected.
+      await response.body?.cancel().catch(() => {});
+
       // Every hop passes the same syntactic gate the entry URL did. Without
       // this the scheme allowlist applied to hop 0 only, so a
       // `Location: ftp://<same-host>/x` cleared both the cross-host test
