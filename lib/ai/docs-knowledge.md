@@ -2608,7 +2608,7 @@ with a raw request. Authentication is the same Bearer API key.
 - The vulnradar CLI wraps the scan API: it starts a scan, polls until it finishes, prints a summary, and exits non-zero when the finding counts go over the limits you set. That exit code is the whole point: drop it into a pipeline step and a regression fails the build.
 - The CLI is on npm as vulnradar. npx needs no install at all, which is usually what you want in CI:
 - For a permanent command on your PATH:
-- It needs Node 22 or newer, the same floor as the rest of the project ( cli/package.json declares engines.node >=22.0.0), and has no dependencies of its own.
+- It needs Node 22.12 or newer ( cli/package.json declares engines.node >=22.12.0, the first Node 22 release where the JSON import it reads its own version with is stable), and has no dependencies of its own.
 - Only needed to work on the CLI itself, or to run a change that is not released yet:
 - Or run the entrypoint directly with node cli/vulnradar.mjs scan <url>, no install at all.
 - Pass your key with --api-key or the VULNRADAR_TOKEN environment variable. Create the key under Profile > Developer > API Keys. Prefer the variable in CI so the key never lands in shell history or logs. --api-base has the same env form, VULNRADAR_API_BASE, so a self-hosted CI does not repeat the flag on every invocation. An explicit flag beats the variable in both cases.
@@ -3180,7 +3180,7 @@ individual URLs instead.
 | `/docs/architecture` | - | 5 | 1 | 0 | 3 | 0 | 0 | 8 | 0 |
 | `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 18 | 9 |
 | `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 22 | 0 |
-| `/docs/administration` | - | 12 | 8 | 0 | 0 | 0 | 0 | 37 | 0 |
+| `/docs/administration` | - | 12 | 8 | 0 | 0 | 0 | 0 | 38 | 0 |
 | `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 21 | 0 |
 | `/docs/billing` | - | 8 | 7 | 0 | 0 | 0 | 0 | 21 | 0 |
 | `/docs/cli` | - | 9 | 1 | 0 | 8 | 0 | 0 | 18 | 0 |

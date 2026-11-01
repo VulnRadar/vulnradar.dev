@@ -573,7 +573,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Sparkles] **[SECURITY]** **AI Verification Reserves Credits Before It Runs**
   AI finding verification now sets aside the tokens a pass can use from your window allowance and AI credits before it starts, gives back what it did not use, and stops at the first finding your allowance cannot cover instead of spending past it. Two verifications started at once can no longer both draw on the same credits.
 - [GitMerge] **[SECURITY]** **GitHub Repo Review Reserves Credits Before It Runs**
-  A GitHub repo review now needs your window allowance plus GitHub review credits to cover its estimate before any file is fetched, instead of starting on any positive balance. Unused tokens go back to you when it finishes. A second review on the same account is refused (HTTP 429) while the first is still running, rather than waiting for it, so start it again once the first one finishes.
+  A GitHub repo review now sets aside what it can use from your window allowance and GitHub review credits before any file is fetched, instead of starting on any positive balance, and the AI review stops at the files that allowance does not cover. Unused tokens go back to you when it finishes. A second review on the same account is refused (HTTP 429) while the first is still running, rather than waiting for it, so start it again once the first one finishes.
 - [Timer] **[SECURITY]** **Verification Probe Reads a Capped Body**
   The live probe AI verification sends to the scanned site now stops reading the response at its snippet size and probe timeout, instead of downloading the whole body first.
 - [ShieldCheck] **[SECURITY]** **False-Positive Marks Stay Private**
@@ -617,11 +617,11 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [FileSearch] **[SECURITY]** **Spec Import No Longer Invents Targets From Odd Parameter Names**
   An OpenAPI or Swagger file with a path parameter or server variable named __proto__, constructor or toString no longer imports a made-up "[object Object]" URL. Declared values for those names are used like any other.
 - [Gauge] **[SECURITY]** **AI Verification and Repo Review Stay Inside What They Reserved**
-  AI verification and AI code review now count every call at its worst case before sending it, so a page or repository full of emoji, CJK text or dense code can no longer make a call cost more than was set aside for it. A call that would not fit is skipped and reported instead of charged afterwards. Counting the worst case means a verification or a repo review needs more of your allowance free before it starts, though you are still charged only for what it really used.
+  AI verification and AI code review now count every call at its worst case before sending it, so a page or repository full of emoji, CJK text or dense code can no longer make a call cost more than was set aside for it. A pass stops at the first call that would not fit and reports what was left unverified, instead of charging it afterwards. Counting the worst case means a repo review covers fewer files on the same allowance, though you are still charged only for what it really used.
 - [FileText] **[SECURITY]** **Verification Logs No Longer Accept Forged Lines**
-  Values from a verification request, a scanned site or an AI provider are escaped and shortened before they reach the admin error log, so line breaks in them can no longer add fake entries there. The scan summary, tag suggestion, translation and reasoning notices log your own saved AI model and endpoint the same way.
+  Values from a verification request, a scanned site or an AI provider are escaped and shortened before they reach the admin error log, so line breaks in them can no longer add fake entries there. The scan summary, tag suggestion and reasoning notices log your own saved AI model and endpoint the same way, and a reply from your own endpoint that is not JSON is logged escaped too, with the stack that shows where it failed.
 - [Code] **[API]** **AI-Verifying a Findings Array Refuses a Malformed Request Up Front**
-  POST /scan/verify-batch now answers 400 for a url that is not an http or https address, and for a finding without a string id of at most 200 characters, before any AI allowance is reserved. A bare host such as example.com is still accepted. Before, these went on into the AI pass and ended in a failed probe or a server error.
+  POST /scan/verify-batch now answers 400 for a url that is not an http or https address, and for a finding other than null without a string id, before any AI allowance is reserved. A bare host such as example.com is still accepted. Before, such a url ended in a failed probe, and an id that could not be read as text ended in a server error.
 - [Link2] **[SECURITY]** **Scan Links Cannot Redirect Your Requests**
   A crafted History link could make your browser send your own signed-in requests, such as revoking an API key, to a different part of the API when you opened it or used the scan's menu. Scan ids from links are now accepted only in the shape VulnRadar issues, and every request for a scan is built from that checked id. Host report and shared scan pages encode the hostname or link token they put into a request the same way.
 - [Search] **[SECURITY]** **Query Parameters Read Safely**
@@ -640,6 +640,50 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Patch updates are auto-merged only for pull requests Dependabot opened, using GitHub's documented check, instead of whoever triggered the latest run.
 - [KeyRound] **[SECURITY]** **Admin Reset Links Use the Keyed Token Digest**
   Password reset links sent from the admin panel now store the same keyed token digest as the self-service reset flow, so they keep working when support for older reset links is removed.
+- [Code] **[CLI]** **Ctrl-C Right After a Scan Starts Now Cancels It**
+  The CLI now sets up its interrupt handling before it prints the Started scan line. A signal right after that line used to end the run without cancelling the scan, which kept your only scan slot busy until the scan finished. Once the line is printed, a SIGINT or SIGTERM always cancels the scan.
+- [ShieldCheck] **[SECURITY]** **CLI Requests Stay on the Scan Endpoints**
+  The CLI now encodes the scan id from the API's reply before using it in the status, report and cancel addresses, and refuses an id that is only a dot or two. An id like that can no longer send a request carrying your API key to another path on the API server.
+- [Code] **[CLI]** **The CLI Needs Node 22.12 or Newer**
+  The CLI now reads its own version with a JSON import, which Node marks stable from 22.12. On earlier Node 22 releases that import printed an experimental warning on every run, so the package now asks for Node 22.12 or newer. Output and exit codes are unchanged.
+- [ShieldCheck] **[SECURITY]** **GitHub Action No Longer Evaluates a Secrets Expression**
+  The scan gate Action's message for an empty API key contained a live secrets expression, which the runner evaluated even though a composite action has no secrets context. The message is now plain text and still shows the secret to pass.
+- [Wrench] **[FIXED]** **GitLab Gate Refuses Thresholds That Are Not Numbers**
+  The GitLab CI template used to pass every scan when VR_MAX_CRITICAL or VR_MAX_HIGH was not a number. It now exits 2 before starting the scan, the same as the GitHub Action. VR_MAX_MEDIUM is checked the same way: empty or negative turns that check off.
+- [ShieldAlert] **[SECURITY]** **Scan Gate Action and GitLab Template Take Only a Plain Scan Id**
+  The GitHub Action and the GitLab CI template now use the scan id from the API's reply only when it is letters, digits, hyphens and underscores, and exit 2 otherwise. An id with a slash, a dot segment or a line break in it could send the status and report requests, with your API key, to another path on the API server, and in the Action could add an output of its own.
+- [Link2] **[SECURITY]** **Every API Request Path Encodes Its Id**
+  Staff invite tokens, session and trusted-device ids, domain and support ticket ids, the admin scan id and the sign-in provider are now encoded before they go into a request path, like scan ids and hostnames already were. A crafted value in a link can no longer point a signed-in request at a different endpoint, and a value made only of dots can no longer step up a level.
+- [Share2] **[CHANGED]** **Scan Sharing, Summary and Delete Use Their Own Addresses**
+  The web app now builds share, public listing, AI summary and delete requests for a scan from named endpoints instead of adding text to the scan's address, so they keep working when the scan endpoint moves to v4.
+- [Sparkles] **[FIXED]** **AI Verification Starts With Less of Your Allowance Free**
+  AI finding verification used to need room for one finding on a full-size page before it would start. On the free plan that meant a 429 after about 17k of the window's 80k tokens. It now needs only enough for one finding on an empty page, about 22k tokens with the default settings. Each call is still checked against the page it really fetched and is not sent if it would go past what was set aside, so you are never charged beyond your reservation. When the allowance or the provider stops a pass, the result says so, and the findings it did not reach are no longer described as timed out.
+- [Code] **[API]** **Verify-Batch Takes the Findings It Always Took**
+  POST /api/v3/scan/verify-batch accepts a null element, an empty finding id and a long finding id again, as v3 always did. It still answers 400 for a finding other than null whose id is not a string, and for a url that is not an http or https address. A null element used to end the request with a server error. It now comes back unchanged, and nothing is sent to the AI for it. The stricter id rule (non-empty, at most 200 characters) moves to the v4 API.
+- [GitMerge] **[CHANGED]** **Large Repos Get a Partial AI Review Instead of a Refusal**
+  A GitHub repo scan no longer refuses a repo that is larger than your remaining GitHub review allowance or the server's per-run AI review limit. The pattern-based secret scan always checks every file. The AI review covers as many files as the allowance and the limit allow, stops between batches, and the result says how many files it covered. When not even the first batch fits, or your plan's allowance for the window is already used up, the scan still runs and the result says the AI review did not run and why.
+- [ShieldCheck] **[SECURITY]** **Repo Review Per-Run Limit Counts Dense Text at Its Worst Case**
+  The per-run AI review limit on GitHub repo scans now counts one token per byte of what is sent, the same worst case the allowance uses. A repository full of CJK text or emoji can no longer send several times the limit on a free trial review, on your own AI key, or on a server with billing turned off.
+- [Code] **[API]** **Repo Scan Response Reports AI Review Coverage**
+  POST /api/v3/scan/github no longer answers 413 for a repo over the per-run AI review limit, or 403 when your allowance cannot cover the whole repo or is used up for the window. It returns the scan with aiReviewStoppedAtBudget, plus three new fields: aiReviewStoppedAtRunCap, aiReviewCoverage (files and batches reviewed of the total) and aiReviewAllowanceMessage. A 403 now means only that the free plan's trial is used and no GitHub review credits are left. The v3 change is additive apart from those refusals.
+- [KeyRound] **[SECURITY]** **One Live Password Reset Link at a Time**
+  Two password reset requests for the same account made at the same moment could leave two working reset links. Asking for a new link, or a staff member sending one from the admin panel, now always replaces the previous link, so only the newest one works.
+- [MailOpen] **[SECURITY]** **Old or Unrecognised Verification Links Say They Expired**
+  An email verification link that is not recognised, including links created before the current link format, now says the link has expired and asks you to request a new one. It used to say the link was invalid or expired.
+- [Mail] **[FIXED]** **New Email Addresses Are Checked Properly**
+  Signing up now sends the verification email to the same cleaned-up address the account is created with (lowercased, surrounding spaces removed). A new address, at signup, in a staff invite, in a profile email change or in an email change made from the admin panel, must look like a real one: a single @, a domain with a dot in it, no spaces or control characters, at most 254 characters. So an address such as admin@localhost can no longer be given to a new account. Existing accounts can still sign in, reset their password and resend verification with the address they already have.
+- [UserCheck] **[FIXED]** **Email Change Spots Taken Addresses Regardless of Case**
+  Changing your email to an address another account already uses, written with different capital letters, is now refused with "Email is already in use" instead of failing with a server error.
+- [Fingerprint] **[BREAKING]** **Staff SSO Requires the Provider to Confirm the Address**
+  Staff single sign-on now trusts an email address only when the identity provider's token says it is verified. Before, a token with no such confirmation was accepted, and so was one that said "false" as text. If your provider leaves the confirmation out, which Microsoft Entra ID does unless you configure it, every staff SSO sign-in is now refused. Add the claim at your provider, or have the super admin turn on STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED in Settings, Advanced. A token that says the address is not verified is refused either way.
+- [ShieldAlert] **[SECURITY]** **Refused Staff SSO Sign-ins Alert Admins**
+  When staff single sign-on refuses an address the identity provider did not confirm, and that address belongs to a staff account, admins now get the same high-severity security alert as for a staff account that never verified its address. The sign-in answer is the same for every address, so it still does not reveal which addresses belong to staff.
+- [Crown] **[SECURITY]** **Only the Super Admin Can Configure Staff SSO**
+  The staff single sign-on settings, the identity provider's issuer URL, client ID and client secret, and the new setting that accepts a token without an email confirmation, can be changed only by the super admin, the same rule as the public application URL. Before, any admin could point staff SSO at an identity provider of their own and sign in as any staff account, the super admin included. Another admin who tries now gets a refusal, and every change and every refused attempt is written to the audit log.
+- [Webhook] **[FIXED]** **Discord Webhooks With a Versioned URL**
+  A Discord webhook URL with an API version in its path, such as /api/v10/webhooks/, is now recognised as Discord and receives the rich embed instead of plain JSON. Lookalike hosts are still treated as generic webhooks.
+- [ScanSearch] **[ENGINE]** **Leaked Discord Webhooks on a Versioned Path Are Reported**
+  The scanner's check for a Discord webhook URL exposed in a page now also finds one written with an API version in its path, such as /api/v10/webhooks/, which Discord's own docs and libraries use. It used to report only the unversioned form.
 
 ---
 
@@ -2948,6 +2992,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1166
+- **Total changes documented:** 1188
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
