@@ -72,9 +72,19 @@ jobs:
     # release: only build the GitHub release when the upstream Docker
     # publish succeeded (workflow_run path) OR the release was
     # published by a human (release: published path).
+    #
+    # security: and only for a run that was a push to THIS repository, the
+    # same gate as docker-publish-arm64.yml. workflow_run matches the upstream
+    # workflow by name, so a fork's pull request that adds a workflow called
+    # "Build, Sign, and Publish Docker Image" completes a matching run too.
+    # Gated on the conclusion alone, this job then ran with contents: write
+    # and an OIDC token, took the fork's branch name as its tag, and signed
+    # and uploaded the fork run's artifact as the image SBOM.
     if: >-
       github.event_name == 'release' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -86,6 +96,14 @@ jobs:
       id-token: write
 
     steps:
+      # First, so "Resolve tag" can check the tag exists before anything
+      # reads it. This is the default branch, not the tag: every later step
+      # that needs the tagged tree runs `git archive` against it.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
       - name: Resolve tag
         id: vars
         env:
@@ -100,6 +118,7 @@ jobs:
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
           WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
+          set -euo pipefail
           # workflow_run.head_branch is the tag for tag pushes -- NOT
           # GITHUB_REF_NAME, which on a workflow_run-triggered job
           # reflects this workflow file's own ref (the default branch,
@@ -111,14 +130,28 @@ jobs:
           else
             TAG="$WORKFLOW_RUN_HEAD_BRANCH"
           fi
-          echo "TAG=${TAG}" >> $GITHUB_ENV
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "Workflow: $EVENT_NAME"
 
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
+          # security: TAG names the release, the tarball and the artifacts,
+          # and is written to GITHUB_ENV and GITHUB_OUTPUT below. Both checks
+          # run before any of that. The pattern is anchored at both ends and
+          # its suffix class has no whitespace, quote or newline, so the value
+          # cannot add a line to either file (CodeQL actions/envvar-injection,
+          # actions/output-clobbering). The rev-parse makes it a tag that
+          # exists here, not a branch name that merely looks like one. The
+          # value is not printed until it has matched the pattern.
+          TAG_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "$TAG" =~ $TAG_PATTERN ]]; then
+            echo "::error::The triggering ref is not a version tag (vX.Y.Z or vX.Y.Z-suffix); refusing to release it."
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::Tag ${TAG} does not exist in this repository; refusing to release it."
+            exit 1
+          fi
+
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Workflow: $EVENT_NAME"
 
       - name: Setup Node.js
         # release: needed to build the browser extension below and to

@@ -39,7 +39,10 @@ jobs:
     # 15 minutes and the self-host smoke test 20), plus the wait loop's own
     # 30-minute ceiling.
     timeout-minutes: 40
-    if: github.actor == 'dependabot[bot]'
+    # The pull request's author, GitHub's documented check for Dependabot.
+    # github.actor is whoever caused this particular event, which is not the
+    # same question: it changes with a re-run or a push to the branch.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
       - name: Fetch metadata
         id: metadata

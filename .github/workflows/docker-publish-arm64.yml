@@ -93,7 +93,14 @@ jobs:
           fi
           # workflow_run fires for every push to this workflow's triggers,
           # including branches. Only tags publish images.
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          #
+          # security: anchored at both ends, the same pattern release.yml
+          # uses. Open at the end, `v1.2.3` followed by anything passed, and
+          # TAG goes into GITHUB_OUTPUT and GITHUB_ENV below; the suffix class
+          # has no whitespace, quote or newline, so it cannot add a line to
+          # either (CodeQL actions/envvar-injection, actions/output-clobbering).
+          TAG_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "$TAG" =~ $TAG_PATTERN ]]; then
             echo "::notice::${TAG:-<empty>} is not a version tag; nothing to publish."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -108,15 +115,17 @@ jobs:
         with:
           # The tag, not the default branch: workflow_run checks out the
           # default branch by default, which would build whatever main has
-          # moved on to rather than what was released.
-          ref: ${{ steps.vars.outputs.tag }}
+          # moved on to rather than what was released. Spelled as refs/tags/
+          # so a branch with the same name can never be what gets built, and
+          # a tag that does not exist fails the checkout instead.
+          ref: refs/tags/${{ steps.vars.outputs.tag }}
           fetch-depth: 0
           # security: a workflow_run job holds this repository's secrets, so it
           # must not leave an authenticated git remote behind for a later step
           # (or a Docker build of the checked-out tree) to find. Nothing here
           # pushes with git; the registry push authenticates separately.
           #
-          # The ref itself is gated to a ^vX.Y.Z tag by the step above, and
+          # The ref itself is gated to a whole vX.Y.Z tag by the step above, and
           # docker-publish only fires on a tag push to this repository, which a
           # fork cannot do. This closes the credential half regardless.
           persist-credentials: false
