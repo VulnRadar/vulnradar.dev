@@ -17,6 +17,9 @@ import { describeIntegration, createUser, unique } from "./_db";
  */
 const seeded: number[] = [];
 
+/** Rows loaded inside the plan tests' transaction so the planner has statistics to decide on. */
+const PLAN_FILLER_ROWS = 5000;
+
 async function seedScan(
   userId: number,
   url: string,
@@ -161,14 +164,31 @@ describeIntegration("scan_history URL expressions", () => {
   ])(
     "plans a query written with the shared expression onto %s",
     async (indexName, query) => {
-      // Sequential scans are switched off for the transaction so that the
-      // answer does not depend on how many rows this suite happens to have
-      // written: the question is whether the index CAN be matched, not whether
-      // the planner prefers it on a nearly empty table.
+      // Sequential scans are switched off for the transaction so the answer
+      // does not turn on a seq-versus-index trade the CI machine happens to
+      // make. That alone is not enough: the two expression indexes share one
+      // partial predicate, so on a nearly empty table a full scan of the OTHER
+      // one plus a plain Filter costs the same as one index probe, and the
+      // planner picked it (a two-element = ANY(...) costs two probes, which
+      // made the origin-path index look dearer than scanning the host index).
+      // So the table is given production-like volume and statistics inside the
+      // transaction, where a selective probe beats scanning thousands of
+      // entries and filtering them. ROLLBACK removes the rows and the
+      // statistics with them.
+      const owner = await createUser();
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
         await client.query("SET LOCAL enable_seqscan = off");
+        await client.query(
+          `INSERT INTO scan_history (user_id, url, status, started_at, scanned_at, scan_type, is_public)
+           SELECT $1::int,
+                  'https://site' || g || '.example.test/page' || (g % 7) || '?q=' || g,
+                  'completed', NOW(), NOW() - (g * INTERVAL '1 second'), 'web', true
+             FROM generate_series(1, $2::int) AS g`,
+          [owner.id, PLAN_FILLER_ROWS],
+        );
+        await client.query("ANALYZE scan_history");
         const plan = await client.query<{ "QUERY PLAN": string }>(
           `EXPLAIN ${query}`,
         );
