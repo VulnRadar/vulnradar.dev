@@ -53,7 +53,7 @@ export const ADMIN_TAB_DESCRIPTIONS: Record<AdminTabKey, string> = {
   "blocked-data":
     "Look up any host or URL and delete the scans stored for it and its subdomains, for data that ended up public and should not have. Also purges the cached public host-reputation row. Admin only.",
   broadcast:
-    "Compose and send email to verified accounts: everyone, a plan, all paid users or one address. Saving stores a draft, sending is immediate, and a resend goes to the whole audience again.",
+    "Compose and send email to verified accounts: everyone, a plan, all paid users or one address. Saving stores a draft, sending is immediate, and a resend retries the recipients that failed and reaches anyone who joined the audience since.",
   "billing-overview":
     "Plan mix, accounts past due with their failed payments, and AI spend. Everything comes from data already synced into the app, so there are no live Stripe calls behind the page.",
   settings:

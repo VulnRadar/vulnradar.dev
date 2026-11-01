@@ -101,6 +101,12 @@ const EGRESS_EVERY_SCAN: EgressRow[] = [
     blocked:
       "URLhaus shows as unavailable in the threat intelligence panel, never clean. That is also what an unkeyed request ends up as.",
   },
+  {
+    host: "*.s3.amazonaws.com and the regional S3 hosts, storage.googleapis.com, *.blob.core.windows.net",
+    sent: "An anonymous listing request for each storage bucket or container the scanned page links to, up to the bucket probe cap. Only the bucket name the page itself names is in it.",
+    blocked:
+      "The check for publicly listable storage buckets gets no answer for that scan.",
+  },
 ];
 
 const EGRESS_SUBDOMAIN_SOURCES: { host: string; what: string }[] = [
@@ -127,10 +133,11 @@ const EGRESS_KEY_GATED: KeyedEgressRow[] = [
       "Google Web Risk shows as unavailable in the threat intelligence panel, never clean. With no key it is left out of that panel entirely.",
   },
   {
-    host: "api.browserbase.com",
+    host: "api.browserbase.com, and the debugging socket host it returns",
     needs: "BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID",
-    sent: "Session create and release calls with your project id, then the URL to open, sent over the debugging socket BrowserBase returns.",
-    blocked: "The View Page button fails. Scans do not use it.",
+    sent: "Session create and release calls with your project id, then the URL to open, sent over the debugging socket BrowserBase returns. Used by the View Page button, the opt-in scan screenshot and the browser sign-in of an authenticated scan.",
+    blocked:
+      "Those three fail. A scan without a screenshot or a browser sign-in does not use it.",
   },
   {
     host: "The AI endpoint",
@@ -951,8 +958,10 @@ cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vu
             </li>
             <li>
               Generate the new key with the same command as the first one (64
-              hex characters). Any other shape is ignored with an error in the
-              log.
+              hex characters). A new key of any other length stops the app at
+              boot with an error naming the variable; only an old key in{" "}
+              <InlineCode>PREVIOUS_API_KEY_ENCRYPTION_KEY</InlineCode> of the
+              wrong shape is skipped with a line in the log.
             </li>
             <li>
               In <InlineCode>.env</InlineCode>, set{" "}

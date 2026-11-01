@@ -113,8 +113,10 @@ above passes.
 ## Translations
 
 The app speaks more than one language, and the wording lives under
-`lib/i18n/messages`. A key a language has not translated yet falls back to
-English, so a translation can land a few strings at a time.
+`lib/i18n/messages`. Every language carries every English key, and
+`tests/lib/i18n/key-parity.test.ts` fails when one is missing, so start a
+translation by copying the `en` folder, translate what you can and leave the
+rest in English until someone gets to it.
 [`lib/i18n/README.md`](lib/i18n/README.md) covers how a reader's language is
 chosen, what must never be translated (finding IDs, header names, code, URLs),
 and how to write a string so it survives translation.
