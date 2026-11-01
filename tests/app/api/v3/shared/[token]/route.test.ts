@@ -10,6 +10,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createHash } from "node:crypto";
 import { invalidateSettingsCache } from "@/lib/config/runtime-config";
+import { getDangerScore } from "@/lib/scanner/safety-rating";
+import type { Vulnerability } from "@/lib/scanner/types";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -246,6 +248,109 @@ describe("GET /api/v3/shared/[token]", () => {
     // entirely for a foreign scan, not just ignored -- there's no extra
     // pool.query call to account for it.
     expect(mockQuery).toHaveBeenCalledTimes(5);
+  });
+
+  it("counts a foreign scan's summary and danger score from its findings, not its owner's verdicts", async () => {
+    const token = "6".repeat(64);
+    const findings = [
+      { id: "a", severity: "critical", title: "SQL Injection" },
+      { id: "b", severity: "medium", title: "z" },
+    ];
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // share_token_hash miss
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 63,
+            url: "https://example.com",
+            scanned_at: "2026-03-01T00:00:00.000Z",
+            duration: 700,
+            // The scan's owner marked both findings false positive, which
+            // rewrote their own summary and score to zero.
+            summary: {
+              critical: 0,
+              high: 0,
+              medium: 0,
+              low: 0,
+              info: 0,
+              total: 0,
+            },
+            findings,
+            findings_count: 0,
+            response_headers: null,
+            notes: "",
+            user_id: 99,
+            authenticated: false,
+            result_meta: { dangerScore: 0 },
+            scanned_by: "Stranger",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+            badge_owner_id: 42,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const json = await (await callGet(token)).json();
+
+    expect(json.summary).toEqual({
+      critical: 1,
+      high: 0,
+      medium: 1,
+      low: 0,
+      info: 0,
+      total: 2,
+    });
+    expect(json.dangerScore).toBe(
+      getDangerScore(findings as unknown as Vulnerability[]),
+    );
+    expect(json.dangerScore).toBeGreaterThan(0);
+  });
+
+  it("keeps the owner's own summary and danger score on their own badge", async () => {
+    const token = "5".repeat(64);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // share_token_hash miss
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 64,
+            url: "https://example.com",
+            scanned_at: "2026-03-01T00:00:00.000Z",
+            duration: 700,
+            summary: {
+              critical: 0,
+              high: 0,
+              medium: 0,
+              low: 0,
+              info: 0,
+              total: 0,
+            },
+            findings: [{ id: "a", severity: "high", title: "y" }],
+            findings_count: 0,
+            response_headers: null,
+            notes: "",
+            user_id: 42,
+            authenticated: false,
+            result_meta: { dangerScore: 0 },
+            scanned_by: "Alice",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+            badge_owner_id: 42,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // badges
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const json = await (await callGet(token)).json();
+
+    expect(json.summary.total).toBe(0);
+    expect(json.dangerScore).toBe(0);
   });
 
   it("does not redact when the resolved scan belongs to the badge owner themselves", async () => {

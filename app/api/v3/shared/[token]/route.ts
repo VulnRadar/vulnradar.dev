@@ -4,6 +4,9 @@ import pool from "@/lib/database/db";
 import { withErrorHandling } from "@/lib/api/api-utils";
 import { publicRole } from "@/lib/auth/permissions-client";
 import { getCachedSubdomainSnapshot } from "@/lib/scanner/subdomain-cache";
+import { countSeverities } from "@/lib/scanner/host-reputation";
+import { getDangerScore } from "@/lib/scanner/safety-rating";
+import type { Vulnerability } from "@/lib/scanner/types";
 
 /**
  * The result_meta keys a share link is allowed to publish, spelled out
@@ -194,6 +197,23 @@ export const GET = withErrorHandling(
     const crawl = publicCrawl(meta.crawl);
     if (crawl) publicMeta.crawl = crawl;
 
+    // A scan's stored summary and danger score are its owner's own view: a
+    // false-positive mark rewrites both on their row. That is right on their
+    // share link, but a stranger's global badge would otherwise republish one
+    // person's private verdicts as the site's numbers. For a foreign scan
+    // both are counted again from the stored findings, which are complete,
+    // the way the scan first counted them.
+    const findings: Vulnerability[] = Array.isArray(row.findings)
+      ? row.findings
+      : [];
+    let summary = row.summary;
+    if (isForeignScan) {
+      summary = { ...countSeverities(findings), total: findings.length };
+      if (publicMeta.dangerScore !== undefined) {
+        publicMeta.dangerScore = getDangerScore(findings);
+      }
+    }
+
     // Get user badges and any already-cached subdomain-discovery snapshot
     // for this scan's host in parallel -- independent reads. The cache
     // lookup is read-only and never triggers a new discovery job: an
@@ -231,8 +251,8 @@ export const GET = withErrorHandling(
       url: row.url,
       scannedAt: row.scanned_at,
       duration: row.duration,
-      summary: row.summary,
-      findings: row.findings || [],
+      summary,
+      findings,
       responseHeaders: row.response_headers || undefined,
       notes: isForeignScan ? "" : row.notes || "",
       authenticated: row.authenticated || false,
