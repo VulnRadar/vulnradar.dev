@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
+import { countSeverities } from "@/lib/scanner/host-reputation";
+import type { Vulnerability } from "@/lib/scanner/types";
 
 /**
  * The little bit of a shared report that the head and the social card need:
  * which host was scanned, when, and how the findings broke down by severity.
  *
  * Deliberately NOT a second copy of app/api/v3/shared/[token]/route.ts. That
- * route returns the whole report; this reads three columns for the two things
+ * route returns the whole report; this reads a few columns for the two things
  * that render before the page does (generateMetadata in ./layout.tsx and
  * ./opengraph-image.tsx), because both of those run on the server before the
  * client component has fetched anything.
@@ -68,7 +70,8 @@ export async function getShareSummary(
     // host, and the card has to describe the scan the page will show.
     if (result.rows.length === 0) {
       result = await pool.query(
-        `SELECT sh.url, sh.summary, sh.scanned_at
+        `SELECT sh.url, sh.summary, sh.findings, sh.scanned_at, sh.user_id,
+                hb.user_id AS badge_owner_id
            FROM host_badges hb
            JOIN scan_history sh ON sh.url = hb.url
              AND (sh.user_id = hb.user_id OR (hb.scope = 'global' AND sh.is_public = true))
@@ -84,16 +87,31 @@ export async function getShareSummary(
     const row = result.rows[0];
     if (!row) return null;
 
+    // A global badge can resolve to a public scan someone else ran, and that
+    // row's stored summary carries its owner's false-positive marks. The page
+    // body recounts such a scan from its findings (app/api/v3/shared/[token]/
+    // route.ts), so the description and the card recount it too, or a
+    // stranger's verdicts would be published as the site's numbers.
+    const isForeignScan =
+      row.badge_owner_id != null && row.user_id !== row.badge_owner_id;
+    let summary: unknown = row.summary;
+    if (isForeignScan) {
+      const findings: Vulnerability[] = Array.isArray(row.findings)
+        ? row.findings
+        : [];
+      summary = { ...countSeverities(findings), total: findings.length };
+    }
+
     const url = String(row.url ?? "");
     return {
       hostname: hostnameOf(url),
       url,
-      critical: countOf(row.summary, "critical"),
-      high: countOf(row.summary, "high"),
-      medium: countOf(row.summary, "medium"),
-      low: countOf(row.summary, "low"),
-      info: countOf(row.summary, "info"),
-      total: countOf(row.summary, "total"),
+      critical: countOf(summary, "critical"),
+      high: countOf(summary, "high"),
+      medium: countOf(summary, "medium"),
+      low: countOf(summary, "low"),
+      info: countOf(summary, "info"),
+      total: countOf(summary, "total"),
       scannedAt: row.scanned_at ? new Date(row.scanned_at) : null,
     };
   } catch {
