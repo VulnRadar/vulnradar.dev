@@ -38,15 +38,14 @@ import {
   ACTIVE_PROBE_IDS,
   activeProbeScanner,
   parseActiveProbeIds,
-  serializeActiveProbeIds,
   type ActiveProbeId,
 } from "@/lib/scanner/active-probe-catalog";
 import {
   getQueryParam,
-  setQueryParam,
   setQueryParams,
   useQuerySeededState,
 } from "@/lib/ui/url-state";
+import { buildScanFormQuery } from "@/components/scanner/scan-form-query";
 import {
   InlineAuthForm,
   type InlineAuthFormHandle,
@@ -556,21 +555,16 @@ export function ScanForm({
     // page. Toggling a setting is not a navigation.
     if (!seededRef.current) return;
     setQueryParams(
-      {
+      buildScanFormQuery({
         mode,
-        active_probes: serializeActiveProbeIds(selectedActiveProbes),
-        screenshot: captureScreenshot ? "1" : null,
-        port_scan: portScan ? "1" : null,
-      },
+        familyIds: CHECK_FAMILIES.map((f) => f.id),
+        enabledFamilies,
+        selectedActiveProbes,
+        captureScreenshot,
+        portScan,
+      }),
       { replace: true },
     );
-    for (const family of CHECK_FAMILIES) {
-      setQueryParam(
-        `family_${family.id}`,
-        enabledFamilies.has(family.id) ? null : "0",
-        { replace: true },
-      );
-    }
   }, [
     mode,
     enabledFamilies,

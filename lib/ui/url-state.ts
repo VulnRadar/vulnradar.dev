@@ -118,22 +118,30 @@ type WriteOpts = {
   replace?: boolean;
 };
 
+/**
+ * Write one history entry. Returns false when the browser refuses.
+ *
+ * Safari throws a SecurityError once a page makes more than 100
+ * pushState/replaceState calls in 30 seconds, and an exception thrown from an
+ * effect lands in the route's error boundary. A URL mirror is a convenience,
+ * so a refused write degrades to a skipped update instead of a crashed page.
+ */
+function writeHistory(href: string, opts: WriteOpts): boolean {
+  const method = opts.replace ? "replaceState" : "pushState";
+  try {
+    window.history[method](null, "", href);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 export function setQueryParam(
   name: string,
   value: string | null,
   opts: WriteOpts = {},
 ): void {
-  if (!hasHistory()) return;
-  const params = getCurrentParams();
-  if (value === null || value === "") {
-    params.delete(name);
-  } else {
-    params.set(name, value);
-  }
-  const href = buildHref(params);
-  const method = opts.replace ? "replaceState" : "pushState";
-  window.history[method](null, "", href);
-  emitQueryChange(name, value);
+  setQueryParams({ [name]: value }, opts);
 }
 
 export function setQueryParams(
@@ -142,14 +150,25 @@ export function setQueryParams(
 ): void {
   if (!hasHistory()) return;
   const params = getCurrentParams();
+  // Compared against the normalised form of the current URL rather than the
+  // raw one: the raw query string may spell the same params differently (%20
+  // against +) and that alone is not a reason to write history.
+  const current = buildHref(params);
+  const changed: Array<[string, string | null]> = [];
   for (const [key, value] of Object.entries(values)) {
-    if (value === null || value === "") params.delete(key);
-    else params.set(key, value);
+    const previous = params.get(key);
+    if (value === null || value === "") {
+      params.delete(key);
+      if (previous !== null) changed.push([key, value]);
+    } else {
+      params.set(key, value);
+      if (previous !== value) changed.push([key, value]);
+    }
   }
   const href = buildHref(params);
-  const method = opts.replace ? "replaceState" : "pushState";
-  window.history[method](null, "", href);
-  for (const [key, value] of Object.entries(values)) {
+  if (href === current) return;
+  if (!writeHistory(href, opts)) return;
+  for (const [key, value] of changed) {
     emitQueryChange(key, value);
   }
 }
@@ -166,11 +185,11 @@ export function clearQueryParams(opts: WriteOpts = {}): void {
   // already-cleared, query-string-less URL and never find anything to
   // emit an event for.
   const clearedKeys = Array.from(
-    new URLSearchParams(window.location.search).keys(),
+    new Set(new URLSearchParams(window.location.search).keys()),
   );
+  if (clearedKeys.length === 0) return;
   const href = window.location.pathname + window.location.hash;
-  const method = opts.replace ? "replaceState" : "pushState";
-  window.history[method](null, "", href);
+  if (!writeHistory(href, opts)) return;
   for (const key of clearedKeys) {
     emitQueryChange(key, null);
   }
