@@ -14,7 +14,7 @@
  * check that the modal is not carrying its own opinion about what a modal is.
  */
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
 const ROOT = process.cwd();
@@ -45,14 +45,16 @@ const PENDING_MIGRATION: string[] = [];
 function sourceFiles(): { path: string; source: string }[] {
   const out: { path: string; source: string }[] = [];
   function walk(dir: string) {
-    for (const entry of readdirSync(dir)) {
-      if (entry === "node_modules" || entry === ".next") continue;
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name === ".next") continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
         walk(full);
         continue;
       }
-      if (!entry.endsWith(".tsx") && !entry.endsWith(".ts")) continue;
+      if (!entry.name.endsWith(".tsx") && !entry.name.endsWith(".ts")) {
+        continue;
+      }
       out.push({
         path: relative(ROOT, full).split(sep).join("/"),
         source: readFileSync(full, "utf8"),

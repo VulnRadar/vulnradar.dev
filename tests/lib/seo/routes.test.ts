@@ -7,7 +7,7 @@
  * blocks, so the noindex is never read.
  */
 import { describe, it, expect } from "vitest";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   DISALLOWED_PATHS,
@@ -33,13 +33,13 @@ function privateLayoutPaths(): string[] {
   const found: string[] = [];
 
   function walk(dir: string) {
-    for (const entry of readdirSync(dir)) {
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
         walk(full);
         continue;
       }
-      if (entry !== "layout.tsx") continue;
+      if (entry.name !== "layout.tsx") continue;
       const source = readFileSync(full, "utf8");
       for (const match of source.matchAll(
         /privatePageMetadata\(\s*(?:"[^"]*"|`[^`]*`)\s*,\s*(?:"([^"]*)"|`([^`]*)`)/g,
@@ -144,10 +144,10 @@ describe("DISALLOWED_PATHS", () => {
     // privatePageMetadata, which the walk above does not see.
     const noindex: string[] = [];
     const walk = (dir: string) => {
-      for (const entry of readdirSync(dir)) {
-        const full = join(dir, entry);
-        if (statSync(full).isDirectory()) walk(full);
-        else if (/^(layout|page)\.tsx$/.test(entry)) {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/^(layout|page)\.tsx$/.test(entry.name)) {
           const source = readFileSync(full, "utf8");
           const match = source.match(
             /pageMetadata\(\{[\s\S]*?path:\s*"([^"]+)"[\s\S]*?noIndex:\s*true/,
@@ -254,10 +254,10 @@ describe("homepage canonicalisation", () => {
   it("points every Home breadcrumb at /, not /landing", () => {
     const offenders: string[] = [];
     const walk = (dir: string) => {
-      for (const name of readdirSync(dir)) {
-        const full = join(dir, name);
-        if (statSync(full).isDirectory()) walk(full);
-        else if (/\.tsx?$/.test(name)) {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(entry.name)) {
           if (/path:\s*"\/landing"/.test(readFileSync(full, "utf8")))
             offenders.push(full);
         }

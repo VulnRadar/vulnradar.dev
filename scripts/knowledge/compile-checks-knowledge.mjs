@@ -20,6 +20,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { dirname, join, resolve as pathResolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { replaceOutput } from "./replace-output.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = pathResolve(__dirname, "..", "..");
@@ -103,8 +104,13 @@ function gitHistoryAvailable() {
 
 /** The `{ category: "YYYY-MM-DD" }` map already committed to the stats file. */
 function committedCategoryDates() {
-  if (!existsSync(STATS_OUTPUT)) return {};
-  const src = readFileSync(STATS_OUTPUT, "utf8");
+  let src;
+  try {
+    src = readFileSync(STATS_OUTPUT, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw error;
+  }
   const block = src.match(
     /CHECK_CATEGORY_LAST_MODIFIED[^=]*=\s*\{([\s\S]*?)\n\};/,
   );
@@ -297,16 +303,6 @@ async function build() {
     process.exit(1);
   }
 
-  // Captured before the writes below. The staleness comparison used to stat
-  // OUTPUT after overwriting it, so the "knowledge file" mtime was always the
-  // current time, daysStale was always negative and the warning was
-  // unreachable. It is a working-tree signal only: git does not record mtimes,
-  // so on a fresh clone (CI, the Docker build) every file carries the checkout
-  // time and this stays quiet.
-  const previousOutputMtime = existsSync(OUTPUT)
-    ? statSync(OUTPUT).mtimeMs
-    : null;
-
   const out = [
     "# VulnRadar Scanner Checks: AI Knowledge",
     "",
@@ -354,7 +350,13 @@ async function build() {
     out.push("");
   }
 
-  writeFileSync(OUTPUT, out.join("\n"), "utf8");
+  // replaceOutput returns the previous output's mtime, read before it writes.
+  // The staleness comparison used to stat OUTPUT after overwriting it, so the
+  // "knowledge file" mtime was always the current time, daysStale was always
+  // negative and the warning was unreachable. It is a working-tree signal
+  // only: git does not record mtimes, so on a fresh clone (CI, the Docker
+  // build) every file carries the checkout time and this stays quiet.
+  const previousOutputMtime = replaceOutput(OUTPUT, out.join("\n"));
   console.log(
     `[compile-checks-knowledge] wrote ${OUTPUT.replace(ROOT + "\\", "")} (${totalChecks} checks across ${files.length} categories)`,
   );
@@ -455,16 +457,14 @@ async function build() {
     `[compile-checks-knowledge] wrote ${STATS_OUTPUT.replace(ROOT + "\\", "")} (EXACT_CHECK_COUNT=${exactCheckCount}, label=${roundedLabel}+)`,
   );
 
-  if (previousOutputMtime !== null) {
-    const newestSource = Math.max(
-      ...files.map((f) => statSync(join(CHECKS_DIR, `${f}.json`)).mtimeMs),
+  const newestSource = Math.max(
+    ...files.map((f) => statSync(join(CHECKS_DIR, `${f}.json`)).mtimeMs),
+  );
+  const daysStale = (newestSource - previousOutputMtime) / 86400000;
+  if (daysStale > 30) {
+    console.warn(
+      `[compile-checks-knowledge] NOTE: checks-data had been edited ${Math.round(daysStale)} days after the previous knowledge file. This run refreshed it.`,
     );
-    const daysStale = (newestSource - previousOutputMtime) / 86400000;
-    if (daysStale > 30) {
-      console.warn(
-        `[compile-checks-knowledge] NOTE: checks-data had been edited ${Math.round(daysStale)} days after the previous knowledge file. This run refreshed it.`,
-      );
-    }
   }
 }
 

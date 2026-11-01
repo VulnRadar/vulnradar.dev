@@ -14,7 +14,7 @@
  * either one.
  */
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { AI_BOT_NAME } from "@/lib/config/client-constants";
 import { TOUR_ANCHORS, type TourAnchor } from "@/lib/tour/anchors";
@@ -31,14 +31,16 @@ const SCAN_DIRS = ["components", "app"];
 function sourceFiles(): { path: string; source: string }[] {
   const out: { path: string; source: string }[] = [];
   function walk(dir: string) {
-    for (const entry of readdirSync(dir)) {
-      if (entry === "node_modules" || entry === ".next") continue;
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name === ".next") continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
         walk(full);
         continue;
       }
-      if (!entry.endsWith(".tsx") && !entry.endsWith(".ts")) continue;
+      if (!entry.name.endsWith(".tsx") && !entry.name.endsWith(".ts")) {
+        continue;
+      }
       out.push({
         path: relative(ROOT, full).split(sep).join("/"),
         source: readFileSync(full, "utf8"),

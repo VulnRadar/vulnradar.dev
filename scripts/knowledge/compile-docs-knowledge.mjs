@@ -22,15 +22,10 @@
 // Run: `node scripts/knowledge/compile-docs-knowledge.mjs`
 // Auto-run: hooked as prebuild + predev in package.json.
 
-import {
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-  statSync,
-  existsSync,
-} from "node:fs";
+import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
 import { dirname, join, relative, resolve as pathResolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { replaceOutput } from "./replace-output.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = pathResolve(__dirname, "..", "..");
@@ -653,28 +648,26 @@ function build() {
   }
   out.push("");
 
-  // Read the previous output's mtime BEFORE overwriting it. This block used to
-  // stat after the write, so knowledgeMtime was always "now", daysStale was
-  // always negative and the warning could never fire. Note it is a working-tree
-  // signal only: git does not record mtimes, so on a fresh clone (CI, the
-  // Docker build) every file carries the checkout time and this stays quiet.
-  const previousMtime = existsSync(OUTPUT) ? statSync(OUTPUT).mtimeMs : null;
   const newestPage = pages
     .map((p) => statSync(p.path).mtimeMs)
     .reduce((a, b) => Math.max(a, b), 0);
 
-  writeFileSync(OUTPUT, out.join("\n"), "utf8");
+  // replaceOutput returns the previous output's mtime, read before it writes.
+  // This block used to stat after the write, so the mtime was always "now",
+  // daysStale was always negative and the warning could never fire. It is a
+  // working-tree signal only: git does not record mtimes, so on a fresh clone
+  // (CI, the Docker build) every file carries the checkout time and this stays
+  // quiet.
+  const previousMtime = replaceOutput(OUTPUT, out.join("\n"));
   console.log(
     `[compile-docs-knowledge] wrote ${relative(ROOT, OUTPUT)} (${pages.length} pages)`,
   );
 
-  if (previousMtime !== null) {
-    const daysStale = (newestPage - previousMtime) / 86400000;
-    if (daysStale > 30) {
-      console.warn(
-        `[compile-docs-knowledge] NOTE: docs had been edited ${Math.round(daysStale)} days after the previous knowledge file. This run refreshed it.`,
-      );
-    }
+  const daysStale = (newestPage - previousMtime) / 86400000;
+  if (daysStale > 30) {
+    console.warn(
+      `[compile-docs-knowledge] NOTE: docs had been edited ${Math.round(daysStale)} days after the previous knowledge file. This run refreshed it.`,
+    );
   }
 }
 
