@@ -178,7 +178,9 @@ describe("software inventory: a vendor is read from the URL's host, not from tex
       expect(names(`<script src="//${c.host}${c.path}"></script>`)).toContain(
         c.name,
       );
-      const escaped = `https://${c.host}${c.path}`.replace(/\//g, "\\/");
+      // Every slash escaped, as a Next.js flight payload writes it. A backslash
+      // is escaped as well, so the string stays valid JSON whatever it holds.
+      const escaped = `https://${c.host}${c.path}`.replace(/[\\/]/g, "\\$&");
       expect(
         names(`<script>self.__next_f.push(["${escaped}"])</script>`),
       ).toContain(c.name);
