@@ -359,4 +359,13 @@ describe("no server code reads the build-time app URL", () => {
   it("keeps the homes out of the debt list", () => {
     expect(Object.keys(DEBT).filter((file) => file in HOMES)).toEqual([]);
   });
+
+  // The runtime reader is exempt above only so it may name the variables. A
+  // literal `process.env.NEXT_PUBLIC_APP_URL` there would be inlined like any
+  // other, and serverAppUrl() would quietly return the build value again.
+  it("keeps serverAppUrl() reading the variables by a computed name", () => {
+    const file = "lib/config/server-app-url.ts";
+    const text = fs.readFileSync(path.join(ROOT, file), "utf8");
+    expect(buildTimeAppUrlReads(text, file)).toEqual([]);
+  });
 });
