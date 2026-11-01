@@ -540,6 +540,64 @@ The largest release since 3.0, and a pass over the whole product rather than one
   A site that answers an authenticated scan's login or verification request and then stalls the body is now cut off at that request's own timeout instead of holding the scan open. DNS checks also stop leaving a pending timer behind every lookup.
 - [Timer] **[SELFHOST]** **Database Cleanup Runs on the Interval You Set**
   Changing the database cleanup interval had no effect: the cleanup always ran every five minutes, while the admin worker overview judged it against the interval you had set, so a healthy worker could be reported late. The cleanup now runs on the configured interval and the boot log says which one.
+- [Radar] **[SECURITY]** **Path-Disclosure Check No Longer Stalls on Crafted Pages**
+  A page made of repeated /opt/, /home/, /var/www or /usr/local path prefixes could hold the internal-path disclosure check for seconds to days. The check now reads each path in one pass and finishes in milliseconds on a full-size page.
+- [ScanSearch] **[SECURITY]** **Schema, Compose and Cargo Detectors Handle Blank Lines in Linear Time**
+  A response with a long run of blank lines after a GraphQL type, a compose version line or a Cargo package header made three detectors take seconds per scan, and minutes at the full body size. Each line is now matched on its own.
+- [ScanSearch] **[SECURITY]** **Debug-Page and Timing Detectors No Longer Stall on Repeated Words**
+  A page made of one word repeated, such as Traceback, Whoops, HMAC or a run of WebSocket names, could hold the Django and Laravel debug-page checks, the cross-site WebSocket check and the HMAC timing check for minutes on a full-size page. Each now finishes in milliseconds and reports exactly what it reported before.
+- [Gauge] **[SECURITY]** **Pages of Unclosed Tags No Longer Exhaust Server Memory**
+  A page made of tags that are never closed, which any scanned site can send, made the scanner hold about 1.4 GB of memory for six seconds while it read a full-size page, so a few such scans at once could take the server down. The same page now takes well under a second and about 60 MB.
+- [Network] **[SECURITY]** **Scans Connect Only to the Address That Passed the Safety Check**
+  The scanner now opens every connection, including the active probes and the subdomain discovery sources, to the exact address the safety check approved, for both http and https, and never looks the name up again. A domain that switches its DNS answer to an internal address mid-scan can no longer steer the scanner there, and plain-HTTP sites behind a CDN or a shared host are now scanned as themselves instead of being asked for by IP.
+- [ShieldAlert] **[SECURITY]** **Azure Host Endpoint Refused as a Scan Target**
+  168.63.129.16, the address Azure virtual machines use to reach their host's configuration service, is now refused like other internal addresses, so a self-hosted instance on Azure cannot be made to read it.
+- [Shield] **[SECURITY]** **Internal Addresses Refused in Every IPv6 Form**
+  The scanner's address check now also recognises internal IPv4 addresses written in the older IPv4-compatible IPv6 form and in the 6to4 form, so a domain whose DNS answers with one of those can no longer pass as public. The same forms of a public address are still scanned.
+- [Crosshair] **[FIXED]** **Probes and Policy Checks Respect Redirect Limits**
+  Active probes limited to one host no longer follow a redirect from the bare domain to its www host, and checks that must not follow redirects, such as the MTA-STS policy fetch, now stop at the first redirect instead of following it.
+- [Server] **[SECURITY]** **Scanned Sites Can No Longer Exhaust Server Memory**
+  A site could answer robots.txt, security.txt, the exposed-file probes, the MTA-STS policy, the active form probes or the page itself with an endless or compressed-bomb body, and the scanner would buffer all of it, which could take down every scan running at the time. Each of these reads now stops at a fixed size limit and a time limit and hangs up.
+- [Mail] **[ENGINE]** **MTA-STS Policy Behind a Redirect Is Reported as Missing**
+  RFC 8461 forbids following redirects when fetching an MTA-STS policy, so sending servers treat a redirected policy as absent. The scanner used to grade a same-host redirect as a valid policy and a redirect to another host as a connection failure. Both now produce the MTA-STS Policy File Missing finding.
+- [KeyRound] **[SECURITY]** **OAuth Sign-In Only Opens an Account That Verified Its Email**
+  Signing in with Google, GitHub or Discord no longer opens an existing account that lists the same email address but never verified it. It also no longer replaces the provider account already connected to it. Such sign-ins are refused with a message saying why.
+- [UserCheck] **[SECURITY]** **Staff Invites Need a Verified Address**
+  A staff invite now promotes an existing account only when that account has verified the invited email address. Otherwise the invite is refused, stays open, and a security alert is raised for admins.
+- [Timer] **[PERFORMANCE]** **Faster Staff Invite Acceptance Under Load**
+  Accepting a staff invite that creates a new account now hashes the password before taking any database lock, so a busy moment no longer holds a database connection while it waits.
+- [Mail] **[SECURITY]** **Broadcasts Honour Unsubscribes**
+  A broadcast sent with no category now reaches only people who have not turned off Product Updates, so the unsubscribe link in one announcement stops the next one. Disabled accounts never receive broadcasts, even when named as the single address.
+- [MailOpen] **[ADMIN]** **Clearer Broadcast Audience**
+  The broadcast composer's default category is now called General announcement and no longer claims to reach everyone. The recipient summary says which email preference decides who gets the message, and the administration docs describe the same rules.
+- [Sparkles] **[SECURITY]** **AI Verification Reserves Credits Before It Runs**
+  AI finding verification now sets aside the tokens a pass can use from your window allowance and AI credits before it starts, gives back what it did not use, and stops at the first finding your allowance cannot cover instead of spending past it. Two verifications started at once can no longer both draw on the same credits.
+- [GitMerge] **[SECURITY]** **GitHub Repo Review Reserves Credits Before It Runs**
+  A GitHub repo review now needs your window allowance plus GitHub review credits to cover its estimate before any file is fetched, instead of starting on any positive balance. Unused tokens go back to you when it finishes, and a second review on the same account waits for the first.
+- [Timer] **[SECURITY]** **Verification Probe Reads a Capped Body**
+  The live probe AI verification sends to the scanned site now stops reading the response at its snippet size and probe timeout, instead of downloading the whole body first.
+- [ShieldCheck] **[SECURITY]** **False-Positive Marks Stay Private**
+  Marking a finding as a false positive now changes only your own scan. A host's public reputation, which the browser extension and the public host page show to everyone, is only adjusted when you have verified ownership of that domain, and its tags are recalculated when it is. Before this, any account could make a site look safe by marking its findings as false positives.
+- [CheckCheck] **[FIXED]** **Exact-Page Reputation Counts Match the Scan**
+  The page-level reputation the extension checks first now counts severities from the findings the scan recorded, so they match the verdict shown beside them and no longer shrink when the person who ran the scan marks findings as false positives.
+- [Share2] **[SECURITY]** **Badges Show the Site's Numbers, Not a Stranger's Verdicts**
+  A badge set to show any public scan of its site could pick up a scan someone else ran, and showed that person's severity counts and danger score, which drop when they mark findings as false positives. For a scan run by someone else, both are now counted from its complete findings.
+- [Database] **[SELFHOST]** **Upgrading a v1 or v2 Database Works Again**
+  Upgrading a database from schema 1.0.0 or 2.0.0 now completes. It used to fail and roll back on one step that copied scan team links before the column holding them existed, so no older install could upgrade. The migration tool now also checks every upgrade for this kind of ordering mistake before it changes anything.
+- [Mail] **[SELFHOST]** **Self-Hosted Email Links Use Your Own Domain**
+  On an instance running the published Docker image, the links in password-reset, verification and signup emails pointed at vulnradar.dev, which sent live tokens to a domain the operator does not own. They now use the URL saved in Admin > Settings, then APP_URL, then NEXT_PUBLIC_APP_URL as the running container sees it.
+- [Key] **[FIXED]** **OAuth Redirects Follow the Runtime URL**
+  GitHub, Google, Discord and staff sign-in redirects on a pulled image were built from the URL baked in at build time. They now use the same runtime order as email links, and still fall back to the address the request arrived on.
+- [Settings] **[PERFORMANCE]** **Admin Setting Changes Reach Every Part of the Server at Once**
+  The server kept several separate copies of the settings cache, so after an admin saved a change some requests could see the old value for up to 30 seconds. There is now one shared cache, and a save clears it everywhere.
+- [Container] **[SELFHOST]** **Docker Quick Start Boots on a Fresh .env**
+  The default docker compose stack restarted forever when the support and contact addresses were left empty, because startup checks treated an empty address as an invalid email. An empty optional setting now counts as not set, so the documented quick start boots.
+- [Container] **[SELFHOST]** **Development Compose Reads Your Whole .env**
+  The development compose file now passes every variable in .env to the app, as the production file already did. Before, it passed only about a dozen, so settings like OAuth sign-in or Browserbase were silently ignored in development.
+- [Container] **[CHANGED]** **Compose Takes Mail and Turnstile Settings From .env Only**
+  The production compose file used to pass the SMTP, contact, support and Turnstile settings from your shell as well as from .env. It now reads them only from .env, as the self-hosting docs already describe, so a value exported in the shell before docker compose up no longer reaches the app.
+- [Smartphone] **[FIXED]** **Scan Settings No Longer Crash the Dashboard on Safari**
+  Changing scan options on iPhone, iPad and Safari no longer takes the dashboard down. The form now updates the address bar once per change instead of eighteen times, and a browser that refuses the update just skips it.
 
 ---
 
@@ -2848,6 +2906,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1116
+- **Total changes documented:** 1145
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
