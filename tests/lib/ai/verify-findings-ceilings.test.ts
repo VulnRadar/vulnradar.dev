@@ -233,6 +233,25 @@ describe("verification stays inside its reservation on dense page content", () =
     expect(spent()).toBe(0);
   });
 
+  it("a pass reserved at only the minimum still refuses a call its page would overrun", async () => {
+    // The minimum assumes an empty page. A full-size body does not fit in it,
+    // so the call is not made rather than made and charged past it.
+    mockSafeFetch.mockResolvedValue(probeWithBody(fillCap("a")));
+    const findings = [makeFinding("f1")];
+    const { minimum } = await estimateVerifyTokens(findings);
+
+    const { outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      reservation(minimum),
+    );
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({ verdicts: 0, budgetExhausted: true });
+    expect(spent()).toBe(0);
+  });
+
   it("admits a call at what it really sends, so a small page does not use up a full-size reservation", async () => {
     // Two findings' worth of reservation, three findings. The reservation
     // assumed a full-size body and header block for each; this page has
@@ -241,16 +260,18 @@ describe("verification stays inside its reservation on dense page content", () =
       probeWithBody(Buffer.from("<html></html>")),
     );
     const findings = [makeFinding("f1"), makeFinding("f2"), makeFinding("f3")];
-    const { minimum } = await estimateVerifyTokens(findings);
+    const { estimate: twoReserved } = await estimateVerifyTokens(
+      findings.slice(0, 2),
+    );
 
     const { outcome } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       findings,
       42,
-      reservation(minimum * 2),
+      reservation(twoReserved),
     );
 
     expect(outcome.verdicts).toBe(3);
-    expect(spent()).toBeLessThanOrEqual(minimum * 2);
+    expect(spent()).toBeLessThanOrEqual(twoReserved);
   });
 });

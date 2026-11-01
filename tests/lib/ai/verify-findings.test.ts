@@ -1672,16 +1672,59 @@ describe("verification is held to the reservation's budget", () => {
     expect(outcome.verdicts).toBe(12);
   });
 
-  it("estimateVerifyTokens reserves every finding at its ceiling and needs at least the first one", async () => {
-    const { estimateVerifyTokens } = await import("@/lib/ai/verify-findings");
+  it("estimateVerifyTokens reserves every finding at its ceiling and needs at least the first one on an empty page", async () => {
+    const { estimateVerifyTokens, admittedCallCeiling } =
+      await import("@/lib/ai/verify-findings");
+    const { CONFIG_AI_VERIFY_MAX_TOKENS } =
+      await import("@/lib/config/config-values");
     const findings = [makeFinding("f1"), makeFinding("f2")];
     const one = await reservedCeilingOf(findings[0]);
 
     const { estimate, minimum } = await estimateVerifyTokens(findings);
 
-    expect(minimum).toBe(one);
+    // The least a pass can be admitted at is the first finding against a
+    // page with no body and no headers. Requiring the full-size probe
+    // allowance up front refused a free-plan account after a fraction of its
+    // window, for a pass that per-call admission already holds to whatever
+    // was reserved.
+    expect(minimum).toBe(
+      admittedCallCeiling(
+        findings[0],
+        { maxTokens: CONFIG_AI_VERIFY_MAX_TOKENS },
+        {
+          status_code: 0,
+          final_url: "",
+          response_headers: {},
+          body_snippet: "",
+        },
+      ),
+    );
+    expect(minimum).toBeLessThan(one);
     expect(estimate).toBe(one + (await reservedCeilingOf(findings[1])));
     expect(await estimateVerifyTokens([])).toEqual({ estimate: 0, minimum: 0 });
+  });
+
+  it("a free-plan window can still start a verification after more than 17k tokens of use", async () => {
+    const { estimateVerifyTokens } = await import("@/lib/ai/verify-findings");
+    const { PLANS } = await import("@/lib/billing/catalog");
+    const free = PLANS.find((p) => p.id === "free")!.limits.aiTokensPerWindow;
+    const left = free - 20_000;
+
+    const { minimum } = await estimateVerifyTokens([makeFinding("f1")]);
+    // debitWindowAndBalance refuses when what is left is below the minimum.
+    expect(minimum).toBeLessThanOrEqual(left);
+
+    // And what is left is enough to verify a finding on a small page.
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("f1", 100, 50),
+    );
+    const { outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      reservation({ budget: left }),
+    );
+    expect(outcome.verdicts).toBe(1);
   });
 
   it("a ceiling covers the whole output allowance plus a full-size probe at one token per byte", async () => {

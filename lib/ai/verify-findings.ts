@@ -457,9 +457,17 @@ export function admittedCallCeiling(
 
 /**
  * What a verification pass over `findings` should reserve: `estimate` covers
- * every finding at its ceiling, `minimum` is the first finding's ceiling, the
- * least a run needs to verify anything (the pass admits findings in order and
- * stops at the first one its budget cannot cover).
+ * every finding at its reserved ceiling, and `minimum` is the first finding
+ * admitted against an empty page, below which no call can run at all (the
+ * pass admits findings in order and stops at the first one its budget cannot
+ * cover).
+ *
+ * The minimum used to be the first finding's full reserved ceiling, which
+ * assumes a full-size body and header block. Once that was counted at one
+ * token per byte it came to most of a free plan's window, so an account was
+ * refused after a fraction of its allowance. Asking less up front cannot
+ * overspend: admitWithinBudget measures each call against the page it really
+ * fetched and refuses a call that would not fit what was reserved.
  */
 export async function estimateVerifyTokens(
   findings: Vulnerability[],
@@ -469,7 +477,7 @@ export async function estimateVerifyTokens(
   const ceilings = findings.map((f) => verifyCallCeiling(f, settings));
   return {
     estimate: ceilings.reduce((sum, c) => sum + c, 0),
-    minimum: ceilings[0],
+    minimum: admittedCallCeiling(findings[0], settings, EMPTY_PROBE),
   };
 }
 
