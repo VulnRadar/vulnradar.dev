@@ -9,7 +9,8 @@ import path from "node:path";
  * put that id straight into `${API.HISTORY}/${scanId}...`, so a crafted id with
  * dot segments pointed the click at a different API route with the user's
  * cookie. The menu now validates the prop once and builds every per-scan path
- * through historyItemPath, which encodes it.
+ * from an API entry (through historyItemPath, or directly for the public
+ * listing toggle), and the entries encode it.
  *
  * Source-text assertions, like the rest of tests/components: tsconfig keeps
  * `jsx: preserve`, so a .tsx component cannot be imported into a test.
@@ -41,12 +42,19 @@ describe("the scan actions menu's request paths", () => {
 
   it.each([
     ["the team picker's read", /fetch\(historyItemPath\(scanId\)\)/],
-    ["create share", /historyItemPath\(scanId, "\/share"\)/],
-    ["public listing", /historyItemPath\(scanId, "\/share\/publicly-listed"\)/],
-    ["AI summary", /historyItemPath\(scanId, "\/summary"\)/],
-    ["delete", /apiDelete\(historyItemPath\(scanId, "\/delete"\)\)/],
+    ["create share", /historyItemPath\(scanId, "share"\)/],
+    ["AI summary", /historyItemPath\(scanId, "summary"\)/],
+    ["delete", /apiDelete\(historyItemPath\(scanId, "delete"\)\)/],
   ])("builds %s through historyItemPath", (_label, pattern) => {
     expect(src).toMatch(pattern);
+  });
+
+  // The same entry the Shared page's row menu calls, so the listing toggle
+  // has one name in both places.
+  it("builds the public listing toggle from its API entry", () => {
+    expect(src).toMatch(
+      /fetch\(API\.HISTORY_SHARE_PUBLICLY_LISTED\(scanId\), \{/,
+    );
   });
 
   it("builds the two PATCHes (teams, visibility) through historyItemPath", () => {

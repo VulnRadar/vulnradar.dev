@@ -3,7 +3,7 @@ import { API } from "@/lib/config/client-constants";
 import {
   historyItemPath,
   parseScanId,
-  type ScanHistorySubPath,
+  type ScanHistoryRoute,
   type ScanId,
 } from "@/lib/history/scan-id";
 
@@ -85,23 +85,29 @@ describe("parseScanId", () => {
 describe("historyItemPath", () => {
   const id = PUBLIC_ID as ScanId;
 
-  it.each<ScanHistorySubPath>([
-    "",
-    "/share",
-    "/share/publicly-listed",
-    "/summary",
-    "/delete",
-  ])("builds the %j sub-path under one history segment", (sub) => {
-    expect(resolve(historyItemPath(id, sub))).toBe(
-      `${API.HISTORY}/${PUBLIC_ID}${sub}`,
-    );
+  // Each route comes from its own API entry, never from text appended to the
+  // scan's path: the entries do not share one prefix once the API moves.
+  it.each<[ScanHistoryRoute, (id: string) => string]>([
+    ["item", API.HISTORY_ITEM],
+    ["share", API.HISTORY_SHARE],
+    ["summary", API.HISTORY_SUMMARY],
+    ["delete", API.HISTORY_DELETE],
+  ])("builds the %s route from its API entry", (route, entry) => {
+    expect(historyItemPath(id, route)).toBe(entry(id));
+  });
+
+  it("defaults to the scan itself", () => {
+    expect(historyItemPath(id)).toBe(API.HISTORY_ITEM(id));
   });
 
   it("encodes the id, so a slash in a value that skipped validation stays inside one segment", () => {
     const forged = "../keys/5/revoke?" as ScanId;
-    const path = resolve(historyItemPath(forged, "/share"));
-    expect(path.startsWith(`${API.HISTORY}/`)).toBe(true);
-    expect(path.endsWith("/share")).toBe(true);
-    expect(path.split("/").length).toBe(API.HISTORY.split("/").length + 2);
+    const [prefix, rest] = API.HISTORY_SHARE("ID").split("ID");
+    const path = resolve(historyItemPath(forged, "share"));
+    expect(path.startsWith(prefix)).toBe(true);
+    expect(path.endsWith(rest)).toBe(true);
+    expect(path.slice(prefix.length, path.length - rest.length)).not.toContain(
+      "/",
+    );
   });
 });

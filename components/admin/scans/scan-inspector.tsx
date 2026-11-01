@@ -385,7 +385,7 @@ export function ScanInspector({ id }: { id: string }) {
     async function load() {
       setState({ kind: "loading" });
       try {
-        const res = await fetch(API.ADMIN_SCAN(encodeURIComponent(id)));
+        const res = await fetch(API.ADMIN_SCAN(id));
         if (cancelled) return;
         if (res.status === 403) {
           setState({ kind: "forbidden" });

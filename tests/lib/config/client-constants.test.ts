@@ -367,31 +367,81 @@ describe("API entries for routes that were spelled out at the call site", () => 
 });
 
 /**
- * Helpers that put an id or a hostname into a request path. Several of those
- * values reach the client from a URL the visitor followed (/host/[hostname],
- * /history?scan=), and the browser resolves dot segments before it sends the
- * request, so an unencoded "../keys/5/revoke?" turned a GET for one scan into
- * a same-origin, cookie-bearing request to another API route.
+ * Helpers that put an id, a token or a hostname into a request path. Several
+ * of those values reach the client from a URL the visitor followed
+ * (/host/[hostname], /history?scan=, /staff-invite/[token], /admin/scans/[id]),
+ * and the browser resolves dot segments before it sends the request, so an
+ * unencoded "../keys/5/revoke?" turned a GET for one scan into a same-origin,
+ * cookie-bearing request to another API route.
  */
-describe("API helpers keep the id inside its own path segment", () => {
+describe("API helpers keep the value inside its own path segment", () => {
   const FORGED = "../keys/5/revoke?";
   const HELPERS: Array<[name: string, build: (id: string) => string]> = [
-    ["HISTORY_ITEM", (id) => API.HISTORY_ITEM(id)],
-    ["SCAN_STATUS", (id) => API.SCAN_STATUS(id)],
-    ["SCAN_SCREENSHOT", (id) => API.SCAN_SCREENSHOT(id)],
-    ["SCAN_REFRESH_DNS", (id) => API.SCAN_REFRESH_DNS(id)],
-    ["SCAN_REFRESH_PORTS", (id) => API.SCAN_REFRESH_PORTS(id)],
-    ["SCAN_REFRESH_SCREENSHOT", (id) => API.SCAN_REFRESH_SCREENSHOT(id)],
-    ["HISTORY_REPORT", (id) => API.HISTORY_REPORT(id, "pdf")],
-    ["SHARE_PUBLICLY_LISTED", (id) => API.SHARE_PUBLICLY_LISTED(id)],
-    ["HOST", (id) => API.HOST(id)],
-    ["HOST_TREND", (id) => API.HOST_TREND(id)],
+    ["AUTH.OAUTH_START", (v) => API.AUTH.OAUTH_START(v)],
+    ["AUTH.STAFF_INVITE", (v) => API.AUTH.STAFF_INVITE(v)],
+    ["AUTH.SESSION_REVOKE", (v) => API.AUTH.SESSION_REVOKE(v)],
+    ["AUTH.TRUSTED_DEVICE_REVOKE", (v) => API.AUTH.TRUSTED_DEVICE_REVOKE(v)],
+    ["HISTORY_ITEM", (v) => API.HISTORY_ITEM(v)],
+    ["HISTORY_SHARE", (v) => API.HISTORY_SHARE(v)],
+    [
+      "HISTORY_SHARE_PUBLICLY_LISTED",
+      (v) => API.HISTORY_SHARE_PUBLICLY_LISTED(v),
+    ],
+    ["HISTORY_SUMMARY", (v) => API.HISTORY_SUMMARY(v)],
+    ["HISTORY_DELETE", (v) => API.HISTORY_DELETE(v)],
+    ["HISTORY_REPORT", (v) => API.HISTORY_REPORT(v, "pdf")],
+    ["SCAN_STATUS", (v) => API.SCAN_STATUS(v)],
+    ["SCAN_SCREENSHOT", (v) => API.SCAN_SCREENSHOT(v)],
+    ["SCAN_REFRESH_DNS", (v) => API.SCAN_REFRESH_DNS(v)],
+    ["SCAN_REFRESH_PORTS", (v) => API.SCAN_REFRESH_PORTS(v)],
+    ["SCAN_REFRESH_SCREENSHOT", (v) => API.SCAN_REFRESH_SCREENSHOT(v)],
+    ["SCAN_DISCOVER_PROGRESS", (v) => API.SCAN_DISCOVER_PROGRESS(v)],
+    ["DOMAIN_SCANS", (v) => API.DOMAIN_SCANS(v)],
+    ["DOMAIN_BLOCK", (v) => API.DOMAIN_BLOCK(v)],
+    ["SUPPORT_TICKET", (v) => API.SUPPORT_TICKET(v)],
+    ["SUPPORT_TICKET_SHARES", (v) => API.SUPPORT_TICKET_SHARES(v)],
+    ["ADMIN_SCAN", (v) => API.ADMIN_SCAN(v)],
+    ["ACCOUNT_OAUTH_DISCONNECT", (v) => API.ACCOUNT_OAUTH_DISCONNECT(v)],
+    ["HOST", (v) => API.HOST(v)],
+    ["HOST_TREND", (v) => API.HOST_TREND(v)],
   ];
 
+  /** What the browser would actually request for a helper's output. */
   function resolved(url: string) {
     const u = new URL(url, "https://app.example");
-    return u.pathname + u.search;
+    return u.pathname + u.search + u.hash;
   }
+
+  /**
+   * The resolved request still has the helper's own prefix and suffix, and
+   * whatever the value became sits between them as one segment: no slash to
+   * open another, no question mark or hash to end the path early.
+   */
+  function expectOneSegment(build: (v: string) => string, value: string) {
+    const [prefix, rest] = build("ID").split("ID");
+    const actual = resolved(build(value));
+    expect(actual.startsWith(prefix), actual).toBe(true);
+    expect(actual.endsWith(rest), actual).toBe(true);
+    const middle = actual.slice(prefix.length, actual.length - rest.length);
+    expect(middle, actual).toMatch(/^[^/?#]+$/);
+  }
+
+  it("covers every API entry that takes an argument", () => {
+    const named = new Set(HELPERS.map(([name]) => name));
+    const missing: string[] = [];
+    const walk = (node: Record<string, unknown>, at: string) => {
+      for (const [key, value] of Object.entries(node)) {
+        const name = at ? `${at}.${key}` : key;
+        if (typeof value === "function") {
+          if (!named.has(name)) missing.push(name);
+        } else if (value && typeof value === "object") {
+          walk(value as Record<string, unknown>, name);
+        }
+      }
+    };
+    walk(API as unknown as Record<string, unknown>, "");
+    expect(missing).toEqual([]);
+  });
 
   it.each(HELPERS)("%s leaves an ordinary id as it was", (_n, build) => {
     const url = build("0123456789abcdef0123456789abcdef");
@@ -403,14 +453,32 @@ describe("API helpers keep the id inside its own path segment", () => {
   it.each(HELPERS)(
     "%s cannot be walked out of its route by the id",
     (_n, build) => {
-      const plain = build("ID");
-      const forged = resolved(build(FORGED));
-      const [prefix, rest] = plain.split("ID");
-      expect(forged.startsWith(prefix)).toBe(true);
-      expect(forged.endsWith(rest)).toBe(true);
-      expect(forged).not.toContain("/keys/");
+      expectOneSegment(build, FORGED);
+      expect(resolved(build(FORGED))).not.toContain("/keys/");
     },
   );
+
+  it.each(HELPERS)("%s encodes a slash", (_n, build) => {
+    expectOneSegment(build, "a/b");
+    expect(build("a/b")).toContain("a%2Fb");
+  });
+
+  it.each(HELPERS)("%s encodes a question mark", (_n, build) => {
+    expectOneSegment(build, "a?b=1");
+  });
+
+  it.each(HELPERS)("%s encodes a hash", (_n, build) => {
+    expectOneSegment(build, "a#b");
+  });
+
+  // "%2e" and "%2e%2e" are dot segments as well (WHATWG URL), so escaping the
+  // dots once would still let ".." climb. The test resolves the path the way
+  // the browser does rather than checking for one particular spelling.
+  it.each(HELPERS)("%s does not let a dot-only value climb", (_n, build) => {
+    for (const dots of [".", "..", "...", "...."]) {
+      expectOneSegment(build, dots);
+    }
+  });
 
   it("names one scan's history route", () => {
     expect(API.HISTORY_ITEM("abc")).toBe(`${API.HISTORY}/abc`);
@@ -423,5 +491,50 @@ describe("API helpers keep the id inside its own path segment", () => {
     );
     // @ts-expect-error a format the route does not serve
     API.HISTORY_REPORT(7, "html");
+  });
+});
+
+/**
+ * Each per-scan sub-route is its own entry rather than text appended to
+ * HISTORY_ITEM. The scan itself and its share, listing, summary and delete
+ * routes do not stay under one prefix once the API moves, and a suffix tacked
+ * onto HISTORY_ITEM would then point at a route that does not exist.
+ */
+describe("per-scan history entries", () => {
+  const ENTRIES: Array<
+    [name: string, build: (id: string) => string, sub: string, method: string]
+  > = [
+    ["HISTORY_SHARE", (id) => API.HISTORY_SHARE(id), "/share", "POST"],
+    [
+      "HISTORY_SHARE_PUBLICLY_LISTED",
+      (id) => API.HISTORY_SHARE_PUBLICLY_LISTED(id),
+      "/share/publicly-listed",
+      "PUT",
+    ],
+    ["HISTORY_SUMMARY", (id) => API.HISTORY_SUMMARY(id), "/summary", "POST"],
+    ["HISTORY_DELETE", (id) => API.HISTORY_DELETE(id), "/delete", "DELETE"],
+  ];
+
+  it.each(ENTRIES)("API.%s is the route the UI calls", (_n, build, sub) => {
+    expect(build("7")).toBe(`/api/v3/history/7${sub}`);
+  });
+
+  it.each(ENTRIES)(
+    "API.%s names a route file that answers the method the UI sends",
+    (_n, _build, sub, method) => {
+      const file = path.resolve(
+        __dirname,
+        "../../..",
+        `app/api/v3/history/[id]${sub}/route.ts`,
+      );
+      expect(fs.existsSync(file), file).toBe(true);
+      expect(fs.readFileSync(file, "utf8")).toMatch(
+        new RegExp(String.raw`export\s+async\s+function\s+${method}\b`),
+      );
+    },
+  );
+
+  it("keeps one name for the public-listing toggle", () => {
+    expect("SHARE_PUBLICLY_LISTED" in API).toBe(false);
   });
 });

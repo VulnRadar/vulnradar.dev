@@ -669,7 +669,7 @@ export function ScanActionsMenu({
     }
     setShareLoading(true);
     try {
-      const res = await fetch(historyItemPath(scanId, "/share"), {
+      const res = await fetch(historyItemPath(scanId, "share"), {
         method: "POST",
       });
       const data = await res.json();
@@ -724,14 +724,11 @@ export function ScanActionsMenu({
       });
     };
     try {
-      const res = await fetch(
-        historyItemPath(scanId, "/share/publicly-listed"),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ publiclyListed: next }),
-        },
-      );
+      const res = await fetch(API.HISTORY_SHARE_PUBLICLY_LISTED(scanId), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publiclyListed: next }),
+      });
       if (!res.ok) reportFailure();
     } catch {
       reportFailure();
@@ -752,7 +749,7 @@ export function ScanActionsMenu({
     setUpdatingShareExpiry(true);
     const previous = shareExpiresAt;
     try {
-      const res = await fetch(historyItemPath(scanId, "/share"), {
+      const res = await fetch(historyItemPath(scanId, "share"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expiresInDays: days }),
@@ -1041,7 +1038,7 @@ export function ScanActionsMenu({
       // it already had.
       const isRegenerate = Boolean(summaryText);
       const data = await apiPost<{ success: boolean; summary: string }>(
-        `${historyItemPath(scanId, "/summary")}${isRegenerate ? "?regenerate=true" : ""}`,
+        `${historyItemPath(scanId, "summary")}${isRegenerate ? "?regenerate=true" : ""}`,
         undefined,
         { signal: controller.signal },
       );
@@ -1070,7 +1067,7 @@ export function ScanActionsMenu({
     setDeleting(true);
     setDeleteError(null);
     try {
-      await apiDelete(historyItemPath(scanId, "/delete"));
+      await apiDelete(historyItemPath(scanId, "delete"));
       setConfirmDelete(false);
       onDeleted?.();
     } catch (err) {

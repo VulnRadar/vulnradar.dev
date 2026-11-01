@@ -160,7 +160,7 @@ export default function SharesPage() {
     setTogglingPubliclyListed(share.id);
     const next = !share.publiclyListed;
     try {
-      const res = await fetch(API.SHARE_PUBLICLY_LISTED(share.id), {
+      const res = await fetch(API.HISTORY_SHARE_PUBLICLY_LISTED(share.id), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ publiclyListed: next }),
@@ -208,7 +208,7 @@ export default function SharesPage() {
   async function changeShareExpiry(share: Share, days: number | null) {
     setUpdatingExpiry(true);
     try {
-      const res = await fetch(`${API.HISTORY_ITEM(share.id)}/share`, {
+      const res = await fetch(API.HISTORY_SHARE(share.id), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expiresInDays: days }),
@@ -253,7 +253,7 @@ export default function SharesPage() {
     setConfirmRevoke(null);
     setRevoking(scanId);
     try {
-      const res = await fetch(`${API.HISTORY_ITEM(scanId)}/share`, {
+      const res = await fetch(API.HISTORY_SHARE(scanId), {
         method: "DELETE",
       });
       if (res.ok) {

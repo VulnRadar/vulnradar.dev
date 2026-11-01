@@ -210,12 +210,23 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
 
 export const API_VERSION = CONFIG_API_VERSION;
 
-// An id or a hostname in a request path often comes from a URL the visitor
-// followed (/history?scan=, /host/[hostname]), and the browser resolves the
-// path before it sends the request. Encoded, a slash or a question mark in it
-// cannot open another segment or a query string and reach a different route.
+// An id, a token or a hostname in a request path often comes from a URL the
+// visitor followed (/history?scan=, /host/[hostname], /staff-invite/[token]),
+// and the browser resolves the path before it sends the request. Encoded, a
+// slash, question mark or hash in it cannot open another segment, a query
+// string or a fragment and reach a different route.
+//
+// encodeURIComponent leaves dots alone, and "." or ".." on its own is a dot
+// segment the browser folds away together with the segment before it.
+// Escaping those dots once is not enough, because the URL standard treats
+// "%2e" and "%2e%2e" as dot segments too. A value made only of dots is escaped
+// twice instead, so the route receives the literal text "%2E%2E", which is
+// nothing's id.
 function segment(value: string | number): string {
-  return encodeURIComponent(String(value));
+  const text = String(value);
+  return encodeURIComponent(
+    /^\.+$/.test(text) ? text.replace(/\./g, "%2E") : text,
+  );
 }
 
 /** The formats GET /history/[id]/report serves. */
@@ -239,7 +250,7 @@ export const API = {
     ONBOARDING: `/api/${API_VERSION}/auth/onboarding`,
     OAUTH_INFO: `/api/${API_VERSION}/auth/oauth/info`,
     OAUTH_START: (provider: string) =>
-      `/api/${API_VERSION}/auth/oauth/${provider}`,
+      `/api/${API_VERSION}/auth/oauth/${segment(provider)}`,
     /** Start (or restart) the Discord sign-in/link flow. Discord is not a
      *  Google/GitHub-style OAUTH_START provider: it has its own route rather
      *  than living under /auth/oauth/. */
@@ -250,7 +261,7 @@ export const API = {
      *  not have an account yet, which is why "/staff-invite" and this route
      *  are both in lib/config/public-paths.ts. */
     STAFF_INVITE: (token: string) =>
-      `/api/${API_VERSION}/auth/staff-invite/${token}`,
+      `/api/${API_VERSION}/auth/staff-invite/${segment(token)}`,
     STAFF_OIDC_INFO: `/api/${API_VERSION}/auth/staff-oidc/info`,
     STAFF_OIDC_START: `/api/${API_VERSION}/auth/staff-oidc`,
     IMPERSONATION_STOP: `/api/${API_VERSION}/auth/impersonation-stop`,
@@ -265,13 +276,14 @@ export const API = {
       BACKUP_CODES: `/api/${API_VERSION}/auth/2fa/backup-codes`,
     },
     SESSIONS: `/api/${API_VERSION}/auth/sessions`,
-    SESSION_REVOKE: (id: string) => `/api/${API_VERSION}/auth/sessions/${id}`,
+    SESSION_REVOKE: (id: string) =>
+      `/api/${API_VERSION}/auth/sessions/${segment(id)}`,
     /** Record the IPv4 the IPv4-only echo host observed onto the current
      *  session (POST { token }). See components/shared/ipv4-capture.tsx. */
     SESSION_IPV4: `/api/${API_VERSION}/auth/sessions/ipv4`,
     TRUSTED_DEVICES: `/api/${API_VERSION}/auth/trusted-devices`,
     TRUSTED_DEVICE_REVOKE: (id: number | string) =>
-      `/api/${API_VERSION}/auth/trusted-devices/${id}`,
+      `/api/${API_VERSION}/auth/trusted-devices/${segment(id)}`,
   },
   SCAN: `/api/${API_VERSION}/scan`,
   SCAN_STATUS: (id: string | number) =>
@@ -294,7 +306,7 @@ export const API = {
   SCAN_TAGS: `/api/${API_VERSION}/scan/tags`,
   SCAN_DISCOVER: `/api/${API_VERSION}/scan/discover`,
   SCAN_DISCOVER_PROGRESS: (requestId: string) =>
-    `/api/${API_VERSION}/scan/discover/progress/${requestId}`,
+    `/api/${API_VERSION}/scan/discover/progress/${segment(requestId)}`,
   SCAN_CRAWL: `/api/${API_VERSION}/scan/crawl`,
   /** Parse an uploaded API spec (OpenAPI/Swagger/Postman) into scan targets. */
   SCAN_IMPORT_SPEC: `/api/${API_VERSION}/scan/import-spec`,
@@ -305,18 +317,30 @@ export const API = {
   /** One scan in the caller's history, by public_id or legacy numeric id. */
   HISTORY_ITEM: (id: string | number) =>
     `/api/${API_VERSION}/history/${segment(id)}`,
+  // The per-scan sub-routes are entries of their own, never text appended to
+  // HISTORY_ITEM: they do not share its prefix once the API moves.
+  /** Create or re-time (POST) or revoke (DELETE) one scan's share link. */
+  HISTORY_SHARE: (id: string | number) =>
+    `/api/${API_VERSION}/history/${segment(id)}/share`,
+  /** Toggle one share's Public Scans directory listing (PUT
+   *  { publiclyListed }): the Shared page's row menu and the scan actions menu. */
+  HISTORY_SHARE_PUBLICLY_LISTED: (id: string | number) =>
+    `/api/${API_VERSION}/history/${segment(id)}/share/publicly-listed`,
+  /** Generate one scan's AI summary (POST; ?regenerate=true replaces it). */
+  HISTORY_SUMMARY: (id: string | number) =>
+    `/api/${API_VERSION}/history/${segment(id)}/summary`,
+  /** Delete one scan from the caller's history (DELETE). */
+  HISTORY_DELETE: (id: string | number) =>
+    `/api/${API_VERSION}/history/${segment(id)}/delete`,
   /** Server-generated report for one scan. */
   HISTORY_REPORT: (id: number | string, format: HistoryReportFormat) =>
-    `/api/${API_VERSION}/history/${segment(id)}/report?format=${format}`,
+    `/api/${API_VERSION}/history/${segment(id)}/report?format=${encodeURIComponent(format)}`,
   /** Every distinct host the caller has scanned, grouped from their own
    *  scan_history, most-recently-scanned first (app/assets/page.tsx). */
   ASSETS: `/api/${API_VERSION}/assets`,
   DASHBOARD: `/api/${API_VERSION}/dashboard`,
   SHARES: `/api/${API_VERSION}/shares`,
   SHARED: `/api/${API_VERSION}/shared`,
-  /** Toggle one share's Public Scans directory listing on/off (Shared page row menu). */
-  SHARE_PUBLICLY_LISTED: (id: string | number) =>
-    `/api/${API_VERSION}/history/${segment(id)}/share/publicly-listed`,
   /** Public, unauthenticated: paginated directory of publicly-listed shares (app/public-scans/page.tsx). */
   PUBLIC_SCANS: `/api/${API_VERSION}/public-scans`,
   KEYS: `/api/${API_VERSION}/keys`,
@@ -326,10 +350,10 @@ export const API = {
   /** Publicly reachable scans of a verified domain, from any account, and the
    *  owner's controls over them. See lib/domains/owner-control.ts. */
   DOMAIN_SCANS: (id: number | string) =>
-    `/api/${API_VERSION}/domains/${id}/scans`,
+    `/api/${API_VERSION}/domains/${segment(id)}/scans`,
   /** Whether a verified domain is blocked from being scanned at all. */
   DOMAIN_BLOCK: (id: number | string) =>
-    `/api/${API_VERSION}/domains/${id}/block`,
+    `/api/${API_VERSION}/domains/${segment(id)}/block`,
   TEAMS: `/api/${API_VERSION}/teams`,
   TEAMS_MEMBERS: `/api/${API_VERSION}/teams/members`,
   TEAMS_MEMBER_SCANS: `/api/${API_VERSION}/teams/member-scans`,
@@ -349,10 +373,10 @@ export const API = {
   SUPPORT_TICKETS: `/api/${API_VERSION}/support-tickets`,
   /** One ticket + its thread: GET (owner or staff), POST a reply, PATCH status. */
   SUPPORT_TICKET: (id: number | string) =>
-    `/api/${API_VERSION}/support-tickets/${id}`,
+    `/api/${API_VERSION}/support-tickets/${segment(id)}`,
   /** Owner-only sharing of a ticket with specific teammates: GET/POST/DELETE. */
   SUPPORT_TICKET_SHARES: (id: number | string) =>
-    `/api/${API_VERSION}/support-tickets/${id}/shares`,
+    `/api/${API_VERSION}/support-tickets/${segment(id)}/shares`,
   /** Staff inbox listing every user's ticket (MANAGE_SUPPORT_TICKETS). */
   ADMIN_SUPPORT_TICKETS: `/api/${API_VERSION}/admin/support-tickets`,
   /** Scanner queue counts (GET, VIEW_SYSTEM_STATS; ?failures=1 adds the
@@ -364,7 +388,8 @@ export const API = {
   /** One scan as staff see it (VIEW_ALL_SCANS): status, failure_kind, the
    *  raw error, timings and result_meta. Takes a public_id or a numeric id,
    *  and every read is audited as view_scan. */
-  ADMIN_SCAN: (id: string | number) => `/api/${API_VERSION}/admin/scans/${id}`,
+  ADMIN_SCAN: (id: string | number) =>
+    `/api/${API_VERSION}/admin/scans/${segment(id)}`,
   /** Contact-form submissions, with whether the staff email went out. */
   ADMIN_CONTACT_SUBMISSIONS: `/api/${API_VERSION}/admin/contact-submissions`,
   /** Auto-tag rules promoted from AI tags: GET to list, DELETE to remove
@@ -390,7 +415,7 @@ export const API = {
   ACCOUNT_AI_CONFIG: `/api/${API_VERSION}/account/ai-config`,
   /** Disconnect a linked Google/GitHub sign-in identity (DELETE). */
   ACCOUNT_OAUTH_DISCONNECT: (provider: string) =>
-    `/api/${API_VERSION}/account/oauth/${provider}`,
+    `/api/${API_VERSION}/account/oauth/${segment(provider)}`,
   ACCOUNT_GITHUB: `/api/${API_VERSION}/account/github`,
   ACCOUNT_GITHUB_CONNECT: `/api/${API_VERSION}/account/github/connect`,
   ACCOUNT_GITHUB_REPOS: `/api/${API_VERSION}/account/github/repos`,

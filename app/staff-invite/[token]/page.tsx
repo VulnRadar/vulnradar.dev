@@ -78,10 +78,8 @@ export default function StaffInvitePage() {
   );
 
   // GET validates the token and returns the invited email and role, POST
-  // accepts it. API.AUTH.STAFF_INVITE interpolates its argument raw, same as
-  // the other parameterised entries in that block, so the token is encoded
-  // here.
-  const acceptUrl = API.AUTH.STAFF_INVITE(encodeURIComponent(token));
+  // accepts it. API.AUTH.STAFF_INVITE encodes the token itself.
+  const acceptUrl = API.AUTH.STAFF_INVITE(token);
 
   useEffect(() => {
     if (!token) {

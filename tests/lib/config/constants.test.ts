@@ -103,11 +103,11 @@ describe("API.SCAN_DISCOVER_PROGRESS", () => {
     expect(API.SCAN_DISCOVER_PROGRESS("abc123")).toContain(API.SCAN_DISCOVER);
   });
 
-  it("interpolates the id it is given, including one with url-unsafe characters", () => {
-    // Documents that the map does NOT encode: callers pass request ids the
-    // server generated, and anything else is the caller's job to encode.
+  it("encodes the id it is given, so a url-unsafe one stays one segment", () => {
+    // The map encodes, so callers pass the raw id and never encode it
+    // themselves (tests/repo/history-paths-encoded.test.ts).
     expect(API.SCAN_DISCOVER_PROGRESS("a/b")).toBe(
-      "/api/v3/scan/discover/progress/a/b",
+      "/api/v3/scan/discover/progress/a%2Fb",
     );
   });
 });

@@ -28,19 +28,26 @@ export function parseScanId(raw: unknown): ScanId | null {
     : null;
 }
 
-/** The per-scan history routes a client calls. A closed list on purpose. */
-export type ScanHistorySubPath =
-  "" | "/share" | "/share/publicly-listed" | "/summary" | "/delete";
+// The per-scan history routes a client reaches through a ScanId, each from its
+// own API entry. A closed list on purpose, and never a suffix appended to the
+// scan's path: the entries do not share one prefix once the API moves.
+const SCAN_ROUTES = {
+  item: API.HISTORY_ITEM,
+  share: API.HISTORY_SHARE,
+  summary: API.HISTORY_SUMMARY,
+  delete: API.HISTORY_DELETE,
+} as const;
+
+export type ScanHistoryRoute = keyof typeof SCAN_ROUTES;
 
 /**
- * The API path for one scan, or one of its sub-routes. API.HISTORY_ITEM
- * encodes the id as well, so a slash or a question mark in a value that was
- * cast to ScanId instead of parsed cannot open another segment or a query
- * string.
+ * The API path for one scan, or one of its sub-routes. The entries encode the
+ * id as well, so a slash or a question mark in a value that was cast to
+ * ScanId instead of parsed cannot open another segment or a query string.
  */
 export function historyItemPath(
   id: ScanId,
-  sub: ScanHistorySubPath = "",
+  route: ScanHistoryRoute = "item",
 ): string {
-  return `${API.HISTORY_ITEM(id)}${sub}`;
+  return SCAN_ROUTES[route](id);
 }
