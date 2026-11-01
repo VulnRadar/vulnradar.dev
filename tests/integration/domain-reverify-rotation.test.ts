@@ -19,8 +19,9 @@ import {
  * ones that may have changed hands. The ordering is a SQL fact, so it is proved
  * against rows. DNS itself is the one thing faked.
  *
- * Nothing else in the integration tier writes to `domains`, so this suite's
- * three rows are the whole due set.
+ * Every other suite that writes to `domains` deletes its rows when it
+ * finishes, so this suite's three rows are the whole due set. A leftover
+ * verified row would never have been checked and would sort ahead of them.
  */
 const mockCheck = vi.fn();
 vi.mock("@/lib/domains/verification", () => ({

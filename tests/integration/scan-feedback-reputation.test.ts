@@ -20,6 +20,10 @@ import { describeIntegration, createUser, unique } from "./_db";
  */
 const seededScans: number[] = [];
 const seededHosts: string[] = [];
+// Removed in afterAll: the domain re-verification suite takes every verified
+// row in the shared database as its due set, and a leftover row sorts ahead of
+// its own because it has never been checked.
+const seededDomains: string[] = [];
 
 const FINDINGS = [
   {
@@ -129,6 +133,11 @@ async function scanSummaryOf(scanId: number) {
 
 describeIntegration("false-positive feedback and host reputation", () => {
   afterAll(async () => {
+    if (seededDomains.length > 0) {
+      await pool.query("DELETE FROM domains WHERE domain = ANY($1)", [
+        seededDomains,
+      ]);
+    }
     if (seededHosts.length > 0) {
       await pool.query("DELETE FROM host_reputation WHERE host = ANY($1)", [
         seededHosts,
@@ -174,6 +183,7 @@ describeIntegration("false-positive feedback and host reputation", () => {
     // The last row is a string suffix of the host with no dot boundary
     // ("ear<id>.example.test" for "near<id>.example.test"), which a
     // `host LIKE '%' || domain` test would accept.
+    seededDomains.push(host, `not${host}`, `${label.slice(1)}.example.test`);
     await pool.query(
       `INSERT INTO domains (user_id, domain, status, verification_token)
        VALUES ($1, $2, 'verified', $3),
@@ -207,6 +217,7 @@ describeIntegration("false-positive feedback and host reputation", () => {
     const apex = `${label}.example.test`;
     const host = `app.${apex}`;
     const owner = await createUser();
+    seededDomains.push(apex);
     await pool.query(
       `INSERT INTO domains (user_id, domain, status, verification_token, verified_at)
        VALUES ($1, $2, 'verified', $3, NOW())`,
