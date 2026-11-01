@@ -21,13 +21,34 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
+// ".", "..", and the percent-encoded spellings the URL parser also treats as
+// dot segments ("%2e", ".%2e", "%2e%2e", ...).
+const DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
+
 /**
- * Generic JSON API client. Throws ApiError on non-OK responses.
+ * Whether the path part of a URL has a dot segment. The browser resolves those
+ * before the request leaves, so "/api/v3/history/../keys/5/revoke" is a
+ * request for /api/v3/keys/5/revoke with the user's cookie and a same-origin
+ * Origin header. Callers build these paths from ids, and an id can come from
+ * a link; no route here is ever reached through a dot segment on purpose. A
+ * backslash counts as a separator because the URL parser treats it as one.
+ */
+function hasDotSegment(url: string): boolean {
+  const path = url.split(/[?#]/, 1)[0];
+  return path.split(/[/\\]/).some((segment) => DOT_SEGMENT.test(segment));
+}
+
+/**
+ * Generic JSON API client. Throws ApiError on non-OK responses, and before
+ * sending anything for a path that would climb out of where it was built.
  */
 export async function apiClient<T>(
   url: string,
   options?: RequestOptions,
 ): Promise<T> {
+  if (hasDotSegment(url)) {
+    throw new ApiError("Refused a request path with a dot segment.", 400);
+  }
   const { body, headers, ...rest } = options || {};
 
   const res = await fetch(url, {

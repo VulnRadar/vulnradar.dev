@@ -56,6 +56,7 @@ import {
   hasTeamPermission,
 } from "@/lib/config/client-constants";
 import { apiDelete, apiPost, ApiError } from "@/lib/api/client";
+import { historyItemPath, parseScanId } from "@/lib/history/scan-id";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { isSurfaceEnabled } from "@/lib/config/feature-surfaces";
 import { canOfferAiReview } from "./ai-review-gate";
@@ -279,7 +280,7 @@ function TeamPickerRow({
  */
 export function ScanActionsMenu({
   result,
-  scanId,
+  scanId: scanIdProp,
   isOwner,
   onDeleted,
   onVerified,
@@ -287,6 +288,10 @@ export function ScanActionsMenu({
   isPublic,
   onPrivacyChanged,
 }: ScanActionsMenuProps) {
+  // Checked once, here, because every action below puts it in a request path
+  // and /history passes the one it read from ?scan=. A value that is not an id
+  // the API issues is treated like an unsaved scan: the per-scan actions hide.
+  const scanId = parseScanId(scanIdProp);
   const { me, isLoading: authLoading } = useAuth();
   const viewerId = me?.userId ?? null;
   const router = useRouter();
@@ -447,7 +452,7 @@ export function ScanActionsMenu({
     let cancelled = false;
     setTeamLoading(true);
     setTeamLoadFailed(false);
-    fetch(`${API.HISTORY}/${scanId}`)
+    fetch(historyItemPath(scanId))
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { teamId?: number | null; teamIds?: number[] } | null) => {
         if (cancelled) return;
@@ -664,7 +669,7 @@ export function ScanActionsMenu({
     }
     setShareLoading(true);
     try {
-      const res = await fetch(`${API.HISTORY}/${scanId}/share`, {
+      const res = await fetch(historyItemPath(scanId, "/share"), {
         method: "POST",
       });
       const data = await res.json();
@@ -720,7 +725,7 @@ export function ScanActionsMenu({
     };
     try {
       const res = await fetch(
-        `${API.HISTORY}/${scanId}/share/publicly-listed`,
+        historyItemPath(scanId, "/share/publicly-listed"),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -747,7 +752,7 @@ export function ScanActionsMenu({
     setUpdatingShareExpiry(true);
     const previous = shareExpiresAt;
     try {
-      const res = await fetch(`${API.HISTORY}/${scanId}/share`, {
+      const res = await fetch(historyItemPath(scanId, "/share"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expiresInDays: days }),
@@ -803,7 +808,7 @@ export function ScanActionsMenu({
         : (assignableTeams.find((t) => t.id === changed.id)?.name ??
           "that team");
     try {
-      const res = await fetch(`${API.HISTORY}/${scanId}`, {
+      const res = await fetch(historyItemPath(scanId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamIds: next }),
@@ -867,7 +872,7 @@ export function ScanActionsMenu({
         description,
       });
     try {
-      const res = await fetch(`${API.HISTORY}/${scanId}`, {
+      const res = await fetch(historyItemPath(scanId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isPublic: next }),
@@ -1036,7 +1041,7 @@ export function ScanActionsMenu({
       // it already had.
       const isRegenerate = Boolean(summaryText);
       const data = await apiPost<{ success: boolean; summary: string }>(
-        `${API.HISTORY}/${scanId}/summary${isRegenerate ? "?regenerate=true" : ""}`,
+        `${historyItemPath(scanId, "/summary")}${isRegenerate ? "?regenerate=true" : ""}`,
         undefined,
         { signal: controller.signal },
       );
@@ -1065,7 +1070,7 @@ export function ScanActionsMenu({
     setDeleting(true);
     setDeleteError(null);
     try {
-      await apiDelete(`${API.HISTORY}/${scanId}/delete`);
+      await apiDelete(historyItemPath(scanId, "/delete"));
       setConfirmDelete(false);
       onDeleted?.();
     } catch (err) {

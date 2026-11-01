@@ -34,6 +34,11 @@ import { useAuth } from "@/components/providers/auth-provider";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { FindingRemediation } from "@/lib/scanner/remediation";
 import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
+import {
+  historyItemPath,
+  parseScanId,
+  type ScanId,
+} from "@/lib/history/scan-id";
 
 import {
   type ScanRecord,
@@ -171,8 +176,9 @@ export default function HistoryPage() {
 
   // Detail state. selectedScanId is the opaque public_id used for routing and
   // the history/scan routes; scanNumericId is the internal numeric id the
-  // out-of-band feedback route still needs (see IssueDetail below).
-  const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+  // out-of-band feedback route still needs (see IssueDetail below). Typed
+  // ScanId so no request path can be built from an unchecked ?scan=.
+  const [selectedScanId, setSelectedScanId] = useState<ScanId | null>(null);
   const [scanNumericId, setScanNumericId] = useState<number | null>(null);
   const [scanDetail, setScanDetail] = useState<ScanResult | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -248,7 +254,7 @@ export default function HistoryPage() {
   scanParamRef.current ??= createScanParamTracker();
   const scanParam = scanParamRef.current;
   const loadScanDetail = useCallback(
-    async (scanId: string) => {
+    async (scanId: ScanId) => {
       const reqId = ++scanDetailReqRef.current;
       const isStale = () => reqId !== scanDetailReqRef.current;
       scanParam.claim(scanId);
@@ -259,7 +265,7 @@ export default function HistoryPage() {
       setScanDetail(null);
       setDetailError(null);
       try {
-        const res = await fetch(`${API.HISTORY}/${scanId}`);
+        const res = await fetch(historyItemPath(scanId));
         if (isStale()) return;
         if (!res.ok) {
           // Keep selectedScanId set. Nulling it here bounced the user straight
@@ -307,8 +313,12 @@ export default function HistoryPage() {
   // What a given URL change means for the open scan is decided in
   // components/history/scan-param-sync.ts, where it is testable; see its
   // docblock for what reloading unconditionally here used to cost.
+  //
+  // ?scan= is whatever the link said, so anything not shaped like an id the API
+  // issues counts as no scan. Unchecked, "../keys/5/revoke?" made the load
+  // below a same-origin request to another API route with the reader's cookie.
   const handleQueryChange = useCallback(() => {
-    const id = getQueryParam("scan");
+    const id = parseScanId(getQueryParam("scan"));
     const { load, clearFinding } = scanParam.next(id);
 
     // Ordered before the ?finding= write below on purpose: that write re-enters
@@ -500,10 +510,12 @@ export default function HistoryPage() {
 
   // Handlers
   const handleViewScan = (scan: ScanRecord) => {
-    setSelectedScanId(scan.id);
+    const id = parseScanId(scan.id);
+    if (!id) return;
+    setSelectedScanId(id);
     setSelectedIssue(null);
-    loadScanDetail(scan.id);
-    updateUrlWithScan(scan.id);
+    loadScanDetail(id);
+    updateUrlWithScan(id);
   };
 
   const handleBackToList = () => {
@@ -656,7 +668,7 @@ export default function HistoryPage() {
   const handleVerdictChanged = useCallback(async () => {
     if (!selectedScanId) return;
     try {
-      const res = await fetch(`${API.HISTORY}/${selectedScanId}`);
+      const res = await fetch(historyItemPath(selectedScanId));
       if (!res.ok) return;
       const data = await res.json();
       const mapped = mapHistoryDetailResponse(data);
@@ -706,7 +718,7 @@ export default function HistoryPage() {
   const handleSaveNotes = async (notes: string): Promise<string | null> => {
     if (!selectedScanId) return "This scan is no longer open.";
     try {
-      const res = await fetch(`${API.HISTORY}/${selectedScanId}`, {
+      const res = await fetch(historyItemPath(selectedScanId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes }),
