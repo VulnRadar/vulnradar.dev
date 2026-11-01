@@ -1,6 +1,7 @@
 "use client";
 
 import { getQueryParam, useQuerySeededState } from "@/lib/ui/url-state";
+import { parseScanId } from "@/lib/history/scan-id";
 import {
   HistorySkeleton,
   HistoryDetailRouteSkeleton,
@@ -17,11 +18,13 @@ import {
  * to pick its branch: the first render is the list, matching what the server
  * renders with no window to read, and a layout effect swaps in the detail
  * shape after the DOM is built and before the browser paints. So hydration
- * still sees identical trees and only the right shape is ever visible.
+ * still sees identical trees and only the right shape is ever visible. The
+ * page opens a scan only for an id parseScanId accepts, so this asks the same
+ * question: a malformed ?scan= gets the list here too.
  */
 export default function Loading() {
   const [isDetail] = useQuerySeededState(
-    () => getQueryParam("scan") !== null,
+    () => parseScanId(getQueryParam("scan")) !== null,
     false,
   );
 

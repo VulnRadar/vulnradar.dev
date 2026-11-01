@@ -67,3 +67,16 @@ describe("/history?scan=", () => {
     );
   });
 });
+
+describe("/history?scan= loading skeleton", () => {
+  // The page opens a scan only for an id parseScanId accepts and shows the
+  // list for anything else, so the route skeleton has to decide the same way
+  // or a malformed link draws the detail placeholder and then the list.
+  it("picks the detail shape with the same check the page uses", () => {
+    const src = code("app/history/loading.tsx");
+    expect(src).toMatch(
+      /parseScanId\(\s*getQueryParam\(\s*"scan"\s*\)\s*\)\s*!==\s*null/,
+    );
+    expect(src).not.toMatch(/getQueryParam\(\s*"scan"\s*\)\s*!==\s*null/);
+  });
+});
