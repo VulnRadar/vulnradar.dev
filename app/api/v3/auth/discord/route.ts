@@ -16,7 +16,14 @@ const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 // GET /api/v3/auth/discord - Start OAuth flow
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const action = searchParams.get("action") || "connect"; // "connect" (link to existing) or "login" (sign in with Discord)
+  // "connect" (link to existing) or "login" (sign in with Discord). The
+  // callback refuses any other action, so a state signed for one could never
+  // complete; refusing here saves the visitor a trip through Discord's
+  // consent screen that ends in an error.
+  const action = startAction(searchParams.get("action") || "connect");
+  if (action === null) {
+    return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+  }
 
   if (!DISCORD_CLIENT_ID) {
     return NextResponse.json(
@@ -79,4 +86,10 @@ export async function GET(request: Request) {
     });
   }
   return response;
+}
+
+function startAction(value: string): "connect" | "login" | null {
+  if (value === "connect") return "connect";
+  if (value === "login") return "login";
+  return null;
 }

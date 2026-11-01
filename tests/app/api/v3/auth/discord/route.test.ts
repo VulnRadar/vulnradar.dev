@@ -169,6 +169,39 @@ describe("GET /api/v3/auth/discord", () => {
     expect(res.status).toBe(307);
   });
 
+  it("still treats a missing action as connect", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+    sessionRow = defaultSessionRow({ user_id: 7 });
+
+    const res = await GET(discordGet());
+    expect(res.status).toBe(307);
+    const state = new URL(res.headers.get("location") || "").searchParams.get(
+      "state",
+    )!;
+    const verified = verifyDiscordState(state, 7);
+    expect(verified.ok).toBe(true);
+    if (verified.ok) expect(verified.payload.action).toBe("connect");
+  });
+
+  // The callback refuses any action but connect and login, so a state signed
+  // for anything else could never complete. The start route refuses it up
+  // front instead of sending the visitor through Discord's consent screen
+  // for nothing.
+  it.each(["link", "Login", "connect ", "github-connect", "%00"])(
+    "refuses action=%s with 400 and signs no state",
+    async (action) => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      sessionRow = defaultSessionRow({ user_id: 7 });
+
+      const res = await GET(discordGet(encodeURIComponent(action)));
+      expect(res.status).toBe(400);
+      expect(res.headers.get("location")).toBeNull();
+      expect(res.headers.get("set-cookie") || "").not.toContain(
+        DISCORD_NONCE_COOKIE,
+      );
+    },
+  );
+
   describe("when Discord isn't configured", () => {
     const original = process.env.DISCORD_CLIENT_ID;
 
