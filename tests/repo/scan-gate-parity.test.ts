@@ -155,29 +155,32 @@ describe.each([
 });
 
 /**
- * Every `run:` script in a file: block scalars dedented, inline values as
- * they are. Keys are matched at any indent, so a step list of any depth is
- * covered.
+ * Every `run:` script in a file: a block scalar as its indented lines, an
+ * inline value as it is. Keys are matched at any indent, so a step list of
+ * any depth is covered.
  */
 function runScripts(source: string): string[] {
   const lines = source.split("\n");
   const scripts: string[] = [];
   lines.forEach((line, i) => {
-    const match = /^(\s*)(?:- )?run:\s*(.*)$/.exec(line);
+    const match = /^(\s*)(- )?run:\s*(.*)$/.exec(line);
     if (!match) return;
-    const inline = match[2].trim();
+    const inline = match[3].trim();
     if (!/^[|>][-+]?\s*$/.test(inline)) {
       scripts.push(inline);
       return;
     }
+    // A `- run:` key sits two columns past its dash. The step's next key
+    // (often the `env:` this guard asks for) starts at that column and ends
+    // the script, so it must not be read as part of it.
+    const keyIndent = match[1].length + (match[2] ? 2 : 0);
     const body: string[] = [];
     for (const next of lines.slice(i + 1)) {
       if (next.trim() === "") {
         body.push("");
         continue;
       }
-      if ((next.match(/^ */) as RegExpMatchArray)[0].length <= match[1].length)
-        break;
+      if ((next.match(/^ */) as RegExpMatchArray)[0].length <= keyIndent) break;
       body.push(next);
     }
     scripts.push(body.join("\n"));
@@ -254,6 +257,24 @@ describe("the composite actions' scripts", () => {
   it("are found", () => {
     expect(files.length).toBeGreaterThan(0);
     expect(runScripts(ACTION)).toHaveLength(1);
+  });
+
+  it("are read up to the step's next key, in either step layout", () => {
+    const steps = [
+      "    - run: |",
+      '        echo "$X"',
+      "      env:",
+      "        X: ${{ inputs.x }}",
+      "    - shell: bash",
+      "      run: |",
+      '        echo "$Y" ${{ inputs.y }}',
+      "      env:",
+      "        Y: ${{ inputs.y }}",
+    ].join("\n");
+    expect(runScripts(steps)).toEqual([
+      '        echo "$X"',
+      '        echo "$Y" ${{ inputs.y }}',
+    ]);
   });
 
   it.each(files.map((file) => [path.relative(process.cwd(), file), file]))(
