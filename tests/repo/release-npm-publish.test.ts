@@ -21,7 +21,7 @@ import { readWorkflow, workflowSteps, stepNamed } from "./_workflow-steps";
 const release = readWorkflow("release.yml");
 const steps = workflowSteps(release);
 
-const INSTALL = "Install npm 11.5.1 or later";
+const INSTALL = "Install npm 11.21.1";
 const PUBLISH = "Publish the CLI to npm";
 const PACK = "Pack the CLI tarball";
 const ATTACH = "Find or create GitHub release";
@@ -48,8 +48,15 @@ describe("release.yml npm publishing", () => {
     );
   });
 
-  it("installs npm 11.5.1 or later and asserts the version it got", () => {
-    expect(install.code).toMatch(/npm install --global "npm@\^?11\.5\.1"/);
+  it("installs one exact npm, at least 11.5.1, and asserts the version it got", () => {
+    // A range would let a new npm release run unreviewed in the job that
+    // signs the release and publishes with provenance.
+    const pinned = /npm install --global "npm@(\d+)\.(\d+)\.(\d+)"/.exec(
+      install.code,
+    );
+    expect(pinned).not.toBeNull();
+    const [major, minor] = [Number(pinned![1]), Number(pinned![2])];
+    expect(major > 11 || (major === 11 && minor >= 5)).toBe(true);
     expect(install.code).toContain("npm --version");
     expect(install.code).toContain("sort -V");
     expect(install.code).toMatch(/exit 1/);
@@ -97,10 +104,19 @@ describe("release.yml npm publishing", () => {
   });
 
   it("leaves release candidates off npm's latest tag", () => {
-    const skip =
-      /if:\s*\$\{\{\s*!contains\(steps\.vars\.outputs\.tag,\s*'-'\)\s*\}\}/;
+    const skip = /if:\s*\$\{\{\s*!contains\(steps\.vars\.outputs\.tag,\s*'-'\)/;
     expect(install.code).toMatch(skip);
     expect(publish.code).toMatch(skip);
+  });
+
+  it("never publishes from a v1 to v3 tag, whose cli/ still says 0.2.0", () => {
+    // A 3.9.x patch is cut from the 3.9.1 tag but runs this copy of the
+    // workflow; publishing there would spend 0.2.0 on the old CLI.
+    for (const major of ["v1.", "v2.", "v3."]) {
+      const skip = `!startsWith(steps.vars.outputs.tag, '${major}')`;
+      expect(install.code).toContain(skip);
+      expect(publish.code).toContain(skip);
+    }
   });
 });
 

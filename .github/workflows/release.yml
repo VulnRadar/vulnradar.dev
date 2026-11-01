@@ -449,7 +449,7 @@ jobs:
           gh release view "${TAG}" --json url -q .url > release_url.txt
           echo "release_url=$(cat release_url.txt)" >> $GITHUB_OUTPUT
 
-      - name: Install npm 11.5.1 or later
+      - name: Install npm 11.21.1
         # Trusted publishing (OIDC, no stored token) is only implemented from
         # npm 11.5.1. The npm bundled with the pinned Node 22 is 10.x, which
         # would look for a token this workflow does not have and fail with
@@ -464,11 +464,17 @@ jobs:
         #
         # Skipped for prerelease tags (v4.0.0-rc.1), which "Find or create
         # GitHub release" also marks as prereleases: a release candidate must
-        # not move the `latest` tag on npm.
-        if: ${{ !contains(steps.vars.outputs.tag, '-') }}
+        # not move the `latest` tag on npm. Skipped for v1 to v3 tags too, see
+        # the publish step.
+        #
+        # An exact version, like every other tool this job runs: it signs the
+        # release and publishes with provenance, so a floating range would let
+        # a new npm release run here unreviewed. Dependabot does not see this
+        # line; raise it by hand, and never below 11.5.1.
+        if: ${{ !contains(steps.vars.outputs.tag, '-') && !startsWith(steps.vars.outputs.tag, 'v1.') && !startsWith(steps.vars.outputs.tag, 'v2.') && !startsWith(steps.vars.outputs.tag, 'v3.') }}
         run: |
           set -euo pipefail
-          npm install --global "npm@^11.5.1"
+          npm install --global "npm@11.21.1"
           NPM_VERSION=$(npm --version)
           echo "npm ${NPM_VERSION}"
           if [ "$(printf '%s\n' 11.5.1 "${NPM_VERSION}" | sort -V | head -n1)" != "11.5.1" ]; then
@@ -496,7 +502,13 @@ jobs:
         # prints next to a version that IS published cannot make that version
         # look absent and send the job into a publish that the registry
         # would refuse.
-        if: ${{ !contains(steps.vars.outputs.tag, '-') }}
+        #
+        # Never for a v1 to v3 tag. A release run always uses main's copy of
+        # this workflow, and a 3.9.x patch is cut from the 3.9.1 tag, whose
+        # cli/package.json already says 0.2.0, a number npm has never seen: the
+        # patch would publish the old CLI as 0.2.0 and the 4.0.0 CLI, with its
+        # new exit codes, could never have it.
+        if: ${{ !contains(steps.vars.outputs.tag, '-') && !startsWith(steps.vars.outputs.tag, 'v1.') && !startsWith(steps.vars.outputs.tag, 'v2.') && !startsWith(steps.vars.outputs.tag, 'v3.') }}
         run: |
           set -euo pipefail
           cd "${RUNNER_TEMP}/cli-src/cli"
