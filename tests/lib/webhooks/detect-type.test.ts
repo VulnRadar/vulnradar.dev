@@ -49,6 +49,57 @@ describe("detectWebhookType", () => {
       "generic",
     );
   });
+
+  it("detects Discord's ptb and canary hosts", () => {
+    expect(detectWebhookType("https://ptb.discord.com/api/webhooks/1/x")).toBe(
+      "discord",
+    );
+    expect(
+      detectWebhookType("https://canary.discordapp.com/api/webhooks/1/x"),
+    ).toBe("discord");
+  });
+
+  // The three checks below were unanchored regexes over the whole string
+  // (CodeQL js/regex/missing-regexp-anchor), so a provider's name anywhere in
+  // the URL picked that provider's payload shape for an unrelated host. Each
+  // list maps to one of the old patterns, so bringing any one back fails here.
+  const allGeneric = (urls: string[]) =>
+    expect(urls.map((u) => [u, detectWebhookType(u)])).toEqual(
+      urls.map((u) => [u, "generic"]),
+    );
+
+  it("does not take a host as Slack because hooks.slack.com appears in the URL", () => {
+    allGeneric([
+      "https://hooks.slack.com.evil.example/x",
+      "https://evil.example/?u=hooks.slack.com",
+      "https://evil.example/hooks.slack.com/services/T/B/X",
+      "https://hooks.slack.com@evil.example/services/T/B/X",
+      "https://nothooks.slack.com/services/T/B/X",
+    ]);
+  });
+
+  it("does not take a host as Discord because discord.com/api/webhooks appears in the URL", () => {
+    allGeneric([
+      "https://evil.example/?u=discord.com/api/webhooks/1/x",
+      "https://evil.example/discord.com/api/webhooks/1/x",
+      "https://discord.com.evil.example/api/webhooks/1/x",
+      "https://notdiscord.com/api/webhooks/1/x",
+    ]);
+  });
+
+  it("does not take a host as Discord because discordapp.com/api/webhooks appears in the URL", () => {
+    allGeneric([
+      "https://evil.example/?u=discordapp.com/api/webhooks/1/x",
+      "https://discordapp.com.evil.example/api/webhooks/1/x",
+      "https://discordapp.com@evil.example/api/webhooks/1/x",
+      "https://evildiscordapp.com/api/webhooks/1/x",
+    ]);
+  });
+
+  it("treats a string that is not a URL as generic", () => {
+    expect(detectWebhookType("hooks.slack.com/services/T/B/X")).toBe("generic");
+    expect(detectWebhookType("not a url")).toBe("generic");
+  });
 });
 
 /**

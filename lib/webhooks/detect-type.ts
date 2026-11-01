@@ -21,14 +21,35 @@ export function isWebhookType(value: unknown): value is WebhookType {
   );
 }
 
-/** Auto-detects a webhook's platform type from its URL. */
+function isHostOrSubdomain(hostname: string, domain: string): boolean {
+  return hostname === domain || hostname.endsWith(`.${domain}`);
+}
+
+/**
+ * Auto-detects a webhook's platform type from its URL.
+ *
+ * Compares the parsed hostname rather than matching the provider's name
+ * anywhere in the string: an unanchored match took
+ * https://hooks.slack.com.example.net/ or https://example.net/?u=hooks.slack.com
+ * as Slack and sent that host a Slack-shaped payload. A string that does not
+ * parse as a URL is generic.
+ */
 export function detectWebhookType(url: string): WebhookType {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return "generic";
+  }
+  const host = parsed.hostname.toLowerCase();
+  // ptb. and canary. are Discord's own client hosts and serve the same API.
   if (
-    /discord\.com\/api\/webhooks/i.test(url) ||
-    /discordapp\.com\/api\/webhooks/i.test(url)
+    (isHostOrSubdomain(host, "discord.com") ||
+      isHostOrSubdomain(host, "discordapp.com")) &&
+    parsed.pathname.toLowerCase().startsWith("/api/webhooks/")
   )
     return "discord";
-  if (/hooks\.slack\.com/i.test(url)) return "slack";
+  if (host === "hooks.slack.com") return "slack";
   return "generic";
 }
 
