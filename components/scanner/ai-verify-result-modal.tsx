@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { pluralize } from "@/lib/ui/plural";
 import { cn } from "@/lib/ui/utils";
 import {
   SEVERITY_ORDER,
@@ -123,6 +124,24 @@ export function AiVerifyResultModal({
           ? `${outcome.verdicts} of ${outcome.attempted} findings were checked before your AI allowance ran out. The rest have no AI verdict.`
           : null
       : null;
+
+  // Why the findings without a verdict have none. Each one was put down to a
+  // timeout, so a pass the provider or the allowance stopped told the user to
+  // run it again straight into the same refusal.
+  const unchecked = outcome?.rateLimited
+    ? {
+        label: "Not checked",
+        note: `${pluralize(skipped, "finding")} stayed unverified because the AI provider refused requests. Run Verify with AI again once its usage limit resets.`,
+      }
+    : outcome?.budgetExhausted
+      ? {
+          label: "Not checked",
+          note: `${pluralize(skipped, "finding")} stayed unverified because your AI allowance ran out. Run Verify with AI again once it has room.`,
+        }
+      : {
+          label: "Ran out of time",
+          note: `${pluralize(skipped, "finding")} ran out of time and stayed unverified. Run Verify with AI again to pick them up.`,
+        };
 
   if (didNotRun) {
     // Nothing below applies: there are no verdicts to describe.
@@ -247,7 +266,7 @@ export function AiVerifyResultModal({
                 />
                 {skipped > 0 && (
                   <Stat
-                    label="Ran out of time"
+                    label={unchecked.label}
                     value={String(skipped)}
                     icon={AlertTriangle}
                     tone="orange"
@@ -257,9 +276,7 @@ export function AiVerifyResultModal({
 
               {skipped > 0 && (
                 <p className="px-5 py-3 text-xs text-muted-foreground">
-                  {skipped} {skipped === 1 ? "finding" : "findings"} ran out of
-                  time and stayed unverified. Run Verify with AI again to pick
-                  them up.
+                  {unchecked.note}
                 </p>
               )}
             </DialogBody>

@@ -95,3 +95,50 @@ describe("AiVerifyResultModal: a pass the allowance stopped", () => {
     expect(html).not.toContain("allowance");
   });
 });
+
+describe("AiVerifyResultModal: findings the pass did not reach", () => {
+  it("does not call a rate-limited finding a timeout", () => {
+    const html = render([finding("a", "uncertain"), finding("b")], {
+      configured: true,
+      verdicts: 1,
+      attempted: 2,
+      rateLimited: true,
+    });
+
+    expect(html).toContain("Not checked");
+    expect(html).toContain(
+      "1 finding stayed unverified because the AI provider refused requests.",
+    );
+    expect(html).not.toContain("ran out of time");
+    expect(html).not.toContain("Ran out of time");
+  });
+
+  it("does not call a finding the allowance stopped a timeout", () => {
+    const html = render(
+      [finding("a", "uncertain"), finding("b"), finding("c")],
+      {
+        configured: true,
+        verdicts: 1,
+        attempted: 3,
+        budgetExhausted: true,
+      },
+    );
+
+    expect(html).toContain("Not checked");
+    expect(html).toContain(
+      "2 findings stayed unverified because your AI allowance ran out.",
+    );
+    expect(html).not.toContain("Ran out of time");
+  });
+
+  it("still calls a finding that got no answer in time a timeout", () => {
+    const html = render([finding("a", "uncertain"), finding("b")], {
+      configured: true,
+      verdicts: 1,
+      attempted: 2,
+    });
+
+    expect(html).toContain("Ran out of time");
+    expect(html).toContain("1 finding ran out of time and stayed unverified.");
+  });
+});
