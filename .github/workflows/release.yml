@@ -347,8 +347,8 @@ jobs:
           cd "${ARTIFACT_DIR}"
 
           # Copy the SBOM if docker-publish uploaded it.
-          if [ -f "${{ runner.temp }}/downloaded/vulnradar-${TAG}.sbom.cdx.json" ]; then
-            cp "${{ runner.temp }}/downloaded/vulnradar-${TAG}.sbom.cdx.json" .
+          if [ -f "${RUNNER_TEMP}/downloaded/vulnradar-${TAG}.sbom.cdx.json" ]; then
+            cp "${RUNNER_TEMP}/downloaded/vulnradar-${TAG}.sbom.cdx.json" .
           fi
 
           # Build the SHA256SUMS file. If the SBOM is missing

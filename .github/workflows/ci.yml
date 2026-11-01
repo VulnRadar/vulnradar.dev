@@ -297,7 +297,7 @@ jobs:
         run: >-
           npx vitest run --config tests/integration/vitest.config.ts
           --reporter=default --reporter=json
-          --outputFile.json=${{ runner.temp }}/integration-results.json
+          --outputFile.json="$RUNNER_TEMP/integration-results.json"
         env:
           INTEGRATION_DATABASE_URL: postgresql://vulnradar:ci_integration_password@127.0.0.1:5432/vulnradar_integration
 
@@ -308,7 +308,7 @@ jobs:
       - name: Assert the suite actually ran
         run: |
           node -e "
-            const r = require('${{ runner.temp }}/integration-results.json');
+            const r = require(process.env.RUNNER_TEMP + '/integration-results.json');
             const passed = r.numPassedTests ?? 0;
             const skipped = r.numPendingTests ?? 0;
             console.log('passed=' + passed + ' skipped=' + skipped);
