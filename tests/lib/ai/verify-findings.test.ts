@@ -1583,6 +1583,70 @@ describe("verification is held to the reservation's budget", () => {
     expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 0);
   });
 
+  it("counts a call that came back without a cost at its ceiling, so timeouts cannot admit the whole pass", async () => {
+    // A timed-out call is settled at zero, since nothing says what it cost,
+    // but the provider may still bill it. Counting it at zero for admission
+    // let a pass whose calls all timed out send every finding.
+    (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("This operation was aborted"),
+    );
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const findings = [makeFinding("f1"), makeFinding("f2"), makeFinding("f3")];
+    const one = await ceilingOf(findings[0]);
+    const held = reservation({ budget: one * 2 + one / 2 });
+
+    const { outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      held,
+    );
+
+    // Two fit in the first chunk. Neither reported a cost, so both count at
+    // their ceilings and the third no longer fits.
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(outcome).toMatchObject({ verdicts: 0, budgetExhausted: true });
+    expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 0);
+    errors.mockRestore();
+  });
+
+  it("admits a call at the prompt it really builds, so a page of control characters cannot outgrow its reservation", async () => {
+    // Every byte of this body is a control character, which the prompt's
+    // JSON encoding writes out as six characters. The reserved ceiling
+    // counted it as one, which let one call cost several reservations.
+    const { CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS } =
+      await import("@/lib/config/config-values");
+    const bytes = new Uint8Array(
+      CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS,
+    ).fill(1);
+    mockSafeFetch.mockResolvedValue({
+      status: 200,
+      url: "https://example.com/",
+      headers: new Headers(),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      }),
+    });
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", 100, 50),
+    );
+    const findings = [makeFinding("f1")];
+    const held = reservation({ budget: await ceilingOf(findings[0]) });
+
+    const { outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      held,
+    );
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({ verdicts: 0, budgetExhausted: true });
+  });
+
   it("an uncapped reservation (own key, billing off) is not held to anything", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponseWithUsage("x", 100, 50),

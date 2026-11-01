@@ -225,8 +225,9 @@ async function probeTarget(
       // Read with the cap, not res.text() and a slice: the target chooses
       // the body, and on verify-batch the caller chooses the target, so an
       // endless or decompression-bomb response was buffered whole before a
-      // character of it was dropped. The cap is in bytes, which is never
-      // fewer characters than the slice this replaced kept.
+      // character of it was dropped. The cap is in bytes, so the snippet is
+      // never longer than the slice this replaced kept, and on a page written
+      // in a multi-byte script it is shorter.
       bodySnippet = await safeReadBody(
         res,
         probeBodySnippetChars,
@@ -412,6 +413,29 @@ export function verifyCallCeiling(
 }
 
 /**
+ * What a call is admitted at once the probe has run: the larger of the
+ * reserved ceiling above and the ceiling of the prompt actually built. The
+ * reserved ceiling counts the probe's body and headers at their raw size, but
+ * the prompt carries them JSON-encoded and the target chooses them: a body of
+ * control characters is six characters a byte once escaped, so admitting on
+ * the raw size let a hostile page make every call cost several times what was
+ * reserved for it.
+ */
+function admittedCallCeiling(
+  finding: Vulnerability,
+  settings: VerifySettings,
+  probe: ProbeData,
+): number {
+  const builtChars =
+    VERIFY_SYSTEM_PROMPT.length +
+    buildVerifyPrompt(finding ?? ({} as Vulnerability), probe).length;
+  return Math.max(
+    verifyCallCeiling(finding, settings),
+    Math.ceil(builtChars / VERIFY_CHARS_PER_TOKEN_CEILING) + settings.maxTokens,
+  );
+}
+
+/**
  * What a verification pass over `findings` should reserve: `estimate` covers
  * every finding at its ceiling, `minimum` is the first finding's ceiling, the
  * least a run needs to verify anything (the pass admits findings in order and
@@ -445,6 +469,12 @@ interface CallVerifyResult {
    * but unlike it waiting does not help: the configuration is wrong.
    */
   fatalStatus?: number;
+  /**
+   * The request went out and no usage figure came back: it timed out, the
+   * connection dropped, or the provider answered without one. The provider
+   * may still have billed it, so the budget counts it at its ceiling.
+   */
+  costUnknown?: boolean;
 }
 
 /** Statuses after which no further finding in the pass can succeed. */
@@ -506,6 +536,7 @@ async function callVerify(
     return {
       result: parseVerifyResponseText(finding.id, res.text),
       tokensUsed: res.tokensUsed,
+      ...(res.tokensUsed > 0 ? {} : { costUnknown: true }),
     };
   } catch (err) {
     // A template string, not console.error's "%s" placeholder: the admin error
@@ -514,7 +545,7 @@ async function callVerify(
     console.error(
       `[AI-VERIFY] callVerify failed for "${finding.id}": ${err instanceof Error ? err.message : String(err)}`,
     );
-    return { result: null, tokensUsed: 0 };
+    return { result: null, tokensUsed: 0, costUnknown: true };
   } finally {
     clearTimeout(timer);
   }
@@ -551,13 +582,14 @@ function admitWithinBudget(
   findings: Vulnerability[],
   remaining: number,
   settings: VerifySettings,
-): Vulnerability[] {
-  const admitted: Vulnerability[] = [];
+  probe: ProbeData,
+): { finding: Vulnerability; ceiling: number }[] {
+  const admitted: { finding: Vulnerability; ceiling: number }[] = [];
   let room = remaining;
-  for (const f of findings) {
-    const ceiling = verifyCallCeiling(f, settings);
+  for (const finding of findings) {
+    const ceiling = admittedCallCeiling(finding, settings, probe);
     if (ceiling > room) break;
-    admitted.push(f);
+    admitted.push({ finding, ceiling });
     room -= ceiling;
   }
   return admitted;
@@ -581,21 +613,30 @@ async function verifyInChunks(
   let budgetExhausted = false;
   let fatalStatus: number | undefined;
 
+  // What admission has counted against the budget. It differs from
+  // spent.tokens, which is what the account is charged, only for a call whose
+  // cost is unknown (see CallVerifyResult.costUnknown): that one is settled at
+  // zero but counted here at its ceiling. Counting it at zero let a pass whose
+  // calls all timed out admit every finding, however small the budget.
+  let held = 0;
   let next = 0;
   while (next < findings.length) {
     if (Date.now() >= deadline) break;
 
     let group = findings.slice(next, next + settings.chunkSize);
+    let ceilings: number[] = [];
     // Each call is admitted at its worst case, so the pass cannot spend past
     // what the gate reserved for it even if every call in a chunk comes back
     // at its ceiling. Real calls cost less, so the room they leave is used by
     // the chunks after them.
     if (budget !== null) {
-      group = admitWithinBudget(group, budget - spent.tokens, settings);
-      if (group.length === 0) {
+      const admitted = admitWithinBudget(group, budget - held, settings, probe);
+      if (admitted.length === 0) {
         budgetExhausted = true;
         break;
       }
+      group = admitted.map((a) => a.finding);
+      ceilings = admitted.map((a) => a.ceiling);
     }
     next += group.length;
 
@@ -603,9 +644,10 @@ async function verifyInChunks(
       group.map((f) => callVerify(url, f, endpoint, probe, settings)),
     );
 
-    for (const r of settled) {
+    for (const [i, r] of settled.entries()) {
       if (r.status === "fulfilled") {
         spent.tokens += r.value.tokensUsed;
+        held += r.value.costUnknown ? (ceilings[i] ?? 0) : r.value.tokensUsed;
         if (r.value.rateLimited) rateLimited = true;
         if (r.value.fatalStatus) fatalStatus = r.value.fatalStatus;
         if (r.value.result) {

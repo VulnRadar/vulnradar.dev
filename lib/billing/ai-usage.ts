@@ -431,8 +431,10 @@ export interface AiUsageQuotaCheck {
 }
 
 /**
- * Pre-call quota check: called before an AI chat message, AI finding
- * verification batch, or AI scan summary is allowed to run. Bypasses
+ * Read-only quota check: what Profile > Billing shows, and the gate for an AI
+ * scan summary, which is not metered. Finding verification no longer gates
+ * here: it reserves through reserveAiTokens, because a yes from this check
+ * holds nothing for the run that follows it. Bypasses
  * entirely for a user with their own AI key configured (those calls cost
  * VulnRadar nothing). Otherwise compares the current window's REAL usage
  * so far against the plan's aiTokensPerWindow cap.

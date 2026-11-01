@@ -322,6 +322,39 @@ describe("runGithubAiReview: held to the route's reservation", () => {
     expect(result.totalTokensUsed).toBe(20_000);
   });
 
+  it("counts a batch that came back without a cost at its ceiling, so timeouts cannot send every batch", async () => {
+    // A timed-out call is settled at zero, since nothing says what it cost,
+    // but the provider may still bill it. Counting it at zero let a run whose
+    // calls all timed out send every batch on a one-batch reservation.
+    fetchMock().mockRejectedValue(new Error("This operation was aborted"));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const oneBatch = await estimateGithubReviewTokens([39_000]);
+
+    const result = await runGithubAiReview(
+      bigFiles(3),
+      1,
+      false,
+      oneBatch + 100,
+    );
+
+    expect(fetchMock()).toHaveBeenCalledTimes(1);
+    expect(result.stoppedAtBudget).toBe(true);
+    expect(result.totalTokensUsed).toBe(0);
+    errors.mockRestore();
+  });
+
+  it("keeps a call's token count when its answer cannot be parsed", async () => {
+    // The repo's own text steers the model's answer. A null element used to
+    // throw inside the parse, and the catch around it reported the call as
+    // costing nothing, so the route handed the whole reservation back.
+    fetchMock().mockResolvedValueOnce(openAiResponse("[null]"));
+
+    const result = await runGithubAiReview(FILES, 1, false, null);
+
+    expect(result.findings).toHaveLength(0);
+    expect(result.totalTokensUsed).toBe(150);
+  });
+
   it("an uncapped run (own key, billing off, free trial) is held to nothing but the per-run ceiling", async () => {
     fetchMock().mockImplementation(async () => openAiResponse("[]"));
 

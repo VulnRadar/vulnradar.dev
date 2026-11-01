@@ -149,9 +149,11 @@ export async function reverseGithubCreditPurchase(
 }
 
 /**
- * Adds `tokens` (the REAL usage the AI provider reported for one call) to
- * the user's counter for the given window. Called after each AI call
- * completes, not before — see lib/ai/review-source.ts. Defaults
+ * Adds `tokens` (the REAL usage the AI provider reported) to the user's
+ * counter for the given window. A repo review reaches this only through
+ * settleGithubReviewTokens below: for a run no reservation capped (the free
+ * trial, an unlimited plan), and for what a capped run spent past its
+ * reservation. Defaults
  * `windowStart` to the current window under the currently configured
  * AI_USAGE_WINDOW_HOURS when the caller doesn't already have one in hand,
  * matching lib/billing/ai-usage.ts's recordAiTokens.

@@ -251,8 +251,11 @@ function parseFindings(text: string, files: RepoFile[]): Vulnerability[] {
 
   const findings: Vulnerability[] = [];
   let idx = 0;
-  for (const raw of parsed as RawFinding[]) {
+  for (const raw of parsed as (RawFinding | null)[]) {
     idx++;
+    // The repo's own text steers what the model writes, so an element can be
+    // anything JSON allows. A null one used to throw here.
+    if (typeof raw !== "object" || raw === null) continue;
     if (typeof raw.file !== "string" || !knownPaths.has(raw.file)) continue;
     const severity = VALID_SEVERITIES.includes(raw.severity as Severity)
       ? (raw.severity as Severity)
@@ -311,6 +314,9 @@ function parseFindings(text: string, files: RepoFile[]): Vulnerability[] {
 interface CallResult {
   findings: Vulnerability[];
   totalTokens: number;
+  /** The request went out and no usage figure came back (a timeout, a
+   *  dropped connection, a provider that omits usage). */
+  costUnknown?: boolean;
 }
 
 async function callReviewModel(
@@ -350,16 +356,30 @@ async function callReviewModel(
       return { findings: [], totalTokens: 0 };
     }
 
+    // The provider has billed this call whatever its answer says, so a
+    // response that cannot be parsed keeps its token count. Losing it in the
+    // catch below settled the call at zero and handed its cost back to the
+    // account.
+    let findings: Vulnerability[] = [];
+    try {
+      findings = parseFindings(res.text, files);
+    } catch (err) {
+      console.error(
+        "[AI-REVIEW] Could not parse the review response:",
+        err instanceof Error ? err.message : err,
+      );
+    }
     return {
-      findings: parseFindings(res.text, files),
+      findings,
       totalTokens: res.tokensUsed,
+      ...(res.tokensUsed > 0 ? {} : { costUnknown: true }),
     };
   } catch (err) {
     console.error(
       "[AI-REVIEW] callReviewModel failed:",
       err instanceof Error ? err.message : err,
     );
-    return { findings: [], totalTokens: 0 };
+    return { findings: [], totalTokens: 0, costUnknown: true };
   } finally {
     clearTimeout(timer);
   }
@@ -444,13 +464,19 @@ export async function runGithubAiReview(
 
   const findings: Vulnerability[] = [];
   let totalTokensUsed = 0;
+  // What the budget check counts: each call's real cost, or its ceiling when
+  // the cost is unknown (CallResult.costUnknown). Such a call is settled at
+  // zero, but the provider may still have billed it, and counting it at zero
+  // let a run whose calls all timed out send every batch.
+  let held = 0;
   let stoppedAtBudget = false;
 
   for (const batch of batches) {
+    let ceiling = 0;
     if (budgetTokens !== null) {
       const promptChars = batch.map(buildFileBlock).join("\n\n").length;
-      const ceiling = reviewCallCeiling(promptChars, maxTokensPerCall);
-      if (totalTokensUsed + ceiling > budgetTokens) {
+      ceiling = reviewCallCeiling(promptChars, maxTokensPerCall);
+      if (held + ceiling > budgetTokens) {
         stoppedAtBudget = true;
         break;
       }
@@ -464,6 +490,7 @@ export async function runGithubAiReview(
     );
     findings.push(...result.findings);
     totalTokensUsed += result.totalTokens;
+    held += result.costUnknown ? ceiling : result.totalTokens;
   }
 
   return {
