@@ -413,6 +413,112 @@ describe("detector time budget on documentation-block markup", () => {
 });
 
 /**
+ * Line starts and repeated keywords: start positions the corpus above never
+ * put in front of a pattern that BEGINS with a greedy run.
+ *
+ * `(?:^|\n)\s*type\s+Query` and `^\s+image:` (m flag) both start at every
+ * line, and `\s` matches the newline that ends it, so on a run of blank lines
+ * every start swallows the rest of the run before failing on the keyword:
+ * quadratic from one occurrence of the line before it. `Whoops.*Laravel` and
+ * `HMAC[^=]*===` are the same thing with the keyword as the start: every
+ * repetition rescans to the end of the body looking for a tail that is not
+ * there. On 24 KB of these, before the fixes: api-graphql-schema-sdl-exposed
+ * 3,210 ms, supply-chain-cargo-toml-exposed 866 ms,
+ * supply-chain-dockerfile-exposed 808 ms. Quadratic, so minutes at the 1 MB
+ * cap.
+ *
+ * The line shapes are served as plain text because the SDL detector only
+ * reads a non-HTML response, and a schema or a compose file is served that way.
+ */
+const TEXT_CONTEXT: ProbeContext = {
+  url: "https://example.com/schema.graphql",
+  headers: new Headers({ "content-type": "text/plain" }),
+};
+
+const LINE_RUN_SHAPES: Record<string, string> = {
+  // api-graphql-schema-sdl-exposed, on its first pattern and on the
+  // supporting ones (Mutation, schema, input, enum) once the first has matched
+  sdlQueryThenNewlines: "type Query " + "\n".repeat(BODY_BYTES),
+  sdlQueryOpenThenNewlines: "type Query {" + "\n".repeat(BODY_BYTES),
+  // supply-chain-dockerfile-exposed, the docker-compose branch
+  composeVersionThenNewlines: 'version: "3"\n' + "\n".repeat(BODY_BYTES),
+  // supply-chain-cargo-toml-exposed
+  cargoHeadersThenNewlines:
+    "[package]\n[dependencies]\n" + "\n".repeat(BODY_BYTES),
+};
+
+const REPEATED_KEYWORD_SHAPES: Record<string, string> = {
+  // cross-site-websocket: a socket has to be opened before the origin
+  // pattern runs
+  wsRepeated: "new WebSocket(" + "ws".repeat(BODY_BYTES / 2),
+  // django-debug-page
+  tracebackRepeated: "Traceback".repeat(BODY_BYTES / 9),
+  // laravel-debug-page
+  whoopsRepeated: "Whoops".repeat(BODY_BYTES / 6),
+  // code-timing-hmac-equality
+  hmacRepeated: "HMAC".repeat(BODY_BYTES / 4),
+};
+
+describe("detector time budget on blank-line runs", () => {
+  for (const [name, body] of Object.entries(LINE_RUN_SHAPES)) {
+    it(
+      `keeps every detector inside budget on ${name}`,
+      () => {
+        const over = detectorsOverBudget(body, TEXT_CONTEXT);
+        expect(
+          over.map((o) => `${o.id}=${o.ms}ms`),
+          `Over ${PER_DETECTOR_BUDGET_MS}ms on a ${BODY_BYTES}-byte body. A pattern that starts at every line with \\s* or \\s+ lets each start eat the newlines of every line after it. Anchor with the m flag on ^[ \\t]* so the leading run stays on its own line.`,
+        ).toEqual([]);
+      },
+      SLOW_TEST_TIMEOUT_MS,
+    );
+  }
+});
+
+/**
+ * The four detectors these shapes were written for, which are still
+ * quadratic on them. Their patterns live in content.ts and code.ts, outside
+ * the change that added the shapes, so they are named here rather than the
+ * shapes being left out of the corpus. Each pattern alone, at 24 KB and at
+ * 64 KB of its shape:
+ *
+ *   cross-site-websocket        (?:ws|socket).*(?:verify|...)   597 ms   4.5 s
+ *   django-debug-page           Traceback.*most recent call     125 ms   1.0 s
+ *   laravel-debug-page          Whoops.*Laravel                 200 ms   1.5 s
+ *   code-timing-hmac-equality   HMAC[^=]*===                    275 ms   1.8 s
+ *
+ * Unlike KNOWN_QUADRATIC_DETECTORS this list is one-way: an entry that comes
+ * in under budget does not fail the run, because three of the four sit close
+ * enough to the 200 ms line that machine load alone moves them across it in
+ * both directions. Every OTHER detector is still held to the budget on these
+ * shapes. Delete an entry when its bridge is bounded.
+ */
+const KNOWN_SLOW_ON_REPEATED_KEYWORDS: string[] = [
+  "cross-site-websocket",
+  "django-debug-page",
+  "laravel-debug-page",
+  "code-timing-hmac-equality",
+];
+
+describe("detector time budget on a repeated keyword", () => {
+  for (const [name, body] of Object.entries(REPEATED_KEYWORD_SHAPES)) {
+    it(
+      `keeps every detector inside budget on ${name}`,
+      () => {
+        const over = detectorsOverBudget(body, MARKUP_CONTEXT).filter(
+          (o) => !KNOWN_SLOW_ON_REPEATED_KEYWORDS.includes(o.id),
+        );
+        expect(
+          over.map((o) => `${o.id}=${o.ms}ms`),
+          `Over ${PER_DETECTOR_BUDGET_MS}ms on a ${BODY_BYTES}-byte body. A keyword followed by an unbounded .* or [^=]* rescans to the end of the body from every repetition of the keyword. Bound the bridge to .{0,200} or [^=\\n]{0,200}, or find the keyword with indexOf and match a bounded slice.`,
+        ).toEqual([]);
+      },
+      SLOW_TEST_TIMEOUT_MS,
+    );
+  }
+});
+
+/**
  * A second, larger body size, because three of the defects this suite now
  * guards are invisible at 24 KB.
  *

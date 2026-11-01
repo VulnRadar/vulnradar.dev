@@ -171,7 +171,9 @@ const rawDetectors: Record<string, DetectFn> = {
     }
     if (
       /^version:\s*["']\d+(?:\.\d+)?["']$/m.test(body) &&
-      /^\s+image:\s+/m.test(body)
+      // [ \t]+, not \s+: with the m flag ^ is every line start, and \s+ ate
+      // the newlines of every blank line after it, once per line.
+      /^[ \t]+image:\s+/m.test(body)
     ) {
       return "docker-compose.yml exposed: reveals service topology and potentially embedded credentials.";
     }
@@ -418,7 +420,9 @@ const rawDetectors: Record<string, DetectFn> = {
   "supply-chain-cargo-toml-exposed": (_url, _headers, body) => {
     if (body.indexOf("[dependencies]") === -1) return null;
     if (!/^\[package\]$/m.test(body)) return null;
-    if (!/^\s*edition\s*=\s*"20\d\d"/m.test(body)) return null;
+    // [ \t]* for the reason the compose check gives: ^\s* restarted at every
+    // blank line and ran to the end of the run each time.
+    if (!/^[ \t]*edition\s*=\s*"20\d\d"/m.test(body)) return null;
     if (!/^\[dependencies\]$/m.test(body)) return null;
     return "Rust Cargo.toml exposed, revealing the crate's direct dependencies, its feature flags, and any git or path dependencies the build pulls in.";
   },

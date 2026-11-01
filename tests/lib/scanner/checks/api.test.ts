@@ -577,6 +577,24 @@ const fixtures: DetectorFixtures = {
       body: "Remember to check the type Query fields before the release.",
       expect: "skip",
     },
+    {
+      // The line-start anchor has to hold for CRLF files and for definitions
+      // indented under a schema block, which is how the old \s* read them.
+      description: "SDL with CRLF line endings, an indented Query and an enum",
+      url: "https://example.com/schema.graphql",
+      headers: { "content-type": "text/plain" },
+      body: "schema {\r\n  query: Query\r\n}\r\n\r\n\t type Query implements Node {\r\n  me: User\r\n}\r\n\r\nenum Role {\r\n  ADMIN\r\n}\r\n",
+      expect: "fire",
+      evidenceIncludes: "sdl",
+    },
+    {
+      description:
+        "type Query followed by a long run of blank lines and nothing else",
+      url: "https://example.com/schema.graphql",
+      headers: { "content-type": "text/plain" },
+      body: "type Query " + "\n".repeat(5_000),
+      expect: "skip",
+    },
   ],
 
   "api-openapi-no-security-declared": [

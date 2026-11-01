@@ -938,16 +938,21 @@ const rawDetectors: Record<string, DetectFn> = {
     const contentType = headers.get("content-type") || "";
     if (/text\/html/i.test(contentType)) return null;
     if (body.indexOf("type Query") === -1) return null;
+    // Each definition is matched at the start of its own line, indented by
+    // [ \t]* rather than \s*. The old (?:^|\n)\s* started at every newline and
+    // its \s* swallowed every blank line after it before failing on the
+    // keyword, so "type Query " and 24 KB of newlines took a second, and the
+    // 1 MB body cap minutes.
     if (
-      !/(?:^|\n)\s*type\s+Query\s*(?:implements\s+[\w\s&]{1,80})?\{/.test(body)
+      !/^[ \t]*type\s+Query\s*(?:implements\s+[\w\s&]{1,80})?\{/m.test(body)
     ) {
       return null;
     }
     const supporting =
-      /(?:^|\n)\s*type\s+Mutation\s*\{/.test(body) ||
-      /(?:^|\n)\s*schema\s*\{/.test(body) ||
-      /(?:^|\n)\s*input\s+\w{1,60}\s*\{/.test(body) ||
-      /(?:^|\n)\s*enum\s+\w{1,60}\s*\{/.test(body);
+      /^[ \t]*type\s+Mutation\s*\{/m.test(body) ||
+      /^[ \t]*schema\s*\{/m.test(body) ||
+      /^[ \t]*input\s+\w{1,60}\s*\{/m.test(body) ||
+      /^[ \t]*enum\s+\w{1,60}\s*\{/m.test(body);
     if (!supporting) return null;
     return "The GraphQL schema is served as raw SDL, so every type, field, and argument the API defines is readable without issuing an introspection query.";
   },

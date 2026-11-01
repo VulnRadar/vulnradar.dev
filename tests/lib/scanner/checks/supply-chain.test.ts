@@ -58,6 +58,19 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "docker-compose.yml",
     },
     {
+      description:
+        "docker-compose.yml with CRLF endings, tab indents and blank lines before the image",
+      body: 'version: "3"\r\nservices:\r\n\tweb:\r\n\r\n\r\n\t\timage: myapp:latest\r\n',
+      expect: "fire",
+      evidenceIncludes: "docker-compose.yml",
+    },
+    {
+      description:
+        "a compose version line followed by blank lines and no service",
+      body: 'version: "3"\n' + "\n".repeat(5_000),
+      expect: "skip",
+    },
+    {
       description: "Dockerfile with FROM and a build instruction",
       body: 'FROM node:18-alpine\nRUN npm install\nCMD ["node", "index.js"]\n',
       expect: "fire",
@@ -356,6 +369,17 @@ const fixtures: DetectorFixtures = {
       body: '[package]\nname = "example"\nversion = "0.3.1"\nedition = "2021"\n\n[dependencies]\nserde = { version = "1.0", features = ["derive"] }\n',
       expect: "fire",
       evidenceIncludes: "cargo.toml",
+    },
+    {
+      description: "Cargo.toml with CRLF endings and an indented edition key",
+      body: '[package]\r\nname = "example"\r\n  edition = "2021"\r\n\r\n[dependencies]\r\nserde = "1.0"\r\n',
+      expect: "fire",
+      evidenceIncludes: "cargo.toml",
+    },
+    {
+      description: "package and dependencies headers with no edition anywhere",
+      body: "[package]\n[dependencies]\n" + "\n".repeat(5_000),
+      expect: "skip",
     },
     {
       description: "pyproject.toml, a different TOML manifest",
