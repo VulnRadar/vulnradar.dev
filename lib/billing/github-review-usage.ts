@@ -3,6 +3,13 @@ import { getSetting } from "@/lib/config/runtime-config";
 import { resolveUserEndpoint } from "@/lib/ai/verify-findings";
 import { getUserPlanLimits } from "@/lib/billing/plan-limits";
 import { resolveCurrentWindow } from "@/lib/billing/ai-usage";
+import {
+  GITHUB_REVIEW_TOKEN_LEDGER,
+  reserveMetered,
+  settleReservation,
+  uncappedReservation,
+  type TokenReservation,
+} from "@/lib/billing/token-reservation";
 
 /**
  * Fixed-window AI token usage tracking for GitHub repo AI code review
@@ -276,6 +283,145 @@ export async function releaseFreeGithubReviewTrial(
   await pool.query(
     "UPDATE users SET free_github_review_used_at = NULL WHERE id = $1",
     [userId],
+  );
+}
+
+export interface GithubReviewReservation extends TokenReservation {
+  /** This review is the plan's free trial: recorded, never charged. The
+   *  caller gives the trial back (releaseFreeGithubReviewTrial) when the
+   *  review produced nothing. */
+  isFreeTrial: boolean;
+  /** A plan with no review allowance, paid from the purchased balance. */
+  creditCovered: boolean;
+}
+
+export type GithubReviewGate =
+  | { allowed: true; reservation: GithubReviewReservation }
+  | { allowed: false; busy: boolean; message: string };
+
+/**
+ * The gate for a GitHub repo review: takes the review's estimate (input plus
+ * the per-call output ceiling, see lib/ai/review-source.ts's
+ * estimateGithubReviewTokens) out of the window allowance and the purchased
+ * balance before the review runs, and refuses when the two together fall
+ * short. checkGithubReviewQuota, which the scan route used for this, let a
+ * review in on any positive balance and charged afterwards with a floor at
+ * zero, so one credit bought a review of up to GITHUB_REVIEW_MAX_TOKENS_PER_RUN.
+ *
+ * A plan with no review allowance (githubReviewTokensPerWindow 0) first tries
+ * the free trial, claimed atomically by claimFreeGithubReviewTrial; with the
+ * trial spent, the whole estimate has to come out of the balance.
+ */
+export async function reserveGithubReviewTokens(
+  userId: number,
+  estimate: number,
+): Promise<GithubReviewGate> {
+  const { windowStart, windowHours } = await resolveCurrentWindow();
+  const flags = { isFreeTrial: false, creditCovered: false };
+
+  if (await hasOwnAiConfig(userId)) {
+    return {
+      allowed: true,
+      reservation: {
+        ...uncappedReservation(userId, windowStart, true),
+        ...flags,
+      },
+    };
+  }
+
+  const limits = await getUserPlanLimits(userId);
+  const limitTokens = limits?.githubReviewTokensPerWindow ?? -1;
+  if (limitTokens === -1) {
+    return {
+      allowed: true,
+      reservation: {
+        ...uncappedReservation(userId, windowStart, false),
+        ...flags,
+      },
+    };
+  }
+
+  if (limitTokens === 0 && (await claimFreeGithubReviewTrial(userId))) {
+    return {
+      allowed: true,
+      reservation: {
+        ...uncappedReservation(userId, windowStart, false),
+        isFreeTrial: true,
+        creditCovered: false,
+      },
+    };
+  }
+
+  const result = await reserveMetered(
+    GITHUB_REVIEW_TOKEN_LEDGER,
+    userId,
+    windowStart,
+    Math.max(0, limitTokens),
+    estimate,
+    estimate,
+  );
+  if (result.ok) {
+    return {
+      allowed: true,
+      reservation: {
+        ...result.reservation,
+        isFreeTrial: false,
+        creditCovered: limitTokens === 0,
+      },
+    };
+  }
+  if (result.busy) {
+    return {
+      allowed: false,
+      busy: true,
+      message:
+        "Another GitHub repo review is still running on your account. Wait for it to finish, then try again.",
+    };
+  }
+  if (limitTokens === 0 && result.balance === 0) {
+    const freeTrialWindowHours = await getSetting(
+      "GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS",
+    );
+    return {
+      allowed: false,
+      busy: false,
+      message: `You've used today's free GitHub AI review. Upgrade for regular access, connect your own AI provider key in Profile > AI settings, or check back in ${freeTrialWindowHours} hours.`,
+    };
+  }
+  const available = result.windowRemaining + result.balance;
+  return {
+    allowed: false,
+    busy: false,
+    message:
+      limitTokens === 0
+        ? `This repo needs up to ${result.needed.toLocaleString()} GitHub review tokens and your credit balance is ${result.balance.toLocaleString()}. Buy GitHub review credits in Profile > Billing, upgrade your plan, or connect your own AI provider key in Profile > AI settings.`
+        : `This repo needs up to ${result.needed.toLocaleString()} GitHub review tokens and your account has ${available.toLocaleString()} left: ${result.windowRemaining.toLocaleString()} in this ${windowHours}-hour window and ${result.balance.toLocaleString()} in credits. Upgrade your plan, wait for the window to reset, connect your own AI provider key in Profile > AI settings, or buy GitHub review credits in Profile > Billing.`,
+  };
+}
+
+/**
+ * Closes a review's reservation with the real token count. See
+ * settleAiTokens; the overrun is charged the way recordGithubReviewTokens
+ * charges, which on a no-allowance plan means the whole overrun comes out of
+ * the balance (floored) when the review was credit-covered and nothing when it
+ * was the trial.
+ */
+export async function settleGithubReviewTokens(
+  reservation: GithubReviewReservation,
+  actualTokens: number,
+): Promise<void> {
+  const record = (tokens: number) =>
+    recordGithubReviewTokens(
+      reservation.userId,
+      tokens,
+      reservation.windowStart,
+      reservation.creditCovered,
+    );
+  await settleReservation(
+    GITHUB_REVIEW_TOKEN_LEDGER,
+    reservation,
+    actualTokens,
+    { recordUncapped: record, chargeOverrun: record },
   );
 }
 

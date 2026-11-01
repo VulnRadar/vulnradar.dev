@@ -35,8 +35,11 @@ vi.mock("@/lib/api/api-keys", () => ({
 }));
 
 const mockVerifyFindingsBatch = vi.fn();
+const mockEstimateVerifyTokens = vi.fn();
 vi.mock("@/lib/ai/verify-findings", () => ({
   verifyFindingsBatch: (...args: unknown[]) => mockVerifyFindingsBatch(...args),
+  estimateVerifyTokens: (...args: unknown[]) =>
+    mockEstimateVerifyTokens(...args),
 }));
 
 const mockCheckRateLimit = vi.fn();
@@ -62,10 +65,22 @@ vi.mock("@/lib/config/runtime-config", async () => {
   };
 });
 
-const mockCheckAiUsageQuota = vi.fn();
+const mockReserveAiTokens = vi.fn();
 vi.mock("@/lib/billing/ai-usage", () => ({
-  checkAiUsageQuota: (...args: unknown[]) => mockCheckAiUsageQuota(...args),
+  reserveAiTokens: (...args: unknown[]) => mockReserveAiTokens(...args),
 }));
+
+/** What reserveAiTokens hands back for a pass it let in. */
+const RESERVATION = {
+  userId: 42,
+  usingOwnAi: false,
+  windowStart: new Date(0),
+  budget: 30_000,
+  windowPortion: 30_000,
+  creditPortion: 0,
+  slotKey: "ai-verify:42",
+  settled: false,
+};
 
 const { POST } = await import("@/app/api/v3/scan/verify-batch/route");
 const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
@@ -97,12 +112,15 @@ beforeEach(() => {
     remaining: 19,
     retryAfterSeconds: 0,
   });
-  mockCheckAiUsageQuota.mockReset();
-  mockCheckAiUsageQuota.mockResolvedValue({
+  mockEstimateVerifyTokens.mockReset();
+  mockEstimateVerifyTokens.mockResolvedValue({
+    estimate: 30_000,
+    minimum: 15_000,
+  });
+  mockReserveAiTokens.mockReset();
+  mockReserveAiTokens.mockResolvedValue({
     allowed: true,
-    usingOwnAi: false,
-    usedTokens: 0,
-    limitTokens: 20_000,
+    reservation: RESERVATION,
   });
 });
 
@@ -149,7 +167,7 @@ describe("POST /api/v3/scan/verify-batch: auth", () => {
       "https://example.com",
       findings,
       77,
-      false,
+      RESERVATION,
     );
     // The shared aiVerify bucket is keyed the same way regardless of auth
     // method: an API-key caller and a session caller with the same userId
@@ -275,7 +293,7 @@ describe("POST /api/v3/scan/verify-batch: findings cap", () => {
       "https://example.com",
       maxed,
       42,
-      false,
+      RESERVATION,
     );
   });
 
@@ -310,7 +328,7 @@ describe("POST /api/v3/scan/verify-batch: happy path", () => {
       "https://example.com",
       findings,
       42,
-      false,
+      RESERVATION,
     );
   });
 
@@ -333,14 +351,13 @@ describe("POST /api/v3/scan/verify-batch: happy path", () => {
   });
 });
 
-describe("POST /api/v3/scan/verify-batch: unified AI usage quota", () => {
-  it("returns 429 with the quota message and never calls verifyFindingsBatch when the quota is exceeded", async () => {
-    mockCheckAiUsageQuota.mockResolvedValue({
+describe("POST /api/v3/scan/verify-batch: the AI credit reservation", () => {
+  it("returns 429 with the gate's message and never calls verifyFindingsBatch when the account cannot cover one finding", async () => {
+    mockReserveAiTokens.mockResolvedValue({
       allowed: false,
-      usingOwnAi: false,
-      usedTokens: 20_000,
-      limitTokens: 20_000,
-      message: "You've used all your AI tokens for this window.",
+      busy: false,
+      message:
+        "This needs up to 15,000 AI tokens and your account has 1 left: 0 in this 5-hour window and 1 in AI credits.",
     });
 
     const res = await POST(
@@ -348,17 +365,28 @@ describe("POST /api/v3/scan/verify-batch: unified AI usage quota", () => {
     );
     expect(res.status).toBe(429);
     const json = await res.json();
-    expect(json.error).toBe("You've used all your AI tokens for this window.");
+    expect(json.error).toMatch(/needs up to 15,000 AI tokens/);
     expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
-    expect(mockCheckAiUsageQuota).toHaveBeenCalledWith(42);
   });
 
-  it("passes quota.usingOwnAi through to verifyFindingsBatch", async () => {
-    mockCheckAiUsageQuota.mockResolvedValue({
+  it("reserves the caller-supplied batch's estimate before verifying it", async () => {
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockEstimateVerifyTokens).toHaveBeenCalledWith(findings);
+    expect(mockReserveAiTokens).toHaveBeenCalledWith(42, 30_000, 15_000);
+    expect(mockReserveAiTokens.mock.invocationCallOrder[0]).toBeLessThan(
+      mockVerifyFindingsBatch.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("hands the reservation to verifyFindingsBatch, which holds the pass to it and settles it", async () => {
+    const ownKey = { ...RESERVATION, usingOwnAi: true, budget: null };
+    mockReserveAiTokens.mockResolvedValue({
       allowed: true,
-      usingOwnAi: true,
-      usedTokens: 0,
-      limitTokens: -1,
+      reservation: ownKey,
     });
 
     const res = await POST(
@@ -369,7 +397,20 @@ describe("POST /api/v3/scan/verify-batch: unified AI usage quota", () => {
       "https://example.com",
       findings,
       42,
-      true,
+      ownKey,
     );
+  });
+
+  it("does not reserve for a batch over the findings cap", async () => {
+    const res = await POST(
+      postRequest({
+        url: "https://example.com",
+        findings: Array.from({ length: MAX_FINDINGS + 1 }, (_, i) => ({
+          id: `f${i}`,
+        })),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockReserveAiTokens).not.toHaveBeenCalled();
   });
 });

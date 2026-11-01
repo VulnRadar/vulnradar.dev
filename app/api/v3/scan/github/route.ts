@@ -23,7 +23,10 @@ import {
   fetchSelectedFiles,
   runPatternSecretsScan,
 } from "@/lib/scanner/github-repo-scan";
-import { runGithubAiReview } from "@/lib/ai/review-source";
+import {
+  estimateGithubReviewTokens,
+  runGithubAiReview,
+} from "@/lib/ai/review-source";
 import {
   resolveNewScanTeamIds,
   attachNewScanTeams,
@@ -31,8 +34,9 @@ import {
 import { attachCvssScores } from "@/lib/scanner/cvss";
 import {
   checkGithubReviewQuota,
-  claimFreeGithubReviewTrial,
   releaseFreeGithubReviewTrial,
+  reserveGithubReviewTokens,
+  settleGithubReviewTokens,
 } from "@/lib/billing/github-review-usage";
 import {
   checkRateLimit as checkGlobalRateLimit,
@@ -168,57 +172,59 @@ export async function POST(request: Request) {
       );
     }
 
-    const quota = await checkGithubReviewQuota(userId);
-    if (!quota.allowed) {
-      return NextResponse.json({ error: quota.message }, { status: 403 });
+    // The read-only check above can be passed by two requests at once, and
+    // used to be followed by a run that charged afterwards with a floor at
+    // zero, so one credit bought a whole review. This takes the review's
+    // estimate out of the window and the credit balance (or claims the free
+    // trial, atomically) before any content is fetched or any AI call made,
+    // and refuses when they do not cover it. The run is held to what was
+    // reserved and the finally below settles it with the real count.
+    const gate = await reserveGithubReviewTokens(
+      userId,
+      await estimateGithubReviewTokens(selected.map((e) => e.size ?? 0)),
+    );
+    if (!gate.allowed) {
+      return NextResponse.json(
+        { error: gate.message },
+        { status: gate.busy ? 429 : 403 },
+      );
     }
-
-    // The trial slot is claimed atomically, right here, before any real
-    // work starts -- not after checkGithubReviewQuota's own read-only
-    // check above, which two concurrent requests from the same account
-    // could both pass before either had claimed anything, allowing two
-    // free reviews inside one window instead of one. If this specific
-    // request loses that race, it's rejected now rather than after
-    // spending real AI tokens on a review that was never actually free.
-    if (quota.isFreeTrial) {
-      const claimed = await claimFreeGithubReviewTrial(userId);
-      if (!claimed) {
-        return NextResponse.json(
-          {
-            error:
-              "Free trial review already used today. Upgrade your plan for ongoing GitHub AI review access.",
-          },
-          { status: 403 },
-        );
-      }
-    }
+    const reservation = gate.reservation;
 
     const startTime = Date.now();
 
     let files: Awaited<ReturnType<typeof fetchSelectedFiles>>;
     let secretFindings: ReturnType<typeof runPatternSecretsScan>;
     let aiResult: Awaited<ReturnType<typeof runGithubAiReview>>;
+    let tokensSpent = 0;
     try {
       files = await fetchSelectedFiles(token, owner, repo, selected);
       secretFindings = runPatternSecretsScan(files);
       aiResult = await runGithubAiReview(
         files,
         userId,
-        quota.usingOwnAi,
         repoInfo.private,
-        quota.creditCovered ?? false,
+        reservation.budget,
       );
+      tokensSpent = aiResult.totalTokensUsed;
     } catch (err) {
       // Give the claimed slot back: a review that didn't complete must
-      // not cost the user their one daily free trial. Matches this
-      // route's existing "record after, not before" convention -- the
-      // claim above is the exception (it has to happen before, to close
-      // the race), and this release is what keeps the net effect the
-      // same as recording strictly after success.
-      if (quota.isFreeTrial) {
+      // not cost the user their one daily free trial. The claim has to
+      // happen before the run to close the race; this release is what
+      // keeps the net effect the same as recording strictly after success.
+      if (reservation.isFreeTrial) {
         await releaseFreeGithubReviewTrial(userId).catch(() => {});
       }
       throw err;
+    } finally {
+      try {
+        await settleGithubReviewTokens(reservation, tokensSpent);
+      } catch (err) {
+        console.error(
+          `[${APP_NAME}] Failed to settle GitHub review tokens (non-fatal):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
 
     // A free-trial slot must also be returned when the review produced nothing
@@ -226,7 +232,7 @@ export async function POST(request: Request) {
     // per-run token ceiling, or zero tokens were actually spent. Otherwise the
     // user burns their one free review for an empty result.
     if (
-      quota.isFreeTrial &&
+      reservation.isFreeTrial &&
       (aiResult.noEndpoint ||
         aiResult.rejectedOverCap ||
         aiResult.totalTokensUsed === 0)
@@ -333,6 +339,9 @@ export async function POST(request: Request) {
       filesSkippedByCaps: truncatedByCaps,
       aiTokensUsed: aiResult.totalTokensUsed,
       aiReviewSkipped: aiResult.noEndpoint,
+      // True when the account's allowance and credits ran out before every
+      // file was reviewed; the findings cover the files before that point.
+      aiReviewStoppedAtBudget: aiResult.stoppedAtBudget,
     });
   } catch (error) {
     console.error(

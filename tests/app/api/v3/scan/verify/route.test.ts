@@ -31,8 +31,11 @@ vi.mock("@/lib/api/api-keys", () => ({
 }));
 
 const mockRunAiVerification = vi.fn();
+const mockEstimateVerifyTokens = vi.fn();
 vi.mock("@/lib/ai/verify-findings", () => ({
   runAiVerification: (...args: unknown[]) => mockRunAiVerification(...args),
+  estimateVerifyTokens: (...args: unknown[]) =>
+    mockEstimateVerifyTokens(...args),
 }));
 
 const mockCheckRateLimit = vi.fn();
@@ -45,10 +48,22 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
   };
 });
 
-const mockCheckAiUsageQuota = vi.fn();
+const mockReserveAiTokens = vi.fn();
 vi.mock("@/lib/billing/ai-usage", () => ({
-  checkAiUsageQuota: (...args: unknown[]) => mockCheckAiUsageQuota(...args),
+  reserveAiTokens: (...args: unknown[]) => mockReserveAiTokens(...args),
 }));
+
+/** What reserveAiTokens hands back for a pass it let in. */
+const RESERVATION = {
+  userId: 42,
+  usingOwnAi: false,
+  windowStart: new Date(0),
+  budget: 30_000,
+  windowPortion: 30_000,
+  creditPortion: 0,
+  slotKey: "ai-verify:42",
+  settled: false,
+};
 
 const { POST } = await import("@/app/api/v3/scan/verify/route");
 
@@ -76,12 +91,15 @@ beforeEach(() => {
     remaining: 19,
     retryAfterSeconds: 0,
   });
-  mockCheckAiUsageQuota.mockReset();
-  mockCheckAiUsageQuota.mockResolvedValue({
+  mockEstimateVerifyTokens.mockReset();
+  mockEstimateVerifyTokens.mockResolvedValue({
+    estimate: 30_000,
+    minimum: 15_000,
+  });
+  mockReserveAiTokens.mockReset();
+  mockReserveAiTokens.mockResolvedValue({
     allowed: true,
-    usingOwnAi: false,
-    usedTokens: 0,
-    limitTokens: 20_000,
+    reservation: RESERVATION,
   });
 });
 
@@ -182,7 +200,7 @@ describe("POST /api/v3/scan/verify: auth and validation", () => {
       [],
       10,
       77,
-      false,
+      RESERVATION,
     );
     // Scoped to the API key's own userId, same ownership check a session
     // caller gets -- one key can't verify another account's scan.
@@ -305,7 +323,7 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
       findings,
       10,
       42,
-      false,
+      RESERVATION,
     );
   });
 
@@ -328,7 +346,7 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
       [],
       10,
       42,
-      false,
+      RESERVATION,
     );
   });
 
@@ -344,42 +362,60 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
   });
 });
 
-describe("POST /api/v3/scan/verify: unified AI usage quota", () => {
-  it("returns 429 with the quota message and never calls runAiVerification when the quota is exceeded", async () => {
+describe("POST /api/v3/scan/verify: the AI credit reservation", () => {
+  const findings = [
+    { id: "f1", title: "Missing CSP" },
+    { id: "f2", title: "Missing HSTS" },
+  ];
+
+  it("returns 429 with the gate's message and never calls runAiVerification when the account cannot cover one finding", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({
-      rows: [{ url: "https://example.com", findings: [] }],
+      rows: [{ id: 10, url: "https://example.com", findings }],
     });
-    mockCheckAiUsageQuota.mockResolvedValue({
+    mockReserveAiTokens.mockResolvedValue({
       allowed: false,
-      usingOwnAi: false,
-      usedTokens: 20_000,
-      limitTokens: 20_000,
-      message: "You've used 20,000 of your 20,000 AI tokens for this window.",
+      busy: false,
+      message:
+        "This needs up to 15,000 AI tokens and your account has 1 left: 0 in this 5-hour window and 1 in AI credits.",
     });
 
     const res = await POST(postRequest({ scanHistoryId: 10 }));
     expect(res.status).toBe(429);
     const json = await res.json();
-    expect(json.error).toBe(
-      "You've used 20,000 of your 20,000 AI tokens for this window.",
-    );
+    expect(json.error).toMatch(/needs up to 15,000 AI tokens/);
     expect(mockRunAiVerification).not.toHaveBeenCalled();
-    expect(mockCheckAiUsageQuota).toHaveBeenCalledWith(42);
   });
 
-  it("passes quota.usingOwnAi through to runAiVerification", async () => {
+  it("reserves the scan's estimate with a one-finding minimum before verifying", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ id: 10, url: "https://example.com", findings }],
+      })
+      .mockResolvedValueOnce({ rows: [{ findings }] });
+
+    const res = await POST(postRequest({ scanHistoryId: 10 }));
+
+    expect(res.status).toBe(200);
+    expect(mockEstimateVerifyTokens).toHaveBeenCalledWith(findings);
+    expect(mockReserveAiTokens).toHaveBeenCalledWith(42, 30_000, 15_000);
+    expect(mockReserveAiTokens.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRunAiVerification.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("hands the reservation to runAiVerification, which holds the pass to it and settles it", async () => {
+    const ownKey = { ...RESERVATION, usingOwnAi: true, budget: null };
+    mockReserveAiTokens.mockResolvedValue({
+      allowed: true,
+      reservation: ownKey,
+    });
     mockQuery
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
         rows: [{ id: 10, url: "https://example.com", findings: [] }],
       })
       .mockResolvedValueOnce({ rows: [{ findings: [] }] });
-    mockCheckAiUsageQuota.mockResolvedValue({
-      allowed: true,
-      usingOwnAi: true,
-      usedTokens: 0,
-      limitTokens: -1,
-    });
 
     const res = await POST(postRequest({ scanHistoryId: 10 }));
     expect(res.status).toBe(200);
@@ -388,7 +424,23 @@ describe("POST /api/v3/scan/verify: unified AI usage quota", () => {
       [],
       10,
       42,
-      true,
+      ownKey,
     );
+  });
+
+  it("answers 429 while another verification of the same account is running", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({
+      rows: [{ id: 10, url: "https://example.com", findings }],
+    });
+    mockReserveAiTokens.mockResolvedValue({
+      allowed: false,
+      busy: true,
+      message: "Another AI verification is still running on your account.",
+    });
+
+    const res = await POST(postRequest({ scanHistoryId: 10 }));
+
+    expect(res.status).toBe(429);
+    expect(mockRunAiVerification).not.toHaveBeenCalled();
   });
 });

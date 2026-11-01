@@ -2,6 +2,7 @@ import pool from "@/lib/database/db";
 import { decryptApiKey } from "@/lib/auth/crypto";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
+import { safeReadBody } from "@/lib/scanner/read-bounded-body";
 import { getSetCookies } from "@/lib/scanner/_helpers";
 import { VERIFY_SYSTEM_PROMPT } from "./verify-context";
 import { resolveAiBaseUrl, resolveAiDefaultModel } from "@/lib/ai/provider";
@@ -9,7 +10,10 @@ import { postChatCompletion, type AiEndpoint } from "@/lib/ai/transport";
 import { resolveAiCallTimeoutMs } from "@/lib/ai/reasoning";
 import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME } from "@/lib/config/constants";
-import { recordAiTokens } from "@/lib/billing/ai-usage";
+import {
+  settleAiTokens,
+  type AiTokenReservation,
+} from "@/lib/billing/ai-usage";
 
 type AiVerdict = "confirmed" | "possible_fp" | "uncertain";
 
@@ -208,7 +212,6 @@ async function probeTarget(
 
     let bodySnippet = "";
     try {
-      const text = await res.text();
       // Raised from 8192: this is what the AI verifier is asked to
       // cross-check body-content findings (mixed-content, inline styles,
       // third-party scripts, autocomplete attributes, etc.) against. 8KB
@@ -218,7 +221,17 @@ async function probeTarget(
       // for why that fallback is deliberate policy, not a bug on its own).
       // A larger, still-bounded snippet gives it a real shot at confirming
       // body-content findings directly instead of defaulting to "plausible."
-      bodySnippet = text.slice(0, probeBodySnippetChars);
+      //
+      // Read with the cap, not res.text() and a slice: the target chooses
+      // the body, and on verify-batch the caller chooses the target, so an
+      // endless or decompression-bomb response was buffered whole before a
+      // character of it was dropped. The cap is in bytes, which is never
+      // fewer characters than the slice this replaced kept.
+      bodySnippet = await safeReadBody(
+        res,
+        probeBodySnippetChars,
+        probeTimeoutMs,
+      );
     } catch {
       /* ignore body read failures */
     }
@@ -354,6 +367,68 @@ ${probeSection}
 Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-97,"reason":"one sentence citing specific live evidence, aim for roughly 300-500 characters but go longer if the evidence genuinely needs it"}`;
 }
 
+/**
+ * Characters per token used for the worst-case ceiling below. Lower than the
+ * 4 the repo review's estimate uses because most of a verify prompt is the
+ * scanned page's HTML and its response headers, which tokenise denser than
+ * prose, and an under-estimate here is what lets a run spend past its
+ * reservation.
+ */
+const VERIFY_CHARS_PER_TOKEN_CEILING = 3;
+
+/**
+ * Room for the probe's response headers in the ceiling. Node's HTTP parser
+ * refuses a header block over 16 KB by default, so a probe cannot carry more.
+ */
+const PROBE_HEADER_ALLOWANCE_CHARS = 16 * 1024;
+
+const EMPTY_PROBE: ProbeData = {
+  status_code: 0,
+  final_url: "",
+  response_headers: {},
+  body_snippet: "",
+};
+
+/**
+ * The most one finding's verification call can cost: the system prompt, the
+ * finding's own prompt, a full-size probe snippet and header block, and the
+ * whole output allowance. Computed without the probe so the route can reserve
+ * before the probe runs and the run admits findings against the same number.
+ */
+export function verifyCallCeiling(
+  finding: Vulnerability,
+  settings: Pick<VerifySettings, "maxTokens" | "probeBodySnippetChars">,
+): number {
+  // verify-batch takes its findings from the request body, so an element can
+  // be anything; a null one costs the bare template rather than throwing.
+  const promptChars =
+    VERIFY_SYSTEM_PROMPT.length +
+    buildVerifyPrompt(finding ?? ({} as Vulnerability), EMPTY_PROBE).length +
+    settings.probeBodySnippetChars +
+    PROBE_HEADER_ALLOWANCE_CHARS;
+  return (
+    Math.ceil(promptChars / VERIFY_CHARS_PER_TOKEN_CEILING) + settings.maxTokens
+  );
+}
+
+/**
+ * What a verification pass over `findings` should reserve: `estimate` covers
+ * every finding at its ceiling, `minimum` is the first finding's ceiling, the
+ * least a run needs to verify anything (the pass admits findings in order and
+ * stops at the first one its budget cannot cover).
+ */
+export async function estimateVerifyTokens(
+  findings: Vulnerability[],
+): Promise<{ estimate: number; minimum: number }> {
+  if (findings.length === 0) return { estimate: 0, minimum: 0 };
+  const settings = await resolveVerifySettings();
+  const ceilings = findings.map((f) => verifyCallCeiling(f, settings));
+  return {
+    estimate: ceilings.reduce((sum, c) => sum + c, 0),
+    minimum: ceilings[0],
+  };
+}
+
 interface CallVerifyResult {
   result: VerifyResult | null;
   /** Real tokens the provider reported for this one call (0 if the call never reached a provider, or the provider omitted usage). */
@@ -445,14 +520,6 @@ async function callVerify(
   }
 }
 
-function chunkFindings<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
-}
-
 /**
  * Verifies findings in fixed-size concurrent chunks instead of firing every
  * finding at once. Two problems this fixes versus one big Promise.race
@@ -470,6 +537,30 @@ interface VerifyInChunksResult {
   totalTokens: number;
   /** The provider rate-limited the pass, which was stopped there. */
   rateLimited: boolean;
+  /** The reservation could not cover the next finding, so the pass stopped. */
+  budgetExhausted: boolean;
+}
+
+/**
+ * The next findings the budget can pay for, in order, up to one chunk. Stops
+ * at the first finding that does not fit rather than skipping ahead to a
+ * cheaper one, so what is left unverified is a contiguous tail the outcome
+ * can describe.
+ */
+function admitWithinBudget(
+  findings: Vulnerability[],
+  remaining: number,
+  settings: VerifySettings,
+): Vulnerability[] {
+  const admitted: Vulnerability[] = [];
+  let room = remaining;
+  for (const f of findings) {
+    const ceiling = verifyCallCeiling(f, settings);
+    if (ceiling > room) break;
+    admitted.push(f);
+    room -= ceiling;
+  }
+  return admitted;
 }
 
 async function verifyInChunks(
@@ -479,17 +570,34 @@ async function verifyInChunks(
   probe: ProbeData,
   deadline: number,
   settings: VerifySettings,
+  budget: number | null,
+  spent: { tokens: number },
   onChunkDone?: (
     verdicts: Map<string, Omit<VerifyResult, "id">>,
   ) => Promise<void> | void,
 ): Promise<VerifyInChunksResult> {
   const verdictMap = new Map<string, Omit<VerifyResult, "id">>();
-  let totalTokens = 0;
   let rateLimited = false;
+  let budgetExhausted = false;
   let fatalStatus: number | undefined;
 
-  for (const group of chunkFindings(findings, settings.chunkSize)) {
+  let next = 0;
+  while (next < findings.length) {
     if (Date.now() >= deadline) break;
+
+    let group = findings.slice(next, next + settings.chunkSize);
+    // Each call is admitted at its worst case, so the pass cannot spend past
+    // what the gate reserved for it even if every call in a chunk comes back
+    // at its ceiling. Real calls cost less, so the room they leave is used by
+    // the chunks after them.
+    if (budget !== null) {
+      group = admitWithinBudget(group, budget - spent.tokens, settings);
+      if (group.length === 0) {
+        budgetExhausted = true;
+        break;
+      }
+    }
+    next += group.length;
 
     const settled = await Promise.allSettled(
       group.map((f) => callVerify(url, f, endpoint, probe, settings)),
@@ -497,7 +605,7 @@ async function verifyInChunks(
 
     for (const r of settled) {
       if (r.status === "fulfilled") {
-        totalTokens += r.value.tokensUsed;
+        spent.tokens += r.value.tokensUsed;
         if (r.value.rateLimited) rateLimited = true;
         if (r.value.fatalStatus) fatalStatus = r.value.fatalStatus;
         if (r.value.result) {
@@ -529,31 +637,30 @@ async function verifyInChunks(
     }
   }
 
-  return { verdictMap, totalTokens, rateLimited };
+  return {
+    verdictMap,
+    totalTokens: spent.tokens,
+    rateLimited,
+    budgetExhausted,
+  };
 }
 
 /**
- * Records the batch's total real token usage to the caller's fixed-window
- * counter, unless they're using their own AI key (those calls cost
- * VulnRadar nothing, mirroring lib/ai/review-source.ts's identical guard
- * for GitHub review tokens) or there's no userId to attribute the usage
- * to (e.g. a caller that never resolved a session/API-key account).
+ * Closes the route's reservation with the pass's real token count, which
+ * returns the unused part of it (see settleAiTokens). Called from a finally,
+ * so a pass that returns early or throws still gives the reservation back.
  * Non-fatal: a failure here never fails the surrounding verification call.
  */
-async function recordVerifyTokens(
-  userId: number | null | undefined,
-  usingOwnAi: boolean,
+async function settleVerifyTokens(
+  reservation: AiTokenReservation | null,
   totalTokens: number,
 ): Promise<void> {
-  if (!userId || usingOwnAi || totalTokens <= 0) return;
+  if (!reservation) return;
   try {
-    // The one AI feature that is metered: verification is what the credit
-    // tiers are sold for. Explicit now that recordAiTokens defaults to
-    // recording without charging.
-    await recordAiTokens(userId, totalTokens, undefined, true);
+    await settleAiTokens(reservation, totalTokens);
   } catch (err) {
     console.error(
-      "[AI-VERIFY] Failed to record token usage (non-fatal):",
+      "[AI-VERIFY] Failed to settle token usage (non-fatal):",
       err instanceof Error ? err.message : err,
     );
   }
@@ -572,70 +679,87 @@ async function recordVerifyTokens(
  * verifyFindingsBatch, which now calls this: the caller has the outcome to act
  * on. A batch with nothing in it counts as configured, as it does for
  * runAiVerification, because no endpoint was looked for.
+ *
+ * `reservation` is what the route's reserveAiTokens gate took for this pass:
+ * the pass is held to its budget and settles it with the real count. It is a
+ * required argument on purpose, null only for a caller that charges nobody
+ * (an evaluation run, a test), so a new route cannot verify on the operator's
+ * key by forgetting the gate.
  */
 export async function verifyFindingsBatchWithOutcome(
   url: string,
   findings: Vulnerability[],
-  userId?: number | null,
-  usingOwnAi = false,
+  userId: number | null,
+  reservation: AiTokenReservation | null,
 ): Promise<{ findings: Vulnerability[]; outcome: AiVerificationOutcome }> {
-  if (findings.length === 0) {
-    return {
+  const spent = { tokens: 0 };
+  try {
+    if (findings.length === 0) {
+      return {
+        findings,
+        outcome: { configured: true, verdicts: 0, attempted: 0 },
+      };
+    }
+
+    const endpoint =
+      (userId ? await resolveUserEndpoint(userId) : null) ??
+      resolveServerEndpoint();
+
+    if (!endpoint) {
+      return {
+        findings,
+        outcome: {
+          configured: false,
+          verdicts: 0,
+          attempted: findings.length,
+        },
+      };
+    }
+
+    const settings = await resolveVerifySettings();
+    const probe = await probeTarget(
+      url,
+      settings.probeTimeoutMs,
+      settings.probeBodySnippetChars,
+    );
+    const deadline = Date.now() + settings.totalTimeoutMs;
+    const { verdictMap, rateLimited, budgetExhausted } = await verifyInChunks(
+      url,
       findings,
-      outcome: { configured: true, verdicts: 0, attempted: 0 },
-    };
-  }
+      endpoint,
+      probe,
+      deadline,
+      settings,
+      reservation?.budget ?? null,
+      spent,
+    );
 
-  const endpoint =
-    (userId ? await resolveUserEndpoint(userId) : null) ??
-    resolveServerEndpoint();
-
-  if (!endpoint) {
     return {
-      findings,
-      outcome: { configured: false, verdicts: 0, attempted: findings.length },
+      findings: applyVerdicts(findings, verdictMap),
+      outcome: {
+        configured: true,
+        verdicts: verdictMap.size,
+        attempted: findings.length,
+        ...(rateLimited ? { rateLimited: true } : {}),
+        ...(budgetExhausted ? { budgetExhausted: true } : {}),
+      },
     };
+  } finally {
+    await settleVerifyTokens(reservation, spent.tokens);
   }
-
-  const settings = await resolveVerifySettings();
-  const probe = await probeTarget(
-    url,
-    settings.probeTimeoutMs,
-    settings.probeBodySnippetChars,
-  );
-  const deadline = Date.now() + settings.totalTimeoutMs;
-  const { verdictMap, totalTokens, rateLimited } = await verifyInChunks(
-    url,
-    findings,
-    endpoint,
-    probe,
-    deadline,
-    settings,
-  );
-  await recordVerifyTokens(userId, usingOwnAi, totalTokens);
-
-  return {
-    findings: applyVerdicts(findings, verdictMap),
-    outcome: {
-      configured: true,
-      verdicts: verdictMap.size,
-      attempted: findings.length,
-      ...(rateLimited ? { rateLimited: true } : {}),
-    },
-  };
 }
 
 export async function verifyFindingsBatch(
   url: string,
   findings: Vulnerability[],
-  userId?: number | null,
-  usingOwnAi = false,
+  userId: number | null,
+  reservation: AiTokenReservation | null,
 ): Promise<Vulnerability[]> {
   const { findings: verified } = await verifyFindingsBatchWithOutcome(
     url,
     findings,
     userId,
-    usingOwnAi,
+    reservation,
   );
   return verified;
 }
@@ -766,77 +890,99 @@ export interface AiVerificationOutcome {
    * schedule.
    */
   rateLimited?: boolean;
+  /**
+   * The account's AI allowance and credits covered only part of the pass,
+   * which stopped at the first finding they could not pay for. `verdicts`
+   * against `attempted` says how far it got.
+   */
+  budgetExhausted?: boolean;
 }
 
+/**
+ * Verifies a stored scan's findings and writes the verdicts back onto it.
+ * `reservation` is the route's reserveAiTokens gate, as for
+ * verifyFindingsBatchWithOutcome: the pass is held to its budget and settles
+ * it, on every path out of here.
+ */
 export async function runAiVerification(
   url: string,
   findings: Vulnerability[],
   scanHistoryId: number,
-  userId?: number | null,
-  usingOwnAi = false,
+  userId: number | null,
+  reservation: AiTokenReservation | null,
 ): Promise<AiVerificationOutcome> {
-  if (findings.length === 0) {
-    return { configured: true, verdicts: 0, attempted: 0 };
-  }
+  const spent = { tokens: 0 };
+  try {
+    if (findings.length === 0) {
+      return { configured: true, verdicts: 0, attempted: 0 };
+    }
 
-  const endpoint =
-    (userId ? await resolveUserEndpoint(userId) : null) ??
-    resolveServerEndpoint();
+    const endpoint =
+      (userId ? await resolveUserEndpoint(userId) : null) ??
+      resolveServerEndpoint();
 
-  if (!endpoint) {
-    console.error(
-      "[AI-VERIFY] No endpoint resolved — check AI_BASE_URL/AI_PROVIDER env vars or user AI config",
+    if (!endpoint) {
+      console.error(
+        "[AI-VERIFY] No endpoint resolved — check AI_BASE_URL/AI_PROVIDER env vars or user AI config",
+      );
+      return { configured: false, verdicts: 0, attempted: findings.length };
+    }
+
+    const settings = await resolveVerifySettings();
+    const probe = await probeTarget(
+      url,
+      settings.probeTimeoutMs,
+      settings.probeBodySnippetChars,
     );
-    return { configured: false, verdicts: 0, attempted: findings.length };
-  }
+    const deadline = Date.now() + settings.totalTimeoutMs;
 
-  const settings = await resolveVerifySettings();
-  const probe = await probeTarget(
-    url,
-    settings.probeTimeoutMs,
-    settings.probeBodySnippetChars,
-  );
-  const deadline = Date.now() + settings.totalTimeoutMs;
-
-  // Verdicts are written to scan_history after every chunk, not just once
-  // at the end, so a scan with a lot of findings keeps whatever got
-  // verified even if the process is cut off (by the deadline above, or by
-  // the calling route's own request timeout) before covering all of them.
-  const { verdictMap, totalTokens, rateLimited } = await verifyInChunks(
-    url,
-    findings,
-    endpoint,
-    probe,
-    deadline,
-    settings,
-    async (partial) => {
-      const enriched = applyVerdicts(findings, partial);
-      try {
-        await pool.query(
-          "UPDATE scan_history SET findings = $1 WHERE id = $2",
-          [JSON.stringify(enriched), scanHistoryId],
-        );
-      } catch (err) {
-        console.error(
-          "[AI-VERIFY] DB update failed:",
-          err instanceof Error ? err.message : err,
-        );
-      }
-      await syncFeedbackFromAiVerdicts(userId, scanHistoryId, url, partial);
-    },
-  );
-  await recordVerifyTokens(userId, usingOwnAi, totalTokens);
-
-  if (verdictMap.size === 0) {
-    console.error(
-      `[AI-VERIFY] All ${findings.length} findings returned null or timed out for ${url} — check the configured AI endpoint/model`,
+    // Verdicts are written to scan_history after every chunk, not just once
+    // at the end, so a scan with a lot of findings keeps whatever got
+    // verified even if the process is cut off (by the deadline above, or by
+    // the calling route's own request timeout) before covering all of them.
+    const { verdictMap, rateLimited, budgetExhausted } = await verifyInChunks(
+      url,
+      findings,
+      endpoint,
+      probe,
+      deadline,
+      settings,
+      reservation?.budget ?? null,
+      spent,
+      async (partial) => {
+        const enriched = applyVerdicts(findings, partial);
+        try {
+          await pool.query(
+            "UPDATE scan_history SET findings = $1 WHERE id = $2",
+            [JSON.stringify(enriched), scanHistoryId],
+          );
+        } catch (err) {
+          console.error(
+            "[AI-VERIFY] DB update failed:",
+            err instanceof Error ? err.message : err,
+          );
+        }
+        await syncFeedbackFromAiVerdicts(userId, scanHistoryId, url, partial);
+      },
     );
-  }
 
-  return {
-    configured: true,
-    verdicts: verdictMap.size,
-    attempted: findings.length,
-    ...(rateLimited ? { rateLimited: true } : {}),
-  };
+    // A pass the budget stopped before its first finding judged nothing
+    // because of the account, not the endpoint, so it is not reported as an
+    // endpoint failure.
+    if (verdictMap.size === 0 && !budgetExhausted) {
+      console.error(
+        `[AI-VERIFY] All ${findings.length} findings returned null or timed out for ${url} — check the configured AI endpoint/model`,
+      );
+    }
+
+    return {
+      configured: true,
+      verdicts: verdictMap.size,
+      attempted: findings.length,
+      ...(rateLimited ? { rateLimited: true } : {}),
+      ...(budgetExhausted ? { budgetExhausted: true } : {}),
+    };
+  } finally {
+    await settleVerifyTokens(reservation, spent.tokens);
+  }
 }

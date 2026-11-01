@@ -42,15 +42,44 @@ vi.mock("@/lib/scanner/github-repo-scan", () => ({
 }));
 
 const mockRunGithubAiReview = vi.fn();
+const mockEstimateGithubReviewTokens = vi.fn();
 vi.mock("@/lib/ai/review-source", () => ({
   runGithubAiReview: (...args: unknown[]) => mockRunGithubAiReview(...args),
+  estimateGithubReviewTokens: (...args: unknown[]) =>
+    mockEstimateGithubReviewTokens(...args),
 }));
 
 const mockCheckGithubReviewQuota = vi.fn();
+const mockReserveGithubReviewTokens = vi.fn();
+const mockSettleGithubReviewTokens = vi.fn();
+const mockReleaseFreeGithubReviewTrial = vi.fn();
 vi.mock("@/lib/billing/github-review-usage", () => ({
   checkGithubReviewQuota: (...args: unknown[]) =>
     mockCheckGithubReviewQuota(...args),
+  reserveGithubReviewTokens: (...args: unknown[]) =>
+    mockReserveGithubReviewTokens(...args),
+  settleGithubReviewTokens: (...args: unknown[]) =>
+    mockSettleGithubReviewTokens(...args),
+  releaseFreeGithubReviewTrial: (...args: unknown[]) =>
+    mockReleaseFreeGithubReviewTrial(...args),
 }));
+
+/** What reserveGithubReviewTokens hands back for a review it let in. */
+function reservation(overrides: Record<string, unknown> = {}) {
+  return {
+    userId: 5,
+    usingOwnAi: false,
+    windowStart: new Date(0),
+    budget: 40_000,
+    windowPortion: 40_000,
+    creditPortion: 0,
+    slotKey: "github-review:5",
+    settled: false,
+    isFreeTrial: false,
+    creditCovered: false,
+    ...overrides,
+  };
+}
 
 const mockCheckGlobalRateLimit = vi.fn();
 vi.mock("@/lib/rate-limiting/rate-limit", () => ({
@@ -133,7 +162,19 @@ beforeEach(() => {
     totalTokensUsed: 0,
     noEndpoint: false,
     rejectedOverCap: false,
+    stoppedAtBudget: false,
   });
+  mockEstimateGithubReviewTokens.mockReset();
+  mockEstimateGithubReviewTokens.mockResolvedValue(40_000);
+  mockReserveGithubReviewTokens.mockReset();
+  mockReserveGithubReviewTokens.mockResolvedValue({
+    allowed: true,
+    reservation: reservation(),
+  });
+  mockSettleGithubReviewTokens.mockReset();
+  mockSettleGithubReviewTokens.mockResolvedValue(undefined);
+  mockReleaseFreeGithubReviewTrial.mockReset();
+  mockReleaseFreeGithubReviewTrial.mockResolvedValue(undefined);
   mockCheckGithubReviewQuota.mockReset();
   mockCheckGithubReviewQuota.mockResolvedValue({
     allowed: true,
@@ -218,9 +259,10 @@ describe("POST /api/v3/scan/github", () => {
     expect(res.status).toBe(413);
     // The upfront quota pre-check (before any GitHub API call) already
     // passed -- the token ceiling is what blocks this, not quota. The
-    // second, atomic quota check right before claimFreeGithubReviewTrial
-    // is never reached because the 413 short-circuits first.
+    // reservation is never reached because the 413 short-circuits first,
+    // so nothing is taken from the account for a review that will not run.
     expect(mockCheckGithubReviewQuota).toHaveBeenCalledTimes(1);
+    expect(mockReserveGithubReviewTokens).not.toHaveBeenCalled();
     expect(mockFetchSelectedFiles).not.toHaveBeenCalled();
   });
 
@@ -296,13 +338,7 @@ describe("POST /api/v3/scan/github", () => {
     );
   });
 
-  it("passes usingOwnAi and repo visibility through to the AI review", async () => {
-    mockCheckGithubReviewQuota.mockResolvedValue({
-      allowed: true,
-      usingOwnAi: true,
-      usedTokens: 0,
-      limitTokens: -1,
-    });
+  it("passes repo visibility and the reservation's budget through to the AI review", async () => {
     mockGetRepoInfo.mockResolvedValue({
       defaultBranch: "main",
       private: false,
@@ -311,10 +347,118 @@ describe("POST /api/v3/scan/github", () => {
     expect(mockRunGithubAiReview).toHaveBeenCalledWith(
       expect.anything(),
       5,
-      true,
       false,
-      false, // creditCovered
+      40_000,
     );
+  });
+});
+
+describe("POST /api/v3/scan/github - credit reservation", () => {
+  it("reserves the tree's estimate before fetching any content, from the selected files' sizes", async () => {
+    mockListRepoTree.mockResolvedValue({
+      entries: [treeEntry("src/a.ts", 1200), treeEntry("src/b.ts", 800)],
+      truncated: false,
+    });
+
+    await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(mockEstimateGithubReviewTokens).toHaveBeenCalledWith([1200, 800]);
+    expect(mockReserveGithubReviewTokens).toHaveBeenCalledWith(5, 40_000);
+    expect(
+      mockReserveGithubReviewTokens.mock.invocationCallOrder[0],
+    ).toBeLessThan(mockFetchSelectedFiles.mock.invocationCallOrder[0]);
+  });
+
+  it("refuses with the reservation's message, before any content is fetched or any AI call made, when the account cannot cover the estimate", async () => {
+    // The read-only pre-check passes (the balance is positive), which is
+    // exactly the case the old gate let through.
+    mockReserveGithubReviewTokens.mockResolvedValue({
+      allowed: false,
+      busy: false,
+      message:
+        "This repo needs up to 40,000 GitHub review tokens and your credit balance is 1.",
+    });
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/needs up to 40,000/);
+    expect(mockFetchSelectedFiles).not.toHaveBeenCalled();
+    expect(mockRunGithubAiReview).not.toHaveBeenCalled();
+    expect(mockSettleGithubReviewTokens).not.toHaveBeenCalled();
+  });
+
+  it("answers 429 while another review of the same account is running", async () => {
+    mockReserveGithubReviewTokens.mockResolvedValue({
+      allowed: false,
+      busy: true,
+      message: "Another GitHub repo review is still running on your account.",
+    });
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(429);
+    expect(mockRunGithubAiReview).not.toHaveBeenCalled();
+  });
+
+  it("settles the reservation with the review's real token count", async () => {
+    const held = reservation();
+    mockReserveGithubReviewTokens.mockResolvedValue({
+      allowed: true,
+      reservation: held,
+    });
+    mockRunGithubAiReview.mockResolvedValue({
+      findings: [],
+      totalTokensUsed: 12_345,
+      noEndpoint: false,
+      rejectedOverCap: false,
+      stoppedAtBudget: false,
+    });
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(200);
+    expect(mockSettleGithubReviewTokens).toHaveBeenCalledTimes(1);
+    expect(mockSettleGithubReviewTokens).toHaveBeenCalledWith(held, 12_345);
+  });
+
+  it("settles zero, giving the whole reservation back, and returns the free trial when the run throws", async () => {
+    const held = reservation({ budget: null, isFreeTrial: true });
+    mockReserveGithubReviewTokens.mockResolvedValue({
+      allowed: true,
+      reservation: held,
+    });
+    mockFetchSelectedFiles.mockRejectedValue(new Error("GitHub 502"));
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(500);
+    expect(mockSettleGithubReviewTokens).toHaveBeenCalledWith(held, 0);
+    expect(mockReleaseFreeGithubReviewTrial).toHaveBeenCalledWith(5);
+  });
+
+  it("still answers when settling fails: the review already ran", async () => {
+    mockSettleGithubReviewTokens.mockRejectedValue(new Error("pool exhausted"));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(200);
+    errors.mockRestore();
+  });
+
+  it("says when the budget stopped the review before every file", async () => {
+    mockRunGithubAiReview.mockResolvedValue({
+      findings: [],
+      totalTokensUsed: 39_000,
+      noEndpoint: false,
+      rejectedOverCap: false,
+      stoppedAtBudget: true,
+    });
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect((await res.json()).aiReviewStoppedAtBudget).toBe(true);
   });
 });
 

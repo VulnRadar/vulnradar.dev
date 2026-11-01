@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { Vulnerability } from "@/lib/scanner/types";
+import type { AiTokenReservation } from "@/lib/billing/ai-usage";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -19,10 +20,27 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
   safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
 }));
 
-const mockRecordAiTokens = vi.fn();
+const mockSettleAiTokens = vi.fn();
 vi.mock("@/lib/billing/ai-usage", () => ({
-  recordAiTokens: (...args: unknown[]) => mockRecordAiTokens(...args),
+  settleAiTokens: (...args: unknown[]) => mockSettleAiTokens(...args),
 }));
+
+/** What the route's reserveAiTokens gate hands the pass. */
+function reservation(
+  overrides: Partial<AiTokenReservation> = {},
+): AiTokenReservation {
+  return {
+    userId: 42,
+    usingOwnAi: false,
+    windowStart: new Date(0),
+    budget: null,
+    windowPortion: 0,
+    creditPortion: 0,
+    slotKey: null,
+    settled: false,
+    ...overrides,
+  };
+}
 
 const {
   verifyFindingsBatch,
@@ -78,7 +96,7 @@ beforeEach(() => {
     headers: new Headers(),
     text: async () => "<html></html>",
   });
-  mockRecordAiTokens.mockReset();
+  mockSettleAiTokens.mockReset();
 
   process.env.AI_BASE_URL = "https://api.example-llm.test/v1";
   process.env.AI_API_KEY = "test-key";
@@ -110,7 +128,7 @@ describe("verifyFindingsBatch: concurrency-capped chunking", () => {
       (_, i) => makeFinding(`f${i}`),
     );
 
-    await verifyFindingsBatch("https://example.com", findings, null);
+    await verifyFindingsBatch("https://example.com", findings, null, null);
 
     expect(peak).toBeLessThanOrEqual(CONFIG_AI_VERIFY_CHUNK_SIZE);
     expect(global.fetch).toHaveBeenCalledTimes(findings.length);
@@ -131,6 +149,7 @@ describe("verifyFindingsBatch: concurrency-capped chunking", () => {
     const result = await verifyFindingsBatch(
       "https://example.com",
       findings,
+      null,
       null,
     );
 
@@ -164,6 +183,7 @@ describe("verifyFindingsBatch: concurrency-capped chunking", () => {
     const result = await verifyFindingsBatch(
       "https://example.com",
       findings,
+      null,
       null,
     );
 
@@ -207,6 +227,7 @@ describe("verifyFindingsBatch: large scan coverage", () => {
       "https://example.com",
       findings,
       null,
+      null,
     );
 
     expect(result).toHaveLength(TOTAL_FINDINGS);
@@ -234,6 +255,7 @@ describe("runAiVerification: says whether it actually ran", () => {
       [makeFinding("f1")],
       42,
       null,
+      null,
     );
 
     expect(outcome).toMatchObject({
@@ -257,6 +279,7 @@ describe("runAiVerification: says whether it actually ran", () => {
       "https://example.com",
       [makeFinding("f1"), makeFinding("f2")],
       42,
+      null,
       null,
     );
 
@@ -290,6 +313,7 @@ describe("runAiVerification: says whether it actually ran", () => {
       findings,
       42,
       null,
+      null,
     );
 
     expect(outcome.rateLimited).toBe(true);
@@ -321,6 +345,7 @@ describe("runAiVerification: says whether it actually ran", () => {
       findings,
       42,
       null,
+      null,
     );
 
     expect(outcome.verdicts).toBe(0);
@@ -341,6 +366,7 @@ describe("runAiVerification: says whether it actually ran", () => {
       "https://example.com",
       [makeFinding("f1")],
       42,
+      null,
       null,
     );
 
@@ -384,6 +410,7 @@ describe("runAiVerification: an Anthropic-shaped endpoint fails the way an OpenA
       manyFindings(),
       42,
       null,
+      null,
     );
 
     expect(outcome.rateLimited).toBe(true);
@@ -407,6 +434,7 @@ describe("runAiVerification: an Anthropic-shaped endpoint fails the way an OpenA
         "https://example.com",
         manyFindings(),
         42,
+        null,
         null,
       );
 
@@ -446,6 +474,7 @@ describe("runAiVerification: what is logged for a failure that does not stop the
         [makeFinding("f1")],
         42,
         null,
+        null,
       );
 
       expect(outcome.verdicts).toBe(0);
@@ -471,6 +500,7 @@ describe("runAiVerification: what is logged for a failure that does not stop the
       "https://example.com",
       [makeFinding("f1")],
       42,
+      null,
       null,
     );
 
@@ -503,7 +533,12 @@ describe("verifyFindingsBatch: reasoning on an OpenAI-compatible endpoint", () =
       confirmedResponse("f1"),
     );
 
-    await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
+    await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+      null,
+    );
 
     expect(sentBody(0).reasoning_effort).toBe("high");
   });
@@ -514,7 +549,12 @@ describe("verifyFindingsBatch: reasoning on an OpenAI-compatible endpoint", () =
       confirmedResponse("f1"),
     );
 
-    await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
+    await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+      null,
+    );
 
     expect(sentBody(0)).not.toHaveProperty("reasoning_effort");
   });
@@ -531,6 +571,7 @@ describe("verifyFindingsBatch: reasoning on an OpenAI-compatible endpoint", () =
     const result = await verifyFindingsBatch(
       "https://example.com",
       [makeFinding("f1")],
+      null,
       null,
     );
 
@@ -576,6 +617,7 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
       "https://example.com",
       [makeFinding("f1"), makeFinding("f2"), makeFinding("f3")],
       null,
+      null,
     );
 
     expect(findings.map((f) => f.aiVerdict)).toEqual([
@@ -597,10 +639,16 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
     );
     const input = [makeFinding("f1"), makeFinding("f2")];
 
-    const bare = await verifyFindingsBatch("https://example.com", input, null);
+    const bare = await verifyFindingsBatch(
+      "https://example.com",
+      input,
+      null,
+      null,
+    );
     const { findings } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       input,
+      null,
       null,
     );
 
@@ -616,6 +664,7 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
     const { findings, outcome } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       input,
+      null,
       null,
     );
 
@@ -637,6 +686,7 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
       "https://example.com",
       input,
       null,
+      null,
     );
 
     expect(findings).toBe(input);
@@ -657,6 +707,7 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
     const { findings, outcome } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1"), makeFinding("f2")],
+      null,
       null,
     );
 
@@ -682,6 +733,7 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
     const { findings, outcome } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1"), makeFinding("f2")],
+      null,
       null,
     );
 
@@ -710,6 +762,7 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
       "https://example.com",
       findings,
       null,
+      null,
     );
 
     expect(outcome).toMatchObject({
@@ -731,6 +784,7 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
       "https://example.com",
       [makeFinding("f1")],
       null,
+      null,
     );
 
     expect(outcome.verdicts).toBe(0);
@@ -738,35 +792,21 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
     errors.mockRestore();
   });
 
-  it("bills the batch's real tokens once, exactly as verifyFindingsBatch does", async () => {
+  it("settles the batch's real tokens once, exactly as verifyFindingsBatch does", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponseWithUsage("x", 100, 50),
     );
+    const held = reservation();
 
     await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1"), makeFinding("f2")],
       42,
-      false,
+      held,
     );
 
-    expect(mockRecordAiTokens).toHaveBeenCalledTimes(1);
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 300, undefined, true);
-  });
-
-  it("does not bill a user running on their own key", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
-      confirmedResponseWithUsage("x", 100, 50),
-    );
-
-    await verifyFindingsBatchWithOutcome(
-      "https://example.com",
-      [makeFinding("f1")],
-      42,
-      true,
-    );
-
-    expect(mockRecordAiTokens).not.toHaveBeenCalled();
+    expect(mockSettleAiTokens).toHaveBeenCalledTimes(1);
+    expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 300);
   });
 
   it("writes nothing to scan_history: persisting verdicts is runAiVerification's job", async () => {
@@ -777,6 +817,7 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
     await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
+      null,
       null,
     );
 
@@ -799,7 +840,7 @@ describe("runAiVerification: incremental persistence", () => {
       (_, i) => makeFinding(`f${i}`),
     );
 
-    await runAiVerification("https://example.com", findings, 42, null);
+    await runAiVerification("https://example.com", findings, 42, null, null);
 
     expect(mockQuery).toHaveBeenCalledTimes(2);
     for (const call of mockQuery.mock.calls) {
@@ -856,7 +897,13 @@ describe("runAiVerification: incremental persistence", () => {
     );
 
     try {
-      await runWithTinyDeadline("https://example.com", findings, 42, null);
+      await runWithTinyDeadline(
+        "https://example.com",
+        findings,
+        42,
+        null,
+        null,
+      );
     } finally {
       nowSpy.mockRestore();
     }
@@ -884,7 +931,13 @@ describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdi
       confirmedResponse("x"),
     );
 
-    await runAiVerification("https://example.com", [makeFinding("f1")], 42, 7);
+    await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      7,
+      null,
+    );
 
     const feedbackCall = mockQuery.mock.calls.find(([sql]) =>
       String(sql).includes("scan_finding_feedback"),
@@ -923,7 +976,13 @@ describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdi
       }),
     });
 
-    await runAiVerification("https://example.com", [makeFinding("f1")], 42, 7);
+    await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      7,
+      null,
+    );
 
     const feedbackCall = mockQuery.mock.calls.find(([sql]) =>
       String(sql).includes("scan_finding_feedback"),
@@ -961,7 +1020,13 @@ describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdi
       return { rows: [], rowCount: 0 };
     });
 
-    await runAiVerification("https://example.com", [makeFinding("f1")], 42, 7);
+    await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      7,
+      null,
+    );
 
     expect(sawFkViolation, "the linked insert must be attempted first").toBe(
       true,
@@ -1001,6 +1066,7 @@ describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdi
         [makeFinding("f1"), makeFinding("f2"), makeFinding("f3")],
         42,
         7,
+        null,
       );
       expect(errors.length).toBe(1);
     } finally {
@@ -1026,7 +1092,13 @@ describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdi
       }),
     });
 
-    await runAiVerification("https://example.com", [makeFinding("f1")], 42, 7);
+    await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      7,
+      null,
+    );
 
     const feedbackCall = mockQuery.mock.calls.find(([sql]) =>
       String(sql).includes("scan_finding_feedback"),
@@ -1043,6 +1115,7 @@ describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdi
       "https://example.com",
       [makeFinding("f1")],
       42,
+      null,
       null,
     );
 
@@ -1092,7 +1165,12 @@ describe("verifyFindingsBatch: Set-Cookie header capture in the live probe", () 
       },
     );
 
-    await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
+    await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+      null,
+    );
 
     const startIdx = sentPrompt.indexOf("live_probe: {");
     expect(startIdx).toBeGreaterThan(-1);
@@ -1132,6 +1210,7 @@ describe("verifyFindingsBatch: no endpoint configured", () => {
       "https://example.com",
       findings,
       null,
+      null,
     );
 
     expect(result).toEqual(findings);
@@ -1158,7 +1237,7 @@ describe("verifyFindingsBatch: evidence handed to the AI reviewer", () => {
       ],
     };
 
-    await verifyFindingsBatch("https://example.com", [finding], null);
+    await verifyFindingsBatch("https://example.com", [finding], null, null);
 
     // The prompt must carry the detector's own verbatim proof, not rely
     // solely on the generic summary + a truncated body snippet that may
@@ -1177,7 +1256,12 @@ describe("verifyFindingsBatch: evidence handed to the AI reviewer", () => {
       },
     );
 
-    await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
+    await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+      null,
+    );
 
     expect(sentPrompt).not.toContain("evidence_excerpts:");
   });
@@ -1208,6 +1292,7 @@ describe("verifyFindingsBatch: reason text is never truncated", () => {
       "https://example.com",
       [makeFinding("f1")],
       null,
+      null,
     );
 
     expect(result[0].aiReason).toBe(longReason);
@@ -1226,6 +1311,7 @@ describe("verifyFindingsBatch: reason text is never truncated", () => {
     const result = await verifyFindingsBatch(
       "https://example.com",
       [makeFinding("f1")],
+      null,
       null,
     );
 
@@ -1255,6 +1341,7 @@ describe("verifyFindingsBatch: AI response that isn't clean JSON", () => {
       "https://example.com",
       findings,
       null,
+      null,
     );
 
     // Previously this finding would have no aiVerdict at all (silently
@@ -1282,6 +1369,7 @@ describe("verifyFindingsBatch: AI response that isn't clean JSON", () => {
     const result = await verifyFindingsBatch(
       "https://example.com",
       findings,
+      null,
       null,
     );
 
@@ -1318,21 +1406,18 @@ function confirmedResponseWithUsage(
   };
 }
 
-describe("verifyFindingsBatch / runAiVerification: unified AI usage token accounting", () => {
-  it("records the summed real token usage across every call in the batch, once, after it completes", async () => {
+describe("verifyFindingsBatch / runAiVerification: settling the route's reservation", () => {
+  it("settles with the summed real token usage across every call in the batch, once, after it completes", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponseWithUsage("x", 100, 50),
     );
+    const held = reservation();
 
     const findings = [makeFinding("f1"), makeFinding("f2")];
-    await verifyFindingsBatch("https://example.com", findings, 42, false);
+    await verifyFindingsBatch("https://example.com", findings, 42, held);
 
-    expect(mockRecordAiTokens).toHaveBeenCalledTimes(1);
-    // The fourth argument is the charge flag, and it is explicit here
-    // because recordAiTokens defaults to recording WITHOUT charging now:
-    // two features documented as free were spending purchased credit
-    // simply by omitting it. Verification is the metered one.
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 300, undefined, true); // (100+50) * 2 findings
+    expect(mockSettleAiTokens).toHaveBeenCalledTimes(1);
+    expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 300); // (100+50) * 2 findings
   });
 
   it("extracts real usage from the native Anthropic adapter's response too", async () => {
@@ -1354,18 +1439,19 @@ describe("verifyFindingsBatch / runAiVerification: unified AI usage token accoun
         usage: { input_tokens: 200, output_tokens: 30 },
       }),
     });
+    const held = reservation();
 
     await verifyFindingsBatch(
       "https://example.com",
       [makeFinding("f1")],
       42,
-      false,
+      held,
     );
 
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 230, undefined, true);
+    expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 230);
   });
 
-  it("does not record usage when the caller is using their own AI key", async () => {
+  it("settles nothing when there is no reservation to settle", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponseWithUsage("x", 100, 50),
     );
@@ -1373,51 +1459,230 @@ describe("verifyFindingsBatch / runAiVerification: unified AI usage token accoun
     await verifyFindingsBatch(
       "https://example.com",
       [makeFinding("f1")],
-      42,
-      true, // usingOwnAi
+      null,
+      null,
     );
 
-    expect(mockRecordAiTokens).not.toHaveBeenCalled();
+    expect(mockSettleAiTokens).not.toHaveBeenCalled();
   });
 
-  it("does not record usage when there is no userId to attribute it to", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
-      confirmedResponseWithUsage("x", 100, 50),
-    );
-
-    await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
-
-    expect(mockRecordAiTokens).not.toHaveBeenCalled();
-  });
-
-  it("does not record usage when the provider response omits it entirely", async () => {
+  it("settles zero when the provider response omits usage, which hands the whole reservation back", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       confirmedResponse("x"),
     );
+    const held = reservation({ budget: 50_000 });
 
     await verifyFindingsBatch(
       "https://example.com",
       [makeFinding("f1")],
       42,
-      false,
+      held,
     );
 
-    expect(mockRecordAiTokens).not.toHaveBeenCalled();
+    expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 0);
   });
 
-  it("runAiVerification records usage the same way as verifyFindingsBatch", async () => {
+  it("settles a pass that never reached a provider: no endpoint, no findings", async () => {
+    delete process.env.AI_BASE_URL;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const a = reservation({ budget: 10_000 });
+    const b = reservation({ budget: 10_000 });
+
+    await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1")],
+      1,
+      null,
+      a,
+    );
+    await runAiVerification("https://example.com", [], 1, 42, b);
+
+    expect(mockSettleAiTokens).toHaveBeenCalledWith(a, 0);
+    expect(mockSettleAiTokens).toHaveBeenCalledWith(b, 0);
+    errors.mockRestore();
+  });
+
+  it("runAiVerification settles the same way as verifyFindingsBatch", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponseWithUsage("x", 40, 10),
     );
+    mockQuery.mockResolvedValue({ rows: [] });
+    const held = reservation({ userId: 7 });
 
     await runAiVerification(
       "https://example.com",
       [makeFinding("f1")],
       42,
       7,
-      false,
+      held,
     );
 
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(7, 50, undefined, true);
+    expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 50);
+  });
+});
+
+describe("verification is held to the reservation's budget", () => {
+  /**
+   * The gate reserves a worst case per finding, and the pass admits each
+   * finding at that worst case, so the run cannot spend past what was taken
+   * from the account even if every call comes back at its ceiling. What it
+   * cannot pay for is left unjudged and the outcome says so.
+   */
+  async function ceilingOf(finding: Vulnerability): Promise<number> {
+    const { verifyCallCeiling } = await import("@/lib/ai/verify-findings");
+    const {
+      CONFIG_AI_VERIFY_MAX_TOKENS,
+      CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS,
+    } = await import("@/lib/config/config-values");
+    return verifyCallCeiling(finding, {
+      maxTokens: CONFIG_AI_VERIFY_MAX_TOKENS,
+      probeBodySnippetChars: CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS,
+    });
+  }
+
+  it("stops at the first finding the budget cannot cover and reports budgetExhausted", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", 100, 50),
+    );
+    const findings = [makeFinding("f1"), makeFinding("f2"), makeFinding("f3")];
+    const one = await ceilingOf(findings[0]);
+    const held = reservation({ budget: one * 2 + one / 2 });
+
+    const { outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      held,
+    );
+
+    // Two fit at their worst case in the first chunk. They really cost 150
+    // each, so the room they leave admits the third in a second chunk.
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+    expect(outcome.verdicts).toBe(3);
+    expect(outcome).not.toHaveProperty("budgetExhausted");
+  });
+
+  it("verifies nothing and says why when the budget is below one finding's ceiling", async () => {
+    const findings = [makeFinding("f1"), makeFinding("f2")];
+    const held = reservation({ budget: (await ceilingOf(findings[0])) - 1 });
+
+    const { outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      held,
+    );
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({
+      configured: true,
+      verdicts: 0,
+      attempted: 2,
+      budgetExhausted: true,
+    });
+    expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 0);
+  });
+
+  it("an uncapped reservation (own key, billing off) is not held to anything", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", 100, 50),
+    );
+    const findings = Array.from({ length: 12 }, (_, i) => makeFinding(`f${i}`));
+
+    const { outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      reservation({ budget: null, usingOwnAi: true }),
+    );
+
+    expect(outcome.verdicts).toBe(12);
+  });
+
+  it("estimateVerifyTokens reserves every finding at its ceiling and needs at least the first one", async () => {
+    const { estimateVerifyTokens } = await import("@/lib/ai/verify-findings");
+    const findings = [makeFinding("f1"), makeFinding("f2")];
+    const one = await ceilingOf(findings[0]);
+
+    const { estimate, minimum } = await estimateVerifyTokens(findings);
+
+    expect(minimum).toBe(one);
+    expect(estimate).toBe(one + (await ceilingOf(findings[1])));
+    expect(await estimateVerifyTokens([])).toEqual({ estimate: 0, minimum: 0 });
+  });
+
+  it("a ceiling covers the whole output allowance plus a full-size probe", async () => {
+    const {
+      CONFIG_AI_VERIFY_MAX_TOKENS,
+      CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS,
+    } = await import("@/lib/config/config-values");
+    const one = await ceilingOf(makeFinding("f1"));
+    expect(one).toBeGreaterThan(
+      CONFIG_AI_VERIFY_MAX_TOKENS +
+        CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS / 4,
+    );
+  });
+
+  it("a null element in a caller-supplied batch costs the bare template instead of throwing", async () => {
+    const { estimateVerifyTokens } = await import("@/lib/ai/verify-findings");
+    const { estimate } = await estimateVerifyTokens([
+      null as unknown as Vulnerability,
+    ]);
+    expect(estimate).toBeGreaterThan(0);
+  });
+});
+
+describe("probeTarget: the scanned site's body is read with a cap, not whole", () => {
+  /**
+   * The probe goes to the URL being verified, which on /scan/verify-batch is
+   * whatever the caller put in the request body. It used to call res.text()
+   * and slice afterwards, so a target answering with an endless or
+   * decompression-bomb body was buffered whole into the server's memory
+   * before a single character was thrown away.
+   */
+  it("stops reading at AI_VERIFY_PROBE_BODY_SNIPPET_CHARS and never calls text()", async () => {
+    const chunk = new Uint8Array(64 * 1024).fill(0x61);
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++;
+        // 200 chunks is 12.5 MB: far past the cap, and finite so a reader
+        // that does not stop still finishes and fails the assertion below
+        // rather than hanging the suite.
+        if (pulls > 200) controller.close();
+        else controller.enqueue(chunk);
+      },
+    });
+    const text = vi.fn(async () => "a".repeat(200 * 64 * 1024));
+    mockSafeFetch.mockResolvedValue({
+      status: 200,
+      url: "https://example.com/",
+      headers: new Headers(),
+      body,
+      text,
+    });
+
+    let sentPrompt = "";
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        const sent = JSON.parse(init.body as string);
+        sentPrompt = sent.messages[1].content as string;
+        return confirmedResponse("f1");
+      },
+    );
+
+    await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+      null,
+    );
+
+    expect(text).not.toHaveBeenCalled();
+    // The cap is 24576 characters, under one 64 KB chunk.
+    expect(pulls).toBeLessThan(5);
+    const snippet = /"body_snippet": "(a*)"/.exec(sentPrompt)?.[1] ?? "";
+    expect(snippet.length).toBeGreaterThan(0);
+    expect(snippet.length).toBeLessThanOrEqual(24_576);
   });
 });

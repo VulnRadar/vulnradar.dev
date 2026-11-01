@@ -8,9 +8,12 @@ import {
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
 import pool from "@/lib/database/db";
-import { runAiVerification } from "@/lib/ai/verify-findings";
+import {
+  estimateVerifyTokens,
+  runAiVerification,
+} from "@/lib/ai/verify-findings";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
+import { reserveAiTokens } from "@/lib/billing/ai-usage";
 import { scanNumericId } from "@/lib/history/resolve-scan";
 
 export const runtime = "nodejs";
@@ -137,12 +140,18 @@ export async function POST(req: NextRequest) {
   const { id: scanId, url, findings } = scanResult.rows[0];
   const parsedFindings = Array.isArray(findings) ? findings : [];
 
-  // Pre-call gate: bounds VulnRadar's own AI cost per plan tier. Bypassed
-  // entirely for a user with their own AI key configured (quota.usingOwnAi),
-  // same as GitHub repo AI code review's identical gate.
-  const quota = await checkAiUsageQuota(userId);
-  if (!quota.allowed) {
-    return NextResponse.json({ error: quota.message }, { status: 429 });
+  // Pre-call gate: bounds VulnRadar's own AI cost per plan tier. Reserves the
+  // pass's worst case out of the window and the credit balance before any
+  // provider call, rather than letting it in on any positive balance and
+  // charging afterwards; runAiVerification holds the pass to what was
+  // reserved and settles it with the real count. The minimum is one
+  // finding, so a scan larger than the allowance is verified as far as it
+  // goes instead of refused. A user with their own AI key is let straight
+  // through and nothing is charged.
+  const { estimate, minimum } = await estimateVerifyTokens(parsedFindings);
+  const gate = await reserveAiTokens(userId, estimate, minimum);
+  if (!gate.allowed) {
+    return NextResponse.json({ error: gate.message }, { status: 429 });
   }
 
   const outcome = await runAiVerification(
@@ -150,7 +159,7 @@ export async function POST(req: NextRequest) {
     parsedFindings,
     scanId,
     userId,
-    quota.usingOwnAi,
+    gate.reservation,
   );
 
   // Return the updated findings

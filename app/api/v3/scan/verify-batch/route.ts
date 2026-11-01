@@ -7,9 +7,12 @@ import {
   apiKeyScopeErrorMessage,
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
-import { verifyFindingsBatch } from "@/lib/ai/verify-findings";
+import {
+  estimateVerifyTokens,
+  verifyFindingsBatch,
+} from "@/lib/ai/verify-findings";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
+import { reserveAiTokens } from "@/lib/billing/ai-usage";
 import { getSettings } from "@/lib/config/runtime-config";
 import pool from "@/lib/database/db";
 import type { Vulnerability } from "@/lib/scanner/types";
@@ -129,19 +132,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Pre-call gate: bounds VulnRadar's own AI cost per plan tier. Bypassed
-  // entirely for a user with their own AI key configured (quota.usingOwnAi),
-  // same as GitHub repo AI code review's identical gate.
-  const quota = await checkAiUsageQuota(userId);
-  if (!quota.allowed) {
-    return NextResponse.json({ error: quota.message }, { status: 429 });
+  // Pre-call gate: reserves the batch's worst case before any provider call,
+  // and verifyFindingsBatch holds the pass to it and settles it. See
+  // app/api/v3/scan/verify/route.ts, which gates the same way.
+  const { estimate, minimum } = await estimateVerifyTokens(findings);
+  const gate = await reserveAiTokens(userId, estimate, minimum);
+  if (!gate.allowed) {
+    return NextResponse.json({ error: gate.message }, { status: 429 });
   }
 
   const enriched = await verifyFindingsBatch(
     url,
     findings,
     userId,
-    quota.usingOwnAi,
+    gate.reservation,
   );
 
   return NextResponse.json({ findings: enriched });

@@ -3,6 +3,13 @@ import { hasOwnAiConfig } from "@/lib/billing/github-review-usage";
 import { getUserPlanLimits } from "@/lib/billing/plan-limits";
 import { getSetting } from "@/lib/config/runtime-config";
 import { CONFIG_AI_USAGE_WINDOW_HOURS } from "@/lib/config/config-values";
+import {
+  AI_TOKEN_LEDGER,
+  reserveMetered,
+  settleReservation,
+  uncappedReservation,
+  type TokenReservation,
+} from "@/lib/billing/token-reservation";
 
 /**
  * Unified, fixed-window AI token usage tracking for the aiTokensPerWindow
@@ -297,6 +304,109 @@ export async function recordAiTokens(
       [userId, creditPortion],
     );
   }
+}
+
+export type AiTokenReservation = TokenReservation;
+
+export type AiTokenGate =
+  | { allowed: true; reservation: AiTokenReservation }
+  | {
+      allowed: false;
+      /** Refused because another metered run of this user's is in flight,
+       *  not because the allowance ran out. */
+      busy: boolean;
+      message: string;
+    };
+
+/**
+ * The gate for a metered AI run (finding verification): takes up to
+ * `estimate` tokens out of the window allowance and then the purchased
+ * balance BEFORE the run, and refuses when the two together hold less than
+ * `minimum` (by default the whole estimate). The run is then held to the
+ * reservation's `budget`, and settleAiTokens hands back what it did not use.
+ *
+ * checkAiUsageQuota, which this replaces on the verify routes, let a run in
+ * on any positive balance and charged afterwards with a floor at zero: one
+ * credit bought a verification of any size, and two runs started together
+ * both passed. A smaller `minimum` is for a run that can do useful work on
+ * part of its estimate (verification stops at the budget and reports the
+ * findings it did not reach), so a large scan is verified as far as the
+ * allowance goes instead of refused outright.
+ *
+ * Own AI key: allowed, nothing debited or recorded. Billing disabled or an
+ * unlimited plan: allowed and uncapped, the run's real count recorded against
+ * the window for visibility, as before.
+ */
+export async function reserveAiTokens(
+  userId: number,
+  estimate: number,
+  minimum: number = estimate,
+): Promise<AiTokenGate> {
+  const { windowStart, windowHours } = await resolveCurrentWindow();
+  if (await hasOwnAiConfig(userId)) {
+    return {
+      allowed: true,
+      reservation: uncappedReservation(userId, windowStart, true),
+    };
+  }
+
+  const limits = await getUserPlanLimits(userId);
+  const limitTokens = limits?.aiTokensPerWindow ?? -1;
+  if (limitTokens === -1) {
+    return {
+      allowed: true,
+      reservation: uncappedReservation(userId, windowStart, false),
+    };
+  }
+
+  const result = await reserveMetered(
+    AI_TOKEN_LEDGER,
+    userId,
+    windowStart,
+    limitTokens,
+    estimate,
+    minimum,
+  );
+  if (result.ok) return { allowed: true, reservation: result.reservation };
+  if (result.busy) {
+    return {
+      allowed: false,
+      busy: true,
+      message:
+        "Another AI verification is still running on your account. Wait for it to finish, then try again.",
+    };
+  }
+  if (limitTokens === 0 && result.balance === 0) {
+    return {
+      allowed: false,
+      busy: false,
+      message:
+        "AI features are not available on your plan. Upgrade to use this, connect your own AI provider key in Profile > AI settings, or buy AI credits in Profile > Billing.",
+    };
+  }
+  return {
+    allowed: false,
+    busy: false,
+    message: `This needs up to ${result.needed.toLocaleString()} AI tokens and your account has ${(result.windowRemaining + result.balance).toLocaleString()} left: ${result.windowRemaining.toLocaleString()} in this ${windowHours}-hour window and ${result.balance.toLocaleString()} in AI credits. Upgrade your plan, wait for the window to reset, connect your own AI provider key in Profile > AI settings, or buy AI credits in Profile > Billing.`,
+  };
+}
+
+/**
+ * Closes a reservation with the run's real token count: the unused part of
+ * the reservation goes back (credit first to the balance, the rest off the
+ * window counter), and a run that overran its estimate is charged the
+ * difference the way recordAiTokens charges, floored at zero.
+ */
+export async function settleAiTokens(
+  reservation: AiTokenReservation,
+  actualTokens: number,
+): Promise<void> {
+  await settleReservation(AI_TOKEN_LEDGER, reservation, actualTokens, {
+    recordUncapped: (tokens) =>
+      recordAiTokens(reservation.userId, tokens, reservation.windowStart, true),
+    chargeOverrun: (tokens) =>
+      recordAiTokens(reservation.userId, tokens, reservation.windowStart, true),
+  });
 }
 
 export interface AiUsageQuotaCheck {

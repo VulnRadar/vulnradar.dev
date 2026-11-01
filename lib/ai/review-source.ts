@@ -8,11 +8,13 @@
  * injection risks, insecure crypto usage, auth/authorization logic flaws,
  * unsafe deserialization — rather than verifying existing findings.
  *
- * Token accounting: every call's REAL usage (as reported by the provider
- * in its `usage` field) is added to the caller's monthly counter via
- * lib/billing/github-review-usage.ts, not a pre-run estimate. The
- * pre-run estimate (lib/scanner/github-repo-scan.ts's estimateTokens) is
- * only used for the separate, always-enforced per-run ceiling.
+ * Token accounting: the route reserves estimateGithubReviewTokens out of the
+ * window and the credit balance before the run (lib/billing/
+ * github-review-usage.ts's reserveGithubReviewTokens), the run is held to
+ * that reservation, and the route settles it with the REAL usage the
+ * provider reported in its `usage` fields. The input-only estimate
+ * (lib/scanner/github-repo-scan.ts's estimateTokens) is still the separate,
+ * always-enforced per-run ceiling.
  */
 
 import type { Category, Severity, Vulnerability } from "@/lib/scanner/types";
@@ -23,7 +25,6 @@ import {
   resolveUserEndpoint,
   type AiEndpoint,
 } from "./verify-findings";
-import { recordGithubReviewTokens } from "@/lib/billing/github-review-usage";
 import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME } from "@/lib/config/constants";
 import { postChatCompletion } from "@/lib/ai/transport";
@@ -144,27 +145,92 @@ function buildFileBlock(file: RepoFile): string {
   return `--- FILE: ${file.path} ---\n${numbered}`;
 }
 
-/** Groups files into call-sized batches. A single file larger than the budget still gets its own batch. */
-function batchFiles(
-  files: RepoFile[],
-  charBudget: number = PER_CALL_CHAR_BUDGET,
-): RepoFile[][] {
-  const batches: RepoFile[][] = [];
-  let current: RepoFile[] = [];
+/**
+ * Groups items into call-sized batches by `sizeOf`. A single item larger than
+ * the budget still gets its own batch. Shared by the run (file contents) and
+ * the route's estimate (tree byte sizes) so both cut the repo the same way.
+ */
+function batchBySize<T>(
+  items: T[],
+  sizeOf: (item: T) => number,
+  charBudget: number,
+): T[][] {
+  const batches: T[][] = [];
+  let current: T[] = [];
   let currentChars = 0;
 
-  for (const file of files) {
-    const size = file.content.length;
+  for (const item of items) {
+    const size = sizeOf(item);
     if (current.length > 0 && currentChars + size > charBudget) {
       batches.push(current);
       current = [];
       currentChars = 0;
     }
-    current.push(file);
+    current.push(item);
     currentChars += size;
   }
   if (current.length > 0) batches.push(current);
   return batches;
+}
+
+/** Groups files into call-sized batches. A single file larger than the budget still gets its own batch. */
+function batchFiles(
+  files: RepoFile[],
+  charBudget: number = PER_CALL_CHAR_BUDGET,
+): RepoFile[][] {
+  return batchBySize(files, (f) => f.content.length, charBudget);
+}
+
+/**
+ * What the "N: " line prefixes and the "--- FILE ---" headers add to a
+ * file's own size, as a share of it. Only the route's pre-fetch estimate
+ * needs it (the run measures the prompt it actually built); a 20-character
+ * average line with a 4-character prefix is 20%, rounded up.
+ */
+const PROMPT_FRAMING_ALLOWANCE = 0.25;
+
+/** The longer of the two system prompts, so a ceiling holds for either. */
+const SYSTEM_PROMPT_CHARS = Math.max(
+  buildReviewSystemPrompt(true).length,
+  buildReviewSystemPrompt(false).length,
+);
+
+/** The most one review call over `promptChars` of prompt can cost. */
+function reviewCallCeiling(promptChars: number, maxTokensPerCall: number) {
+  return estimateTokens(SYSTEM_PROMPT_CHARS + promptChars) + maxTokensPerCall;
+}
+
+/**
+ * What a review of files with these byte sizes should reserve, from the tree
+ * metadata alone, before any content is fetched: each call's input plus its
+ * whole output allowance, batched the way runGithubAiReview will batch them.
+ * The input-only GITHUB_REVIEW_MAX_TOKENS_PER_RUN check stays the ceiling on
+ * what is sent; this is what the account is asked to cover.
+ */
+export async function estimateGithubReviewTokens(
+  fileSizes: number[],
+): Promise<number> {
+  if (fileSizes.length === 0) return 0;
+  const {
+    GITHUB_REVIEW_MAX_TOKENS_PER_CALL: maxTokensPerCall,
+    GITHUB_REVIEW_PER_CALL_CHAR_BUDGET: perCallCharBudget,
+  } = await getSettings([
+    "GITHUB_REVIEW_MAX_TOKENS_PER_CALL",
+    "GITHUB_REVIEW_PER_CALL_CHAR_BUDGET",
+  ] as const);
+  return batchBySize(fileSizes, (s) => s, perCallCharBudget).reduce(
+    (sum, batch) => {
+      const chars = batch.reduce((n, s) => n + s, 0);
+      return (
+        sum +
+        reviewCallCeiling(
+          Math.ceil(chars * (1 + PROMPT_FRAMING_ALLOWANCE)),
+          maxTokensPerCall,
+        )
+      );
+    },
+    0,
+  );
 }
 
 function parseFindings(text: string, files: RepoFile[]): Vulnerability[] {
@@ -301,12 +367,14 @@ async function callReviewModel(
 
 export interface GithubAiReviewResult {
   findings: Vulnerability[];
-  /** Real tokens spent across every call in this run (already recorded to the monthly counter, unless usingOwnAi). */
+  /** Real tokens spent across every call in this run. The caller settles its reservation with this. */
   totalTokensUsed: number;
   /** True if no AI endpoint could be resolved (server not configured, no user key) — findings will be empty. */
   noEndpoint: boolean;
   /** True if the estimated content size exceeded the per-run ceiling and the review was skipped entirely. */
   rejectedOverCap: boolean;
+  /** True if the reservation could not cover the next batch, so the files from there on were not reviewed. */
+  stoppedAtBudget: boolean;
 }
 
 /**
@@ -314,35 +382,34 @@ export interface GithubAiReviewResult {
  * like the existing Vulnerability type. Enforces the per-run token
  * ceiling defensively (the primary enforcement point is the caller, which
  * can estimate from GitHub tree metadata before ever fetching content —
- * see app/api/v3/scan/github/route.ts) and records real usage to the
- * monthly counter after each call, except when `usingOwnAi` is true.
+ * see app/api/v3/scan/github/route.ts).
+ *
+ * `budgetTokens` is what the route's reserveGithubReviewTokens gate took for
+ * this run, or null when nothing caps it (own key, billing off, the free
+ * trial). Each batch is admitted at its worst case, so the run cannot spend
+ * past the reservation. Nothing is recorded here: the route settles the
+ * reservation with totalTokensUsed once the run is over. Recording per call
+ * from here was the half of the old record-after-the-fact design that let a
+ * run's charge land on a balance that had never covered it.
  */
 export async function runGithubAiReview(
   files: RepoFile[],
   userId: number,
-  usingOwnAi: boolean,
   isPrivate: boolean,
-  creditCovered = false,
+  budgetTokens: number | null,
 ): Promise<GithubAiReviewResult> {
-  if (files.length === 0) {
-    return {
-      findings: [],
-      totalTokensUsed: 0,
-      noEndpoint: false,
-      rejectedOverCap: false,
-    };
-  }
+  const nothing = {
+    findings: [],
+    totalTokensUsed: 0,
+    noEndpoint: false,
+    rejectedOverCap: false,
+    stoppedAtBudget: false,
+  };
+  if (files.length === 0) return nothing;
 
   const endpoint =
     (await resolveUserEndpoint(userId)) ?? resolveServerEndpoint();
-  if (!endpoint) {
-    return {
-      findings: [],
-      totalTokensUsed: 0,
-      noEndpoint: true,
-      rejectedOverCap: false,
-    };
-  }
+  if (!endpoint) return { ...nothing, noEndpoint: true };
 
   const totalChars = files.reduce((sum, f) => sum + f.content.length, 0);
   const {
@@ -370,20 +437,24 @@ export async function runGithubAiReview(
     reasoningTimeoutMultiplier,
   );
   if (estimateTokens(totalChars) > maxTokensPerRun) {
-    return {
-      findings: [],
-      totalTokensUsed: 0,
-      noEndpoint: false,
-      rejectedOverCap: true,
-    };
+    return { ...nothing, rejectedOverCap: true };
   }
 
   const batches = batchFiles(files, perCallCharBudget);
 
   const findings: Vulnerability[] = [];
   let totalTokensUsed = 0;
+  let stoppedAtBudget = false;
 
   for (const batch of batches) {
+    if (budgetTokens !== null) {
+      const promptChars = batch.map(buildFileBlock).join("\n\n").length;
+      const ceiling = reviewCallCeiling(promptChars, maxTokensPerCall);
+      if (totalTokensUsed + ceiling > budgetTokens) {
+        stoppedAtBudget = true;
+        break;
+      }
+    }
     const result = await callReviewModel(
       endpoint,
       batch,
@@ -393,22 +464,6 @@ export async function runGithubAiReview(
     );
     findings.push(...result.findings);
     totalTokensUsed += result.totalTokens;
-
-    if (result.totalTokens > 0 && !usingOwnAi) {
-      try {
-        await recordGithubReviewTokens(
-          userId,
-          result.totalTokens,
-          undefined,
-          creditCovered,
-        );
-      } catch (err) {
-        console.error(
-          "[AI-REVIEW] Failed to record token usage (non-fatal):",
-          err instanceof Error ? err.message : err,
-        );
-      }
-    }
   }
 
   return {
@@ -416,5 +471,6 @@ export async function runGithubAiReview(
     totalTokensUsed,
     noEndpoint: false,
     rejectedOverCap: false,
+    stoppedAtBudget,
   };
 }

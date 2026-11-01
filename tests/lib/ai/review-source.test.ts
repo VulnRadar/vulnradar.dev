@@ -20,13 +20,16 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+// The review must not charge anything itself any more: the route reserves
+// before it and settles after it. Mocked so a stray call would show up here.
 const mockRecordGithubReviewTokens = vi.fn();
 vi.mock("@/lib/billing/github-review-usage", () => ({
   recordGithubReviewTokens: (...args: unknown[]) =>
     mockRecordGithubReviewTokens(...args),
 }));
 
-const { runGithubAiReview } = await import("@/lib/ai/review-source");
+const { runGithubAiReview, estimateGithubReviewTokens } =
+  await import("@/lib/ai/review-source");
 
 const FILES: RepoFile[] = [
   {
@@ -117,7 +120,7 @@ describe("runGithubAiReview: Anthropic-shaped endpoints", () => {
       anthropicResponse(JSON.stringify([finding()])),
     );
 
-    const result = await runGithubAiReview(FILES, 1, false, false);
+    const result = await runGithubAiReview(FILES, 1, false, null);
 
     expect(calledUrl()).toBe("https://api.minimax.io/anthropic/messages");
     expect(calledUrl()).not.toContain("chat/completions");
@@ -129,7 +132,7 @@ describe("runGithubAiReview: Anthropic-shaped endpoints", () => {
     process.env.AI_BASE_URL = "https://api.anthropic.com/v1";
     fetchMock().mockResolvedValueOnce(anthropicResponse("[]"));
 
-    await runGithubAiReview(FILES, 1, false, false);
+    await runGithubAiReview(FILES, 1, false, null);
 
     const body = calledBody();
     // Anthropic takes the system prompt out of band. Leaving it as a
@@ -140,28 +143,13 @@ describe("runGithubAiReview: Anthropic-shaped endpoints", () => {
     expect(messages.every((m) => m.role !== "system")).toBe(true);
   });
 
-  it("bills the real token usage Anthropic reports", async () => {
+  it("reports the real token usage Anthropic reports, for the route to settle with", async () => {
     process.env.AI_BASE_URL = "https://api.minimax.io/anthropic";
     fetchMock().mockResolvedValueOnce(anthropicResponse("[]"));
 
-    const result = await runGithubAiReview(FILES, 1, false, false);
+    const result = await runGithubAiReview(FILES, 1, false, null);
 
     expect(result.totalTokensUsed).toBe(150);
-    expect(mockRecordGithubReviewTokens).toHaveBeenCalledWith(
-      1,
-      150,
-      undefined,
-      false,
-    );
-  });
-
-  it("does not bill a user running on their own AI key", async () => {
-    process.env.AI_BASE_URL = "https://api.minimax.io/anthropic";
-    fetchMock().mockResolvedValueOnce(anthropicResponse("[]"));
-
-    await runGithubAiReview(FILES, 1, true, false);
-
-    expect(mockRecordGithubReviewTokens).not.toHaveBeenCalled();
   });
 });
 
@@ -171,7 +159,7 @@ describe("runGithubAiReview: OpenAI-compatible endpoints", () => {
       openAiResponse(JSON.stringify([finding()])),
     );
 
-    const result = await runGithubAiReview(FILES, 1, false, false);
+    const result = await runGithubAiReview(FILES, 1, false, null);
 
     expect(calledUrl()).toBe(
       "https://api.example-llm.test/v1/chat/completions",
@@ -186,7 +174,7 @@ describe("runGithubAiReview: OpenAI-compatible endpoints", () => {
     process.env.AI_MODEL = "gpt-5.4";
     fetchMock().mockResolvedValueOnce(openAiResponse("[]"));
 
-    await runGithubAiReview(FILES, 1, false, false);
+    await runGithubAiReview(FILES, 1, false, null);
 
     // "verify" effort: deciding whether a specific line is exploitable is the
     // same kind of judgement finding verification makes, and the same kind a
@@ -208,7 +196,7 @@ describe("runGithubAiReview: OpenAI-compatible endpoints", () => {
       })
       .mockResolvedValueOnce(openAiResponse(JSON.stringify([finding()])));
 
-    const result = await runGithubAiReview(FILES, 1, false, false);
+    const result = await runGithubAiReview(FILES, 1, false, null);
 
     // A whole batch of files is worth more than an optional quality knob.
     expect(fetchMock()).toHaveBeenCalledTimes(2);
@@ -226,7 +214,7 @@ describe("runGithubAiReview: confidence", () => {
       openAiResponse(JSON.stringify([finding({ confidence: 95 })])),
     );
 
-    const result = await runGithubAiReview(FILES, 1, false, false);
+    const result = await runGithubAiReview(FILES, 1, false, null);
 
     expect(result.findings[0].confidence).toBe(95);
   });
@@ -236,7 +224,7 @@ describe("runGithubAiReview: confidence", () => {
       openAiResponse(JSON.stringify([finding({ confidence: 30 })])),
     );
 
-    const result = await runGithubAiReview(FILES, 1, false, false);
+    const result = await runGithubAiReview(FILES, 1, false, null);
 
     // The prompt says not to file below 60, because that is the model calling
     // its own finding a guess. Models comply unevenly, so it is enforced here.
@@ -250,7 +238,7 @@ describe("runGithubAiReview: confidence", () => {
       openAiResponse(JSON.stringify([noConfidence])),
     );
 
-    const result = await runGithubAiReview(FILES, 1, false, false);
+    const result = await runGithubAiReview(FILES, 1, false, null);
 
     expect(result.findings[0].confidence).toBe(60);
   });
@@ -260,7 +248,7 @@ describe("runGithubAiReview: confidence", () => {
       openAiResponse(JSON.stringify([finding({ confidence: 900 })])),
     );
 
-    const result = await runGithubAiReview(FILES, 1, false, false);
+    const result = await runGithubAiReview(FILES, 1, false, null);
 
     expect(result.findings[0].confidence).toBe(100);
   });
@@ -272,7 +260,7 @@ describe("runGithubAiReview: parsing", () => {
       openAiResponse(JSON.stringify([finding({ file: "src/invented.js" })])),
     );
 
-    const result = await runGithubAiReview(FILES, 1, false, false);
+    const result = await runGithubAiReview(FILES, 1, false, null);
 
     expect(result.findings).toHaveLength(0);
   });
@@ -282,10 +270,84 @@ describe("runGithubAiReview: parsing", () => {
     delete process.env.AI_API_KEY;
     delete process.env.AI_PROVIDER;
 
-    const result = await runGithubAiReview(FILES, 1, false, false);
+    const result = await runGithubAiReview(FILES, 1, false, null);
 
     expect(result.noEndpoint).toBe(true);
     expect(result.findings).toHaveLength(0);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("runGithubAiReview: held to the route's reservation", () => {
+  /** Files large enough that each lands in its own call-sized batch. */
+  function bigFiles(n: number): RepoFile[] {
+    return Array.from({ length: n }, (_, i) => ({
+      path: `src/f${i}.js`,
+      content: "x".repeat(39_000),
+    }));
+  }
+
+  it("reviews every batch when the budget covers the estimate, and records nothing itself", async () => {
+    fetchMock().mockImplementation(async () => openAiResponse("[]"));
+    const files = bigFiles(3);
+    const budget = await estimateGithubReviewTokens(
+      files.map((f) => f.content.length),
+    );
+
+    const result = await runGithubAiReview(files, 1, false, budget);
+
+    expect(fetchMock()).toHaveBeenCalledTimes(3);
+    expect(result.stoppedAtBudget).toBe(false);
+    expect(result.totalTokensUsed).toBe(450);
+    expect(mockRecordGithubReviewTokens).not.toHaveBeenCalled();
+  });
+
+  it("stops before a batch the budget cannot cover at its worst case", async () => {
+    // A call that really costs 20000 tokens leaves too little of a one-batch
+    // reservation for the next batch's ceiling.
+    fetchMock().mockImplementation(async () => ({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "[]" } }],
+        usage: { prompt_tokens: 15_000, completion_tokens: 5_000 },
+      }),
+    }));
+    const files = bigFiles(3);
+    const oneBatch = await estimateGithubReviewTokens([39_000]);
+
+    const result = await runGithubAiReview(files, 1, false, oneBatch + 100);
+
+    expect(fetchMock()).toHaveBeenCalledTimes(1);
+    expect(result.stoppedAtBudget).toBe(true);
+    expect(result.totalTokensUsed).toBe(20_000);
+  });
+
+  it("an uncapped run (own key, billing off, free trial) is held to nothing but the per-run ceiling", async () => {
+    fetchMock().mockImplementation(async () => openAiResponse("[]"));
+
+    const result = await runGithubAiReview(bigFiles(3), 1, false, null);
+
+    expect(fetchMock()).toHaveBeenCalledTimes(3);
+    expect(result.stoppedAtBudget).toBe(false);
+  });
+});
+
+describe("estimateGithubReviewTokens", () => {
+  it("is zero for no files", async () => {
+    expect(await estimateGithubReviewTokens([])).toBe(0);
+  });
+
+  it("covers each batch's input and its whole output allowance", async () => {
+    const { CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_CALL } =
+      await import("@/lib/config/config-values");
+    const one = await estimateGithubReviewTokens([39_000]);
+    const three = await estimateGithubReviewTokens([39_000, 39_000, 39_000]);
+
+    expect(one).toBeGreaterThan(
+      CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_CALL + 39_000 / 4,
+    );
+    // Three files over the per-call budget are three calls, each with its
+    // own system prompt and output allowance.
+    expect(three).toBe(one * 3);
   });
 });
