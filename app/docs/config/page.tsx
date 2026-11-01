@@ -661,13 +661,17 @@ export default function ConfigPage() {
             </p>
             <p>
               <InlineCode>APP_URL</InlineCode> is the single exception.{" "}
-              <InlineCode>resolveAppUrl()</InlineCode> in{" "}
-              <InlineCode>lib/config/runtime-config.ts</InlineCode> reads the
-              saved row live when it builds the OAuth{" "}
+              <InlineCode>serverAppUrl()</InlineCode> in{" "}
+              <InlineCode>lib/config/server-app-url.ts</InlineCode> reads the
+              saved row live, then the <InlineCode>APP_URL</InlineCode> and{" "}
+              <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> environment variables
+              as the running container sees them. It builds the OAuth{" "}
               <InlineCode>redirect_uri</InlineCode> for the GitHub, Google, and
-              Discord sign-in routes, so an edit there does take effect for that
-              one use with no rebuild. Canonical URLs, social cards, and email
-              links still read the compiled value.
+              Discord sign-in and connect routes and staff SSO, and the links in
+              verification, password-reset, and signup emails, so an edit there
+              takes effect for those with no rebuild. Canonical URLs, social
+              cards, and the links in other emails still read the compiled
+              value.
             </p>
           </DocsCallout>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
@@ -676,7 +680,7 @@ export default function ConfigPage() {
             <InlineCode>getSetting()</InlineCode> reader and a{" "}
             <InlineCode>runtime</InlineCode> tier, not a build-tier row.
             <InlineCode>APP_URL</InlineCode> is the one build-tier key the panel
-            still saves, for the OAuth redirect described above.
+            still saves, for the redirects and email links described above.
           </p>
         </DocsSubSection>
 
@@ -703,9 +707,9 @@ export default function ConfigPage() {
             the first term is inert: they are the compiled constant, or its{" "}
             <InlineCode>NEXT_PUBLIC_*</InlineCode> environment override, and
             nothing else. The one place the chain does run for a build key is{" "}
-            <InlineCode>resolveAppUrl()</InlineCode> reading{" "}
-            <InlineCode>APP_URL</InlineCode> for OAuth redirects, described
-            above.
+            <InlineCode>serverAppUrl()</InlineCode> reading{" "}
+            <InlineCode>APP_URL</InlineCode> for OAuth redirects and account
+            email links, described above.
           </p>
           <DocsCallout variant="info" title="~30 second propagation">
             The resolver caches the whole table for 30 seconds so a value read

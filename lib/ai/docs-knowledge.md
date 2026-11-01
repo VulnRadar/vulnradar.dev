@@ -577,13 +577,17 @@ NEXT_PUBLIC_* variable named in that
 field&rsquo;s help text) and rebuild.
 
 APP_URL is the single exception.
-resolveAppUrl() in
-lib/config/runtime-config.ts reads the
-saved row live when it builds the OAuth
+serverAppUrl() in
+lib/config/server-app-url.ts reads the
+saved row live, then the APP_URL and
+NEXT_PUBLIC_APP_URL environment variables
+as the running container sees them. It builds the OAuth
 redirect_uri for the GitHub, Google, and
-Discord sign-in routes, so an edit there does take effect for that
-one use with no rebuild. Canonical URLs, social cards, and email
-links still read the compiled value.
+Discord sign-in and connect routes and staff SSO, and the links in
+verification, password-reset, and signup emails, so an edit there
+takes effect for those with no rebuild. Canonical URLs, social
+cards, and the links in other emails still read the compiled
+value.
 
 > **INFO: ~30 second propagation**
 > The resolver caches the whole table for 30 seconds so a value read
@@ -628,7 +632,7 @@ before pointing AI features at a local model.
 - Plan catalogs (limits per plan) live in lib/billing/catalog.ts. The values below only configure the upper bounds and the retention window.
 - of the values above also have a row in the system_settings database table and a control on /admin &rsquo;s Settings tab, sign in as an admin to reach it. The tab list there () and every field on it is generated from the same registry that generates the reference tables below, so the two cannot drift apart. Read the next subsection before you rely on a value you saved there: a control existing on that page does not mean the running app reads it.
 - Every setting on the page is one of two tiers:
-- APP_URL is the single exception. resolveAppUrl() in lib/config/runtime-config.ts reads the saved row live when it builds the OAuth redirect_uri for the GitHub, Google, and Discord sign-in routes, so an edit there does take effect for that one use with no rebuild. Canonical URLs, social cards, and email links still read the compiled value.
+- APP_URL is the single exception. serverAppUrl() in lib/config/server-app-url.ts reads the saved row live, then the APP_URL and NEXT_PUBLIC_APP_URL environment variables as the running container sees them. It builds the OAuth redirect_uri for the GitHub, Google, and Discord sign-in and connect routes and staff SSO, and the links in verification, password-reset, and signup emails, so an edit there takes effect for those with no rebuild. Canonical URLs, social cards, and the links in other emails still read the compiled value.
 
 ### Code examples
 ```text
