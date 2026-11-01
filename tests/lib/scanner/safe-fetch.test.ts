@@ -57,6 +57,17 @@ describe("isPrivateIP IPv6 canonicalization", () => {
     "fe80::1",
     // Unspecified
     "::",
+    // IPv4-compatible (deprecated ::a.b.c.d) forms of private ranges
+    "::127.0.0.1",
+    "::7f00:1",
+    "::a9fe:a9fe",
+    "::10.0.0.1",
+    "::168.63.129.16",
+    // 6to4 (2002::/16) with a private IPv4 in the prefix
+    "2002:7f00:1::",
+    "2002:a9fe:a9fe::1",
+    "2002:c0a8:101:1::1",
+    "2002:a83f:8110::",
   ])("blocks %s", (ip) => {
     expect(isPrivateIP(ip)).toBe(true);
   });
@@ -66,6 +77,8 @@ describe("isPrivateIP IPv6 canonicalization", () => {
     "2606:4700:4700::1111", // Cloudflare DNS
     "2001:4860:4860::8888", // Google DNS
     "::ffff:1.1.1.1", // Cloudflare IPv4-mapped public
+    "::1.1.1.1", // IPv4-compatible public
+    "2002:101:101::1", // 6to4 for a public IPv4
   ])("allows public IPv6 %s", (ip) => {
     expect(isPrivateIP(ip)).toBe(false);
   });

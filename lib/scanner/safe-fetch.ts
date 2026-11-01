@@ -388,24 +388,36 @@ export function isPrivateIP(ip: string): boolean {
 }
 
 /**
- * If `canonicalIp` is an IPv4-mapped (::ffff:a.b.c.d) or RFC 6052 NAT64
- * (64:ff9b::a.b.c.d) address, return the embedded IPv4 in dotted form.
- * Returns null otherwise.
+ * If `canonicalIp` carries an IPv4 address in a form a network can still
+ * deliver to that IPv4 host, return the embedded IPv4 in dotted form:
+ * IPv4-mapped (::ffff:a.b.c.d), the deprecated IPv4-compatible form
+ * (::a.b.c.d, RFC 4291 2.5.5.1), RFC 6052 NAT64 (64:ff9b::a.b.c.d) and 6to4
+ * (2002:aabb:ccdd::/48, RFC 3056). Returns null otherwise.
+ *
+ * The compatible and 6to4 forms used to fall through to the native IPv6
+ * patterns, which match neither, so a DNS answer of ::7f00:1 or
+ * 2002:a9fe:a9fe:: passed as public on a host whose network routes them.
  */
 function ipv4MappedToDotted(canonicalIp: string): string | null {
   const groups = canonicalIp.split(":");
   if (groups.length !== 8) return null;
 
-  // IPv4-mapped IPv6: ::ffff:X.X.X.X → groups[0..4] = 0, groups[5] = ffff
+  // IPv4-mapped IPv6: ::ffff:X.X.X.X → groups[0..4] = 0, groups[5] = ffff.
+  // IPv4-compatible: ::X.X.X.X → groups[0..5] = 0.
   if (
     groups[0] === "0000" &&
     groups[1] === "0000" &&
     groups[2] === "0000" &&
     groups[3] === "0000" &&
     groups[4] === "0000" &&
-    groups[5] === "ffff"
+    (groups[5] === "ffff" || groups[5] === "0000")
   ) {
     return hexGroupPairToDotted(groups[6], groups[7]);
+  }
+
+  // 6to4: 2002:XXXX:XXXX::/48, the IPv4 in the two groups after the prefix.
+  if (groups[0] === "2002") {
+    return hexGroupPairToDotted(groups[1], groups[2]);
   }
 
   // RFC 6052 well-known NAT64: 0064:ff9b::X.X.X.X
