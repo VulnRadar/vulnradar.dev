@@ -537,6 +537,150 @@ export default defineConfig({
           functions: 100,
           branches: 90,
         },
+        // The API v4 foundation (lib/api): route registry, error envelope,
+        // deprecation calendar, version marker and alias rewrite. The floors sit
+        // a few points under what each suite measured, so a new arm has to
+        // arrive with its test.
+        "lib/api/route-registry.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        "lib/api/deprecation.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 90,
+        },
+        "lib/api/rewrite.ts": {
+          lines: 80,
+          statements: 80,
+          functions: 100,
+          branches: 70,
+        },
+        "lib/api/error-codes.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        "lib/api/error-envelope.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        "lib/api/versions.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        "lib/api/frozen-paths.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        "lib/api/api-path.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        // One regular expression and a type guard, held at full coverage
+        // because every API key route reads its credentials through it.
+        "lib/api/bearer.ts": {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        "components/admin/tab-aliases.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 95,
+        },
+        "lib/email/logo-src.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 95,
+        },
+        // The two helpers the signed tokens in lib/auth are built on: the OAuth
+        // and Discord state envelope, and the domain-separated MAC behind the
+        // pending-2FA and IPv4-echo tokens. An uncovered branch here is a
+        // signature check that no test has exercised.
+        "lib/auth/signed-envelope.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        "lib/auth/domain-token.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        // The shared AI request path, and the short-completion and chat-model
+        // modules that build on it directly.
+        "lib/ai/transport.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 90,
+        },
+        "lib/ai/complete.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 90,
+        },
+        "lib/ai/chat/model.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 90,
+        },
+        // Semver ordering shared by the updater, the version endpoint, the boot
+        // banner and the schema gate.
+        "lib/updater/semver.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        // The shared single page GET that the async checks read, and the table
+        // of User-Agent strings every request to a scan target builds from.
+        "lib/scanner/page-fetch.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        "lib/scanner/user-agent.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
+        "lib/database/boot/release-check.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 85,
+        },
+        // The uncovered part is the empty-database and unset-meta paths, which
+        // predate the semver change.
+        "lib/database/boot/schema-version.ts": {
+          lines: 75,
+          statements: 75,
+          functions: 75,
+          branches: 80,
+        },
       },
     },
   },
