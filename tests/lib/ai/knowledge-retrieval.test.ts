@@ -207,7 +207,11 @@ describe("the index is built from real headings", () => {
     // compile-docs-knowledge.mjs emits the page's hero <h1> BELOW the "## Page"
     // heading, so a naive stack let the hero evict its own page and every
     // later page inherited the wrong ancestor.
-    expect(paths).toContain("Self-Hosting > Callouts");
+    // startsWith, not an exact title: a section over the size cap is split into
+    // "(part 1 of 2)", "(part 2 of 2)", and the self-hosting callouts are over it.
+    expect(paths.some((p) => p.startsWith("Self-Hosting > Callouts"))).toBe(
+      true,
+    );
     expect(paths.some((p) => p.startsWith("Webhooks >"))).toBe(true);
   });
 
