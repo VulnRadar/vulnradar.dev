@@ -401,13 +401,10 @@ const POLICY_URL = "https://mta-sts.example.com/.well-known/mta-sts.txt";
 
 /**
  * A real Response, so the body goes through the same stream a live policy
- * fetch does. `finalUrl` is where safeFetch's redirect loop ended up, which it
- * reports as `res.url`.
+ * fetch does.
  */
-function policyResponse(text: string, ok = true, finalUrl = POLICY_URL) {
-  const res = new Response(text, { status: ok ? 200 : 404 });
-  Object.defineProperty(res, "url", { value: finalUrl });
-  return res;
+function policyResponse(text: string, ok = true) {
+  return new Response(text, { status: ok ? 200 : 404 });
 }
 
 const MB = 1024 * 1024;
@@ -547,23 +544,6 @@ describe("checkMtaStsPolicyContent", () => {
     await checkMtaStsPolicyContent("example.com", URL_UNDER_TEST);
     expect(safeFetchMock.mock.calls[0][0]).toBe(POLICY_URL);
     expect(safeFetchMock.mock.calls[0][1]?.redirect).toBe("error");
-  });
-
-  it("does not grade a policy that was reached through a redirect", async () => {
-    txtByName({ "_mta-sts.example.com": ["v=STSv1; id=20260101000000Z"] });
-    dnsMock.resolveMx.mockResolvedValue([
-      { exchange: "mail.example.com", priority: 10 },
-    ]);
-    safeFetchMock.mockResolvedValue(
-      policyResponse(
-        "version: STSv1\nmode: enforce\nmx: mail.example.com\nmax_age: 86400\n",
-        true,
-        `${POLICY_URL}/`,
-      ),
-    );
-    expect(
-      await checkMtaStsPolicyContent("example.com", URL_UNDER_TEST),
-    ).toEqual([]);
   });
 
   it("reports nothing when safeFetch refuses the redirect", async () => {

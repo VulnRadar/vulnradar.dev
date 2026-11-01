@@ -720,22 +720,13 @@ export async function checkMxIpLiteral(
 // ── MTA-STS policy content ──────────────────────────────────────────────
 
 /**
- * Whether safeFetch reached the MTA-STS policy through a redirect.
+ * A redirect safeFetch refused rather than followed.
  *
- * RFC 8461 section 3.3 has senders fetch the policy without following
- * redirects, and both policy fetches pass `redirect: "error"` for that. Until
- * safeFetch honours it, its own loop still follows a same-host 3xx and only
- * reports it through `res.url`, the address the loop ended at. An empty url
- * is a response nobody fetched (a test double) and says nothing.
- */
-export function policyFetchRedirected(res: Response, policyUrl: string) {
-  return !!res.url && res.url !== new URL(policyUrl).href;
-}
-
-/**
- * A redirect safeFetch refused rather than followed: one to another host
- * today, and any 3xx once it honours `redirect: "error"`. Read by code, as
- * SafeFetchError's contract asks, so neither case is a connection failure.
+ * RFC 8461 section 3.3 has senders fetch the MTA-STS policy without following
+ * redirects, so both policy fetches pass `redirect: "error"`, and safeFetch
+ * answers any 3xx to that with a SafeFetchError of code `redirect`. A
+ * `cross_host_redirect` is the same refusal reached by its other rule. Read by
+ * code, as SafeFetchError's contract asks, so neither is a connection failure.
  */
 export function isRefusedRedirect(err: unknown): boolean {
   const code =
@@ -768,9 +759,10 @@ export async function checkMtaStsPolicyContent(
       headers: { "User-Agent": SCANNER_UA },
       signal: AbortSignal.timeout(5000),
     });
-    // Unreachable, errored or redirected is checkMTASTSPolicyFile's finding.
-    // A redirected policy is never graded: no sender reads that file.
-    if (!res.ok || policyFetchRedirected(res, policyUrl)) {
+    // Unreachable or errored is checkMTASTSPolicyFile's finding. A redirect
+    // never gets here: safeFetch throws code `redirect` for it, the catch
+    // below returns nothing, and no sender reads that file anyway.
+    if (!res.ok) {
       void res.body?.cancel().catch(() => {});
       return [];
     }

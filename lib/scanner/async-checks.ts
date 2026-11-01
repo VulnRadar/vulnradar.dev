@@ -76,7 +76,6 @@ import {
   checkBimiVmc,
   checkMxIpLiteral,
   checkMtaStsPolicyContent,
-  policyFetchRedirected,
   isRefusedRedirect,
 } from "@/lib/scanner/checks/email";
 import { safeReadBody } from "@/lib/scanner/read-bounded-body";
@@ -1320,6 +1319,9 @@ async function checkMTASTSPolicyFile(
   // redirects, so a policy URL that answers 3xx has no policy to them, even
   // when the redirect ends at a valid file. Reporting that as fine (or as a
   // connection failure) told the operator the opposite of what senders see.
+  // The fetch passes `redirect: "error"`, so safeFetch throws code `redirect`
+  // on any 3xx (or `cross_host_redirect` for one off the host) instead of
+  // following it, and the catch below turns either into this finding.
   const redirectedVuln = (where: string) =>
     makeVuln(
       url,
@@ -1341,10 +1343,6 @@ async function checkMTASTSPolicyFile(
       headers: FETCH_OPTS.headers,
       signal: AbortSignal.timeout(5000),
     });
-    if (policyFetchRedirected(res, policyUrl)) {
-      void res.body?.cancel().catch(() => {});
-      return [redirectedVuln(res.url)];
-    }
     if (!res.ok) {
       void res.body?.cancel().catch(() => {});
       return [
