@@ -170,12 +170,11 @@ describe("recomputeScanScore", () => {
     expect(params).toEqual([["app.example.com", "example.com", "com"], 7]);
   });
 
-  it("matches the host, not a lookalike in the userinfo", async () => {
+  // The caller owns mine.example. Read naively, this URL's host is
+  // mine.example; the host_reputation row it sourced is victim.test's.
+  it("matches the host, not an owned domain placed in the userinfo", async () => {
     mockQuery.mockResolvedValueOnce(
-      scanRow(
-        [finding("a", "high")],
-        "https://victim.example.com:pw@attacker.test/",
-      ),
+      scanRow([finding("a", "high")], "https://mine.example:pw@victim.test/"),
     );
     mockQuery.mockResolvedValue({ rows: [] });
 
@@ -183,7 +182,7 @@ describe("recomputeScanScore", () => {
 
     const [lookup] = callsMatching("FROM domains");
     expect((lookup as [string, unknown[]])[1][0]).toEqual([
-      "attacker.test",
+      "victim.test",
       "test",
     ]);
   });

@@ -171,11 +171,15 @@ describeIntegration("false-positive feedback and host reputation", () => {
     const userA = await createUser();
     const realOwner = await createUser();
     const scanId = await seedPublicScanAndReputation(userA.id, host);
+    // The last row is a string suffix of the host with no dot boundary
+    // ("ear<id>.example.test" for "near<id>.example.test"), which a
+    // `host LIKE '%' || domain` test would accept.
     await pool.query(
       `INSERT INTO domains (user_id, domain, status, verification_token)
        VALUES ($1, $2, 'verified', $3),
               ($4, $2, 'pending', $5),
-              ($4, $6, 'verified', $7)`,
+              ($4, $6, 'verified', $7),
+              ($4, $8, 'verified', $9)`,
       [
         realOwner.id,
         host,
@@ -183,6 +187,8 @@ describeIntegration("false-positive feedback and host reputation", () => {
         userA.id,
         unique("tok"),
         `not${host}`,
+        unique("tok"),
+        `${label.slice(1)}.example.test`,
         unique("tok"),
       ],
     );

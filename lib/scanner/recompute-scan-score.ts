@@ -50,9 +50,11 @@ function parseFindings(raw: unknown): Vulnerability[] {
 /**
  * Whether `userId` has verified a domain covering the host `url` points at.
  *
- * The host is what `new URL()` parses, so a lookalike in the userinfo
- * ("https://victim.example:pw@attacker.test/") is matched as attacker.test.
- * An IP literal has no host_reputation row at all, so it never qualifies.
+ * The host is what `new URL()` parses, the same parse that keyed the
+ * host_reputation row, so a domain the caller owns placed in the userinfo of
+ * someone else's URL ("https://mine.example:pw@victim.test/") is matched as
+ * victim.test, the row it would write. An IP literal has no host_reputation
+ * row at all, so it never qualifies.
  */
 async function callerOwnsHost(url: string, userId: number): Promise<boolean> {
   if (!normalizeHostForReputation(url)) return false;
