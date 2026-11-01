@@ -93,16 +93,30 @@ const DEBUG_MODE_MARKERS: { name: string; re: RegExp; critical?: boolean }[] = [
   },
 ];
 
+/**
+ * The *nix patterns are written as directory segments that cannot contain a
+ * slash, each bounded, behind a lookbehind on the leading literal.
+ *
+ * They used to be `[\w./-]*` runs, which include the slash and the dot the
+ * pattern is looking for next, so a run could be split at every slash and
+ * every dot before the extension failed to match. The /opt/ pattern had two
+ * such runs back to back and was cubic: "/opt/" repeated took 52 ms at 1 KB,
+ * 410 ms at 2 KB and 3.3 s at 4 KB, which puts a 256 KB page at days. The
+ * other three were quadratic, about 20 s each at 256 KB. A segment class
+ * without the slash leaves one way to read each directory, and the lookbehind
+ * stops "/home/a/home/a" from starting again inside the path an earlier start
+ * already read.
+ */
 const INTERNAL_PATH_PATTERNS: RegExp[] = [
   /[A-Za-z]:\\(?:Users|inetpub|Windows|Program Files(?: \(x86\))?)\\[\w \\.-]+/,
-  /\/(?:home|Users)\/[\w.-]+\/[\w./-]*\.(?:js|ts|php|py|rb|java|log)\b/,
+  /(?<![\w.-])\/(?:home|Users)\/[\w.-]{1,200}\/(?:[\w.-]{1,200}\/){0,40}[\w.-]{0,200}\.(?:js|ts|php|py|rb|java|log)\b/,
   // A file, the way an error or a log line prints one. A directory on its
   // own ("root /var/www/myapp/public;", "e.g., /var/www/html/app/...") is how
   // configuration guides are written; an error that leaks a path names the
   // file it failed in.
-  /\/var\/(?:www|log|lib)\/[\w./-]*\.(?:php|js|ts|mjs|cjs|py|rb|java|go|cs|pl|cgi|jsp|aspx?|log|ini|conf|json|ya?ml)\b/,
-  /\/usr\/local\/[\w./-]*\.(?:php|js|ts|mjs|cjs|py|rb|java|go|cs|pl|cgi|jsp|log|ini|conf|json|ya?ml)\b/,
-  /\/opt\/[\w./-]+\/[\w./-]*\.(?:php|js|ts|mjs|cjs|py|rb|java|go|cs|pl|cgi|jsp|log|ini|conf|json|ya?ml)\b/,
+  /(?<![\w.-])\/var\/(?:www|log|lib)\/(?:[\w.-]{1,200}\/){0,40}[\w.-]{0,200}\.(?:php|js|ts|mjs|cjs|py|rb|java|go|cs|pl|cgi|jsp|aspx?|log|ini|conf|json|ya?ml)\b/,
+  /(?<![\w.-])\/usr\/local\/(?:[\w.-]{1,200}\/){0,40}[\w.-]{0,200}\.(?:php|js|ts|mjs|cjs|py|rb|java|go|cs|pl|cgi|jsp|log|ini|conf|json|ya?ml)\b/,
+  /(?<![\w.-])\/opt\/(?:[\w.-]{1,200}\/){1,40}[\w.-]{0,200}\.(?:php|js|ts|mjs|cjs|py|rb|java|go|cs|pl|cgi|jsp|log|ini|conf|json|ya?ml)\b/,
 ];
 
 export const disclosureChecks: PageCheck[] = [

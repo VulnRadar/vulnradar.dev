@@ -98,6 +98,33 @@ const fixtures: PageCheckFixtures = {
       expect: "fire",
     },
     {
+      description: "a deep /opt path in a Node trace",
+      body: `<pre>at handler (/opt/app/releases/2024.06.01/dist/server.js:44:9)</pre>`,
+      expect: "fire",
+    },
+    {
+      description: "a /usr/local path to an installed module",
+      body: `<pre>Error: Cannot find module '/usr/local/lib/node_modules/npm/index.js'</pre>`,
+      expect: "fire",
+    },
+    {
+      description: "a file directly under /var/www",
+      body: `<pre>Warning: require(/var/www/index.php): failed to open stream</pre>`,
+      expect: "fire",
+    },
+    {
+      description: "a file:// URL to a home directory",
+      body: `<pre>file:///home/dev/project/app.py</pre>`,
+      expect: "fire",
+    },
+    {
+      // The leading literal has to start the path. A site's own URL that
+      // happens to have a /home/ segment is not a filesystem path.
+      description: "a public URL whose path contains a home segment",
+      body: `<p><a href="https://cdn.example.com/home/assets/app.js">app</a></p>`,
+      expect: "skip",
+    },
+    {
       description: "ordinary page with no filesystem paths",
       body: `<html><body><h1>Welcome</h1></body></html>`,
       expect: "skip",

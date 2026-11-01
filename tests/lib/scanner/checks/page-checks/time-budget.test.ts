@@ -98,7 +98,51 @@ const SHAPES: Record<string, string> = {
   phpWarn: "Warning:" + " in " + "a".repeat(N),
   inlineScriptSecrets:
     "<script>" + rep('apiKey="AAAAAAAAAAAAAAAAAAAAAAAA"') + "</script>",
+  // page-internal-path-disclosed: a path prefix repeated with no extension
+  // anywhere, so every slash is a place a run of path characters could split.
+  // The /opt/ one was cubic (3.3 s at 4 KB, eight times that per doubling)
+  // and the other three about 20 s each at this size.
+  optPathRun: rep("/opt/"),
+  homePathRun: rep("/home/a"),
+  varPathRun: rep("/var/www"),
+  usrLocalRun: rep("/usr/local"),
 };
+
+/** The path shapes, also held to an absolute line below. */
+const PATH_SHAPES = ["optPathRun", "homePathRun", "varPathRun", "usrLocalRun"];
+
+/**
+ * How many times a check that crossed the line is measured again before it is
+ * reported.
+ *
+ * docBlockRun failed about one CI run in two with page-stack-trace-disclosed
+ * at 300 to 400 ms, and the check is not slow: it measures 10 to 20 ms on that
+ * body, growing linearly with it. The time was the garbage collector's.
+ * buildPageContext keeps about 400 MB live for a 256 KB run of unclosed
+ * <code>, and a full collection of that heap costs about 260 ms on a
+ * development machine. It lands on whichever check allocates first after the
+ * context is built, which on that body is this one, because it is the first
+ * to strip the code examples out.
+ *
+ * A collection pause is a fact about the heap, not about the check, so the
+ * fastest of three runs is what is compared. A backtracking pattern costs the
+ * same on every run and still fails; a pause lands on one run and does not.
+ */
+const REMEASURE_RUNS = 3;
+
+function timeCheck(
+  check: (typeof pageChecks)[number],
+  ctx: ReturnType<typeof buildPageContext>,
+): number {
+  const started = Date.now();
+  try {
+    if (requirementsMet(check, ctx)) check.run(ctx);
+  } catch {
+    // A throwing check is the engine's problem, not this test's: it
+    // is contained per check there. Only the time is measured here.
+  }
+  return Date.now() - started;
+}
 
 describe("page checks stay linear on a hostile page", () => {
   for (const [shape, body] of Object.entries(SHAPES)) {
@@ -116,16 +160,10 @@ describe("page checks stay linear on a hostile page", () => {
         body,
       );
 
-      const timings = pageChecks.map((check) => {
-        const started = Date.now();
-        try {
-          if (requirementsMet(check, ctx)) check.run(ctx);
-        } catch {
-          // A throwing check is the engine's problem, not this test's: it
-          // is contained per check there. Only the time is measured here.
-        }
-        return { id: check.id, ms: Date.now() - started };
-      });
+      const timings = pageChecks.map((check) => ({
+        check,
+        ms: timeCheck(check, ctx),
+      }));
 
       // Median, not mean: one catastrophic check would drag a mean up far
       // enough to hide itself behind.
@@ -138,12 +176,45 @@ describe("page checks stay linear on a hostile page", () => {
 
       const over = timings
         .filter((t) => t.ms > ceiling)
+        .map(({ check, ms }) => {
+          let fastest = ms;
+          for (let i = 1; i < REMEASURE_RUNS && fastest > ceiling; i++) {
+            fastest = Math.min(fastest, timeCheck(check, ctx));
+          }
+          return { id: check.id, ms: fastest };
+        })
+        .filter((t) => t.ms > ceiling)
         .map((t) => `${t.id} took ${t.ms}ms against a median of ${median}ms`);
 
       expect(
         over,
         `a page can make these checks slow, which on a scanner is a denial of service the target triggers:\n${over.join("\n")}`,
       ).toEqual([]);
+    }, 120_000);
+  }
+});
+
+/**
+ * The path shapes against a fixed line as well as against their peers.
+ *
+ * The ratio above needs a median to compare with, and a check that never
+ * returns gives it nothing: on optPathRun the old /opt/ pattern did not finish,
+ * so the run hung rather than failed. Two seconds is far above what a linear
+ * pass over 256 KB costs and far below what any of the four old patterns did.
+ */
+describe("internal-path patterns on path-shaped runs", () => {
+  const check = pageChecks.find((c) => c.id === "page-internal-path-disclosed");
+
+  for (const shape of PATH_SHAPES) {
+    it(`page-internal-path-disclosed finishes ${shape} inside 2 seconds`, () => {
+      expect(check).toBeDefined();
+      const ctx = buildPageContext(
+        "https://example.com/",
+        new Headers({ "content-type": "text/html" }),
+        SHAPES[shape],
+      );
+      const ms = timeCheck(check!, ctx);
+      expect(ms, `took ${ms}ms on a ${N}-byte body`).toBeLessThan(2_000);
     }, 120_000);
   }
 });
