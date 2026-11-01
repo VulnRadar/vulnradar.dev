@@ -334,11 +334,11 @@ import {
  * the admin API refuses to save one (see isWritableSetting). APP_URL is the
  * one exception: serverAppUrl() in lib/config/server-app-url.ts reads the
  * saved row live, and resolveAppUrl() goes through it, so an edit there does
- * take effect for the OAuth redirect_uri. Links that carry a token (reset,
- * verification, invites, unsubscribe) deliberately do not read it: they use
- * secretLinkAppUrl(), which reads only the environment, because any admin
- * could otherwise point them at a domain they own. Only the super admin may
- * save the row.
+ * take effect for the OAuth and staff SSO redirect_uri. Only the super admin
+ * may save the row. Links that carry a token (reset, verification, invites,
+ * unsubscribe) deliberately do not read it: they use secretLinkAppUrl(),
+ * which reads only the environment, because a stolen super-admin session
+ * could otherwise save a domain its holder owns and collect the tokens.
  *
  * Do not add a build-tier entry expecting an admin edit to reach the app.
  * If a value must be admin-editable, give it a getSetting() reader and mark
