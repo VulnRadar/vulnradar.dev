@@ -365,3 +365,63 @@ describe("API entries for routes that were spelled out at the call site", () => 
     expect(API.ACCOUNT_UNSUBSCRIBE).toBe(FROZEN.UNSUBSCRIBE);
   });
 });
+
+/**
+ * Helpers that put an id or a hostname into a request path. Several of those
+ * values reach the client from a URL the visitor followed (/host/[hostname],
+ * /history?scan=), and the browser resolves dot segments before it sends the
+ * request, so an unencoded "../keys/5/revoke?" turned a GET for one scan into
+ * a same-origin, cookie-bearing request to another API route.
+ */
+describe("API helpers keep the id inside its own path segment", () => {
+  const FORGED = "../keys/5/revoke?";
+  const HELPERS: Array<[name: string, build: (id: string) => string]> = [
+    ["HISTORY_ITEM", (id) => API.HISTORY_ITEM(id)],
+    ["SCAN_STATUS", (id) => API.SCAN_STATUS(id)],
+    ["SCAN_SCREENSHOT", (id) => API.SCAN_SCREENSHOT(id)],
+    ["SCAN_REFRESH_DNS", (id) => API.SCAN_REFRESH_DNS(id)],
+    ["SCAN_REFRESH_PORTS", (id) => API.SCAN_REFRESH_PORTS(id)],
+    ["SCAN_REFRESH_SCREENSHOT", (id) => API.SCAN_REFRESH_SCREENSHOT(id)],
+    ["HISTORY_REPORT", (id) => API.HISTORY_REPORT(id, "pdf")],
+    ["SHARE_PUBLICLY_LISTED", (id) => API.SHARE_PUBLICLY_LISTED(id)],
+    ["HOST", (id) => API.HOST(id)],
+    ["HOST_TREND", (id) => API.HOST_TREND(id)],
+  ];
+
+  function resolved(url: string) {
+    const u = new URL(url, "https://app.example");
+    return u.pathname + u.search;
+  }
+
+  it.each(HELPERS)("%s leaves an ordinary id as it was", (_n, build) => {
+    const url = build("0123456789abcdef0123456789abcdef");
+    expect(url).toContain("/0123456789abcdef0123456789abcdef");
+    expect(resolved(url)).toBe(url);
+    expect(build("42")).toContain("/42");
+  });
+
+  it.each(HELPERS)(
+    "%s cannot be walked out of its route by the id",
+    (_n, build) => {
+      const plain = build("ID");
+      const forged = resolved(build(FORGED));
+      const [prefix, rest] = plain.split("ID");
+      expect(forged.startsWith(prefix)).toBe(true);
+      expect(forged.endsWith(rest)).toBe(true);
+      expect(forged).not.toContain("/keys/");
+    },
+  );
+
+  it("names one scan's history route", () => {
+    expect(API.HISTORY_ITEM("abc")).toBe(`${API.HISTORY}/abc`);
+    expect(API.HISTORY_ITEM(7)).toBe(`${API.HISTORY}/7`);
+  });
+
+  it("builds a report URL only for the formats the report route serves", () => {
+    expect(API.HISTORY_REPORT(7, "sarif")).toBe(
+      `${API.HISTORY}/7/report?format=sarif`,
+    );
+    // @ts-expect-error a format the route does not serve
+    API.HISTORY_REPORT(7, "html");
+  });
+});

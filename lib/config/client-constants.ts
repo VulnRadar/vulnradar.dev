@@ -210,6 +210,18 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
 
 export const API_VERSION = CONFIG_API_VERSION;
 
+// An id or a hostname in a request path often comes from a URL the visitor
+// followed (/history?scan=, /host/[hostname]), and the browser resolves the
+// path before it sends the request. Encoded, a slash or a question mark in it
+// cannot open another segment or a query string and reach a different route.
+function segment(value: string | number): string {
+  return encodeURIComponent(String(value));
+}
+
+/** The formats GET /history/[id]/report serves. */
+export type HistoryReportFormat =
+  "sarif" | "pdf" | "md" | "compliance" | "csv" | "json";
+
 // API ENDPOINTS (dynamically versioned)
 
 export const API = {
@@ -262,22 +274,23 @@ export const API = {
       `/api/${API_VERSION}/auth/trusted-devices/${id}`,
   },
   SCAN: `/api/${API_VERSION}/scan`,
-  SCAN_STATUS: (id: string | number) => `/api/${API_VERSION}/scan/status/${id}`,
+  SCAN_STATUS: (id: string | number) =>
+    `/api/${API_VERSION}/scan/status/${segment(id)}`,
   /** Opt-in page screenshot bytes for one scan (owner/team/public gate). */
   SCAN_SCREENSHOT: (id: string | number) =>
-    `/api/${API_VERSION}/scan/screenshot/${id}`,
+    `/api/${API_VERSION}/scan/screenshot/${segment(id)}`,
   /** Owner-only: re-run just the DNS capture for one scan and update its
    *  result_meta, returning the fresh records (cheap, best-effort). */
   SCAN_REFRESH_DNS: (id: string | number) =>
-    `/api/${API_VERSION}/history/${id}/dns`,
+    `/api/${API_VERSION}/history/${segment(id)}/dns`,
   /** Owner-only: re-run the curated port sweep for one scan (enforces the same
    *  verified-domain ownership gate the scan-time sweep uses). */
   SCAN_REFRESH_PORTS: (id: string | number) =>
-    `/api/${API_VERSION}/history/${id}/ports`,
+    `/api/${API_VERSION}/history/${segment(id)}/ports`,
   /** Owner-only: re-capture the opt-in page screenshot for one scan (consumes
    *  the browser-minutes meter, same gate as the scan-time capture). */
   SCAN_REFRESH_SCREENSHOT: (id: string | number) =>
-    `/api/${API_VERSION}/history/${id}/screenshot`,
+    `/api/${API_VERSION}/history/${segment(id)}/screenshot`,
   SCAN_TAGS: `/api/${API_VERSION}/scan/tags`,
   SCAN_DISCOVER: `/api/${API_VERSION}/scan/discover`,
   SCAN_DISCOVER_PROGRESS: (requestId: string) =>
@@ -289,9 +302,12 @@ export const API = {
   SCAN_AUTHENTICATED: `/api/${API_VERSION}/scan/authenticated`,
   DEMO_SCAN: `/api/${API_VERSION}/demo-scan`,
   HISTORY: `/api/${API_VERSION}/history`,
-  /** Server-generated report for one scan: ?format=sarif|pdf|md|compliance|json. */
-  HISTORY_REPORT: (id: number | string, format: string) =>
-    `/api/${API_VERSION}/history/${id}/report?format=${format}`,
+  /** One scan in the caller's history, by public_id or legacy numeric id. */
+  HISTORY_ITEM: (id: string | number) =>
+    `/api/${API_VERSION}/history/${segment(id)}`,
+  /** Server-generated report for one scan. */
+  HISTORY_REPORT: (id: number | string, format: HistoryReportFormat) =>
+    `/api/${API_VERSION}/history/${segment(id)}/report?format=${format}`,
   /** Every distinct host the caller has scanned, grouped from their own
    *  scan_history, most-recently-scanned first (app/assets/page.tsx). */
   ASSETS: `/api/${API_VERSION}/assets`,
@@ -300,7 +316,7 @@ export const API = {
   SHARED: `/api/${API_VERSION}/shared`,
   /** Toggle one share's Public Scans directory listing on/off (Shared page row menu). */
   SHARE_PUBLICLY_LISTED: (id: string | number) =>
-    `/api/${API_VERSION}/history/${id}/share/publicly-listed`,
+    `/api/${API_VERSION}/history/${segment(id)}/share/publicly-listed`,
   /** Public, unauthenticated: paginated directory of publicly-listed shares (app/public-scans/page.tsx). */
   PUBLIC_SCANS: `/api/${API_VERSION}/public-scans`,
   KEYS: `/api/${API_VERSION}/keys`,
@@ -433,10 +449,10 @@ export const API = {
    *  explorer). */
   OPENAPI: "/api/v3/openapi.json",
   /** Public, unauthenticated: the latest public scan of a host, if any (app/host/[hostname]/page.tsx). */
-  HOST: (hostname: string) => `/api/${API_VERSION}/host/${hostname}`,
+  HOST: (hostname: string) => `/api/${API_VERSION}/host/${segment(hostname)}`,
   /** Public, unauthenticated: up to the last 30 public/completed scans' risk scores for a host, oldest first (components/host/danger-score-trend.tsx). */
   HOST_TREND: (hostname: string) =>
-    `/api/${API_VERSION}/host/${hostname}/trend`,
+    `/api/${API_VERSION}/host/${segment(hostname)}/trend`,
 } as const;
 
 // APPLICATION ROUTES

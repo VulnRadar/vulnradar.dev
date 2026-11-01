@@ -91,7 +91,7 @@ export default function SharedScanPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`${API.SHARED}/${token}`);
+        const res = await fetch(`${API.SHARED}/${encodeURIComponent(token)}`);
         if (!res.ok) {
           const data = await res.json();
           setError(data.error || "This shared scan could not be found.");
@@ -281,7 +281,7 @@ export default function SharedScanPage() {
                   crawlInfo={crawlInfo}
                   screenshotSrc={
                     result.screenshot
-                      ? `${API.SHARED}/${token}/screenshot`
+                      ? `${API.SHARED}/${encodeURIComponent(token)}/screenshot`
                       : undefined
                   }
                   subdomain={

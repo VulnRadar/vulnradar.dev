@@ -33,13 +33,14 @@ export type ScanHistorySubPath =
   "" | "/share" | "/share/publicly-listed" | "/summary" | "/delete";
 
 /**
- * The API path for one scan, or one of its sub-routes. The id is encoded as
- * well as validated, so a slash or a question mark in a value that was cast to
- * ScanId instead of parsed cannot open another segment or a query string.
+ * The API path for one scan, or one of its sub-routes. API.HISTORY_ITEM
+ * encodes the id as well, so a slash or a question mark in a value that was
+ * cast to ScanId instead of parsed cannot open another segment or a query
+ * string.
  */
 export function historyItemPath(
   id: ScanId,
   sub: ScanHistorySubPath = "",
 ): string {
-  return `${API.HISTORY}/${encodeURIComponent(id)}${sub}`;
+  return `${API.HISTORY_ITEM(id)}${sub}`;
 }
