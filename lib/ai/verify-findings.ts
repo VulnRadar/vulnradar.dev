@@ -655,10 +655,14 @@ async function verifyInChunks(
   // calls all timed out admit every finding, however small the budget.
   let held = 0;
   let next = 0;
-  while (next < findings.length) {
+  // A null element (accepted by verify-batch on v3) has nothing to ask about.
+  // It is left out before any chunk is formed, so it takes no slot and no
+  // admission, and applyVerdicts hands it back as it was sent.
+  const askable = findings.filter((f) => f != null);
+  while (next < askable.length) {
     if (Date.now() >= deadline) break;
 
-    let group = findings.slice(next, next + settings.chunkSize);
+    let group = askable.slice(next, next + settings.chunkSize);
     let ceilings: number[] = [];
     // Each call is admitted at its worst case, so the pass cannot spend past
     // what the gate reserved for it even if every call in a chunk comes back
@@ -675,14 +679,8 @@ async function verifyInChunks(
     }
     next += group.length;
 
-    // A null element (accepted by verify-batch on v3) has nothing to ask
-    // about, so it is passed over rather than sent.
     const settled = await Promise.allSettled(
-      group.map((f) =>
-        f
-          ? callVerify(url, f, endpoint, probe, settings)
-          : Promise.resolve<CallVerifyResult>({ result: null, tokensUsed: 0 }),
-      ),
+      group.map((f) => callVerify(url, f, endpoint, probe, settings)),
     );
 
     for (const [i, r] of settled.entries()) {
