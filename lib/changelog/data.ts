@@ -1829,8 +1829,8 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Crosshair,
-        label: "Probes and Policy Checks Respect Redirect Limits",
-        desc: "Active probes limited to one host no longer follow a redirect from the bare domain to its www host, and checks that must not follow redirects, such as the MTA-STS policy fetch, now stop at the first redirect instead of following it.",
+        label: "Active Probes Stay on the Host They Were Given",
+        desc: "Active probes limited to one host no longer follow a redirect between the bare domain and its www host, so every request a probe sends goes to the host it was allowed to test.",
         category: "fixed",
       },
       {
@@ -1884,7 +1884,7 @@ const CHANGELOG: Release[] = [
       {
         icon: GitMerge,
         label: "GitHub Repo Review Reserves Credits Before It Runs",
-        desc: "A GitHub repo review now needs your window allowance plus GitHub review credits to cover its estimate before any file is fetched, instead of starting on any positive balance. Unused tokens go back to you when it finishes, and a second review on the same account waits for the first.",
+        desc: "A GitHub repo review now needs your window allowance plus GitHub review credits to cover its estimate before any file is fetched, instead of starting on any positive balance. Unused tokens go back to you when it finishes, and a second review on the same account is refused until the first one finishes.",
         category: "security",
       },
       {
@@ -1908,7 +1908,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Share2,
         label: "Badges Show the Site's Numbers, Not a Stranger's Verdicts",
-        desc: "A badge set to show any public scan of its site could pick up a scan someone else ran, and showed that person's severity counts and danger score, which drop when they mark findings as false positives. For a scan run by someone else, both are now counted from its complete findings.",
+        desc: "A badge set to show any public scan of its site could pick up a scan someone else ran, and showed that person's severity counts and danger score, which drop when they mark findings as false positives. For a scan run by someone else, both are now counted from its complete findings, and the link preview of the shared report uses the same counts.",
         category: "security",
       },
       {
@@ -1956,8 +1956,8 @@ const CHANGELOG: Release[] = [
       {
         icon: Container,
         label: "Compose Takes Mail and Turnstile Settings From .env Only",
-        desc: "The production compose file used to pass the SMTP, contact, support and Turnstile settings from your shell as well as from .env. It now reads them only from .env, as the self-hosting docs already describe, so a value exported in the shell before docker compose up no longer reaches the app.",
-        category: "changed",
+        desc: "The production compose file used to pass the SMTP, contact, support and Turnstile settings from your shell as well as from .env. It now reads them only from .env, as the self-hosting docs already describe, so a value exported in the shell before docker compose up no longer reaches the app. If you set any of them in your shell or in your hosting platform's variables, move them into .env before upgrading, or email stops sending and signup fails its Turnstile check.",
+        category: "breaking",
       },
       {
         icon: Smartphone,

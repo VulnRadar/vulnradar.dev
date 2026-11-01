@@ -554,8 +554,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The address Azure virtual machines use to reach their host's configuration service, known as WireServer, is now refused like other internal addresses, so a self-hosted instance on Azure cannot be made to read it.
 - [Shield] **[SECURITY]** **Internal Addresses Refused in Every IPv6 Form**
   The scanner's address check now also recognises internal IPv4 addresses written in the older IPv4-compatible IPv6 form and in the 6to4 form, so a domain whose DNS answers with one of those can no longer pass as public. The same forms of a public address are still scanned.
-- [Crosshair] **[FIXED]** **Probes and Policy Checks Respect Redirect Limits**
-  Active probes limited to one host no longer follow a redirect from the bare domain to its www host, and checks that must not follow redirects, such as the MTA-STS policy fetch, now stop at the first redirect instead of following it.
+- [Crosshair] **[FIXED]** **Active Probes Stay on the Host They Were Given**
+  Active probes limited to one host no longer follow a redirect between the bare domain and its www host, so every request a probe sends goes to the host it was allowed to test.
 - [Server] **[SECURITY]** **Scanned Sites Can No Longer Exhaust Server Memory**
   A site could answer robots.txt, security.txt, the exposed-file probes, the MTA-STS policy, the active form probes or the page itself with an endless or compressed-bomb body, and the scanner would buffer all of it, which could take down every scan running at the time. Each of these reads now stops at a fixed size limit and a time limit and hangs up.
 - [Mail] **[ENGINE]** **MTA-STS Policy Behind a Redirect Is Reported as Missing**
@@ -573,7 +573,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Sparkles] **[SECURITY]** **AI Verification Reserves Credits Before It Runs**
   AI finding verification now sets aside the tokens a pass can use from your window allowance and AI credits before it starts, gives back what it did not use, and stops at the first finding your allowance cannot cover instead of spending past it. Two verifications started at once can no longer both draw on the same credits.
 - [GitMerge] **[SECURITY]** **GitHub Repo Review Reserves Credits Before It Runs**
-  A GitHub repo review now needs your window allowance plus GitHub review credits to cover its estimate before any file is fetched, instead of starting on any positive balance. Unused tokens go back to you when it finishes, and a second review on the same account waits for the first.
+  A GitHub repo review now needs your window allowance plus GitHub review credits to cover its estimate before any file is fetched, instead of starting on any positive balance. Unused tokens go back to you when it finishes, and a second review on the same account is refused until the first one finishes.
 - [Timer] **[SECURITY]** **Verification Probe Reads a Capped Body**
   The live probe AI verification sends to the scanned site now stops reading the response at its snippet size and probe timeout, instead of downloading the whole body first.
 - [ShieldCheck] **[SECURITY]** **False-Positive Marks Stay Private**
@@ -581,7 +581,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [CheckCheck] **[FIXED]** **Exact-Page Reputation Counts Match the Scan**
   The page-level reputation the extension checks first now counts severities from the findings the scan recorded, so they match the verdict shown beside them and no longer shrink when the person who ran the scan marks findings as false positives.
 - [Share2] **[SECURITY]** **Badges Show the Site's Numbers, Not a Stranger's Verdicts**
-  A badge set to show any public scan of its site could pick up a scan someone else ran, and showed that person's severity counts and danger score, which drop when they mark findings as false positives. For a scan run by someone else, both are now counted from its complete findings.
+  A badge set to show any public scan of its site could pick up a scan someone else ran, and showed that person's severity counts and danger score, which drop when they mark findings as false positives. For a scan run by someone else, both are now counted from its complete findings, and the link preview of the shared report uses the same counts.
 - [Database] **[SELFHOST]** **Upgrading a v1 or v2 Database Works Again**
   Upgrading a database from schema 1.0.0 or 2.0.0 now completes. It used to fail and roll back on one step that copied scan team links before the column holding them existed, so no older install could upgrade. The migration tool now also checks every upgrade for this kind of ordering mistake before it changes anything.
 - [Mail] **[SELFHOST]** **Self-Hosted Email Links Use Your Own Domain**
@@ -596,8 +596,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The default docker compose stack restarted forever when the support and contact addresses were left empty, because startup checks treated an empty address as an invalid email. An empty optional setting now counts as not set, so the documented quick start boots.
 - [Container] **[SELFHOST]** **Development Compose Reads Your Whole .env**
   The development compose file now passes every variable in .env to the app, as the production file already did. Before, it passed only about a dozen, so settings like OAuth sign-in or Browserbase were silently ignored in development.
-- [Container] **[CHANGED]** **Compose Takes Mail and Turnstile Settings From .env Only**
-  The production compose file used to pass the SMTP, contact, support and Turnstile settings from your shell as well as from .env. It now reads them only from .env, as the self-hosting docs already describe, so a value exported in the shell before docker compose up no longer reaches the app.
+- [Container] **[BREAKING]** **Compose Takes Mail and Turnstile Settings From .env Only**
+  The production compose file used to pass the SMTP, contact, support and Turnstile settings from your shell as well as from .env. It now reads them only from .env, as the self-hosting docs already describe, so a value exported in the shell before docker compose up no longer reaches the app. If you set any of them in your shell or in your hosting platform's variables, move them into .env before upgrading, or email stops sending and signup fails its Turnstile check.
 - [Smartphone] **[FIXED]** **Scan Settings No Longer Crash the Dashboard on Safari**
   Changing scan options on iPhone, iPad and Safari no longer takes the dashboard down. The form now updates the address bar once per change instead of eighteen times, and a browser that refuses the update just skips it.
 
