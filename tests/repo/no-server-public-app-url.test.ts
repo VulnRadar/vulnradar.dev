@@ -510,9 +510,9 @@ describe("secretLinkOriginReads", () => {
  * serverAppUrl() and resolveAppUrl() prefer the APP_URL row saved in the
  * settings page. Only the super admin can save it, and it feeds only the OAuth
  * and staff sign-in redirects. A reset link built from either one would carry
- * its token to whatever domain was saved there, so one browser session could
- * save a domain it owns, ask the public forgot-password endpoint for any
- * address and collect the link. The build-time APP_URL sent the same tokens
+ * its token to whatever domain was saved there, so anyone holding a stolen
+ * super-admin session could save a domain they own, ask the public
+ * forgot-password endpoint for any address and collect the link. The build-time APP_URL sent the same tokens
  * to https://vulnradar.dev on every pulled image. Token links use
  * secretLinkAppUrl() instead, which reads only the process environment.
  */

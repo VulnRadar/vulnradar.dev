@@ -20,9 +20,10 @@
 // GitHub, Google and Discord sign-in and connect redirects and staff SSO,
 // where the provider checks the redirect_uri against the URIs registered with
 // it. A link that carries a secret reads only the environment, through
-// secretLinkAppUrl(): if it followed the row, one browser session could save
-// a domain it owns, ask the public forgot-password endpoint for any address,
-// and read the token off the request when the link is clicked.
+// secretLinkAppUrl(): if it followed the row, anyone holding a stolen
+// super-admin session could save a domain they own, ask the public
+// forgot-password endpoint for any address, and read the token off the
+// request when the link is clicked.
 //
 // Server only: serverAppUrl() reads the settings table through runtime-config.
 
