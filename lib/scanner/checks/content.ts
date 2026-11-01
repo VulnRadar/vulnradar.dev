@@ -21,6 +21,7 @@ import { safeFetch } from "../safe-fetch";
 import { safeReadBody } from "../read-bounded-body";
 import { versionBelow } from "../library-fingerprints";
 import { SCANNER_UA } from "../user-agent";
+import { loadsFrom, urlRefs, type HostRule } from "./_url-hosts";
 import {
   hasTagWith,
   htmlComments,
@@ -1924,12 +1925,16 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "slack-webhook-exposed": (url, _headers, body) => {
-    if (
-      /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[A-Za-z0-9]+/i.test(
-        body,
-      )
-    ) {
-      return "Slack incoming webhook URL detected in source.";
+    // The host is captured whole and compared rather than spelled into the
+    // pattern, where it would read as a substring test. Read as text, not
+    // through urlRefs: a webhook carried in another URL's query string has
+    // still leaked.
+    for (const m of body.matchAll(
+      /https:\/\/([a-z0-9.-]+)\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[A-Za-z0-9]+/gi,
+    )) {
+      if (m[1].toLowerCase() === "hooks.slack.com") {
+        return "Slack incoming webhook URL detected in source.";
+      }
     }
     return null;
   },
@@ -2539,20 +2544,30 @@ const rawDetectors: Record<string, DetectFn> = {
       /\/login|\/signin|\/sign-in/i.test(url) ||
       /<input[^>]{0,2000}type=["']password["']/i.test(body);
     if (!isLoginPage) return null;
-    const trackers = [
+    // Read off each URL's whole hostname: as text, a host that only contains
+    // the vendor's name, or the name in another URL's query string, was
+    // reported as that vendor's pixel.
+    const trackers: { name: string; hosts: HostRule[] }[] = [
       {
         name: "Meta Pixel",
-        pattern: /connect\.facebook\.net\/[^"']*\/fbevents\.js/i,
+        hosts: [{ host: "connect.facebook.net", path: /^\/.*\/fbevents\.js/i }],
       },
-      { name: "TikTok Pixel", pattern: /analytics\.tiktok\.com\/i18n\/pixel/i },
-      { name: "Snap Pixel", pattern: /sc-static\.net\/scevent\.min\.js/i },
+      {
+        name: "TikTok Pixel",
+        hosts: [{ host: "analytics.tiktok.com", path: /^\/i18n\/pixel/i }],
+      },
+      {
+        name: "Snap Pixel",
+        hosts: [{ host: "sc-static.net", path: /^\/scevent\.min\.js/i }],
+      },
       {
         name: "LinkedIn Insight Tag",
-        pattern: /snap\.licdn\.com\/li\.lms-analytics/i,
+        hosts: [{ host: "snap.licdn.com", path: /^\/li\.lms-analytics/i }],
       },
     ];
+    const refs = urlRefs(body);
     const found = trackers
-      .filter((t) => t.pattern.test(body))
+      .filter((t) => loadsFrom(refs, t.hosts))
       .map((t) => t.name);
     if (found.length === 0) return null;
     return `Ad-tech tracking pixel(s) loaded on a page with a login form: ${found.join(", ")} — increases third-party attack surface on a credential-entry page.`;

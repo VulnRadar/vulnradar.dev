@@ -21,6 +21,7 @@ import {
   extractScriptContents,
 } from "../_helpers";
 import { openTags, hasTagWith } from "./_tag-scan";
+import { hostMatches, leadingHost, type HostRule } from "./_url-hosts";
 
 /**
  * The leading run of `text` up to the first line terminator, matching what a
@@ -100,8 +101,12 @@ const CRITICAL_SECRET_PATTERNS: SecretPattern[] = [
   { name: "Slack Token", pattern: /xox[bpras]-[0-9]{10,}-[0-9a-zA-Z-]+/g },
   {
     name: "Slack Webhook",
+    // The URL-shaped patterns capture the host whole, from the start of its
+    // run, and `accept` compares it. Spelled into the pattern, the host was a
+    // substring test, so xhooks.slack.com counted as Slack.
     pattern:
-      /hooks\.slack\.com\/services\/T[0-9A-Z]{8,}\/B[0-9A-Z]{8,}\/[0-9A-Za-z]{24}/g,
+      /(?<![\w.-])[a-z0-9.-]+\/services\/T[0-9A-Z]{8,}\/B[0-9A-Z]{8,}\/[0-9A-Za-z]{24}/g,
+    accept: (match) => leadingHost(match) === "hooks.slack.com",
   },
   {
     name: "Discord Bot Token",
@@ -217,6 +222,12 @@ const ELEVATED_RISK_SECRET_PATTERNS: SecretPattern[] = [
   { name: "Replicate Token", pattern: /r8_[A-Za-z0-9]{40}/g },
 ];
 
+// ptb. and canary. are Discord's own client channels and serve webhooks too.
+const DISCORD_HOSTS: HostRule[] = [
+  { host: "discord.com", subdomains: true },
+  { host: "discordapp.com", subdomains: true },
+];
+
 // Vendor-documented client-exposed-by-design credentials, secured via
 // restrictions (referrer/domain allowlists, write-only scopes, quota
 // limits) rather than secrecy. Presence alone is normal; the risk is
@@ -227,7 +238,9 @@ const CLIENT_EXPOSED_SECRET_PATTERNS: SecretPattern[] = [
   // the target channel) — real abuse, bounded impact.
   {
     name: "Discord Webhook",
-    pattern: /discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[\w-]{60,68}/g,
+    pattern: /(?<![\w.-])[a-z0-9.-]+\/api\/webhooks\/\d{17,20}\/[\w-]{60,68}/g,
+    accept: (match) =>
+      DISCORD_HOSTS.some((r) => hostMatches(leadingHost(match), r)),
   },
   // Sentry's own docs: "the DSN is not a secret" — it is meant to be
   // public and only allows writing events, not reading data. Risk is
@@ -255,7 +268,10 @@ const LOW_RISK_SECRET_PATTERNS: SecretPattern[] = [
   // itself a secret.
   {
     name: "Firebase Database URL",
-    pattern: /https:\/\/[a-z0-9-]+\.firebaseio\.com/g,
+    // Every https host is a candidate; `accept` keeps a whole host of the
+    // form <db>.firebaseio.com, so x.firebaseio.com.evil.example is not one.
+    pattern: /https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)+/g,
+    accept: (match) => /^[a-z0-9-]+\.firebaseio\.com$/.test(leadingHost(match)),
   },
 ];
 
@@ -298,6 +314,9 @@ function matchSecretPatterns(
   const found: string[] = [];
   for (const { name, pattern, requireNearby, accept } of patterns) {
     const occurrences = [...body.matchAll(pattern)].filter((m) => {
+      // First: the Firebase pattern's candidates are every https host on the
+      // page, and this is the cheap test that discards nearly all of them.
+      if (accept && !accept(m[0])) return false;
       if (isDemonstratedExample(body, m[0])) return false;
       const lower = m[0].toLowerCase();
       if (
@@ -314,7 +333,6 @@ function matchSecretPatterns(
       )
         return false;
       if (/localhost|127\.0\.0\.1/.test(m[0])) return false;
-      if (accept && !accept(m[0])) return false;
       if (requireNearby) {
         const nearby = body.slice(
           Math.max(0, m.index - 100),

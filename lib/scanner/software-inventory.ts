@@ -46,6 +46,7 @@
 
 import { isIP } from "net";
 import { tagsWith } from "./checks/_tag-scan";
+import { loadsFrom, urlRefs, type HostRule } from "./checks/_url-hosts";
 import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { generateId, getHeader } from "./_helpers";
@@ -240,10 +241,18 @@ const CVE_CATALOG: Record<string, CveLookup> = {
 // lookup surfaces. Kept to strong, low-false-positive markers; `versionRe`
 // pulls a version when the markup carries one (only Angular's ng-version does).
 // Every pattern is linear (no nested quantifiers) so this stays ReDoS-safe.
+//
+// A marker that says where something is loaded FROM is a `hosts` rule, which
+// compares the whole hostname of each URL on the page (checks/_url-hosts.ts).
+// As a regex over the body it also listed a vendor for a host that merely
+// contains the vendor's name, or for the name in another URL's query string,
+// and the body is the scanned site's own markup. `re` is for markup that is
+// not a host: globals, attributes, and file names or paths on any host.
 interface BodyMarker {
   name: string;
   category: SoftwareCategory;
-  re: RegExp;
+  re?: RegExp;
+  hosts?: HostRule[];
   versionRe?: RegExp;
 }
 const BODY_TECH_MARKERS: BodyMarker[] = [
@@ -308,27 +317,45 @@ const BODY_TECH_MARKERS: BodyMarker[] = [
     re: /\shx-(?:get|post|target|swap)=|htmx(?:\.org|\.min)/i,
   },
   { name: "Backbone.js", category: "framework", re: /backbone(?:\.min)?\.js/i },
-  { name: "Tailwind CSS", category: "library", re: /cdn\.tailwindcss\.com/i },
+  {
+    name: "Tailwind CSS",
+    category: "library",
+    hosts: [{ host: "cdn.tailwindcss.com" }],
+  },
   {
     name: "Bootstrap",
     category: "library",
-    re: /(?:cdn\.jsdelivr\.net\/npm\/bootstrap|\/bootstrap(?:\.bundle)?(?:\.min)?\.(?:js|css))/i,
+    re: /\/bootstrap(?:\.bundle)?(?:\.min)?\.(?:js|css)/i,
+    hosts: [{ host: "cdn.jsdelivr.net", path: /^\/npm\/bootstrap/i }],
   },
   {
     name: "jQuery",
     category: "library",
     re: /\/jquery(?:-\d[\d.]*)?(?:\.slim)?(?:\.min)?\.js/i,
   },
-  { name: "Stripe.js", category: "library", re: /js\.stripe\.com\/v\d/i },
+  {
+    name: "Stripe.js",
+    category: "library",
+    hosts: [{ host: "js.stripe.com", path: /^\/v\d/ }],
+  },
   {
     name: "Google Analytics",
     category: "library",
-    re: /google-analytics\.com\/(?:analytics|ga)\.js|googletagmanager\.com\/gtag\/js/i,
+    hosts: [
+      {
+        host: "google-analytics.com",
+        subdomains: true,
+        path: /^\/(?:analytics|ga)\.js/i,
+      },
+      { host: "googletagmanager.com", subdomains: true, path: /^\/gtag\/js/i },
+    ],
   },
   {
     name: "Google Tag Manager",
     category: "library",
-    re: /googletagmanager\.com\/gtm\.js/i,
+    hosts: [
+      { host: "googletagmanager.com", subdomains: true, path: /^\/gtm\.js/i },
+    ],
   },
   // Cloudflare injects the Web Analytics beacon into the HTML at the edge when
   // the zone has it enabled, so it appears in the served markup a scan already
@@ -336,50 +363,70 @@ const BODY_TECH_MARKERS: BodyMarker[] = [
   {
     name: "Cloudflare Web Analytics",
     category: "library",
-    re: /static\.cloudflareinsights\.com/i,
+    hosts: [{ host: "static.cloudflareinsights.com" }],
   },
   {
     name: "Cloudflare Turnstile",
     category: "library",
-    re: /challenges\.cloudflare\.com\/turnstile/i,
+    hosts: [{ host: "challenges.cloudflare.com", path: /^\/turnstile/i }],
   },
   // Analytics and product tooling loaded from a recognizable host or global.
-  { name: "Plausible", category: "library", re: /plausible\.io\/js\//i },
-  { name: "Fathom Analytics", category: "library", re: /cdn\.usefathom\.com/i },
+  {
+    name: "Plausible",
+    category: "library",
+    hosts: [{ host: "plausible.io", path: /^\/js\//i }],
+  },
+  {
+    name: "Fathom Analytics",
+    category: "library",
+    hosts: [{ host: "cdn.usefathom.com" }],
+  },
   {
     name: "PostHog",
     category: "library",
-    re: /app\.posthog\.com|\bposthog\.init\(/i,
+    re: /\bposthog\.init\(/i,
+    hosts: [{ host: "app.posthog.com" }],
   },
   {
     name: "Segment",
     category: "library",
-    re: /cdn\.segment\.com\/analytics/i,
+    hosts: [{ host: "cdn.segment.com", path: /^\/analytics/i }],
   },
-  { name: "Hotjar", category: "library", re: /static\.hotjar\.com/i },
-  { name: "Mixpanel", category: "library", re: /cdn\.mxpnl\.com/i },
+  {
+    name: "Hotjar",
+    category: "library",
+    hosts: [{ host: "static.hotjar.com" }],
+  },
+  { name: "Mixpanel", category: "library", hosts: [{ host: "cdn.mxpnl.com" }] },
   {
     name: "Sentry",
     category: "library",
-    re: /browser\.sentry-cdn\.com|@sentry\/(browser|nextjs|react)/i,
+    re: /@sentry\/(browser|nextjs|react)/i,
+    hosts: [{ host: "browser.sentry-cdn.com" }],
   },
   {
     name: "Vercel Analytics",
     category: "library",
-    re: /\/_vercel\/insights|va\.vercel-scripts\.com/i,
+    re: /\/_vercel\/insights/i,
+    hosts: [{ host: "va.vercel-scripts.com" }],
   },
   {
     name: "Intercom",
     category: "library",
-    re: /widget\.intercom\.io|js\.intercomcdn\.com/i,
+    hosts: [{ host: "widget.intercom.io" }, { host: "js.intercomcdn.com" }],
   },
   // Anti-bot / CAPTCHA widgets, alongside the Cloudflare Turnstile marker above.
   {
     name: "Google reCAPTCHA",
     category: "library",
-    re: /\/recaptcha\/api\.js|gstatic\.com\/recaptcha/i,
+    re: /\/recaptcha\/api\.js/i,
+    hosts: [{ host: "gstatic.com", subdomains: true, path: /^\/recaptcha/i }],
   },
-  { name: "hCaptcha", category: "library", re: /hcaptcha\.com\/1\/api\.js/i },
+  {
+    name: "hCaptcha",
+    category: "library",
+    hosts: [{ host: "hcaptcha.com", subdomains: true, path: /^\/1\/api\.js/i }],
+  },
 ];
 
 // Hosting/platform fingerprints keyed on a response header. Presence alone is
@@ -396,7 +443,9 @@ const HOSTING_HEADER_MARKERS: HostingMarker[] = [
   { name: "Netlify", header: "x-nf-request-id" },
   { name: "Fly.io", header: "fly-request-id" },
   { name: "Render", header: "x-render-origin-server" },
-  { name: "GitHub Pages", header: "server", valueRe: /github\.com/i },
+  // The whole value: GitHub Pages sends exactly "GitHub.com", and a value
+  // that only contains it is some other server mentioning GitHub.
+  { name: "GitHub Pages", header: "server", valueRe: /^github\.com$/i },
   { name: "Heroku", header: "via", valueRe: /vegur/i },
   { name: "bunny.net", header: "server", valueRe: /bunnycdn/i },
 ];
@@ -625,8 +674,12 @@ export function fingerprintSoftware(
     }
 
     // Client-side framework/tooling markers (React/Vue/Angular/Next/etc.).
+    const refs = urlRefs(body);
     for (const marker of BODY_TECH_MARKERS) {
-      if (marker.re.test(body)) {
+      if (
+        (marker.re && marker.re.test(body)) ||
+        (marker.hosts && loadsFrom(refs, marker.hosts))
+      ) {
         const version = marker.versionRe
           ? body.match(marker.versionRe)?.[1]
           : undefined;
