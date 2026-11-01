@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   requireStaff,
   logAction,
@@ -13,6 +13,7 @@ import {
   canPerformAction as hasActionPermission,
 } from "@/lib/auth/permissions-client";
 import { hashPassword } from "@/lib/auth/auth";
+import { hashAuthToken } from "@/lib/auth/token-hash";
 import { verifyReauthPassword } from "@/lib/auth/reauth";
 import { analyzePassword } from "@/lib/auth/password-strength";
 import { startImpersonation } from "@/lib/auth/impersonation";
@@ -906,9 +907,10 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         userId,
       ]);
       const resetToken = randomBytes(32).toString("hex");
-      const resetTokenHash = createHash("sha256")
-        .update(resetToken)
-        .digest("hex");
+      // The keyed digest every other minting site stores. A bare sha256
+      // here only resolved through the reset route's legacy fallback, so
+      // these links would have stopped working when that is retired.
+      const resetTokenHash = hashAuthToken(resetToken);
       const passwordResetHours = await getSetting("PASSWORD_RESET_HOURS");
       const resetExpiresAt = new Date(
         Date.now() + passwordResetHours * 60 * 60 * 1000,

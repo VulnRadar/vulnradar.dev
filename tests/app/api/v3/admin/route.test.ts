@@ -14,8 +14,17 @@
  * re-auth flow, per this repo's rule against mocking below the network/DB
  * boundary — see tests/lib/auth/password-hash.test.ts.
  */
-import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  vi,
+} from "vitest";
 import { NextRequest } from "next/server";
+import { createHash, createHmac } from "node:crypto";
 
 const mockQuery = vi.fn();
 const mockClientQuery = vi.fn();
@@ -38,9 +47,42 @@ vi.mock("@/lib/auth/email-verification", () => ({
 }));
 
 const mockGetSession = vi.fn();
+// hashPassword is only reached by the reset-password route, which the reset
+// link round trip below drives; the admin route itself hashes through
+// @/lib/auth/auth. What it returns is never asserted, so it skips scrypt.
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
+  hashPassword: async () => "scrypt-stub",
 }));
+
+// The reset route matches a presented token against every digest
+// authTokenHashCandidates returns, and that list still carries the pre-HMAC
+// sha256 one for links minted before the switch. dropLegacy narrows it to
+// the keyed digest alone, which is what the lookup becomes once
+// legacyHashAuthToken is retired.
+const tokenHashMode = vi.hoisted(() => ({ dropLegacy: false }));
+vi.mock("@/lib/auth/token-hash", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/token-hash")>();
+  return {
+    ...actual,
+    authTokenHashCandidates: (token: string) =>
+      tokenHashMode.dropLegacy
+        ? [actual.hashAuthToken(token)]
+        : actual.authTokenHashCandidates(token),
+  };
+});
+
+const mockSendNotificationEmail =
+  vi.fn<(...args: unknown[]) => Promise<void>>();
+vi.mock("@/lib/notifications/notifications", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/notifications/notifications")>();
+  return {
+    ...actual,
+    sendNotificationEmail: (...args: unknown[]) =>
+      mockSendNotificationEmail(...args),
+  };
+});
 
 // The usage read goes through the real quota helpers, which would take their
 // own turns at the queued pool results below. Its own suite is
@@ -87,6 +129,8 @@ vi.mock("@/lib/config/runtime-config", () => ({
 
 vi.mock("@/lib/api/request-utils", () => ({
   getClientIp: vi.fn(async () => "127.0.0.1"),
+  getUserAgent: vi.fn(async () => "vitest"),
+  rateLimitIpKey: (ip: string) => ip,
 }));
 
 // The "impersonate" action (lib/auth/impersonation.ts) reads/writes the
@@ -163,6 +207,8 @@ vi.mock("@/lib/billing/staff-plan", () => ({
 
 const routeModule = await import("@/app/api/v3/admin/route");
 const { GET, PATCH } = routeModule;
+const { POST: resetPasswordPOST } =
+  await import("@/app/api/v3/auth/reset-password/route");
 const { hashPassword } = await import("@/lib/auth/password-hash");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 
@@ -2887,6 +2933,125 @@ describe("PATCH /api/v3/admin — reset_password still refuses a 2FA-enabled tar
       if (savedEnv === undefined) delete process.env.APP_URL;
       else process.env.APP_URL = savedEnv;
     }
+  }, 20000);
+});
+
+// The admin "send reset link" action minted its token like the self-service
+// forgot-password flow but stored a bare sha256 of it, the digest every other
+// minting site moved off when lib/auth/token-hash.ts went keyed. The link
+// only resolved because the reset route still accepts the legacy digest for
+// links that predate the switch, so retiring that fallback would have
+// silently broken every admin-sent reset.
+describe("PATCH /api/v3/admin, reset_password stores the keyed token digest", () => {
+  const SECRET = "admin-reset-digest-test-secret";
+  const NEW_PASSWORD = "Tr1cky-Horse-Battery-Staple-4291!";
+  let savedAuthSecret: string | undefined;
+
+  beforeEach(() => {
+    savedAuthSecret = process.env.AUTH_SECRET;
+    process.env.AUTH_SECRET = SECRET;
+    tokenHashMode.dropLegacy = false;
+    mockSendNotificationEmail.mockReset();
+    mockSendNotificationEmail.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    if (savedAuthSecret === undefined) delete process.env.AUTH_SECRET;
+    else process.env.AUTH_SECRET = savedAuthSecret;
+    tokenHashMode.dropLegacy = false;
+  });
+
+  async function sendResetLink(): Promise<{
+    token: string;
+    storedHash: string;
+  }> {
+    const { passwordResetEmail } = await import("@/lib/email/email");
+    vi.mocked(passwordResetEmail).mockClear();
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      totp_enabled: false,
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+
+    const res = await PATCH(
+      patchRequest({
+        action: "reset_password",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const link = String(vi.mocked(passwordResetEmail).mock.calls[0][0]);
+    const token = new URL(link).searchParams.get("token") ?? "";
+    const insert = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO password_reset_tokens"),
+    );
+    expect(insert).toBeDefined();
+    const params = (insert?.[1] ?? []) as unknown[];
+    return { token, storedHash: String(params[1]) };
+  }
+
+  it("stores the HMAC of the emailed token under the auth secret, not its bare sha256", async () => {
+    const { token, storedHash } = await sendResetLink();
+
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    expect(storedHash).toBe(
+      createHmac("sha256", SECRET).update(token).digest("hex"),
+    );
+    expect(storedHash).not.toBe(
+      createHash("sha256").update(token).digest("hex"),
+    );
+  }, 20000);
+
+  it("the emailed link still resets the password through the reset route once the legacy digest is no longer accepted", async () => {
+    const { token, storedHash } = await sendResetLink();
+
+    tokenHashMode.dropLegacy = true;
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "PASSWORD_MIN_LENGTH" ? 12 : 1000,
+    );
+    // One password_reset_tokens row holding what the admin action stored,
+    // matched the way Postgres evaluates token_hash = ANY($1::text[]).
+    mockClientQuery.mockImplementation(
+      async (sql: string, params?: unknown[]) => {
+        if (String(sql).includes("FROM password_reset_tokens prt")) {
+          const candidates = (params?.[0] ?? []) as string[];
+          return candidates.includes(storedHash)
+            ? {
+                rows: [
+                  {
+                    id: 77,
+                    user_id: 5,
+                    expires_at: new Date(Date.now() + 60 * 60 * 1000),
+                    email: "t@example.com",
+                    name: "Target Person",
+                    totp_enabled: false,
+                  },
+                ],
+              }
+            : { rows: [] };
+        }
+        return { rows: [], rowCount: 1 };
+      },
+    );
+
+    const res = await resetPasswordPOST(
+      new NextRequest("http://localhost/api/v3/auth/reset-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token, password: NEW_PASSWORD }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockClientQuery).toHaveBeenCalledWith(
+      "UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1",
+      [77],
+    );
   }, 20000);
 });
 
