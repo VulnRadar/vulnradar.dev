@@ -97,7 +97,7 @@ const DEFAULT_QUERY_TIMEOUT_MS = 4000;
  * Run one resolver call with a hard per-query timeout and optional abort. Node's
  * dns/promises functions have no built-in deadline (against an unresponsive
  * resolver they hang on the c-ares retry chain for tens of seconds), so every
- * query is raced against a timer, mirroring async-checks.ts's withDnsTimeout.
+ * query is raced against a timer, the same race as withDeadline in _helpers.ts.
  */
 function queryWithTimeout<T>(
   fn: () => Promise<T>,
