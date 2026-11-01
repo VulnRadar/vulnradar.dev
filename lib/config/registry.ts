@@ -332,10 +332,10 @@ import {
  * until someone edits lib/config/config-values.ts and rebuilds. The admin
  * settings page shows these read-only, naming CONFIG_<KEY> and `env`, and
  * the admin API refuses to save one (see isWritableSetting). APP_URL is the
- * one exception: resolveAppUrl() in
- * lib/config/runtime-config.ts reads the saved row live for OAuth
- * redirect_uri building, so an edit there does take effect for that one
- * use.
+ * one exception: serverAppUrl() in lib/config/server-app-url.ts reads the
+ * saved row live, and resolveAppUrl() goes through it, so an edit there does
+ * take effect for the OAuth redirect_uri and for the links in verification,
+ * password-reset and signup emails.
  *
  * Do not add a build-tier entry expecting an admin edit to reach the app.
  * If a value must be admin-editable, give it a getSetting() reader and mark
@@ -533,7 +533,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_URL,
     group: "General",
     label: "Public application URL",
-    help: "Origin used for canonical URLs, social cards, and email links. Those read NEXT_PUBLIC_APP_URL (or the compiled CONFIG_APP_URL), not the value saved here, so set that env var and rebuild to change them. The GitHub/Google/Discord sign-in redirect is the exception: it reads this saved value live, no rebuild needed. No trailing slash.",
+    help: "Origin used for canonical URLs, social cards, and email links. The GitHub, Google and Discord sign-in and connect redirects, staff SSO, and the links in verification, password-reset and signup emails read the value saved here live, no rebuild needed. Everything else reads NEXT_PUBLIC_APP_URL (or the compiled CONFIG_APP_URL), so set that env var and rebuild to change it. No trailing slash.",
   },
   APP_REPO: {
     tier: "build",
@@ -3623,7 +3623,8 @@ export function isSettingKey(key: string): key is SettingKey {
 
 /**
  * Whether an admin write to this key can change anything. Every runtime-tier
- * key, plus APP_URL, which resolveAppUrl() reads live for OAuth redirects.
+ * key, plus APP_URL, which serverAppUrl() reads live for OAuth redirects and
+ * the verification, password-reset and signup email links.
  * The rest of the build tier is compiled in; see SettingTier.
  */
 export function isWritableSetting(key: SettingKey): boolean {
