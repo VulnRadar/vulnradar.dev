@@ -555,7 +555,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Shield] **[SECURITY]** **Internal Addresses Refused in Every IPv6 Form**
   The scanner's address check now also recognises internal IPv4 addresses written in the older IPv4-compatible IPv6 form and in the 6to4 form, so a domain whose DNS answers with one of those can no longer pass as public. The same forms of a public address are still scanned.
 - [Crosshair] **[FIXED]** **Active Probes Stay on the Host They Were Given**
-  Active probes limited to one host no longer follow a redirect between the bare domain and its www host, so every request a probe sends goes to the host it was allowed to test.
+  Active probes limited to one host no longer follow a redirect from the bare domain to its www host.
 - [Server] **[SECURITY]** **Scanned Sites Can No Longer Exhaust Server Memory**
   A site could answer robots.txt, security.txt, the exposed-file probes, the MTA-STS policy, the active form probes or the page itself with an endless or compressed-bomb body, and the scanner would buffer all of it, which could take down every scan running at the time. Each of these reads now stops at a fixed size limit and a time limit and hangs up.
 - [Mail] **[ENGINE]** **MTA-STS Policy Behind a Redirect Is Reported as Missing**
@@ -573,7 +573,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Sparkles] **[SECURITY]** **AI Verification Reserves Credits Before It Runs**
   AI finding verification now sets aside the tokens a pass can use from your window allowance and AI credits before it starts, gives back what it did not use, and stops at the first finding your allowance cannot cover instead of spending past it. Two verifications started at once can no longer both draw on the same credits.
 - [GitMerge] **[SECURITY]** **GitHub Repo Review Reserves Credits Before It Runs**
-  A GitHub repo review now needs your window allowance plus GitHub review credits to cover its estimate before any file is fetched, instead of starting on any positive balance. Unused tokens go back to you when it finishes, and a second review on the same account is refused until the first one finishes.
+  A GitHub repo review now needs your window allowance plus GitHub review credits to cover its estimate before any file is fetched, instead of starting on any positive balance. Unused tokens go back to you when it finishes. A second review on the same account is refused (HTTP 429) while the first is still running, rather than waiting for it, so start it again once the first one finishes.
 - [Timer] **[SECURITY]** **Verification Probe Reads a Capped Body**
   The live probe AI verification sends to the scanned site now stops reading the response at its snippet size and probe timeout, instead of downloading the whole body first.
 - [ShieldCheck] **[SECURITY]** **False-Positive Marks Stay Private**
@@ -585,11 +585,11 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Database] **[SELFHOST]** **Upgrading a v1 or v2 Database Works Again**
   Upgrading a database from schema 1.0.0 or 2.0.0 now completes. It used to fail and roll back on one step that copied scan team links before the column holding them existed, so no older install could upgrade. The migration tool now also checks every upgrade for this kind of ordering mistake before it changes anything.
 - [Mail] **[SELFHOST]** **Self-Hosted Email Links Use Your Own Domain**
-  On an instance running the published Docker image, the links in password-reset, verification and signup emails, staff and team invites, the reset link an admin sends, and every unsubscribe link pointed at vulnradar.dev, which sent live tokens to a domain the operator does not own. They now use APP_URL, then NEXT_PUBLIC_APP_URL, as the running container sees it, and never the URL saved in Admin > Settings. The image does not carry its build value into the container, so a plain docker run or a Kubernetes deployment has to set one of the two; the compose files already pass it from .env.
+  On an instance running the published Docker image, the links in password-reset, verification and signup emails, staff and team invites, and every unsubscribe link pointed at vulnradar.dev, which sent live tokens to a domain the operator does not own. They now use APP_URL, then NEXT_PUBLIC_APP_URL, as the running container sees it, and never the URL saved in Admin > Settings. Both compose files already pass NEXT_PUBLIC_APP_URL from .env. With a plain docker run or Kubernetes, set one of the two when the container starts.
 - [Key] **[FIXED]** **OAuth Redirects Follow the Runtime URL**
   GitHub, Google, Discord and staff sign-in redirects on a pulled image were built from the URL baked in at build time. They now use the URL saved in Admin > Settings, then APP_URL, then NEXT_PUBLIC_APP_URL as the running container sees it, and still fall back to the address the request arrived on.
-- [Lock] **[SECURITY]** **Only the Super Admin Can Change the Site's Public URL**
-  Any admin could save the public application URL in the settings page, and it decides where every GitHub, Google, Discord and staff sign-in returns to. Saving or resetting it now needs the super admin, and an admin's attempt is refused and written to the audit log. The value must be an https address with no path, query or user name, with plain http allowed only for localhost, and it is saved without a trailing slash.
+- [Lock] **[SECURITY]** **Only the Super Admin Can Change the Public URL**
+  Saving or resetting the public application URL in Admin > Settings now needs the super admin, and every refused attempt is written to the audit log. The value must be an https address with nothing after the domain and port, and no user name or password. Plain http is accepted only for localhost and 127.0.0.1. The saved URL only decides where GitHub, Google, Discord and staff sign-in return to. Links that carry a token never use it.
 - [Settings] **[PERFORMANCE]** **Admin Setting Changes Reach Every Part of the Server at Once**
   The server kept several separate copies of the settings cache, so after an admin saved a change some requests could see the old value for up to 30 seconds. There is now one shared cache, and a save clears it everywhere.
 - [Container] **[SELFHOST]** **Docker Quick Start Boots on a Fresh .env**
@@ -597,7 +597,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Container] **[SELFHOST]** **Development Compose Reads Your Whole .env**
   The development compose file now passes every variable in .env to the app, as the production file already did. Before, it passed only about a dozen, so settings like OAuth sign-in or Browserbase were silently ignored in development.
 - [Container] **[BREAKING]** **Compose Takes Mail and Turnstile Settings From .env Only**
-  The production compose file used to pass the SMTP, contact, support and Turnstile settings from your shell as well as from .env. It now reads them only from .env, as the self-hosting docs already describe, so a value exported in the shell before docker compose up no longer reaches the app. If you set any of them in your shell or in your hosting platform's variables, move them into .env before upgrading, or email stops sending and signup fails its Turnstile check.
+  The production compose file used to pass the SMTP, contact, support and Turnstile settings from your shell as well as from .env. It now reads them only from .env, as the self-hosting docs already describe, so a value exported in the shell before docker compose up no longer reaches the app. If you set SMTP_* or TURNSTILE_* from your shell or your platform's variables, move them into .env before upgrading, or mail stops sending and signup fails its Turnstile check.
 - [Smartphone] **[FIXED]** **Scan Settings No Longer Crash the Dashboard on Safari**
   Changing scan options on iPhone, iPad and Safari no longer takes the dashboard down. The form now updates the address bar once per change instead of eighteen times, and a browser that refuses the update just skips it.
 

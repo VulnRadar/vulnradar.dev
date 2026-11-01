@@ -1830,7 +1830,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Crosshair,
         label: "Active Probes Stay on the Host They Were Given",
-        desc: "Active probes limited to one host no longer follow a redirect between the bare domain and its www host, so every request a probe sends goes to the host it was allowed to test.",
+        desc: "Active probes limited to one host no longer follow a redirect from the bare domain to its www host.",
         category: "fixed",
       },
       {
@@ -1884,7 +1884,7 @@ const CHANGELOG: Release[] = [
       {
         icon: GitMerge,
         label: "GitHub Repo Review Reserves Credits Before It Runs",
-        desc: "A GitHub repo review now needs your window allowance plus GitHub review credits to cover its estimate before any file is fetched, instead of starting on any positive balance. Unused tokens go back to you when it finishes, and a second review on the same account is refused until the first one finishes.",
+        desc: "A GitHub repo review now needs your window allowance plus GitHub review credits to cover its estimate before any file is fetched, instead of starting on any positive balance. Unused tokens go back to you when it finishes. A second review on the same account is refused (HTTP 429) while the first is still running, rather than waiting for it, so start it again once the first one finishes.",
         category: "security",
       },
       {
@@ -1920,7 +1920,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Mail,
         label: "Self-Hosted Email Links Use Your Own Domain",
-        desc: "On an instance running the published Docker image, the links in password-reset, verification and signup emails, staff and team invites, the reset link an admin sends, and every unsubscribe link pointed at vulnradar.dev, which sent live tokens to a domain the operator does not own. They now use APP_URL, then NEXT_PUBLIC_APP_URL, as the running container sees it, and never the URL saved in Admin > Settings. The image does not carry its build value into the container, so a plain docker run or a Kubernetes deployment has to set one of the two; the compose files already pass it from .env.",
+        desc: "On an instance running the published Docker image, the links in password-reset, verification and signup emails, staff and team invites, and every unsubscribe link pointed at vulnradar.dev, which sent live tokens to a domain the operator does not own. They now use APP_URL, then NEXT_PUBLIC_APP_URL, as the running container sees it, and never the URL saved in Admin > Settings. Both compose files already pass NEXT_PUBLIC_APP_URL from .env. With a plain docker run or Kubernetes, set one of the two when the container starts.",
         category: "selfhost",
       },
       {
@@ -1931,8 +1931,8 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Lock,
-        label: "Only the Super Admin Can Change the Site's Public URL",
-        desc: "Any admin could save the public application URL in the settings page, and it decides where every GitHub, Google, Discord and staff sign-in returns to. Saving or resetting it now needs the super admin, and an admin's attempt is refused and written to the audit log. The value must be an https address with no path, query or user name, with plain http allowed only for localhost, and it is saved without a trailing slash.",
+        label: "Only the Super Admin Can Change the Public URL",
+        desc: "Saving or resetting the public application URL in Admin > Settings now needs the super admin, and every refused attempt is written to the audit log. The value must be an https address with nothing after the domain and port, and no user name or password. Plain http is accepted only for localhost and 127.0.0.1. The saved URL only decides where GitHub, Google, Discord and staff sign-in return to. Links that carry a token never use it.",
         category: "security",
       },
       {
@@ -1956,7 +1956,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Container,
         label: "Compose Takes Mail and Turnstile Settings From .env Only",
-        desc: "The production compose file used to pass the SMTP, contact, support and Turnstile settings from your shell as well as from .env. It now reads them only from .env, as the self-hosting docs already describe, so a value exported in the shell before docker compose up no longer reaches the app. If you set any of them in your shell or in your hosting platform's variables, move them into .env before upgrading, or email stops sending and signup fails its Turnstile check.",
+        desc: "The production compose file used to pass the SMTP, contact, support and Turnstile settings from your shell as well as from .env. It now reads them only from .env, as the self-hosting docs already describe, so a value exported in the shell before docker compose up no longer reaches the app. If you set SMTP_* or TURNSTILE_* from your shell or your platform's variables, move them into .env before upgrading, or mail stops sending and signup fails its Turnstile check.",
         category: "breaking",
       },
       {
