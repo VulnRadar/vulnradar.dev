@@ -585,9 +585,11 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Database] **[SELFHOST]** **Upgrading a v1 or v2 Database Works Again**
   Upgrading a database from schema 1.0.0 or 2.0.0 now completes. It used to fail and roll back on one step that copied scan team links before the column holding them existed, so no older install could upgrade. The migration tool now also checks every upgrade for this kind of ordering mistake before it changes anything.
 - [Mail] **[SELFHOST]** **Self-Hosted Email Links Use Your Own Domain**
-  On an instance running the published Docker image, the links in password-reset, verification and signup emails pointed at vulnradar.dev, which sent live tokens to a domain the operator does not own. They now use the URL saved in Admin > Settings, then APP_URL, then NEXT_PUBLIC_APP_URL as the running container sees it.
+  On an instance running the published Docker image, the links in password-reset, verification and signup emails, staff and team invites, the reset link an admin sends, and every unsubscribe link pointed at vulnradar.dev, which sent live tokens to a domain the operator does not own. They now use APP_URL, then NEXT_PUBLIC_APP_URL, as the running container sees it, and never the URL saved in Admin > Settings. The image does not carry its build value into the container, so a plain docker run or a Kubernetes deployment has to set one of the two; the compose files already pass it from .env.
 - [Key] **[FIXED]** **OAuth Redirects Follow the Runtime URL**
-  GitHub, Google, Discord and staff sign-in redirects on a pulled image were built from the URL baked in at build time. They now use the same runtime order as email links, and still fall back to the address the request arrived on.
+  GitHub, Google, Discord and staff sign-in redirects on a pulled image were built from the URL baked in at build time. They now use the URL saved in Admin > Settings, then APP_URL, then NEXT_PUBLIC_APP_URL as the running container sees it, and still fall back to the address the request arrived on.
+- [Lock] **[SECURITY]** **Only the Super Admin Can Change the Site's Public URL**
+  Any admin could save the public application URL in the settings page, and it decides where every GitHub, Google, Discord and staff sign-in returns to. Saving or resetting it now needs the super admin, and an admin's attempt is refused and written to the audit log. The value must be an https address with no path, query or user name, with plain http allowed only for localhost, and it is saved without a trailing slash.
 - [Settings] **[PERFORMANCE]** **Admin Setting Changes Reach Every Part of the Server at Once**
   The server kept several separate copies of the settings cache, so after an admin saved a change some requests could see the old value for up to 30 seconds. There is now one shared cache, and a save clears it everywhere.
 - [Container] **[SELFHOST]** **Docker Quick Start Boots on a Fresh .env**
@@ -2906,6 +2908,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1145
+- **Total changes documented:** 1146
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

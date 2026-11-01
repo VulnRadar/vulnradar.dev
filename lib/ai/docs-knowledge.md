@@ -583,11 +583,31 @@ saved row live, then the APP_URL and
 NEXT_PUBLIC_APP_URL environment variables
 as the running container sees them. It builds the OAuth
 redirect_uri for the GitHub, Google, and
-Discord sign-in and connect routes and staff SSO, and the links in
-verification, password-reset, and signup emails, so an edit there
-takes effect for those with no rebuild. Canonical URLs, social
-cards, and the links in other emails still read the compiled
-value.
+Discord sign-in and connect routes and staff SSO, so an edit there
+takes effect for those with no rebuild. Only the super admin can
+save it, and only as an https origin with no path, query or
+credentials (http is accepted for localhost and 127.0.0.1).
+
+> **WARNING: Set the URL in the container's environment**
+> The published image is built with
+NEXT_PUBLIC_APP_URL set to
+upstream&rsquo;s own domain, and the image deliberately does not
+copy that build value into the running container&rsquo;s
+environment: if it did, a pulled image&rsquo;s OAuth redirects
+would fall back to upstream instead of to the address the request
+arrived on. So a pulled image and one you built yourself both need
+APP_URL or
+NEXT_PUBLIC_APP_URL set when the
+container starts. Both compose files pass
+NEXT_PUBLIC_APP_URL from
+.env. With a plain
+docker run or a Kubernetes manifest, set
+one of them yourself. Without either, reset, verification, invite
+and unsubscribe links fall back to
+CONFIG_APP_URL, which on a pulled image
+is upstream&rsquo;s domain, so your users&rsquo; reset links would
+go there. The OAuth redirects fall back to the origin of the
+request.
 
 > **INFO: ~30 second propagation**
 > The resolver caches the whole table for 30 seconds so a value read
@@ -632,7 +652,7 @@ before pointing AI features at a local model.
 - Plan catalogs (limits per plan) live in lib/billing/catalog.ts. The values below only configure the upper bounds and the retention window.
 - of the values above also have a row in the system_settings database table and a control on /admin &rsquo;s Settings tab, sign in as an admin to reach it. The tab list there () and every field on it is generated from the same registry that generates the reference tables below, so the two cannot drift apart. Read the next subsection before you rely on a value you saved there: a control existing on that page does not mean the running app reads it.
 - Every setting on the page is one of two tiers:
-- APP_URL is the single exception. serverAppUrl() in lib/config/server-app-url.ts reads the saved row live, then the APP_URL and NEXT_PUBLIC_APP_URL environment variables as the running container sees them. It builds the OAuth redirect_uri for the GitHub, Google, and Discord sign-in and connect routes and staff SSO, and the links in verification, password-reset, and signup emails, so an edit there takes effect for those with no rebuild. Canonical URLs, social cards, and the links in other emails still read the compiled value.
+- APP_URL is the single exception. serverAppUrl() in lib/config/server-app-url.ts reads the saved row live, then the APP_URL and NEXT_PUBLIC_APP_URL environment variables as the running container sees them. It builds the OAuth redirect_uri for the GitHub, Google, and Discord sign-in and connect routes and staff SSO, so an edit there takes effect for those with no rebuild. Only the super admin can save it, and only as an https origin with no path, query or credentials (http is accepted for localhost and 127.0.0.1).
 
 ### Code examples
 ```text
@@ -3152,7 +3172,7 @@ individual URLs instead.
 | `/docs/setup` | - | 12 | 4 | 0 | 23 | 0 | 0 | 31 | 31 |
 | `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 16 | 2 |
 | `/docs/self-hosting` | - | 17 | 15 | 0 | 18 | 0 | 0 | 51 | 3 |
-| `/docs/config` | - | 9 | 5 | 0 | 2 | 0 | 0 | 39 | 0 |
+| `/docs/config` | - | 9 | 6 | 0 | 2 | 0 | 0 | 40 | 0 |
 | `/docs/api` | - | 8 | 5 | 0 | 6 | 42 | 0 | 18 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |
 | `/docs/webhooks` | ✓ | 7 | 0 | 0 | 4 | 0 | 0 | 13 | 6 |
@@ -3160,7 +3180,7 @@ individual URLs instead.
 | `/docs/architecture` | - | 5 | 1 | 0 | 3 | 0 | 0 | 8 | 0 |
 | `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 18 | 9 |
 | `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 22 | 0 |
-| `/docs/administration` | - | 12 | 8 | 0 | 0 | 0 | 0 | 39 | 0 |
+| `/docs/administration` | - | 12 | 8 | 0 | 0 | 0 | 0 | 38 | 0 |
 | `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 21 | 0 |
 | `/docs/billing` | - | 8 | 7 | 0 | 0 | 0 | 0 | 21 | 0 |
 | `/docs/cli` | - | 9 | 1 | 0 | 8 | 0 | 0 | 18 | 0 |

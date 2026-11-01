@@ -1920,14 +1920,20 @@ const CHANGELOG: Release[] = [
       {
         icon: Mail,
         label: "Self-Hosted Email Links Use Your Own Domain",
-        desc: "On an instance running the published Docker image, the links in password-reset, verification and signup emails pointed at vulnradar.dev, which sent live tokens to a domain the operator does not own. They now use the URL saved in Admin > Settings, then APP_URL, then NEXT_PUBLIC_APP_URL as the running container sees it.",
+        desc: "On an instance running the published Docker image, the links in password-reset, verification and signup emails, staff and team invites, the reset link an admin sends, and every unsubscribe link pointed at vulnradar.dev, which sent live tokens to a domain the operator does not own. They now use APP_URL, then NEXT_PUBLIC_APP_URL, as the running container sees it, and never the URL saved in Admin > Settings. The image does not carry its build value into the container, so a plain docker run or a Kubernetes deployment has to set one of the two; the compose files already pass it from .env.",
         category: "selfhost",
       },
       {
         icon: Key,
         label: "OAuth Redirects Follow the Runtime URL",
-        desc: "GitHub, Google, Discord and staff sign-in redirects on a pulled image were built from the URL baked in at build time. They now use the same runtime order as email links, and still fall back to the address the request arrived on.",
+        desc: "GitHub, Google, Discord and staff sign-in redirects on a pulled image were built from the URL baked in at build time. They now use the URL saved in Admin > Settings, then APP_URL, then NEXT_PUBLIC_APP_URL as the running container sees it, and still fall back to the address the request arrived on.",
         category: "fixed",
+      },
+      {
+        icon: Lock,
+        label: "Only the Super Admin Can Change the Site's Public URL",
+        desc: "Any admin could save the public application URL in the settings page, and it decides where every GitHub, Google, Discord and staff sign-in returns to. Saving or resetting it now needs the super admin, and an admin's attempt is refused and written to the audit log. The value must be an https address with no path, query or user name, with plain http allowed only for localhost, and it is saved without a trailing slash.",
+        category: "security",
       },
       {
         icon: Settings,
