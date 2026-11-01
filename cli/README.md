@@ -2,9 +2,9 @@
 
 Run a [VulnRadar](https://vulnradar.dev) scan from your shell or any CI and fail
 the build when findings cross a severity threshold. Same flow as the GitHub
-Action and the GitLab CI template, no dependencies (Node 22+, matching the
-rest of the project; Node 18 reached end of life in April 2025 and is not
-tested anywhere).
+Action and the GitLab CI template, no dependencies (Node 22.12 or newer, the
+first Node 22 release where the JSON import it reads its own version with is
+stable; Node 18 reached end of life in April 2025 and is not tested anywhere).
 
 ## Install
 

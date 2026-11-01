@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // VulnRadar CLI: run a scan and gate on the findings, the same flow as the
 // GitHub Action and the GitLab CI template, but from your shell or any CI.
-// No dependencies: global fetch is all it needs. Node 22+, matching the rest
-// of the project. It used to advertise Node 18, which went end of life in
-// April 2025 and is exercised by nothing here.
+// No dependencies: global fetch is all it needs. Node 22.12 or newer: the
+// package.json import below is a stable JSON module from 22.12, and earlier
+// 22.x releases print an ExperimentalWarning for it. It used to advertise
+// Node 18, which went end of life in April 2025 and is exercised by nothing
+// here.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";

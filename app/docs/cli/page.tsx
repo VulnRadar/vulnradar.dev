@@ -81,10 +81,11 @@ export default function CliPage() {
 vulnradar scan https://example.com --api-key vr_live_...`}
         />
         <p className="text-sm text-muted-foreground">
-          It needs Node 22 or newer, the same floor as the rest of the project (
+          It needs Node 22.12 or newer (
           <InlineCode>cli/package.json</InlineCode> declares{" "}
-          <InlineCode>engines.node &gt;=22.0.0</InlineCode>), and has no
-          dependencies of its own.
+          <InlineCode>engines.node &gt;=22.12.0</InlineCode>, the first Node 22
+          release where the JSON import it reads its own version with is
+          stable), and has no dependencies of its own.
         </p>
         <DocsSubSection title="From source">
           <p className="max-w-[68ch] text-sm text-muted-foreground">
