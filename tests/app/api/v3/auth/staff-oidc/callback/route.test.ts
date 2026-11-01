@@ -17,16 +17,35 @@ import { makeCookieStore, makeHeaderStore } from "../../_test-harness";
 
 process.env.API_KEY_ENCRYPTION_KEY = "f".repeat(64);
 
+// email_verified_at is optional here and filled in as verified by the mock
+// below, so every fixture that is not about it reads as the ordinary staff
+// account it always was.
 let userByEmailRow:
-  { id: number; role: string | null; disabled_at: string | null } | undefined;
+  | {
+      id: number;
+      role: string | null;
+      disabled_at: string | null;
+      email_verified_at?: string | null;
+    }
+  | undefined;
+const VERIFIED_AT = "2026-01-01T00:00:00.000Z";
+let securityAlertInsertFails = false;
 const queries: { sql: string; params: unknown[] }[] = [];
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   queries.push({ sql, params });
   const s = sql.trim();
-  if (s.startsWith("SELECT id, role, disabled_at FROM users")) {
-    return { rows: userByEmailRow ? [userByEmailRow] : [] };
+  if (s.startsWith("SELECT id, role, disabled_at")) {
+    return {
+      rows: userByEmailRow
+        ? [{ email_verified_at: VERIFIED_AT, ...userByEmailRow }]
+        : [],
+    };
   }
   if (s.startsWith("SELECT key, value FROM system_settings")) {
+    return { rows: [] };
+  }
+  if (s.startsWith("INSERT INTO security_alerts")) {
+    if (securityAlertInsertFails) throw new Error("db unavailable");
     return { rows: [] };
   }
   if (s.startsWith("INSERT INTO sessions")) return { rows: [] };
@@ -97,6 +116,7 @@ beforeEach(() => {
   mockQuery.mockClear();
   cookieState.clear();
   userByEmailRow = undefined;
+  securityAlertInsertFails = false;
   mockGetStaffOidcConfig.mockReset();
   mockGetDiscoveryDocument.mockReset();
   mockExchangeStaffOidcCode.mockReset();
@@ -234,6 +254,110 @@ describe("GET /api/v3/auth/staff-oidc/callback", () => {
       VALID_DOC,
       "the-nonce",
     );
+  });
+
+  // An email match only says the row CLAIMS the address. PATCH
+  // /api/v3/auth/update lets any account move to an unclaimed address and
+  // only clears email_verified_at, so a staff row holding an unverified
+  // address may belong to someone other than the IdP user who proved it.
+  describe("a staff account whose address was never verified", () => {
+    function securityAlertInserts() {
+      return queries.filter((q) =>
+        q.sql.trim().startsWith("INSERT INTO security_alerts"),
+      );
+    }
+
+    it("is not signed into, and the refusal looks like any other", async () => {
+      userByEmailRow = {
+        id: 5,
+        role: "admin",
+        disabled_at: null,
+        email_verified_at: null,
+      };
+      const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+
+      // The same code as "no account" and "not staff", so the refusal does
+      // not tell an IdP user which addresses belong to staff here.
+      expect(res.headers.get("location")).toBe(
+        "https://vulnradar.dev/login?error=oauth_no_account",
+      );
+      expect(
+        queries.some((q) => q.sql.trim().startsWith("INSERT INTO sessions")),
+      ).toBe(false);
+      expect(
+        queries.some((q) =>
+          q.sql.trim().startsWith("INSERT INTO admin_audit_log"),
+        ),
+      ).toBe(false);
+      expect(queries.some((q) => q.sql.trim().startsWith("UPDATE users"))).toBe(
+        false,
+      );
+    });
+
+    it("files a security alert against the account, without the requester's IP", async () => {
+      userByEmailRow = {
+        id: 5,
+        role: "support",
+        disabled_at: null,
+        email_verified_at: null,
+      };
+      await GET(makeRequest(`?code=abc&state=${validState()}`));
+
+      const inserts = securityAlertInserts();
+      expect(inserts).toHaveLength(1);
+      const params = inserts[0]!.params;
+      expect(params[0]).toBe(5);
+      expect(params[1]).toBe("staff_sso_unverified_email");
+      expect(JSON.stringify(params)).not.toContain("203.0.113.5");
+      expect(JSON.stringify(params)).toContain("idp.example.com");
+      // One open alert per account: a repeated attempt must not stack rows.
+      expect(inserts[0]!.sql).toContain("NOT EXISTS");
+    });
+
+    it("refuses before the disabled check, so an unproven claim learns nothing about the row", async () => {
+      userByEmailRow = {
+        id: 5,
+        role: "admin",
+        disabled_at: "2026-01-01",
+        email_verified_at: null,
+      };
+      const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+      expect(res.headers.get("location")).toContain("oauth_no_account");
+    });
+
+    it("files no alert for an unverified account that is not staff", async () => {
+      userByEmailRow = {
+        id: 5,
+        role: "user",
+        disabled_at: null,
+        email_verified_at: null,
+      };
+      const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+      expect(res.headers.get("location")).toContain("oauth_no_account");
+      expect(securityAlertInserts()).toHaveLength(0);
+    });
+
+    it("still refuses, with the same answer, when the alert cannot be written", async () => {
+      userByEmailRow = {
+        id: 5,
+        role: "admin",
+        disabled_at: null,
+        email_verified_at: null,
+      };
+      securityAlertInsertFails = true;
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+        expect(res.headers.get("location")).toBe(
+          "https://vulnradar.dev/login?error=oauth_no_account",
+        );
+      } finally {
+        errorSpy.mockRestore();
+      }
+      expect(
+        queries.some((q) => q.sql.trim().startsWith("INSERT INTO sessions")),
+      ).toBe(false);
+    });
   });
 
   it("redirects to oauth_failed and never signs in when the code exchange throws", async () => {

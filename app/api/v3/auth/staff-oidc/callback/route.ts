@@ -3,8 +3,8 @@
 //
 // Deliberately narrow: this NEVER creates an account and NEVER changes a
 // role. A successful callback only creates a session for an account that
-// (a) already exists with the IdP's returned email and (b) is already
-// staff-tier or above. Anything else is rejected with a generic error --
+// (a) already exists with the IdP's returned email, verified on this side
+// too, and (b) is already staff-tier or above. Anything else is rejected with a generic error --
 // specifically not "no account with that email" vs "account exists but
 // isn't staff", since leaking that distinction would let anyone with IdP
 // access enumerate which emails happen to be staff on this instance.
@@ -69,9 +69,11 @@ export async function GET(request: Request) {
       id: number;
       role: string | null;
       disabled_at: string | null;
-    }>(`SELECT id, role, disabled_at FROM users WHERE email = $1`, [
-      claims.email,
-    ]);
+      email_verified_at: string | null;
+    }>(
+      `SELECT id, role, disabled_at, email_verified_at FROM users WHERE email = $1`,
+      [claims.email],
+    );
     const user = result.rows[0];
 
     const role = user?.role || "user";
@@ -85,6 +87,21 @@ export async function GET(request: Request) {
     // public information surfaced elsewhere (a disabled account can't sign
     // in with a password either, so this reveals nothing new).
     if (!user || !isStaff) {
+      return fail("oauth_no_account");
+    }
+    // An email match only says the row CLAIMS this address. PATCH
+    // /api/v3/auth/update lets an account move to any address no other
+    // account holds and only clears email_verified_at, so an unverified staff
+    // row may belong to someone other than the IdP user who just proved the
+    // address, and signing that user in would hand them that person's staff
+    // access. The answer is the generic one, so it does not confirm that the
+    // address belongs to staff, and it comes before the disabled check so an
+    // unproven claim learns nothing else about the row.
+    if (!user.email_verified_at) {
+      await recordUnverifiedStaffSsoRefusal(
+        user.id,
+        new URL(config.issuerUrl).hostname,
+      );
       return fail("oauth_no_account");
     }
     if (user.disabled_at) {
@@ -108,4 +125,45 @@ export async function GET(request: Request) {
     console.error("[staff-oidc] callback error:", err);
     return fail("oauth_failed");
   }
+}
+
+/**
+ * Record that staff SSO refused an account because it never verified the
+ * address the IdP matched it on. Either someone pointed that staff account at
+ * an address they do not own, or its owner never verified it. An admin needs
+ * to know about both, and the refusal alone tells nobody anything.
+ *
+ * A security alert rather than an admin_audit_log row because no admin acted.
+ * No IP address or user agent: the request is the IdP user's, not the
+ * account's, and the data export hands an account its own alerts, so they
+ * would reach whoever set the address. One open alert per account, since the
+ * same person will retry.
+ *
+ * Never throws. The refusal is the control; this only reports it.
+ */
+async function recordUnverifiedStaffSsoRefusal(
+  userId: number,
+  issuerHost: string,
+): Promise<void> {
+  await pool
+    .query(
+      `INSERT INTO security_alerts
+         (user_id, alert_type, severity, description, details)
+       SELECT $1::int, $2::text, 'high', $3::text, $4::jsonb
+       WHERE NOT EXISTS (
+         SELECT 1 FROM security_alerts
+          WHERE user_id = $1::int
+            AND alert_type = $2::text
+            AND resolved_at IS NULL
+       )`,
+      [
+        userId,
+        "staff_sso_unverified_email",
+        "A staff SSO sign-in to this account was refused because the account has not verified its email address. Either the address was set on this account by someone who does not own it, or the account's owner never verified it.",
+        JSON.stringify({ issuer: issuerHost }),
+      ],
+    )
+    .catch((err) => {
+      console.error("[staff-oidc] Failed to record refused sign-in:", err);
+    });
 }
