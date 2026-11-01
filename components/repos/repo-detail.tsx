@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -22,6 +23,7 @@ import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
 import { formatDateTime } from "@/lib/ui/format-date";
 import type { GithubRepo, GithubScanOutcome } from "./types";
 import { GithubIcon } from "./github-icon";
+import { aiReviewNotice, type AiReviewNotice } from "./scan-outcome";
 
 /**
  * A load failure with the way out attached. Both failures in here used to be
@@ -94,6 +96,14 @@ export function RepoDetail({
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
     null,
   );
+  // The AI review coverage of the scan just run here, keyed by its history id.
+  // Closing the result modal lands on this scan's findings, and a partly
+  // AI-reviewed scan must not read as a complete review there either. History
+  // rows do not store coverage, so a past scan reopened later carries none.
+  const [freshNotice, setFreshNotice] = useState<{
+    scanId: number;
+    notice: AiReviewNotice;
+  } | null>(null);
 
   const loadScans = async () => {
     setLoadingScans(true);
@@ -129,6 +139,7 @@ export function RepoDetail({
     setSelectedScanId(null);
     setScanDetail(null);
     setSelectedIssue(null);
+    setFreshNotice(null);
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [repo.fullName]);
 
@@ -161,6 +172,12 @@ export function RepoDetail({
     // second unsaved scan and makes an un-openable row (selectedScanId null
     // also skipped the jump). The detail still shows below regardless.
     const scanHistoryId = outcome.scanHistoryId;
+    const notice = aiReviewNotice(outcome);
+    setFreshNotice(
+      scanHistoryId != null && notice
+        ? { scanId: scanHistoryId, notice }
+        : null,
+    );
     if (scanHistoryId != null) {
       setScans((prev) => [
         {
@@ -287,6 +304,19 @@ export function RepoDetail({
               />
             ) : (
               <>
+                {/* Above the findings, as in the result modal, which has
+                    already announced it, so no live role here. */}
+                {freshNotice && freshNotice.scanId === selectedScanId && (
+                  <InlineAlert
+                    tone="warning"
+                    title={freshNotice.notice.title}
+                    live="off"
+                  >
+                    {freshNotice.notice.paragraphs.map((p) => (
+                      <p key={p}>{p}</p>
+                    ))}
+                  </InlineAlert>
+                )}
                 <ScanSummary result={scanDetail} hideHeader />
                 {scanDetail.findings.length > 0 ? (
                   <ResultsList

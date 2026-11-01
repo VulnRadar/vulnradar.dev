@@ -316,9 +316,9 @@ export async function POST(request: Request) {
     // fetchSelectedFiles and surfaces as filesScanned being lower than what
     // was selected, and an AI review that did not run or stopped early
     // surfaces as aiReviewSkipped, aiReviewStoppedAtBudget,
-    // aiReviewStoppedAtRunCap and aiReviewCoverage. Both are in the response, neither is an
-    // ScanResult.incomplete area, so inventing one here would be a claim the
-    // scan cannot back.
+    // aiReviewStoppedAtRunCap and aiReviewCoverage. Both are in the response,
+    // neither is an ScanResult.incomplete area, so inventing one here would be
+    // a claim the scan cannot back.
     if (scanHistoryId !== null) {
       void notifyScanComplete({
         userId,

@@ -100,8 +100,8 @@ export function GithubScanResultModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* The shell tier: the panel clips (so the full-bleed rail stays inside
           the rounded corners) and the body below scrolls, which is what keeps
-          the wrapped stat row and the two footnote paragraphs reachable on a
-          short viewport. */}
+          the AI review notice, the wrapped stat row and the footnote reachable
+          on a short viewport. */}
       <DialogContent variant="shell" size="md">
         {/* The dialog stays open from "Scanning" to the result, which can
             take a minute, and swaps its whole body; this says when it ends. */}

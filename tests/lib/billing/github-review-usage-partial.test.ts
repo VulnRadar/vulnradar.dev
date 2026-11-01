@@ -91,7 +91,8 @@ const TEXTS = [
   ["emoji", "const s = '\u{1F600}\u{1F525}\u{1F680}\u{1F4A5}\u{1F44D}';"],
 ] as const;
 
-/** The route's sequence: plan, reserve, run, settle. */
+/** The route's sequence: plan, reserve, run, settle. A refused gate still
+ *  runs, as the route does, with a budget of zero. */
 async function review(files: RepoFile[]) {
   const sizes = files.map((f) => Buffer.byteLength(f.content, "utf8"));
   const plan = await planGithubReview(sizes);
@@ -100,7 +101,10 @@ async function review(files: RepoFile[]) {
     plan.estimate,
     plan.firstBatch,
   );
-  if (!gate.allowed) return { plan, gate, result: null };
+  if (!gate.allowed) {
+    const result = await runGithubAiReview(files, USER, false, 0);
+    return { plan, gate, result };
+  }
   const result = await runGithubAiReview(
     files,
     USER,
@@ -196,10 +200,16 @@ describe("a repo review against what the account has left", () => {
       githubUsed: { windowStart, tokens: 195_000 },
     });
 
-    const { gate } = await review(repo(TEXTS[1][1], 3, 39_000));
+    const { gate, result } = await review(repo(TEXTS[1][1], 3, 39_000));
 
     expect(gate.allowed).toBe(false);
+    // The run still happens, on a budget of zero, and stops before the first
+    // batch: a null budget here would mean uncapped.
     expect(global.fetch).not.toHaveBeenCalled();
+    expect(result?.stoppedAtBudget).toBe(true);
+    expect(result?.filesReviewed).toBe(0);
+    expect(result?.filesTotal).toBe(3);
+    expect(result?.totalTokensUsed).toBe(0);
     expect(fake.state.balances.github_credit_balance).toBe(1_000);
     expect(
       fake.state.usage.github_review_usage.get(windowStart.toISOString()),

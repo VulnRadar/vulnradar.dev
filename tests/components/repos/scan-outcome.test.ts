@@ -215,6 +215,22 @@ describe("the result modal", () => {
     expect(src).toMatch(/notice && \(/);
   });
 
+  it("the repo page shows the same notice above the fresh scan's findings once the modal is closed", () => {
+    const detail = fs
+      .readFileSync(
+        path.resolve(__dirname, "../../../components/repos/repo-detail.tsx"),
+        "utf8",
+      )
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const alert = detail.indexOf("<InlineAlert");
+    expect(alert).toBeGreaterThan(-1);
+    expect(alert).toBeLessThan(detail.indexOf("<ScanSummary"));
+    expect(alert).toBeLessThan(detail.indexOf("<ResultsList"));
+    expect(detail).toMatch(/aiReviewNotice\(outcome\)/);
+    expect(detail).toMatch(/freshNotice\.scanId === selectedScanId/);
+  });
+
   it("does not claim the AI review ran clean when it did not cover every file", () => {
     expect(src).toMatch(
       /let detail = notice\s*\?\s*"Pattern-based secret detection found nothing, and the AI review did not cover every file\."/,
