@@ -88,9 +88,11 @@ export default function GithubScanningPage() {
             first.&rdquo;
           </li>
           <li>
-            A quota pre-check runs <em>before</em> any GitHub API call, so a
-            request that has no review budget left never spends real GitHub API
-            calls. Denied returns <InlineCode>403</InlineCode>.
+            A quota pre-check runs <em>before</em> any GitHub API call. A plan
+            with no GitHub review of its own, once its free trial is used and no
+            credits are left, gets <InlineCode>403</InlineCode> there and spends
+            no GitHub API calls. A plan whose window is used up goes on: the
+            pattern scan still runs, and the AI review does not.
           </li>
           <li>
             The repo&apos;s default branch and visibility are resolved, then its
@@ -102,9 +104,11 @@ export default function GithubScanningPage() {
             returns <InlineCode>400</InlineCode>.
           </li>
           <li>
-            A cheap token estimate from the tree&apos;s byte sizes is compared
-            to the per-run ceiling. Too large returns{" "}
-            <InlineCode>413</InlineCode> before any file content is fetched.
+            The tree&apos;s byte sizes plan the AI review&apos;s batches up to
+            the per-run ceiling, and their worst case is reserved from your
+            allowance, needing at least the first batch. Nothing is refused for
+            size: the AI review stops at the batch that would cross the ceiling
+            or the allowance, and the response says how far it got.
           </li>
           <li>
             File contents are fetched, the secret scan and AI review run, CVSS
@@ -346,10 +350,12 @@ export default function GithubScanningPage() {
           <p className="max-w-[68ch] text-sm text-muted-foreground">
             Independent of plan and of whose AI key is used,{" "}
             <InlineCode>CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_RUN</InlineCode>{" "}
-            (default 300,000 estimated tokens) is a blunt guard against one run
-            trying to push an enormous repo through the model. A repo whose
-            estimated content exceeds it is rejected upfront with{" "}
-            <InlineCode>413</InlineCode> rather than silently truncated.
+            (default 300,000 tokens, counted at one token per byte of the prompt
+            sent) bounds the input one run sends. The AI review stops at the
+            batch that would cross it and the response says so with{" "}
+            <InlineCode>aiReviewStoppedAtRunCap</InlineCode> and{" "}
+            <InlineCode>aiReviewCoverage</InlineCode>; the pattern-based secret
+            scan still checks every file.
           </p>
         </DocsSubSection>
         <DocsSubSection title="Buying credits">
@@ -494,13 +500,21 @@ export default function GithubScanningPage() {
   "filesScanned": 128,
   "filesSkippedByCaps": false,
   "aiTokensUsed": 41200,
-  "aiReviewSkipped": false
+  "aiReviewSkipped": false,
+  "aiReviewStoppedAtBudget": false,
+  "aiReviewStoppedAtRunCap": false,
+  "aiReviewCoverage": {
+    "filesReviewed": 128, "filesTotal": 128, "batchesReviewed": 4, "batchesTotal": 4
+  },
+  "aiReviewAllowanceMessage": null
 }`}
             notes={[
               "repoFullName is required and must look like owner/repo",
               "ref is optional; it defaults to the repo's default branch and accepts a branch, tag, or commit SHA",
               "The scan is saved to history as private (is_public = false)",
               "aiReviewSkipped is true when no AI endpoint could be resolved",
+              "aiReviewStoppedAtBudget or aiReviewStoppedAtRunCap is true when the AI review stopped before every file; aiReviewCoverage says how many it covered, and the pattern scan always covers all of them",
+              "aiReviewAllowanceMessage explains why the AI review did not run when your allowance could not cover even the first batch",
             ]}
             errors={[
               {
@@ -509,10 +523,10 @@ export default function GithubScanningPage() {
                   "No connection, bad repo name, or no scannable files",
               },
               { code: 401, description: "Unauthorized" },
-              { code: 403, description: "GitHub review quota exhausted" },
               {
-                code: 413,
-                description: "Repo too large for the per-run token ceiling",
+                code: 403,
+                description:
+                  "The free plan's trial is used and no GitHub review credits are left",
               },
               { code: 429, description: "Too many requests" },
             ]}
