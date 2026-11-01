@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { SUCCESS_MESSAGES } from "@/lib/config/constants";
-import { authTokenHashCandidates } from "@/lib/auth/token-hash";
+import { hashAuthToken } from "@/lib/auth/token-hash";
 import { sendEmail, emailVerifiedEmail } from "@/lib/email/email";
 
-// auth: hash the incoming token with the same function used at generation
-// so a DB dump can't replay raw tokens. The candidate list is the HMAC
-// digest plus the pre-HMAC sha256 one, so a verification link already sent
-// when the switch to HMAC shipped still works (AUDIT-002#secrets-03).
+// auth: a link is looked up by the keyed digest every minting site stores
+// (lib/auth/token-hash.ts), so a DB dump can't replay raw tokens
+// (AUDIT-002#secrets-03). Only that digest: the pre-HMAC sha256 one could
+// match nothing but rows minted before tokens recorded the address they were
+// mailed to, and those are refused below whatever they match. A link that
+// matches no row, from before the switch or never issued, gets the same
+// "expired, request a new one" reply as a link past its expiry.
 
 const RELINK_MESSAGE =
   "This verification link has expired. Please request a new one.";
@@ -22,7 +25,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.badRequest("Verification token is required.");
   }
 
-  const tokenHashes = authTokenHashCandidates(token);
+  const tokenHash = hashAuthToken(token);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -35,24 +38,24 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
               u.email, u.name, u.email_verified_at
        FROM email_verification_tokens evt
        JOIN users u ON evt.user_id = u.id
-       WHERE evt.token_hash = ANY($1::text[]) AND evt.used_at IS NULL
+       WHERE evt.token_hash = $1 AND evt.used_at IS NULL
        FOR UPDATE`,
-      [tokenHashes],
+      [tokenHash],
     );
 
     if (tokenRes.rows.length === 0) {
       await client.query("ROLLBACK");
       // Check if token exists but was already used
       const usedTokenRes = await client.query(
-        "SELECT id, used_at FROM email_verification_tokens WHERE token_hash = ANY($1::text[])",
-        [tokenHashes],
+        "SELECT id, used_at FROM email_verification_tokens WHERE token_hash = $1",
+        [tokenHash],
       );
       if (usedTokenRes.rows.length > 0) {
         return ApiResponse.badRequest(
           "This verification link has already been used.",
         );
       }
-      return ApiResponse.badRequest("Invalid or expired verification link.");
+      return ApiResponse.badRequest(RELINK_MESSAGE);
     }
 
     const verificationToken = tokenRes.rows[0];

@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { createHash, createHmac } from "node:crypto";
 
 /**
  * Route-level tests for /api/v3/auth/verify-email (POST and GET).
@@ -37,11 +38,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   ) {
     return { rows: tokenRow ? [tokenRow] : [] };
   }
-  if (
-    s.startsWith(
-      "SELECT id, used_at FROM email_verification_tokens WHERE token_hash = ANY($1::text[])",
-    )
-  ) {
+  if (s.startsWith("SELECT id, used_at FROM email_verification_tokens")) {
     return { rows: usedTokenRow ? [usedTokenRow] : [] };
   }
   if (s.startsWith("DELETE FROM email_verification_tokens WHERE id = $1")) {
@@ -68,6 +65,14 @@ vi.mock("@/lib/database/db", () => ({
     }),
   },
 }));
+
+// A configured secret, so the keyed digest and the old unkeyed one differ and
+// a test can tell which of the two the route looked up.
+const SECRET = "verify-email-test-secret-0123456789abcdef";
+vi.stubEnv("AUTH_SECRET", SECRET);
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 const { POST, GET } = await import("@/app/api/v3/auth/verify-email/route");
 
@@ -114,7 +119,10 @@ describe("POST /api/v3/auth/verify-email", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects a token that doesn't match any row with a generic message", async () => {
+  // An unknown link gets the reply an expired one gets: there is nothing the
+  // reader can do with "invalid" that "request a new one" does not cover, and
+  // a link minted before the keyed digest now lands here too.
+  it("answers a token that matches no row the way it answers an expired one", async () => {
     tokenRow = null;
     usedTokenRow = null;
 
@@ -122,7 +130,9 @@ describe("POST /api/v3/auth/verify-email", () => {
     const json = await res.json();
 
     expect(res.status).toBe(400);
-    expect(json.error).toMatch(/invalid or expired/i);
+    expect(json.error).toBe(
+      "This verification link has expired. Please request a new one.",
+    );
     expect(verifiedUserCalls).toHaveLength(0);
   });
 
@@ -241,27 +251,43 @@ describe("POST /api/v3/auth/verify-email", () => {
     expect(queries.map((q) => q.sql)).toContain("ROLLBACK");
   });
 
-  // AUDIT-002#secrets-03: the digest is now HMAC-SHA256 keyed with the
-  // server secret, and the lookup matches a candidate LIST so a link already
-  // in someone's inbox when that shipped still resolves. Every candidate is
-  // still a digest, never the raw token.
-  it("looks the token up by its hash, never the raw value", async () => {
+  // AUDIT-002#secrets-03 made the stored digest HMAC-SHA256 keyed with the
+  // server secret. The lookup used to try the old unkeyed sha256 too, for
+  // links already in an inbox when that shipped, but every such row predates
+  // the address binding and is refused anyway, so the keyed digest is the
+  // only thing a link is matched by now.
+  it("looks the token up by its keyed hash only, never the raw value or the unkeyed digest", async () => {
     tokenRow = validToken();
     const rawToken = "plaintext-verification-token";
 
     await POST(verifyPostRequest({ token: rawToken }));
 
-    const lookup = queries.find(
-      (q) =>
-        q.sql.includes("FROM email_verification_tokens evt") &&
-        q.sql.includes("FOR UPDATE"),
+    const keyed = createHmac("sha256", SECRET).update(rawToken).digest("hex");
+    const unkeyed = createHash("sha256").update(rawToken).digest("hex");
+    const lookups = queries.filter((q) =>
+      /FROM email_verification_tokens/.test(q.sql),
     );
-    const candidates = lookup?.params[0] as string[];
-    expect(Array.isArray(candidates)).toBe(true);
-    expect(candidates).not.toContain(rawToken);
-    for (const candidate of candidates) {
-      expect(candidate).toMatch(/^[a-f0-9]{64}$/);
+    expect(lookups.length).toBeGreaterThan(0);
+    for (const lookup of lookups) {
+      expect(JSON.stringify(lookup.params)).not.toContain(rawToken);
+      expect(JSON.stringify(lookup.params)).not.toContain(unkeyed);
     }
+    const select = lookups.find((q) => q.sql.includes("FOR UPDATE"));
+    expect(select?.params).toEqual([keyed]);
+  });
+
+  it("checks for an already-used link by the keyed hash only", async () => {
+    tokenRow = null;
+    usedTokenRow = { id: 3, used_at: new Date().toISOString() };
+    const rawToken = "used-verification-token";
+
+    await POST(verifyPostRequest({ token: rawToken }));
+
+    const keyed = createHmac("sha256", SECRET).update(rawToken).digest("hex");
+    const usedLookup = queries.find((q) =>
+      q.sql.startsWith("SELECT id, used_at FROM email_verification_tokens"),
+    );
+    expect(usedLookup?.params).toEqual([keyed]);
   });
 });
 
