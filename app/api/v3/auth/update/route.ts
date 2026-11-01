@@ -211,7 +211,13 @@ export async function PATCH(request: NextRequest) {
     }
     if (wantsEmailChange) {
       const trimmedEmail = email.toLowerCase().trim();
-      if (Validate.email(trimmedEmail)) {
+      // The new-address rule is for a new address. Sending back the one the
+      // account already holds, stored under the old any-@ rule (a self-hosted
+      // admin@localhost), is not new input and is not refused.
+      if (
+        trimmedEmail !== currentEmail.toLowerCase() &&
+        Validate.email(trimmedEmail)
+      ) {
         return NextResponse.json(
           { error: "Please enter a valid email." },
           { status: 400 },

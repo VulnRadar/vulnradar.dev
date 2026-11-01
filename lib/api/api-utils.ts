@@ -130,8 +130,10 @@ export const Validate = {
     if (
       typeof email !== "string" ||
       email.length > 254 ||
+      // Both control blocks: C0 and DEL, and C1 (U+0080 to U+009F), whose
+      // NEL is not in \s and would otherwise pass as part of an address.
       // oxlint-disable-next-line no-control-regex -- refusing control characters is the point
-      /[\s\u0000-\u001f\u007f]/.test(email)
+      /[\s\u0000-\u001f\u007f-\u009f]/.test(email)
     ) {
       return "Please enter a valid email address";
     }

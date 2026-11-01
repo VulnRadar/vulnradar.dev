@@ -397,6 +397,24 @@ describe("PATCH /api/v3/auth/update", () => {
       expect(emailUpdateCalls).toHaveLength(0);
     });
 
+    // The rule is for new input. An account stored under the old any-@ rule
+    // that sends its own address back (beside a name change, say) is not
+    // asking for anything the stricter rule is about.
+    it("does not refuse the address the account already holds", async () => {
+      logIn();
+      currentUserRow = { name: "Original Name", email: "admin@localhost" };
+      const res = await PATCH(
+        updateRequest({
+          name: "New Name",
+          email: " Admin@Localhost ",
+          currentPassword: CURRENT_PASSWORD,
+        }),
+      );
+      expect(res.status).toBe(200);
+      expect(nameUpdateCalls).toEqual([["New Name", 7]]);
+      expect(emailUpdateCalls).toHaveLength(0);
+    });
+
     it("updates the email, resets email_verified_at, and notifies both addresses", async () => {
       logIn();
       const res = await PATCH(

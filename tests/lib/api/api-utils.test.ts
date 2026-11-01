@@ -222,6 +222,8 @@ describe("Validate", () => {
       ["a trailing newline", "user@example.com\n"],
       ["a NUL", "user\u0000@example.com"],
       ["a DEL", "user\u007f@example.com"],
+      ["a C1 NEL, which \\s does not match", "user\u0085@example.com"],
+      ["the last C1 control", "user@example.com\u009f"],
       ["a non-breaking space", "user\u00a0@example.com"],
     ])("rejects %s", (_label, address) => {
       expect(Validate.email(address)).toMatch(/valid email/i);
