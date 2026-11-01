@@ -2960,7 +2960,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_RUN,
     group: "AI",
     label: "GitHub review per-run token ceiling",
-    help: "Hard cap on estimated tokens (prompt content) for one GitHub repo AI code review run, regardless of plan, remaining monthly quota, or whether the user brings their own AI key. A repo whose selected files estimate over this is rejected upfront rather than silently truncated.",
+    help: "Hard cap on the input one GitHub repo AI code review run sends, counted at one token per UTF-8 byte, regardless of plan, remaining allowance, or whether the user brings their own AI key. The AI review stops at the batch that would cross it and the result says how many files it covered; the pattern-based secret scan still checks every file.",
     min: 10_000,
     max: 2_000_000,
   },
