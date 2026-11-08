@@ -47,10 +47,14 @@ export function loadEnv({ root = ROOT } = {}) {
       if (err.code !== "ENOENT") logWarn(`Could not read ${path}: ${err.code}`);
     }
   }
+  // Next's expansion also writes back every key a file names, shell values
+  // included, so a `$` in an exported BACKUP_ENCRYPTION_KEY would shorten it.
+  const shell = { ...process.env };
   nextEnv.processEnv(files, root, {
     info: () => {},
     error: (message) => logWarn(message),
   });
+  Object.assign(process.env, shell);
   return Boolean(process.env.DATABASE_URL);
 }
 

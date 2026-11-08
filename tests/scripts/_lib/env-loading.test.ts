@@ -106,6 +106,25 @@ describe("loadEnv", () => {
     expect(env.B).toBe("");
   });
 
+  it("does not expand or shorten a shell value that a file also sets", async () => {
+    // Next's expansion rewrites process.env for every key a file names, shell
+    // values included, so `ab$cd` came back as `ab`: a backup encrypted under
+    // a key nobody typed.
+    const shell = {
+      BACKUP_ENCRYPTION_KEY: "ab$cd",
+      DATABASE_URL: "postgresql://u:pa$sword@shell/db",
+    };
+    const { env } = await load(
+      {
+        ".env.local": "BACKUP_ENCRYPTION_KEY=local\n",
+        ".env": "BACKUP_ENCRYPTION_KEY=env\nDATABASE_URL=postgresql://env/db\n",
+      },
+      shell,
+    );
+    expect(env.BACKUP_ENCRYPTION_KEY).toBe(shell.BACKUP_ENCRYPTION_KEY);
+    expect(env.DATABASE_URL).toBe(shell.DATABASE_URL);
+  });
+
   it("returns false and throws nothing when neither file exists", async () => {
     const { loaded, env } = await load({});
     expect(loaded).toBe(false);
