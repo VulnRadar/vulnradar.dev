@@ -106,11 +106,27 @@ describe("serverAppUrl", () => {
   });
 
   it("still answers when the settings table cannot be read", async () => {
+    // Leaves no saved row behind for the failed read to keep.
+    await serverAppUrl();
+    invalidateSettingsCache();
+
     vi.spyOn(console, "error").mockImplementation(() => {});
     mockQuery.mockRejectedValue(new Error("connection refused"));
     process.env.NEXT_PUBLIC_APP_URL = "https://scanner.example.org";
 
     expect(await serverAppUrl()).toBe("https://scanner.example.org");
+  });
+
+  it("keeps the saved URL when a later read of the table fails", async () => {
+    process.env.APP_URL = "https://env.example.org";
+    mockQuery.mockResolvedValue(storedAppUrl("https://saved.example.org"));
+    expect(await serverAppUrl()).toBe("https://saved.example.org");
+
+    invalidateSettingsCache();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockRejectedValue(new Error("connection refused"));
+
+    expect(await serverAppUrl()).toBe("https://saved.example.org");
   });
 });
 

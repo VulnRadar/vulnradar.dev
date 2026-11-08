@@ -23,14 +23,21 @@ import {
 
 const TTL_MS = 30_000;
 
+// How long a failed load is believed before the next attempt. Short, because
+// until a read succeeds an admin's change is invisible to this process; long
+// enough that a burst of requests during an outage is not a burst of failing
+// queries against a database that is already in trouble.
+const FAILED_LOAD_RETRY_MS = 4_000;
+
 type Snapshot = {
   values: Map<SettingKey, unknown>;
-  loadedAt: number;
+  freshUntil: number;
 };
 
 type CacheState = {
   snapshot: Snapshot | null;
   inFlight: Promise<Snapshot> | null;
+  generation: number;
 };
 
 /**
@@ -56,55 +63,74 @@ function globalSingleton<T>(key: string, init: () => T): T {
 const cache = globalSingleton<CacheState>("vulnradar.runtimeConfig", () => ({
   snapshot: null,
   inFlight: null,
+  generation: 0,
 }));
 
 /**
- * Drop the cached snapshot so the next resolve re-reads the table. Called by
- * the admin write path, which means the admin sees their own change at once
+ * Mark the cached snapshot stale so the next resolve re-reads the table. Called
+ * by the admin write path, which means the admin sees their own change at once
  * rather than waiting out the TTL. Other server processes converge via TTL.
+ *
+ * Stale rather than dropped: if the re-read fails, the values from before are
+ * still the best answer available. The generation stops a read already on the
+ * wire, which may have seen the row from before the write, from being stored
+ * as the fresh answer afterwards.
  */
 export function invalidateSettingsCache(): void {
-  cache.snapshot = null;
+  cache.generation += 1;
   cache.inFlight = null;
+  if (cache.snapshot) cache.snapshot.freshUntil = 0;
 }
 
-async function query(): Promise<Snapshot> {
-  const values = new Map<SettingKey, unknown>();
+/** The table as a map, or null when it could not be read. */
+async function query(): Promise<Map<SettingKey, unknown> | null> {
   try {
     const { rows } = await pool.query<{ key: string; value: string }>(
       "SELECT key, value FROM system_settings",
     );
+    const values = new Map<SettingKey, unknown>();
     for (const row of rows) {
       if (!isSettingKey(row.key)) continue;
       const coerced = coerceSettingValue(row.key, row.value);
       if (coerced !== undefined) values.set(row.key, coerced);
     }
+    return values;
   } catch (error) {
-    // Fail open. An empty map resolves every key to its environment override
-    // or shipped default, so a database blip cannot turn every feature flag
-    // false or drop every rate limit to nothing.
     console.error("[RuntimeConfig] Failed to load system_settings:", error);
+    return null;
   }
-  return { values, loadedAt: Date.now() };
 }
 
 async function load(): Promise<Snapshot> {
   const { snapshot } = cache;
-  if (snapshot && Date.now() - snapshot.loadedAt < TTL_MS) return snapshot;
+  if (snapshot && Date.now() < snapshot.freshUntil) return snapshot;
   // Callers that arrive while a load is in progress share its result, so a
   // request that resolves ten settings still issues one query.
   if (cache.inFlight) return cache.inFlight;
 
-  cache.inFlight = query()
-    .then((loaded) => {
-      cache.snapshot = loaded;
+  const { generation } = cache;
+  const pending: Promise<Snapshot> = query()
+    .then((values) => {
+      // A failed read keeps the last good values, so a database blip cannot
+      // turn ENFORCE_STAFF_2FA or a rate limit an admin tightened back into
+      // its shipped default. With nothing loaded yet the empty map fails open:
+      // every key resolves to its environment override or shipped default,
+      // never to every feature flag false or every limit nothing.
+      const loaded: Snapshot = values
+        ? { values, freshUntil: Date.now() + TTL_MS }
+        : {
+            values: cache.snapshot?.values ?? new Map(),
+            freshUntil: Date.now() + FAILED_LOAD_RETRY_MS,
+          };
+      if (generation === cache.generation) cache.snapshot = loaded;
       return loaded;
     })
     .finally(() => {
-      cache.inFlight = null;
+      if (cache.inFlight === pending) cache.inFlight = null;
     });
+  cache.inFlight = pending;
 
-  return cache.inFlight;
+  return pending;
 }
 
 function resolve<K extends SettingKey>(
