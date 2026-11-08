@@ -7,8 +7,8 @@
  * jsdom and a `.tsx` cannot be imported into a suite. What is asserted is the
  * wiring that decides the behaviour: which handlers throw (so useConfirm keeps
  * its dialog open with the reason), what the rename, invite and role dialogs
- * do on a refusal, and what the Leave button sends. The request helper those handlers share has
- * its own behavioural suite in team-requests.test.ts.
+ * do on a refusal, and what the Leave button sends. The request helper those
+ * handlers share has its own behavioural suite in team-requests.test.ts.
  */
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
@@ -159,5 +159,16 @@ describe("inviting someone", () => {
     expect(PAGE).toContain("<TeamInviteLinkCard");
     expect(PAGE).not.toContain("TeamInviteForm");
     expect(PAGE).not.toContain("inviteEmail");
+  });
+
+  it("mounts the dialog for the same permission the header's Invite button uses", () => {
+    // The page used to gate on owner or admin while the header showed Invite
+    // to anyone with manage_members, so a manager pressed a button that
+    // opened nothing.
+    expect(PAGE).toContain(
+      'const canInvite = hasTeamPermission(currentRole, "manage_members");',
+    );
+    expect(PAGE).toContain("{showInvite && canInvite && (");
+    expect(PAGE).not.toContain("TEAM_ROLES.ADMIN");
   });
 });
