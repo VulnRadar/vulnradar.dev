@@ -377,6 +377,33 @@ describe("verifyStaffOidcIdToken", () => {
     ])("%s", async (_label, claim, accept, expected) => {
       expect(await verifiedFor(claim, accept)).toBe(expected);
     });
+
+    it.each([
+      ["a missing claim the setting let through", ABSENT, true, true],
+      ["a missing claim refused with the setting off", ABSENT, false, false],
+      ["a true claim, setting off", true, false, false],
+      ["a true claim, setting on", true, true, false],
+      ['the string "true", setting on', "true", true, false],
+      ["a false claim, setting on", false, true, false],
+    ])(
+      "reports whether the missing claim was trusted: %s",
+      async (_label, claim, accept, expected) => {
+        const { config, doc, sign } = await setup();
+        const claims: Record<string, unknown> = {
+          email: "a@example.com",
+          sub: "u1",
+          nonce: "n",
+        };
+        if (claim !== ABSENT) claims.email_verified = claim;
+        const verified = await verifyStaffOidcIdToken(
+          await sign(claims),
+          { ...config, acceptMissingEmailVerified: accept },
+          doc,
+          "n",
+        );
+        expect(verified.emailVerifiedClaimMissing).toBe(expected);
+      },
+    );
   });
 });
 

@@ -151,6 +151,12 @@ function getJwksClient(jwksUri: string) {
 export interface VerifiedOidcIdToken {
   email: string;
   emailVerified: boolean;
+  /**
+   * True only when emailVerified is true because the token had no claim at
+   * all and STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED let it through. The
+   * callback's audit row says so.
+   */
+  emailVerifiedClaimMissing: boolean;
   name: string | null;
   sub: string;
 }
@@ -197,6 +203,8 @@ export async function verifyStaffOidcIdToken(
       claims.email_verified,
       config.acceptMissingEmailVerified,
     ),
+    emailVerifiedClaimMissing:
+      claims.email_verified === undefined && config.acceptMissingEmailVerified,
     name: claims.name ?? null,
     sub: claims.sub,
   };

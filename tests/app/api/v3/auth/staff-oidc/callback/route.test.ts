@@ -326,6 +326,66 @@ describe("GET /api/v3/auth/staff-oidc/callback", () => {
     expect(details).not.toContain(VALID_CONFIG.clientSecret);
   });
 
+  // The setting exists for providers that never send the claim, and it is a
+  // standing exception to "the provider vouched for this address". Each
+  // sign-in that leans on it says so, or a review of the log cannot tell it
+  // from an ordinary one.
+  describe("a sign-in that relied on a missing email_verified claim", () => {
+    function auditInserts() {
+      return queries.filter((q) =>
+        q.sql.trim().startsWith("INSERT INTO admin_audit_log"),
+      );
+    }
+
+    it("says so in the audit row", async () => {
+      userByEmailRow = { id: 5, role: "admin", disabled_at: null };
+      mockVerifyStaffOidcIdToken.mockResolvedValue({
+        email: "admin@example.com",
+        emailVerified: true,
+        emailVerifiedClaimMissing: true,
+        name: "Admin",
+        sub: "idp-1",
+      });
+
+      const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+
+      expect(res.headers.get("location")).toBe("https://vulnradar.dev/admin");
+      expect(auditInserts()).toHaveLength(1);
+      const [, targetUserId, action, details] = auditInserts()[0]!.params;
+      expect(targetUserId).toBe(5);
+      expect(action).toBe("staff_oidc_login");
+      expect(String(details)).toContain("no email_verified claim");
+      expect(String(details)).toContain(
+        "STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED",
+      );
+    });
+
+    it("says nothing of the kind when the provider sent the claim", async () => {
+      userByEmailRow = { id: 5, role: "admin", disabled_at: null };
+      await GET(makeRequest(`?code=abc&state=${validState()}`));
+
+      expect(auditInserts()).toHaveLength(1);
+      expect(String(auditInserts()[0]!.params[3])).not.toContain(
+        "email_verified",
+      );
+    });
+
+    it("writes nothing when the account is not staff", async () => {
+      userByEmailRow = { id: 6, role: "user", disabled_at: null };
+      mockVerifyStaffOidcIdToken.mockResolvedValue({
+        email: "person@example.com",
+        emailVerified: true,
+        emailVerifiedClaimMissing: true,
+        name: null,
+        sub: "idp-2",
+      });
+
+      await GET(makeRequest(`?code=abc&state=${validState()}`));
+
+      expect(auditInserts()).toHaveLength(0);
+    });
+  });
+
   it("consumes the nonce cookie -- it is deleted whether the callback succeeds or fails", async () => {
     userByEmailRow = { id: 5, role: "admin", disabled_at: null };
     await GET(makeRequest(`?code=abc&state=${validState()}`));

@@ -136,11 +136,17 @@ export async function GET(request: Request) {
     const userAgent = request.headers.get("user-agent") || "unknown";
     await createSession(user.id, ip, userAgent);
 
+    // A sign-in on a provider's silence is the standing exception to "the
+    // provider vouched for this address", so the row names it: a review of the
+    // log has to be able to tell these sessions from the ordinary ones.
+    const trustNote = claims.emailVerifiedClaimMissing
+      ? " The ID token had no email_verified claim and was accepted because STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED is on."
+      : "";
     await logAuditAction(
       user.id,
       user.id,
       "staff_oidc_login",
-      `Signed in via staff SSO (${issuerHost}).`,
+      `Signed in via staff SSO (${issuerHost}).${trustNote}`,
       ip,
     );
 
