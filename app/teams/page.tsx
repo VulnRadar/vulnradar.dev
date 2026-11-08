@@ -28,7 +28,7 @@ import {
   TeamMemberScans,
   TeamsDataSkeleton,
 } from "@/components/teams";
-import { copyToClipboard } from "@/lib/ui/clipboard";
+import { useCopyFeedback } from "@/components/shared/copy-feedback";
 import { useQueryParam } from "@/lib/ui/url-state";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { useConfirm } from "@/components/shared/use-confirm";
@@ -37,6 +37,7 @@ import {
   TEAMS_UNREACHABLE,
 } from "@/components/teams/team-requests";
 import { inviteRequestBody } from "@/components/teams/team-invite-form";
+import { runOnce } from "@/components/teams/run-once";
 // The members list needs to know which row is you, so it can hide the
 // "Change role" item on your own membership: a team owner demoting
 // themselves would leave the team with nobody who can promote anyone back.
@@ -51,12 +52,19 @@ type Confirmation =
 
 const CONFIRM_COPY: Record<
   Confirmation["kind"],
-  { title: string; confirmLabel: string }
+  { title: string; confirmLabel: string; cancelLabel?: string }
 > = {
   deleteTeam: { title: "Delete this team?", confirmLabel: "Delete team" },
   removeMember: { title: "Remove this person?", confirmLabel: "Remove" },
   leaveTeam: { title: "Leave this team?", confirmLabel: "Leave" },
-  cancelInvite: { title: "Cancel this invite?", confirmLabel: "Cancel invite" },
+  // The action is "withdraw", so the dismiss button can't also be "Cancel"
+  // next to a button that says "Cancel invite": two Cancels in one dialog is
+  // how the wrong one gets pressed.
+  cancelInvite: {
+    title: "Withdraw this invite?",
+    confirmLabel: "Withdraw invite",
+    cancelLabel: "Keep invite",
+  },
 };
 
 function confirmDescription(confirmation: Confirmation): React.ReactNode {
@@ -123,6 +131,9 @@ export default function TeamsPage() {
   // load failure is a standing fact about the page, not a one-off event.
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // The create dialog's own error. actionError renders above the header, behind
+  // the dialog's scrim, so a refused create used to look like nothing happened.
+  const [createError, setCreateError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -151,7 +162,10 @@ export default function TeamsPage() {
   const [showInvite, setShowInvite] = useState(false);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [invitedEmail, setInvitedEmail] = useState("");
-  const [copied, setCopied] = useState(false);
+  const { copied: linkCopied, copy: copyLink } = useCopyFeedback();
+  // Taken synchronously by handleInvite, because two Enter presses in one tick
+  // both read the same render's state.
+  const invitingRef = useRef(false);
 
   // Failures used to vanish into empty catch blocks. Surface them instead.
   const [actionError, setActionError] = useState<string | null>(null);
@@ -270,6 +284,7 @@ export default function TeamsPage() {
   async function handleCreateTeam(name: string, invites: NewTeamInvite[]) {
     setCreating(true);
     setActionError(null);
+    setCreateError(null);
     try {
       const res = await fetch(API.TEAMS, {
         method: "POST",
@@ -278,7 +293,7 @@ export default function TeamsPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setActionError(
+        setCreateError(
           data.error || "We could not create that team. Try again.",
         );
         return;
@@ -321,7 +336,7 @@ export default function TeamsPage() {
         );
       }
     } catch {
-      setActionError(
+      setCreateError(
         "We could not reach the server. Check your connection and try again.",
       );
     } finally {
@@ -449,33 +464,41 @@ export default function TeamsPage() {
   // The invite dialog's save. It throws on a refusal so the dialog stays open
   // with the server's reason and the address as typed, the way the confirmed
   // actions do; it never posts to actionError, which sits behind the scrim.
+  //
+  // The dialog's busy state already blocks a second press of the button, but
+  // Enter in the address field can submit twice before it has re-rendered, so
+  // the handler keeps its own guard: a second call while one is in flight is
+  // dropped, not sent.
   async function handleInvite(email: string, role: InvitableRole) {
     if (!selectedTeam) return;
-    setActionError(null);
-    setInviteToken(null);
-    let res: Response;
-    try {
-      res = await fetch(API.TEAMS_MEMBERS, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(inviteRequestBody(selectedTeam.id, email, role)),
-      });
-    } catch {
-      throw new Error(TEAMS_UNREACHABLE);
-    }
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(
-        typeof data.error === "string" && data.error
-          ? data.error
-          : "We could not send that invite. Check the address and try again.",
-      );
-    }
-    setInviteToken(data.token);
-    setInvitedEmail(email);
-    // Refresh the lists but leave the one-time token alone: refreshMembers,
-    // not openTeam, which would reset it.
-    await refreshMembers(selectedTeam);
+    const team = selectedTeam;
+    await runOnce(invitingRef, async () => {
+      setActionError(null);
+      setInviteToken(null);
+      let res: Response;
+      try {
+        res = await fetch(API.TEAMS_MEMBERS, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(inviteRequestBody(team.id, email, role)),
+        });
+      } catch {
+        throw new Error(TEAMS_UNREACHABLE);
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === "string" && data.error
+            ? data.error
+            : "We could not send that invite. Check the address and try again.",
+        );
+      }
+      setInviteToken(data.token);
+      setInvitedEmail(email);
+      // Refresh the lists but leave the one-time token alone: refreshMembers,
+      // not openTeam, which would reset it.
+      await refreshMembers(team);
+    });
   }
 
   async function handleRemoveMember(userId: number) {
@@ -489,11 +512,12 @@ export default function TeamsPage() {
     );
     // refreshMembers, not openTeam: openTeam throws away the copy-once link
     // an invite sent a moment ago is still showing, and pushes another
-    // history entry for the team already open.
+    // history entry for the team already open. The list is reloaded too, so
+    // the member count on the way back to it is not the old one.
     setViewingMember((viewing) =>
       viewing?.user_id === userId ? null : viewing,
     );
-    await refreshMembers(selectedTeam);
+    await Promise.all([refreshMembers(selectedTeam), fetchTeams()]);
   }
 
   // The save of the "Change role" dialog in TeamMembersList. That list
@@ -513,19 +537,29 @@ export default function TeamsPage() {
       "We could not change that role. Try again.",
     );
     // refreshMembers, not openTeam, for the same reason as a removal.
-    await refreshMembers(selectedTeam);
+    await Promise.all([refreshMembers(selectedTeam), fetchTeams()]);
   }
 
   async function handleCancelInvite(inviteId: number) {
     if (!selectedTeam) return;
     setActionError(null);
+    const withdrawn = invites.find((x) => x.id === inviteId);
     await sendTeamsRequest(
       API.TEAMS_MEMBERS,
       "DELETE",
       { teamId: selectedTeam.id, inviteId },
-      "We could not cancel that invite. Try again.",
+      "We could not withdraw that invite. Try again.",
     );
-    await openTeam(selectedTeam);
+    // The link card is left alone unless it shows the link of the invite that
+    // was just withdrawn: that one is dead, and a dead copy-once link on screen
+    // reads as a working one. Any other invite's link is still good.
+    if (
+      withdrawn &&
+      invitedEmail.trim().toLowerCase() === withdrawn.email.trim().toLowerCase()
+    ) {
+      setInviteToken(null);
+    }
+    await Promise.all([refreshMembers(selectedTeam), fetchTeams()]);
   }
 
   async function handleLeave() {
@@ -561,6 +595,7 @@ export default function TeamsPage() {
       title: CONFIRM_COPY[c.kind].title,
       description: confirmDescription(c),
       confirmLabel: CONFIRM_COPY[c.kind].confirmLabel,
+      cancelLabel: CONFIRM_COPY[c.kind].cancelLabel,
       danger: true,
       onConfirm: () => runConfirmation(c),
     });
@@ -642,13 +677,7 @@ export default function TeamsPage() {
 
   async function copyInviteLink() {
     if (!inviteToken) return;
-    const success = await copyToClipboard(
-      `${window.location.origin}/teams/join?token=${inviteToken}`,
-    );
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    await copyLink(`${window.location.origin}/teams/join?token=${inviteToken}`);
   }
 
   // How many people the create dialog lets you invite up front: the owner's
@@ -751,7 +780,7 @@ export default function TeamsPage() {
             <TeamInviteLinkCard
               token={inviteToken}
               email={invitedEmail}
-              copied={copied}
+              copied={linkCopied !== null}
               onCopy={copyInviteLink}
               onClose={() => setInviteToken(null)}
             />
@@ -822,7 +851,10 @@ export default function TeamsPage() {
             }
             onSearchChange={setSearchQuery}
             onOpenTeam={openTeam}
-            onShowCreate={() => setShowCreate(true)}
+            onShowCreate={() => {
+              setCreateError(null);
+              setShowCreate(true);
+            }}
           />
         </div>
       )}
@@ -832,6 +864,7 @@ export default function TeamsPage() {
         onOpenChange={setShowCreate}
         maxInvites={maxInvites}
         creating={creating}
+        error={createError}
         onCreate={handleCreateTeam}
       />
 

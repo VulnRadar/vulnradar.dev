@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import {
   INVITABLE_ROLES,
   ROLE_ABILITIES,
@@ -32,6 +33,9 @@ interface TeamCreateDialogProps {
    *  section entirely. */
   maxInvites: number;
   creating: boolean;
+  /** Why the last create was refused. Rendered inside the dialog: a banner on
+   *  the page sits behind the scrim, so the person would see nothing happen. */
+  error?: string | null;
   onCreate: (name: string, invites: NewTeamInvite[]) => void;
 }
 
@@ -42,6 +46,7 @@ export function TeamCreateDialog({
   onOpenChange,
   maxInvites,
   creating,
+  error = null,
   onCreate,
 }: TeamCreateDialogProps) {
   const [name, setName] = useState("");
@@ -178,6 +183,8 @@ export function TeamCreateDialog({
               )}
             </div>
           )}
+
+          {error && <InlineAlert tone="error">{error}</InlineAlert>}
         </div>
 
         <DialogFooter className="flex-col-reverse sm:flex-row gap-2">

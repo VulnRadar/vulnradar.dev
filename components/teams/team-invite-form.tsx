@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EditDialog } from "@/components/shared/edit-dialog";
+import { CopiedAnnouncement } from "@/components/shared/copy-feedback";
 import { canAssignTeamRole } from "@/lib/config/client-constants";
 import {
   INVITABLE_ROLES,
@@ -168,6 +169,7 @@ export function TeamInviteLinkCard({
           )}
           {copied ? "Copied" : "Copy"}
         </Button>
+        <CopiedAnnouncement copied={copied} noun="invite link" />
       </div>
     </div>
   );

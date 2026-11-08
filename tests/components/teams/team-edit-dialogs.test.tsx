@@ -434,6 +434,21 @@ describe("invite someone", () => {
       />,
     );
     expect(html).toContain("Copied");
+    expect(html).toContain("Invite link copied");
+  });
+
+  it("announces nothing until the link has been copied", () => {
+    const html = renderToStaticMarkup(
+      <TeamInviteLinkCard
+        token="tok123"
+        email="new@example.com"
+        copied={false}
+        onCopy={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(html).toContain('role="status"');
+    expect(html).not.toContain("Invite link copied");
   });
 });
 

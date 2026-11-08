@@ -149,7 +149,7 @@ describe("inviting someone", () => {
   });
 
   it("refreshes the lists without resetting the copy-once token", () => {
-    expect(body).toContain("refreshMembers(selectedTeam)");
+    expect(body).toContain("refreshMembers(team)");
     expect(body).not.toContain("openTeam(");
   });
 
@@ -174,8 +174,9 @@ describe("inviting someone", () => {
 
   // The link card shows a copy-once link. openTeam resets inviteToken, so a
   // role change or a removal made right after an invite used to throw the
-  // link away before it was copied. Cancelling an invite still goes through
-  // openTeam on purpose: the link on screen may be the one just cancelled.
+  // link away before it was copied. Withdrawing an invite reloads the same way
+  // (tests/app/teams/teams-page-refresh.test.ts) and only drops the link when
+  // it is the withdrawn invite's own.
   it.each(["handleChangeRole", "handleRemoveMember"])(
     "%s reloads the lists without dismissing the invite link",
     (name) => {
