@@ -305,12 +305,15 @@ runs:
         counts=$(echo "$result" | jq -c --argjson inc "$VR_INCLUDE_SUPPRESSED" "$gate_counts_jq")
         # Read without -r, so a count sent as a string comes out quoted and
         # is refused below rather than passing for the number inside it.
-        critical=$(echo "$counts" | jq '.critical')
-        high=$(echo "$counts" | jq '.high')
-        medium=$(echo "$counts" | jq '.medium')
-        low=$(echo "$counts" | jq '.low')
-        total=$(echo "$counts" | jq '.total')
-        suppressed=$(echo "$counts" | jq '.suppressed')
+        # Through printf, the same as the GitLab template, whose sh can be
+        # dash: its echo turns the \n inside a JSON string into a line
+        # break, and jq then cannot read any of the counts.
+        critical=$(printf '%s\n' "$counts" | jq '.critical')
+        high=$(printf '%s\n' "$counts" | jq '.high')
+        medium=$(printf '%s\n' "$counts" | jq '.medium')
+        low=$(printf '%s\n' "$counts" | jq '.low')
+        total=$(printf '%s\n' "$counts" | jq '.total')
+        suppressed=$(printf '%s\n' "$counts" | jq '.suppressed')
         # With no findings array these are the summary's values as the reply
         # wrote them, and each one is compared with [ -gt ] or written to
         # $GITHUB_OUTPUT. One the shell cannot compare (2.0, "3", -1) made the

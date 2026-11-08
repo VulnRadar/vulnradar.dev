@@ -457,6 +457,29 @@ describe("one counting rule in the Action and the template", () => {
     expect(countCheck(GITLAB_SH)).toEqual(countCheck(ACTION_SH));
     expect(countCheck(ACTION_SH)[1]).toBe("''|*[!0-9]*|??????????*)");
   });
+
+  it("hands the counts to jq with printf, which no sh decodes", () => {
+    // dash's echo turns the \n inside a JSON string into a line break,
+    // and jq 1.7 then cannot parse the counts at all, so under dash, the sh
+    // these tests run the template with on Ubuntu, a bad high count was
+    // refused as a bad critical one.
+    const backslash = String.fromCharCode(92);
+    for (const script of [ACTION_SH, GITLAB_SH]) {
+      expect(script).not.toContain('echo "$counts"');
+      for (const field of [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "total",
+        "suppressed",
+      ]) {
+        expect(script).toContain(
+          `${field}=$(printf '%s${backslash}n' "$counts" | jq '.${field}')`,
+        );
+      }
+    }
+  });
 });
 
 describe("the floating GitLab include", () => {
