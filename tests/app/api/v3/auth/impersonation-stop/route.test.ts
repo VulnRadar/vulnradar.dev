@@ -51,12 +51,14 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
       rows: row ? [{ impersonated_by: row.impersonated_by ?? null }] : [],
     };
   }
-  if (s.includes("SELECT s.expires_at, u.role FROM sessions")) {
+  if (s.includes("SELECT s.expires_at, u.role, u.locale FROM sessions")) {
     const row = sessionsById[params[0] as string];
     if (!row) return { rows: [] };
     const user = usersById[row.user_id as number];
     return {
-      rows: [{ expires_at: row.expires_at, role: user?.role ?? "user" }],
+      rows: [
+        { expires_at: row.expires_at, role: user?.role ?? "user", locale: null },
+      ],
     };
   }
   if (s.startsWith("DELETE FROM sessions WHERE id")) {
