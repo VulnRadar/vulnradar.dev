@@ -7,6 +7,7 @@ import { DB_CLEANUP_INTERVAL } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { purgeExpiredAdminAuditLog } from "@/lib/database/audit-log-archive";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
+import { AI_USAGE_WINDOWS_SHOWN } from "@/lib/admin/ai-usage-report";
 import { recordBrowserbaseSeconds } from "@/lib/billing/browserbase-usage";
 import { releaseConcurrencySlot } from "@/lib/browserbase/concurrency-queue";
 
@@ -45,9 +46,9 @@ const WEBHOOK_DELIVERIES_RETENTION_DAYS = 30;
  * A row is keyed by the START of its bucket, so a bucket is still counting
  * until window_start + its own window. This was a flat 1 day, which wiped the
  * count of any longer window part way through: a demo cap set to 72 hours
- * really reset every 24. The rows that wait longer now are only those of keys
- * nobody came back to, since checkRateLimit trims a returning key's old
- * buckets itself.
+ * really reset every 24. The rows that wait longer now are the per-day quota
+ * counters and the keys nobody came back to, since checkRateLimit trims a
+ * returning key's old buckets itself.
  */
 const RATE_LIMIT_PRUNE_AFTER_SECONDS = 7 * 24 * 60 * 60;
 
@@ -682,16 +683,21 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
 
   // ai_usage and browserbase_usage are the same per-user counter as
   // github_review_usage above and had no prune at all, so they share its
-  // setting. The setting can be as low as 1 day, so each prune also holds a
-  // floor that keeps the live window and the one before it: a row can only be
-  // this stale if its window ended at least a full window ago.
+  // setting. The setting can be as low as 1 day and is labelled for GitHub
+  // review, so each prune also holds a floor: nothing still reads a row this
+  // stale. For browserbase_usage that is the live period and the one before
+  // it. For ai_usage it is the admin spend report's history, which reaches
+  // back AI_USAGE_WINDOWS_SHOWN windows and is the longest read of the table.
   await runPrune("ai_usage", async () => {
     const res = await pool.query(
       "DELETE FROM ai_usage WHERE updated_at < NOW() - ($1 * INTERVAL '1 day')",
       [
         Math.max(
           cleanupRetention.CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS,
-          Math.ceil((cleanupRetention.AI_USAGE_WINDOW_HOURS * 2) / 24),
+          Math.ceil(
+            (cleanupRetention.AI_USAGE_WINDOW_HOURS * AI_USAGE_WINDOWS_SHOWN) /
+              24,
+          ),
         ),
       ],
     );

@@ -308,13 +308,14 @@ describeIntegration("retention rules that are more than an age check", () => {
     expect(stats.oldBrowserbaseUsage).toBeGreaterThanOrEqual(1);
   });
 
-  it("holds a usage row one window past the current one, however low the setting is", async () => {
+  it("holds usage rows something still reads, however low the setting is", async () => {
     await setSettings({
       CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS: 1,
       AI_USAGE_WINDOW_HOURS: 168,
     });
     const { id: userId } = await createUser();
-    await seedUsage("ai_usage", userId, 10);
+    // Inside the 30 weekly windows the admin spend report shows.
+    await seedUsage("ai_usage", userId, 200);
     await seedUsage("browserbase_usage", userId, 40);
 
     await performDatabaseCleanup();

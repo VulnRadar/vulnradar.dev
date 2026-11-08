@@ -384,7 +384,7 @@ describe("performDatabaseCleanup", () => {
     }
   });
 
-  it("never lets the usage retention setting reach the live window or the one before it", async () => {
+  it("never lets the usage retention setting reach a window something still reads", async () => {
     retentionSettingsRows = [
       { key: "CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS", value: "1" },
       { key: "AI_USAGE_WINDOW_HOURS", value: "168" },
@@ -392,11 +392,12 @@ describe("performDatabaseCleanup", () => {
     await performDatabaseCleanup();
     const paramsFor = (table: string) =>
       calls.find((c) => c.sql.startsWith(`DELETE FROM ${table}`))?.params;
-    expect(paramsFor("ai_usage")).toEqual([14]);
+    // 30 weekly windows: the history the admin AI spend report shows.
+    expect(paramsFor("ai_usage")).toEqual([210]);
     expect(paramsFor("browserbase_usage")).toEqual([62]);
   });
 
-  it("rounds the ai_usage floor up, so a short window still keeps two whole windows", async () => {
+  it("rounds the ai_usage floor up, so the report's oldest window is never cut short", async () => {
     retentionSettingsRows = [
       { key: "CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS", value: "1" },
       { key: "AI_USAGE_WINDOW_HOURS", value: "13" },
@@ -404,7 +405,7 @@ describe("performDatabaseCleanup", () => {
     await performDatabaseCleanup();
     expect(
       calls.find((c) => c.sql.startsWith("DELETE FROM ai_usage"))?.params,
-    ).toEqual([2]);
+    ).toEqual([17]);
   });
 
   it("prunes processed_stripe_events after 30 days, on the indexed column", async () => {
