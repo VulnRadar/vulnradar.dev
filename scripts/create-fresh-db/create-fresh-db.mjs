@@ -280,7 +280,7 @@ async function migrateData(originalPool, newPool, plan) {
     log("");
     for (const { table, count } of refused) {
       warn(
-        `  ${c.red}!${c.reset} ${c.bold}${table}${c.reset} ${c.dim}(${count} source rows)${c.reset} — ${c.red}NOT copied: the target has a NOT NULL column with no default that the source cannot supply${c.reset}`,
+        `  ${c.red}!${c.reset} ${c.bold}${table}${c.reset} ${c.dim}(${count} source rows)${c.reset}: ${c.red}NOT copied: the target has a NOT NULL column with no default that the source cannot supply${c.reset}`,
       );
     }
   }
@@ -297,7 +297,7 @@ async function migrateData(originalPool, newPool, plan) {
     log("");
     for (const { table, count } of plan.missingInTarget) {
       warn(
-        `  ${c.red}!${c.reset} ${c.bold}${table}${c.reset} ${c.dim}(${count} source rows)${c.reset} — ${c.red}table does not exist in target schema, NOT copied${c.reset}`,
+        `  ${c.red}!${c.reset} ${c.bold}${table}${c.reset} ${c.dim}(${count} source rows)${c.reset}: ${c.red}table does not exist in target schema, NOT copied${c.reset}`,
       );
     }
   }
@@ -337,7 +337,7 @@ function showDataMigrationPlan(plan) {
   }
   for (const { table, count } of plan.missingInTarget) {
     log(
-      `    ${c.red}✗${c.reset} ${c.bold}${table}${c.reset}  ${c.dim}(${count} row${count === 1 ? "" : "s"})${c.reset}  ${c.red}— table not in target schema${c.reset}`,
+      `    ${c.red}✗${c.reset} ${c.bold}${table}${c.reset}  ${c.dim}(${count} row${count === 1 ? "" : "s"})${c.reset}  ${c.red}table not in target schema${c.reset}`,
     );
   }
   if (plan.cycles.length > 0) {
@@ -370,7 +370,7 @@ async function main() {
       DRY_RUN = true;
     } else if (a === "--help" || a === "-h") {
       log(`
-VulnRadar — Safe Database Migration (Side-by-Side)
+VulnRadar: Safe Database Migration (Side-by-Side)
 
 Usage:
   npm run db:create                        # interactive (full flow)
@@ -399,7 +399,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   // ── Dry-run short-circuit (before any interactive prompts) ──────────────
   if (DRY_RUN) {
     banner(
-      `VulnRadar ${meta.version} — Create New Database [DRY-RUN]`,
+      `VulnRadar ${meta.version}: Create New Database [DRY-RUN]`,
       "Preview only. No database will be created, no schema applied, no data copied.",
     );
 
@@ -521,7 +521,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   }
 
   const ok = await confirmIntro({
-    title: `VulnRadar ${meta.version} — Create New Database`,
+    title: `VulnRadar ${meta.version}: Create New Database`,
     tagline: `Creates a NEW database at schema v${targetVersion}, leaves the original untouched.`,
     target: formatDbHost(sourceParsed),
     steps: [
@@ -538,7 +538,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     warnings: [
       "The source database is never modified.",
       "If the target name already exists you'll be asked before dropping it.",
-      "Data copy is best-effort — column mismatches are skipped with a warning.",
+      "Data copy is best-effort: column mismatches are skipped with a warning.",
     ],
   });
   if (!ok) {
@@ -736,7 +736,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   ) {
     await seedDefaultBadges(newPool);
   } else if (!hasBadgesTable) {
-    info("(skipping default badges — v1 schema has no badges table)");
+    info("(skipping default badges: v1 schema has no badges table)");
   } else {
     info("Skipping default badge seed (will copy from source).");
   }
