@@ -13,6 +13,8 @@ import { makeHeaderStore } from "../_test-harness";
  */
 
 const queries: { sql: string; params: unknown[] }[] = [];
+// Statements that went to the pool rather than the transaction's client.
+const outsideTransaction: string[] = [];
 
 let tokenRow: {
   id: number;
@@ -74,7 +76,10 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
 
 vi.mock("@/lib/database/db", () => ({
   default: {
-    query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+    query: (sql: string, params?: unknown[]) => {
+      outsideTransaction.push(sql.trim());
+      return mockQuery(sql, params);
+    },
     connect: async () => ({
       query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
       release: () => {},
@@ -134,6 +139,7 @@ beforeEach(async () => {
   mockQuery.mockClear();
   mockSendEmail.mockClear();
   queries.length = 0;
+  outsideTransaction.length = 0;
   headerState.clear();
   tokenRow = null;
   deletedTokenIds = [];
@@ -183,6 +189,13 @@ describe("POST /api/v3/auth/reset-password", () => {
       expect(update!.sql).toContain("discord_id = NULL");
       expect(update!.params).toEqual([42]);
       expect(queries[dropDiscord]!.params).toEqual([42]);
+      // The pool and the client share a fake, so the ordering above cannot
+      // tell a statement in the transaction from one beside it.
+      expect(
+        outsideTransaction.filter(
+          (q) => q.includes("google_id = NULL") || q.includes("discord_conn"),
+        ),
+      ).toEqual([]);
     });
 
     it("clears the profile columns that describe an evicted identity", async () => {
