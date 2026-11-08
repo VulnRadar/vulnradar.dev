@@ -350,7 +350,10 @@ export function BrandVoice() {
             the job. It is fine to be blunt.
           </p>
         </div>
-        <div>
+        {/* `relative` so the sr-only caption, which is absolutely
+            positioned, stays inside this box instead of widening the page
+            (tests/app/table-scroll-containment.test.ts). */}
+        <div className="relative overflow-x-auto">
           <table className="w-full text-left text-sm">
             <caption className="sr-only">
               Phrases to avoid, and what the product says instead

@@ -3,9 +3,12 @@ import { headers } from "next/headers";
 import { pageMetadata } from "@/lib/seo/metadata";
 import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 import { ROUTES } from "@/lib/config/client-constants";
-import { LOCKUP_SLOTS, LOGO_SIZES } from "@/lib/brand/kit";
 
-const DESCRIPTION = `The VulnRadar logo as transparent PNGs at ${LOGO_SIZES.length} sizes, the lockup cut to ${LOCKUP_SLOTS.length} banner slots, avatars, SVG sources and one ZIP, with the clear space, colours, type and voice rules. No sign-in.`;
+// No counts in here, unlike the page: scripts/knowledge/compile-features-
+// knowledge.mjs reads this string for the assistant's feature inventory and
+// drops a description whose ${} it cannot resolve.
+const DESCRIPTION =
+  "Download the VulnRadar logo as transparent PNGs, the lockup cut for common banner slots, avatars, SVG sources and one ZIP, with the clear space, colour, type and voice rules. No sign-in.";
 
 export const metadata: Metadata = pageMetadata({
   title: "Brand kit",
