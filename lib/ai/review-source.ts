@@ -460,9 +460,10 @@ export interface GithubAiReviewResult {
   /** Batches sent whose call returned no answer (an HTTP error, a timeout). */
   batchesFailed: number;
   batchesTotal: number;
-  /** Paths in a batch whose input alone is over GITHUB_REVIEW_MAX_TOKENS_PER_RUN,
-   *  in tree order. In practice one file each: a batch only holds several
-   *  files when together they are under the per-call budget. */
+  /** Paths in a batch whose input alone is over GITHUB_REVIEW_MAX_TOKENS_PER_RUN
+   *  (on a metered run, counted the plan's way as well), in tree order. In
+   *  practice one file each: a batch only holds several files when together
+   *  they are under the per-call budget. */
   filesSkippedOverRunCap: string[];
 }
 
@@ -565,7 +566,23 @@ export async function runGithubAiReview(
   for (const batch of batches) {
     const promptBytes = maxInputTokens(batch.map(buildFileBlock).join("\n\n"));
     const input = reviewCallInput(promptBytes);
-    if (input > maxTokensPerRun) {
+    // A metered run also skips what planGithubReview skipped, counted the
+    // plan's way from the same bytes. A file of about 240 KB to 260 KB of
+    // ordinary code is over the cap with the plan's framing allowance and
+    // under it once its real line prefixes are counted, so nothing was
+    // reserved for it. Sent anyway, its ceiling met a budget planned without
+    // it: the run stopped there, AI-reviewed nothing after it, and the notice
+    // blamed the allowance.
+    const plannedInput = reviewCallInput(
+      Math.ceil(
+        batch.reduce((n, f) => n + maxInputTokens(f.content), 0) *
+          (1 + PROMPT_FRAMING_ALLOWANCE),
+      ),
+    );
+    if (
+      input > maxTokensPerRun ||
+      (budgetTokens !== null && plannedInput > maxTokensPerRun)
+    ) {
       filesSkippedOverRunCap.push(...batch.map((f) => f.path));
       continue;
     }

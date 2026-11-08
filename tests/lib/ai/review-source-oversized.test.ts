@@ -174,6 +174,38 @@ describe("a file over the per-run cap by itself", () => {
   });
 });
 
+describe("a file the plan skipped that the real prompt would fit", () => {
+  // Over the cap with the plan's 25% framing allowance, under it with the
+  // real line prefixes of ordinary 38-character lines.
+  const BETWEEN = 250_000;
+
+  it("a metered run skips it too, instead of stopping at a budget planned without it", async () => {
+    const files = [file("data/big.json", BETWEEN), file("src/a.ts", SMALL)];
+    const plan = await planGithubReview(
+      files.map((f) => Buffer.byteLength(f.content, "utf8")),
+    );
+    expect(plan.batchesWithinCap).toBe(1);
+
+    const result = await runGithubAiReview(files, 1, false, plan.estimate);
+
+    expect(sentPaths.flat()).toEqual(["src/a.ts"]);
+    expect(result.filesSkippedOverRunCap).toEqual(["data/big.json"]);
+    expect(result.stoppedAtBudget).toBe(false);
+    expect(result.filesReviewed).toBe(1);
+  });
+
+  it("a run nothing caps still sends it, since its real prompt is under the cap", async () => {
+    const files = [file("data/big.json", BETWEEN)];
+
+    const result = await runGithubAiReview(files, 1, false, null);
+
+    expect(sentPaths.flat()).toEqual(["data/big.json"]);
+    expect(result.filesSkippedOverRunCap).toEqual([]);
+    expect(result.filesReviewed).toBe(1);
+    expect(inputSent.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(RUN_CAP);
+  });
+});
+
 describe("the count of batches that failed", () => {
   it("a first batch whose call failed and a later batch stopped by the budget are told apart", async () => {
     const files = [file("src/a.ts", SMALL), file("src/b.ts", SMALL)];
