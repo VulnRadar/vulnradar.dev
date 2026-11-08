@@ -165,6 +165,27 @@ describe("the poller", () => {
     );
   });
 
+  it("writes the rows when one in flight gets its status, with the length and last id unchanged", async () => {
+    const pending = [req("a"), req("b")];
+    const answered = [req("a"), { ...req("b"), status: 200 }];
+    const read = vi
+      .fn<() => Promise<LogsOutcome>>()
+      .mockResolvedValueOnce({ kind: "ok", requests: pending })
+      .mockResolvedValueOnce({ kind: "ok", requests: answered });
+    const h = handlers();
+    const poller = createLogsPoller(read, h);
+    await poller.poll();
+    await poller.poll();
+    expect(h.onRequests).toHaveBeenCalledTimes(2);
+    expect(h.onRequests).toHaveBeenLastCalledWith(answered);
+  });
+
+  it("counts a failed row as settled", () => {
+    expect(logsSignature([req("a")])).not.toBe(
+      logsSignature([{ ...req("a"), failed: true }]),
+    );
+  });
+
   it("does not replace rows with an empty payload, and clears the error on success", async () => {
     const read = vi
       .fn<() => Promise<LogsOutcome>>()

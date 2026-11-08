@@ -30,7 +30,11 @@ const MAX_REQUESTS = 300;
 // (hung, aborted, or a detached frame) would otherwise linger for the whole
 // session. Oldest is evicted once this many are outstanding.
 const MAX_PENDING = 300;
-const IDLE_TTL_MS = 90_000;
+// Longer than a viewer's session can run (5 minutes): the viewer stops polling
+// while its tab is hidden, and a capture reaped during that gap would come back
+// empty, without the requests the panel had already shown.
+const IDLE_TTL_MS = 6 * 60_000;
+const REAP_SWEEP_MS = 60_000;
 const CDP_CONNECT_TIMEOUT_MS = 8_000;
 
 interface Capture {
@@ -180,5 +184,5 @@ const reaper = setInterval(() => {
   for (const [id, cap] of captures) {
     if (now - cap.lastAccess > IDLE_TTL_MS) stopLiveNetworkCapture(id);
   }
-}, IDLE_TTL_MS);
+}, REAP_SWEEP_MS);
 if (typeof reaper.unref === "function") reaper.unref();

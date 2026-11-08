@@ -45,12 +45,19 @@ export async function readLogs(
 }
 
 /**
- * Cheap identity for a log payload. The log only ever grows, so the same
- * length with the same last request id is the same log, and comparing it
- * costs nothing next to re-rendering a few hundred rows to draw it again.
+ * Cheap identity for a log payload. Rows are appended, and a row in flight
+ * gains its status in place when the response lands, without changing the
+ * length or the last id: a page whose last requests are still loading would
+ * freeze on "..." if those two were the whole signature. Counting the settled
+ * rows catches that, and a pass over at most 300 rows costs nothing next to
+ * re-rendering them.
  */
 export function logsSignature(requests: NetworkRequest[]): string {
-  return `${requests.length}:${requests[requests.length - 1]?.requestId ?? ""}`;
+  let settled = 0;
+  for (const r of requests) {
+    if (r.status !== undefined || r.failed) settled++;
+  }
+  return `${requests.length}:${settled}:${requests[requests.length - 1]?.requestId ?? ""}`;
 }
 
 export interface LogsPollerHandlers {

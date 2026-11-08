@@ -43,7 +43,7 @@ describe("the countdown's announcements", () => {
     ]);
   });
 
-  it("says nothing new for the 59 seconds that are not a threshold", () => {
+  it("says nothing new between the start and the 30 second mark", () => {
     const texts = new Set<string>();
     for (let remaining = 60; remaining > 30; remaining--) {
       texts.add(countdownAnnouncement(remaining, 1));
