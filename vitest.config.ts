@@ -690,6 +690,15 @@ export default defineConfig({
           functions: 100,
           branches: 95,
         },
+        // The Discord hosts and webhook path the type detector and the
+        // scanner's leaked-webhook patterns are both built from, so the two
+        // cannot drift apart again. 100% on every metric.
+        "lib/net/discord-webhook.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 95,
+        },
         // Replacing a reset link under the per-account lock, so two requests
         // at once cannot leave two live links. 100% on every metric, the
         // rollback that fails itself included.
