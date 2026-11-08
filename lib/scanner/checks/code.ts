@@ -314,8 +314,11 @@ function redactMatch(match: string): string {
 
 // A JS regex literal has to escape its slashes too, so a validator for
 // mongodb:// URIs reads as one once they are plain, and the URI patterns are
-// critical. None of these appear unencoded in a connection string or a webhook.
-const READS_AS_REGEX_SOURCE = /[[\]()|^]|\\[dDwWsSbB.+*?]|\.[+*]/;
+// critical. Only syntax a pattern alone uses counts here. A lone bracket, paren
+// or pipe is not enough: tcp(db:3306), an IPv6 host and a password can each hold
+// one, and in an entity-encoded JSON attribute the match runs on past the URI
+// into whatever array comes next.
+const READS_AS_REGEX_SOURCE = /\[\^|\(\?|\\[dDwWsSbB.+*?]|[.\])][+*]|[\])]\{\d/;
 
 /**
  * Run one severity tier's patterns against the body, filtering obvious

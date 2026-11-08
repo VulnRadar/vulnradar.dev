@@ -150,6 +150,18 @@ describe("the judgements that need the body as served still get it", () => {
     ).toContain("Discord Webhook");
   });
 
+  // The judgement looks for the value in the page outside any flight payload.
+  // Read with plain slashes that closing tag ends the payload script early, the
+  // rest of the payload counts as page text, and a documented value is a finding.
+  it("does not let an escaped closing script tag end a flight payload", () => {
+    expect(
+      run(
+        "hardcoded-secrets-client-exposed",
+        `<pre>${DISCORD}</pre><script>self.__next_f.push([1,"${escapeSlashes("</script>")} ${DISCORD}"])</script>`,
+      ),
+    ).toBeNull();
+  });
+
   // Both of these go wrong if the nearby window is cut with an index from the
   // normalised text: every escape ahead of the match shifts it by one.
   const PADDING = '"a\\/b",'.repeat(300);
@@ -180,13 +192,59 @@ describe("regular expression source is not a leaked connection string", () => {
   // URI with a password in it, and that finding is critical.
   it.each([
     String.raw`/^mongodb:\/\/([^:]+):([^@]+)@(.+)$/`,
-    String.raw`/postgres(?:ql)?:\/\/[^:]+:[^@]+@[^\/]+/i`,
+    String.raw`/^postgres:\/\/[^:]+:[^@]+@[^\/]+/i`,
+    String.raw`/mongodb:\/\/(?:a|b):(?:c|d)@hosts/`,
+    String.raw`/redis:\/\/[a-z]{1,9}:[a-z]{1,9}@[a-z]{5,}/`,
+    String.raw`/mysql:\/\/[a-z]+:[a-z]+@[a-z]+/`,
     String.raw`/redis:\/\/\w+:\w+@\w+\.\w+/`,
     String.raw`/mysql:\/\/.+:.+@.+/;var a=1`,
   ])("does not report %s", (literal) => {
     expect(
       run("hardcoded-secrets", `<script>var r=${literal};</script>`),
     ).toBeNull();
+  });
+
+  // Only syntax a pattern alone uses counts. Each of these is a real URI that
+  // holds a lone bracket, paren or pipe, and each is as much a leak escaped as
+  // it is written plainly.
+  const withPassword = (password: string) =>
+    POSTGRES.replace("s3cretPassw0rd", password);
+  it.each([
+    [
+      "a host written as tcp(...)",
+      POSTGRES.replace("db.acme.io:5432", "tcp(db.acme.io:5432)"),
+    ],
+    [
+      "an IPv6 host",
+      POSTGRES.replace("db.acme.io:5432", "[2001:db8:1::2]:5432"),
+    ],
+    ["parens in the password", withPassword("s3c(ret)Passw0rd")],
+    ["a pipe in the password", withPassword("s3c|retPassw0rd")],
+    ["a caret and brackets in the password", withPassword("s3c^r[et]Passw0rd")],
+  ])("still reports a URI with %s", (_name, uri) => {
+    expect(run("hardcoded-secrets", inJson(uri))).toContain("PostgreSQL URI");
+    expect(run("hardcoded-secrets", inJson(escapeSlashes(uri)))).toContain(
+      "PostgreSQL URI",
+    );
+  });
+
+  // The URI patterns run to the next quote, and an entity-encoded attribute
+  // has none until it closes, so the rest of the blob is part of the match.
+  it("still reports one in an entity-encoded JSON attribute ahead of an array", () => {
+    expect(
+      run(
+        "hardcoded-secrets",
+        `<div data-settings="{&quot;db&quot;:&quot;${escapeSlashes(POSTGRES)}&quot;,&quot;tags&quot;:[1,2]}"></div>`,
+      ),
+    ).toContain("PostgreSQL URI");
+  });
+
+  // A regex literal cannot hold a bare //, so a URI written plainly is never
+  // one, whatever its password looks like.
+  it("does not apply the regex test to a URI written plainly", () => {
+    expect(
+      run("hardcoded-secrets", inJson(withPassword("s3c.*[^ret]Passw0rd"))),
+    ).toContain("PostgreSQL URI");
   });
 
   it("still reports the connection string that same script holds", () => {
