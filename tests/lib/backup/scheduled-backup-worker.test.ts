@@ -31,8 +31,21 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { runScheduledBackupPass, schedulePeriodicBackup, stopPeriodicBackup } =
-  await import("@/lib/backup/scheduled-backup-worker");
+const mockReaddir = vi.fn();
+const mockStat = vi.fn();
+vi.mock("node:fs/promises", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:fs/promises")>()),
+  readdir: (...args: unknown[]) => mockReaddir(...args),
+  stat: (...args: unknown[]) => mockStat(...args),
+}));
+
+const {
+  BACKUP_BOOT_CHECK_DELAY_MS,
+  BACKUP_TICK_MS,
+  runScheduledBackupPass,
+  schedulePeriodicBackup,
+  stopPeriodicBackup,
+} = await import("@/lib/backup/scheduled-backup-worker");
 const { createJob, getActiveJobId, getLatestJob, __resetForTests } =
   await import("@/lib/backup/job-store");
 const { CONFIG_SCHEDULED_BACKUP_INTERVAL_MS } =
@@ -56,7 +69,26 @@ beforeEach(() => {
   __resetForTests();
   mockSpawn.mockReset();
   mockGetSetting.mockReset();
+  mockReaddir.mockReset();
+  mockStat.mockReset();
+  mockQuery.mockResolvedValue({ rows: [] });
+  // No backups on disk unless a test says otherwise: a missing directory is
+  // what a fresh install has.
+  mockReaddir.mockRejectedValue(new Error("ENOENT"));
 });
+
+const HOUR = 60 * 60 * 1000;
+
+/** Put files of the given ages (in hours) in the backup directory. */
+function backupsAged(files: Record<string, number>) {
+  const now = Date.now();
+  mockReaddir.mockResolvedValue(Object.keys(files));
+  mockStat.mockImplementation(async (full: string) => {
+    const name = Object.keys(files).find((f) => full.endsWith(f));
+    if (!name) throw new Error("ENOENT");
+    return { mtimeMs: now - files[name] * HOUR };
+  });
+}
 
 describe("runScheduledBackupPass", () => {
   it("returns 'disabled' and never spawns anything when SCHEDULED_BACKUP_ENABLED is off", async () => {
@@ -121,14 +153,94 @@ describe("runScheduledBackupPass", () => {
   });
 });
 
+describe("catch-up against the newest backup on disk", () => {
+  it("runs when the newest file is older than the interval", async () => {
+    mockGetSetting.mockResolvedValue(true);
+    backupsAged({ "vulnradar-backup-a.sql.gz": 30 });
+    const child = fakeChild();
+    mockSpawn.mockReturnValue(child);
+
+    const promise = runScheduledBackupPass();
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toBe("started");
+  });
+
+  it("skips when the newest file is inside the interval", async () => {
+    mockGetSetting.mockResolvedValue(true);
+    backupsAged({
+      "vulnradar-backup-old.sql.gz": 30,
+      "vulnradar-backup-new.sql.gz.enc": 2,
+    });
+
+    await expect(runScheduledBackupPass()).resolves.toBe("skipped_recent");
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it("does not count an encryption sidecar or an unrelated file as a backup", async () => {
+    mockGetSetting.mockResolvedValue(true);
+    backupsAged({
+      "vulnradar-backup-a.sql.gz.enc": 30,
+      "vulnradar-backup-a.sql.gz.enc.json": 1,
+      "pre-migration": 1,
+      "notes.txt": 1,
+    });
+    const child = fakeChild();
+    mockSpawn.mockReturnValue(child);
+
+    const promise = runScheduledBackupPass();
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toBe("started");
+  });
+
+  it("runs on a fresh install with no backup directory yet", async () => {
+    mockGetSetting.mockResolvedValue(true);
+    const child = fakeChild();
+    mockSpawn.mockReturnValue(child);
+
+    const promise = runScheduledBackupPass();
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toBe("started");
+  });
+
+  it("reads BACKUP_DIR, the same directory the script writes to", async () => {
+    mockGetSetting.mockResolvedValue(true);
+    vi.stubEnv("BACKUP_DIR", "/mnt/dumps");
+    backupsAged({ "vulnradar-backup-a.sql.gz": 2 });
+    try {
+      await runScheduledBackupPass();
+      expect(String(mockReaddir.mock.calls[0][0])).toMatch(
+        /[\\/]mnt[\\/]dumps$/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("judges the file against the interval it was given", async () => {
+    mockGetSetting.mockResolvedValue(true);
+    backupsAged({ "vulnradar-backup-a.sql.gz": 2 });
+    const child = fakeChild();
+    mockSpawn.mockReturnValue(child);
+
+    const promise = runScheduledBackupPass(HOUR);
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toBe("started");
+  });
+});
+
 describe("schedulePeriodicBackup / stopPeriodicBackup", () => {
-  // These used to assert `expect(timer).toBeDefined()`, which any
-  // `setInterval(fn, 0)` also satisfies. The contract worth pinning is the
-  // interval the worker actually registers and the fact that stopping it
-  // clears that same handle: a worker that silently registers a 0 ms timer
-  // spawns pg_dump in a tight loop, and one whose stop clears a different
-  // handle leaks a timer that keeps firing after shutdown.
-  it("registers the interval it was given and clears that exact handle on stop", () => {
+  // A plain interval from boot never fired on a deployment that restarts more
+  // often than the interval, so the contract is a short poll plus a check
+  // shortly after boot, both asking the disk whether a backup is due.
+  it("polls on the short tick and clears that exact handle on stop", () => {
     vi.useFakeTimers();
     const setSpy = vi.spyOn(globalThis, "setInterval");
     const clearSpy = vi.spyOn(globalThis, "clearInterval");
@@ -136,8 +248,9 @@ describe("schedulePeriodicBackup / stopPeriodicBackup", () => {
       const timer = schedulePeriodicBackup(60_000);
 
       expect(setSpy).toHaveBeenCalledTimes(1);
-      expect(setSpy.mock.calls[0][1]).toBe(60_000);
+      expect(setSpy.mock.calls[0][1]).toBe(BACKUP_TICK_MS);
       expect(setSpy.mock.results[0].value).toBe(timer);
+      expect(BACKUP_TICK_MS).toBe(15 * 60 * 1000);
 
       stopPeriodicBackup();
       expect(clearSpy).toHaveBeenCalledTimes(1);
@@ -154,19 +267,68 @@ describe("schedulePeriodicBackup / stopPeriodicBackup", () => {
     }
   });
 
-  it("falls back to the shipped interval instead of registering a 0 ms timer", () => {
+  async function afterBoot(run: () => Promise<void>) {
     vi.useFakeTimers();
-    const setSpy = vi.spyOn(globalThis, "setInterval");
+    mockGetSetting.mockResolvedValue(true);
     try {
-      schedulePeriodicBackup(0);
-      expect(setSpy.mock.calls[0][1]).toBe(CONFIG_SCHEDULED_BACKUP_INTERVAL_MS);
-
-      setSpy.mockClear();
-      schedulePeriodicBackup(Number.NaN);
-      expect(setSpy.mock.calls[0][1]).toBe(CONFIG_SCHEDULED_BACKUP_INTERVAL_MS);
+      schedulePeriodicBackup();
+      await run();
     } finally {
       stopPeriodicBackup();
-      setSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  }
+
+  it("runs a 30-hour-old backup right after boot", async () => {
+    backupsAged({ "vulnradar-backup-a.sql.gz": 30 });
+    mockSpawn.mockReturnValue(fakeChild());
+    await afterBoot(async () => {
+      expect(mockSpawn).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(BACKUP_BOOT_CHECK_DELAY_MS);
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+    });
+    expect(BACKUP_BOOT_CHECK_DELAY_MS).toBeLessThan(BACKUP_TICK_MS);
+  });
+
+  it("skips a 2-hour-old backup after boot and on every tick", async () => {
+    backupsAged({ "vulnradar-backup-a.sql.gz": 2 });
+    await afterBoot(async () => {
+      await vi.advanceTimersByTimeAsync(BACKUP_BOOT_CHECK_DELAY_MS);
+      await vi.advanceTimersByTimeAsync(BACKUP_TICK_MS * 3);
+      expect(mockReaddir.mock.calls.length).toBeGreaterThanOrEqual(4);
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+  });
+
+  it("stop also cancels the check that was waiting on boot", async () => {
+    backupsAged({ "vulnradar-backup-a.sql.gz": 30 });
+    vi.useFakeTimers();
+    mockGetSetting.mockResolvedValue(true);
+    try {
+      schedulePeriodicBackup();
+      stopPeriodicBackup();
+      await vi.advanceTimersByTimeAsync(BACKUP_BOOT_CHECK_DELAY_MS * 2);
+      expect(mockGetSetting).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the shipped interval instead of treating every file as overdue", async () => {
+    // An interval of 0 would make every backup overdue, and the worker would
+    // start a pg_dump on every tick.
+    backupsAged({ "vulnradar-backup-a.sql.gz": 2 });
+    vi.useFakeTimers();
+    mockGetSetting.mockResolvedValue(true);
+    try {
+      for (const bad of [0, Number.NaN]) {
+        schedulePeriodicBackup(bad);
+        await vi.advanceTimersByTimeAsync(BACKUP_TICK_MS);
+        expect(mockSpawn, String(bad)).not.toHaveBeenCalled();
+      }
+      expect(CONFIG_SCHEDULED_BACKUP_INTERVAL_MS).toBeGreaterThan(2 * HOUR);
+    } finally {
+      stopPeriodicBackup();
       vi.useRealTimers();
     }
   });
