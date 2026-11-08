@@ -909,7 +909,7 @@ describe("high-stakes templates", () => {
       const result = email.passwordResetEmail(
         "https://vulnradar.dev/reset?token=xyz",
       );
-      expect(result.text).toContain("works for one hour");
+      expect(result.text).toContain("works for 1 hour");
     });
   });
 

@@ -1,12 +1,19 @@
 {
   "verify": {
     "subject": "Verifica tu correo para {app}",
-    "preheader": "Un clic y la cuenta queda activa. El enlace funciona durante las próximas 24 horas.",
+    "preheader": "Un clic y la cuenta queda activa. El enlace funciona durante {hours, plural, one {la próxima hora} other {las próximas # horas}}.",
     "heading": "Verifica tu dirección de correo",
     "lead": "Hola {name}: confirma que esta dirección es tuya y tu cuenta de {app} estará lista para analizar.",
     "button": "Verificar dirección de correo",
-    "expiry": "El enlace funciona durante las próximas 24 horas. Si caduca, pide uno nuevo desde la página de inicio de sesión.",
+    "expiry": "El enlace funciona durante {hours, plural, one {la próxima hora} other {las próximas # horas}}. Si caduca, pide uno nuevo desde la página de inicio de sesión.",
     "ignore": "Si no creaste esta cuenta, puedes ignorar este correo. No se configuró nada.",
     "textIntro": "Confirma esta dirección de correo para activar tu cuenta de {app}:"
+  },
+  "layout": {
+    "reasonAccount": "Recibes este correo porque tienes una cuenta de {app}.",
+    "reasonService": "Este es un aviso de servicio sobre tu cuenta de {app}, por lo que no incluye un enlace para darte de baja.",
+    "managePreferences": "Gestionar preferencias de correo",
+    "textFooter": "Gestionar preferencias de correo: {url}",
+    "fallbackLink": "O pega este enlace en tu navegador:"
   }
 }

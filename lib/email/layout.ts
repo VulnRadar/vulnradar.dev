@@ -87,6 +87,10 @@
  *    addition here is spending against.
  */
 import { BRAND } from "@/lib/config/brand";
+// The English file rather than a second copy of its sentences: the admin
+// preview has no translator and renders in English, and it should say exactly
+// what an English recipient reads.
+import enEmail from "@/lib/i18n/messages/en/email.json";
 
 /**
  * The wordmark is monospace on every other surface (the app header, the
@@ -526,9 +530,12 @@ export function emailButton(
  * exploitable, but a block that writes user-influenced text into a document
  * should not depend on that.
  */
-export function emailFallbackLink(url: string): string {
+export function emailFallbackLink(
+  url: string,
+  label: string = enEmail.layout.fallbackLink,
+): string {
   return `
-    <p class="${C.faint}" style="margin:0 0 5px 0;font-family:${SANS_STACK};font-size:13px;color:${PALETTE.textFaint};line-height:1.6;">Or paste this link into your browser:</p>
+    <p class="${C.faint}" style="margin:0 0 5px 0;font-family:${SANS_STACK};font-size:13px;color:${PALETTE.textFaint};line-height:1.6;">${label}</p>
     <p class="${C.link}" style="margin:0;font-family:${MONO_STACK};font-size:12px;color:${PALETTE.primaryText};word-break:break-all;line-height:1.6;">${escapeHtml(url)}</p>`;
 }
 
@@ -732,6 +739,27 @@ export function emailChangeRow(
 // The shell
 // ---------------------------------------------------------------------------
 
+/** The footer's words, already translated and safe to write as HTML. */
+export interface EmailFooterCopy {
+  /** Mail the recipient can opt out of. */
+  reasonAccount: string;
+  /** Security and billing notices, which carry no opt-out. */
+  reasonService: string;
+  managePreferences: string;
+}
+
+/** The English footer, for a caller with no translator (the admin preview). */
+function englishFooter(appName: string): EmailFooterCopy {
+  // A function replacer, so a `$&` in a deployment's app name stays literal.
+  const withApp = (message: string) =>
+    message.replace("{app}", () => escapeHtml(appName));
+  return {
+    reasonAccount: withApp(enEmail.layout.reasonAccount),
+    reasonService: withApp(enEmail.layout.reasonService),
+    managePreferences: enEmail.layout.managePreferences,
+  };
+}
+
 export interface EmailLayoutInput {
   /** Already-safe HTML for the card body. Callers escape their own text. */
   content: string;
@@ -749,6 +777,14 @@ export interface EmailLayoutInput {
    * which screen readers announce first. Falls back to the app name.
    */
   title?: string;
+  /**
+   * The document's language. It was always "en", so a translated message told
+   * mail clients to offer a translation of it and screen readers to read it
+   * in the wrong voice.
+   */
+  lang?: string;
+  /** Defaults to English. */
+  footer?: EmailFooterCopy;
 }
 
 export function emailLayout({
@@ -760,6 +796,8 @@ export function emailLayout({
   unsubscribeUrl = null,
   preheaderHtml = "",
   title,
+  lang = "en",
+  footer = englishFooter(appName),
 }: EmailLayoutInput): string {
   const hostname = new URL(appUrl).hostname;
 
@@ -767,11 +805,12 @@ export function emailLayout({
   // four differently-weighted things that happen to be blue.
   const footLink = (href: string, text: string) =>
     `<a href="${escapeHtml(href)}" class="${C.faint}" style="color:${PALETTE.textFaint};text-decoration:underline;white-space:nowrap;">${text}</a>`;
-  // Spaces around the separator are the row's only break opportunities. The
-  // links are nowrap and were joined to the dots with no whitespace at all,
-  // so the whole row was one unbreakable run of about 350px that held every
-  // message at that width on a 320px phone and forced sideways scrolling.
-  const dot = ` <span class="${C.faint}" style="color:${PALETTE.textFaint};padding:0 4px;">&middot;</span> `;
+  // A gap and no separator glyph. Non-breaking spaces make it, because Word
+  // drops padding on an inline element and a flex gap is not available here.
+  // The ordinary spaces on either side are the row's only break opportunities:
+  // the links are nowrap, and with nothing between them the whole row was one
+  // unbreakable run of about 350px that forced sideways scrolling on a phone.
+  const gap = " &nbsp;&nbsp; ";
 
   // Two different reasons a message can land, and telling the reader the
   // wrong one is worse than saying nothing. A message that carries an
@@ -782,8 +821,8 @@ export function emailLayout({
   // opens a page about them would be the one-click opt-out they are
   // deliberately kept away from.
   const reasonLine = unsubscribeUrl
-    ? `You're getting this because you have a ${escapeHtml(appName)} account.`
-    : `This is a service notice about your ${escapeHtml(appName)} account, so it has no unsubscribe link.`;
+    ? footer.reasonAccount
+    : footer.reasonService;
 
   // The preferences affordance used to be an outlined pseudo-button above
   // three lines of grey text carrying four links. It is a link in the link
@@ -791,14 +830,14 @@ export function emailLayout({
   // button made the footer louder than the message.
   const links = [
     ...(unsubscribeUrl
-      ? [footLink(unsubscribeUrl, "Manage email preferences")]
+      ? [footLink(unsubscribeUrl, footer.managePreferences)]
       : []),
     footLink(`mailto:${supportEmail}`, escapeHtml(supportEmail)),
     footLink(appUrl, hostname),
-  ].join(dot);
+  ].join(gap);
 
   return `<!DOCTYPE html>
-<html lang="en" dir="ltr" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<html lang="${escapeHtml(lang)}" dir="ltr" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />

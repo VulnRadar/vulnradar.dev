@@ -1,12 +1,19 @@
 {
   "verify": {
     "subject": "Verifique seu e-mail para o {app}",
-    "preheader": "Um clique e a conta fica ativa. O link funciona nas próximas 24 horas.",
+    "preheader": "Um clique e a conta fica ativa. O link funciona {hours, plural, one {na próxima hora} other {nas próximas # horas}}.",
     "heading": "Verifique seu endereço de e-mail",
     "lead": "Olá, {name}: confirme que este endereço é seu e sua conta do {app} fica pronta para escanear.",
     "button": "Verificar endereço de e-mail",
-    "expiry": "O link funciona nas próximas 24 horas. Se expirar, peça um novo na página de login.",
+    "expiry": "O link funciona {hours, plural, one {na próxima hora} other {nas próximas # horas}}. Se expirar, peça um novo na página de login.",
     "ignore": "Se você não criou esta conta, pode ignorar este e-mail. Nada foi configurado.",
     "textIntro": "Confirme este endereço de e-mail para ativar sua conta do {app}:"
+  },
+  "layout": {
+    "reasonAccount": "Você está recebendo este e-mail porque tem uma conta do {app}.",
+    "reasonService": "Este é um aviso de serviço sobre sua conta do {app}, por isso não tem link de cancelamento.",
+    "managePreferences": "Gerenciar preferências de e-mail",
+    "textFooter": "Gerenciar preferências de e-mail: {url}",
+    "fallbackLink": "Ou cole este link no seu navegador:"
   }
 }

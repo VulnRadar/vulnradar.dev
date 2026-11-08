@@ -13,6 +13,8 @@ import { STAFF_INVITE_EXPIRY_DAYS } from "@/lib/config/constants";
 import {
   CONFIG_BILLING_VERIFY_CODE_EXPIRY_MINUTES,
   CONFIG_EMAIL_2FA_CODE_EXPIRY_MINUTES,
+  CONFIG_EMAIL_VERIFICATION_HOURS,
+  CONFIG_PASSWORD_RESET_HOURS,
   CONFIG_TEAM_INVITE_EXPIRY_DAYS,
 } from "@/lib/config/config-values";
 import {
@@ -45,6 +47,8 @@ import { getSetting } from "@/lib/config/runtime-config";
 import { secretLinkAppUrl } from "@/lib/config/server-app-url";
 import { logError } from "@/lib/logging/log";
 import { safeDisplayName } from "@/lib/email/safe-name";
+import { SECURITY_ACK_HOURS } from "@/lib/security/response-times";
+import { pluralize } from "@/lib/ui/plural";
 import type { NotificationColumn } from "@/lib/notifications/columns";
 
 // SMTP CREDENTIALS
@@ -177,6 +181,12 @@ interface SendEmailOptions {
    * this file sets one; a hand-built message names itself.
    */
   template?: string;
+  /**
+   * The language the message is written in, which the shell and its footer
+   * follow. A translated builder returns it so a spread into sendEmail carries
+   * it. Leaving it out means English.
+   */
+  locale?: Locale;
 }
 
 interface SecurityAlertDetails {
@@ -290,10 +300,13 @@ function derivePreheader(text: string): string {
  * previewed before a broadcast was not what recipients received. This wrapper
  * keeps the server-only half: resolving the deployment's constants.
  */
-function layout(
+async function layout(
   content: string,
+  locale: Locale,
   { unsubscribeUrl, preheader, title }: LayoutOptions = {},
-): string {
+): Promise<string> {
+  const t = await getTranslator(locale);
+  const app = escapeHtml(APP_NAME);
   return emailLayout({
     content,
     appName: APP_NAME,
@@ -303,6 +316,12 @@ function layout(
     unsubscribeUrl: unsubscribeUrl ?? null,
     preheaderHtml: preheaderBlock(preheader ?? ""),
     title,
+    lang: locale,
+    footer: {
+      reasonAccount: t("email.layout.reasonAccount", { app }),
+      reasonService: t("email.layout.reasonService", { app }),
+      managePreferences: t("email.layout.managePreferences"),
+    },
   });
 }
 
@@ -701,10 +720,79 @@ function withoutAddresses(
  * HTML part has one for mail the recipient can opt out of, and a text part
  * that lacks it is a different message.
  */
-function textFooter(unsubscribeUrl: string | undefined): string {
-  return unsubscribeUrl
-    ? `\n\n--\nManage email preferences: ${unsubscribeUrl}`
-    : "";
+async function textFooter(
+  unsubscribeUrl: string | undefined,
+  locale: Locale,
+): Promise<string> {
+  if (!unsubscribeUrl) return "";
+  const t = await getTranslator(locale);
+  return `\n\n--\n${t("email.layout.textFooter", { url: unsubscribeUrl })}`;
+}
+
+/**
+ * The waits before a second and a third attempt.
+ *
+ * Every message used to get one try, so a relay restarting or greylisting at
+ * the wrong second permanently lost a password reset or a sign-in warning,
+ * and most callers had already told the user it was on its way.
+ */
+const SMTP_RETRY_DELAYS_MS = [500, 2000];
+
+/**
+ * No further attempt starts this long after the first one.
+ *
+ * nodemailer's own timeouts run to minutes, and some callers wait for this
+ * promise, so three attempts against a host that hangs would otherwise triple
+ * the longest a send could already take.
+ */
+const SMTP_RETRY_BUDGET_MS = 30_000;
+
+/** nodemailer's codes for a connection that broke or never formed. */
+const TRANSIENT_SMTP_ERROR_CODES = new Set([
+  "ECONNECTION",
+  "ETIMEDOUT",
+  "ESOCKET",
+]);
+
+/**
+ * Whether the same message could succeed if sent again in a moment.
+ *
+ * The relay's own reply decides when there is one, whatever code nodemailer
+ * filed it under: 4xx is SMTP for "not now" and 5xx for "no". A 550 sent again
+ * is another 550, and repeating rejected mail is what gets a sender blocked.
+ */
+function isTransientSmtpError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const { code, responseCode } = err as Record<string, unknown>;
+  if (typeof responseCode === "number") {
+    return responseCode >= 400 && responseCode < 500;
+  }
+  return typeof code === "string" && TRANSIENT_SMTP_ERROR_CODES.has(code);
+}
+
+/**
+ * Runs one send with its retries and returns or throws the last outcome, so
+ * sendEmail logs a single row per message and not one per attempt. A timeout
+ * can mean the relay took the message and the reply was lost, so this can
+ * deliver twice; a duplicate reset link costs far less than no reset link.
+ */
+async function withSmtpRetry<T>(send: () => Promise<T>): Promise<T> {
+  const startedAt = Date.now();
+  for (let retries = 0; ; retries++) {
+    try {
+      return await send();
+    } catch (err) {
+      const delay = SMTP_RETRY_DELAYS_MS[retries];
+      if (
+        delay === undefined ||
+        !isTransientSmtpError(err) ||
+        Date.now() - startedAt >= SMTP_RETRY_BUDGET_MS
+      ) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
 }
 
 export async function sendEmail({
@@ -718,6 +806,7 @@ export async function sendEmail({
   unsubscribeColumn,
   preheader,
   template,
+  locale = DEFAULT_LOCALE,
 }: SendEmailOptions) {
   const linkOrigin = secretLinkAppUrl();
   const unsubscribeUrl = unsubscribeToken
@@ -730,7 +819,7 @@ export async function sendEmail({
   // place to see what a message actually looks like.
   const finalHtml = skipLayout
     ? html
-    : layout(html, {
+    : await layout(html, locale, {
         unsubscribeUrl,
         preheader: preheader ?? derivePreheader(text),
         title: subject,
@@ -821,16 +910,22 @@ export async function sendEmail({
     smtpHost: SMTP_HOST,
   };
 
+  const finalText = skipLayout
+    ? text
+    : `${text}${await textFooter(unsubscribeUrl, locale)}`;
+
   try {
-    const info: unknown = await transporter.sendMail({
-      from,
-      to,
-      subject,
-      text: skipLayout ? text : `${text}${textFooter(unsubscribeUrl)}`,
-      html: finalHtml,
-      replyTo,
-      headers,
-    });
+    const info: unknown = await withSmtpRetry(() =>
+      transporter.sendMail({
+        from,
+        to,
+        subject,
+        text: finalText,
+        html: finalHtml,
+        replyTo,
+        headers,
+      }),
+    );
     await logEmailAttempt({
       ...attempt,
       status: "sent",
@@ -944,12 +1039,21 @@ export function contactEmail(input: {
  */
 export function contactConfirmationEmail(input: { category: string }) {
   const category = escapeHtml(input.category);
+  const responseTime = /^security\b/i.test(input.category)
+    ? `We acknowledge security reports within ${pluralize(SECURITY_ACK_HOURS, "hour")}.`
+    : "We usually reply within 24 to 48 hours.";
+  // There is no inbound mail handling, so a reply was never going to land on
+  // any thread: it went to the no-reply sender. Reply-To sends it to a mailbox
+  // someone reads, and the copy promises only that.
+  const followUp =
+    "To add anything, reply to this email and it reaches our support inbox.";
 
   return {
     template: "contactConfirmation",
-    preheader: `We reply to most ${input.category.toLowerCase()} requests within 24 to 48 hours.`,
+    replyTo: SUPPORT_EMAIL,
+    preheader: responseTime,
     subject: "We got your message",
-    text: `Thanks for contacting ${APP_NAME}. Your ${input.category.toLowerCase()} request is in our queue.\n\nWe usually reply within 24 to 48 hours. To add anything, just reply to this email and it lands on the same thread.\n\n- ${APP_NAME} Support`,
+    text: `Thanks for contacting ${APP_NAME}. Your ${input.category.toLowerCase()} request is in our queue.\n\n${responseTime} ${followUp}\n\n- ${APP_NAME} Support`,
     html: `
       ${emailHeading("We got your message")}
       ${emailLead(`Thanks for reaching out. Your ${category.toLowerCase()} request is in our queue.`)}
@@ -961,9 +1065,7 @@ export function contactConfirmationEmail(input: { category: string }) {
           accent: "ok",
         },
       ])}
-      ${emailParagraph(
-        "We usually reply within 24 to 48 hours. To add anything, just reply to this email and it lands on the same thread.",
-      )}
+      ${emailParagraph(`${responseTime} ${followUp}`)}
     `,
   };
 }
@@ -980,6 +1082,9 @@ export async function emailVerificationEmail(
   name: string,
   verifyLink: string,
   locale: Locale = DEFAULT_LOCALE,
+  // EMAIL_VERIFICATION_HOURS is admin-editable, and the copy has to say what
+  // the link's real lifetime is. The default matches an untouched install.
+  hours: number = CONFIG_EMAIL_VERIFICATION_HOURS,
 ) {
   const t = await getTranslator(locale);
   // This goes to an address nobody has verified yet, so it prints the name
@@ -989,18 +1094,20 @@ export async function emailVerificationEmail(
   // to. See lib/email/safe-name.ts for what is refused and why.
   const who = safeDisplayName(name);
   const lead = who ? t("email.verify.lead", { name: who, app: APP_NAME }) : "";
+  const expiry = t("email.verify.expiry", { hours });
   return {
     template: "emailVerification",
-    preheader: t("email.verify.preheader"),
+    locale,
+    preheader: t("email.verify.preheader", { hours }),
     subject: t("email.verify.subject", { app: APP_NAME }),
-    text: `${lead ? `${lead}\n\n` : ""}${t("email.verify.textIntro", { app: APP_NAME })}\n${verifyLink}\n\n${t("email.verify.expiry")}\n\n${t("email.verify.ignore")}`,
+    text: `${lead ? `${lead}\n\n` : ""}${t("email.verify.textIntro", { app: APP_NAME })}\n${verifyLink}\n\n${expiry}\n\n${t("email.verify.ignore")}`,
     html: `
       ${emailHeading(t("email.verify.heading"))}
       ${lead ? emailLead(escapeHtml(lead)) : ""}
       ${emailButton(verifyLink, t("email.verify.button"))}
-      ${emailNote(t("email.verify.expiry"))}
+      ${emailNote(expiry)}
       ${emailParagraph(t("email.verify.ignore"))}
-      ${emailFallbackLink(verifyLink)}
+      ${emailFallbackLink(verifyLink, t("email.layout.fallbackLink"))}
     `,
   };
 }
@@ -1060,19 +1167,25 @@ export function signupAttemptOnExistingAccountEmail(
   };
 }
 
-export function passwordResetEmail(resetLink: string) {
+export function passwordResetEmail(
+  resetLink: string,
+  // PASSWORD_RESET_HOURS is admin-editable. Same reasoning as the code and
+  // invite templates: mail that states a window the link does not have is
+  // worse than mail that states none.
+  hours: number = CONFIG_PASSWORD_RESET_HOURS,
+) {
+  const window = pluralize(hours, "hour");
   return {
     template: "passwordReset",
-    preheader:
-      "The link works for one hour. Ignore this and your current password stays.",
+    preheader: `The link works for ${window}. Ignore this and your current password stays.`,
     subject: `Reset your ${APP_NAME} password`,
-    text: `Someone asked to reset the password for your ${APP_NAME} account.\n\nChoose a new password here:\n${resetLink}\n\nThe link works for one hour, then it stops working. If you didn't request this, you can ignore this email and your current password stays the same.`,
+    text: `Someone asked to reset the password for your ${APP_NAME} account.\n\nChoose a new password here:\n${resetLink}\n\nThe link works for ${window}, then it stops working. If you didn't request this, you can ignore this email and your current password stays the same.`,
     html: `
       ${emailHeading("Reset your password")}
       ${emailLead(`Someone asked to reset the password for your ${APP_NAME} account. If that was you, set a new one below.`)}
       ${emailButton(resetLink, "Choose a new password")}
       ${emailNote(
-        "The link works for one hour, then it stops working. If you didn't request this, you can ignore this email and your current password stays the same.",
+        `The link works for ${window}, then it stops working. If you didn't request this, you can ignore this email and your current password stays the same.`,
         "warn",
       )}
       ${emailFallbackLink(resetLink)}
@@ -1620,7 +1733,7 @@ export function scheduleDisabledEmail(url: string, reason: string) {
   const safeReason = escapeHtml(reason);
   return {
     template: "scheduleDisabled",
-    preheader: `${sentenceCase(reason)}. No further runs until the target passes the check again.`,
+    preheader: `${sentence(sentenceCase(reason))} No further runs until the target passes the check again.`,
     subject: `Scheduled scan disabled for ${hostOf(url)}`,
     text: `Your recurring scan of ${url} was turned off because the target no longer passes our safety check: ${reason}\n\nNo more automatic scans will run for this schedule. Remove it from your profile, or re-add it once the target passes the safety check again.`,
     html: `
@@ -1826,7 +1939,7 @@ function sentence(value: string): string {
 
 /**
  * The host a scan targeted, for a subject line. A subject that says "Scan
- * complete: 3 issues found" is useless to anyone monitoring more than one
+ * complete: 3 findings" is useless to anyone monitoring more than one
  * site, and the full URL is too long to survive an inbox's truncation, so
  * subjects carry the host and the body carries the URL. Falls back to the
  * whole string when it will not parse, which is what a caller that has
@@ -2013,7 +2126,7 @@ export function scanCompleteEmail(
   const viewLink = scanHistoryId
     ? `${APP_URL}/history/${scanHistoryId}`
     : `${APP_URL}/history`;
-  const issueWord = summary.total === 1 ? "issue" : "issues";
+  const findingCount = pluralize(summary.total, "finding");
 
   // This built its own chip row from a private copy of the renderer the
   // scheduled-scan and digest reports use, so the same five severities were
@@ -2024,7 +2137,7 @@ export function scanCompleteEmail(
   const lead =
     summary.total === 0
       ? `We finished scanning your target in ${durationSecs}s and found nothing to flag.`
-      : `We finished scanning your target in ${durationSecs}s and found ${summary.total} ${issueWord}.`;
+      : `We finished scanning your target in ${durationSecs}s and reported ${findingCount}.`;
 
   const priority = summary.critical + summary.high;
   const priorityNote =
@@ -2057,7 +2170,7 @@ export function scanCompleteEmail(
   return {
     template: "scanComplete",
     preheader: textLead,
-    subject: `${hostOf(url)}: scan complete, ${summary.total} ${issueWord} found`,
+    subject: `${hostOf(url)}: scan complete, ${findingCount}`,
     text: `${textLead}\n\nFindings:\n- Critical: ${summary.critical}\n- High: ${summary.high}\n- Medium: ${summary.medium}\n- Low: ${summary.low}\n- Info: ${summary.info}\nTotal: ${summary.total}\n\nView the full report: ${viewLink}`,
     html: `
       ${emailHeading("Scan complete")}
@@ -2070,7 +2183,7 @@ export function scanCompleteEmail(
           mono: true,
           accent: "brand",
         },
-        { label: "Findings", value: `${summary.total} ${issueWord}` },
+        { label: "Findings", value: findingCount },
         { label: "Scan time", value: `${durationSecs}s` },
       ])}
       ${priorityNote}
@@ -2171,12 +2284,12 @@ export function scheduledScanCompleteEmail(
   const viewLink = scanHistoryId
     ? `${APP_URL}/history/${scanHistoryId}`
     : `${APP_URL}/history`;
-  const issueWord = summary.total === 1 ? "issue" : "issues";
+  const findingCount = pluralize(summary.total, "finding");
 
   const lead =
     summary.total === 0
       ? `Your scheduled scan "${safeName}" finished in ${durationSecs}s and found nothing to flag.`
-      : `Your scheduled scan "${safeName}" finished in ${durationSecs}s and found ${summary.total} ${issueWord}.`;
+      : `Your scheduled scan "${safeName}" finished in ${durationSecs}s and reported ${findingCount}.`;
 
   const priority = summary.critical + summary.high;
   const priorityNote =
@@ -2189,7 +2302,7 @@ export function scheduledScanCompleteEmail(
 
   return {
     template: "scheduledScanComplete",
-    preheader: `${summary.total} ${issueWord} on ${url}, scanned in ${durationSecs}s.`,
+    preheader: `${findingCount} on ${url}, scanned in ${durationSecs}s.`,
     subject: `${hostOf(url)}: scheduled scan "${scheduleName}" complete`,
     text: `Your scheduled scan "${scheduleName}" finished in ${durationSecs}s.\n\nURL: ${url}\nFindings:\n- Critical: ${summary.critical}\n- High: ${summary.high}\n- Medium: ${summary.medium}\n- Low: ${summary.low}\n- Info: ${summary.info}\nTotal: ${summary.total}\n\nView the full report: ${viewLink}`,
     html: `
@@ -2204,7 +2317,7 @@ export function scheduledScanCompleteEmail(
           mono: true,
           accent: "brand",
         },
-        { label: "Findings", value: `${summary.total} ${issueWord}` },
+        { label: "Findings", value: findingCount },
         { label: "Scan time", value: `${durationSecs}s` },
       ])}
       ${priorityNote}
