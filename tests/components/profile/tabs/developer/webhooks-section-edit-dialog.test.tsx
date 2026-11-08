@@ -110,6 +110,7 @@ describe("the dialog opens on the saved webhook", () => {
     const html = render(
       <WebhookEditDialog
         webhook={WEBHOOK}
+        canEditUrl
         onSave={async () => null}
         onClose={() => {}}
       />,
@@ -135,6 +136,7 @@ describe("the dialog opens on the saved webhook", () => {
     render(
       <WebhookEditDialog
         webhook={WEBHOOK}
+        canEditUrl
         onSave={async () => null}
         onClose={() => {}}
       />,
@@ -145,7 +147,7 @@ describe("the dialog opens on the saved webhook", () => {
 });
 
 describe("webhookEditState", () => {
-  const saved = { name: "Discord Alerts", url: WEBHOOK.url };
+  const saved = { name: "Discord Alerts", url: WEBHOOK.url as string };
 
   it("is neither dirty nor savable for the saved values", () => {
     expect(webhookEditState(WEBHOOK, saved)).toEqual({
@@ -184,6 +186,7 @@ describe("Save", () => {
     render(
       <WebhookEditDialog
         webhook={WEBHOOK}
+        canEditUrl
         onSave={onSave}
         onClose={() => {}}
       />,
@@ -193,6 +196,7 @@ describe("Save", () => {
     render(
       <WebhookEditDialog
         webhook={WEBHOOK}
+        canEditUrl
         onSave={onSave}
         onClose={() => {}}
       />,
@@ -211,6 +215,7 @@ describe("Save", () => {
     render(
       <WebhookEditDialog
         webhook={WEBHOOK}
+        canEditUrl
         onSave={onSave}
         onClose={() => {}}
       />,
@@ -219,6 +224,7 @@ describe("Save", () => {
     render(
       <WebhookEditDialog
         webhook={WEBHOOK}
+        canEditUrl
         onSave={onSave}
         onClose={() => {}}
       />,
@@ -234,6 +240,7 @@ describe("Save", () => {
     render(
       <WebhookEditDialog
         webhook={WEBHOOK}
+        canEditUrl
         onSave={onSave}
         onClose={() => {}}
       />,
@@ -242,6 +249,7 @@ describe("Save", () => {
     render(
       <WebhookEditDialog
         webhook={WEBHOOK}
+        canEditUrl
         onSave={onSave}
         onClose={() => {}}
       />,
@@ -257,7 +265,12 @@ describe("Cancel and Escape", () => {
     const onSave = vi.fn(async () => null);
     const onClose = vi.fn();
     render(
-      <WebhookEditDialog webhook={WEBHOOK} onSave={onSave} onClose={onClose} />,
+      <WebhookEditDialog
+        webhook={WEBHOOK}
+        canEditUrl
+        onSave={onSave}
+        onClose={onClose}
+      />,
     );
     expect(
       editCloseDecision({ busy: false, dirty: last().dirty ?? false }),
@@ -272,6 +285,7 @@ describe("Cancel and Escape", () => {
     render(
       <WebhookEditDialog
         webhook={WEBHOOK}
+        canEditUrl
         onSave={onSave}
         onClose={() => {}}
       />,
@@ -280,6 +294,7 @@ describe("Cancel and Escape", () => {
     render(
       <WebhookEditDialog
         webhook={WEBHOOK}
+        canEditUrl
         onSave={onSave}
         onClose={() => {}}
       />,

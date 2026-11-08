@@ -85,6 +85,8 @@ function installQueryMock(
   opts: {
     webhooks?: {
       id: number;
+      user_id?: number;
+      scan_public_id?: string;
       url: string;
       type: string;
       secret: string | null;
@@ -122,6 +124,13 @@ function installQueryMock(
   });
 }
 
+const ENVELOPE = {
+  id: "11111111-2222-4333-8444-555555555555",
+  created_at: "2026-11-08T12:00:00.000Z",
+  api_version: "1",
+  scan_public_id: "a1b2c3d4",
+};
+
 function baseParams(overrides: Record<string, unknown> = {}) {
   return {
     userId: 42,
@@ -147,7 +156,13 @@ describe("notifyScanComplete: delivery fan-out", () => {
   it("delivers scan.completed to every active webhook and sends the scan-complete email", async () => {
     installQueryMock({
       webhooks: [
-        { id: 1, url: "https://hook.example/a", type: "generic", secret: "s1" },
+        {
+          id: 1,
+          user_id: 42,
+          url: "https://hook.example/a",
+          type: "generic",
+          secret: "s1",
+        },
         { id: 2, url: "https://hook.example/b", type: "discord", secret: null },
       ],
     });
@@ -160,7 +175,8 @@ describe("notifyScanComplete: delivery fan-out", () => {
     }
     expect(mockDeliverWebhook.mock.calls[0][0]).toEqual({
       id: 1,
-      userId: 42,
+      ownerUserId: 42,
+      teammateScan: false,
       url: "https://hook.example/a",
       type: "generic",
       secret: "s1",
@@ -193,6 +209,139 @@ describe("notifyScanComplete: delivery fan-out", () => {
  * before the detector knew this is still stored as discord, which is why
  * these go through the whole send path rather than the body builders alone.
  */
+describe("notifyScanComplete: which team webhooks are in scope", () => {
+  function webhookQuery(): { sql: string; params: unknown[] } {
+    const call = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("FROM webhooks"),
+    );
+    if (!call) throw new Error("the webhook lookup never ran");
+    return { sql: String(call[0]), params: call[1] as unknown[] };
+  }
+
+  it("requires the webhook's creator to still be on the team", async () => {
+    await notifyScanComplete(baseParams());
+    const { sql } = webhookQuery();
+    expect(sql).toMatch(
+      /EXISTS\s*\(\s*SELECT 1 FROM team_members[\s\S]*\.team_id = w\.team_id[\s\S]*\.user_id = w\.user_id/,
+    );
+  });
+
+  it("takes the scan's teams from the join table as well as the column", async () => {
+    await notifyScanComplete(baseParams());
+    const { sql } = webhookQuery();
+    expect(sql).toMatch(
+      /SELECT team_id FROM scan_history_teams WHERE scan_id = \$2\s+UNION\s+SELECT team_id FROM scan_history WHERE id = \$2/,
+    );
+  });
+
+  it("keeps the creator's own webhooks firing without any team", async () => {
+    await notifyScanComplete(baseParams());
+    const { sql, params } = webhookQuery();
+    expect(sql).toMatch(/w\.user_id = \$1/);
+    expect(params).toEqual([42, 7]);
+  });
+});
+
+describe("notifyScanComplete: the failure email goes to the webhook's creator", () => {
+  const TEAM_ROW = {
+    id: 3,
+    user_id: 900,
+    url: "https://hook.example/team",
+    type: "generic",
+    secret: null,
+  };
+
+  it("names the creator, not the person whose scan it was", async () => {
+    installQueryMock({ webhooks: [TEAM_ROW] });
+
+    await notifyScanComplete(baseParams({ userId: 42 }));
+
+    expect(mockDeliverWebhook.mock.calls[0][0]).toMatchObject({
+      id: 3,
+      ownerUserId: 900,
+      teammateScan: true,
+    });
+  });
+
+  it("does not call the creator's own scan a teammate's", async () => {
+    installQueryMock({ webhooks: [{ ...TEAM_ROW, user_id: 42 }] });
+
+    await notifyScanComplete(baseParams({ userId: 42 }));
+
+    expect(mockDeliverWebhook.mock.calls[0][0]).toMatchObject({
+      ownerUserId: 42,
+      teammateScan: false,
+    });
+  });
+});
+
+describe("the generic envelope", () => {
+  const ROW = {
+    id: 5,
+    user_id: 42,
+    url: "https://hook.example/g",
+    type: "generic",
+    secret: null,
+    scan_public_id: "a1b2c3d4",
+  };
+
+  it("carries the id the delivery header carries, with the scan's public id", async () => {
+    installQueryMock({ webhooks: [ROW] });
+
+    await notifyScanComplete(baseParams());
+
+    const [, , body, deliveryId] = mockDeliverWebhook.mock.calls[0];
+    const parsed = JSON.parse(body as string);
+    expect(deliveryId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(parsed.id).toBe(deliveryId);
+    expect(parsed.api_version).toBe("1");
+    expect(new Date(parsed.created_at).toISOString()).toBe(parsed.created_at);
+    expect(parsed.scan_public_id).toBe("a1b2c3d4");
+    expect(parsed.data.scan_id).toBe(7);
+  });
+
+  it("gives each event its own id", async () => {
+    installQueryMock({
+      webhooks: [ROW],
+      previousFindings: [],
+    });
+
+    await notifyScanComplete(
+      baseParams({
+        summary: SUMMARY,
+        findings: [finding()],
+      }),
+    );
+
+    expect(mockDeliverWebhook).toHaveBeenCalledTimes(2);
+    const [first, second] = mockDeliverWebhook.mock.calls;
+    expect(first[1]).toBe(SCAN_COMPLETED_EVENT);
+    expect(second[1]).toBe(SCAN_REGRESSED_EVENT);
+    expect(first[3]).not.toBe(second[3]);
+    expect(JSON.parse(second[2] as string).id).toBe(second[3]);
+    expect(JSON.parse(second[2] as string).scan_public_id).toBe("a1b2c3d4");
+  });
+
+  it("leaves Slack and Discord bodies as those platforms expect them", async () => {
+    installQueryMock({
+      webhooks: [
+        { ...ROW, id: 6, type: "discord", url: "https://proxy.example/d" },
+        { ...ROW, id: 7, type: "slack", url: "https://proxy.example/s" },
+      ],
+    });
+
+    await notifyScanComplete(baseParams());
+
+    for (const call of mockDeliverWebhook.mock.calls) {
+      const parsed = JSON.parse(call[2] as string);
+      expect(parsed).not.toHaveProperty("id");
+      expect(parsed).not.toHaveProperty("api_version");
+      expect(parsed).not.toHaveProperty("scan_public_id");
+      expect(call[3]).toMatch(/^[0-9a-f-]{36}$/);
+    }
+  });
+});
+
 describe("notifyScanComplete: Discord's compatibility endpoints", () => {
   const SLACK_COMPAT = "https://discord.com/api/webhooks/1/x/slack";
   const GITHUB_COMPAT = "https://discord.com/api/v10/webhooks/1/x/github";
@@ -260,11 +409,16 @@ describe("notifyScanComplete: Discord's compatibility endpoints", () => {
 
   it("gives the Slack regression alert the same text fallback", () => {
     const body = JSON.parse(
-      buildScanRegressedBody("slack", baseParams(), {
-        hasNewCriticalOrHigh: true,
-        newFindings: [finding()],
-        outstandingFindings: [],
-      } as never),
+      buildScanRegressedBody(
+        "slack",
+        baseParams(),
+        {
+          hasNewCriticalOrHigh: true,
+          newFindings: [finding()],
+          outstandingFindings: [],
+        } as never,
+        ENVELOPE,
+      ),
     );
     expect(body.text).toContain("1 new critical or high finding");
     expect(body.text).toContain("https://example.com/");
@@ -283,11 +437,16 @@ describe("notifyScanComplete: Discord's compatibility endpoints", () => {
     await notifyScanComplete(params);
     const completed = JSON.parse(mockDeliverWebhook.mock.calls[0][2] as string);
     const regressed = JSON.parse(
-      buildScanRegressedBody("slack", params, {
-        hasNewCriticalOrHigh: true,
-        newFindings: [finding()],
-        outstandingFindings: [],
-      } as never),
+      buildScanRegressedBody(
+        "slack",
+        params,
+        {
+          hasNewCriticalOrHigh: true,
+          newFindings: [finding()],
+          outstandingFindings: [],
+        } as never,
+        ENVELOPE,
+      ),
     );
 
     for (const text of [completed.text, regressed.text] as string[]) {
@@ -384,6 +543,7 @@ describe("notifyScanComplete: scan.regressed", () => {
           newFindings: [finding()],
           outstandingFindings: [],
         },
+        ENVELOPE,
       ),
     );
 
@@ -400,7 +560,9 @@ describe("notifyScanComplete: scan.regressed", () => {
 
 describe("buildScanCompletedBody: reports what the path can actually report", () => {
   it("a URL target carries both the documented url key and the historical normalizedUrl alias", () => {
-    const body = JSON.parse(buildScanCompletedBody("generic", baseParams()));
+    const body = JSON.parse(
+      buildScanCompletedBody("generic", baseParams(), ENVELOPE),
+    );
 
     expect(body.event).toBe(SCAN_COMPLETED_EVENT);
     expect(body.data.url).toBe("https://example.com/");
@@ -413,6 +575,7 @@ describe("buildScanCompletedBody: reports what the path can actually report", ()
       buildScanCompletedBody(
         "generic",
         baseParams({ target: { kind: "repository", value: "acme/widgets" } }),
+        ENVELOPE,
       ),
     );
 
@@ -428,28 +591,36 @@ describe("buildScanCompletedBody: reports what the path can actually report", ()
       incomplete: ["dns", "tls"],
     });
 
-    const generic = JSON.parse(buildScanCompletedBody("generic", params));
+    const generic = JSON.parse(
+      buildScanCompletedBody("generic", params, ENVELOPE),
+    );
     expect(generic.data.findings_count).toBe(0);
     expect(generic.data.incomplete).toEqual(["dns", "tls"]);
 
     // The two rich formats have no `incomplete` key to read, so the fact has
     // to survive as visible text or a human sees "0 findings" and reads it as
     // clean.
-    const discord = JSON.parse(buildScanCompletedBody("discord", params));
+    const discord = JSON.parse(
+      buildScanCompletedBody("discord", params, ENVELOPE),
+    );
     const coverage = discord.embeds[0].fields.find(
       (f: { name: string }) => f.name === "Coverage",
     );
     expect(coverage.value).toContain("dns, tls");
 
-    const slack = buildScanCompletedBody("slack", params);
+    const slack = buildScanCompletedBody("slack", params, ENVELOPE);
     expect(slack).toContain("dns, tls");
   });
 
   it("omits the incomplete key entirely when every branch finished", () => {
-    const body = JSON.parse(buildScanCompletedBody("generic", baseParams()));
+    const body = JSON.parse(
+      buildScanCompletedBody("generic", baseParams(), ENVELOPE),
+    );
     expect(body.data).not.toHaveProperty("incomplete");
 
-    const discord = JSON.parse(buildScanCompletedBody("discord", baseParams()));
+    const discord = JSON.parse(
+      buildScanCompletedBody("discord", baseParams(), ENVELOPE),
+    );
     expect(
       discord.embeds[0].fields.some(
         (f: { name: string }) => f.name === "Coverage",
@@ -461,6 +632,7 @@ describe("buildScanCompletedBody: reports what the path can actually report", ()
     const slack = buildScanCompletedBody(
       "slack",
       baseParams({ target: { kind: "repository", value: "acme/widgets" } }),
+      ENVELOPE,
     );
     expect(slack).toContain("*Repository:* acme/widgets");
     expect(slack).not.toContain("*URL:*");

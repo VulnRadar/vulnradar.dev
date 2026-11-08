@@ -49,6 +49,10 @@ import {
 } from "@/lib/scanner/safety-rating";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { deliverWebhook } from "@/lib/webhooks/delivery";
+import {
+  newDeliveryEnvelope,
+  type DeliveryEnvelope,
+} from "@/lib/webhooks/delivery-contract";
 import { deliveryFormat } from "@/lib/webhooks/detect-type";
 import { pluralize } from "@/lib/ui/plural";
 
@@ -110,6 +114,16 @@ export interface ScanNotificationParams {
   silenceRoutineEmail?: boolean;
 }
 
+/**
+ * The generic body's top-level keys beside `event` and `data`. Discord and
+ * Slack reject or ignore what they do not expect, so only the generic format
+ * carries these; their deliveries are still identified by the headers.
+ */
+export interface ScanDeliveryEnvelope extends DeliveryEnvelope {
+  /** scan_history.public_id, null when the row could not be read. */
+  scan_public_id: string | null;
+}
+
 /** Human-readable one-liner naming what did not finish. */
 function incompleteNote(incomplete: string[]): string {
   return `Incomplete: ${incomplete.join(", ")} did not finish, so findings from those areas are missing rather than absent.`;
@@ -156,6 +170,7 @@ function targetLabel(target: ScanNotificationTarget): string {
 export function buildScanCompletedBody(
   webhookType: string,
   params: ScanNotificationParams,
+  envelope: ScanDeliveryEnvelope,
 ): string {
   const { target, summary, findings, duration, scannedAt } = params;
   const incomplete = params.incomplete ?? [];
@@ -268,6 +283,7 @@ export function buildScanCompletedBody(
   }
 
   return JSON.stringify({
+    ...envelope,
     event: SCAN_COMPLETED_EVENT,
     data: {
       ...targetPayloadKeys(target),
@@ -304,6 +320,7 @@ export function buildScanRegressedBody(
   webhookType: string,
   params: ScanNotificationParams,
   regression: RegressionCheckResult,
+  envelope: ScanDeliveryEnvelope,
 ): string {
   const { target, scannedAt } = params;
   const newCount = regression.newFindings.length;
@@ -383,6 +400,7 @@ export function buildScanRegressedBody(
   }
 
   return JSON.stringify({
+    ...envelope,
     event: SCAN_REGRESSED_EVENT,
     data: {
       ...targetPayloadKeys(target),
@@ -482,9 +500,11 @@ async function sendScanEmails(
 
 interface WebhookRow {
   id: number;
+  user_id: number;
   url: string;
   type: string;
   secret: string | null;
+  scan_public_id: string | null;
 }
 
 async function deliverScanWebhooks(
@@ -494,16 +514,35 @@ async function deliverScanWebhooks(
   // Both the scan owner's own webhooks AND any webhook assigned to the team
   // this scan belongs to. Team-assigned webhooks were once never delivered
   // (the query filtered on user_id only), so a webhook shared to a team fired
-  // only for its creator's scans. The subquery resolves the scan's team_id
-  // (NULL for a personal scan, so the team clause matches nothing there), and
-  // a webhook matching both clauses is still one row, so it fires once.
+  // only for its creator's scans. A webhook matching both clauses is still one
+  // row, so it fires once.
+  //
+  // The team clause has two conditions the single-column comparison it
+  // replaced did not. A scan shared with several teams records them in
+  // scan_history_teams, with scan_history.team_id holding only one, so reading
+  // the column alone left the others' webhooks silent. And the creator must
+  // still be on the team: nothing clears team_id when a member leaves, so
+  // without the EXISTS their endpoint kept receiving that team's results for
+  // good, with nobody left on the team able to see where they went.
   const { rows } = await pool.query<WebhookRow>(
-    `SELECT id, url, type, secret FROM webhooks
-         WHERE active = true
-           AND (
-             user_id = $1
-             OR team_id = (SELECT team_id FROM scan_history WHERE id = $2)
-           )`,
+    `SELECT w.id, w.user_id, w.url, w.type, w.secret,
+            (SELECT public_id FROM scan_history WHERE id = $2) AS scan_public_id
+       FROM webhooks w
+      WHERE w.active = true
+        AND (
+          w.user_id = $1
+          OR (
+            w.team_id IN (
+              SELECT team_id FROM scan_history_teams WHERE scan_id = $2
+              UNION
+              SELECT team_id FROM scan_history WHERE id = $2
+            )
+            AND EXISTS (
+              SELECT 1 FROM team_members tm
+               WHERE tm.team_id = w.team_id AND tm.user_id = w.user_id
+            )
+          )
+        )`,
     [params.userId, params.scanId],
   );
 
@@ -511,11 +550,16 @@ async function deliverScanWebhooks(
     rows.map(async (row) => {
       const target = {
         id: row.id,
-        userId: params.userId,
+        ownerUserId: row.user_id,
+        teammateScan: row.user_id !== params.userId,
         url: row.url,
         type: row.type,
         secret: row.secret ?? null,
       };
+      const newEnvelope = (): ScanDeliveryEnvelope => ({
+        ...newDeliveryEnvelope(),
+        scan_public_id: row.scan_public_id ?? null,
+      });
       // Signed (HMAC-SHA256 of the body via the webhook's own secret, sent as
       // X-VulnRadar-Signature: sha256=<hex>), logged to webhook_deliveries and
       // retried once on failure. deliverWebhook re-validates the URL through
@@ -523,10 +567,12 @@ async function deliverScanWebhooks(
       // validateScanTarget call belongs here.
       const format = deliveryFormat(row.type, row.url);
       try {
+        const envelope = newEnvelope();
         await deliverWebhook(
           target,
           SCAN_COMPLETED_EVENT,
-          buildScanCompletedBody(format, params),
+          buildScanCompletedBody(format, params, envelope),
+          envelope.id,
         );
       } catch (err) {
         console.error(`[${APP_NAME}] Webhook delivery failed`, {
@@ -538,10 +584,12 @@ async function deliverScanWebhooks(
 
       if (regression?.hasNewCriticalOrHigh !== true) return;
       try {
+        const envelope = newEnvelope();
         await deliverWebhook(
           target,
           SCAN_REGRESSED_EVENT,
-          buildScanRegressedBody(format, params, regression),
+          buildScanRegressedBody(format, params, regression, envelope),
+          envelope.id,
         );
       } catch (err) {
         console.error(`[${APP_NAME}] Webhook delivery failed`, {

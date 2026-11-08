@@ -1790,6 +1790,28 @@ describe("maskedWebhookEndpoint", () => {
       expect(part).not.toContain("abcDEFsecret");
     }
   });
+
+  it("tells the creator of a shared webhook whose scan it was", async () => {
+    const { webhookDeliveryFailedEmail } = await import("@/lib/email/email");
+    const url = "https://hooks.example.dev/in";
+    const base = {
+      firstStatus: 500,
+      retryStatus: 500,
+      manageUrl: "https://vulnradar.dev/profile",
+    };
+
+    const own = webhookDeliveryFailedEmail(url, base);
+    const shared = webhookDeliveryFailedEmail(url, {
+      ...base,
+      teammateScan: true,
+    });
+
+    expect(own.text).toMatch(/^A scan finished/);
+    expect(own.html).not.toContain("teammate");
+    expect(shared.text).toMatch(/^A teammate's scan finished/);
+    expect(shared.text).toContain("the team webhook you created");
+    expect(shared.html).toContain("the team webhook you created");
+  });
 });
 
 /**

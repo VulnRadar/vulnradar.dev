@@ -155,7 +155,7 @@ function installDefaultQueryMock() {
     if (sql.includes("SELECT email FROM users")) {
       return { rows: [], rowCount: 0 };
     }
-    if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
+    if (sql.includes("FROM webhooks w")) {
       return { rows: [], rowCount: 0 };
     }
     const last = Array.isArray(params) ? params[params.length - 1] : 1;
@@ -855,14 +855,20 @@ describe("executeCrawlScan (authenticated)", () => {
 
 describe("executeCrawlScan: notifications", () => {
   function installNotifyingQueryMock(
-    rows: { id: number; url: string; type: string; secret: string | null }[],
+    rows: {
+      id: number;
+      user_id: number;
+      url: string;
+      type: string;
+      secret: string | null;
+    }[],
   ) {
     const base = mockQuery.getMockImplementation()!;
     mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
       if (sql.includes("SELECT email FROM users")) {
         return { rows: [{ email: "owner@example.com" }], rowCount: 1 };
       }
-      if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
+      if (sql.includes("FROM webhooks w")) {
         return { rows, rowCount: rows.length };
       }
       if (sql.includes("SELECT findings FROM scan_history")) {
@@ -874,7 +880,13 @@ describe("executeCrawlScan: notifications", () => {
 
   it("delivers scan.completed and sends the scan-complete email, which a crawl never used to do", async () => {
     installNotifyingQueryMock([
-      { id: 1, url: "https://hook.example/a", type: "generic", secret: "s" },
+      {
+        id: 1,
+        user_id: 42,
+        url: "https://hook.example/a",
+        type: "generic",
+        secret: "s",
+      },
     ]);
 
     await executeCrawlScan(baseParams({ scanId: 40 }));

@@ -183,7 +183,11 @@ export interface BillingInfo {
 
 export interface WebhookItem {
   id: number;
-  url: string;
+  /** null for a teammate who cannot write to it: the URL of a Discord or Slack
+   *  webhook is the credential for posting there. */
+  url: string | null;
+  /** Just the host, for showing a row whose URL is withheld. */
+  url_host?: string | null;
   name: string;
   type: string;
   active: boolean;

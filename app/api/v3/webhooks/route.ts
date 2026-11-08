@@ -11,6 +11,8 @@ import {
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { extractRootDomain } from "@/lib/scanner/root-domain";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
 import {
   getUserPlanLimits,
@@ -19,11 +21,97 @@ import {
 } from "@/lib/billing/plan-limits";
 import {
   deliveryFormat,
+  detectWebhookType,
   resolveWebhookType,
   WEBHOOK_TYPE_ERROR,
 } from "@/lib/webhooks/detect-type";
-import { encryptWebhookSecret } from "@/lib/webhooks/secret";
-import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
+import { encryptWebhookSecret, readWebhookSecret } from "@/lib/webhooks/secret";
+import {
+  buildDeliveryHeaders,
+  readResponseSnippet,
+} from "@/lib/webhooks/delivery";
+import {
+  DELIVERY_TIMEOUT_MS,
+  newDeliveryEnvelope,
+  TEST_SEND_TARGET_LIMIT,
+  TEST_SEND_USER_LIMIT,
+} from "@/lib/webhooks/delivery-contract";
+import {
+  getTeamResourceAccess,
+  type TeamResourceAccess,
+} from "@/lib/auth/team-resource-access";
+
+const TEST_ERROR_SNIPPET_MAX = 100;
+
+const TOO_MANY_TESTS =
+  "Too many test deliveries. Wait a few minutes and try again.";
+const TEST_TARGET_REFUSED =
+  "This webhook's address is not a public endpoint, so nothing was sent.";
+
+function parseStoredUrl(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+function testRateLimited(retryAfterSeconds: number) {
+  return NextResponse.json(
+    { success: false, error: TOO_MANY_TESTS },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+  );
+}
+
+/**
+ * The bucket for the place a test is sent. Normally the registrable domain, so
+ * that subdomains cannot be used to dodge it. Discord and Slack are the
+ * exception: every webhook on the deployment shares those domains, and one
+ * bucket there would let a single account spend everybody's Test button, so
+ * those count per webhook. By id, because the URL is a credential and this key
+ * is stored in plain text.
+ */
+function testTargetLimitKey(webhookId: number, url: string): string {
+  const hostname = parseStoredUrl(url)?.hostname;
+  const scope =
+    hostname && detectWebhookType(url) === "generic"
+      ? extractRootDomain(hostname).toLowerCase()
+      : `id-${webhookId}`;
+  return `webhook-test-target:${scope}`;
+}
+
+/**
+ * The answer for a test that never got a response. Written out rather than
+ * passed through: the underlying message can name internal addresses and
+ * socket errors, and this body goes straight to the browser.
+ */
+function testFailure(err: unknown): { status: number; error: string } {
+  switch ((err as { code?: unknown } | null)?.code) {
+    case "timeout":
+      return {
+        status: 504,
+        error: `Your endpoint did not answer within ${DELIVERY_TIMEOUT_MS / 1000} seconds.`,
+      };
+    case "tls":
+      return {
+        status: 502,
+        error: "Your endpoint's TLS certificate or handshake was refused.",
+      };
+    case "unreachable":
+      return { status: 502, error: "Could not connect to your endpoint." };
+    case "cross_host_redirect":
+    case "redirect":
+      return {
+        status: 502,
+        error:
+          "Your endpoint answered with a redirect to another host, and deliveries do not follow those.",
+      };
+    case "blocked":
+      return { status: 400, error: TEST_TARGET_REFUSED };
+    default:
+      return { status: 502, error: "Could not reach your endpoint." };
+  }
+}
 
 export async function GET() {
   const session = await getSession();
@@ -33,10 +121,10 @@ export async function GET() {
       { status: 401 },
     );
 
-  // Team co-membership alone is enough for read access -- all 4 team
-  // roles (owner/admin/member/viewer) grant "view_reports" (see
-  // TEAM_ROLE_PERMISSIONS in lib/config/constants.ts), so this doesn't
-  // need per-row role filtering, unlike write access.
+  // Team co-membership alone is enough to see that a webhook exists -- all 4
+  // team roles (owner/admin/member/viewer) grant "view_reports" (see
+  // TEAM_ROLE_PERMISSIONS in lib/config/constants.ts). The URL itself is
+  // redacted per row below.
   // user_id is selected because the list mixes the caller's own webhooks with
   // teammates', and only the creator may change a webhook's team (PATCH
   // /webhooks/[id] answers 403 to anyone else). Without it the client cannot
@@ -49,10 +137,40 @@ export async function GET() {
      ORDER BY created_at DESC`,
     [session.userId],
   );
+
+  // Whoever can write to a webhook keeps its address; anyone else gets the
+  // host, because the path of a Discord or Slack webhook is the credential for
+  // posting there. Asked of getTeamResourceAccess rather than worked out from the roles
+  // here, because that function is what decides who may write, and a second
+  // copy of the rule is one that can drift into showing a credential. Memoised
+  // per creator and team: a creator's own rows answer without a query, and
+  // everything else is at most one lookup per teammate per team.
+  const accessByOwnerAndTeam = new Map<string, Promise<TeamResourceAccess>>();
+  const webhooks = await Promise.all(
+    result.rows.map(async (row) => {
+      const key = `${row.user_id}:${row.team_id}`;
+      let access = accessByOwnerAndTeam.get(key);
+      if (!access) {
+        access = getTeamResourceAccess(
+          session.userId,
+          row.user_id,
+          row.team_id,
+        );
+        accessByOwnerAndTeam.set(key, access);
+      }
+      const { canWrite } = await access;
+      return {
+        ...row,
+        url: canWrite ? row.url : null,
+        url_host: parseStoredUrl(row.url)?.host ?? null,
+      };
+    }),
+  );
+
   // Named-key envelope, matching every other collection endpoint. See the
   // same note on GET /api/v3/schedules: a bare array cannot carry a count or
   // a truncation flag later without breaking its callers.
-  return NextResponse.json({ webhooks: result.rows });
+  return NextResponse.json({ webhooks });
 }
 
 export async function POST(request: NextRequest) {
@@ -207,6 +325,19 @@ export async function PATCH(request: NextRequest) {
       { status: 401 },
     );
 
+  if (!(await getSetting("FEATURE_WEBHOOKS"))) {
+    return NextResponse.json(
+      { success: false, error: "Webhooks are disabled on this deployment." },
+      { status: 403 },
+    );
+  }
+
+  const userLimit = await checkRateLimit({
+    key: `webhook-test:${session.userId}`,
+    ...TEST_SEND_USER_LIMIT,
+  });
+  if (!userLimit.allowed) return testRateLimited(userLimit.retryAfterSeconds);
+
   const { id } = await request.json();
   if (!id) {
     return NextResponse.json(
@@ -217,7 +348,7 @@ export async function PATCH(request: NextRequest) {
 
   // Get webhook details
   const result = await pool.query(
-    "SELECT id, url, name, type, user_id, team_id FROM webhooks WHERE id = $1",
+    "SELECT id, url, name, type, user_id, team_id, secret FROM webhooks WHERE id = $1",
     [id],
   );
 
@@ -241,19 +372,29 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  // After the access checks, so a stranger cannot spend a target's bucket by
+  // guessing webhook ids.
+  const targetLimit = await checkRateLimit({
+    key: testTargetLimitKey(webhook.id, webhook.url),
+    ...TEST_SEND_TARGET_LIMIT,
+  });
+  if (!targetLimit.allowed) {
+    return testRateLimited(targetLimit.retryAfterSeconds);
+  }
+
   // ssrf: re-run validation on the stored URL — it may have been
   // written via DB migration, admin path, or any code path that
-  // bypassed POST validation.
+  // bypassed POST validation. DNS or routing may also have changed since
+  // registration, and safeFetch separately blocks redirects to private IPs.
   const targetCheck = await validateScanTarget(webhook.url);
   if (!targetCheck.safe) {
     return NextResponse.json(
-      {
-        success: false,
-        error: targetCheck.reason || "Webhook target blocked",
-      },
+      { success: false, error: TEST_TARGET_REFUSED },
       { status: 400 },
     );
   }
+
+  const envelope = newDeliveryEnvelope();
 
   // The payload a real delivery to this row gets (deliveryFormat), not its
   // stored type: a row saved as discord before /slack and /github were told
@@ -307,6 +448,7 @@ export async function PATCH(request: NextRequest) {
             ],
           }
         : {
+            ...envelope,
             event: "test",
             message: `This is a test webhook from ${APP_NAME}`,
             webhook_name: webhook.name,
@@ -314,34 +456,28 @@ export async function PATCH(request: NextRequest) {
           };
 
   try {
-    // SSRF guard: re-validate the user-supplied webhook URL via safeFetch so
-    // a registered webhook can't be used to probe internal services
-    // (the URL was validated at registration but DNS or routing could have
-    // changed since, and safeFetch also blocks redirects to private IPs).
-    const safety = await validateScanTarget(webhook.url);
-    if (!safety.safe) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Webhook target blocked: ${safety.reason || "unsafe URL"}`,
-        },
-        { status: 400 },
-      );
-    }
+    const body = JSON.stringify(testPayload);
     const res = await safeFetch(webhook.url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(testPayload),
+      headers: buildDeliveryHeaders(body, readWebhookSecret(webhook.secret), {
+        id: envelope.id,
+        event: "test",
+        attempt: 1,
+      }),
+      body,
+      signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "Unknown error");
+      const snippet = await readResponseSnippet(res, TEST_ERROR_SNIPPET_MAX);
+      // The route worked and the far end did not, which is a bad gateway, not
+      // a bad request. 400 also read as "you sent something wrong".
       return NextResponse.json(
         {
           success: false,
-          error: `Webhook returned ${res.status}: ${text.slice(0, 100)}`,
+          error: `Webhook returned ${res.status}${snippet ? `: ${snippet}` : ""}`,
         },
-        { status: 400 },
+        { status: 502 },
       );
     }
 
@@ -350,13 +486,8 @@ export async function PATCH(request: NextRequest) {
       message: "Test webhook sent successfully",
     });
   } catch (err) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: `Failed to reach webhook: ${err instanceof Error ? err.message : "Unknown error"}`,
-      },
-      { status: 400 },
-    );
+    const { status, error } = testFailure(err);
+    return NextResponse.json({ success: false, error }, { status });
   }
 }
 

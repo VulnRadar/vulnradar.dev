@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { createHmac } from "node:crypto";
 import { decryptApiKey } from "@/lib/auth/crypto";
 
 const mockQuery = vi.fn();
@@ -65,6 +66,11 @@ vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
 }));
 
+const mockCheckRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+}));
+
 const { GET, POST, PATCH, DELETE } =
   await import("@/app/api/v3/webhooks/route");
 
@@ -106,6 +112,322 @@ beforeEach(() => {
   mockGetFeatureWebhooks.mockResolvedValue(true);
   mockGetUserPlan.mockReset();
   mockGetUserPlan.mockResolvedValue("pro_supporter"); // webhooks: 5
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 5,
+    retryAfterSeconds: 0,
+  });
+});
+
+describe("GET /api/v3/webhooks: what a teammate may see", () => {
+  const SECRET_URL = "https://discord.com/api/webhooks/123/s3cr3t-token";
+
+  function teamRow() {
+    return { id: 2, url: SECRET_URL, name: "Ops", user_id: 99, team_id: 1 };
+  }
+
+  it.each([
+    ["viewer", "user", true],
+    ["admin", "super_admin", true],
+    ["member", "user", false],
+    ["admin", "user", false],
+    ["owner", "user", false],
+  ])(
+    "team role %s on a webhook owned by a %s: redacted=%s",
+    async (teamRole, ownerRole, redacted) => {
+      mockQuery.mockResolvedValueOnce({ rows: [teamRow()] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: teamRole }] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: ownerRole }] });
+
+      const res = await GET();
+      const { webhooks } = await res.json();
+
+      expect(webhooks[0].url_host).toBe("discord.com");
+      if (redacted) {
+        expect(webhooks[0].url).toBeNull();
+        expect(JSON.stringify(webhooks)).not.toContain("s3cr3t-token");
+      } else {
+        expect(webhooks[0].url).toBe(SECRET_URL);
+      }
+    },
+  );
+
+  it("always shows the creator their own URL, without asking about a team", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...teamRow(), user_id: 7 }],
+    });
+
+    const { webhooks } = await (await GET()).json();
+
+    expect(webhooks[0].url).toBe(SECRET_URL);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks once per creator and team, however many webhooks they share", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [teamRow(), { ...teamRow(), id: 3 }, { ...teamRow(), id: 4 }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "viewer" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+
+    const { webhooks } = await (await GET()).json();
+
+    expect(webhooks.map((w: { url: unknown }) => w.url)).toEqual([
+      null,
+      null,
+      null,
+    ]);
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("PATCH /api/v3/webhooks (test send): limits and failure answers", () => {
+  const STORED = {
+    id: 10,
+    url: "https://hooks.example.com/in/abc",
+    name: "Prod",
+    type: "generic",
+    user_id: 7,
+    team_id: null,
+    secret: "stored-signing-secret",
+  };
+
+  async function fetchMock() {
+    const { safeFetch } = await import("@/lib/scanner/safe-fetch");
+    vi.mocked(safeFetch).mockReset();
+    return vi.mocked(safeFetch);
+  }
+
+  function refuseNextLimit(retryAfterSeconds = 120) {
+    mockCheckRateLimit.mockResolvedValueOnce({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds,
+    });
+  }
+
+  it("is off when FEATURE_WEBHOOKS is off, before any database or network work", async () => {
+    mockGetFeatureWebhooks.mockResolvedValue(false);
+    const safeFetch = await fetchMock();
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      success: false,
+      error: "Webhooks are disabled on this deployment.",
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(safeFetch).not.toHaveBeenCalled();
+  });
+
+  it("refuses over the per-user limit before reading the webhook or resolving DNS", async () => {
+    refuseNextLimit();
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("120");
+    expect((await res.json()).success).toBe(false);
+    expect(mockCheckRateLimit).toHaveBeenCalledWith({
+      key: "webhook-test:7",
+      maxAttempts: 10,
+      windowSeconds: 600,
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockValidateScanTarget).not.toHaveBeenCalled();
+  });
+
+  it("counts every target on one registrable domain together", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [STORED] });
+    const safeFetch = await fetchMock();
+    safeFetch.mockResolvedValue(new Response("ok", { status: 200 }));
+
+    await PATCH(patchRequest({ id: 10 }));
+
+    expect(mockCheckRateLimit).toHaveBeenLastCalledWith({
+      key: "webhook-test-target:example.com",
+      maxAttempts: 30,
+      windowSeconds: 3600,
+    });
+  });
+
+  it("refuses over the per-target limit without sending anything", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [STORED] });
+    mockCheckRateLimit.mockResolvedValueOnce({
+      allowed: true,
+      remaining: 9,
+      retryAfterSeconds: 0,
+    });
+    refuseNextLimit(600);
+    const safeFetch = await fetchMock();
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("600");
+    expect(safeFetch).not.toHaveBeenCalled();
+  });
+
+  it("does not spend a shared chat platform's bucket on one account's clicks", async () => {
+    // Every Discord webhook on the deployment shares discord.com. One bucket
+    // for the domain would let a single account use up everyone's Test button.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          ...STORED,
+          type: "discord",
+          url: "https://discord.com/api/webhooks/123/s3cr3t-token",
+        },
+      ],
+    });
+    const safeFetch = await fetchMock();
+    safeFetch.mockResolvedValue(new Response("ok", { status: 200 }));
+
+    await PATCH(patchRequest({ id: 10 }));
+
+    const key = mockCheckRateLimit.mock.lastCall?.[0].key as string;
+    expect(key).toBe("webhook-test-target:id-10");
+    expect(key).not.toContain("s3cr3t-token");
+  });
+
+  it("does not let someone without write access spend the target's bucket", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...STORED, user_id: 99 }] });
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+
+    expect(res.status).toBe(404);
+    expect(mockCheckRateLimit).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates the target exactly once, with a fixed sentence when it is refused", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [STORED] });
+    mockValidateScanTarget.mockResolvedValue({
+      safe: false,
+      reason: "Scanning internal hostnames (db.internal) is not allowed.",
+    });
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.success).toBe(false);
+    expect(json.error).not.toContain("db.internal");
+    expect(mockValidateScanTarget).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers 502, not 400, when the endpoint returns a non-2xx", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [STORED] });
+    const safeFetch = await fetchMock();
+    safeFetch.mockResolvedValue(
+      new Response("y".repeat(5000), { status: 500 }),
+    );
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(502);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe(`Webhook returned 500: ${"y".repeat(100)}`);
+  });
+
+  it("reads at most the capped prefix of a large error body", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [STORED] });
+    const safeFetch = await fetchMock();
+    let pulls = 0;
+    safeFetch.mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            pulls += 1;
+            controller.enqueue(new TextEncoder().encode("z".repeat(400)));
+            if (pulls > 1000) controller.close();
+          },
+        }),
+        { status: 500 },
+      ),
+    );
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+
+    expect(res.status).toBe(502);
+    expect(pulls).toBeLessThan(50);
+  });
+
+  it.each([
+    ["timeout", 504],
+    ["tls", 502],
+    ["unreachable", 502],
+    ["cross_host_redirect", 502],
+    ["redirect", 502],
+    ["blocked", 400],
+    [undefined, 502],
+  ])(
+    "maps a %s failure to %i and a sentence of its own, never the raw message",
+    async (code, status) => {
+      mockQuery.mockResolvedValueOnce({ rows: [STORED] });
+      const safeFetch = await fetchMock();
+      safeFetch.mockRejectedValue(
+        Object.assign(new Error("connect ECONNREFUSED 10.0.0.5:443"), { code }),
+      );
+
+      const res = await PATCH(patchRequest({ id: 10 }));
+      const json = await res.json();
+
+      expect(res.status).toBe(status);
+      expect(json.success).toBe(false);
+      expect(json.error).not.toContain("10.0.0.5");
+      expect(json.error).not.toContain("ECONNREFUSED");
+    },
+  );
+
+  it("signs the test with the stored secret and sends what a real delivery sends", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [STORED] });
+    const safeFetch = await fetchMock();
+    safeFetch.mockResolvedValue(new Response("ok", { status: 200 }));
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+
+    expect(res.status).toBe(200);
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("secret");
+    expect(await JSON.stringify(res.headers)).not.toContain(STORED.secret);
+
+    const init = safeFetch.mock.calls[0][1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    const body = init.body as string;
+    expect(headers["User-Agent"]).toBe("VulnRadar-Webhook/1.0");
+    expect(headers["X-VulnRadar-Signature"]).toBe(
+      `sha256=${createHmac("sha256", STORED.secret).update(body, "utf8").digest("hex")}`,
+    );
+    expect(headers["X-VulnRadar-Signature-V2"]).toMatch(
+      /^t=[0-9]{10},v1=[0-9a-f]{64}$/,
+    );
+    expect(headers["X-VulnRadar-Event"]).toBe("test");
+    expect(headers["X-VulnRadar-Attempt"]).toBe("1");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+
+    const parsed = JSON.parse(body);
+    expect(parsed.event).toBe("test");
+    expect(parsed.id).toBe(headers["X-VulnRadar-Delivery"]);
+    expect(parsed.api_version).toBe("1");
+    expect(parsed).not.toHaveProperty("data");
+  });
+
+  it("still sends a test for a legacy row with no secret, unsigned", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...STORED, secret: null }] });
+    const safeFetch = await fetchMock();
+    safeFetch.mockResolvedValue(new Response("ok", { status: 200 }));
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+
+    expect(res.status).toBe(200);
+    const init = safeFetch.mock.calls[0][1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-VulnRadar-Signature"]).toBeUndefined();
+    expect(headers["X-VulnRadar-Delivery"]).toBeDefined();
+  });
 });
 
 describe("GET /api/v3/webhooks", () => {
@@ -125,6 +447,7 @@ describe("GET /api/v3/webhooks", () => {
         { id: 2, url: "https://b.example.com", user_id: 99, team_id: 1 },
       ],
     });
+    mockQuery.mockResolvedValue({ rows: [{ role: "member" }] });
 
     const res = await GET();
     const json = await res.json();

@@ -11,26 +11,45 @@
  * a lean per-attempt log row (status + short snippet, never the full
  * body), and an email if both attempts fail.
  */
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import pool from "@/lib/database/db";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
+import { safeReadBody } from "@/lib/scanner/read-bounded-body";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { webhookDeliveryFailedEmail } from "@/lib/email/email";
 import { readWebhookSecret } from "@/lib/webhooks/secret";
 
-const DELIVERY_TIMEOUT_MS = 10000;
-const RETRY_DELAY_MS = 5000;
+import {
+  ATTEMPT_HEADER,
+  DELIVERY_HEADER,
+  DELIVERY_TIMEOUT_MS,
+  EVENT_HEADER,
+  RETRY_DELAY_MS,
+  SIGNATURE_HEADER,
+  SIGNATURE_V2_HEADER,
+  TIMESTAMP_HEADER,
+} from "@/lib/webhooks/delivery-contract";
+
+export { SIGNATURE_HEADER };
+
 const RESPONSE_SNIPPET_MAX = 500;
 
-/** Header carrying the signature; value is `sha256=<hex>`, the same shape
- *  GitHub and Stripe use so existing webhook libraries can verify it. */
-export const SIGNATURE_HEADER = "X-VulnRadar-Signature";
+// A receiver's error body is whatever it chooses to send, for as long as it
+// chooses to send it. Read without a bound, a 500 that streams forever pinned
+// the delivery, and on the test route the request that triggered it.
+const RESPONSE_READ_MAX_BYTES = 512;
+const RESPONSE_READ_TIMEOUT_MS = 3000;
 
 export interface WebhookDeliveryTarget {
   id: number;
-  userId: number;
+  /** The webhook's creator, the one person who can fix it. Not the person
+   *  whose scan this is: on a team webhook those differ, and the failure
+   *  email used to go to whichever teammate ran the scan. */
+  ownerUserId: number;
+  /** The scan belongs to someone other than the creator. */
+  teammateScan?: boolean;
   url: string;
   type: string;
   /** The stored `webhooks.secret` column value, which is encrypted at rest
@@ -48,6 +67,12 @@ interface DeliveryAttempt {
   responseSnippet: string;
 }
 
+interface DeliveryIdentity {
+  id: string;
+  event: string;
+  attempt: number;
+}
+
 /**
  * HMAC-SHA256 of the exact bytes being sent, hex-encoded. Exported so the
  * signature can be computed and verified independently in tests (and by a
@@ -57,10 +82,58 @@ export function signWebhookPayload(secret: string, body: string): string {
   return createHmac("sha256", secret).update(body, "utf8").digest("hex");
 }
 
+/**
+ * Every header a delivery carries, for scans and the test button alike. The
+ * test used to be its own unsigned POST with no User-Agent, so a receiver that
+ * rejects unsigned requests failed the test while real deliveries verified.
+ *
+ * Built per attempt: the retry signs a fresh timestamp, or a receiver with a
+ * freshness window would refuse the delivery it most needs to accept.
+ */
+export function buildDeliveryHeaders(
+  body: string,
+  signingSecret: string | null,
+  delivery: DeliveryIdentity,
+): Record<string, string> {
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "User-Agent": `${APP_NAME}-Webhook/1.0`,
+    [DELIVERY_HEADER]: delivery.id,
+    [EVENT_HEADER]: delivery.event,
+    [ATTEMPT_HEADER]: String(delivery.attempt),
+    [TIMESTAMP_HEADER]: timestamp,
+  };
+  if (signingSecret) {
+    const timestamped = signWebhookPayload(
+      signingSecret,
+      `${timestamp}.${body}`,
+    );
+    headers[SIGNATURE_HEADER] =
+      `sha256=${signWebhookPayload(signingSecret, body)}`;
+    headers[SIGNATURE_V2_HEADER] = `t=${timestamp},v1=${timestamped}`;
+  }
+  return headers;
+}
+
+/** The start of a receiver's error body, read under a byte and a time bound. */
+export async function readResponseSnippet(
+  res: Response,
+  maxChars: number,
+): Promise<string> {
+  const text = await safeReadBody(
+    res,
+    RESPONSE_READ_MAX_BYTES,
+    RESPONSE_READ_TIMEOUT_MS,
+  );
+  return text.slice(0, maxChars);
+}
+
 async function attemptDelivery(
   webhook: WebhookDeliveryTarget,
   body: string,
   signingSecret: string | null,
+  delivery: DeliveryIdentity,
 ): Promise<DeliveryAttempt> {
   // SSRF guard: re-validate the registered webhook URL through safeFetch
   // before POSTing. The URL was checked at registration (and at edit
@@ -75,25 +148,16 @@ async function attemptDelivery(
     };
   }
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "User-Agent": `${APP_NAME}-Webhook/1.0`,
-  };
-  if (signingSecret) {
-    headers[SIGNATURE_HEADER] =
-      `sha256=${signWebhookPayload(signingSecret, body)}`;
-  }
-
   try {
     const res = await safeFetch(webhook.url, {
       method: "POST",
-      headers,
+      headers: buildDeliveryHeaders(body, signingSecret, delivery),
       body,
       signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
     });
     const snippet = res.ok
       ? ""
-      : (await res.text().catch(() => "")).slice(0, RESPONSE_SNIPPET_MAX);
+      : await readResponseSnippet(res, RESPONSE_SNIPPET_MAX);
     return { ok: res.ok, httpStatus: res.status, responseSnippet: snippet };
   } catch (err) {
     return {
@@ -139,7 +203,7 @@ async function notifyDeliveryFailed(
   try {
     const userResult = await pool.query<{ email: string }>(
       "SELECT email FROM users WHERE id = $1",
-      [webhook.userId],
+      [webhook.ownerUserId],
     );
     if (userResult.rows.length === 0) return;
 
@@ -147,9 +211,10 @@ async function notifyDeliveryFailed(
       firstStatus: first.httpStatus,
       retryStatus: retry.httpStatus,
       manageUrl: `${APP_URL}/profile?tab=developer&dtab=webhooks`,
+      teammateScan: webhook.teammateScan === true,
     });
     await sendNotificationEmail({
-      userId: webhook.userId,
+      userId: webhook.ownerUserId,
       userEmail: userResult.rows[0].email,
       type: "webhook_failures",
       emailContent,
@@ -171,11 +236,16 @@ async function notifyDeliveryFailed(
  * intentionally not a backoff/retry-queue system: a fire-and-forget scan
  * notification doesn't need guaranteed delivery, just visibility when it
  * fails.
+ *
+ * `deliveryId` is the X-VulnRadar-Delivery value both attempts share. A caller
+ * whose body carries an envelope passes the envelope's id, so the header and
+ * the body agree.
  */
 export async function deliverWebhook(
   webhook: WebhookDeliveryTarget,
   eventType: string,
   body: string,
+  deliveryId: string = randomUUID(),
 ): Promise<void> {
   // FEATURE_WEBHOOKS gated only registration (POST /api/v3/webhooks), never
   // delivery, so turning the feature off left every already-registered
@@ -188,14 +258,21 @@ export async function deliverWebhook(
   // signs the identical bytes with the identical secret, so a second
   // decrypt would only be extra work on the failure path.
   const signingSecret = readWebhookSecret(webhook.secret);
+  const delivery = { id: deliveryId, event: eventType };
 
-  const first = await attemptDelivery(webhook, body, signingSecret);
+  const first = await attemptDelivery(webhook, body, signingSecret, {
+    ...delivery,
+    attempt: 1,
+  });
   await logDelivery(webhook.id, eventType, first);
   if (first.ok) return;
 
   await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
 
-  const retry = await attemptDelivery(webhook, body, signingSecret);
+  const retry = await attemptDelivery(webhook, body, signingSecret, {
+    ...delivery,
+    attempt: 2,
+  });
   await logDelivery(webhook.id, eventType, retry);
   if (retry.ok) return;
 

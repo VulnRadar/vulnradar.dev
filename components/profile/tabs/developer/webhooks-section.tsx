@@ -9,7 +9,7 @@ import { cn } from "@/lib/ui/utils";
 import { formatDateTime } from "@/lib/ui/format-date";
 import {
   Plus,
-  Play,
+  Send,
   Trash2,
   Globe,
   Loader2,
@@ -56,7 +56,7 @@ interface WebhooksSectionProps {
    *  was not, which the edit dialog shows without closing. */
   onSaveWebhookEdit: (
     id: number,
-    draft: { name: string; url: string },
+    draft: { name: string; url?: string },
   ) => Promise<string | null>;
   rotatingWebhookId: number | null;
   /** The secret is shown once, in the panel above, exactly as on create. */
@@ -309,18 +309,23 @@ export function WebhooksSection({
                 //
                 // Nothing is hidden while teams are still loading: until then
                 // only ownership is known, which is the conservative half.
+                //
+                // A null URL is the server saying the caller cannot write, so
+                // it overrides the role: the creator of a webhook being a
+                // super admin makes it read-only to every teammate's role.
                 const isOwner =
                   currentUserId !== null && wh.user_id === currentUserId;
                 const isWritable =
-                  isOwner ||
-                  (wh.team_id != null &&
-                    teams.assignable.some((t) => t.id === wh.team_id));
+                  wh.url !== null &&
+                  (isOwner ||
+                    (wh.team_id != null &&
+                      teams.assignable.some((t) => t.id === wh.team_id)));
 
                 const showingDeliveries = openDeliveriesId === wh.id;
                 // What this URL is sent, not the stored type: a row saved as
                 // discord on Discord's /slack or /github endpoint keeps that
                 // type but receives Slack blocks or plain JSON.
-                const format = deliveryFormat(wh.type, wh.url);
+                const format = deliveryFormat(wh.type, wh.url ?? "");
 
                 return (
                   <div key={wh.id}>
@@ -398,10 +403,13 @@ export function WebhooksSection({
                           )}
                         </div>
                         <p
-                          title={wh.url}
+                          title={
+                            wh.url ??
+                            "The full address is visible to teammates who can manage this webhook."
+                          }
                           className="text-xs text-muted-foreground truncate font-mono"
                         >
-                          {wh.url}
+                          {wh.url ?? wh.url_host}
                         </p>
                       </div>
                       <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:shrink-0">
@@ -471,7 +479,10 @@ export function WebhooksSection({
                             {testingWebhookId === wh.id ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
-                              <Play className="h-3.5 w-3.5" />
+                              <Send
+                                className="h-3.5 w-3.5"
+                                aria-hidden="true"
+                              />
                             )}
                           </Button>
                         )}
@@ -541,8 +552,8 @@ export function WebhooksSection({
                         ) : deliveries.length === 0 ? (
                           <p className="text-sm text-muted-foreground max-w-prose leading-relaxed">
                             Nothing has been delivered here yet. Finished scans
-                            post automatically, or use the play button to send a
-                            test.
+                            post automatically, or use the paper-plane button to
+                            send a test.
                           </p>
                         ) : (
                           <>
@@ -608,6 +619,9 @@ export function WebhooksSection({
       {editTarget && (
         <WebhookEditDialog
           webhook={editTarget}
+          canEditUrl={
+            currentUserId !== null && editTarget.user_id === currentUserId
+          }
           onSave={onSaveWebhookEdit}
           onClose={() => setEditingWebhook(null)}
         />
@@ -622,33 +636,43 @@ export function WebhooksSection({
  */
 export function webhookEditState(
   webhook: Pick<WebhookItem, "name" | "url">,
-  draft: { name: string; url: string },
+  draft: { name: string; url?: string },
 ): { dirty: boolean; canSave: boolean } {
+  const url = draft.url?.trim();
   const changed =
-    draft.name.trim() !== webhook.name || draft.url.trim() !== webhook.url;
-  return { dirty: changed, canSave: changed && draft.url.trim() !== "" };
+    draft.name.trim() !== webhook.name ||
+    (url !== undefined && url !== webhook.url);
+  return { dirty: changed, canSave: changed && url !== "" };
 }
 
 /**
- * Rename a webhook or point it at another address. Mounted only while it is
- * open, so every opening starts from the saved values and a refetch of the
- * list cannot overwrite what is half typed.
+ * Rename a webhook or, for its creator, point it at another address. Mounted
+ * only while it is open, so every opening starts from the saved values and a
+ * refetch of the list cannot overwrite what is half typed.
+ *
+ * Without `canEditUrl` the draft has no url key at all, because PATCH refuses
+ * a teammate who sends one even unchanged. A null URL never seeds the field:
+ * the draft would be empty and "unchanged" would read as an edit.
  */
 export function WebhookEditDialog({
   webhook,
+  canEditUrl,
   onSave,
   onClose,
 }: {
   webhook: WebhookItem;
+  canEditUrl: boolean;
   onSave: (
     id: number,
-    draft: { name: string; url: string },
+    draft: { name: string; url?: string },
   ) => Promise<string | null>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(webhook.name);
-  const [url, setUrl] = useState(webhook.url);
-  const { dirty, canSave } = webhookEditState(webhook, { name, url });
+  const [url, setUrl] = useState(webhook.url ?? "");
+  const showUrl = canEditUrl && webhook.url !== null;
+  const urlDraft = showUrl ? { url: url.trim() } : {};
+  const { dirty, canSave } = webhookEditState(webhook, { name, ...urlDraft });
 
   return (
     <EditDialog
@@ -660,7 +684,7 @@ export function WebhookEditDialog({
       size="md"
       dirty={dirty}
       canSave={canSave}
-      onSave={() => onSave(webhook.id, { name: name.trim(), url: url.trim() })}
+      onSave={() => onSave(webhook.id, { name: name.trim(), ...urlDraft })}
     >
       {/* EditDialog's fieldset adds no spacing of its own, so the two fields
           carry the gap between them. */}
@@ -675,24 +699,30 @@ export function WebhookEditDialog({
             autoFocus
           />
         </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="edit-webhook-url">URL</Label>
-          <Input
-            id="edit-webhook-url"
-            type="url"
-            required
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://..."
-            aria-describedby="edit-webhook-url-hint"
-          />
-          <p
-            id="edit-webhook-url-hint"
-            className="text-xs text-muted-foreground"
-          >
-            Discord and Slack URLs are detected from the address.
+        {showUrl ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-webhook-url">URL</Label>
+            <Input
+              id="edit-webhook-url"
+              type="url"
+              required
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://..."
+              aria-describedby="edit-webhook-url-hint"
+            />
+            <p
+              id="edit-webhook-url-hint"
+              className="text-xs text-muted-foreground"
+            >
+              Discord and Slack URLs are detected from the address.
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Only the person who created this webhook can change its address.
           </p>
-        </div>
+        )}
       </div>
     </EditDialog>
   );

@@ -784,17 +784,21 @@ export function ProfileDeveloperTab({
    *  under the scrim. */
   async function handleSaveWebhookEdit(
     id: number,
-    draft: { name: string; url: string },
+    draft: { name: string; url?: string },
   ): Promise<string | null> {
     try {
       const res = await fetch(`${API.WEBHOOKS}/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: draft.name || "Default",
-          url: draft.url,
-          type: "auto",
-        }),
+        body: JSON.stringify(
+          draft.url === undefined
+            ? { name: draft.name || "Default" }
+            : {
+                name: draft.name || "Default",
+                url: draft.url,
+                type: "auto",
+              },
+        ),
       });
       const data = await res.json();
       if (!res.ok) {

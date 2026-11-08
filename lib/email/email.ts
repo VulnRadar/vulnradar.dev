@@ -1489,6 +1489,8 @@ interface WebhookFailureDetails {
   firstStatus: number | null;
   retryStatus: number | null;
   manageUrl: string;
+  /** The scan was a teammate's, reaching a team webhook this person created. */
+  teammateScan?: boolean;
 }
 
 function statusLabel(status: number | null): string {
@@ -1503,14 +1505,17 @@ export function webhookDeliveryFailedEmail(
   const safeUrl = escapeHtml(endpoint);
   const firstLabel = statusLabel(details.firstStatus);
   const retryLabel = statusLabel(details.retryStatus);
+  const lead = details.teammateScan
+    ? `A teammate's scan finished, but ${APP_NAME} couldn't deliver the result to the team webhook you created. Both the initial attempt and the retry failed.`
+    : `A scan finished, but ${APP_NAME} couldn't deliver the result to your webhook. Both the initial attempt and the retry failed.`;
   return {
     template: "webhookDeliveryFailed",
     preheader: `${firstLabel} on the first attempt, ${retryLabel} on the retry.`,
     subject: `${APP_NAME} couldn't deliver a scan to your webhook`,
-    text: `A scan finished, but ${APP_NAME} couldn't deliver the result to your webhook. Both the initial attempt and the retry failed.\n\nWebhook: ${endpoint}\nFirst attempt: ${firstLabel}\nRetry: ${retryLabel}\n\nThe webhook is still active, so future scans will keep trying to deliver to it. Check that your endpoint is reachable and returns a 2xx status, then manage it at ${details.manageUrl}`,
+    text: `${lead}\n\nWebhook: ${endpoint}\nFirst attempt: ${firstLabel}\nRetry: ${retryLabel}\n\nThe webhook is still active, so future scans will keep trying to deliver to it. Check that your endpoint is reachable and returns a 2xx status, then manage it at ${details.manageUrl}`,
     html: `
       ${emailHeading("Webhook delivery failed")}
-      ${emailLead(`A scan finished, but ${APP_NAME} couldn't deliver the result to your webhook. Both the initial attempt and the retry failed.`)}
+      ${emailLead(lead)}
       ${emailDetailPanel([
         { label: "Webhook", value: safeUrl, mono: true },
         {

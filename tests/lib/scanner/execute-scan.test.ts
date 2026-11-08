@@ -124,7 +124,7 @@ function installDefaultQueryMock() {
     if (sql.includes("SELECT email FROM users")) {
       return { rows: [], rowCount: 0 };
     }
-    if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
+    if (sql.includes("FROM webhooks w")) {
       return { rows: [], rowCount: 0 };
     }
     // Every UPDATE ... RETURNING id in scan-jobs.ts guards on status; treat
@@ -603,8 +603,7 @@ describe("executeScan", () => {
     // UPDATE ... RETURNING id returns no rows.
     mockQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT email FROM users")) return { rows: [] };
-      if (sql.includes("SELECT id, url, type, secret FROM webhooks"))
-        return { rows: [] };
+      if (sql.includes("FROM webhooks w")) return { rows: [] };
       if (sql.includes("status = 'completed'"))
         return { rows: [], rowCount: 0 };
       return { rows: [{ id: 5 }], rowCount: 1 };
@@ -689,7 +688,7 @@ describe("executeScan", () => {
         if (sql.includes("SELECT email FROM users")) {
           return { rows: [{ email: "owner@example.com" }], rowCount: 1 };
         }
-        if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
+        if (sql.includes("FROM webhooks w")) {
           return { rows: [], rowCount: 0 };
         }
         const last = Array.isArray(params) ? params[params.length - 1] : 1;
@@ -860,13 +859,19 @@ describe("executeScan", () => {
 
 describe("executeScan: webhook notifications", () => {
   function installWebhookQueryMock(
-    rows: { id: number; url: string; type: string; secret: string | null }[],
+    rows: {
+      id: number;
+      user_id: number;
+      url: string;
+      type: string;
+      secret: string | null;
+    }[],
   ) {
     mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
       if (sql.includes("SELECT email FROM users")) {
         return { rows: [], rowCount: 0 };
       }
-      if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
+      if (sql.includes("FROM webhooks w")) {
         return { rows, rowCount: rows.length };
       }
       const last = Array.isArray(params) ? params[params.length - 1] : 1;
@@ -895,7 +900,13 @@ describe("executeScan: webhook notifications", () => {
 
   it("delivers scan.completed for a single-URL scan", async () => {
     installWebhookQueryMock([
-      { id: 1, url: "https://hook.example/a", type: "generic", secret: "s" },
+      {
+        id: 1,
+        user_id: 42,
+        url: "https://hook.example/a",
+        type: "generic",
+        secret: "s",
+      },
     ]);
     installCleanScan();
 
@@ -904,14 +915,20 @@ describe("executeScan: webhook notifications", () => {
 
     expect(mockDeliverWebhook).toHaveBeenCalledTimes(1);
     const [target, event, body] = mockDeliverWebhook.mock.calls[0];
-    expect(target).toMatchObject({ id: 1, userId: 42 });
+    expect(target).toMatchObject({ id: 1, ownerUserId: 42 });
     expect(event).toBe("scan.completed");
     expect(JSON.parse(body as string).data.url).toBe("https://example.com/");
   });
 
   it("still completes the scan when the webhook delivery throws", async () => {
     installWebhookQueryMock([
-      { id: 1, url: "https://hook.example/a", type: "generic", secret: null },
+      {
+        id: 1,
+        user_id: 42,
+        url: "https://hook.example/a",
+        type: "generic",
+        secret: null,
+      },
     ]);
     installCleanScan();
     mockDeliverWebhook.mockRejectedValue(new Error("receiver returned 500"));

@@ -100,14 +100,27 @@ export async function PATCH(
     return NextResponse.json({ error: WEBHOOK_TYPE_ERROR }, { status: 400 });
   }
 
-  let validatedUrl: string | undefined;
-  let resolvedType: WebhookType | undefined;
+  // GET hands a read-only teammate `url: null`. Echoing that row back must not
+  // read as "clear the address", so it is named rather than left to the
+  // generic parse failure below.
+  if (url === null) {
+    return NextResponse.json(
+      {
+        error:
+          "url cannot be null. Send the full https:// address, or leave url out to keep the current one.",
+      },
+      { status: 400 },
+    );
+  }
 
+  // The shape of the URL is checked here and its destination further down,
+  // after the caller's access: the destination check resolves DNS, and that
+  // is not work to do for someone about to get a 403.
+  let parsedUrl: URL | undefined;
   if (hasUrl) {
     if (typeof url !== "string") {
       return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
     }
-    let parsedUrl: URL;
     try {
       parsedUrl = new URL(url);
     } catch {
@@ -121,23 +134,6 @@ export async function PATCH(
         { status: 400 },
       );
     }
-    const scanSafety = await validateScanTarget(parsedUrl.href);
-    if (!scanSafety.safe) {
-      return NextResponse.json(
-        {
-          error:
-            scanSafety.reason || "Webhook URL blocked for security reasons.",
-        },
-        { status: 400 },
-      );
-    }
-    validatedUrl = parsedUrl.href;
-    // Re-detect type when the URL changes, same as creation, unless the
-    // caller explicitly pinned a non-"auto" type in the same request.
-    resolvedType =
-      hasType && isWebhookType(userType) ? userType : detectWebhookType(url);
-  } else if (hasType && isWebhookType(userType)) {
-    resolvedType = userType;
   }
 
   const existingRes = await pool.query<{
@@ -161,6 +157,42 @@ export async function PATCH(
       { error: "You don't have permission to edit this webhook." },
       { status: 403 },
     );
+  }
+
+  // Team write access covers pausing and renaming. It does not cover the
+  // destination: every delivery is signed with the creator's secret, so a
+  // teammate who could change the URL could send the team's scan results,
+  // under the creator's signature, anywhere they liked. Changing the type
+  // decides what shape those results leave in, so it goes with the URL.
+  if ((hasUrl || hasType) && webhook.user_id !== session.userId) {
+    return NextResponse.json(
+      { error: "Only this webhook's owner can change its URL or type." },
+      { status: 403 },
+    );
+  }
+
+  let validatedUrl: string | undefined;
+  let resolvedType: WebhookType | undefined;
+  if (parsedUrl) {
+    const scanSafety = await validateScanTarget(parsedUrl.href);
+    if (!scanSafety.safe) {
+      return NextResponse.json(
+        {
+          error:
+            scanSafety.reason || "Webhook URL blocked for security reasons.",
+        },
+        { status: 400 },
+      );
+    }
+    validatedUrl = parsedUrl.href;
+    // Re-detect type when the URL changes, same as creation, unless the
+    // caller explicitly pinned a non-"auto" type in the same request.
+    resolvedType =
+      hasType && isWebhookType(userType)
+        ? userType
+        : detectWebhookType(url as string);
+  } else if (hasType && isWebhookType(userType)) {
+    resolvedType = userType;
   }
 
   let teamIdUpdate: number | null | undefined;

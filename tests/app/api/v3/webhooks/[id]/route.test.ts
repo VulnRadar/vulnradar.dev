@@ -319,11 +319,12 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("rejects an SSRF-blocked URL without querying the database", async () => {
+  it("rejects an SSRF-blocked URL from the owner without writing anything", async () => {
     mockValidateScanTarget.mockResolvedValue({
       safe: false,
       reason: "Domain resolves to internal IP address.",
     });
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
 
     const res = await PATCH(
       patchRequest({ url: "https://internal.example.com/hook" }),
@@ -333,6 +334,135 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
 
     expect(res.status).toBe(400);
     expect(json.error).toMatch(/internal IP/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PATCH /api/v3/webhooks/[id]: the URL and type belong to the creator", () => {
+  const OWNER_ONLY = "Only this webhook's owner can change its URL or type.";
+
+  /** Caller 7 holds `role` on team 1; the webhook was created by user 99. */
+  function coMember(role = "admin") {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 1 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+  }
+
+  it.each(["owner", "admin", "member"])(
+    "refuses a team %s repointing a teammate's webhook",
+    async (role) => {
+      coMember(role);
+
+      const res = await PATCH(
+        patchRequest({ url: "https://attacker.example/collect" }),
+        params(),
+      );
+
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toBe(OWNER_ONLY);
+      expect(mockQuery).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it.each(["generic", "discord", "auto"])(
+    "refuses a co-member changing the type to %s",
+    async (type) => {
+      coMember();
+
+      const res = await PATCH(patchRequest({ type }), params());
+
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toBe(OWNER_ONLY);
+      expect(mockQuery).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it("refuses the whole request when a rename arrives with a new URL", async () => {
+    coMember();
+
+    const res = await PATCH(
+      patchRequest({ name: "Renamed", url: "https://attacker.example/x" }),
+      params(),
+    );
+
+    expect(res.status).toBe(403);
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+  });
+
+  it("does no DNS work for a co-member's URL", async () => {
+    coMember();
+
+    await PATCH(
+      patchRequest({ url: "https://probe.internal.example/" }),
+      params(),
+    );
+
+    expect(mockValidateScanTarget).not.toHaveBeenCalled();
+  });
+
+  it("does no DNS work for a caller with no access at all", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: null }] });
+
+    const res = await PATCH(
+      patchRequest({ url: "https://probe.internal.example/" }),
+      params(),
+    );
+
+    expect(res.status).toBe(404);
+    expect(mockValidateScanTarget).not.toHaveBeenCalled();
+  });
+
+  it("lets a co-member with write access rename and pause it", async () => {
+    coMember("member");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 10, name: "Renamed", active: false }],
+    });
+
+    const res = await PATCH(
+      patchRequest({ name: "Renamed", active: false }),
+      params(),
+    );
+
+    expect(res.status).toBe(200);
+    const [sql] = mockQuery.mock.calls[3];
+    expect(sql).toContain("name =");
+    expect(sql).toContain("active =");
+    expect(sql).not.toContain("url =");
+  });
+
+  it("still lets the creator change both", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: 1 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 10, url: "https://hook.example/new", type: "slack" }],
+    });
+
+    const res = await PATCH(
+      patchRequest({ url: "https://hook.example/new", type: "slack" }),
+      params(),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockValidateScanTarget).toHaveBeenCalledOnce();
+  });
+
+  describe("the redacted form of a URL", () => {
+    it("refuses url: null, which is what a read-only teammate's row holds", async () => {
+      const res = await PATCH(patchRequest({ url: null }), params());
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error).toBe(
+        "url cannot be null. Send the full https:// address, or leave url out to keep the current one.",
+      );
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it("refuses the bare host that replaces it", async () => {
+      const res = await PATCH(patchRequest({ url: "discord.com" }), params());
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe("Invalid URL");
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
   });
 });

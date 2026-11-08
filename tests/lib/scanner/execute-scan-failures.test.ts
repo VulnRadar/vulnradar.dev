@@ -97,7 +97,7 @@ function installDefaultQueryMock(
     if (sql.includes("SELECT email FROM users")) {
       return { rows: [], rowCount: 0 };
     }
-    if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
+    if (sql.includes("FROM webhooks w")) {
       return { rows: [], rowCount: 0 };
     }
     const last = Array.isArray(params) ? params[params.length - 1] : 1;
