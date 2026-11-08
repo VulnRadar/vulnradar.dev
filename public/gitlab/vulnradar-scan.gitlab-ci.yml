@@ -65,6 +65,11 @@ vulnradar_scan:
     - |
       set -eu
 
+      # Everything the server wrote is printed through this, the same filter
+      # as the Action's: a job log honours terminal escapes and carriage
+      # returns, so a reply could otherwise forge or overwrite lines in it.
+      log_safe() { printf '%s' "$1" | tr -d '\000-\037\177%'; }
+
       if [ -z "${VULNRADAR_TOKEN:-}" ]; then
         echo "VULNRADAR_TOKEN is not set. Add it as a masked CI/CD variable."; exit 2
       fi
@@ -114,11 +119,11 @@ vulnradar_scan:
         -H "Content-Type: application/json" \
         -d "$body" || echo 000)
       if [ "$code" -ge 300 ] || [ "$code" = "000" ]; then
-        echo "Failed to start scan (HTTP $code): $(cat resp.json 2>/dev/null)"; exit 2
+        echo "Failed to start scan (HTTP $code): $(log_safe "$(cat resp.json 2>/dev/null)")"; exit 2
       fi
       scan_id=$(jq -r '.scanId' resp.json)
       if [ -z "$scan_id" ] || [ "$scan_id" = "null" ]; then
-        echo "No scanId in response: $(cat resp.json)"; exit 2
+        echo "No scanId in response: $(log_safe "$(cat resp.json)")"; exit 2
       fi
       # The id goes into the status path. A reply with a slash or a dot
       # segment in it sent the polls, token and all, to another path on the
@@ -163,7 +168,7 @@ vulnradar_scan:
           # sends no kind adds nothing.
           kind=$(jq -r '(.failureKind | strings) // empty' status.json)
           if [ -n "$kind" ]; then reason="$reason [$kind]"; fi
-          echo "Scan failed: $reason"; exit 2
+          echo "Scan failed: $(log_safe "$reason")"; exit 2
         fi
         sleep "$VR_POLL_INTERVAL"
         elapsed=$((elapsed + VR_POLL_INTERVAL))
@@ -232,15 +237,17 @@ vulnradar_scan:
       fi
 
       # What the scan did not look at. bot-challenge and page-unreachable mean
-      # the target was never read, so zero findings proves nothing.
-      incomplete=$(jq -r '[(.result.incomplete // [])[]? | strings] | join(",")' status.json)
+      # the target was never read, so zero findings proves nothing. Slug-shaped
+      # entries only, the same program as the Action's. \A and \z rather than
+      # ^ and $, which in jq also match before a final newline.
+      incomplete=$(jq -r '[(.result.incomplete // [])[]? | strings | select(test("\\A[a-z0-9-]+\\z"))] | join(",")' status.json)
       incomplete_blocking=false
       if [ -n "$incomplete" ]; then
         echo "Not checked: $incomplete"
         page_message=$(jq -r '(.result.pageUnreachable | objects | .message | strings) // empty' status.json)
         redirect_host=$(jq -r '(.result.pageUnreachable | objects | .redirectHost | strings) // empty' status.json)
-        if [ -n "$page_message" ]; then echo "Page unreachable: $page_message"; fi
-        if [ -n "$redirect_host" ]; then echo "It redirects to another host: $redirect_host"; fi
+        if [ -n "$page_message" ]; then echo "Page unreachable: $(log_safe "$page_message")"; fi
+        if [ -n "$redirect_host" ]; then echo "It redirects to another host: $(log_safe "$redirect_host")"; fi
         case ",$incomplete," in
           *,bot-challenge,*|*,page-unreachable,*) incomplete_blocking=true ;;
         esac

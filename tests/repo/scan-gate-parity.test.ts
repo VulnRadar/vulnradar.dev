@@ -594,6 +594,22 @@ describe.skipIf(!jqAvailable)("the jq filters give the CLI's answers", () => {
     ["no field", {}],
     ["entries that are not strings", { incomplete: ["dns", 3, null, "tls"] }],
     ["a field that is not a list", { incomplete: "dns" }],
+    [
+      "entries that are not shaped like a slug",
+      {
+        incomplete: [
+          "dns",
+          "a\nb=c",
+          "dns\n",
+          "\ndns",
+          "UPPER",
+          "x y",
+          "a=b",
+          "",
+          "tls",
+        ],
+      },
+    ],
   ])("lists %s as the CLI does", (_name, extra) => {
     const result = { summary: SUMMARY, ...extra };
     const fromJq = spawnSync("jq", ["-r", incompleteProgram(ACTION_SH)], {
@@ -832,6 +848,15 @@ describe("the CLI refuses the summary counts the two scripts refuse", () => {
   );
 
   it.each([
+    ["a word", "lots"],
+    ["NaN", NaN],
+  ])("names a count that is %s", (_l, value) => {
+    expect(gateCounts({ summary: { critical: value } }).unreadable).toBe(
+      "critical",
+    );
+  });
+
+  it.each([
     ["a null count", null, 0],
     ["a missing count", undefined, 0],
     ["the largest nine-digit count", 999_999_999, 999_999_999],
@@ -840,6 +865,231 @@ describe("the CLI refuses the summary counts the two scripts refuse", () => {
     expect(counts.unreadable).toBeNull();
     expect(counts.critical).toBe(expected);
   });
+});
+
+describe("what the server says stays on one line of the gate's output", () => {
+  // A line in a job log that starts with ::error:: or ::set-output is a
+  // workflow command, so a reply with a newline in it could write its own. The
+  // runner also decodes %0A, %0D and %25 inside a command's message.
+  const SERVER_VALUES = [
+    "create_body",
+    "status_body",
+    "error_reason",
+    "reason",
+    "page_message",
+    "redirect_host",
+  ];
+
+  it.each([
+    ["action.yml", ACTION_SH],
+    ["the GitLab template", GITLAB_SH],
+  ])(
+    "%s prints no server value that has not been through log_safe",
+    (_n, s) => {
+      const printed = s
+        .split("\n")
+        .filter((line) => /^\s*(if .*then )?echo /.test(line))
+        .map((line) => line.slice(line.indexOf("echo ")))
+        .join("\n")
+        .replace(/\$\(log_safe "(?:\$\w+|\$\(cat resp\.json[^)]*\))"\)/g, "");
+      for (const name of SERVER_VALUES) {
+        expect(printed, name).not.toMatch(new RegExp(`\\$${name}\\b`));
+      }
+      expect(printed).not.toContain("cat resp.json");
+    },
+  );
+
+  it("is the same filter in both files", () => {
+    const filter = (script: string) => {
+      const match = /log_safe\(\) \{[^\n]*\}/.exec(script);
+      expect(match, "a log_safe function").not.toBeNull();
+      return (match as RegExpExecArray)[0];
+    };
+    expect(filter(GITLAB_SH)).toBe(filter(ACTION_SH));
+  });
+
+  it("keeps only slug-shaped incomplete entries, whose anchors a trailing newline cannot pass", () => {
+    // jq's $ also matches before a final newline, so "dns\n" got through ^...$
+    // and split the output line. \A and \z do not.
+    const backslash = String.fromCharCode(92).repeat(2);
+    const filter = `select(test("${backslash}A[a-z0-9-]+${backslash}z"))`;
+    expect(incompleteProgram(ACTION_SH)).toContain(filter);
+    expect(incompleteProgram(GITLAB_SH)).toContain(filter);
+  });
+
+  it("drops no area the app can report", () => {
+    for (const slug of Object.keys(APP_INCOMPLETE_LABELS)) {
+      expect(slug).toMatch(/^[a-z0-9-]+$/);
+    }
+  });
+
+  const CR = String.fromCharCode(13);
+  const FORGED = [
+    "boom",
+    `::warning::forged${CR}`,
+    "::set-output name=forged::1",
+    "%0A::error::forged%0D%25",
+  ].join(NL);
+  const FORGED_JSON = `{${NL}"note": "::warning::forged"${NL}}`;
+
+  /** Run a gate script with whatever the scenario's env makes the API say. */
+  function runScenario(
+    script: string,
+    shell: "bash" | "sh",
+    standInJq: boolean,
+    scenario: Record<string, string>,
+  ) {
+    const dir = mkdtempSync(path.join(tmpdir(), "scan-gate-text-"));
+    try {
+      const output = path.join(dir, "output.txt").replace(/\\/g, "/");
+      const file = path.join(dir, "gate.sh").replace(/\\/g, "/");
+      writeFileSync(
+        file,
+        [STAND_IN_CURL, standInJq ? STAND_IN_JQ : "", script].join("\n"),
+      );
+      const result = spawnSync(shell, [file], {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ...GATE_DEFAULTS,
+          VR_POLL_INTERVAL: "0",
+          FAKE_STATUS_BODY: "{}",
+          GITHUB_OUTPUT: output,
+          GITHUB_STEP_SUMMARY: path.join(dir, "summary.md").replace(/\\/g, "/"),
+          ...scenario,
+        },
+      });
+      return {
+        status: result.status,
+        out: `${result.stdout}${result.stderr}`,
+        output: existsSync(output) ? readFileSync(output, "utf8") : "",
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  const SCENARIOS: [
+    string,
+    Record<string, string>,
+    number,
+    string[],
+    "both" | "action",
+  ][] = [
+    [
+      "a start that fails",
+      { FAKE_CREATE_CODE: "500", FAKE_CREATE_BODY: FORGED },
+      EXIT.ERROR,
+      ["E:Failed to start scan (HTTP 500): boom"],
+      "both",
+    ],
+    [
+      "a start with no scan id",
+      { FAKE_CREATE_BODY: FORGED_JSON, FAKE_SCAN_ID: "null" },
+      EXIT.ERROR,
+      ["E:No scanId in response: {"],
+      "both",
+    ],
+    [
+      "a scan that failed",
+      {
+        FAKE_STATUS_BODY: JSON.stringify({ status: "failed", error: FORGED }),
+        FAKE_STATUS: "failed",
+        FAKE_ERROR: FORGED,
+      },
+      EXIT.ERROR,
+      ["E:Scan failed: boom"],
+      "both",
+    ],
+    [
+      "polls that keep failing",
+      { FAKE_STATUS_CODE: "502", FAKE_STATUS_BODY: FORGED },
+      EXIT.ERROR,
+      [
+        "E:Lost contact with the API while polling scan abc123 (HTTP 502): boom",
+      ],
+      "action",
+    ],
+    [
+      "a page it could not reach",
+      {
+        FAKE_STATUS_BODY: JSON.stringify({
+          status: "completed",
+          result: {
+            summary: {},
+            incomplete: ["page-unreachable"],
+            pageUnreachable: { message: FORGED, redirectHost: FORGED },
+          },
+        }),
+        FAKE_INCOMPLETE: "page-unreachable",
+        FAKE_PAGE_MESSAGE: FORGED,
+        FAKE_REDIRECT_HOST: FORGED,
+      },
+      0,
+      ["W:Page unreachable: boom", "W:It redirects to another host: boom"],
+      "both",
+    ],
+  ];
+
+  describe.each([
+    ["action.yml", "a stand-in jq", ACTION_SH, "bash" as const, true],
+    ["the GitLab template", "a stand-in jq", GITLAB_SH, "sh" as const, true],
+    ["action.yml", "jq", ACTION_SH, "bash" as const, false],
+    ["the GitLab template", "jq", GITLAB_SH, "sh" as const, false],
+  ])("%s, read with %s", (_name, _jq, script, shell, standInJq) => {
+    const runnable = shellAvailable && (standInJq || jqAvailable);
+    it
+      .skipIf(!runnable)
+      .each(
+        SCENARIOS.filter(
+          ([, , , , where]) => where === "both" || shell === "bash",
+        ),
+      )(
+      "prints %s as one line",
+      (_label, scenario, exit, expected) => {
+        const run = runScenario(script, shell, standInJq, scenario);
+        expect(run.status, run.out).toBe(exit);
+        const lines = run.out
+          .split(/\r\n|\r|\n/)
+          .filter((line) => line.includes("forged"));
+        const severity = { E: "::error::", W: "::warning::" };
+        expect(lines, run.out).toHaveLength(expected.length);
+        expected.forEach((want, i) => {
+          const command = severity[want[0] as "E" | "W"];
+          const prefix = `${shell === "bash" ? command : ""}${want.slice(2)}`;
+          expect(lines[i].startsWith(prefix), run.out).toBe(true);
+          expect(lines[i]).not.toMatch(/%(0A|0D|25)/i);
+        });
+        expect(run.output).not.toContain("forged");
+      },
+      FULL_RUN_MS,
+    );
+  });
+
+  it.skipIf(!shellAvailable || !jqAvailable)(
+    "writes only slug-shaped areas to the incomplete output",
+    () => {
+      const run = runScenario(ACTION_SH, "bash", false, {
+        FAKE_STATUS_BODY: JSON.stringify({
+          status: "completed",
+          result: {
+            summary: {},
+            incomplete: [
+              "dns",
+              `x${NL}forged=1`,
+              `tls${NL}`,
+              "crawl-time-limit",
+            ],
+          },
+        }),
+      });
+      expect(run.status, run.out).toBe(0);
+      expect(run.output).toContain(`incomplete=dns,crawl-time-limit${NL}`);
+      expect(run.output).not.toContain("forged");
+    },
+    FULL_RUN_MS,
+  );
 });
 
 describe("the documented flags and exit codes are the ones the CLI has", () => {

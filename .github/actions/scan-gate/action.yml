@@ -105,6 +105,13 @@ runs:
         # did not check the target (a bot challenge, or the page could not be
         # fetched). A failed gate wins over 3.
 
+        # Everything the server wrote is printed through this. The runner reads
+        # each log line as a possible workflow command, so a newline in a reply
+        # started a ::set-output or ::add-mask of its choosing, and it decodes
+        # %0A, %0D and %25 inside a command's message. Control characters and
+        # the percent sign go, since no nesting of escapes brings those back.
+        log_safe() { printf '%s' "$1" | tr -d '\000-\037\177%'; }
+
         if [ -z "$VR_API_KEY" ]; then
           # The dollar sign comes in through printf: the runner expands an
           # expression anywhere in this script before bash runs it, a
@@ -171,13 +178,13 @@ runs:
         # Exit codes match the vulnradar CLI: 2 when the scan could not run,
         # 1 only when it ran and a threshold was exceeded.
         if [ "$create_status" -ge 300 ] || [ "$create_status" = "000" ]; then
-          echo "::error::Failed to start scan (HTTP $create_status): $create_body"
+          echo "::error::Failed to start scan (HTTP $create_status): $(log_safe "$create_body")"
           exit 2
         fi
 
         scan_id=$(echo "$create_body" | jq -r '.scanId')
         if [ -z "$scan_id" ] || [ "$scan_id" = "null" ]; then
-          echo "::error::No scanId in response: $create_body"
+          echo "::error::No scanId in response: $(log_safe "$create_body")"
           exit 2
         fi
         # The id goes into the status and report paths and into
@@ -233,7 +240,7 @@ runs:
           if [ "$status_code" -ge 300 ] || [ "$status_code" = "000" ]; then
             failures=$((failures + 1))
             if [ "$failures" -gt 5 ]; then
-              echo "::error::Lost contact with the API while polling scan $scan_id (HTTP $status_code): $status_body"
+              echo "::error::Lost contact with the API while polling scan $scan_id (HTTP $status_code): $(log_safe "$status_body")"
               exit 2
             fi
             echo "::warning::Status poll failed (HTTP $status_code); retrying ($failures/5)."
@@ -258,7 +265,7 @@ runs:
             if [ -n "$failure_kind" ]; then
               error_reason="$error_reason [$failure_kind]"
             fi
-            echo "::error::Scan failed: $error_reason"
+            echo "::error::Scan failed: $(log_safe "$error_reason")"
             exit 2
           fi
 
@@ -333,7 +340,10 @@ runs:
 
         # What the scan did not look at. bot-challenge and page-unreachable
         # mean the target was never read, so zero findings proves nothing.
-        incomplete=$(echo "$result" | jq -r '[(.result.incomplete // [])[]? | strings] | join(",")')
+        # Slug-shaped entries only, because this goes into $GITHUB_OUTPUT and a
+        # newline in one wrote an output line of the reply's choosing. \A and \z
+        # rather than ^ and $, which in jq also match before a final newline.
+        incomplete=$(echo "$result" | jq -r '[(.result.incomplete // [])[]? | strings | select(test("\\A[a-z0-9-]+\\z"))] | join(",")')
         page_message=$(echo "$result" | jq -r '(.result.pageUnreachable | objects | .message | strings) // empty')
         redirect_host=$(echo "$result" | jq -r '(.result.pageUnreachable | objects | .redirectHost | strings) // empty')
         incomplete_blocking=false
@@ -379,10 +389,10 @@ runs:
         if [ -n "$incomplete" ]; then
           echo "::warning::Not checked: $incomplete"
           if [ -n "$page_message" ]; then
-            echo "::warning::Page unreachable: $page_message"
+            echo "::warning::Page unreachable: $(log_safe "$page_message")"
           fi
           if [ -n "$redirect_host" ]; then
-            echo "::warning::It redirects to another host: $redirect_host"
+            echo "::warning::It redirects to another host: $(log_safe "$redirect_host")"
           fi
         fi
 
