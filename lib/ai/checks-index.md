@@ -127,7 +127,7 @@ remediation documentation in the docs.
 - [medium  ] `eval-in-scripts` [body-pattern] - eval() Usage in Inline Scripts
 - [medium  ] `innerhtml-xss-sink` [body-pattern] - innerHTML DOM XSS Sink
 - [medium  ] `outerhtml-xss-sink` [body-pattern] - outerHTML DOM XSS Sink
-- [high    ] `document-write-sink` [body-pattern] - document.write DOM XSS Sink
+- [medium  ] `document-write-sink` [body-pattern] - document.write DOM XSS Sink
 - [medium  ] `insertadjacenthtml-sink` [body-pattern] - insertAdjacentHTML DOM Sink
 - [medium  ] `unsafe-setattribute` [body-pattern] - Unsafe setAttribute Usage
 - [high    ] `path-traversal-indicators` [body-pattern] - Path Traversal Indicators
@@ -252,14 +252,14 @@ remediation documentation in the docs.
 
 ### content (143)
 - [medium  ] `open-redirect` [body-pattern] - Potential Open Redirect Parameters
-- [high    ] `directory-listing` [body-pattern] - Directory Listing Appears Enabled
+- [medium  ] `directory-listing` [body-pattern] - Directory Listing Appears Enabled
 - [medium  ] `sensitive-files` [body-pattern] - Sensitive File References Detected
-- [high    ] `outdated-js-libs` [body-pattern] - Potentially Outdated JavaScript Libraries
+- [medium  ] `outdated-js-libs` [body-pattern] - Potentially Outdated JavaScript Libraries
 - [info    ] `robots-txt-exposure` [body-pattern] - robots.txt Present - Review Manually
 - [info    ] `cms-fingerprinting` [combined] - CMS / Technology Fingerprinting
-- [medium  ] `dangerous-inline-js` [body-pattern] - Potentially Dangerous Inline JavaScript
+- [low     ] `dangerous-inline-js` [body-pattern] - Potentially Dangerous Inline JavaScript
 - [low     ] `version-disclosure` [body-pattern] - Server version disclosed in response header
-- [medium  ] `sensitive-comments` [body-pattern] - Sensitive Keywords in HTML Comments
+- [low     ] `sensitive-comments` [body-pattern] - Sensitive Keywords in HTML Comments
 - [high    ] `debug-indicators` [combined] - Debug Mode or Error Information Exposed
 - [medium  ] `insecure-iframes` [combined] - Insecure Iframe Sources on HTTPS Page
 - [high    ] `token-exposure` [body-pattern] - Authentication Tokens Exposed in Page Source
@@ -311,7 +311,7 @@ remediation documentation in the docs.
 - [low     ] `debug-endpoint` [body-pattern] - Debug Endpoints Referenced
 - [low     ] `admin-endpoint` [body-pattern] - Admin/Management Path Detected in URL
 - [medium  ] `email-enumeration` [body-pattern] - User Enumeration via Email
-- [low     ] `cdn-fallback-missing` [body-pattern] - CDN Scripts Without Fallback
+- [info    ] `cdn-fallback-missing` [body-pattern] - CDN Scripts Without Fallback
 - [medium  ] `outdated-jquery` [body-pattern] - Potentially Outdated jQuery
 - [high    ] `outdated-angular` [body-pattern] - AngularJS 1.x Detected
 - [medium  ] `prototype-js-outdated` [body-pattern] - Prototype.js Detected
@@ -329,7 +329,7 @@ remediation documentation in the docs.
 - [high    ] `sendgrid-key-exposed` [body-pattern] - SendGrid API Key Exposed
 - [medium  ] `slack-webhook-exposed` [body-pattern] - Slack Webhook URL Exposed
 - [critical] `github-token-exposed` [body-pattern] - GitHub Token Pattern Detected
-- [medium  ] `google-api-key-exposed` [body-pattern] - Google API Key Exposed
+- [low     ] `google-api-key-exposed` [body-pattern] - Google API Key Exposed
 - [high    ] `mailchimp-key-exposed` [body-pattern] - Mailchimp API Key Exposed
 - [critical] `heroku-api-key-exposed` [body-pattern] - Heroku API Key Exposed
 - [high    ] `npm-token-exposed` [body-pattern] - NPM Token Exposed
@@ -375,7 +375,7 @@ remediation documentation in the docs.
 - [critical] `laravel-debug-page` [body-pattern] - Laravel debug mode enabled in production
 - [medium  ] `storage-api-usage` [body-pattern] - Sensitive data in Web Storage API
 - [low     ] `geolocation-usage` [body-pattern] - Geolocation API Referenced
-- [low     ] `clipboard-access` [body-pattern] - Clipboard API Referenced
+- [low     ] `clipboard-access` [body-pattern] - Page Script Reads the Clipboard
 - [medium  ] `webcam-microphone-access` [body-pattern] - Camera or Microphone API Referenced
 - [high    ] `html-injection-patterns` [body-pattern] - HTML injection pattern detected
 - [high    ] `reflected-input` [body-pattern] - DOM XSS Sink or Executable javascript: URI
@@ -385,7 +385,7 @@ remediation documentation in the docs.
 - [medium  ] `sw-insecure` [body-pattern] - Service Worker with insecure fetch handler
 - [low     ] `password-no-paste` [body-pattern] - Paste disabled on password field
 - [critical] `database-connection-string` [body-pattern] - Database connection string in source
-- [medium  ] `source-code-comment` [body-pattern] - Sensitive source code comment in response
+- [info    ] `source-code-comment` [body-pattern] - Sensitive source code comment in response
 - [low     ] `hardcoded-ip-addresses` [body-pattern] - Hard-coded IP addresses in source
 - [high    ] `subdomain-takeover-fingerprint` [body-pattern] - Subdomain Takeover Fingerprint Detected
 - [high    ] `session-replay-unmasked-sensitive-field` [combined] - Session-Replay Script Near Unmasked Sensitive Field
@@ -862,10 +862,10 @@ remediation documentation in the docs.
 - Total checks: **804**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 222
-  - high: 195
-  - low: 186
-  - info: 101
+  - medium: 221
+  - high: 192
+  - low: 188
+  - info: 103
   - critical: 100
 - By type:
   - body-pattern: 465

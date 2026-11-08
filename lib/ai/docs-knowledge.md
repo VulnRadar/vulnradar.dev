@@ -78,16 +78,13 @@ implementation does not use one. All non-secret configuration is in
 lib/config/config-values.ts; all secrets
 are environment variables.
 
-> **SUCCESS: Prerequisites**
-> Docker 24+ and Docker Compose v2.
-
-> **ERROR: HTTPS required**
-> Put the app behind a reverse proxy (Caddy, Traefik, nginx) for TLS
-termination. Cookie flags (secure) and CSP
-headers assume HTTPS in production. On a trusted network with no TLS
-at all, set ALLOW_INSECURE_HTTP=1 (see
-.env.example); traffic and the session
-cookie are then unencrypted.
+> **WARNING: No TLS yet?**
+> The app redirects every plain-HTTP request to https, and with no
+proxy in front nothing is listening there. Keep
+ALLOW_INSECURE_HTTP=1 in
+.env, as in the block above, until a proxy
+terminates TLS, then remove it. Trusted networks only: traffic and
+the session cookie are unencrypted while it is set.
 
 ### Headings
 - {item.title}
@@ -107,26 +104,26 @@ cookie are then unencrypted.
 - 5. Run a scan
 - Health check
 - {item.title}
-- Vercel
 - Self-hosted (Linux)
 - Docker Compose
-- Step 1: Project directory
-- Step 2: Get docker-compose.yml
-- Step 3: Configure .env
-- Step 4: Start
-- Step 5: Verify
+- Run a migration
+- Side-by-side clone
+- Programmatic check
+- Status values
+- systemd
+- PM2
 
 ### Notes
 - Before you begin, ensure you have the following installed:
 - .npmrc sets engine-strict=true, so an install under a Node outside engines ( >=22.0.0 <23.0.0) fails instead of warning. It holds no install-script allow-list: npm has no such mechanism, and the Docker build installs with --ignore-scripts because nothing in the production tree needs one (sharp and the Next SWC binaries ship prebuilt as optional dependencies).
+- Open a psql shell as the Postgres superuser:
+- Then create the user and database. Generate the password with openssl rand -hex 32 and use the same value in DATABASE_URL below.
 - Make the user the database's owner rather than granting it privileges on the database. Since PostgreSQL 15 nobody but the owner may create tables in the public schema, and GRANT ALL PRIVILEGES ON DATABASE does not change that, so would stop at its first CREATE TABLE with "permission denied for schema public".
-- The included docker-compose.yml provisions Postgres as user vulnradar and database vulnradar by default. POSTGRES_PASSWORD has no default: compose refuses to start until you set it in .env. The database port is not published to the host at all, so it is reachable only from inside the compose network, at postgres:5432. See the Docker section below.
+- The included docker-compose.yml provisions Postgres as user vulnradar and database vulnradar by default. POSTGRES_PASSWORD has no default: compose refuses to start until you set it in .env. The database port is not published to the host at all, so it is reachable only from inside the compose network, at postgres:5432. See Self-Hosting .
 - On first server boot instrumentation.ts calls apply-boot-schema, which runs the idempotent CREATE ... IF NOT EXISTS statements in lib/database/schema/ for every table. No manual migration is required for a fresh database. For databases upgraded from an older schema, see Schema Migration .
 - Secrets and per-deployment overrides go in .env (or .env.local for local-only overrides; Next.js loads .env.local with higher precedence than .env ).
 - Open .env and fill in at minimum:
 - Optional: SMTP, Stripe, Discord, Turnstile. Full reference on the Configuration page.
-- .env and .env.local are git-ignored by default. If you fork the repo, double-check .gitignore.
-- Non-secret deployment tunables live in lib/config/config-values.ts. Branding, app name, and SEO values are baked in at build time, so edit those before the first build and restart to pick up changes. Most of the rest (rate limits, feature flags, billing, scan timeouts) can also be changed at runtime after signup, from /admin&rsquo;s Settings tab, with no restart. See Configuration for which is which.
 
 ### Code examples
 ```bash
@@ -139,10 +136,8 @@ cd <value>.dev
 ```
 
 ```sql
-psql -U postgres
-
-CREATE USER vulnradar_user WITH PASSWORD 'strong_password_here';
-CREATE DATABASE vulnradar OWNER vulnradar_user;
+CREATE USER vulnradar WITH PASSWORD 'your-password';
+CREATE DATABASE vulnradar OWNER vulnradar;
 \\q
 ```
 
@@ -154,8 +149,12 @@ DATABASE_SSL=false
 # Public URL
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
+# Plain http://localhost with nothing terminating TLS. Trusted networks only:
+# remove this once a reverse proxy serves the app over HTTPS.
+ALLOW_INSECURE_HTTP=1
+
 # API key encryption (REQUIRED). Generate with:
-#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+#   openssl rand -hex 32
 API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 ```
 
@@ -166,19 +165,36 @@ npm start
 
 ```bash
 docker compose exec postgres psql -U vulnradar -d vulnradar -c \\
-  "UPDATE users SET role = 'admin' WHERE email = 'a-colleague@example.com'"
+  "UPDATE users SET role = 'admin' WHERE email = '<your-email>'"
 ```
 
 ```bash
-curl -X POST "<value>/api/v3/scan" \\
+# Your own instance: http://localhost:3000, or your NEXT_PUBLIC_APP_URL.
+curl -X POST "http://localhost:3000/api/v3/scan" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"url":"https://example.com"}'
+
+# Answers with { "scanId": ..., "status": "running" }. Poll it, using that scanId:
+curl "http://localhost:3000/api/v3/scan/status/SCAN_ID" \\
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-```bash
-docker --version
-docker compose version
+```ini
+[Unit]
+Description=<value>
+After=network.target postgresql.service
+
+[Service]
+User=vulnradar
+WorkingDirectory=/opt/<value>.dev
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 ## Browser Extension
@@ -201,14 +217,12 @@ Scan the page you're actually looking at, without pasting a URL. The extension r
 - **Permissions and privacy** (`#permissions`)
 
 ### Callouts
-> **SUCCESS: Live on both stores**
-> Chrome and other Chromium browsers (Edge, Brave) install from the
-Chrome Web Store; Firefox installs from Firefox Add-ons, which
-approved the listing on 2026-08-15. Both update themselves.
-
 > **INFO: Building from source instead**
-> Working on the extension, or want to run an unreleased build? In
-Chrome, chrome://extensions &rarr;
+> Working on the extension, or want to run an unreleased build? The
+
+source is on GitHub
+
+. In Chrome, chrome://extensions &rarr;
 Developer mode &rarr; Load unpacked, and pick the built folder. In
 Firefox,
 about:debugging#/runtime/this-firefox
@@ -225,18 +239,19 @@ is a development path and not the way to install the extension.
 - One click from the store. Updates itself from here on, no manual re-download.
 - One click from Firefox Add-ons. Updates itself from here on, no manual re-download.
 - Needs Chrome 120 or newer (Edge, Brave and other Chromium browsers at the same version work too), Firefox 140 or newer, or Firefox for Android 142 or newer. Ctrl+Shift+U opens the popup (Command+Shift+U on Chrome for macOS).
-- Working on the extension, or want to run an unreleased build? In Chrome, chrome://extensions &rarr; Developer mode &rarr; Load unpacked, and pick the built folder. In Firefox, about:debugging#/runtime/this-firefox &rarr; Load Temporary Add-on &rarr; select any file inside it. A temporary add-on is removed when Firefox restarts, which is why this is a development path and not the way to install the extension.
-- Need an API key first? Generate one from ?tab=developer&dtab=api-keys while logged in.
+- Working on the extension, or want to run an unreleased build? The source is on GitHub . In Chrome, chrome://extensions &rarr; Developer mode &rarr; Load unpacked, and pick the built folder. In Firefox, about:debugging#/runtime/this-firefox &rarr; Load Temporary Add-on &rarr; select any file inside it. A temporary add-on is removed when Firefox restarts, which is why this is a development path and not the way to install the extension.
 - Click the toolbar icon on any page and hit Scan. Quick scans the one address you are on. Deep also follows links from it to other pages on the same site, so it takes minutes, not seconds. Both run the check families you have switched on in the extension's own Settings, independent of your web app defaults, so you can keep the popup fast day-to-day and still reach every check when you want it.
 - A scan started from the popup counts against the same daily limit as any other scan on your account and shows up in your regular scan history: there's no separate extension-only history to lose track of.
 - The popup is not a summary you then go elsewhere to act on. Three things happen without leaving it:
 - Right-click any link, anywhere, and choose Scan this link with . The scan runs against the link target without navigating to it, which is the point: you can check a search result, a forum post, or an emailed link before deciding whether to open it. It uses the same settings and the same daily limit as a popup scan, and finishes with the same desktop notification.
+- A small card can appear in the corner of a page reporting one of two things: this host has been scanned before (and what its last result was), or it hasn't and you can scan it now. It is on by default and each half has its own switch in Settings. Site alerts are entirely separate from auto-scan below: this is about surfacing information, not triggering a scan on its own.
 
 ## Self-Hosting
 Route: /docs/self-hosting
 
 ### Sections
 - **Overview** (`#overview`)
+- **Prebuilt image or your own build** (`#image-or-build`)
 - **Hardware Requirements** (`#hardware`)
 - **Prerequisites** (`#prerequisites`)
 - **Clone and Configure** (`#clone`)
@@ -248,7 +263,7 @@ Route: /docs/self-hosting
 - **TLS (Reverse Proxy)** (`#tls`)
 - **Configure Stripe Webhook (If Billing)** (`#stripe`)
 - **Backups** (`#backups`)
-- **Updates** (`#updates`)
+- **Upgrading** (`#updates`)
 - **Network egress** (`#network-egress`)
 - **Renaming a fork** (`#renaming`)
 - **Troubleshooting** (`#troubleshooting`)
@@ -258,6 +273,38 @@ Route: /docs/self-hosting
 > **INFO: Time estimate**
 > About 30 minutes if you already have Docker + a domain pointed at your
 server.
+
+> **ERROR: HTTPS required**
+> Put the app behind a reverse proxy (see
+
+TLS
+
+). Cookie flags (secure), CSP headers and
+the redirect of plain HTTP all assume HTTPS.
+
+> **WARNING: SMTP on/off changes sign-up**
+> With SMTP_HOST,
+SMTP_USER and
+SMTP_PASS set, the app believes it can send
+mail and every new account has to confirm its address before it can
+sign in. Nothing tests those values, so placeholders count: the mail
+never arrives and login refuses the account with &ldquo;Please
+verify your email before logging in.&rdquo; That includes the first
+account, which is your admin. With them unset, new accounts are
+verified as they are created. Already locked out? See
+
+Troubleshooting
+
+.
+
+> **WARNING: No TLS yet?**
+> Uncomment ALLOW_INSECURE_HTTP=1 to reach
+the app over plain HTTP. Without it every request redirects to an
+https port nothing is listening on. Traffic and the session cookie
+are then unencrypted, so use it only on a trusted network, and take
+it out once a proxy terminates TLS. Compose publishes the port on
+127.0.0.1 only, so reaching it from another machine also needs
+HOST_BIND=0.0.0.0.
 
 > **WARNING: Bring a real context window**
 > These features load actual scan output into the prompt, not a short
@@ -336,10 +383,11 @@ falls back to API_KEY_ENCRYPTION_KEY, so a
 plaintext backup is never written by accident. A separate
 BACKUP_ENCRYPTION_KEY is still recommended
 for defense in depth. An encrypted .enc
-file is restored using the same key resolution, and needs its
-.json sidecar (the IV and auth tag) present
-next to it. Rehearse a restore against a throwaway database before
-you rely on it.
+file carries its IV and auth tag inside it and is restored using the
+same key resolution. A backup from before that format keeps them in
+a .json sidecar, which has to stay next to
+the file. Rehearse a restore against a throwaway database before you
+rely on it.
 
 > **INFO: Migrations take their own backup**
 > npm run db:migrate writes a dump before it
@@ -453,66 +501,85 @@ the SQL above.
 
 ### Notes
 - The fastest path to running yourself. Assumes a single Linux server with Docker. For Kubernetes, multi-region, or bare-metal setups, adapt accordingly.
+- The same compose file runs either one, so decide before you start. Next.js writes every NEXT_PUBLIC_* value into the browser bundle when the image is built, and setting one in .env afterwards cannot change a bundle that already exists.
+- Use the GHCR image only if you accept the upstream URL compiled into its pages. It was built with NEXT_PUBLIC_APP_URL empty, which leaves links on pages, the sitemap and canonical tags on upstream&rsquo;s own domain, while token links in email come from the URL you give the container. It also has no Turnstile or Stripe publishable key, so Turnstile and Stripe Checkout cannot work on it. In return there is no build on your server, and an upgrade is: edit the tag, pull, migrate, up. Take both files from the release you want to run, then skip to Create .env :
+- From a release tag, never from main. The compose file pins the image to its own version, and on main that version can be one whose image has not been published yet, which fails on manifest unknown before anything starts.
+- Your domain in the browser bundle, Turnstile, Stripe Checkout: any NEXT_PUBLIC_* value needs docker compose up -d --build from a checkout. So do edits to lib/config/config-values.ts. Start at Clone and Configure .
+- docker-compose.yml caps the containers: the app at 1G of memory and 2 CPUs, Postgres at 512M and 1 CPU. On a bigger machine, raise deploy.resources.limits in that file or the extra capacity goes unused.
 - Edit lib/config/config-values.ts to set:
 - If you don't want billing features, set:
+- Commit the edit. An upgrade rebases this branch onto the next release tag, so your settings ride along instead of blocking the update.
 - Full reference on the Configuration page.
-- Google, GitHub and Discord sign-in only work once the provider has this instance&rsquo;s callback URL registered, character for character. The addresses to register, and how the app decides what its own address is behind a proxy, are in Configuration, OAuth redirect URIs .
-- Chat, finding verification, and audit summaries are off unless you point them at an AI endpoint. Add to .env: AI_BASE_URL (or the AI_PROVIDER shorthand), AI_MODEL, and AI_API_KEY. Full variable reference and a real per-model context-window / max-output-token table are on Configuration → AI Providers & Models .
-- These features load actual scan output into the prompt, not a short chat message. As a floor, use a model with around 300,000 tokens of context. A small local model, e.g. Ollama&rsquo;s default llama3.2, does not have that headroom and will degrade or break outright once enough context is loaded.
-- The default docker-compose.yml provisions Postgres and the app container, each with a healthcheck, and the app waits for Postgres to report healthy before it starts. The app reads .env via env_file, so every variable in that file reaches the container; the values compose derives itself, such as the in-network database URL, are set on the service and take precedence.
-- Because compose sets DATABASE_URL itself, putting your provider&rsquo;s URL in .env does nothing on its own: the app keeps talking to the bundled database. The repository ships docker-compose.managed-db.yml for this. It hands the app your DATABASE_URL, turns SSL on by default, and moves the bundled Postgres behind a profile so it does not start. Add to .env:
-- With DATABASE_SSL=true the app and the db scripts verify the certificate and ignore any TLS setting in the URL, such as sslmode. A URL that sets sslcert or sslkey is refused at startup. On a source install the database commands read .env.local and then .env, and a variable already set in the shell wins over both. Keep the POSTGRES_* lines from .env.example, since the base file still names them. This needs Docker Compose 2.24 or newer. Check what compose will actually run with docker compose config --services, which should list app and not postgres.
 
 ### Code examples
+```bash
+curl -O https://raw.githubusercontent.com/<value>/v<value>/docker-compose.yml
+curl -O https://raw.githubusercontent.com/<value>/v<value>/.env.example
+```
+
 ```typescript
-git clone https://github.com/<value>.git
-cd vulnradar.dev
+export const CONFIG_APP_NAME = "YourBrand Scanner";
+export const CONFIG_APP_URL = "https://scanner.yourdomain.com";
+export const CONFIG_APP_REPO = "yourname/your-repo";
+export const CONFIG_DISCORD_INVITE_URL = ""; // optional
 
-# Generate a 32-byte API encryption key (64 hex chars)
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# → paste into API_KEY_ENCRYPTION_KEY
+export const CONFIG_SUPPORT_EMAIL = "support@yourdomain.com";
+export const CONFIG_LEGAL_EMAIL = "legal@yourdomain.com";
+export const CONFIG_SECURITY_EMAIL = "security@yourdomain.com";
+export const CONFIG_ENTERPRISE_EMAIL = "enterprise@yourdomain.com";
+export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";
 ```
 
 ```bash
-export const CONFIG_BILLING_ENABLED = false;
+git add lib/config/config-values.ts
+git commit -m "Local configuration"
 ```
 
 ```bash
-# Required
+# Required. Generate each secret with: openssl rand -hex 32
 POSTGRES_PASSWORD=<output of: openssl rand -hex 32>
-API_KEY_ENCRYPTION_KEY=<paste your 64-char hex>
+API_KEY_ENCRYPTION_KEY=<output of: openssl rand -hex 32>
 NEXT_PUBLIC_APP_URL=https://scanner.yourdomain.com
 
-# Optional: SMTP for transactional email
-SMTP_HOST=smtp.yourdomain.com
-SMTP_PORT=587
-SMTP_USER=...
-SMTP_PASS=...
-SMTP_FROM=noreply@yourdomain.com
+# ALLOW_INSECURE_HTTP=1  # only for a trusted LAN
+
+# Optional: SMTP for transactional email. Leave these commented until you
+# have working credentials (see the callout below).
+# SMTP_HOST=smtp.yourdomain.com
+# SMTP_PORT=587
+# SMTP_USER=...
+# SMTP_PASS=...
+# SMTP_FROM=noreply@yourdomain.com
 
 # Optional: Discord OAuth
-DISCORD_CLIENT_ID=...
-DISCORD_CLIENT_SECRET=...
-DISCORD_BOT_TOKEN=...
-DISCORD_GUILD_ID=...
+# DISCORD_CLIENT_ID=...
+# DISCORD_CLIENT_SECRET=...
+# DISCORD_BOT_TOKEN=...
+# DISCORD_GUILD_ID=...
 
-# Optional: Cloudflare Turnstile
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=...
-TURNSTILE_SECRET_KEY=...
+# Optional: Cloudflare Turnstile. Real keys only: any value in the site key
+# puts a captcha on sign-up, and a placeholder's captcha can never pass.
+# NEXT_PUBLIC_TURNSTILE_SITE_KEY=...
+# TURNSTILE_SECRET_KEY=...
 
 # Optional: Stripe (only if CONFIG_BILLING_ENABLED=true)
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_PUBLISHABLE_KEY=pk_live_...
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
-STRIPE_WEBHOOK_SECRET=whsec_...
+# STRIPE_SECRET_KEY=sk_live_...
+# STRIPE_PUBLISHABLE_KEY=pk_live_...
+# NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
+# STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
 ```bash
+# Your own build, from a checkout
 docker compose up -d --build
+
+# Prebuilt image
+docker compose up -d
+
 docker compose logs -f app   # watch startup
 ```
 
-```sql
+```caddyfile
 {
   "status": "ok",
   "version": "<value>",
@@ -530,33 +597,33 @@ docker compose logs -f app   # watch startup
 ```
 
 ```bash
-scanner.yourdomain.com {
-    reverse_proxy localhost:3000
-    encode zstd gzip
+server {
+    listen 443 ssl;
+    server_name scanner.yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/scanner.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/scanner.yourdomain.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 ```
 
-```bash
-# Log in via the web UI as an admin user, then export the cookie:
-curl -b cookies.txt https://scanner.yourdomain.com/api/v3/stripe/setup-webhook
-# First call: returns { success: true, webhookSecret: "whsec_..." }
-# Paste the secret into STRIPE_WEBHOOK_SECRET in .env and restart.
-```
+```text
+git clone https://github.com/<value>.git
+cd vulnradar.dev
 
-```bash
-# Schema unchanged: pin the previous tag and restart
-git checkout <previous-tag>
-docker compose build app && docker compose up -d
+# Work from the release tag, never main, on a branch of your own.
+git switch -c local-config v<value>
 
-# Schema changed: put the database back first, then the code.
-# Stop only the app so Postgres stays up for the restore.
-# db:restore does nothing without --file and --yes, and refuses a
-# database that still has tables unless you add --force.
-docker compose stop app
-docker compose run --rm app npm run db:restore -- \\
-  --file=./backups/<the dump from step 1> --yes --force
-git checkout <previous-tag>
-docker compose build app && docker compose up -d
+# Generate a 32-byte API encryption key (64 hex chars).
+# Paste it into API_KEY_ENCRYPTION_KEY in the next step.
+openssl rand -hex 32
 ```
 
 ## Configuration
@@ -568,18 +635,13 @@ Route: /docs/config
 - **Architecture** (`#architecture`)
 - **Layer 1: Static App Config** (`#layer-1`)
 - **Admin Settings Page** (`#admin-settings`)
+- **Build-time vs runtime variables** (`#build-time-variables`)
 - **Layer 2: Runtime Secrets** (`#layer-2`)
 - **AI Providers & Models** (`#ai-models`)
 - **Self-Hosting Checklist** (`#checklist`)
 - **Validation** (`#validation`)
 
 ### Callouts
-> **INFO: TL;DR**
-> Most things you want to change live in
-lib/config/config-values.ts. Secrets go in
-.env. Edit
-config-values.ts first.
-
 > **WARNING: A rebuild does not pick up a saved build-tier value**
 > This page used to say build-tier changes &ldquo;show up after the
 next build and deploy&rdquo;. That is false and it is worth being
@@ -609,12 +671,13 @@ credentials (http is accepted for localhost and 127.0.0.1).
 
 > **WARNING: Set the URL in the container's environment**
 > The published image is built with
-NEXT_PUBLIC_APP_URL set to
-upstream&rsquo;s own domain, and the image deliberately does not
-copy that build value into the running container&rsquo;s
-environment: if it did, a pulled image&rsquo;s OAuth redirects
-would fall back to upstream instead of to the address the request
-arrived on. So a pulled image and one you built yourself both need
+NEXT_PUBLIC_APP_URL empty, so its
+compiled code uses CONFIG_APP_URL,
+upstream&rsquo;s own domain. No image copies its build value into
+the running container&rsquo;s environment: if one did, a
+self-built image&rsquo;s OAuth redirects would fall back to that
+value instead of to the address the request arrived on. So a
+pulled image and one you built yourself both need
 APP_URL or
 NEXT_PUBLIC_APP_URL set when the
 container starts. Both compose files pass
@@ -665,7 +728,7 @@ before pointing AI features at a local model.
 - has a two-layer configuration model designed to keep secrets out of source code while making non-secret deployment settings easy to customize for self-hosters.
 - Edit lib/config/config-values.ts to change the shipped default for any of these. What that edit costs you depends on the setting&rsquo;s tier. General, Social, Branding, and SEO values are build tier: editing the constant (or the NEXT_PUBLIC_* env var named in the field&rsquo;s help text) and rebuilding is the only way to change them. Most of the rest (rate limits, feature flags, billing, scan timeouts, auth windows, and more) are runtime tier and can also be overridden without touching source, from the Admin Settings Page below.
 - Both are compiled constants with no admin-panel field and no environment override: edit config-values.ts and rebuild.
-- All values are per-IP unless noted. The window is in minutes. Internally lib/config/constants.ts multiplies by 60 for the per-second window.
+- Every limit is a runtime setting. Attempts, windows and defaults are in the generated Rate Limits group further down, so there is no second copy here to go stale. Each shipped default is the key with a CONFIG_ prefix, such as CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS, and every window is in minutes.
 - The /demo page lets unauthenticated visitors run scans. Rate-limited per IP.
 - Disable demo mode entirely with CONFIG_FEATURE_DEMO_MODE = false.
 - Plan catalogs (limits per plan) live in lib/billing/catalog.ts. The values below only configure the upper bounds and the retention window.
@@ -720,9 +783,9 @@ today&rsquo;s usage count carry over.
 (start scans), scan:read (read history
 and reports), and scan:delete (delete
 scans). New keys default to write and read; choose the set when
-you generate a key in Profile -> Developer -> API Keys. A
-route you call without the scope it needs returns 403 naming the
-missing one.
+you create a key in Profile > Developer > API Keys >
+Create key. A route you call without the scope it needs returns
+403 naming the missing one.
 
 > **WARNING: Pin the ref, do not use @main**
 > This is a composite action: its only step is a shell block that runs
@@ -1651,9 +1714,9 @@ Remove a webhook so it stops being called.
 - Authentication is either the session cookie the web app already holds, or a Bearer API key prefixed vr_live_ ( CONFIG_API_KEY_PREFIX). Which one you use changes how quota is counted, so read Rate Limits before you wire this into CI.
 - Prefer a machine-readable spec? The OpenAPI 3.1 description of this API lives at /api/v3/openapi.json. Import it into Postman, Insomnia, or Bruno, or try calls right in the browser on the API playground .
 - Each plan caps how many active keys you can hold (one on the free tier, more on paid plans). Keep them out of version control and rotate with POST /api/v3/keys/[id]/rotate, which swaps the secret in place: the old secret stops working immediately, and the key&rsquo;s id, name, scopes and today&rsquo;s usage count carry over.
-- Each key carries scopes: scan:write (start scans), scan:read (read history and reports), and scan:delete (delete scans). New keys default to write and read; choose the set when you generate a key in Profile -> Developer -> API Keys. A route you call without the scope it needs returns 403 naming the missing one.
+- Each key carries scopes: scan:write (start scans), scan:read (read history and reports), and scan:delete (delete scans). New keys default to write and read; choose the set when you create a key in Profile > Developer > API Keys > Create key. A route you call without the scope it needs returns 403 naming the missing one.
 - The API Playground loads this same spec and sends real requests: pick an endpoint, paste a key, and read the live response. Your key stays in the browser and is never stored.
-- The same three calls in curl, JavaScript, and Python. Swap the placeholder key and they run as-is. The Python tab uses the official SDK (pip install vulnradar, source at github.com/VulnRadar/Python-SDK ) instead of raw HTTP calls.
+- The same three calls in curl, JavaScript, and Python. Swap the placeholder key and they run as-is. The curl tab needs bash and jq. The Python tab uses plain requests. The vulnradar package on PyPI targets the retired v2 API and does not work against v3 or v4; use requests until it is rebuilt. Starting a scan is two steps: the create call returns a scan id, and you poll GET /scan/status/ every 2 to 5 seconds until it finishes. That poll does not consume daily quota.
 - Finding IDs are stable, so a scan can gate a pull request: fail the build when critical or high findings show up, without hand-rolling the poll loop yourself.
 - Store your API key as a repo secret named VULNRADAR_TOKEN, never hardcoded in the workflow. Self-hosting? Point api-base-url at your own deployment's /api/v3.
 - This is a composite action: its only step is a shell block that runs inside your job, with your job&rsquo;s full secret set and GITHUB_TOKEN in the environment. Pinning to @main means every push to this repository&rsquo;s default branch executes in your pipeline immediately, unreviewed by you. Pin a release tag as shown, or a full 40-character commit SHA, which is stronger still because a tag can be moved:
@@ -2074,7 +2137,7 @@ Route: /docs/architecture
 
 ### Sections
 - **Overview** (`#overview`)
-- **Project Layout** (`#layout`)
+- **Where things live** (`#layout`)
 - **Key Subsystems** (`#subsystems`)
 - **Request Lifecycle** (`#lifecycle`)
 - **CI/CD Pipeline** (`#cicd`)
@@ -2088,80 +2151,16 @@ files.
 
 ### Notes
 - is a Next.js 15 App Router application with a single-process deployment. The runtime stack is deliberately small: one Next.js process + one PostgreSQL database. No Redis, no message broker, no separate API server. Everything you need to understand lives in this repository.
+- The top-level directories, then the folders inside lib/ and components/ , each with the page or file that covers it. At the root, instrumentation.ts is the Next.js startup hook that applies the schema, middleware.ts runs in front of every request except static files, and docker-compose.dev.yml builds the image from your checkout where docker-compose.yml pulls the published one.
 - See the Configuration page for full details. Flow:
 - The detection engine is split across per-category files:
 - Categories (lib/scanner/types.ts): the Category union has members. of them are in ALL_CATEGORIES and run by default: . The remaining one, active-probes, is deliberately left out of that list because it writes to the target, so it runs only when a request names it explicitly. Severities: info, low, medium, high, critical.
 - REST v3 is the only API this build serves. There is no /api/v1 or /api/v2 route tree. A route handler typically:
 - Nine roles, defined as STAFF_ROLE_HIERARCHY in lib/config/client-constants.ts. The numbers below are read from that table, not typed out here:
 - The gaps of 10 leave room to insert a role without renumbering, and every comparison goes through a named key rather than a literal. Two things the shape does not show on its own:
-- All four checks (lint, typecheck, test, build) run on Node 22 LTS in CI. See .github/workflows/.
+- Every job that needs Node reads the version from .nvmrc, the same patch the published image is built on. See .github/workflows/.
 
 ### Code examples
-```text
-vulnradar.dev/
-├── app/                          # Next.js App Router
-│   ├── (root pages)              # /, /landing, /pricing, /demo, /contact, /donate
-│   ├── admin/                    # Admin dashboard (staff-gated)
-│   ├── api/v3/                   # REST API v3 (and /api/security-txt, /api/version)
-│   ├── dashboard/                # User dashboard (authenticated)
-│   ├── docs/                     # This documentation site
-│   ├── history/                  # Scan history (authenticated)
-│   ├── legal/                    # Terms, privacy, etc.
-│   ├── login, signup,            # Auth pages
-│   ├── forgot-password,
-│   │  reset-password,
-│   │  verify-email
-│   ├── pricing/                  # Pricing + Stripe checkout
-│   ├── profile/                  # User profile
-│   ├── shared/[token]/           # Public shared-scan viewer
-│   └── teams/                    # Team management
-│
-├── components/                   # React components (mostly client)
-│   ├── admin/                    # Admin UI
-│   ├── auth/                     # Auth forms
-│   ├── badge/                    # Public badge widgets
-│   ├── billing/                  # Stripe checkout UI
-│   ├── docs/                     # Documentation site components
-│   ├── landing/                  # Marketing landing
-│   ├── scanner/                  # Scan UI (results, footer)
-│   ├── shared/                   # Cross-cutting (notifications, logo)
-│   └── ui/                       # shadcn/ui primitives
-│
-├── lib/                          # Server-side libraries (no React)
-│   ├── api/                      # API helpers (Bearer validation, request utils)
-│   ├── auth/                     # Sessions, 2FA, password hashing, device trust
-│   ├── billing/                  # Stripe + plan catalog
-│   ├── config/                   # Configuration system
-│   ├── database/                 # Pool, query helpers, boot/ and schema/
-│   ├── discord/                  # Discord OAuth helpers
-│   ├── email/                    # Transactional email (SMTP)
-│   ├── notifications/            # In-app + email notification preferences
-│   ├── rate-limiting/            # Generic + plan-based rate limits
-│   ├── reports/                  # SARIF, Markdown, compliance, PDF reports
-│   ├── scanner/                  # Detection engine
-│   └── uploads/                  # Avatar validation
-│
-├── instrumentation.ts            # Next.js startup hooks (DB init, schema check)
-├── middleware.ts                 # Auth + public-path middleware
-│
-├── public/                       # Static assets
-├── scripts/                      # DB migration + audit scripts
-│   ├── _lib/                     # Shared helpers
-│   ├── create-fresh-db/          # Side-by-side DB clone
-│   └── migrate/                  # Schema migrations
-│
-├── .github/                      # Workflows, dependabot, PR template
-├── Dockerfile
-├── docker-compose.yml
-├── docker-compose.dev.yml
-├── next.config.mjs
-├── tsconfig.json
-├── tailwind.config.mjs
-├── eslint.config.mjs
-├── vitest.config.ts
-└── package.json
-```
-
 ```text
 Browser / client
   │
@@ -2197,12 +2196,14 @@ instrumentation.ts (server startup only)
 ```
 
 ```text
-On push to main / PR
-  ├── Lint (Oxlint, then ESLint 10 with the flat config in eslint.config.mjs)
-  ├── Typecheck (tsc --noEmit, hard gate)
-  ├── Test (vitest run)
-  ├── Format check (prettier --check)
-  └── Build (next build)
+On push to main / PR (.github/workflows/ci.yml)
+  ├── Lint (Oxlint, then ESLint 10 with the flat config in eslint.config.mjs, then prettier --check)
+  ├── Typecheck (tsc --noEmit, npm audit, the build:knowledge diff)
+  ├── Test (vitest run --coverage, then the CLI tests)
+  ├── Integration (tests/integration against a real PostgreSQL)
+  ├── Extension (typecheck, format check, build and package)
+  ├── Build (next build)
+  └── Self-host smoke test (builds the image, boots it on an empty database, self-scans every published route)
 
 On tag v*
   └── Docker publish (ghcr.io/<value>/${`<repo>
@@ -2230,10 +2231,10 @@ Route: /docs/developers
 - **Contributing** (`#contributing`)
 
 ### Callouts
-> **INFO: A Python SDK already exists**
-> pip install vulnradar wraps this API with
-typed response models and a proper exception hierarchy. Source and
-usage docs:
+> **INFO: The Python SDK needs a rebuild**
+> The vulnradar package on PyPI targets the
+retired v2 API and does not work against v3 or v4, so use plain
+requests until it is rebuilt. Source:
 
 github.com/VulnRadar/Python-SDK
 
@@ -2276,7 +2277,7 @@ a round trip.
 - All authenticated requests require a Bearer token. Keys are prefixed vr_live_:
 - Full request/response shapes: see API Reference .
 - Each non-2xx response includes a JSON body with at minimum an error string. Map HTTP status to typed exceptions. The v3 API uses 400, 401, 402, 403, 404, 409, 413, 422, 429, 500, 502 and 503; the API reference says what each one means here. On 429, honour the Retry-After header and the X-RateLimit-Reset header.
-- pip install vulnradar wraps this API with typed response models and a proper exception hierarchy. Source and usage docs: github.com/VulnRadar/Python-SDK . Building one in another language? Open an issue on GitHub with a link and we will list it here. Requirements: GPL-3.0 compatible license, type-safe models, real tests against a live instance.
+- The vulnradar package on PyPI targets the retired v2 API and does not work against v3 or v4, so use plain requests until it is rebuilt. Source: github.com/VulnRadar/Python-SDK . Building one in another language? Open an issue on GitHub with a link and we will list it here. Requirements: GPL-3.0 compatible license, type-safe models, real tests against a live instance.
 - Setup for contributing to . Covers local dev, scripts, commit conventions, common pitfalls.
 
 ### Code examples
@@ -2324,7 +2325,8 @@ node --version  # should print v22.x.x
 ```
 
 ```bash
-UPDATE users SET role = 'admin' WHERE email = 'someone-else@example.com';
+npm run lint        # oxlint, then eslint
+npm run lint:fix    # oxlint --fix, then eslint --fix
 ```
 
 ```http
@@ -2339,18 +2341,25 @@ cd vulnradar.dev
 # 2. Install dependencies
 npm ci
 
-# 3. Set up environment
-cp .env.example .env
-# Edit .env: DATABASE_URL, API_KEY_ENCRYPTION_KEY, NEXT_PUBLIC_APP_URL
+# 3. Start a throwaway Postgres (stopping it deletes its data)
+docker run --rm -d --name vulnradar-dev-db -p 127.0.0.1:5432:5432 -e POSTGRES_USER=vulnradar -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=vulnradar postgres:16-alpine
 
-# 4. Start the dev server (schema auto-creates on first boot)
+# 4. Set up environment, generating the key once
+cp .env.example .env
+cat >> .env <<EOF
+DATABASE_URL=postgresql://vulnradar:dev@localhost:5432/vulnradar
+DATABASE_SSL=false
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+API_KEY_ENCRYPTION_KEY=$(openssl rand -hex 32)
+EOF
+
+# 5. Start the dev server (schema auto-creates on first boot)
 npm run dev
 # → http://localhost:3000
 ```
 
 ```text
-npm run lint        # oxlint, then eslint
-npm run lint:fix    # oxlint --fix, then eslint --fix
+UPDATE users SET role = 'admin' WHERE email = '<your-email>';
 ```
 
 ## account-security
@@ -2470,12 +2479,15 @@ under Profile, Security. They can reach that page, so it is a detour
 rather than a lockout, but plan for it before you switch SSO and the
 enforcement on together.
 
-> **WARNING: Keep the sidecar file**
-> An encrypted backup is written alongside a small
-.json file holding the values needed to
-decrypt it. Without that sidecar the backup cannot be restored, so
-copy it wherever you copy the backup, and check the upload of both
-if you are sending them offsite.
+> **WARNING: Older backups need their sidecar**
+> A backup carries the values needed to decrypt it in a header at the
+start of the file, so that one file is all a restore needs and the
+only thing an offsite upload sends. A backup written before the
+header existed, and a dump
+npm run db:migrate takes before changing
+the schema, has no header: its values are in a small
+.json file beside it, and it cannot be
+restored without that file, so copy the two together.
 
 > **WARNING: Sending happens in-process, not in a durable queue**
 > If the process restarts mid-send the broadcast stays a draft and
@@ -2661,26 +2673,31 @@ with a raw request. Authentication is the same Bearer API key.
 - Only needed to work on the CLI itself, or to run a change that is not released yet:
 - Or run the entrypoint directly with node cli/vulnradar.mjs scan <url>, no install at all.
 - Pass your key with --api-key or the VULNRADAR_TOKEN environment variable. Create the key under Profile > Developer > API Keys. Prefer the variable in CI so the key never lands in shell history or logs. --api-base has the same env form, VULNRADAR_API_BASE, so a self-hosted CI does not repeat the flag on every invocation. An explicit flag beats the variable in both cases.
+- A site with two high findings and a limit of zero. The scan prints one line each time it moves on, then the counts. The reason it failed goes to stderr, and the exit code is what a pipeline reads:
 - A report that cannot be fetched or written fails the run with 2, but never hides a failed gate: that still exits 1. An incomplete scan ( 3) outranks a failed report.
 - The thresholds judge the scan's findings, leaving out the ones you marked a false positive. The dashboard and every report hide them, so a run that failed on one would fail with nothing visible to fix. The CLI prints how many it left out, and --include-suppressed counts them. Accepted-risk and won't-fix findings are always counted. A completed scan whose result has no summary is an error ( 2), not zero findings. With no findings list, so is a summary count that is not a whole number of fewer than ten digits, such as 2.5, -1 or "3", as in the GitHub Action and the GitLab template.
-- A scan can finish without ever reading the site: it showed the scanner a bot challenge, or the page could not be fetched because of a bad certificate, an unreachable host or a redirect to another host. It has no findings, and a gate that passed it would pass a site nobody looked at. So the CLI always prints what was not checked, to stderr:
 
 ### Code examples
 ```bash
-npx vulnradar scan https://example.com --max-high 0
+VULNRADAR_TOKEN=vr_live_... npx vulnradar scan https://example.com --max-high 0
 ```
 
-```json
+```text
 git clone https://github.com/<value>.git
 cd vulnradar.dev/cli
 npm install -g .
 ```
 
+```json
+Not checked: The page itself: the scanner could not fetch it, so only the checks that never read a page ran
+Page unreachable: <the reason>
+```
+
 ```yaml
-- name: VulnRadar scan
-  env:
-    VULNRADAR_TOKEN: \<value>}
-  run: vulnradar scan https://staging.example.com --max-critical 0 --max-high 0
+npx vulnradar scan https://example.com --json > result.json
+status=$?
+jq -r '.findings[]? | select(.suppressed != true) | [.severity, .id, .title] | @tsv' result.json
+exit $status
 ```
 
 ```text
@@ -2693,8 +2710,14 @@ vulnradar scan <url> [options]
 ```
 
 ```text
-Not checked: The page itself: the scanner could not fetch it, so only the checks that never read a page ran
-Page unreachable: <the reason>
+$ VULNRADAR_TOKEN=vr_live_... npx vulnradar scan https://example.com --max-high 0
+Started scan 4821 for https://example.com
+Scanning: headers (3/18)
+Scanning: dns (11/18)
+Scan complete: critical=0 high=2 medium=1 low=0 total=3
+2 high finding(s) exceed the max of 0
+$ echo $?
+1
 ```
 
 ```text
@@ -2704,18 +2727,6 @@ Page unreachable: <the reason>
   "scanId": 4821,
   "failureKind": "target_unreachable"
 }
-```
-
-```text
-- name: VulnRadar scan
-  env:
-    VULNRADAR_TOKEN: \<value>}
-  run: vulnradar scan https://staging.example.com --report sarif --out results.sarif
-- name: Upload to code scanning
-  if: always()
-  uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: results.sarif
 ```
 
 ## github
@@ -3275,21 +3286,21 @@ individual URLs instead.
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
 | `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
-| `/docs/setup` | - | 12 | 4 | 0 | 23 | 0 | 0 | 31 | 31 |
-| `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 16 | 2 |
-| `/docs/self-hosting` | - | 17 | 16 | 0 | 18 | 0 | 0 | 51 | 3 |
-| `/docs/config` | - | 9 | 6 | 0 | 2 | 0 | 0 | 40 | 0 |
+| `/docs/setup` | - | 12 | 3 | 0 | 19 | 0 | 0 | 30 | 25 |
+| `/docs/extension` | ✓ | 11 | 1 | 0 | 0 | 0 | 0 | 16 | 2 |
+| `/docs/self-hosting` | - | 18 | 19 | 0 | 21 | 0 | 0 | 65 | 3 |
+| `/docs/config` | - | 10 | 5 | 0 | 2 | 0 | 0 | 43 | 0 |
 | `/docs/api` | - | 8 | 5 | 0 | 6 | 42 | 0 | 18 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |
 | `/docs/webhooks` | ✓ | 8 | 0 | 0 | 5 | 0 | 0 | 18 | 6 |
 | `/docs/rate-limits` | - | 6 | 6 | 0 | 4 | 0 | 0 | 11 | 3 |
-| `/docs/architecture` | - | 5 | 1 | 0 | 3 | 0 | 0 | 8 | 0 |
-| `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 18 | 9 |
+| `/docs/architecture` | - | 5 | 1 | 0 | 2 | 0 | 0 | 9 | 0 |
+| `/docs/developers` | - | 16 | 3 | 0 | 11 | 0 | 0 | 21 | 9 |
 | `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 21 | 0 |
 | `/docs/administration` | - | 12 | 8 | 0 | 0 | 0 | 0 | 38 | 0 |
 | `/docs/ai` | - | 11 | 1 | 0 | 2 | 0 | 0 | 23 | 0 |
 | `/docs/billing` | - | 8 | 7 | 0 | 0 | 0 | 0 | 21 | 0 |
-| `/docs/cli` | - | 9 | 1 | 0 | 8 | 0 | 0 | 18 | 0 |
+| `/docs/cli` | - | 9 | 1 | 0 | 10 | 0 | 0 | 20 | 0 |
 | `/docs/github` | ✓ | 8 | 4 | 0 | 0 | 0 | 0 | 23 | 0 |
 | `/docs/reports` | - | 7 | 3 | 0 | 4 | 0 | 0 | 19 | 0 |
 | `/docs/scanning` | - | 5 | 1 | 0 | 0 | 0 | 0 | 6 | 0 |

