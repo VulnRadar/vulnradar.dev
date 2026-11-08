@@ -18,6 +18,51 @@ import { detectors } from "@/lib/scanner/checks/supply-chain";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  // Only "a library you could have pinned, and did not" fires here. A
+  // vendor script, or a host with "cdn" somewhere in its name, is reported
+  // once at low by page-script-missing-sri instead.
+  "supply-chain-sri-external-script": [
+    {
+      description: "a pinned library on a public CDN with no integrity",
+      body: '<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>',
+      expect: "fire",
+      evidenceIncludes:
+        "https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js",
+    },
+    {
+      description: "a pinned library with integrity",
+      body: '<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js" integrity="sha384-abc" crossorigin="anonymous"></script>',
+      expect: "skip",
+    },
+    {
+      description: "the same library at a moving version cannot take a hash",
+      body: '<script src="https://cdn.jsdelivr.net/npm/lodash/lodash.min.js"></script>',
+      expect: "skip",
+    },
+    {
+      description: "regression: the site's own assets written as absolute URLs",
+      url: "https://moodle.example.org/",
+      body: '<script src="https://moodle.example.org:443/lib/requirejs/require.min.js"></script>',
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: stripecdn.com contains 'cdn.' but serves no libraries",
+      url: "https://stripe.com/",
+      body: '<script src="https://b.stripecdn.com/a/1.2.3/app.js"></script>',
+      expect: "skip",
+    },
+    {
+      description: "a mutable vendor script",
+      body: '<script src="https://maps.googleapis.com/maps/api/js?key=abc"></script>',
+      expect: "skip",
+    },
+    {
+      description: "an unusable src does not disable the whole check",
+      body: '<script src="https://a:99999/x.js"></script><script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>',
+      expect: "fire",
+    },
+  ],
   "supply-chain-cdn-script-unpinned-version": [
     {
       description: "jsdelivr npm script with no version and no SRI",

@@ -13,33 +13,15 @@ import {
   withProseStripped,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { isLiteralArgument } from "./_sinks";
+import {
+  integrityGapEvidence,
+  pinnedCdnScriptsWithoutIntegrity,
+} from "./_subresource";
 import { tagsWith } from "./_tag-scan";
 
-// Hosts that intentionally serve scripts/stylesheets without SRI support:
-// content is mutable server-side by design (analytics/payment/CAPTCHA
-// providers push updates without notice), so pinning a hash would break the
-// integration. Exported so headers.ts's sri-missing/sri-stylesheet-missing
-// detectors use the same list instead of drifting out of sync with this one.
-export const SRI_EXEMPT_HOSTS = new Set([
-  "js.stripe.com",
-  "checkout.stripe.com",
-  "www.googletagmanager.com",
-  "googletagmanager.com",
-  "www.google-analytics.com",
-  "google-analytics.com",
-  "www.google.com",
-  "www.gstatic.com",
-  "googlesyndication.com",
-  "fonts.googleapis.com",
-  "widget.intercom.io",
-  "js.intercomcdn.com",
-  "www.paypalobjects.com",
-  "connect.facebook.net",
-  "cdn.segment.com",
-  "static.hotjar.com",
-  "snap.licdn.com",
-  "use.typekit.net",
-]);
+// headers.ts still reads the exempt list from here.
+export { SRI_EXEMPT_HOSTS } from "./_subresource";
 
 // Example/test credentials a vendor publishes in its own docs and that get
 // copied verbatim into countless tutorials and demo pages -- permanently
@@ -148,31 +130,22 @@ const rawDetectors: Record<string, DetectFn> = {
   "eval-in-client-script": (_url, _headers, body) => {
     // Check for eval() in <script> blocks only
     const combined = extractScriptContents(body).join("\n");
-    // Detect eval() - intentional use for JS security scanning
-    if (/\beval\s*\(/.test(combined) || /new\s+Function\s*\(/.test(combined)) {
-      return "eval() or new Function() detected in inline script — primary DOM XSS code execution sink.";
+    // A constant string argument was fixed when the file was written, so only
+    // a call that takes something else can run anyone's input.
+    for (const call of combined.matchAll(
+      /\beval\s*\(|\bnew\s+Function\s*\(/g,
+    )) {
+      if (!isLiteralArgument(combined, call.index + call[0].length - 1)) {
+        return "eval() or new Function() called on a value that is not a constant string in an inline script: whatever that value holds runs as code.";
+      }
     }
     return null;
   },
 
-  "third-party-script-no-sri": (_url, _headers, body) => {
-    const srcRe =
-      /src=["'](https?:\/\/(?!(?:localhost|127\.0\.0\.1))[^"']+)["']/i;
-    for (const tag of tagsWith(body, "script", srcRe)) {
-      const url = srcRe.exec(tag)?.[1] ?? "";
-      if (/integrity\s*=/i.test(tag)) continue;
-      // A malformed src (e.g. an out-of-range port) throws from new URL(); skip
-      // that one src rather than letting the throw disable the whole check.
-      let host: string;
-      try {
-        host = new URL(url).hostname;
-      } catch {
-        continue;
-      }
-      if (SRI_EXEMPT_HOSTS.has(host)) continue;
-      return `External script from ${host} loaded without SRI integrity attribute.`;
-    }
-    return null;
+  "third-party-script-no-sri": (url, _headers, body) => {
+    const urls = pinnedCdnScriptsWithoutIntegrity(body, url);
+    if (urls.length === 0) return null;
+    return integrityGapEvidence("pinned library CDN script", urls);
   },
 
   "source-map-exposed-production": (_url, _headers, body) => {

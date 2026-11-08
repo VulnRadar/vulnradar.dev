@@ -9,7 +9,12 @@
 
 import type { PageCheck } from "../../check-types";
 import { excerpt, lineAt } from "../../check-types";
-import type { ParsedCsp } from "../../page-context";
+import type { ParsedCsp, ScriptRef } from "../../page-context";
+import {
+  classifySubresource,
+  integrityGapEvidence,
+  needsIntegrity,
+} from "../_subresource";
 
 /** URL shorteners and paste sites are an unusual place to load a <script> from. */
 const SUSPICIOUS_SCRIPT_HOSTS =
@@ -30,6 +35,34 @@ function scriptSrcIsUnconstrained(csp: ParsedCsp | null): boolean {
   if (lower.includes("*")) return true;
   if (lower.includes("https:") || lower.includes("http:")) return true;
   return false;
+}
+
+/**
+ * Whether a resource with this URL and integrity value is a gap worth
+ * reporting: someone else's file, with no hash, that a hash could apply to.
+ */
+function lacksWarrantedIntegrity(
+  url: string | null,
+  integrity: string | null,
+  pageUrl: string,
+): boolean {
+  return (
+    !!url && !integrity && needsIntegrity(classifySubresource(url, pageUrl))
+  );
+}
+
+function scriptsLackingIntegrity(
+  scripts: ScriptRef[],
+  pageUrl: string,
+): ScriptRef[] {
+  return scripts.filter((s) =>
+    lacksWarrantedIntegrity(s.resolved ?? s.src, s.integrity, pageUrl),
+  );
+}
+
+/** Each URL once, so a tag repeated in the page does not pad the evidence. */
+function distinct(urls: string[]): string[] {
+  return [...new Set(urls)];
 }
 
 export const scriptChecks: PageCheck[] = [
@@ -62,15 +95,13 @@ export const scriptChecks: PageCheck[] = [
     needs: ["scripts"],
     dedupeGroup: "sri-missing",
     run(ctx) {
-      const offending = ctx.scripts.filter(
-        (s) => s.thirdParty && s.src && !s.integrity,
-      );
+      const offending = scriptsLackingIntegrity(ctx.scripts, ctx.url);
       if (offending.length === 0) return null;
       return {
-        evidence: `${offending.length} third-party script(s) loaded without integrity: ${offending
-          .map((s) => s.origin)
-          .filter((v, i, a) => a.indexOf(v) === i)
-          .join(", ")}.`,
+        evidence: integrityGapEvidence(
+          "third-party script",
+          distinct(offending.map((s) => s.resolved ?? s.src ?? "")),
+        ),
         excerpts: offending.map((s) =>
           excerpt("script src", s.resolved ?? s.src ?? ""),
         ),
@@ -95,14 +126,18 @@ export const scriptChecks: PageCheck[] = [
       'Add crossorigin="anonymous" alongside it.',
     ],
     codeExamples: [],
-    dedupeGroup: "sri-missing",
+    // Not in the script group: a stylesheet and a script are two fixes, and
+    // sharing "sri-missing" let a script finding absorb this one.
     run(ctx) {
-      const offending = ctx.stylesheets.filter(
-        (s) => s.thirdParty && s.href && !s.integrity,
+      const offending = ctx.stylesheets.filter((s) =>
+        lacksWarrantedIntegrity(s.resolved ?? s.href, s.integrity, ctx.url),
       );
       if (offending.length === 0) return null;
       return {
-        evidence: `${offending.length} third-party stylesheet(s) loaded without integrity.`,
+        evidence: integrityGapEvidence(
+          "third-party stylesheet",
+          distinct(offending.map((s) => s.resolved ?? s.href)),
+        ),
         excerpts: offending.map((s) =>
           excerpt("link href", s.resolved ?? s.href),
         ),
@@ -206,12 +241,13 @@ export const scriptChecks: PageCheck[] = [
     needs: ["scripts"],
     run(ctx) {
       if (!scriptSrcIsUnconstrained(ctx.csp)) return null;
-      const offending = ctx.scripts.filter(
-        (s) => s.thirdParty && s.src && !s.integrity,
-      );
+      const offending = scriptsLackingIntegrity(ctx.scripts, ctx.url);
       if (offending.length === 0) return null;
       return {
-        evidence: `${offending.length} third-party script(s) have no SRI and no restrictive CSP script-src to fall back on.`,
+        evidence: `${integrityGapEvidence(
+          "third-party script",
+          distinct(offending.map((s) => s.resolved ?? s.src ?? "")),
+        )}, and no restrictive CSP script-src to fall back on.`,
         excerpts: offending.map((s) =>
           excerpt("script src", s.resolved ?? s.src ?? ""),
         ),

@@ -7,6 +7,10 @@
  */
 
 import { withProseStripped, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  integrityGapEvidence,
+  pinnedCdnScriptsWithoutIntegrity,
+} from "./_subresource";
 import { tagsWith, tagElements } from "./_tag-scan";
 
 // ── Shared helpers for the manifest / CDN detectors below ─────────────────
@@ -107,34 +111,10 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "supply-chain-sri-external-script": (_url, _headers, body) => {
-    const srcRe =
-      /src=["'](https?:\/\/(?!(?:localhost|127\.0\.0\.1))[^"']+)["']/i;
-    let found = 0;
-    for (const tag of tagsWith(body, "script", srcRe)) {
-      const url = srcRe.exec(tag)?.[1] ?? "";
-      if (!/integrity\s*=/i.test(tag)) {
-        try {
-          const host = new URL(url).hostname;
-          // Only flag known CDN domains lacking SRI — not first-party.
-          // maps.googleapis.com (Maps JavaScript API) is excluded: its
-          // response is personalized per API key/session by design, so
-          // there is no stable hash to pin and Google doesn't support SRI
-          // for it.
-          const isCdn =
-            /(?:cdn\.|cdnjs\.|jsdelivr\.|unpkg\.|cloudflare\.|googleapis\.com|bootstrapcdn\.com)/i.test(
-              host,
-            ) && !/^maps\.googleapis\.com$/i.test(host);
-          if (isCdn) found++;
-        } catch {
-          // invalid URL
-        }
-      }
-    }
-    if (found > 0) {
-      return `${found} CDN script(s) loaded without SRI integrity hash: a CDN compromise would silently inject malicious code.`;
-    }
-    return null;
+  "supply-chain-sri-external-script": (url, _headers, body) => {
+    const urls = pinnedCdnScriptsWithoutIntegrity(body, url);
+    if (urls.length === 0) return null;
+    return integrityGapEvidence("pinned library CDN script", urls);
   },
 
   "supply-chain-http-script-on-https": (url, _headers, body) => {

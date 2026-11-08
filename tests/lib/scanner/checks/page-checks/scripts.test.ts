@@ -68,6 +68,31 @@ const fixtures: PageCheckFixtures = {
       body: `<script src="/assets/app.js"></script>`,
       expect: "skip",
     },
+    {
+      description: "the evidence names the script, not just its host",
+      url: "https://example.com/",
+      body: `<script src="https://cdn.other.com/lib.js"></script>`,
+      expect: "fire",
+      evidenceIncludes: "https://cdn.other.com/lib.js",
+    },
+    {
+      description: "the site's own subdomain is not a third party",
+      url: "https://example.com/",
+      body: `<script src="https://cdn.example.com/app.js"></script>`,
+      expect: "skip",
+    },
+    {
+      description: "regression: Tag Manager changes by design, so no hash fits",
+      url: "https://example.com/",
+      body: `<script src="https://www.googletagmanager.com/gtag/js?id=G-X"></script>`,
+      expect: "skip",
+    },
+    {
+      description: "a pinned library on a public CDN",
+      url: "https://example.com/",
+      body: `<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>`,
+      expect: "fire",
+    },
   ],
   "page-stylesheet-missing-sri": [
     {
@@ -80,6 +105,25 @@ const fixtures: PageCheckFixtures = {
       description: "third-party stylesheet with integrity",
       url: "https://example.com/",
       body: `<link rel="stylesheet" href="https://fonts.example.net/a.css" integrity="sha384-abc">`,
+      expect: "skip",
+    },
+    {
+      description: "the evidence names the stylesheet",
+      url: "https://example.com/",
+      body: `<link rel="stylesheet" href="https://fonts.example.net/a.css">`,
+      expect: "fire",
+      evidenceIncludes: "https://fonts.example.net/a.css",
+    },
+    {
+      description: "regression: Google Fonts CSS differs per browser",
+      url: "https://example.com/",
+      body: `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter&display=swap">`,
+      expect: "skip",
+    },
+    {
+      description: "the site's own stylesheet host on a subdomain",
+      url: "https://example.com/",
+      body: `<link rel="stylesheet" href="https://static.example.com/a.css">`,
       expect: "skip",
     },
   ],
@@ -132,6 +176,24 @@ const fixtures: PageCheckFixtures = {
       url: "https://example.com/",
       body: `<script src="https://cdn.other.com/lib.js" integrity="sha384-abc"></script>`,
       expect: "skip",
+    },
+    {
+      description: "regression: a vendor that cannot take a hash is not a gap",
+      url: "https://example.com/",
+      body: `<script src="https://maps.googleapis.com/maps/api/js?key=abc"></script>`,
+      expect: "skip",
+    },
+    {
+      description: "the site's own subdomain needs neither defence",
+      url: "https://example.com/",
+      body: `<script src="https://cdn.example.com/app.js"></script>`,
+      expect: "skip",
+    },
+    {
+      description: "a pinned library with no SRI and no CSP",
+      url: "https://example.com/",
+      body: `<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>`,
+      expect: "fire",
     },
     {
       description:
