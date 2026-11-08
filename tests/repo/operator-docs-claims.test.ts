@@ -2,7 +2,17 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 const read = (file: string) => readFileSync(file, "utf8");
-const prose = (text: string) => text.replace(/\s+/g, " ");
+// Sentences wrap across comment lines in .env.example and the Dockerfile.
+const prose = (text: string) => text.replace(/\s*(?:\n#)?\s+/g, " ");
+
+describe("what operators are told about restoring a backup", () => {
+  it("says a backup carries its IV and auth tag, and who still needs a sidecar", () => {
+    const text = prose(read(".env.example"));
+    expect(text).toMatch(/A backup carries its IV and auth tag in its header/);
+    expect(text).toMatch(/only older backups and db:migrate's pre-migration/);
+    expect(text).not.toMatch(/\.enc file needs its \.json sidecar/);
+  });
+});
 
 /**
  * lib/config/env.ts refuses to start when neither APP_URL nor
