@@ -218,7 +218,7 @@ export const POST = withErrorHandling(async (request: Request) => {
   // reason there), so an account saved with capitals is still recognised: as
   // a member already on the team, and below for its bell notification.
   const existingUser = await pool.query(
-    `SELECT id FROM users
+    `SELECT id, email_verified_at FROM users
      WHERE LOWER(email) = LOWER($1)
      ORDER BY (email = $1) DESC, id
      LIMIT 1`,
@@ -349,6 +349,13 @@ export const POST = withErrorHandling(async (request: Request) => {
   // an invite to an email with no account yet just sends the email, no
   // in-app notification is possible until that person signs up.
   const invitedUserId = existingUser.rows[0]?.id ?? null;
+  // The bell names the team, the inviter and the role. An account that has
+  // only typed this address into its profile has not shown that it owns it,
+  // and GET /api/v3/teams/invitations refuses it the same details for the same
+  // reason. The mail still goes to the address, whose owner it is meant for.
+  const bellUserId = existingUser.rows[0]?.email_verified_at
+    ? invitedUserId
+    : null;
 
   // audit-log: trusted client IP only.
   const ip = (await getClientIp()) || null;
@@ -391,11 +398,11 @@ export const POST = withErrorHandling(async (request: Request) => {
     // Also deliver an in-app bell notification when the invitee already
     // has an account, so they see it immediately if already logged in
     // instead of only finding out on their next email check.
-    if (invitedUserId) {
+    if (bellUserId) {
       const roleLabel = TEAM_ROLE_INVITE_LABELS[role] || role;
       try {
         await createUserNotification({
-          userId: invitedUserId,
+          userId: bellUserId,
           type: "team_invite",
           title: `Team invite from ${invitedBy}`,
           message: `${invitedBy} invited you to join "${teamName}" as ${roleLabel}.`,

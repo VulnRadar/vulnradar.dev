@@ -444,6 +444,22 @@ describeIntegration("every account lookup by address folds case", () => {
     ).toBe(1);
   });
 
+  it("a team invite does not ring the bell of a row that never verified the address", async () => {
+    const teamId = await signInAsTeamOwner();
+    const claimed = await createLegacyUser({ verified: false });
+
+    const res = await postTeamInvite(teamId, claimed.email.toLowerCase());
+
+    expect(res.status).toBe(200);
+    expect(
+      await count(
+        `SELECT COUNT(*)::int AS n FROM user_notifications
+          WHERE user_id = $1 AND type = 'team_invite'`,
+        [claimed.id],
+      ),
+    ).toBe(0);
+  });
+
   it("a team invite sees that the account is already a member", async () => {
     const teamId = await signInAsTeamOwner();
     const legacy = await createLegacyUser();

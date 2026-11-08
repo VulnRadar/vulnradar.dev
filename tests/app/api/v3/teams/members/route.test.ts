@@ -141,14 +141,18 @@ function queueUpToInsert({
   existingUserId,
   inviteId = 7,
   ownerId = 1,
+  emailVerifiedAt = "2026-01-01T00:00:00.000Z",
 }: {
   existingUserId: number | null;
   inviteId?: number;
   ownerId?: number;
+  emailVerifiedAt?: string | null;
 }) {
   mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] }); // memberRes
   mockQuery.mockResolvedValueOnce({
-    rows: existingUserId ? [{ id: existingUserId }] : [],
+    rows: existingUserId
+      ? [{ id: existingUserId, email_verified_at: emailVerifiedAt }]
+      : [],
   }); // existingUser
   if (existingUserId) {
     mockQuery.mockResolvedValueOnce({ rows: [] }); // existingMember (not already a member)
@@ -185,6 +189,23 @@ describe("POST /api/v3/teams/members", () => {
     expect(call.title).toContain("Alice");
     expect(call.message).toContain("Acme");
     // The email still goes out too — this is additive, not a replacement.
+    expect(mockTeamInviteEmail).toHaveBeenCalled();
+  });
+
+  // The bell carries the team name, the inviter and the role, and the invite
+  // list refuses all three to an account that never proved the address.
+  it("does not ring the bell of an account that never verified the address, and still mails it", async () => {
+    queueUpToInsert({ existingUserId: 99, inviteId: 7, emailVerifiedAt: null });
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] }); // teamInfo
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: "Alice" }] }); // inviterInfo
+    mockQuery.mockResolvedValueOnce({ rows: [{ unsubscribe_token: null }] }); // inviteeRes
+
+    const res = await POST(
+      postRequest({ teamId: 1, email: "bob@example.com", role: "viewer" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockCreateUserNotification).not.toHaveBeenCalled();
     expect(mockTeamInviteEmail).toHaveBeenCalled();
   });
 
@@ -465,7 +486,9 @@ describe("POST /api/v3/teams/members, invitee stored in mixed case", () => {
         if (!visible) return { rows: [] };
         return s.includes("unsubscribe_token")
           ? { rows: [{ unsubscribe_token: "unsub-99" }] }
-          : { rows: [{ id: 99 }] };
+          : {
+              rows: [{ id: 99, email_verified_at: "2026-01-01T00:00:00.000Z" }],
+            };
       }
       if (s.startsWith("SELECT id FROM team_members")) {
         return { rows: opts.alreadyMember ? [{ id: 1 }] : [] };
