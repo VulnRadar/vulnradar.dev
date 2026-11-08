@@ -11,7 +11,7 @@
 # The build context is the scratch directory scripts/spike/run.mjs prepares: the
 # fixture sources plus a generated package.json that pins next, react and
 # react-dom to the versions in the root package.json.
-FROM node:22.23.4-alpine AS builder
+FROM node:22.23.4-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202 AS builder
 
 WORKDIR /app
 
@@ -26,19 +26,21 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ── Production stage ───────────────────────────────────────────
-FROM node:22.23.4-alpine AS runner
+FROM node:22.23.4-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202 AS runner
 
 WORKDIR /app
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
-COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./next.config.mjs
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
 
 RUN apk add --no-cache tini
+
+RUN mkdir -p /app/.next/cache && chown -R nextjs:nodejs /app/.next/cache
 
 USER nextjs
 

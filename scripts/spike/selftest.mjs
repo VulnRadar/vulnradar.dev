@@ -282,8 +282,8 @@ test("the spike image mirrors the production Dockerfile where the spike depends 
     "the builder and runner base images differ from the production Dockerfile",
   );
   for (const copy of [
-    "COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next",
-    "COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules",
+    "COPY --from=builder /app/.next ./.next",
+    "COPY --from=builder /app/node_modules ./node_modules",
   ]) {
     assert.ok(
       root.includes(copy) && spike.includes(copy),

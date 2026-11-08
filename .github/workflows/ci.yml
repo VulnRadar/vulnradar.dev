@@ -547,11 +547,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Validate the documented compose configurations
-        # Nothing in this job runs compose, so a change to docker-compose.yml
-        # that broke the managed-database overlay, or a typo in the overlay
-        # itself, would reach operators first. `config` parses, interpolates
-        # and merges without pulling or starting anything. Both setups are
-        # configured the way the docs tell operators to: through .env.
+        # This job only boots the default stack, so a change to
+        # docker-compose.yml that broke the managed-database overlay, or a typo
+        # in the overlay itself, would reach operators first. `config` parses,
+        # interpolates and merges without pulling or starting anything. Both
+        # setups are configured the way the docs tell operators to: through
+        # .env.
         run: |
           set -euo pipefail
           trap 'rm -f .env' EXIT
