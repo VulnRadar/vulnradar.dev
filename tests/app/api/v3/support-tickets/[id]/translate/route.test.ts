@@ -110,3 +110,17 @@ describe("POST translate: the ticket id in the path", () => {
     expect(mockQuery.mock.calls[1][1]).toEqual([5, 12]);
   });
 });
+
+describe("POST translate: an unexpected failure", () => {
+  it("answers a JSON 500 that names nothing internal", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockRejectedValue(
+      new Error('relation "support_tickets" does not exist'),
+    );
+
+    const res = await POST(req(), withId("12"));
+
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toContain("support_tickets");
+  });
+});

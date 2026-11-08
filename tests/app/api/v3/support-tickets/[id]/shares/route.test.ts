@@ -146,3 +146,22 @@ describe("the ticket id in the path", () => {
     expect(mockQuery.mock.calls[0][1]).toEqual([12]);
   });
 });
+
+describe("an unexpected failure", () => {
+  it.each([
+    ["GET", () => GET(req("GET"), params)],
+    ["POST", () => POST(req("POST", { userId: 5 }), params)],
+    ["DELETE", () => DELETE(req("DELETE", undefined, "?userId=5"), params)],
+  ])("%s answers a JSON 500 that names nothing internal", async (_m, call) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockReset();
+    mockQuery.mockRejectedValue(
+      new Error('relation "support_ticket_shares" does not exist'),
+    );
+
+    const res = await call();
+
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toContain("support_ticket");
+  });
+});
