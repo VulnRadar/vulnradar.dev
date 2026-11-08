@@ -1537,9 +1537,7 @@ function AdminContent() {
                     setSelectedUser(null);
                     updateUrlWithUser(null, activeTab);
                   }}
-                  onAction={async (userId, action, extra) =>
-                    handleAction(userId, action, extra)
-                  }
+                  onAction={handleAction}
                 />
               </div>
             )}
